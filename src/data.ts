@@ -5,144 +5,116 @@ import type { DataFormat } from "./chartSpec";
 /** A table cell: text, a number, or null when empty. */
 export type Cell = string | number | null;
 
-/** Parsed tabular data. Every row has one cell per column. */
-export interface DataTable {
-  columns: string[];
-  rows: Cell[][];
+/** What a column's numbers measure, as written in the data ("12%", "1.5G") or its name ("%CPU"). */
+export type Unit = "%" | "bytes";
+
+export interface Column {
+  name: string;
+  /** Whether it holds numbers: some cells are numbers, and at least as many as other text. */
+  numeric: boolean;
+  unit?: Unit;
 }
 
-const ACCEPTED_FORMATS =
-  "Accepted formats: JSON (an array of objects or arrays, or an object mapping names to numbers), " +
-  "CSV, semicolon-separated, TSV, or whitespace-separated columns such as the output of du, " +
-  "wc or ls -l.";
+/** Parsed tabular data. Every row has one cell per column. */
+export interface DataTable {
+  columns: Column[];
+  rows: Cell[][];
+  /** Whether the column names come from the data, rather than being generated ("Column 1"). */
+  header: boolean;
+}
 
-const NUMBER =
-  /^([-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(%|([KMGTPEk])(?:i?B)?)?$/;
+/** A field as read from the data: text, or a JSON number or null. */
+type Field = string | number | null;
 
-/** A size with a decimal comma, as printed by du -h in some locales: "1,5M". */
-const SIZE_WITH_DECIMAL_COMMA = /^([-+]?\d+),(\d{1,2})([KMGTPEk](?:i?B)?)$/;
+const SUFFIX = "%|B|[KMGTPEk](?:i?B|i)?";
 
-/** A number with a decimal comma (or a thousands separator): "1,5", "-12,25%" or "1,234". */
-const COMMA_NUMBER = /^[-+]?\d+,\d+(?:%|[KMGTPEk](?:i?B)?)?$/;
+const NUMBER = new RegExp(
+  String.raw`^([-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
+);
+
+/** A number with a decimal comma ("1,5", "1.234,56") or a thousands separator ("1,234"). */
+const COMMA_NUMBER = new RegExp(String.raw`^[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d+(?:${SUFFIX})?$`);
 
 /** A number that can only have thousands separators: "1,234.5" or "1,234,567". */
-const THOUSANDS = /^[-+]?\d{1,3}(?:(?:,\d{3})+\.\d*|(?:,\d{3}){2,})(?:%|[KMGTPEk](?:i?B)?)?$/;
+const THOUSANDS = new RegExp(
+  String.raw`^[-+]?\d{1,3}(?:(?:,\d{3})+\.\d*|(?:,\d{3}){2,})(?:${SUFFIX})?$`,
+);
 
 /** A number that may have a thousands separator: "1,234" (but not "1,5" or "1234,5"). */
-const MAYBE_THOUSANDS = /^[-+]?\d{1,3}(?:,\d{3})+(?:%|[KMGTPEk](?:i?B)?)?$/;
+const MAYBE_THOUSANDS = new RegExp(String.raw`^[-+]?\d{1,3}(?:,\d{3})+(?:${SUFFIX})?$`);
 
-const SIZE_POWERS: Record<string, number> = { K: 1, M: 2, G: 3, T: 4, P: 5, E: 6 };
+/** A number with thousands separators within text, as in "apples 1,234". */
+const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
+
+const SIZE_POWERS: Record<string, number> = { B: 0, K: 1, M: 2, G: 3, T: 4, P: 5, E: 6 };
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
- * "12.5%" (as 12.5) and sizes like "1.5K", "12M", "3G" or "4TiB" (powers of 1024, as by du -h).
- * A size may have a decimal comma, as du -h prints in some locales: "1,5M". Returns undefined
- * when the text is not such a number.
+ * "12.5%" (as 12.5) and sizes like "512B", "1.5K", "12M", "3GiB" or "128Mi" (in bytes, taking
+ * K as 1024 as du -h does).
  */
-export function parseNumber(text: string): number | undefined {
-  const trimmed = text.trim();
-  const size = SIZE_WITH_DECIMAL_COMMA.exec(trimmed);
-  const match = NUMBER.exec(size === null ? trimmed : `${size[1]}.${size[2]}${size[3]}`);
+export function parseNumber(text: string): { value: number; unit?: Unit } | undefined {
+  const match = NUMBER.exec(text.trim());
   const digits = match?.[1];
-  if (match === null || digits === undefined) {
+  if (digits === undefined) {
     return undefined;
   }
   const value = Number(digits.replaceAll(",", ""));
   if (!Number.isFinite(value)) {
     return undefined;
   }
-  const unit = match[3];
-  return unit === undefined ? value : value * 1024 ** (SIZE_POWERS[unit.toUpperCase()] ?? 0);
+  const suffix = match?.[2];
+  if (suffix === undefined) {
+    return { value };
+  }
+  if (suffix === "%") {
+    return { value, unit: "%" };
+  }
+  return {
+    value: value * 1024 ** (SIZE_POWERS[suffix.charAt(0).toUpperCase()] ?? 0),
+    unit: "bytes",
+  };
 }
 
-/** Converts a raw field to a cell: empty → null, a number → number, otherwise trimmed text. */
-function toCell(raw: string): Cell {
-  const text = raw.trim();
-  if (text === "") {
-    return null;
-  }
-  return parseNumber(text) ?? text;
+function isNumber(text: string | undefined): boolean {
+  return text !== undefined && parseNumber(text) !== undefined;
 }
 
 /**
- * Whether a column of raw fields writes numbers with a decimal comma: some field is like "1,5" or
- * "1234,5" (which cannot be a thousands separator), and none is like "1,234.5" or "1,234,567"
- * (which can only be).
+ * Whether a column writes numbers with a decimal comma: some field is like "1,5" or "1234,5"
+ * (which cannot have a thousands separator), and none like "1,234.5" (which can only).
  */
-function hasDecimalCommas(fields: string[]): boolean {
+function hasDecimalCommas(records: Field[][], column: number): boolean {
   let decimal = false;
-  for (const field of fields) {
-    const text = field.trim();
-    if (THOUSANDS.test(text)) {
-      return false;
-    }
-    if (COMMA_NUMBER.test(text) && !MAYBE_THOUSANDS.test(text)) {
-      decimal = true;
+  for (const record of records) {
+    const field = record[column];
+    if (typeof field === "string") {
+      const text = field.trim();
+      if (THOUSANDS.test(text)) {
+        return false;
+      }
+      decimal ||= COMMA_NUMBER.test(text) && !MAYBE_THOUSANDS.test(text);
     }
   }
   return decimal;
 }
 
-/**
- * Converts records of raw fields to rows of cells. In a column that writes numbers with a decimal
- * comma (see {@link hasDecimalCommas}), "1,5" is 1.5 and "1,234" is 1.234; elsewhere "1,234" is
- * 1234.
- */
-function toRows(records: string[][]): Cell[][] {
-  const width = Math.max(0, ...records.map((record) => record.length));
-  const decimalComma = Array.from({ length: width }, (_, column) =>
-    hasDecimalCommas(records.map((record) => record[column] ?? "")),
-  );
-  return records.map((record) =>
-    record.map((field, column) => {
-      const text = field.trim();
-      if (decimalComma[column] && COMMA_NUMBER.test(text)) {
-        return parseNumber(text.replace(",", ".")) ?? text;
-      }
-      return toCell(text);
-    }),
-  );
-}
-
-/** Converts a JSON value to a cell. */
-function jsonToCell(value: unknown): Cell {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === "string") {
-    return toCell(value);
-  }
-  if (typeof value === "boolean") {
-    return String(value);
-  }
-  return JSON.stringify(value);
-}
-
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Whether a column holds numbers: at least one cell is a number, and most non-empty cells are.
- */
-export function isNumericColumn(table: DataTable, column: number): boolean {
-  return isNumeric(table.rows.map((row) => row[column] ?? null));
-}
-
-function isNumeric(cells: Cell[]): boolean {
+function isNumeric(rows: Cell[][], column: number): boolean {
   let numbers = 0;
   let others = 0;
-  for (const cell of cells) {
+  for (const row of rows) {
+    const cell = row[column];
     if (typeof cell === "number") {
       numbers++;
-    } else if (cell !== null) {
+    } else if (cell !== null && cell !== undefined) {
       others++;
     }
   }
   return numbers > 0 && numbers >= others;
+}
+
+function isYear(cell: Cell | undefined): boolean {
+  return typeof cell === "number" && Number.isInteger(cell) && cell >= 1000 && cell < 3000;
 }
 
 /**
@@ -154,46 +126,30 @@ function hasHeader(rows: Cell[][]): boolean {
   if (first === undefined || rest.length === 0 || !first.some((c) => typeof c === "string")) {
     return false;
   }
-  const width = Math.max(...rows.map((row) => row.length));
-  const column = (index: number) => rest.map((row) => row[index] ?? null);
   const numbers = first.filter((cell) => typeof cell === "number");
   if (numbers.length > 0) {
-    // Years as column names come in order, as in "region,2024,2025", unlike data such as
-    // "apples,1500" or "Alice,1990".
+    // Years as column names come in order, unlike data such as "apples,1500" or "Alice,1990".
     const ascending = numbers.every((year, i) => i === 0 || year > (numbers[i - 1] ?? year));
     const descending = numbers.every((year, i) => i === 0 || year < (numbers[i - 1] ?? year));
     if (numbers.length < 2 || !numbers.every(isYear) || !(ascending || descending)) {
       return false;
     }
-    for (let index = 0; index < width; index++) {
-      // A year above more years is data.
-      if (typeof first[index] === "number" && column(index).every(isYear)) {
-        return false;
-      }
+    // A year above more years is data.
+    if (first.some((cell, i) => typeof cell === "number" && rest.every((row) => isYear(row[i])))) {
+      return false;
     }
   }
-  for (let index = 0; index < width; index++) {
-    if (isNumeric(column(index))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function isYear(cell: Cell): boolean {
-  return typeof cell === "number" && Number.isInteger(cell) && cell >= 1000 && cell < 3000;
+  return first.some((_, i) => isNumeric(rest, i));
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
-function columnNames(header: Cell[], width: number): string[] {
+function columnNames(header: Field[], width: number): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
   for (let column = 0; column < width; column++) {
-    const cell = header[column];
-    let name = cell === null || cell === undefined ? "" : String(cell).trim();
-    if (name === "") {
-      name = `Column ${column + 1}`;
-    }
+    const field = header[column];
+    const text = field === null || field === undefined ? "" : String(field).trim();
+    const name = text === "" ? `Column ${column + 1}` : text;
     let unique = name;
     for (let n = 2; seen.has(unique); n++) {
       unique = `${name} (${n})`;
@@ -204,16 +160,45 @@ function columnNames(header: Cell[], width: number): string[] {
   return names;
 }
 
-/** Builds a table from rows of cells, taking the column names from the first row if it has them. */
-function tableFromRows(rows: Cell[][], forceHeader = false): DataTable {
-  const width = Math.max(0, ...rows.map((row) => row.length));
-  const header = forceHeader || hasHeader(rows);
-  const columns = columnNames(header ? (rows[0] ?? []) : [], width);
-  const body = header ? rows.slice(1) : rows;
-  return {
-    columns,
-    rows: body.map((row) => Array.from({ length: width }, (_, i) => row[i] ?? null)),
-  };
+/**
+ * Builds a table from records of fields, converting text to numbers where it is one. The first
+ * record is the header when `header` is true, or when it looks like one if undefined.
+ */
+function tableFromRecords(records: Field[][], header?: boolean): DataTable {
+  // Not Math.max(...lengths), which overflows the stack for many records.
+  const width = records.reduce((max, record) => Math.max(max, record.length), 0);
+  const decimalComma = Array.from({ length: width }, (_, column) =>
+    hasDecimalCommas(records, column),
+  );
+  const units = Array.from({ length: width }, () => new Set<Unit>());
+  const cells = records.map((record) =>
+    Array.from({ length: width }, (_, column): Cell => {
+      const field = record[column] ?? null;
+      if (typeof field !== "string") {
+        return field;
+      }
+      const text = field.trim();
+      const number = parseNumber(
+        decimalComma[column] && COMMA_NUMBER.test(text)
+          ? text.replaceAll(".", "").replace(",", ".")
+          : text,
+      );
+      if (number?.unit !== undefined) {
+        units[column]?.add(number.unit);
+      }
+      return number?.value ?? (text === "" ? null : text);
+    }),
+  );
+  const named = header ?? hasHeader(cells);
+  const rows = named ? cells.slice(1) : cells;
+  const columns = columnNames(named ? (records[0] ?? []) : [], width).map((name, column) => {
+    const numeric = isNumeric(rows, column);
+    const found = [...(units[column] ?? [])];
+    const unit =
+      found.length === 0 && name.includes("%") ? "%" : found.length === 1 ? found[0] : undefined;
+    return numeric && unit !== undefined ? { name, numeric, unit } : { name, numeric };
+  });
+  return { columns, rows, header: named };
 }
 
 function isBlank(line: string): boolean {
@@ -230,6 +215,8 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
   let field = "";
   let quoted = false;
   let fieldStart = true;
+  let line = 1;
+  let quoteLine = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
@@ -242,9 +229,13 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
         }
       } else {
         field += char;
+        if (char === "\n") {
+          line++;
+        }
       }
-    } else if (quoting && char === '"' && fieldStart && field.trim() === "") {
+    } else if (quoting && char === '"' && fieldStart) {
       quoted = true;
+      quoteLine = line;
       field = "";
       fieldStart = false;
     } else if (char === delimiter) {
@@ -255,6 +246,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
       if (char === "\r" && text[i + 1] === "\n") {
         i++;
       }
+      line++;
       record.push(field);
       records.push(record);
       record = [];
@@ -268,7 +260,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
     }
   }
   if (quoted) {
-    throw new Error('A quoted field is not closed: a field starts with " but has no closing ".');
+    throw new Error(`The quoted field that starts on line ${quoteLine} is not closed.`);
   }
   record.push(field);
   records.push(record);
@@ -292,42 +284,45 @@ function mode(values: number[]): number {
   return best;
 }
 
-/** Whether records consistently have the same number (at least two) of fields. */
-function isConsistent(records: string[][]): boolean {
-  if (records.length === 0) {
-    return false;
-  }
-  const lengths = records.map((record) => record.length);
-  const common = mode(lengths);
-  const matching = lengths.filter((length) => length === common).length;
-  return common >= 2 && matching >= Math.max(1, records.length * 0.8);
-}
-
-function parseDelimited(text: string, delimiter: string): DataTable {
-  let records: string[][];
-  try {
-    records = splitDelimited(text, delimiter);
-  } catch (error) {
-    if (delimiter !== "\t") {
-      throw error;
+/**
+ * Splits comma- or semicolon-separated values with the delimiter that splits the lines more
+ * consistently. Unless `strict`, returns undefined when neither does, or when the first line has
+ * no delimiter (as in docker ps output, with commas in a column) or commas only separate thousands
+ * (as in "apples 1,234").
+ */
+function splitCsv(text: string, firstLine: string, strict: boolean): string[][] | undefined {
+  let best: { records: string[][]; uniform: number; width: number } | undefined;
+  for (const delimiter of [",", ";"]) {
+    if (
+      !strict &&
+      (!firstLine.includes(delimiter) ||
+        (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(",")))
+    ) {
+      continue;
     }
-    // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
-    records = splitDelimited(text, delimiter, false);
+    let records: string[][];
+    try {
+      records = splitDelimited(text, delimiter);
+    } catch {
+      continue;
+    }
+    const width = mode(records.map((record) => record.length));
+    const matching = records.filter((record) => record.length === width).length;
+    if (width < 2 || matching < records.length * 0.8) {
+      continue;
+    }
+    // On ties, as for "a;1,5", prefer semicolons: a comma is more likely a decimal comma than a
+    // semicolon is part of a field.
+    const uniform = matching === records.length ? 1 : 0;
+    if (
+      best === undefined ||
+      uniform > best.uniform ||
+      (uniform === best.uniform && width >= best.width)
+    ) {
+      best = { records, uniform, width };
+    }
   }
-  return tableFromRows(toRows(records));
-}
-
-/** Splits a line on runs of whitespace into at most `count` fields; the last keeps its spaces. */
-function splitWhitespace(line: string, count: number): string[] {
-  const tokens = Array.from(line.matchAll(/\S+/g));
-  if (tokens.length <= count) {
-    return tokens.map((token) => token[0]);
-  }
-  const last = tokens[count - 1];
-  return [
-    ...tokens.slice(0, count - 1).map((token) => token[0]),
-    line.slice(last?.index ?? 0).trimEnd(),
-  ];
+  return best?.records ?? (strict ? splitDelimited(text, ",") : undefined);
 }
 
 interface Token {
@@ -344,27 +339,41 @@ function tokenize(line: string): Token[] {
   }));
 }
 
+/** The texts of a line's tokens, at most `count`: the last keeps the rest of the line. */
+function fields(line: string, tokens: Token[], count: number): string[] {
+  const last = tokens[count - 1];
+  if (tokens.length <= count || last === undefined) {
+    return tokens.map((token) => token.text);
+  }
+  return [...tokens.slice(0, count - 1).map((t) => t.text), line.slice(last.start).trimEnd()];
+}
+
 /**
  * Splits output whose data lines all have the same number of fields, but whose header has more
  * words because some column names have several words (as printed by df: "Mounted on"). Each
  * header word goes to the column of data it overlaps most, or else is nearest to.
  */
-function splitMultiWordHeader(lines: string[]): string[][] | undefined {
-  const [header, ...rest] = lines.map(tokenize);
+function splitMultiWordHeader(tokens: Token[][]): string[][] | undefined {
+  const [header, ...rest] = tokens;
   const count = rest[0]?.length ?? 0;
   if (
     header === undefined ||
     count < 2 ||
     header.length <= count ||
-    header.some((token) => parseNumber(token.text) !== undefined) ||
-    rest.some((tokens) => tokens.length !== count)
+    header.some((token) => isNumber(token.text)) ||
+    rest.some((line) => line.length !== count)
   ) {
     return undefined;
   }
-  const spans = Array.from({ length: count }, (_, column) => ({
-    start: Math.min(...rest.map((tokens) => tokens[column]?.start ?? 0)),
-    end: Math.max(...rest.map((tokens) => tokens[column]?.end ?? 0)),
-  }));
+  const spans = Array.from({ length: count }, (_, column) => {
+    let start = Number.POSITIVE_INFINITY;
+    let end = 0;
+    for (const line of rest) {
+      start = Math.min(start, line[column]?.start ?? 0);
+      end = Math.max(end, line[column]?.end ?? 0);
+    }
+    return { start, end };
+  });
   const names: string[][] = spans.map(() => []);
   for (const word of header) {
     let best = 0;
@@ -379,10 +388,7 @@ function splitMultiWordHeader(lines: string[]): string[][] | undefined {
     });
     names[best]?.push(word.text);
   }
-  return [
-    names.map((words) => words.join(" ")),
-    ...rest.map((tokens) => tokens.map((t) => t.text)),
-  ];
+  return [names.map((words) => words.join(" ")), ...rest.map((line) => line.map((t) => t.text))];
 }
 
 /**
@@ -416,56 +422,96 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
   return records.some((record) => record.some((cell) => /\s{2,}/.test(cell))) ? undefined : records;
 }
 
-function parseWhitespace(text: string): DataTable {
+/**
+ * Splits whitespace-separated lines into as many fields as most lines have; the last field keeps
+ * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
+ * as printed by df or docker ps, are matched to the data columns by position.
+ */
+function splitWhitespace(text: string): { records: string[][]; header?: boolean } {
   const lines = text.split(/\r?\n/).filter((line) => !isBlank(line));
-  const counts = lines.map((line) => line.trim().split(/\s+/).length);
-  const count = mode(counts);
-  if (counts.some((c) => c !== count)) {
-    const aligned = splitMultiWordHeader(lines) ?? splitAtHeaderGaps(lines);
+  const tokens = lines.map(tokenize);
+  // ls -l starts with "total 16".
+  if (tokens[0]?.length === 2 && tokens[0][0]?.text === "total" && (tokens[1]?.length ?? 0) > 2) {
+    lines.shift();
+    tokens.shift();
+  }
+  const [header = [], ...data] = tokens;
+  // Rows that start with a name, under a header that starts after it, as printed by free and R.
+  const named = header.length + 1;
+  const indent = header[0]?.start ?? 0;
+  if (
+    !header.some((token) => isNumber(token.text)) &&
+    data.some((line) => line.length === named) &&
+    data.every((line) => line.length <= named && (line[0]?.end ?? 0) <= indent)
+  ) {
+    return {
+      records: [
+        ["", ...header.map((token) => token.text)],
+        ...data.map((line, i) => fields(lines[i + 1] ?? "", line, named)),
+      ],
+      header: true,
+    };
+  }
+  const counts = tokens.map((line) => line.length);
+  if (counts.some((c) => c !== counts[0])) {
+    const aligned = splitMultiWordHeader(tokens) ?? splitAtHeaderGaps(lines);
     if (aligned !== undefined) {
-      const rows = toRows(aligned);
-      const first = rows[0] ?? [];
-      return tableFromRows(
-        rows,
-        first.every((cell) => typeof cell === "string"),
-      );
+      // Columns of text alone, as from docker ps, have no numbers to tell the header by.
+      const text = aligned[0]?.every((field) => !isNumber(field));
+      return { records: aligned, header: text ? true : undefined };
     }
   }
-  return tableFromRows(toRows(lines.map((line) => splitWhitespace(line, count))));
+  // Under a header, as from ps aux, longer lines have spaces in the last column.
+  const count =
+    !header.some((token) => isNumber(token.text)) &&
+    data.length > 0 &&
+    data.every((line) => line.length >= header.length)
+      ? header.length
+      : mode(counts);
+  return { records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)) };
 }
 
-function tableFromJsonArray(array: unknown[]): DataTable {
+function jsonField(value: unknown): Field {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isScalar(value: unknown): boolean {
+  return !isPlainObject(value) && !Array.isArray(value);
+}
+
+function recordsFromJsonArray(array: unknown[]): { records: Field[][]; header?: boolean } {
   if (array.length === 0) {
     throw new Error("The JSON array is empty.");
   }
   if (array.every(isPlainObject)) {
-    const columns: string[] = [];
-    const known = new Set<string>();
-    for (const item of array) {
-      for (const key of Object.keys(item)) {
-        if (!known.has(key)) {
-          known.add(key);
-          columns.push(key);
-        }
-      }
-    }
+    const keys = [...new Set(array.flatMap((item) => Object.keys(item)))];
     return {
-      columns,
-      rows: array.map((item) => columns.map((column) => jsonToCell(item[column]))),
+      records: [keys, ...array.map((item) => keys.map((key) => jsonField(item[key])))],
+      header: true,
     };
   }
   if (array.every(Array.isArray)) {
-    return tableFromRows(array.map((row) => row.map(jsonToCell)));
+    return { records: array.map((row) => row.map(jsonField)) };
   }
-  if (array.every((item) => !isPlainObject(item) && !Array.isArray(item))) {
-    return { columns: ["value"], rows: array.map((item) => [jsonToCell(item)]) };
+  if (array.every(isScalar)) {
+    return { records: [["value"], ...array.map((item) => [jsonField(item)])], header: true };
   }
   throw new Error("The JSON array mixes objects, arrays and plain values.");
 }
 
-function tableFromJson(value: unknown): DataTable {
+function recordsFromJson(value: unknown): { records: Field[][]; header?: boolean } {
   if (Array.isArray(value)) {
-    return tableFromJsonArray(value);
+    return recordsFromJsonArray(value);
   }
   if (!isPlainObject(value)) {
     throw new Error("The JSON is neither an array nor an object.");
@@ -475,40 +521,43 @@ function tableFromJson(value: unknown): DataTable {
     throw new Error("The JSON object is empty.");
   }
   const columns = entries.map(([, item]) => item);
-  const length = Array.isArray(columns[0]) ? columns[0].length : -1;
+  const length = Array.isArray(columns[0]) ? columns[0].length : 0;
   if (
     length > 0 &&
-    columns.every(
-      (column) =>
-        Array.isArray(column) &&
-        column.length === length &&
-        column.every((item) => !isPlainObject(item) && !Array.isArray(item)),
-    )
+    columns.every((item) => Array.isArray(item) && item.length === length && item.every(isScalar))
   ) {
     // Columns: {"label": ["a", "b"], "count": [1, 2]}.
     return {
-      columns: entries.map(([name]) => name),
-      rows: Array.from({ length }, (_, row) =>
-        columns.map((column) => jsonToCell((column as unknown[])[row])),
-      ),
+      records: [
+        entries.map(([name]) => name),
+        ...Array.from({ length }, (_, row) =>
+          columns.map((column) => jsonField((column as unknown[])[row])),
+        ),
+      ],
+      header: true,
     };
   }
-  const arrays = entries.filter(([, item]) => Array.isArray(item));
-  if (arrays.length === 1 && arrays[0] !== undefined) {
-    return tableFromJsonArray(arrays[0][1] as unknown[]);
+  // Rows wrapped in an object: {"items": [...], "errors": [], "count": 2}.
+  const arrays = columns.filter(Array.isArray);
+  const nonEmpty = arrays.filter((array) => array.length > 0);
+  const rows = arrays.length === 1 ? arrays[0] : nonEmpty.length === 1 ? nonEmpty[0] : undefined;
+  if (rows !== undefined) {
+    return recordsFromJsonArray(rows);
   }
-  if (entries.every(([, item]) => !isPlainObject(item) && !Array.isArray(item))) {
+  if (columns.every(isScalar)) {
     return {
-      columns: ["name", "value"],
-      rows: entries.map(([name, item]) => [name, jsonToCell(item)]),
+      records: [["name", "value"], ...entries.map(([name, item]) => [name, jsonField(item)])],
+      header: true,
     };
   }
-  if (entries.every(([, item]) => isPlainObject(item))) {
-    const inner = tableFromJsonArray(entries.map(([, item]) => item));
-    const nameColumn = inner.columns.includes("name") ? "key" : "name";
+  if (columns.every(isPlainObject)) {
+    const [keys = [], ...rows] = recordsFromJsonArray(columns).records;
     return {
-      columns: [nameColumn, ...inner.columns],
-      rows: inner.rows.map((row, i) => [entries[i]?.[0] ?? null, ...row]),
+      records: [
+        [keys.includes("name") ? "key" : "name", ...keys],
+        ...rows.map((row, i) => [entries[i]?.[0] ?? null, ...row]),
+      ],
+      header: true,
     };
   }
   throw new Error(
@@ -517,234 +566,77 @@ function tableFromJson(value: unknown): DataTable {
   );
 }
 
-function parseJson(text: string): DataTable {
+/** Parses newline-delimited JSON, as printed by jq -c or docker ps --format json. */
+function parseJsonLines(text: string): unknown[] | undefined {
+  const lines = text.split(/\r?\n/).filter((line) => !isBlank(line));
+  try {
+    return lines.length > 1 ? lines.map((line) => JSON.parse(line)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseJson(text: string): { records: Field[][]; header?: boolean } {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch (error) {
-    throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  return tableFromJson(value);
-}
-
-type ActualFormat = Exclude<DataFormat, "auto"> | "semicolon";
-
-const FORMAT_NAMES: Record<ActualFormat, string> = {
-  json: "JSON",
-  csv: "CSV",
-  semicolon: "semicolon-separated values",
-  tsv: "TSV",
-  whitespace: "whitespace-separated columns",
-};
-
-function detectFormat(text: string): ActualFormat {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-    return "json";
-  }
-  const lines = trimmed.split(/\r?\n/).filter((line) => !isBlank(line));
-  if (lines.filter((line) => line.includes("\t")).length > lines.length / 2) {
-    return "tsv";
-  }
-  // When both fit, as for "a;1,5" with decimal commas, prefer the one that splits every line
-  // into the same number of fields, then the one giving more fields, then semicolons (a comma is
-  // more likely a decimal comma than a semicolon is part of a CSV field).
-  let best: { format: ActualFormat; score: [number, number] } | undefined;
-  for (const [delimiter, format] of [
-    [",", "csv"],
-    [";", "semicolon"],
-  ] as const) {
-    if (trimmed.includes(delimiter)) {
-      let records: string[][];
-      try {
-        records = splitDelimited(trimmed, delimiter);
-      } catch {
-        // An unclosed quote: not this format.
-        continue;
-      }
-      if (isConsistent(records)) {
-        const width = records[0]?.length ?? 0;
-        const score: [number, number] = [
-          records.every((record) => record.length === width) ? 1 : 0,
-          mode(records.map((record) => record.length)),
-        ];
-        if (
-          best === undefined ||
-          score[0] > best.score[0] ||
-          (score[0] === best.score[0] && score[1] >= best.score[1])
-        ) {
-          best = { format, score };
-        }
-      }
+    value = parseJsonLines(text);
+    if (value === undefined) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`The data is not valid JSON: ${message}.`);
     }
   }
-  if (best !== undefined) {
-    return best.format;
+  return recordsFromJson(value);
+}
+
+function readRecords(text: string, format: DataFormat): { records: Field[][]; header?: boolean } {
+  const trimmed = text.trim();
+  if (
+    format === "json" ||
+    (format === "auto" &&
+      (trimmed.startsWith("{") || (trimmed.startsWith("[") && trimmed.endsWith("]"))))
+  ) {
+    return parseJson(trimmed);
   }
-  return "whitespace";
+  const lines = trimmed.split(/\r?\n/).filter((line) => !isBlank(line));
+  const tabs = lines.filter((line) => line.includes("\t")).length;
+  if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
+    try {
+      return { records: splitDelimited(text, "\t") };
+    } catch {
+      // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
+      return { records: splitDelimited(text, "\t", false) };
+    }
+  }
+  if (format === "auto" || format === "csv") {
+    const records = splitCsv(text, lines[0] ?? "", format === "csv");
+    if (records !== undefined) {
+      return { records };
+    }
+  }
+  return splitWhitespace(text);
 }
 
 /**
- * Parses tabular data. With format "auto", the format is detected: JSON when the text starts with
- * { or is enclosed in [ and ], TSV when most lines contain tabs, CSV or semicolon-separated values when
- * the lines consistently have that many fields, and whitespace-separated columns otherwise.
- *
- * JSON can be an array of objects (columns are the keys in first-seen order), an array of arrays,
- * an array of plain values, an object mapping names to values (columns "name" and "value") or to
- * objects, an object mapping column names to equally long arrays of values, or an object holding
- * one array of rows (e.g. {"data": [...]}).
- *
- * Whitespace-separated lines are split on runs of whitespace into as many columns as most lines
- * have; the last column keeps any remaining spaces, so "12 src/a b.ts" gives [12, "src/a b.ts"].
- * When the header has multi-word column names, as printed by df or docker ps, the header words
- * are matched to the data columns by position.
- *
- * The first row is a header when none of its cells are numbers but some column below it holds
- * numbers; otherwise the columns are named "Column 1", "Column 2" and so on. Numbers such as
- * "1,234", "12.5%" and "1.5K" (see {@link parseNumber}) become numbers, and empty cells null. In
- * a column with numbers like "1,5" or "1234,5", the comma is a decimal comma.
- * Blank lines are skipped, but other rows (such as a "total" line) are kept; charts leave out a
- * last row that totals the others (see {@link hasTotalsRow}).
+ * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
+ * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
+ * {@link parseNumber}) become numbers, and empty cells null.
  *
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
 export function parseTable(text: string, format: DataFormat = "auto"): DataTable {
-  if (isBlank(text)) {
-    throw new Error(`The data is empty. ${ACCEPTED_FORMATS}`);
-  }
-  const actual = format === "auto" ? detectFormat(text) : format;
-  let table: DataTable;
-  try {
-    switch (actual) {
-      case "json":
-        table = parseJson(text.trim());
-        break;
-      case "csv":
-        table = parseDelimited(text, ",");
-        break;
-      case "semicolon":
-        table = parseDelimited(text, ";");
-        break;
-      case "tsv":
-        table = parseDelimited(text, "\t");
-        break;
-      default:
-        table = parseWhitespace(text);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+  const content = text.replace(/^﻿/, "");
+  if (isBlank(content)) {
     throw new Error(
-      `Could not parse the data as ${FORMAT_NAMES[actual]}: ${message} ${ACCEPTED_FORMATS}`,
+      "The data is empty. Give JSON, CSV, TSV or whitespace-separated columns such as the " +
+        "output of du, wc or df.",
     );
   }
+  const { records, header } = readRecords(content, format);
+  const table = tableFromRecords(records, header);
   if (table.rows.length === 0 || table.columns.length === 0) {
-    throw new Error(`The data has no rows, only a header. ${ACCEPTED_FORMATS}`);
+    throw new Error("The data holds no values.");
   }
   return table;
-}
-
-const TOTAL_LABEL = /^(?:total|totals|sum|grand total)\s*:?$/i;
-
-/** How far a totals row's value may be from the sum of the other rows, relative to the value. */
-const TOTAL_TOLERANCE = 0.01;
-
-/**
- * Whether the last row sums up the others, as the "total" row of wc -l or du -c and the "SUM:" row
- * of cloc do: its label is "total", "totals" or "sum" (ignoring case and a trailing colon), and in
- * every value column where it has a number, that number is within 1% of the sum of the other rows.
- * At least two other rows are needed.
- */
-export function hasTotalsRow(
-  table: DataTable,
-  labelColumn: number,
-  valueColumns: number[],
-): boolean {
-  const last = table.rows.at(-1);
-  const others = table.rows.slice(0, -1);
-  const label = last?.[labelColumn];
-  if (last === undefined || others.length < 2 || typeof label !== "string") {
-    return false;
-  }
-  if (!TOTAL_LABEL.test(label.trim())) {
-    return false;
-  }
-  let checked = 0;
-  for (const column of valueColumns) {
-    const total = last[column];
-    if (typeof total !== "number") {
-      continue;
-    }
-    const sum = others.reduce<number>((acc, row) => {
-      const cell = row[column];
-      return typeof cell === "number" ? acc + cell : acc;
-    }, 0);
-    if (Math.abs(total - sum) > Math.abs(total) * TOTAL_TOLERANCE) {
-      return false;
-    }
-    checked++;
-  }
-  return checked > 0;
-}
-
-/** The label of the last row if it sums up the others in the numeric columns, as charts assume. */
-function totalsLabel(table: DataTable): string | undefined {
-  const last = table.rows.at(-1) ?? [];
-  const numeric = table.columns.map((_, i) => isNumericColumn(table, i));
-  for (let column = 0; column < last.length; column++) {
-    const cell = last[column];
-    if (typeof cell === "string" && !numeric[column]) {
-      const values = table.columns.flatMap((_, i) => (numeric[i] ? [i] : []));
-      return hasTotalsRow(table, column, values) ? cell : undefined;
-    }
-  }
-  return undefined;
-}
-
-const PREVIEW_ROWS = 5;
-const TEXT_EXAMPLES = 3;
-
-function describeColumn(table: DataTable, column: number): string {
-  const cells = table.rows.map((row) => row[column] ?? null);
-  if (cells.every((cell) => cell === null)) {
-    return "empty";
-  }
-  if (!isNumericColumn(table, column)) {
-    return "text";
-  }
-  const texts = cells.filter((cell): cell is string => typeof cell === "string");
-  if (texts.length === 0) {
-    return "number";
-  }
-  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => JSON.stringify(text));
-  if (texts.length > TEXT_EXAMPLES) {
-    examples.push("…");
-  }
-  const count = `${texts.length} text ${texts.length === 1 ? "cell" : "cells"}`;
-  return `number, ${count}: ${examples.join(", ")}`;
-}
-
-/**
- * Summarizes a table for a language model, e.g.
- * `42 rows; columns: "dir" (text), "size" (number)` followed by the first rows as JSON arrays.
- * Text cells in numeric columns (which charts leave out) are pointed out, as is a totals row (see
- * {@link hasTotalsRow}).
- */
-export function describeTable(table: DataTable): string {
-  const columns = table.columns.map(
-    (name, i) => `${JSON.stringify(name)} (${describeColumn(table, i)})`,
-  );
-  const count = table.rows.length;
-  const lines = [`${count} ${count === 1 ? "row" : "rows"}; columns: ${columns.join(", ")}`];
-  const total = totalsLabel(table);
-  if (total !== undefined) {
-    lines.push(
-      `The last row (${JSON.stringify(total)}) is a total of the others; charts leave it out.`,
-    );
-  }
-  const preview = table.rows.slice(0, PREVIEW_ROWS);
-  lines.push(count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:");
-  for (const row of preview) {
-    lines.push(JSON.stringify(row));
-  }
-  return lines.join("\n");
 }

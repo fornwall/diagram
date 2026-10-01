@@ -1,17 +1,18 @@
 import * as assert from "node:assert";
-import { type ChartSpec, type ChartType, validateChartSpec } from "../chartSpec";
-import { buildChartOption, deepMerge } from "../charts";
-import type { DataTable } from "../data";
+import * as vscode from "vscode";
+import {
+  CHART_TYPES,
+  type ChartSpec,
+  type ChartType,
+  DATA_FORMATS,
+  validateChartSpec,
+} from "../chartSpec";
+import { buildChart, deepMerge, describeTable } from "../charts";
+import { type DataTable, parseTable } from "../data";
 
-const LANGUAGES: DataTable = {
-  columns: ["language", "files", "lines"],
-  rows: [
-    ["ts", 10, 1200],
-    ["css", 3, 300],
-    ["md", 5, 150],
-    ["json", 2, 80],
-  ],
-};
+const LANGUAGES = parseTable(
+  ["language,files,lines", "ts,10,1200", "css,3,300", "md,5,150", "json,2,80"].join("\n"),
+);
 
 function chart(type: ChartType, extra: Partial<ChartSpec> = {}): ChartSpec {
   return { type, data: "unused", ...extra };
@@ -20,10 +21,18 @@ function chart(type: ChartType, extra: Partial<ChartSpec> = {}): ChartSpec {
 // biome-ignore lint/suspicious/noExplicitAny: test access to the untyped option
 type Option = Record<string, any>;
 
-function build(spec: ChartSpec, table: DataTable = LANGUAGES): Option {
-  const option = buildChartOption(spec, table);
+function build(spec: ChartSpec, table: DataTable | string = LANGUAGES): Option {
+  const { option } = buildChart(spec, typeof table === "string" ? parseTable(table) : table);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(option)), option, "the option is plain JSON");
   return option;
+}
+
+function summary(spec: ChartSpec, table: DataTable | string = LANGUAGES): string {
+  return buildChart(spec, typeof table === "string" ? parseTable(table) : table).summary;
+}
+
+function seriesNames(option: Option): string[] {
+  return option.series.map((s: Option) => s.name);
 }
 
 suite("charts", () => {
@@ -42,6 +51,7 @@ suite("charts", () => {
       { name: "md", value: 5 },
       { name: "json", value: 2 },
     ]);
+    assert.strictEqual(summary(chart("pie")), 'Charted "files" by "language".');
   });
 
   test("doughnut has an inner radius", () => {
@@ -51,12 +61,16 @@ suite("charts", () => {
   });
 
   test("pie sorts, limits and sums the rest up as Other", () => {
-    const [series] = build(chart("pie", { sort: "descending", limit: 2 })).series;
-    assert.deepStrictEqual(series.data, [
+    const spec = chart("pie", { sort: "descending", limit: 2 });
+    assert.deepStrictEqual(build(spec).series[0].data, [
       { name: "ts", value: 10 },
       { name: "md", value: 5 },
       { name: "Other", value: 5 },
     ]);
+    assert.strictEqual(
+      summary(spec),
+      'Charted "files" by "language"; summed up the 2 rows after the first 2 as "Other".',
+    );
   });
 
   test("bar has a category x axis and one series per value column", () => {
@@ -74,10 +88,12 @@ suite("charts", () => {
       ],
     );
     assert.deepStrictEqual(option.series[1].data[0], { name: "ts", value: 1200 });
+    assert.strictEqual(summary(chart("bar")), 'Charted "files", "lines" by "language".');
   });
 
   test("a single-series bar chart has no legend and names its value axis", () => {
-    const option = build(chart("bar", { valueColumns: ["lines"], sort: "ascending", limit: 2 }));
+    const spec = chart("bar", { valueColumns: ["lines"], sort: "ascending", limit: 2 });
+    const option = build(spec);
     assert.strictEqual(option.legend, undefined);
     assert.strictEqual(option.yAxis.name, "lines");
     assert.deepStrictEqual(option.xAxis.data, ["json", "md"]);
@@ -85,18 +101,12 @@ suite("charts", () => {
       { name: "json", value: 80 },
       { name: "md", value: 150 },
     ]);
+    assert.match(summary(spec), /; kept the first 2 of 4 rows\.$/);
   });
 
   test("axes are not named after generated column names", () => {
-    const table: DataTable = {
-      columns: ["Column 1", "Column 2"],
-      rows: [
-        ["src", 120],
-        ["test", 30],
-      ],
-    };
-    const option = buildChartOption({ type: "bar" }, table) as { yAxis: { name?: string } };
-    assert.strictEqual(option.yAxis.name, undefined);
+    assert.strictEqual(build(chart("bar"), "src,120\ntest,30").yAxis.name, undefined);
+    assert.strictEqual(build(chart("scatter"), "1,2\n3,4").xAxis.name, undefined);
   });
 
   test("horizontalBar has an inverted category y axis", () => {
@@ -111,10 +121,9 @@ suite("charts", () => {
     assert.ok(option.series.every((s: Option) => s.type === "bar" && s.stack === "total"));
   });
 
-  test("line and area are unsmoothed lines, area with an area style", () => {
+  test("line and area are lines, area with an area style", () => {
     const line = build(chart("line")).series[0];
     assert.strictEqual(line.type, "line");
-    assert.strictEqual(line.smooth, false);
     assert.strictEqual(line.showSymbol, true);
     assert.strictEqual(line.areaStyle, undefined);
     const area = build(chart("area")).series[0];
@@ -123,8 +132,8 @@ suite("charts", () => {
   });
 
   test("line hides symbols when there are many points", () => {
-    const rows = Array.from({ length: 100 }, (_, i) => [`d${i}`, i]);
-    const [series] = build(chart("line"), { columns: ["day", "n"], rows }).series;
+    const lines = Array.from({ length: 100 }, (_, i) => `d${i},${i}`);
+    const [series] = build(chart("line"), ["day,n", ...lines].join("\n")).series;
     assert.strictEqual(series.showSymbol, false);
   });
 
@@ -135,19 +144,18 @@ suite("charts", () => {
     assert.strictEqual(option.yAxis.name, "lines");
     assert.deepStrictEqual(option.series[0].type, "scatter");
     assert.deepStrictEqual(option.series[0].data[0], { name: "ts", value: [10, 1200] });
+    assert.strictEqual(summary(chart("scatter")), 'Charted "lines" against "files" by "language".');
   });
 
   test("scatter of numbers alone names points by their coordinates", () => {
-    const table: DataTable = {
-      columns: ["x", "y"],
-      rows: [
-        [1, 2],
-        [3, null],
-      ],
-    };
+    const table = "x,y\n1,2\n3,";
     assert.deepStrictEqual(build(chart("scatter"), table).series[0].data, [
       { name: "(1, 2)", value: [1, 2] },
     ]);
+    assert.strictEqual(
+      summary(chart("scatter"), table),
+      'Charted "y" against "x"; left out 1 row without a value.',
+    );
   });
 
   test("scatter needs two numeric columns", () => {
@@ -155,117 +163,111 @@ suite("charts", () => {
   });
 
   test("the label column defaults to the first column when all are numeric", () => {
-    const table: DataTable = {
-      columns: ["year", "sales"],
-      rows: [
-        [2023, 5],
-        [2024, 7],
-      ],
-    };
-    const option = build(chart("bar"), table);
+    const option = build(chart("bar"), "year,sales\n2023,5\n2024,7");
     assert.deepStrictEqual(option.xAxis.data, ["2023", "2024"]);
+    assert.deepStrictEqual(seriesNames(option), ["sales"]);
+  });
+
+  test("the label column defaults to a text column that names each row", () => {
+    const ls = [
+      "total 24",
+      "-rw-r--r-- 1 fred staff 1234 Jan  1 12:00 a.txt",
+      "-rw-r--r-- 1 fred staff   56 Jan  1 09:30 my notes.md",
+      "drwxr-xr-x 3 fred staff 4096 Jan  3 10:15 src",
+    ].join("\n");
+    assert.deepStrictEqual(build(chart("bar"), ls).xAxis.data, ["a.txt", "my notes.md", "src"]);
+    // Dates label the rows when nothing else does.
+    const sales = "date,region,sales\n2024-01-01,north,3\n2024-01-02,north,5";
+    assert.deepStrictEqual(build(chart("line"), sales).xAxis.data, ["2024-01-01", "2024-01-02"]);
+  });
+
+  test("default value columns have the unit of the first", () => {
+    const ps = [
+      "USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND",
+      "root         1  0.0  0.1 167744 11764 ?        Ss   09:12   0:02 /sbin/init splash",
+      "root       812  0.0  0.0  23456  5432 ?        Ss   09:12   0:00 /usr/sbin/cron -f",
+      "fred      4242  3.5  1.2 912345 98765 pts/0    Sl+  10:01   1:23 code --wait",
+    ].join("\n");
+    const option = build(chart("bar"), ps);
+    assert.deepStrictEqual(seriesNames(option), ["%CPU", "%MEM"]);
+    assert.deepStrictEqual(option.xAxis.data, [
+      "/sbin/init splash",
+      "/usr/sbin/cron -f",
+      "code --wait",
+    ]);
+  });
+
+  test("sizes in bytes are shown in a unit that suits them", () => {
+    const df = [
+      "Filesystem      Size  Used Avail Use% Mounted on",
+      "/dev/nvme0n1p2  468G  300G  145G  68% /",
+      "tmpfs           7.8G   12M  7.8G   1% /dev/shm",
+      "tmpfs           1.6G     0  1.6G   0% /run",
+    ].join("\n");
+    const option = build(chart("bar"), df);
+    assert.deepStrictEqual(seriesNames(option), ["Size (GiB)", "Used (GiB)", "Avail (GiB)"]);
+    assert.deepStrictEqual(option.xAxis.data, ["/", "/dev/shm", "/run"]);
     assert.deepStrictEqual(
-      option.series.map((s: Option) => s.name),
-      ["sales"],
+      option.series[1].data.map((item: Option) => item.value),
+      [300, 0.01, 0],
     );
+    assert.strictEqual(
+      summary(chart("bar"), df),
+      'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; showed sizes in GiB.',
+    );
+    const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");
+    assert.strictEqual(du.series[0].data[0].value, 1.5);
   });
 
   test("charts leave out a totals row", () => {
-    const table: DataTable = {
-      columns: ["Column 1", "Column 2"],
-      rows: [
-        [12, "a.ts"],
-        [345, "b.ts"],
-        [3, "c.ts"],
-        [360, "total"],
-      ],
-    };
+    const wc = "  12 a.ts\n 345 b.ts\n   3 c.ts\n 360 total";
     for (const type of ["pie", "bar", "line", "horizontalBar"] as const) {
-      const option = build(chart(type, { sort: "descending" }), table);
+      const option = build(chart(type, { sort: "descending" }), wc);
       const names = option.series[0].data.map((item: Option) => item.name);
       assert.deepStrictEqual(names, ["b.ts", "a.ts", "c.ts"], type);
     }
-    const cloc: DataTable = {
-      columns: ["language", "files", "code"],
-      rows: [
-        ["TypeScript", 10, 1200],
-        ["CSS", 2, 300],
-        ["SUM:", 12, 1500],
-      ],
-    };
+    assert.strictEqual(
+      summary(chart("bar"), wc),
+      'Charted "Column 1" by "Column 2"; left out the last row, "total", a total of the others.',
+    );
+    const cloc = "language,files,code\nTypeScript,10,1200\nCSS,2,300\nSUM:,12,1500";
     assert.deepStrictEqual(build(chart("stackedBar"), cloc).xAxis.data, ["TypeScript", "CSS"]);
     assert.strictEqual(build(chart("scatter"), cloc).series[0].data.length, 2);
-    // Not a total of the others: kept.
-    const kept = build(chart("bar", { valueColumns: ["files"] }), {
-      columns: ["k", "files"],
-      rows: [
-        ["a", 1],
-        ["b", 2],
-        ["total", 4],
-      ],
-    });
-    assert.deepStrictEqual(kept.xAxis.data, ["a", "b", "total"]);
+    // Within 1%.
+    assert.deepStrictEqual(build(chart("bar"), "a,b\nx,50\ny,50.5\n Total ,100").xAxis.data, [
+      "x",
+      "y",
+    ]);
+    // Not a total of the others, or too few others: kept.
+    for (const table of ["k,n\na,1\nb,2\ntotal,4", "k,n\na,1\ntotal,1"]) {
+      assert.ok(build(chart("bar"), table).xAxis.data.includes("total"), table);
+    }
   });
 
   test("default value columns skip identifier columns", () => {
-    const table: DataTable = {
-      columns: ["id", "name", "score"],
-      rows: [
-        [7, "a", 10],
-        [3, "b", 20],
-      ],
-    };
-    assert.deepStrictEqual(
-      build(chart("bar"), table).series.map((s: Option) => s.name),
-      ["score"],
-    );
+    const table = "id,name,score\n7,a,10\n3,b,20";
+    assert.deepStrictEqual(seriesNames(build(chart("bar"), table)), ["score"]);
     assert.strictEqual(build(chart("pie"), table).series[0].name, "score");
     for (const name of ["ID", "#", "user_id", "Rank", "PID", "userId"]) {
-      const option = build(chart("bar"), { ...table, columns: [name, "name", "score"] });
-      assert.deepStrictEqual(
-        option.series.map((s: Option) => s.name),
-        ["score"],
-        name,
-      );
+      const option = build(chart("bar"), table.replace("id", name));
+      assert.deepStrictEqual(seriesNames(option), ["score"], name);
     }
     // A column numbering the rows 1, 2, 3, … is skipped when there are other numeric columns.
-    const numbered: DataTable = {
-      columns: ["n", "name", "score"],
-      rows: [
-        [1, "a", 10],
-        [2, "b", 20],
-        [3, "c", 30],
-      ],
-    };
     assert.deepStrictEqual(
-      build(chart("bar"), numbered).series.map((s: Option) => s.name),
+      seriesNames(build(chart("bar"), "n,name,score\n1,a,10\n2,b,20\n3,c,30")),
       ["score"],
     );
     // Kept when it is the only numeric column, or asked for.
-    const onlyId: DataTable = {
-      columns: ["name", "id"],
-      rows: [
-        ["a", 1],
-        ["b", 2],
-        ["c", 3],
-      ],
-    };
-    assert.strictEqual(build(chart("pie"), onlyId).series[0].name, "id");
+    assert.strictEqual(build(chart("pie"), "name,id\na,1\nb,2\nc,3").series[0].name, "id");
     assert.deepStrictEqual(
-      build(chart("bar", { valueColumns: ["id", "score"] }), table).series.map(
-        (s: Option) => s.name,
-      ),
+      seriesNames(build(chart("bar", { valueColumns: ["id", "score"] }), table)),
       ["id", "score"],
     );
     // "paid" is not an identifier name.
-    const paid: DataTable = {
-      columns: ["name", "paid", "score"],
-      rows: table.rows.map((r) => [r[1] ?? null, r[0] ?? null, r[2] ?? null]),
-    };
-    assert.deepStrictEqual(
-      build(chart("bar"), paid).series.map((s: Option) => s.name),
-      ["paid", "score"],
-    );
+    assert.deepStrictEqual(seriesNames(build(chart("bar"), "name,paid,score\na,7,10\nb,3,20")), [
+      "paid",
+      "score",
+    ]);
   });
 
   test("columns are matched loosely, and unknown columns are listed", () => {
@@ -279,10 +281,62 @@ suite("charts", () => {
   });
 
   test("throws when there is nothing numeric to chart", () => {
-    const table: DataTable = { columns: ["a", "b"], rows: [["x", "y"]] };
-    assert.throws(() => build(chart("bar"), table), /No numeric value columns/);
-    assert.throws(() => build(chart("bar", { valueColumns: ["b"] }), table), /holds no numbers/);
-    assert.throws(() => build(chart("bar"), { columns: ["a"], rows: [] }), /no rows/);
+    assert.throws(() => build(chart("bar"), "a,b\nx,y"), /No column holds numbers/);
+    assert.throws(
+      () => build(chart("bar", { valueColumns: ["Column 2"] }), "a,b\nx,y"),
+      /holds no numbers/,
+    );
+  });
+
+  test("describeTable summarizes columns and the first rows", () => {
+    const table = parseTable(
+      [
+        "dir,size,share,note",
+        "a,1K,1%,",
+        "b,2,2%,",
+        "c,3,3%,",
+        "d,4,4%,",
+        "e,5,5%,",
+        "f,6,6%,",
+      ].join("\n"),
+    );
+    assert.strictEqual(
+      describeTable(table),
+      [
+        '6 rows; columns: "dir" (text), "size" (bytes), "share" (percentages), "note" (empty)',
+        "First 5 rows:",
+        '["a",1024,1,null]',
+        '["b",2,2,null]',
+        '["c",3,3,null]',
+        '["d",4,4,null]',
+        '["e",5,5,null]',
+      ].join("\n"),
+    );
+    assert.strictEqual(
+      describeTable(parseTable("x\n1")),
+      '1 row; columns: "x" (numbers)\nRows:\n[1]',
+    );
+  });
+
+  test("describeTable points out text cells in numeric columns", () => {
+    assert.match(
+      describeTable(parseTable("size,file\n1,a\n1;5X,b\n3,c")),
+      /"size" \(numbers, 1 text cell: "1;5X"\), "file" \(text\)/,
+    );
+    assert.match(
+      describeTable(parseTable("n\n1\n2\n3\n4\n5\na\nb\nc\nd")),
+      /"n" \(numbers, 4 text cells: "a", "b", "c", …\)/,
+    );
+  });
+
+  test("the tool schema lists the chart types and data formats", () => {
+    const schema = vscode.extensions
+      .getExtension("fornwall.diagram")
+      ?.packageJSON.contributes.languageModelTools.find(
+        (tool: { name: string }) => tool.name === "diagram_chart",
+      ).inputSchema.properties;
+    assert.deepStrictEqual(schema.type.enum, CHART_TYPES);
+    assert.deepStrictEqual(schema.format.enum, DATA_FORMATS);
   });
 
   test("options are deep-merged into the generated option", () => {
