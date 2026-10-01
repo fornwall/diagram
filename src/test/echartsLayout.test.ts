@@ -117,6 +117,16 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.grid.right, 58);
   });
 
+  test("lengthens a continuous visual map below the chart, but not the pieces of another", () => {
+    const itemHeight = (visualMap: Option) => layout(bars({ visualMap })).visualMap.itemHeight;
+    assert.strictEqual(itemHeight({ min: 0, max: 10 }), 200);
+    assert.strictEqual(itemHeight({ min: 0, max: 10, splitNumber: 4, calculable: true }), 200);
+    assert.strictEqual(itemHeight({ type: "piecewise" }), undefined);
+    assert.strictEqual(itemHeight({ min: 0, max: 10, splitNumber: 4 }), undefined);
+    assert.strictEqual(itemHeight({ pieces: [{ max: 5 }, { min: 5 }] }), undefined);
+    assert.strictEqual(itemHeight({ categories: ["A", "B"] }), undefined);
+  });
+
   test("rotates category labels that would overlap", () => {
     const labels = Array.from({ length: 20 }, (_, index) => `Category ${index}`);
     const option = layout(bars({ xAxis: { type: "category", data: labels } }));

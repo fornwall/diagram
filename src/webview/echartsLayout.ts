@@ -214,7 +214,8 @@ function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
         orient: "horizontal",
         left: "center",
         bottom: reserved.bottom + 4,
-        itemHeight: Math.min(200, Math.round(width * 0.4)),
+        // The length of a continuous bar, but the size of each piece of a piecewise one.
+        ...(isContinuous(visualMap) ? { itemHeight: Math.min(200, Math.round(width * 0.4)) } : {}),
       });
       reserved.bottom += 52;
     } else if (visualMap.orient === "horizontal") {
@@ -223,6 +224,17 @@ function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
       reserved[visualMap.right === undefined ? "left" : "right"] += 80;
     }
   }
+}
+
+/** Whether a visual map is a continuous bar rather than pieces, as ECharts decides by default. */
+function isContinuous(visualMap: JsonObject): boolean {
+  if (visualMap.type !== undefined) {
+    return visualMap.type === "continuous";
+  }
+  const pieces = visualMap.pieces
+    ? Array.isArray(visualMap.pieces) && visualMap.pieces.length > 0
+    : Number(visualMap.splitNumber) > 0;
+  return !visualMap.categories && (!pieces || Boolean(visualMap.calculable));
 }
 
 /** Fits a single grid into the space left, and keeps the axis labels apart and short. */
