@@ -69,14 +69,20 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     }
     messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
 
-    // Charts of files and command output are drawn by the chart tool, which asks the user before
-    // running a command.
-    const tools = explain ? [] : vscode.lm.tools.filter((tool) => tool.name === CHART_TOOL);
+    // Tools the user attached with #, which the model is made to call first. Charts of files and
+    // command output are drawn by the chart tool, which asks the user before running a command.
+    const attached = vscode.lm.tools.filter((tool) =>
+      request.toolReferences.some((reference) => reference.name === tool.name),
+    );
+    const tools = vscode.lm.tools.filter(
+      (tool) => attached.includes(tool) || (!explain && tool.name === CHART_TOOL),
+    );
     let rendersBefore = panel.renderCount;
-    const converse = () => streamReply(request, messages, tools, stream, token);
+    const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
+      streamReply(request, messages, tools, required, stream, token);
 
     try {
-      let block = await converse();
+      let block = await converse(attached);
       if (explain) {
         return;
       }
@@ -105,7 +111,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
             `That ${noun} failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block.`,
           ),
         );
-        block = await converse();
+        block = await converse([]);
       }
 
       // The chart tool may have drawn a chart. Remember it for later requests' history, by how it
@@ -143,24 +149,31 @@ function showButton(stream: vscode.ChatResponseStream, language: DiagramLanguage
 }
 
 /**
- * Streams the model's reply to the chat without its diagram blocks, calling the tools it asks for.
- * Extends the messages with the reply and tool calls, and returns the
+ * Streams the model's reply to the chat without its diagram blocks, calling the tools it asks for,
+ * the required ones first. Extends the messages with the reply and tool calls, and returns the
  * reply's last diagram block.
  */
 async function streamReply(
   request: vscode.ChatRequest,
   messages: vscode.LanguageModelChatMessage[],
   tools: vscode.LanguageModelChatTool[],
+  required: readonly vscode.LanguageModelChatTool[],
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<DiagramBlock | undefined> {
+  const lastToolRound = required.length + MAX_TOOL_ROUNDS;
   let diagram: DiagramBlock | undefined;
   /** Why further tool calls are answered without running them. */
   let notRun: string | undefined;
   for (let round = 0; ; round++) {
-    // The tools are passed even when calls are no longer run, as some models reject requests whose
-    // messages contain tool calls but no tools.
-    const response = await request.model.sendRequest(messages, { tools }, token);
+    // Some models only support a single tool when a tool call is required. The tools are passed
+    // even when calls are no longer run, as some models reject requests whose messages contain
+    // tool calls but no tools.
+    const requiredTool = required[round];
+    const options: vscode.LanguageModelChatRequestOptions = requiredTool
+      ? { tools: [requiredTool], toolMode: vscode.LanguageModelChatToolMode.Required }
+      : { tools };
+    const response = await request.model.sendRequest(messages, options, token);
     // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS
     // Code from rendering a second, non-interactive copy of it inline.
     const filter = new DiagramBlockFilter();
@@ -185,13 +198,13 @@ async function streamReply(
         "\n\nThe reply ended before the diagram was complete. Try again, or ask for a smaller diagram.",
       );
     }
-    if (calls.length === 0 || round > MAX_TOOL_ROUNDS) {
+    if (calls.length === 0 || round > lastToolRound) {
       if (reply) {
         messages.push(vscode.LanguageModelChatMessage.Assistant(reply));
       }
       return diagram;
     }
-    if (round === MAX_TOOL_ROUNDS) {
+    if (round === lastToolRound) {
       notRun ??= "this request has made too many tool calls";
     }
 

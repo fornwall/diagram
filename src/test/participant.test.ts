@@ -22,11 +22,21 @@ function newPanel(): DiagramPanel {
 }
 
 /** Sends a request to the participant, with a model that gives the replies in turn. */
-async function ask(panel: DiagramPanel, replies: Part[][]) {
-  const sent: vscode.LanguageModelChatMessage[][] = [];
+async function ask(
+  panel: DiagramPanel,
+  replies: Part[][],
+  toolReferences: { name: string }[] = [],
+) {
+  const sent: {
+    messages: vscode.LanguageModelChatMessage[];
+    options: vscode.LanguageModelChatRequestOptions;
+  }[] = [];
   const model = {
-    sendRequest: async (messages: vscode.LanguageModelChatMessage[]) => {
-      sent.push([...messages]);
+    sendRequest: async (
+      messages: vscode.LanguageModelChatMessage[],
+      options: vscode.LanguageModelChatRequestOptions,
+    ) => {
+      sent.push({ messages: [...messages], options });
       const parts = replies.shift() ?? [];
       return {
         stream: (async function* () {
@@ -39,7 +49,7 @@ async function ask(panel: DiagramPanel, replies: Part[][]) {
     prompt: "Draw it",
     command: undefined,
     references: [],
-    toolReferences: [],
+    toolReferences,
     toolInvocationToken: undefined,
     model,
   } as unknown as vscode.ChatRequest;
@@ -94,7 +104,7 @@ suite("participant", function () {
     const panel = newPanel();
     try {
       const { result, sent } = await ask(panel, [[text(invalid)], [text(`Fixed it.\n${valid}`)]]);
-      assert.match(messageText(sent[1]?.at(-1)), /failed to render with this error/);
+      assert.match(messageText(sent[1]?.messages.at(-1)), /failed to render with this error/);
       assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
       assert.strictEqual(panel.current?.error, undefined);
     } finally {
@@ -117,6 +127,32 @@ suite("participant", function () {
       ]);
       assert.strictEqual(keepsFailing.sent.length, 3);
       assert.match(keepsFailing.shown, /failed to render: .*Edit source/s);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("makes the model call the tools that the user attached first", async () => {
+    const panel = newPanel();
+    try {
+      const { sent } = await ask(
+        panel,
+        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
+        [{ name: "diagram_getState" }],
+      );
+      const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
+      assert.deepStrictEqual(toolNames, [
+        ["diagram_getState"],
+        ["diagram_chart", "diagram_getState"],
+      ]);
+      assert.deepStrictEqual(
+        sent.map(({ options }) => options.toolMode),
+        [vscode.LanguageModelChatToolMode.Required, undefined],
+      );
+      assert.match(
+        messageText(sent[1]?.messages.at(-1)),
+        /currently shown in the diagram panel|No diagram has been rendered/,
+      );
     } finally {
       panel.dispose();
     }
