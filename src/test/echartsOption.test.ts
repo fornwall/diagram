@@ -1,5 +1,11 @@
 import * as assert from "node:assert";
-import { parseOption, seriesTypes } from "../webview/echartsOption";
+import { ComponentModel } from "echarts/core";
+import "../webview/echartsLibrary";
+import { parseOption, SERIES_TYPES, seriesTypes } from "../webview/echartsOption";
+
+// ECharts' registry of series and component classes, which its typings leave out.
+const registry = ComponentModel as unknown as { getClass(main: string, sub: string): unknown };
+const hasSeries = (type: string) => registry.getClass("series", type) !== undefined;
 
 const BAR = '"xAxis": {"type": "category", "data": ["A"]}, "yAxis": {}';
 
@@ -30,6 +36,14 @@ suite("echartsOption", () => {
     assert.match(errorOf('{"series": [{"data": [1]}]}'), /series\[0\] has no "type"/);
     assert.match(errorOf('{"series": [{"type": "donut"}]}'), /unknown type "donut".*"radius"/);
     assert.match(errorOf('{"series": [1]}'), /series\[0\] must be an object.*not a number/);
+  });
+
+  test("accepts exactly the series types that the panel's ECharts has", () => {
+    for (const type of SERIES_TYPES) {
+      assert.ok(hasSeries(type), type);
+    }
+    assert.ok(!hasSeries("map"));
+    assert.ok(!hasSeries("custom"));
   });
 
   test("rejects series that cannot work from JSON", () => {

@@ -39,8 +39,11 @@ export function isCartesian(series: JsonObject): boolean {
   );
 }
 
-/** Series types that work from JSON: map needs map data and custom a renderItem function. */
-const SERIES_TYPES = [
+/**
+ * Series types that work from JSON, as registered in echartsLibrary.ts: map needs map data and
+ * custom a renderItem function.
+ */
+export const SERIES_TYPES = [
   "line",
   "bar",
   "pie",

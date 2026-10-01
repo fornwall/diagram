@@ -1,9 +1,10 @@
 // Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
 
-import type * as ECharts from "echarts";
+import type * as ECharts from "echarts/core";
 import { errorMessage, isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { keepUserState, layoutOption } from "./echartsLayout";
+import type * as EChartsLibrary from "./echartsLibrary";
 import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type Hit, type Renderer, type RendererHost, withModifier } from "./renderer";
@@ -44,7 +45,7 @@ export class EChartsRenderer implements Renderer {
 
   private readonly container: HTMLElement;
   /** The library, loaded on the first chart. */
-  private echarts: typeof ECharts | undefined;
+  private echarts: typeof EChartsLibrary | undefined;
   private chart: ECharts.ECharts | undefined;
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
@@ -72,7 +73,7 @@ export class EChartsRenderer implements Renderer {
 
   async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
-    this.echarts ??= await import("echarts");
+    this.echarts ??= await import("./echartsLibrary");
     const previous = this.chart && this.option && { option: this.option, title: this.title };
     this.canvas.classList.add("chart-mode");
     this.container.hidden = false;
@@ -127,7 +128,7 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  private createChart(echarts: typeof ECharts, theme: object): ECharts.ECharts {
+  private createChart(echarts: typeof EChartsLibrary, theme: object): ECharts.ECharts {
     const chart = echarts.init(this.container, theme);
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
