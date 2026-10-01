@@ -192,16 +192,15 @@ export class DiagramPanel implements vscode.Disposable {
     }
     const what =
       state.language === "echarts" ? "chart, as an Apache ECharts option," : "Mermaid diagram";
-    const lines = [`The ${what} currently shown in the diagram panel ("${state.title}"):`, ""];
-    // A chart of a large file or command output can be too large for the model's context.
-    if (state.source.length <= MAX_SOURCE_FOR_MODEL) {
-      lines.push(codeFence(state.source, state.language), "");
-    } else {
-      lines.push(
-        `(The source is ${state.source.length} characters long, too long to show here.)`,
-        "",
-      );
-    }
+    const lines = [
+      `The ${what} currently shown in the diagram panel ("${state.title}"):`,
+      "",
+      // A chart of a large file or command output can be too large for the model's context.
+      state.source.length <= MAX_SOURCE_FOR_MODEL
+        ? codeFence(state.source, state.language)
+        : `(The source is ${state.source.length} characters long, too long to show here.)`,
+      "",
+    ];
     if (state.chart) {
       lines.push(
         `It was drawn with ${CHART_TOOL} from ${dataOrigin(state.chart)}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,

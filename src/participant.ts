@@ -165,21 +165,16 @@ async function streamReply(
     const filter = new DiagramBlockFilter();
     let reply = "";
     const calls: vscode.LanguageModelToolCallPart[] = [];
+    const show = (markdown: string) => markdown && stream.markdown(markdown);
     for await (const part of response.stream) {
       if (part instanceof vscode.LanguageModelTextPart) {
         reply += part.value;
-        const visible = filter.push(part.value);
-        if (visible) {
-          stream.markdown(visible);
-        }
+        show(filter.push(part.value));
       } else if (part instanceof vscode.LanguageModelToolCallPart) {
         calls.push(part);
       }
     }
-    const rest = filter.flush();
-    if (rest) {
-      stream.markdown(rest);
-    }
+    show(filter.flush());
     if (token.isCancellationRequested) {
       return reply;
     }
