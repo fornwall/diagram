@@ -95,7 +95,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     active = renderer;
     emptyElement.hidden = true;
     errorElement.hidden = true;
-    clearSelection();
     post({ type: "rendered", requestId, diagramType });
   } catch (error) {
     if (renderer !== active) {
@@ -105,6 +104,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });
   }
+  // The extension forgets the selection when it sends a diagram, whether or not it renders.
+  clearSelection();
   editButton.title = `Edit the ${renderer.sourceName}`;
   sourceInput.setAttribute("aria-label", renderer.sourceName);
   for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
