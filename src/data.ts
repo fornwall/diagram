@@ -76,10 +76,6 @@ export function parseNumber(text: string): { value: number; unit?: Unit } | unde
   };
 }
 
-function isNumber(text: string | undefined): boolean {
-  return text !== undefined && parseNumber(text) !== undefined;
-}
-
 /**
  * Whether a column writes numbers with a decimal comma: some field can only be read that way
  * ("1,5", "1234,5"), and none only with thousands separators ("1,234.5", "1,234,567").
@@ -107,7 +103,7 @@ function isNumeric(rows: Cell[][], column: number): boolean {
     const cell = row[column];
     if (typeof cell === "number") {
       numbers++;
-    } else if (cell !== null && cell !== undefined) {
+    } else if (typeof cell === "string") {
       others++;
     }
   }
@@ -430,14 +426,13 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
  * header if `underlined`.
  */
 function splitWhitespace(lines: string[], underlined: boolean): Records {
-  const tokens = lines.map(tokenize);
-  // ls -l starts with "total 16".
-  if (tokens[0]?.length === 2 && tokens[0][0]?.text === "total" && (tokens[1]?.length ?? 0) > 2) {
-    lines.shift();
-    tokens.shift();
+  // ls -l prints "total 16" above the files.
+  if (/^total\s+\S+$/.test(lines[0] ?? "") && tokenize(lines[1] ?? "").length > 2) {
+    return splitWhitespace(lines.slice(1), underlined);
   }
+  const tokens = lines.map(tokenize);
   const [header = [], ...data] = tokens;
-  const textHeader = !header.some((token) => isNumber(token.text));
+  const textHeader = header.every((token) => parseNumber(token.text) === undefined);
   // Rows that start with a name, under a header that starts after it, as printed by free and R.
   const named = header.length + 1;
   const indent = header[0]?.start ?? 0;
