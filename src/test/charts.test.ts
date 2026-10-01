@@ -401,7 +401,7 @@ suite("charts", () => {
   });
 
   test("dataOrigin says where the data comes from", () => {
-    assert.strictEqual(dataOrigin(chart("pie", { data: "a 1" })), "inline data");
+    assert.strictEqual(dataOrigin({ type: "pie", data: "a 1" }), "inline data");
     assert.strictEqual(dataOrigin({ type: "pie", file: "sales.csv" }), "file sales.csv");
     assert.strictEqual(dataOrigin({ type: "pie", command: "du -s *" }), "command `du -s *`");
   });

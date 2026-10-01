@@ -71,7 +71,7 @@ export function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): 
   </main>
   <footer>
     <div id="selection">
-      <span id="selection-label">Click nodes to select them (Ctrl/Cmd+click for several).</span>
+      <span id="selection-label">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>
     <form id="ask-form">
