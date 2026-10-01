@@ -30,7 +30,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       return;
     }
 
-    const messages = await promptMessages(request, context, explain, current);
+    const messages = await promptMessages(request, context, explain, current, token);
+    if (typeof messages === "string") {
+      return { errorDetails: { message: messages } };
+    }
 
     // Tools the user attached with #, which the model is made to call first. Charts of files and
     // command output are drawn by the chart tool, which asks the user before running a command.

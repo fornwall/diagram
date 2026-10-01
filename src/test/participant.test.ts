@@ -12,17 +12,39 @@ const text = (value: string) => new vscode.LanguageModelTextPart(value);
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
 const invalid = "```mermaid\nflowchart TD\n  A --> --> B[\n```";
 
-/** Sends a request to the participant, with a model that gives the replies in turn. */
+// The constructors are hidden from the API, but not at runtime.
+type Constructor<T> = new (...args: unknown[]) => T;
+const RequestTurn = vscode.ChatRequestTurn as unknown as Constructor<vscode.ChatRequestTurn>;
+const ResponseTurn = vscode.ChatResponseTurn as unknown as Constructor<vscode.ChatResponseTurn>;
+
+/** The fake model's token count: about one token per four characters. */
+const tokenCount = (text: string) => Math.ceil(text.length / 4);
+
+/**
+ * Sends a request to the participant, with a model that gives the replies in turn and takes
+ * `maxInputTokens`.
+ */
 async function ask(
   panel: DiagramPanel,
   replies: Reply[],
-  { history = [], ...overrides }: Partial<vscode.ChatRequest & vscode.ChatContext> = {},
+  {
+    history = [],
+    maxInputTokens = 100_000,
+    ...overrides
+  }: Partial<vscode.ChatRequest & vscode.ChatContext & { maxInputTokens: number }> = {},
 ) {
   const sent: {
     messages: vscode.LanguageModelChatMessage[];
     options: vscode.LanguageModelChatRequestOptions;
   }[] = [];
+  let counted = 0;
   const model = {
+    name: "Fake",
+    maxInputTokens,
+    countTokens: async (text: string) => {
+      counted++;
+      return tokenCount(text);
+    },
     sendRequest: async (
       messages: vscode.LanguageModelChatMessage[],
       options: vscode.LanguageModelChatRequestOptions,
@@ -56,7 +78,7 @@ async function ask(
   });
   const token = new vscode.CancellationTokenSource().token;
   const result = await createParticipantHandler(panel)(request, { history }, stream, token);
-  return { result: result || undefined, shown, sent };
+  return { result: result || undefined, shown, sent, counted };
 }
 
 /** The text of a message, including tool results. */
@@ -224,11 +246,6 @@ suite("participant", function () {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
       assert.ok(folder);
       const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
-      // The constructors are hidden from the API, but not at runtime.
-      type Constructor<T> = new (...args: unknown[]) => T;
-      const RequestTurn = vscode.ChatRequestTurn as unknown as Constructor<vscode.ChatRequestTurn>;
-      const ResponseTurn =
-        vscode.ChatResponseTurn as unknown as Constructor<vscode.ChatResponseTurn>;
       const history = [
         new RequestTurn("Draw #file:sizes.tsv", undefined, references, "diagram.participant", []),
         new ResponseTurn(
@@ -237,13 +254,78 @@ suite("participant", function () {
           "diagram.participant",
         ),
       ];
-      const { sent } = await ask(panel, [[text("Hm.")]], { history, references });
+      const { sent, counted } = await ask(panel, [[text("Hm.")]], { history, references });
+      // A small prompt fits without counting its tokens.
+      assert.strictEqual(counted, 0);
       const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
       assert.deepStrictEqual(
         messages.map((message) => message.split("\n")[0]),
         ["Draw #file:sizes.tsv", "Here it is.", "Attached by the user: sizes.tsv", "Draw it"],
       );
       assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("leaves out the oldest turns, and older diagrams first, to fit the model's input", async () => {
+    const panel = newPanel();
+    try {
+      // Each turn takes about 3000 tokens of text and 10000 of diagram, and the prompt may take
+      // 3/4 of 41640 tokens: the last two turns fit with their diagrams, and one more without.
+      const history = [1, 2, 3, 4].flatMap((n) => [
+        new RequestTurn(`Draw ${n}`, undefined, [], "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart(`Reply ${n}: ${"x".repeat(12_000)}`)],
+          { metadata: { language: "mermaid", source: `flowchart TD\n%% ${"y".repeat(40_000)}` } },
+          "diagram.participant",
+        ),
+      ]);
+      const { sent } = await ask(panel, [[text("Hm.")]], { history, maxInputTokens: 41_640 });
+      const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
+      assert.deepStrictEqual(
+        messages.map((message) => message.slice(0, 7)),
+        ["Draw 2", "Reply 2", "Draw 3", "Reply 3", "Draw 4", "Reply 4", "Draw it"],
+      );
+      assert.match(messages[1] ?? "", /x\n\n\(I drew a diagram, left out here\.\)$/);
+      assert.match(messages[3] ?? "", /y\n```$/);
+      assert.match(messages[5] ?? "", /y\n```$/);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("shortens the attachments that don't fit the model's input, and says so", async () => {
+    const panel = newPanel();
+    try {
+      const references = [
+        { id: "long", value: "a".repeat(20_000) },
+        { id: "short", value: "short text" },
+      ];
+      const maxInputTokens = 4_000;
+      const { sent } = await ask(panel, [[text("Hm.")]], { references, maxInputTokens });
+      const messages = sent[0]?.messages.map(messageText) ?? [];
+      assert.ok(messages.includes("Attached by the user: text\n\n```\nshort text\n```"));
+      const truncated =
+        /^Attached by the user: text, truncated to the first \d+ of its 20000 characters\n\n```\na+\n```$/;
+      assert.ok(messages.some((message) => truncated.test(message)));
+      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+      assert.ok(tokens > maxInputTokens / 2 && tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("says what is too large when the request does not fit the model's input", async () => {
+    const panel = newPanel();
+    try {
+      const prompt = "Draw ".repeat(4_000);
+      const { result, sent } = await ask(panel, [], { prompt, maxInputTokens: 4_000 });
+      assert.strictEqual(sent.length, 0);
+      assert.strictEqual(
+        result?.errorDetails?.message,
+        "This request is too large for Fake, which takes 3000 tokens here (4000 less room for its reply): your message takes 5004 tokens. Shorten your message or pick a model that takes more.",
+      );
     } finally {
       panel.dispose();
     }
