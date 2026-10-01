@@ -5,6 +5,7 @@ import {
   type ChartSpec,
   type ChartType,
   DATA_FORMATS,
+  dataOrigin,
   validateChartSpec,
 } from "../chartSpec";
 import { buildChart, deepMerge, describeTable } from "../charts";
@@ -394,6 +395,12 @@ suite("charts", () => {
     const merged = deepMerge({}, JSON.parse('{"__proto__": {"polluted": true}}'));
     assert.strictEqual((merged as { polluted?: boolean }).polluted, undefined);
     assert.strictEqual(({} as { polluted?: boolean }).polluted, undefined);
+  });
+
+  test("dataOrigin says where the data comes from", () => {
+    assert.strictEqual(dataOrigin(chart("pie", { data: "a 1" })), "inline data");
+    assert.strictEqual(dataOrigin({ type: "pie", file: "sales.csv" }), "file sales.csv");
+    assert.strictEqual(dataOrigin({ type: "pie", command: "du -s *" }), "command `du -s *`");
   });
 
   test("validateChartSpec accepts a valid spec", () => {

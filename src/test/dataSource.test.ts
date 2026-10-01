@@ -33,11 +33,10 @@ suite("dataSource", () => {
     });
 
     test("loads chart data from a command's output", async () => {
-      const { table, origin } = await loadTable(
+      const { table } = await loadTable(
         { type: "pie", command: "printf 'apples 3\\npears 5\\n'" },
         token,
       );
-      assert.match(origin, /printf/);
       assert.deepStrictEqual(table.rows, [
         ["apples", 3],
         ["pears", 5],
@@ -112,7 +111,6 @@ suite("dataSource", () => {
 
   test("reports how the data was read and charted", async () => {
     const chart = await loadChart({ type: "bar", data: "dir,size\nsrc,1\ntest,2" }, token);
-    assert.strictEqual(chart.origin, "inline data");
     assert.match(chart.report, /^Charted "size" by "dir"\.\n\nThe data was read as: 2 rows;/);
     await assert.rejects(
       loadChart({ type: "bar", data: "a b\nc d" }, token),

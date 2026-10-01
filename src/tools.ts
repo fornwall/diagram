@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
-import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
 import { type Diagram, type DiagramPanel, nodeList, type RenderOutcome } from "./panel";
 import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
@@ -154,7 +154,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     );
     if (outcome.ok) {
       return textResult(
-        `Rendered a ${spec.type} chart of ${chart.origin} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
+        `Rendered a ${spec.type} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
       );
     }
     const fix = spec.options

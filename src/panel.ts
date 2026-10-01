@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
-import type { ChartSpec } from "./chartSpec";
+import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { buildChart } from "./charts";
 import { loadTable } from "./dataSource";
 import {
@@ -496,11 +496,6 @@ const REFRESH_PROMPT = JSON.stringify({
   },
   series: [{ type: "pie", data: [] }],
 });
-
-/** Where a chart's data comes from, e.g. "file sales.csv" or "command `du -s *`". */
-function dataOrigin({ file, command }: ChartSpec): string {
-  return file ? `file ${file}` : `command \`${command}\``;
-}
 
 function failsToRender(language: DiagramLanguage, error: string): string {
   const noun = diagramNoun(language);

@@ -59,6 +59,14 @@ const SPEC_KEYS = [
   "options",
 ] as const satisfies readonly (keyof ChartSpec)[];
 
+/** Where a chart's data comes from, e.g. "file sales.csv", "command `du -s *`" or "inline data". */
+export function dataOrigin({ file, command }: ChartSpec): string {
+  if (file !== undefined) {
+    return `file ${file}`;
+  }
+  return command !== undefined ? `command \`${command}\`` : "inline data";
+}
+
 export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");
 }

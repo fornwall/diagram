@@ -264,36 +264,29 @@ export async function runCommand(
  * Loads and parses a chart's data: `spec.data`, the file `spec.file` or the output of
  * `spec.command`. Files and command output are limited to 10 MB, and commands to 60 seconds.
  *
- * @returns The table, where it came from for messages (e.g. "file src/x.csv"), and a warning when
- *   a command failed but printed data anyway.
+ * @returns The table, and a warning when a command failed but printed data anyway.
  * @throws Error explaining why the data could not be loaded or parsed, or
  *   vscode.CancellationError.
  */
 export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
-): Promise<{ table: DataTable; origin: string; warning?: string }> {
+): Promise<{ table: DataTable; warning?: string }> {
   if (spec.data !== undefined) {
-    return { table: parseTable(spec.data, spec.format), origin: "inline data" };
+    return { table: parseTable(spec.data, spec.format) };
   }
   if (spec.file !== undefined) {
-    return {
-      table: parseTable(await readDataFile(spec.file), spec.format),
-      origin: `file ${spec.file}`,
-    };
+    return { table: parseTable(await readDataFile(spec.file), spec.format) };
   }
   if (spec.command !== undefined) {
     const { output, warning } = await runCommand(spec.command, token);
-    const origin = `command \`${spec.command}\``;
-    return { table: parseTable(output, spec.format), origin, ...(warning ? { warning } : {}) };
+    return { table: parseTable(output, spec.format), ...(warning ? { warning } : {}) };
   }
   throw new Error('The chart has no data: give one of "data", "file" or "command".');
 }
 
 export interface LoadedChart {
   option: Record<string, unknown>;
-  /** Where the data came from, e.g. "file src/x.csv". */
-  origin: string;
   /** How the data was read and charted, for a language model. */
   report: string;
 }
@@ -308,12 +301,12 @@ export async function loadChart(
   spec: ChartSpec,
   token: vscode.CancellationToken,
 ): Promise<LoadedChart> {
-  const { table, origin, warning } = await loadTable(spec, token);
+  const { table, warning } = await loadTable(spec, token);
   const description = `The data was read as: ${describeTable(table)}`;
   try {
     const { option, summary } = buildChart(spec, table);
     const report = [summary, warning, description].filter((part) => part !== undefined);
-    return { option, origin, report: report.join("\n\n") };
+    return { option, report: report.join("\n\n") };
   } catch (error) {
     throw new Error(`${errorMessage(error)}\n\n${description}`);
   }
