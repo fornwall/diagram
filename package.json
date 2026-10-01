@@ -5,6 +5,10 @@
   "version": "0.0.1",
   "publisher": "fornwall",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fornwall/diagram"
+  },
   "engines": {
     "vscode": "^1.140.0"
   },
@@ -292,7 +296,7 @@
     "compile-tests": "node -e \"fs.rmSync('out',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "pretest": "npm run compile && npm run compile-tests",
     "test": "vscode-test",
-    "vsix": "vsce package --no-dependencies --allow-missing-repository"
+    "vsix": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
