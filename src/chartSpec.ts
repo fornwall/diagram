@@ -35,7 +35,7 @@ export interface ChartSpec {
   format?: DataFormat;
   /** The column with the labels (categories, pie slice names, scatter point names). */
   labelColumn?: string;
-  /** The columns with the values, one series each. Defaults to the numeric columns. */
+  /** The columns with the values, one series each. */
   valueColumns?: string[];
   /** Sorts rows by the first value column. */
   sort?: (typeof SORT_ORDERS)[number];
@@ -63,6 +63,10 @@ export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");
 }
 
+function isOneOf(values: readonly string[], value: unknown): boolean {
+  return (values as readonly unknown[]).includes(value);
+}
+
 /**
  * Checks a chart request from a language model and returns it as a {@link ChartSpec}.
  *
@@ -81,12 +85,14 @@ export function validateChartSpec(value: unknown): ChartSpec {
     }
   };
 
-  for (const key of Object.keys(value)) {
-    if (!(SPEC_KEYS as readonly string[]).includes(key)) {
-      problems.push(`Unknown property "${key}"; the properties are ${quoteAll(SPEC_KEYS)}.`);
-    }
+  const unknown = Object.keys(value).filter((key) => !isOneOf(SPEC_KEYS, key));
+  if (unknown.length > 0) {
+    problems.push(
+      `Unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; ` +
+        `the properties are ${quoteAll(SPEC_KEYS)}.`,
+    );
   }
-  if (!(CHART_TYPES as readonly unknown[]).includes(value.type)) {
+  if (!isOneOf(CHART_TYPES, value.type)) {
     problems.push(
       value.type === undefined
         ? `"type" is missing; it must be one of ${quoteAll(CHART_TYPES)}.`
@@ -108,7 +114,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
       problems.push(`"${key}" must be a non-empty string.`);
     }
   }
-  if (value.format !== undefined && !(DATA_FORMATS as readonly unknown[]).includes(value.format)) {
+  if (value.format !== undefined && !isOneOf(DATA_FORMATS, value.format)) {
     problems.push(`"format" must be one of ${quoteAll(DATA_FORMATS)}.`);
   }
   optionalString("labelColumn");
@@ -121,7 +127,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
   ) {
     problems.push('"valueColumns" must be a non-empty array of column names (strings).');
   }
-  if (value.sort !== undefined && !(SORT_ORDERS as readonly unknown[]).includes(value.sort)) {
+  if (value.sort !== undefined && !isOneOf(SORT_ORDERS, value.sort)) {
     problems.push('"sort" must be "ascending" or "descending".');
   }
   if (
