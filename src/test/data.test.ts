@@ -101,6 +101,20 @@ suite("data", () => {
     });
   });
 
+  test("parses CSV whose lines have different numbers of fields", () => {
+    const cloc =
+      'files,language,blank,code,"github.com/AlDanial/cloc v 1.98  T=0.05 s"\n' +
+      "3,TypeScript,50,400\n2,CSS,10,100\n5,SUM,60,500";
+    assert.deepStrictEqual(parse(cloc), {
+      columns: ["files", "language", "blank", "code", "github.com/AlDanial/cloc v 1.98  T=0.05 s"],
+      rows: [
+        [3, "TypeScript", 50, 400, null],
+        [2, "CSS", 10, 100, null],
+        [5, "SUM", 60, 500, null],
+      ],
+    });
+  });
+
   test("detects semicolon-separated values, also as format csv", () => {
     const expected = {
       columns: ["fruit", "kg"],

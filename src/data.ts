@@ -279,9 +279,9 @@ function mode(values: number[]): number {
 
 /**
  * Splits comma- or semicolon-separated values with the delimiter that splits the lines more
- * consistently. Unless `strict`, returns undefined when neither does, or when the first line has
- * no delimiter (as in docker ps output, with commas in a column) or commas only separate thousands
- * (as in "apples 1,234").
+ * consistently. Unless `strict`, returns undefined when neither splits every line, or 80% of them
+ * into as many fields, or when the first line has no delimiter (as in docker ps output, with
+ * commas in a column) or commas only separate thousands (as in "apples 1,234").
  */
 function splitCsv(text: string, firstLine: string, strict: boolean): string[][] | undefined {
   let best: { records: string[][]; uniform: number; width: number } | undefined;
@@ -301,7 +301,8 @@ function splitCsv(text: string, firstLine: string, strict: boolean): string[][] 
     }
     const width = mode(records.map((record) => record.length));
     const matching = records.filter((record) => record.length === width).length;
-    if (width < 2 || matching < records.length * 0.8) {
+    // Lines may have fewer or more fields than the header, as with cloc --csv.
+    if (width < 2 || (matching < records.length * 0.8 && records.some((r) => r.length < 2))) {
       continue;
     }
     // On ties, as for "a;1,5", prefer semicolons: a comma is more likely a decimal comma than a
