@@ -1,36 +1,36 @@
 // An ECharts theme built from the colors and fonts of the current VS Code theme.
 
-import { mix, type ThemeColors, toCss, withAlpha } from "./colors";
+import { mix, type ThemeColors, toCss } from "./colors";
 
 export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> {
   const fg = toCss(colors.foreground);
   const muted = toCss(colors.muted);
   const bg = toCss(colors.background);
   const grid = toCss(colors.gridLine);
-  const axis = toCss(colors.axisLine);
+  const axisColor = toCss(colors.axisLine);
   const disabled = toCss(mix(colors.background, colors.muted, 0.45));
   const accent = toCss(colors.blue);
-  const accentWash = toCss(withAlpha(colors.blue, 0.15));
-  const subtleFill = toCss(withAlpha(colors.foreground, colors.dark ? 0.06 : 0.04));
+  const accentWash = toCss({ ...colors.blue, a: 0.15 });
+  const subtleFill = toCss({ ...colors.foreground, a: colors.dark ? 0.06 : 0.04 });
   const font = { fontFamily: colors.fontFamily, fontSize: Math.max(11, colors.fontSize - 1) };
 
-  const axisCommon = () => ({
-    axisLine: { lineStyle: { color: axis, width: 1 } },
-    axisTick: { lineStyle: { color: axis } },
+  const axisLine = { lineStyle: { color: axisColor, width: 1 } };
+  const axisTick = { lineStyle: { color: axisColor } };
+  const axis = {
+    axisLine,
+    axisTick,
     axisLabel: { color: muted, ...font },
     nameTextStyle: { color: muted, ...font },
     splitLine: { lineStyle: { color: grid, width: 1, type: "solid" } },
-    minorSplitLine: { lineStyle: { color: toCss(withAlpha(colors.gridLine, 0.5)) } },
+    minorSplitLine: { lineStyle: { color: toCss({ ...colors.gridLine, a: 0.5 }) } },
     splitArea: { areaStyle: { color: [subtleFill, "transparent"] } },
-  });
-  const categoryAxis = axisCommon();
-  const valueAxis = axisCommon();
+  };
   // Recessive axes: no axis line or ticks on value axes, only hairline grid lines.
-  Object.assign(valueAxis, {
-    axisLine: { ...valueAxis.axisLine, show: false },
-    axisTick: { ...valueAxis.axisTick, show: false },
-  });
-  Object.assign(categoryAxis, { axisTick: { ...categoryAxis.axisTick, alignWithLabel: true } });
+  const valueAxis = {
+    ...axis,
+    axisLine: { ...axisLine, show: false },
+    axisTick: { ...axisTick, show: false },
+  };
 
   return {
     darkMode: colors.dark,
@@ -72,8 +72,8 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
         "border-radius: 4px; box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));",
     },
     axisPointer: {
-      lineStyle: { color: axis, width: 1 },
-      crossStyle: { color: axis },
+      lineStyle: { color: axisColor, width: 1 },
+      crossStyle: { color: axisColor },
       shadowStyle: { color: subtleFill },
       label: {
         color: toCss(colors.hoverForeground),
@@ -82,20 +82,20 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
         borderWidth: 1,
       },
     },
-    categoryAxis,
+    categoryAxis: { ...axis, axisTick: { ...axisTick, alignWithLabel: true } },
     valueAxis,
     logAxis: valueAxis,
-    timeAxis: axisCommon(),
+    timeAxis: axis,
     radar: {
-      ...axisCommon(),
+      ...axis,
       axisName: { color: muted, ...font },
       axisLine: { lineStyle: { color: grid } },
       splitArea: { show: false },
     },
-    angleAxis: axisCommon(),
-    radiusAxis: axisCommon(),
-    singleAxis: axisCommon(),
-    parallelAxis: axisCommon(),
+    angleAxis: axis,
+    radiusAxis: axis,
+    singleAxis: axis,
+    parallelAxis: axis,
 
     line: {
       symbol: "circle",
@@ -109,7 +109,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     pie: {
       itemStyle: { borderColor: bg, borderWidth: 2, borderRadius: 3 },
       label: { color: fg },
-      labelLine: { lineStyle: { color: axis } },
+      labelLine: { lineStyle: { color: axisColor } },
     },
     funnel: { itemStyle: { borderColor: bg, borderWidth: 2 }, label: { color: fg } },
     sunburst: { itemStyle: { borderColor: bg, borderWidth: 2 } },
@@ -121,7 +121,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       },
     },
     graph: {
-      lineStyle: { color: axis, opacity: 0.8 },
+      lineStyle: { color: axisColor, opacity: 0.8 },
       label: { color: fg },
       itemStyle: { borderColor: bg, borderWidth: 1 },
     },
@@ -132,14 +132,14 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       emphasis: { lineStyle: { opacity: 0.5 } },
     },
     tree: {
-      lineStyle: { color: axis },
+      lineStyle: { color: axisColor },
       label: { color: fg },
       itemStyle: { borderColor: accent },
     },
     gauge: {
       axisLine: { lineStyle: { color: [[1, grid]] } },
-      axisTick: { lineStyle: { color: axis } },
-      splitLine: { lineStyle: { color: axis } },
+      axisTick: { lineStyle: { color: axisColor } },
+      splitLine: { lineStyle: { color: axisColor } },
       axisLabel: { color: muted },
       title: { color: muted },
       detail: { color: fg },
@@ -169,14 +169,14 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       handleStyle: { color: bg, borderColor: accent },
       moveHandleStyle: { color: grid },
       brushStyle: { color: accentWash },
-      emphasis: { handleStyle: { borderColor: fg }, moveHandleStyle: { color: axis } },
-      dataBackground: { lineStyle: { color: axis }, areaStyle: { color: grid } },
+      emphasis: { handleStyle: { borderColor: fg }, moveHandleStyle: { color: axisColor } },
+      dataBackground: { lineStyle: { color: axisColor }, areaStyle: { color: grid } },
       selectedDataBackground: { lineStyle: { color: accent }, areaStyle: { color: accentWash } },
     },
     timeline: {
-      lineStyle: { color: axis },
+      lineStyle: { color: axisColor },
       label: { color: muted },
-      itemStyle: { color: axis },
+      itemStyle: { color: axisColor },
       checkpointStyle: { color: accent, borderColor: bg },
       controlStyle: { color: fg, borderColor: fg },
     },
@@ -196,11 +196,11 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     },
     calendar: {
       itemStyle: { color: "transparent", borderColor: grid },
-      splitLine: { lineStyle: { color: axis } },
+      splitLine: { lineStyle: { color: axisColor } },
       dayLabel: { color: muted },
       monthLabel: { color: muted },
       yearLabel: { color: muted },
     },
-    markLine: { label: { color: fg }, lineStyle: { color: axis } },
+    markLine: { label: { color: fg }, lineStyle: { color: axisColor } },
   };
 }

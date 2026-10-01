@@ -1,11 +1,12 @@
 // Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
 
 import * as echarts from "echarts";
-import { readThemeColors, type ThemeColors } from "./colors";
+import type { ThemeColors } from "./colors";
 import { asArray, isCartesian, isObject, type JsonObject, layoutOption } from "./echartsLayout";
 import { buildEChartsTheme } from "./echartsTheme";
 import { describeJsonError } from "./jsonErrors";
 import type { Hit, RenderContext, Renderer, RendererHost } from "./renderer";
+import { readThemeColors } from "./vscodeTheme";
 
 const THEME_NAME = "vscode";
 

@@ -1,7 +1,7 @@
 // Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
-import { type ThemeColors, toCss, withAlpha } from "./colors";
+import { type ThemeColors, toCss } from "./colors";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -348,7 +348,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
 
   // Selection: let every series show selected items, in the VS Code focus color.
   const focus = toCss(colors.focus);
-  const glow = toCss(withAlpha(colors.focus, 0.7));
+  const glow = toCss({ ...colors.focus, a: 0.7 });
   for (const each of series) {
     each.selectedMode ??= "multiple";
     if (each.select === undefined) {

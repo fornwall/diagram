@@ -3,6 +3,7 @@
 import mermaid from "mermaid";
 import type { DiagramNode } from "../protocol";
 import type { Renderer, RendererHost } from "./renderer";
+import { isDarkTheme } from "./vscodeTheme";
 
 const NODE_SELECTOR = [
   "g.node", // flowchart, class, state, ER, mindmap, ...
@@ -19,19 +20,11 @@ const MAX_ZOOM = 4;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 
-function mermaidTheme(): "dark" | "default" {
-  const classes = document.body.classList;
-  return classes.contains("vscode-dark") ||
-    (classes.contains("vscode-high-contrast") && !classes.contains("vscode-high-contrast-light"))
-    ? "dark"
-    : "default";
-}
-
 function initializeMermaid(): void {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
-    theme: mermaidTheme(),
+    theme: isDarkTheme() ? "dark" : "default",
     fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
   });
 }
