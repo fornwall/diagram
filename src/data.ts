@@ -492,23 +492,21 @@ function withoutRules(lines: string[]): { lines: string[]; underlined: boolean }
   return { lines: kept, underlined };
 }
 
-/**
- * Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. Returns
- * undefined unless all lines have as many cells.
- */
-function splitPipes(lines: string[]): string[][] | undefined {
-  // psql prints the number of rows below the table.
-  const rows = lines.filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()));
-  const records = rows.map((line) =>
-    line
-      .trim()
-      .replace(/^\|/, "")
-      .replace(/\|$/, "")
-      .split(/(?<!\\)\|/)
-      .map((cell) => cell.replaceAll("\\|", "|")),
+/** Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. */
+function splitPipes(lines: string[]): string[][] {
+  return (
+    lines
+      // psql prints the number of rows below the table.
+      .filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()))
+      .map((line) =>
+        line
+          .trim()
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split(/(?<!\\)\|/)
+          .map((cell) => cell.replaceAll("\\|", "|")),
+      )
   );
-  const width = records[0]?.length ?? 0;
-  return width >= 2 && records.every((record) => record.length === width) ? records : undefined;
 }
 
 function jsonCell(value: unknown): Cell {
@@ -660,11 +658,9 @@ function readRecords(text: string, format: DataFormat): Records {
       return { records: splitDelimited(text, "\t", false) };
     }
   }
-  if (format === "auto" && underlined) {
-    const records = splitPipes(lines);
-    if (records !== undefined) {
-      return { records, header: true };
-    }
+  // Rows of a Markdown table may have fewer or more cells than its header.
+  if (format === "auto" && underlined && lines[0]?.includes("|")) {
+    return { records: splitPipes(lines), header: true };
   }
   if (format === "auto" || format === "csv") {
     const records = splitCsv(text, lines[0] ?? "", format === "csv");

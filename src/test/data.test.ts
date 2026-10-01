@@ -365,6 +365,10 @@ suite("data", () => {
       assert.deepStrictEqual(parse(table), expected, table);
     }
     assert.deepStrictEqual(parse("a | b\n--|--\nx\\|y | 1").rows, [["x|y", 1]]);
+    assert.deepStrictEqual(parse("| a | b |\n|---|---|\n| x | 1 |\n| y |").rows, [
+      ["x", 1],
+      ["y", null],
+    ]);
   });
 
   test("leaves out rules, taking the line above one as the header", () => {
