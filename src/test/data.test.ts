@@ -516,7 +516,7 @@ suite("data", () => {
     assert.throws(() => parseTable("[{}]"), /holds no values/);
     assert.throws(
       () => parseTable('a,b\nc,"d\ne,f', "csv"),
-      /^Error: The quoted field that starts on line 2 is not closed\.$/,
+      /^Error: The quoted field that starts on line 2 is not closed\. A quote in a quoted field is written twice, as in "say ""hi"""\.$/,
     );
   });
 });

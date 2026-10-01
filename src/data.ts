@@ -253,7 +253,10 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
     }
   }
   if (quoted) {
-    throw new Error(`The quoted field that starts on line ${quoteLine} is not closed.`);
+    throw new Error(
+      `The quoted field that starts on line ${quoteLine} is not closed. A quote in a ` +
+        `quoted field is written twice, as in "say ""hi""".`,
+    );
   }
   record.push(field);
   records.push(record);
