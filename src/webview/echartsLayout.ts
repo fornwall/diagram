@@ -21,13 +21,16 @@ interface Size {
   charWidth: number;
 }
 
-/** The length of the longest category or legend entry; each is a value or `{value}`/`{name}`. */
+/**
+ * The length of the longest category or legend entry: a value, a category `{value}`, or a legend
+ * entry or data item named by `{name}` (whose value is a number).
+ */
 function longestText(entries: unknown): number {
   if (!Array.isArray(entries)) {
     return 0;
   }
   const text = (entry: unknown) =>
-    String((isPlainObject(entry) ? (entry.value ?? entry.name) : entry) ?? "");
+    String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
   // Not Math.max(...entries), which overflows the stack with very many entries.
   return entries.reduce((longest: number, entry) => Math.max(longest, text(entry).length), 0);
 }

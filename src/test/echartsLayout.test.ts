@@ -81,6 +81,15 @@ suite("echartsLayout", () => {
     assert.strictEqual(layout(pie).legend.orient, "vertical");
   });
 
+  test("makes room for a pie's legend by the names of its slices", () => {
+    const pie = (name: string, value: number) => ({
+      legend: {},
+      series: [{ type: "pie", data: [{ name, value }] }],
+    });
+    const long = layout(pie("A rather long name for a slice", 1)).series[0].right;
+    assert.ok(long > layout(pie("A", 123_456_789)).series[0].right, String(long));
+  });
+
   test("keeps explicit choices", () => {
     const option = layout(
       bars({ legend: { left: 0 }, grid: { left: 1 }, tooltip: { trigger: "item" }, aria: {} }),
