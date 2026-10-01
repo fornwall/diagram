@@ -511,6 +511,10 @@ suite("data", () => {
   test("throws helpful errors for empty or invalid data", () => {
     assert.throws(() => parseTable("  \n"), /^Error: The data is empty\. Give JSON, CSV/);
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);
+    assert.throws(
+      () => parseTable('{"a": 1}\n{"a": 2,}'),
+      /^Error: Line 2 of the JSON Lines is not valid JSON: [^()]*\.$/,
+    );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
     assert.throws(() => parseTable("[{}]"), /holds no values/);

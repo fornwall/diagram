@@ -599,14 +599,29 @@ function recordsFromJson(value: unknown): Records {
   );
 }
 
-/** Parses newline-delimited JSON, as printed by jq -c or docker ps --format json. */
+/**
+ * Parses newline-delimited JSON, as printed by jq -c or docker ps --format json, or returns
+ * undefined unless the first of several lines is a JSON value.
+ */
 function parseJsonLines(text: string): unknown[] | undefined {
   const lines = text.split(/\r?\n/).filter((line) => !isBlank(line));
-  try {
-    return lines.length > 1 ? lines.map((line) => JSON.parse(line)) : undefined;
-  } catch {
+  if (lines.length < 2) {
     return undefined;
   }
+  const values: unknown[] = [];
+  for (const [i, line] of lines.entries()) {
+    try {
+      values.push(JSON.parse(line));
+    } catch (error) {
+      if (i === 0) {
+        return undefined;
+      }
+      // Leaves out V8's "(line 1 column 8)", which counts lines from this one.
+      const message = errorMessage(error).replace(/ \(line \d+ column \d+\)/, "");
+      throw new Error(`Line ${i + 1} of the JSON Lines is not valid JSON: ${message}.`);
+    }
+  }
+  return values;
 }
 
 function parseJson(text: string): Records {
