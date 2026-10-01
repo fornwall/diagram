@@ -62,6 +62,16 @@ button:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
+button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 button.secondary,
 header button {
   background: var(--vscode-button-secondaryBackground);
@@ -142,6 +152,10 @@ textarea {
   resize: vertical;
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
+}
+
+::placeholder {
+  color: var(--vscode-input-placeholderForeground);
 }
 
 textarea:focus,
