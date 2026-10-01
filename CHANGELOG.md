@@ -11,3 +11,9 @@
   - `diagram_pickNodes` (`#diagramPick`): ask you to answer by clicking nodes, and wait for the answer.
 - `clickPrompt` option for `diagram_render` and `diagram_chart`: a click on a node sends a request about it to chat, for diagrams you explore part by part.
 - Requires VS Code 1.140.
+
+### Fixes
+
+- Preserve small byte values and differences between large values when scaling chart units; reject overflowing numeric values.
+- Keep missing JSON fields empty, including fields named `__proto__`; report JSON error locations correctly after blank lines.
+- Honor cancelled data requests and avoid redundant command cleanup after cancellation.

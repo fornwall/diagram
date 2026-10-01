@@ -18,7 +18,7 @@ Or chart data, given inline, in a file or as a shell command's output:
 - `@diagram line chart of #file:benchmarks.csv`
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 
-Mermaid is used for structure and flow, ECharts for quantitative data, unless you ask for one. If a diagram fails to render, `@diagram` sends the error back to the model and retries. Commands:
+Mermaid is used for structure and flow, ECharts for quantitative data. You can request either explicitly. If a diagram fails to render, `@diagram` sends the error back to the model and retries. Commands:
 
 - `/new`: start a new diagram instead of changing the current one
 - `/explain`: explain the current diagram or the selected nodes, without changing it
@@ -52,6 +52,8 @@ Any agent, e.g. in agent mode, can use the panel through these tools. Attach one
 
 VS Code asks you before a command runs, and before reading a file outside the workspace (or any file in an untrusted one). Commands only run in trusted workspaces.
 
+Relative file paths resolve from the first workspace folder. Commands run there using `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open. Files and command output are limited to 10 MiB; commands time out after 60 seconds. Summarize larger datasets before charting them.
+
 ## Development
 
 ```sh
@@ -63,3 +65,5 @@ npm run vsix         # package a .vsix
 ```
 
 Press <kbd>F5</kbd> to launch an Extension Development Host, then type `@diagram` in the chat view.
+
+To install the packaged extension, run **Extensions: Install from VSIX…** from the Command Palette and choose the generated `.vsix` file.
