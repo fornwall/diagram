@@ -160,10 +160,15 @@ function textOf(element: Element): string {
 
 /**
  * The name of a node or group: the title of a box that also shows a stereotype, class members,
- * entity attributes, a C4 type and description, requirement fields or kanban card metadata.
+ * entity attributes, a C4 type and description, requirement fields, kanban card metadata or
+ * further state descriptions. Mermaid names a state by its first description (an alias is one),
+ * and shows its id only when it has none.
  */
 function nameOf(element: Element): string {
-  const title = element.querySelector(".label-group, .label.name, .cluster-label, .c4-name");
+  // A state label that is not split in title and descriptions starts with an empty rect.
+  const title = element.querySelector(
+    ".label-group, .label.name, .cluster-label, .c4-name, .statediagram-state > .label > :first-child:not(rect)",
+  );
   if (title) {
     return textOf(title);
   }
