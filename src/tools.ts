@@ -19,12 +19,18 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
+/** A source wrapped in a code fence, as models sometimes send despite the schema. */
+const FENCED_SOURCE = /^\s*(`{3,}|~{3,})[ \t]*([^\s`]*)[^\n]*\n([\s\S]*?)\n[ \t]*\1\s*$/;
+
 /** Returns the diagram to render, or what is wrong with the input. */
 function parseRenderInput(input: RenderInput): Diagram | string {
-  const { source, language = "mermaid", title, clickPrompt } = input;
-  if (typeof source !== "string" || !source.trim()) {
+  if (typeof input.source !== "string" || !input.source.trim()) {
     return 'Give "source", the complete diagram, as a string.';
   }
+  const [, , fenceLanguage, unfenced] = FENCED_SOURCE.exec(input.source) ?? [];
+  const source = unfenced ?? input.source;
+  const { title, clickPrompt } = input;
+  const language = input.language ?? (isDiagramLanguage(fenceLanguage) ? fenceLanguage : "mermaid");
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON.`;
   }
@@ -206,7 +212,12 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<PickNodesInput>,
   ): vscode.PreparedToolInvocation {
-    return { invocationMessage: `Waiting for you to pick in the diagram: ${options.input.prompt}` };
+    const prompt = nonBlank(options.input.prompt);
+    return {
+      invocationMessage: prompt
+        ? `Waiting for you to pick in the diagram: ${prompt}`
+        : "Waiting for you to pick in the diagram",
+    };
   }
 
   async invoke(

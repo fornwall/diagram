@@ -47,6 +47,14 @@ suite("Extension", () => {
     assert.doesNotMatch(state, /fails to render/);
   });
 
+  test("renders a source wrapped in a code fence", async () => {
+    const option = { series: [{ type: "bar", data: [1, 2] }], xAxis: {}, yAxis: {} };
+    const text = await invoke("diagram_render", {
+      source: `\`\`\`echarts\n${JSON.stringify(option)}\n\`\`\`\n`,
+    });
+    assert.match(text, /Rendered the bar chart/);
+  });
+
   test("reports syntax errors back to the agent", async () => {
     const text = await invoke("diagram_render", { source: "flowchart TD\n  A --> --> B[" });
     assert.match(text, /failed to render/);
