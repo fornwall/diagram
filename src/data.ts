@@ -441,7 +441,8 @@ function splitWhitespace(text: string): Records {
   }
   const counts = tokens.map((line) => line.length);
   if (textHeader && counts.some((c) => c !== counts[0])) {
-    const aligned = splitMultiWordHeader(tokens) ?? splitAtHeaderGaps(lines);
+    // Gaps in the header are the surest column boundaries, but df has single spaces between some.
+    const aligned = splitAtHeaderGaps(lines) ?? splitMultiWordHeader(tokens);
     if (aligned !== undefined) {
       return { records: aligned, header: true };
     }

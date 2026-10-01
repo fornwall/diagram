@@ -247,6 +247,29 @@ suite("data", () => {
     assert.deepStrictEqual(table.rows[0]?.[3], "0.0.0.0:80->80/tcp, :::80->80/tcp");
   });
 
+  test("parses docker stats output, whose cells have spaces where its header has", () => {
+    const table = parseTable(
+      [
+        "CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O         PIDS",
+        "b5d2a2d1c3e4   web       0.00%     3.98MiB / 15.5GiB     0.03%     5.9kB / 0B      2",
+        "0a1b2c3d4e5f   db        1.25%     150.2MiB / 15.5GiB    0.95%     12.3MB / 4MB    31",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      table.columns.map((column) => column.name),
+      ["CONTAINER ID", "NAME", "CPU %", "MEM USAGE / LIMIT", "MEM %", "NET I/O", "PIDS"],
+    );
+    assert.deepStrictEqual(table.rows[1], [
+      "0a1b2c3d4e5f",
+      "db",
+      1.25,
+      "150.2MiB / 15.5GiB",
+      0.95,
+      "12.3MB / 4MB",
+      31,
+    ]);
+  });
+
   test("parses df -h output, matching multi-word header names to columns", () => {
     const table = parseTable(
       [
