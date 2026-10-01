@@ -64,7 +64,7 @@ const SERIES_TYPES = [
   "themeRiver",
 ];
 
-const DONUT = 'for a donut chart, use "pie" with "radius": ["40%", "70%"]';
+const DONUT = 'for a donut chart, use "pie" with "radius": ["45%", "72%"]';
 const TYPE_HINTS: Record<string, string> = {
   donut: DONUT,
   doughnut: DONUT,
