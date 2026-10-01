@@ -12,6 +12,10 @@
     "untrustedWorkspaces": {
       "supported": "limited",
       "description": "Charts of a shell command's output are only available in trusted workspaces."
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Charts of a shell command's output are not available in virtual workspaces."
     }
   },
   "categories": [
