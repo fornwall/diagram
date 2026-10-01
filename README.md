@@ -52,7 +52,7 @@ Any agent, e.g. in agent mode, can use the panel through these tools. Attach one
 
 VS Code asks you before a command runs, and before reading a file outside the workspace (or any file in an untrusted one). Commands only run in trusted workspaces.
 
-Relative file paths resolve from the first workspace folder. Commands run there using `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open. Files and command output are limited to 10 MiB; commands time out after 60 seconds. Summarize larger datasets before charting them.
+Relative file paths resolve from the first workspace folder. Commands run there using `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open. Files and command output are limited to 10 MiB; commands time out after 60 seconds. Tables are limited to 1,000,000 cells, including headers and empty cells. Summarize larger datasets before charting them.
 
 ## Development
 

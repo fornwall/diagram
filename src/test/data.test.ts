@@ -10,6 +10,20 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("rejects sparse data before expanding it into an oversized table", () => {
+    const json = JSON.stringify(Array.from({ length: 1100 }, (_, i) => ({ [`field${i}`]: i })));
+    const csv = `${Array.from({ length: 1100 }, (_, i) => `field${i}`).join(",")}\n${"1\n".repeat(1100)}`;
+    for (const [text, format] of [
+      [json, "json"],
+      [csv, "csv"],
+    ] as const) {
+      assert.throws(
+        () => parseTable(text, format),
+        /exceeding the 1,000,000 cell limit\. Select fewer rows or columns/,
+      );
+    }
+  });
+
   test("parseNumber parses plain, grouped, percent, exponent and size numbers", () => {
     const cases: [string, number, string?][] = [
       ["42", 42],

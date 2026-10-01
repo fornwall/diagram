@@ -1,6 +1,7 @@
 // Reading JSON, or JSON Lines, as records.
 
 import type { Cell, Records } from "./data";
+import { checkTableSize } from "./dataLimits";
 import { errorMessage, isPlainObject } from "./protocol";
 
 function jsonCell(value: unknown): Cell {
@@ -22,7 +23,14 @@ function recordsFromJsonArray(array: unknown[]): Records {
     throw new Error("The JSON array is empty.");
   }
   if (array.every(isPlainObject)) {
-    const keys = [...new Set(array.flatMap((item) => Object.keys(item)))];
+    const names = new Set<string>();
+    for (const item of array) {
+      for (const key of Object.keys(item)) {
+        names.add(key);
+      }
+      checkTableSize(array.length + 1, names.size);
+    }
+    const keys = [...names];
     return {
       records: [
         keys,
@@ -63,6 +71,7 @@ function recordsFromJson(value: unknown): Records {
     )
   ) {
     // Columns: {"label": ["a", "b"], "count": [1, 2]}.
+    checkTableSize(length + 1, names.length);
     return {
       records: [
         names,

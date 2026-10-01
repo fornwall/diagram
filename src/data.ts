@@ -3,6 +3,7 @@
 
 import type { DataFormat } from "./chartSpec";
 import { parseJson } from "./dataJson";
+import { checkTableSize } from "./dataLimits";
 import { hasDecimalCommas, parseNumber, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
 
@@ -102,6 +103,7 @@ function columnNames(header: Cell[], width: number): string[] {
 function tableFromRecords({ records, header }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
+  checkTableSize(records.length, width);
   const decimalComma = Array.from({ length: width }, (_, column) =>
     hasDecimalCommas(records, column),
   );
