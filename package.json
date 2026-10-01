@@ -1,7 +1,7 @@
 {
   "name": "diagram",
   "displayName": "@diagram",
-  "description": "Interactive Mermaid diagrams and Apache ECharts charts for chat agents, with two-way interaction between you, the agent and the diagram.",
+  "description": "Chat agents draw Mermaid diagrams and Apache ECharts charts beside the chat, and you answer by selecting, clicking and editing them.",
   "version": "0.0.1",
   "publisher": "fornwall",
   "license": "Apache-2.0",
@@ -106,7 +106,7 @@
             },
             "clickPrompt": {
               "type": "string",
-              "description": "Optional. Makes the diagram explorable: a single click on a node or chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the node's label or the chart item's name, e.g. \"Explain {label} in more detail\". Use it for overview diagrams the user may want to learn more about part by part."
+              "description": "Makes the diagram explorable: a single click on a node or chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the node's label or the chart item's name, e.g. \"Explain {label} in more detail\". Use it for overview diagrams the user may want to learn more about part by part."
             }
           },
           "required": [
@@ -121,7 +121,7 @@
         "toolReferenceName": "chart",
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
-        "userDescription": "Render data, inline, from a file or from a command's output, as a chart in the diagram panel",
+        "userDescription": "Chart data given inline, in a file or as a command's output",
         "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, with the data given in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. Returns how the data was read, so that you can correct it. For full control over a chart, write an ECharts option and use diagram_render instead.",
         "tags": [
           "chart",
@@ -156,7 +156,7 @@
             },
             "file": {
               "type": "string",
-              "description": "A file with the data, in any of the formats of data, absolute or relative to the first workspace folder."
+              "description": "Path to a file with the data, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
@@ -175,14 +175,14 @@
             },
             "labelColumn": {
               "type": "string",
-              "description": "The column with the labels (categories or slice names), by its header or its generated name such as \"Column 2\". Defaults to the first text column with distinct values that do not start with a digit, else the first text column. Without text columns, a first column of identifiers or years is the label column, or else rows are labeled 1, 2, 3, …."
+              "description": "The column with the labels (categories or slice names), by its header or generated name such as \"Column 2\". Defaults to the first text column that names each row."
             },
             "valueColumns": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "The columns with the values, one series each. Defaults to the numeric columns other than the label column, leaving out identifier columns (named like id, #, rank, pid or user_id, or counting 1, 2, 3, …) unless no others are left, and columns of another unit than the first (such as Use% next to sizes)."
+              "description": "The columns with the values, one series each. Defaults to the numeric columns, leaving out identifiers (id, rank, pid, …) and columns in another unit than the first."
             },
             "sort": {
               "type": "string",
@@ -203,7 +203,7 @@
             },
             "clickPrompt": {
               "type": "string",
-              "description": "Optional. A single click on a chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the item's name, e.g. \"Which files make {label} so large?\"."
+              "description": "A single click on a chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the item's name, e.g. \"Which files make {label} so large?\"."
             }
           },
           "required": [
@@ -270,7 +270,7 @@
     "commands": [
       {
         "command": "diagram.show",
-        "title": "Show Diagram Panel",
+        "title": "Show Panel",
         "category": "Diagram"
       }
     ]
