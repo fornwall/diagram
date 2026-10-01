@@ -417,10 +417,10 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
 /**
  * Splits whitespace-separated lines into as many fields as most lines have; the last field keeps
  * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
- * as printed by df or docker ps, are matched to the data columns by position.
+ * as printed by df or docker ps, are matched to the data columns by position. The first line is a
+ * header if `underlined`.
  */
-function splitWhitespace(text: string): Records {
-  const lines = text.split(/\r?\n/).filter((line) => !isBlank(line));
+function splitWhitespace(lines: string[], underlined: boolean): Records {
   const tokens = lines.map(tokenize);
   // ls -l starts with "total 16".
   if (tokens[0]?.length === 2 && tokens[0][0]?.text === "total" && (tokens[1]?.length ?? 0) > 2) {
@@ -458,38 +458,49 @@ function splitWhitespace(text: string): Records {
     textHeader && data.length > 0 && data.every((line) => line.length >= header.length)
       ? header.length
       : mode(counts);
-  return { records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)) };
+  return {
+    records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)),
+    header: underlined || undefined,
+  };
 }
 
-/** A line of dashes, as under a header in Markdown ("|---|--:|"), psql ("----+---") or mysql. */
-const RULE = /^[\s|+:-]*-[\s|+:-]*$/;
-
 /**
- * Splits a table drawn with "|" between cells and a rule under its header, as in Markdown or
- * printed by psql and mysql. Returns undefined unless it has a rule and all other lines have as
- * many cells.
+ * A rule: a line of dashes, as under the header of Markdown ("|---|--:|"), psql ("----+----"),
+ * pip list and PowerShell tables, or of "=", as around tokei's.
  */
-function splitPipes(lines: string[]): Records | undefined {
-  const records: string[][] = [];
-  let header: boolean | undefined;
+const RULE = /^[\s|+:=-]*[-=][\s|+:=-]*$/;
+
+/** Leaves out rules, and tells whether one is under the first line, making it a header. */
+function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {
+  const kept: string[] = [];
+  let underlined = false;
   for (const line of lines) {
     if (RULE.test(line)) {
-      header ||= records.length === 1;
-    } else if (!/^\(\d+ rows?\)$/.test(line.trim())) {
-      // Leaves out the outer "|"s, and psql's row count below the table.
-      const cells = line
-        .trim()
-        .replace(/^\|/, "")
-        .replace(/\|$/, "")
-        .split(/(?<!\\)\|/);
-      records.push(cells.map((cell) => cell.replaceAll("\\|", "|")));
+      underlined ||= kept.length === 1;
+    } else {
+      kept.push(line);
     }
   }
+  return { lines: kept, underlined };
+}
+
+/**
+ * Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. Returns
+ * undefined unless all lines have as many cells.
+ */
+function splitPipes(lines: string[]): string[][] | undefined {
+  // psql prints the number of rows below the table.
+  const rows = lines.filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()));
+  const records = rows.map((line) =>
+    line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split(/(?<!\\)\|/)
+      .map((cell) => cell.replaceAll("\\|", "|")),
+  );
   const width = records[0]?.length ?? 0;
-  if (header === undefined || width < 2 || records.some((record) => record.length !== width)) {
-    return undefined;
-  }
-  return { records, header: header || undefined };
+  return width >= 2 && records.every((record) => record.length === width) ? records : undefined;
 }
 
 function jsonCell(value: unknown): Cell {
@@ -616,7 +627,7 @@ function readRecords(text: string, format: DataFormat): Records {
   ) {
     return parseJson(trimmed);
   }
-  const lines = trimmed.split(/\r?\n/).filter((line) => !isBlank(line));
+  const { lines, underlined } = withoutRules(text.split(/\r?\n/).filter((line) => !isBlank(line)));
   const tabs = lines.filter((line) => line.includes("\t")).length;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
     try {
@@ -626,9 +637,11 @@ function readRecords(text: string, format: DataFormat): Records {
       return { records: splitDelimited(text, "\t", false) };
     }
   }
-  const pipes = format === "auto" ? splitPipes(lines) : undefined;
-  if (pipes !== undefined) {
-    return pipes;
+  if (format === "auto" && underlined) {
+    const records = splitPipes(lines);
+    if (records !== undefined) {
+      return { records, header: true };
+    }
   }
   if (format === "auto" || format === "csv") {
     const records = splitCsv(text, lines[0] ?? "", format === "csv");
@@ -636,7 +649,7 @@ function readRecords(text: string, format: DataFormat): Records {
       return { records };
     }
   }
-  return splitWhitespace(text);
+  return splitWhitespace(lines, underlined);
 }
 
 /**

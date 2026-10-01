@@ -353,6 +353,40 @@ suite("data", () => {
     assert.deepStrictEqual(parse("a | b\n--|--\nx\\|y | 1").rows, [["x|y", 1]]);
   });
 
+  test("leaves out rules, taking the line above one as the header", () => {
+    assert.deepStrictEqual(parse("Package    Version\n---------- -------\nnumpy      1.26.0"), {
+      columns: ["Package", "Version"],
+      rows: [["numpy", "1.26.0"]],
+    });
+    // PowerShell's Format-Table, with blank lines around it.
+    assert.deepStrictEqual(
+      parse("\nName        Length\n----        ------\nmy file.txt    4567\n\n"),
+      {
+        columns: ["Name", "Length"],
+        rows: [["my file.txt", 4567]],
+      },
+    );
+    assert.deepStrictEqual(
+      parse(
+        [
+          "=========================================",
+          " Language            Files        Lines",
+          "=========================================",
+          " TypeScript             12         2400",
+          " CSS                     2          300",
+          "=========================================",
+        ].join("\n"),
+      ),
+      {
+        columns: ["Language", "Files", "Lines"],
+        rows: [
+          ["TypeScript", 12, 2400],
+          ["CSS", 2, 300],
+        ],
+      },
+    );
+  });
+
   test("takes a percentage unit from the column name", () => {
     const table = parseTable("USER PID %CPU %MEM COMMAND\nroot 1 0.0 0.1 init\nfred 42 3.5 1.2 vi");
     assert.deepStrictEqual(table.columns[2], { name: "%CPU", numeric: true, unit: "%" });
