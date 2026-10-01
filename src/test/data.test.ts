@@ -31,6 +31,9 @@ suite("data", () => {
       ["1.5kB", 1500, "bytes"],
       ["187MB", 187e6, "bytes"],
       ["2GB", 2e9, "bytes"],
+      ["$1,234.50", 1234.5],
+      ["-€5", -5],
+      ["\u22124", -4],
     ];
     for (const [text, value, unit] of cases) {
       assert.deepStrictEqual(parseNumber(text), unit === undefined ? { value } : { value, unit });
@@ -50,6 +53,8 @@ suite("data", () => {
       "e3",
       "12X",
       "NaN",
+      "$",
+      "5$",
     ]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
@@ -69,6 +74,17 @@ suite("data", () => {
       ],
       header: true,
     });
+  });
+
+  test("parses prices", () => {
+    assert.deepStrictEqual(parse('item,price\nsoup,$4.50\nbread,"$1,200"'), {
+      columns: ["item", "price"],
+      rows: [
+        ["soup", 4.5],
+        ["bread", 1200],
+      ],
+    });
+    assert.deepStrictEqual(parse("item;price\nsoup;€4,50").rows, [["soup", 4.5]]);
   });
 
   test("parses quoted numbers and newlines in CSV", () => {

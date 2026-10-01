@@ -32,28 +32,33 @@ interface Records {
 
 const SUFFIX = "%|Bi?|[KMGTPEk](?:i?B|i)?";
 
-/** A number with optional thousands separators, as "1,234.5", and suffix. */
+/** A sign, which may be a typeset minus (−), and a currency symbol, as in "-$5". */
+const PREFIX = "([-+\u2212]?)[$€£¥]?";
+
+/** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
-  String.raw`^([-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
+  String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
 );
 
 /** A number with a decimal comma, as "1,5" or "1.234,56" (or "1,234" with a thousands separator). */
-const COMMA_NUMBER = new RegExp(String.raw`^[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d+(?:${SUFFIX})?$`);
+const COMMA_NUMBER = new RegExp(
+  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+|\d+),\d+(?:${SUFFIX})?$`,
+);
 
 /** A number with thousands separators within text, as in "apples 1,234". */
 const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
- * "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h prints
+ * "$9.99", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h prints
  * them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB" (in units of 1000, as docker prints them).
  */
 export function parseNumber(text: string): { value: number; unit?: Unit } | undefined {
-  const [, digits, suffix] = NUMBER.exec(text.trim()) ?? [];
+  const [, sign, digits, suffix] = NUMBER.exec(text.trim()) ?? [];
   if (digits === undefined) {
     return undefined;
   }
-  const value = Number(digits.replaceAll(",", ""));
+  const value = (sign === "" || sign === "+" ? 1 : -1) * Number(digits.replaceAll(",", ""));
   if (!Number.isFinite(value)) {
     return undefined;
   }
