@@ -3,11 +3,7 @@
 
 import * as vscode from "vscode";
 
-/**
- * Loads the page into the webview, which may run scripts and load only the built files in dist.
- * The options are set on every load as a restored panel has those of the extension version that
- * created it, which may have been installed elsewhere.
- */
+/** Loads the page into the webview, which may run scripts and load only the built files in dist. */
 export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
   const dist = vscode.Uri.joinPath(extensionUri, "dist");
   webview.options = { enableScripts: true, localResourceRoots: [dist] };
