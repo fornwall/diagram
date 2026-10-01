@@ -95,7 +95,7 @@ suite("Extension", () => {
       title: "Sales",
       data: "region,sales\nNorth,10\nSouth,20\nEast,5",
     });
-    assert.match(text, /Rendered a bar chart of inline data/);
+    assert.match(text, /Rendered the bar chart of inline data/);
     assert.match(text, /3 rows/);
 
     const state = await invoke("diagram_getState", {});
@@ -107,7 +107,7 @@ suite("Extension", () => {
   test("charts the data in a workspace file, which can be refreshed", async () => {
     // The test workspace is src/test/workspace.
     const text = await invoke("diagram_chart", { type: "pie", file: "sizes.tsv" });
-    assert.match(text, /Rendered a pie chart of file/);
+    assert.match(text, /Rendered the pie chart of file/);
     const state = await invoke("diagram_getState", {});
     assert.match(state, /"Pie chart of sizes\.tsv"/);
     assert.match(state, /Refresh/);
@@ -115,7 +115,7 @@ suite("Extension", () => {
 
   test("reports chart input errors back to the agent", async () => {
     const text = await invoke("diagram_chart", { type: "pie", data: "a,1", file: "x.csv" });
-    assert.match(text, /No chart was drawn/);
+    assert.match(text, /No chart was rendered/);
   });
 
   test("renders a diagram in click-to-ask mode", async () => {

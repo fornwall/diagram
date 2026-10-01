@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
-import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
 import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
 import { nodeList } from "./describe";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
@@ -90,11 +90,15 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
-    const { command, file, type } = options.input;
-    const source = file ? ` from ${file}` : command ? " from a command's output" : "";
-    const prepared: vscode.PreparedToolInvocation = {
-      invocationMessage: `Drawing a ${type} chart${source}`,
-    };
+    const { clickPrompt: _, ...input } = options.input;
+    const { command, file } = input;
+    let invocationMessage = "Rendering a chart";
+    try {
+      invocationMessage = `Rendering chart "${chartTitle(validateChartSpec(input))}"`;
+    } catch {
+      // Reported when the tool is invoked.
+    }
+    const prepared: vscode.PreparedToolInvocation = { invocationMessage };
     // In an untrusted workspace, the command is not run and invoke says so.
     if (command && vscode.workspace.isTrusted) {
       const folder = vscode.workspace.workspaceFolders?.[0];
@@ -136,7 +140,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
         throw error;
       }
       return textResult(
-        `No chart was drawn: ${errorMessage(error)}\n\nFix the input and call ${CHART_TOOL} again.`,
+        `No chart was rendered: ${errorMessage(error)}\n\nFix the input and call ${CHART_TOOL} again.`,
       );
     }
 
@@ -145,7 +149,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
         {
           language: "echarts",
           source: JSON.stringify(chart.option, null, 2),
-          title: nonBlank(spec.title) ?? defaultChartTitle(spec),
+          title: chartTitle(spec),
           clickPrompt: nonBlank(clickPrompt),
           chart: spec.file || spec.command ? spec : undefined,
         },
@@ -155,7 +159,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     );
     if (outcome.ok) {
       return textResult(
-        `Rendered a ${spec.type} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
+        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
       );
     }
     const fix = spec.options
@@ -165,12 +169,17 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   }
 }
 
-/** E.g. "Horizontal bar chart of sales.csv". */
-function defaultChartTitle({ type, file, command }: ChartSpec): string {
-  const words = type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+/** E.g. "horizontal bar" for "horizontalBar". */
+function chartTypeName(type: ChartType): string {
+  return type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+}
+
+/** The chart's title, by default e.g. "Horizontal bar chart of sales.csv". */
+function chartTitle({ type, title, file, command }: ChartSpec): string {
+  const words = chartTypeName(type);
   const name = `${words.charAt(0).toUpperCase()}${words.slice(1)} chart`;
   const of = file ? file.split(/[/\\]/).at(-1) : command;
-  return of ? `${name} of ${of}` : name;
+  return nonBlank(title) ?? (of ? `${name} of ${of}` : name);
 }
 
 /** Lets any agent see the current diagram, including the user's edits and selection. */
