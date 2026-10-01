@@ -1,23 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.0.1 (unreleased)
 
-- Charts with Apache ECharts 6.1, embedded in the panel. The model picks Mermaid for diagrams and ECharts for quantitative data, and `@diagram` can write either.
-- `diagram_chart` tool (`#chart`): render data as a pie, doughnut, bar, line, area or scatter chart, with the data inline, in a file, or from a shell command that you confirm first. Charts of files and commands can be refreshed from the panel, with a warning when the command fails.
-- `diagram_render` takes `language: "echarts"` to render an ECharts option.
-- Charts follow the VS Code theme, sit on the editor background and adapt their layout to the panel size; chart items can be selected, picked and clicked like diagram nodes.
-- A diagram the panel could not show, because it was closed or did not respond, is no longer reported as a syntax error, and `@diagram` no longer tries to repair it.
-- Picking nodes ends when the diagram is replaced or edited, and answers right away when the diagram fails to render.
-- `@diagram` says when a reply ends before its diagram is complete, and only ends a diagram at a closing fence on a line of its own.
-- The tools report malformed input instead of failing with a type error.
-- The panel no longer opens a second time after a window reload while its tab was in the background.
-- A chart of a file or command over 1 MB is kept across window reloads only as a prompt to press Refresh, instead of being saved on every render.
-
-## 0.0.1
-
-- `@diagram` chat participant that draws and changes Mermaid diagrams, with `/new`, `/explain` and `/show` commands, and retries when a diagram fails to render.
-- Interactive diagram panel: select nodes, send requests about them to chat, edit the source by hand, zoom.
-- `diagram_render` and `diagram_getState` language model tools, so that other agents can use the diagram panel.
-- `diagram_pickNodes` tool: agents can ask the user to answer by clicking nodes, and wait for the answer.
-- `clickPrompt` option for `diagram_render`: clicking a node sends a request about it to chat.
+- `@diagram` chat participant that draws, changes and explains Mermaid diagrams and Apache ECharts charts, with `/new`, `/explain` and `/show` commands. When a diagram fails to render, it sends the error back to the model and retries.
+- Interactive panel beside the chat: select nodes or chart items, send requests about them to chat, edit the source by hand and zoom. Diagrams and charts follow the VS Code color theme.
+- Language model tools that any agent can use, and that you can attach with `#`:
+  - `diagram_render` (`#diagram`): render Mermaid source or an ECharts option.
+  - `diagram_chart` (`#chart`): chart data as a pie, doughnut, bar, line, area or scatter chart. Reads CSV, TSV, JSON and whitespace-separated columns, given inline, in a file or as the output of a shell command that you confirm first (in trusted workspaces only). Charts of files and commands can be refreshed from the panel.
+  - `diagram_getState` (`#diagramState`): read the current diagram, with your edits and selection.
+  - `diagram_pickNodes` (`#diagramPick`): ask you to answer by clicking nodes, and wait for the answer.
+- `clickPrompt` option for `diagram_render` and `diagram_chart`: a click on a node sends a request about it to chat, for diagrams you explore part by part.
 - Requires VS Code 1.140.
