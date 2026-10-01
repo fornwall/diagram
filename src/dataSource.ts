@@ -89,7 +89,10 @@ export async function readDataFile(file: string): Promise<string> {
     throw error;
   }
   if (stat.type & vscode.FileType.Directory) {
-    throw new Error(`${uri.fsPath} is a directory, not a data file.`);
+    throw new Error(
+      `${uri.fsPath} is a directory, not a data file. To chart the files in it, use a command ` +
+        "such as du.",
+    );
   }
   if (stat.size > MAX_BYTES) {
     throw new Error(
@@ -231,10 +234,8 @@ export async function runCommand(
       }
     };
 
-    const timer = setTimeout(
-      () => kill(new Error(`The command timed out after ${timeoutMs / 1000} s.`)),
-      timeoutMs,
-    );
+    const timeout = `The command timed out after ${timeoutMs / 1000} s. Make it do less.`;
+    const timer = setTimeout(() => kill(new Error(timeout)), timeoutMs);
     const cancellation = token.onCancellationRequested(() => kill(new vscode.CancellationError()));
 
     child.stdout.on("data", (chunk: Buffer) => {
