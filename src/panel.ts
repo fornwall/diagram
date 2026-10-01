@@ -299,7 +299,7 @@ export class DiagramPanel implements vscode.Disposable {
         void this.refreshChart();
         break;
       case "ask":
-        void this.askInChat(`${regarding(message.nodes)}${message.text}`);
+        void this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
         break;
       case "clickToAsk":
         if (this.state?.clickPrompt) {
@@ -440,6 +440,14 @@ export class DiagramPanel implements vscode.Disposable {
     return this.context.workspaceState.update(STATE_KEY, saved);
   }
 
+  /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */
+  private regarding(nodes: DiagramNode[]): string {
+    const noun = diagramNoun(this.state?.language ?? "mermaid");
+    return nodes.length > 0
+      ? `Regarding ${nodes.map((node) => `"${node.label}"`).join(", ")} in the ${noun}: `
+      : `Regarding the ${noun}: `;
+  }
+
   /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
   private async askInChat(text: string): Promise<void> {
     const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
@@ -457,12 +465,6 @@ export class DiagramPanel implements vscode.Disposable {
 function failsToRender(language: DiagramLanguage, error: string): string {
   const noun = diagramNoun(language);
   return `The ${noun} fails to render, so there is nothing to pick from. Render a working ${noun} first. The error is: ${error}`;
-}
-
-function regarding(nodes: DiagramNode[]): string {
-  return nodes.length > 0
-    ? `Regarding ${nodes.map((node) => `"${node.label}"`).join(", ")} in the diagram: `
-    : "Regarding the diagram: ";
 }
 
 /**
