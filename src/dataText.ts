@@ -159,18 +159,15 @@ function splitCsv(text: string, firstLine: string, strict: boolean): string[][] 
 
 /** Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. */
 function splitPipes(lines: string[]): string[][] {
-  return (
-    lines
-      // psql prints the number of rows below the table.
-      .filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()))
-      .map((line) =>
-        line
-          .trim()
-          .replace(/^\|/, "")
-          .replace(/\|$/, "")
-          .split(/(?<!\\)\|/)
-          .map((cell) => cell.replaceAll("\\|", "|")),
-      )
+  // psql prints the number of rows below the table.
+  const rows = lines.filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()));
+  return rows.map((line) =>
+    line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split(/(?<!\\)\|/)
+      .map((cell) => cell.replaceAll("\\|", "|")),
   );
 }
 
