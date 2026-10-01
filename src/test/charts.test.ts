@@ -461,6 +461,8 @@ suite("charts", () => {
       type: "bar",
       file: "a.csv",
     });
+    const json = validateChartSpec({ type: "pie", data: [{ name: "a", value: 1 }] });
+    assert.deepStrictEqual(json, { type: "pie", data: '[{"name":"a","value":1}]' });
   });
 
   test("validateChartSpec lists every problem", () => {

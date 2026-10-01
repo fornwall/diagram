@@ -93,6 +93,10 @@ export function validateChartSpec(value: unknown): ChartSpec {
   const input = Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
   );
+  // And JSON data as JSON rather than as text, which reads the same.
+  if (Array.isArray(input.data) || isPlainObject(input.data)) {
+    input.data = JSON.stringify(input.data);
+  }
   const problems: string[] = [];
   const expect = (key: keyof ChartSpec, valid: boolean, what: string): void => {
     if (input[key] !== undefined && !valid) {
