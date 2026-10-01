@@ -4,6 +4,7 @@
   "description": "Chat agents draw Mermaid diagrams and Apache ECharts charts beside the chat, and you answer by selecting, clicking and editing them.",
   "version": "0.0.1",
   "publisher": "fornwall",
+  "icon": "images/icon.png",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
