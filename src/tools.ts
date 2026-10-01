@@ -23,7 +23,7 @@ interface PickNodesInput {
 function parseRenderInput(input: RenderInput): Diagram | string {
   const { source, language = "mermaid", title, clickPrompt } = input;
   if (typeof source !== "string" || !source.trim()) {
-    return '"source" must be the complete diagram, as a string.';
+    return 'Give "source", the complete diagram, as a string.';
   }
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON.`;
@@ -75,6 +75,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       renderFailure(
         outcome,
         noun,
+        RENDER_TOOL,
         `${fix} and call ${RENDER_TOOL} again with the complete corrected source.`,
       ),
     );
@@ -165,7 +166,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     const fix = spec.options
       ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
       : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
-    return textResult(`${renderFailure(outcome, "chart", fix)}\n\n${chart.report}`);
+    return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${chart.report}`);
   }
 }
 
@@ -214,7 +215,7 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
   ): Promise<vscode.LanguageModelToolResult> {
     const prompt = nonBlank(options.input.prompt);
     if (!prompt) {
-      return textResult('No node was picked: "prompt" must be the question to show the user.');
+      return textResult('No node was picked: Give "prompt", the question to show the user.');
     }
     const outcome = await this.panel.pickNodes(prompt, options.input.multiple === true, token);
     return textResult(
@@ -229,11 +230,12 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
 function renderFailure(
   outcome: Extract<RenderOutcome, { ok: false }>,
   noun: string,
+  tool: string,
   fix: string,
 ): string {
   return outcome.kind === "invalid"
     ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
-    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call the tool again to reopen the panel.`;
+    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call ${tool} again to reopen the panel.`;
 }
 
 /** Settles like the promise, but rejects with a CancellationError once the token is cancelled. */

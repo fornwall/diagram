@@ -127,11 +127,17 @@ suite("Extension", () => {
   });
 
   test("reports malformed input back to the agent", async () => {
-    assert.match(await invoke("diagram_render", {}), /"source" must be the complete diagram/);
+    assert.match(
+      await invoke("diagram_render", {}),
+      /Nothing was rendered: Give "source", the complete diagram/,
+    );
     assert.match(
       await invoke("diagram_render", { source: "A", language: "dot" }),
       /Unknown language "dot"/,
     );
-    assert.match(await invoke("diagram_pickNodes", {}), /"prompt" must be the question/);
+    assert.match(
+      await invoke("diagram_pickNodes", {}),
+      /No node was picked: Give "prompt", the question/,
+    );
   });
 });
