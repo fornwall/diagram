@@ -60,9 +60,8 @@ const renderers: Record<DiagramLanguage, Renderer> = {
   mermaid: new MermaidRenderer(host, canvas, diagram, zoomResetButton),
   echarts: new EChartsRenderer(host, canvas),
 };
-/** The renderer whose rendering is shown. */
-let active: Renderer = renderers.mermaid;
-let anythingShown = false;
+/** The renderer whose rendering is shown, once anything rendered. */
+let active: Renderer | undefined;
 
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
@@ -79,7 +78,7 @@ function showError(renderer: Renderer, message: string): void {
 function updateLanguageUi(renderer: Renderer): void {
   editButton.title = `Edit the ${renderer.sourceName}`;
   sourceInput.setAttribute("aria-label", renderer.sourceName);
-  const zoomable = (anythingShown ? active : renderer).zoomBy !== undefined;
+  const zoomable = (active ?? renderer).zoomBy !== undefined;
   for (const button of zoomButtons) {
     button.hidden = !zoomable;
   }
@@ -101,14 +100,13 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   if (changed) {
     sourceChanged();
   }
-  const previous = anythingShown ? active : undefined;
+  const previous = active;
   try {
     const diagramType = await renderer.render(source, message.title);
-    if (previous && previous !== renderer) {
-      previous.hide();
+    if (previous !== renderer) {
+      previous?.hide();
     }
     active = renderer;
-    anythingShown = true;
     emptyElement.hidden = true;
     errorElement.hidden = true;
     clearSelection();
@@ -117,8 +115,9 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     if (renderer !== previous) {
       renderer.hide();
     }
-    showError(renderer, errorMessage(error));
-    post({ type: "renderError", requestId, message: errorMessage(error) });
+    const text = errorMessage(error);
+    showError(renderer, text);
+    post({ type: "renderError", requestId, message: text });
   }
   updateLanguageUi(renderer);
   updateSelectionUi();
@@ -150,8 +149,8 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   }
 });
 
-// Render again when the VS Code color theme changes: VS Code updates the body class (light, dark,
-// high contrast), the theme id, and the color variables on the root element.
+// Render again when the VS Code color theme changes: VS Code updates the body class and data
+// attributes (light, dark, high contrast; theme id), and the color variables on the root element.
 let themeFrame = 0;
 const themeObserver = new MutationObserver(() => {
   cancelAnimationFrame(themeFrame);
@@ -163,25 +162,25 @@ const themeObserver = new MutationObserver(() => {
 });
 themeObserver.observe(document.body, {
   attributes: true,
-  attributeFilter: ["class", "data-vscode-theme-id"],
+  attributeFilter: ["class", "data-vscode-theme-kind", "data-vscode-theme-id"],
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
 
 // Selection.
 
 function updateSelectionUi(): void {
-  active.showSelection(new Set(selection.keys()));
+  active?.showSelection(new Set(selection.keys()));
+  const { noun, itemNoun } = current?.renderer ?? renderers.mermaid;
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
-  selectionLabel.textContent = labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint();
+  selectionLabel.textContent =
+    labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(itemNoun);
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
   pickDoneButton.disabled = labels.length === 0;
-  const { noun } = current?.renderer ?? renderers.mermaid;
   askInput.placeholder =
     labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${noun}…`;
 }
 
-function hint(): string {
-  const noun = (current?.renderer ?? renderers.mermaid).itemNoun;
+function hint(noun: string): string {
   if (pick) {
     return pick.multiple
       ? `Click ${noun}s to pick them, then press Done.`
@@ -359,13 +358,13 @@ element("cancel").addEventListener("click", () => {
 
 // Zoom (Mermaid only; charts fit the panel).
 
-element("zoom-in").addEventListener("click", () => active.zoomBy?.(1.25));
-element("zoom-out").addEventListener("click", () => active.zoomBy?.(1 / 1.25));
-zoomResetButton.addEventListener("click", () => active.zoomReset?.());
+element("zoom-in").addEventListener("click", () => active?.zoomBy?.(1.25));
+element("zoom-out").addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
+zoomResetButton.addEventListener("click", () => active?.zoomReset?.());
 canvas.addEventListener(
   "wheel",
   (event) => {
-    if ((event.ctrlKey || event.metaKey) && active.zoomBy) {
+    if ((event.ctrlKey || event.metaKey) && active?.zoomBy) {
       event.preventDefault();
       active.zoomBy(event.deltaY < 0 ? 1.1 : 1 / 1.1);
     }

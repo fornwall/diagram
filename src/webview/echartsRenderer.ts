@@ -221,7 +221,8 @@ export class EChartsRenderer implements Renderer {
   }
 
   private scheduleRelayout(): void {
-    if (!this.chart) {
+    // Without a size, e.g. while VS Code hides the panel, there is nothing to lay out.
+    if (!this.chart || this.container.clientWidth === 0) {
       return;
     }
     cancelAnimationFrame(this.resizeFrame);
@@ -234,8 +235,7 @@ export class EChartsRenderer implements Renderer {
   }
 
   private hitFor(params: ECharts.ECElementEvent): Hit {
-    const { seriesIndex = 0, dataIndex } = params;
-    const { dataType } = params;
+    const { seriesIndex = 0, dataIndex, dataType } = params;
     const data: unknown = params.data;
     let label: string | undefined;
     if (dataType === "edge" && isObject(data)) {

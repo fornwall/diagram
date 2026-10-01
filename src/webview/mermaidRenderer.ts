@@ -106,12 +106,9 @@ export class MermaidRenderer implements Renderer {
       this.themeStale = false;
     }
     const id = `diagram-svg-${++this.renderCounter}`;
-    let result: Awaited<ReturnType<Mermaid["render"]>>;
-    try {
-      result = await mermaid.render(id, source);
-    } catch (error) {
+    const result = await mermaid.render(id, source).catch((error: unknown) => {
       throw describeError(error);
-    }
+    });
     this.diagram.innerHTML = result.svg;
     result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;

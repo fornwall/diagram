@@ -421,11 +421,9 @@ function layOutRadar(base: JsonObject, reserved: Insets, width: number, height: 
   }
   const boxWidth = width - reserved.left - reserved.right;
   const boxHeight = height - reserved.top - reserved.bottom;
-  const snap = (value: number) => Math.round(value / 8) * 8;
+  radar.center = [reserved.left + boxWidth / 2, reserved.top + boxHeight / 2];
   // Leave room around the radar for the indicator names.
-  const radius = snap(Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2));
-  radar.center = [snap(reserved.left + boxWidth / 2), snap(reserved.top + boxHeight / 2)];
-  radar.radius = radius;
+  radar.radius = Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2);
 }
 
 /**
