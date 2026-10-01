@@ -10,8 +10,9 @@ import { buildChart, describeTable } from "./charts";
 import { type DataTable, parseTable } from "./data";
 import { errorMessage } from "./protocol";
 
-/** The largest file or command output that is read, in bytes. */
-const MAX_BYTES = 10 * 1024 * 1024;
+/** The largest file or command output that is read. */
+const MAX_MB = 10;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 const COMMAND_TIMEOUT_MS = 60_000;
 /**
  * How long to wait for the rest of a command's output after it exits, in case a process it left
@@ -53,10 +54,6 @@ export function commandEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   return result;
 }
 
-function firstWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
-  return vscode.workspace.workspaceFolders?.[0];
-}
-
 /**
  * Resolves a data file path as given in a chart spec: "~" and "~/…" relative to the home
  * directory, absolute paths as they are, and other paths relative to the first workspace folder.
@@ -70,7 +67,7 @@ export function resolveFile(file: string): vscode.Uri {
   if (path.isAbsolute(file)) {
     return vscode.Uri.file(file);
   }
-  const folder = firstWorkspaceFolder();
+  const folder = vscode.workspace.workspaceFolders?.[0];
   if (folder === undefined) {
     throw new Error(
       `The file path ${JSON.stringify(file)} is relative, but no workspace folder is open. ` +
@@ -97,7 +94,7 @@ export async function readDataFile(file: string): Promise<string> {
   if (stat.size > MAX_BYTES) {
     throw new Error(
       `The file ${uri.fsPath} is ${(stat.size / 1024 / 1024).toFixed(1)} MB, more than the ` +
-        `${MAX_BYTES / 1024 / 1024} MB limit. Use a command that summarizes it instead.`,
+        `${MAX_MB} MB limit. Use a command that summarizes it instead.`,
     );
   }
   const bytes = await vscode.workspace.fs.readFile(uri);
@@ -132,7 +129,7 @@ export async function runCommand(
         'Manage Workspace Trust), or give the data with "data" or "file" instead.',
     );
   }
-  const folder = firstWorkspaceFolder();
+  const folder = vscode.workspace.workspaceFolders?.[0];
   if (folder !== undefined && folder.uri.scheme !== "file") {
     throw new Error(
       `Commands run on this computer, but the workspace folder ${folder.name} is not on it. ` +
@@ -165,15 +162,23 @@ export async function runCommand(
     let settled = false;
     let graceTimer: NodeJS.Timeout | undefined;
 
-    const killGroup = (): void => {
-      try {
-        if (!windows && child.pid !== undefined) {
+    // Killing the shell alone would leave the command running.
+    const killTree = (): void => {
+      if (child.pid === undefined) {
+        return;
+      }
+      if (!windows) {
+        try {
           process.kill(-child.pid, "SIGKILL");
-        } else {
-          child.kill();
+        } catch {
+          // Already exited.
         }
-      } catch {
-        // Already exited.
+      } else if (child.exitCode === null && child.signalCode === null) {
+        // Once the shell has exited, its process ID may belong to another process.
+        spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+          stdio: "ignore",
+          windowsHide: true,
+        }).on("error", () => {});
       }
     };
     // Settles the promise once. Output pipes are closed too, as a process that left the
@@ -195,7 +200,7 @@ export async function runCommand(
       }
     };
     const kill = (reason: Error): void => {
-      killGroup();
+      killTree();
       finish(reason);
     };
     const complete = (code: number | null, signal: NodeJS.Signals | null): void => {
@@ -203,23 +208,15 @@ export async function runCommand(
       const errors = tail(Buffer.concat(stderr).toString("utf8"));
       const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;
       const failure =
-        code === 0
-          ? undefined
-          : code === null
-            ? `was killed by ${signal}`
-            : `exited with code ${code}`;
-      if (output.trim() !== "") {
-        finish({
-          output,
-          ...(failure === undefined
-            ? {}
-            : {
-                warning: `The command ${failure}, so its output may be incomplete.${errorOutput}`,
-              }),
-        });
-      } else {
-        const status = failure === undefined ? "" : ` and ${failure}`;
+        code === 0 ? "" : code === null ? `was killed by ${signal}` : `exited with code ${code}`;
+      if (output.trim() === "") {
+        const status = failure && ` and ${failure}`;
         finish(new Error(`The command printed nothing to standard output${status}.${errorOutput}`));
+      } else if (failure === "") {
+        finish({ output });
+      } else {
+        const warning = `The command ${failure}, so its output may be incomplete.${errorOutput}`;
+        finish({ output, warning });
       }
     };
 
@@ -234,7 +231,7 @@ export async function runCommand(
       if (stdoutBytes > MAX_BYTES) {
         kill(
           new Error(
-            `The command printed more than ${MAX_BYTES / 1024 / 1024} MB. ` +
+            `The command printed more than ${MAX_MB} MB. ` +
               "Narrow its output down, e.g. by filtering or with head.",
           ),
         );
@@ -255,7 +252,7 @@ export async function runCommand(
     // background may prevent; then the output so far is used shortly after the command exits.
     child.on("exit", (code, signal) => {
       graceTimer = setTimeout(() => {
-        killGroup();
+        killTree();
         complete(code, signal);
       }, EXIT_GRACE_MS);
     });

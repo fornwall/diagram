@@ -66,6 +66,26 @@ suite("dataSource", () => {
       await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MB/);
     });
 
+    test("stops the processes a command started", async () => {
+      const pidFile = path.join(dir, "pid");
+      await assert.rejects(
+        runCommand(`sleep 30 & echo $! > '${pidFile}'; wait`, token, 300),
+        /timed out/,
+      );
+      const pid = Number(fs.readFileSync(pidFile, "utf8"));
+      const alive = () => {
+        try {
+          return process.kill(pid, 0);
+        } catch {
+          return false;
+        }
+      };
+      for (let i = 0; i < 50 && alive(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.ok(!alive(), `process ${pid} is still running`);
+    });
+
     test("stops a command when cancelled", async () => {
       const source = new vscode.CancellationTokenSource();
       setTimeout(() => source.cancel(), 50);
