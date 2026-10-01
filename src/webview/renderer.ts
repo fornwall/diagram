@@ -12,23 +12,18 @@ export interface RendererHost {
   itemClicked(hit: Hit | undefined, modifier: boolean): void;
 }
 
-export interface RenderContext {
-  /** The title shown in the panel header. */
-  title: string;
-}
-
 /** Renders one diagram language in the canvas area. */
 export interface Renderer {
   readonly language: DiagramLanguage;
-  /** Whether the zoom buttons and Ctrl/Cmd+wheel zoom apply. */
-  readonly zoomable: boolean;
-  /** Noun for the clickable parts, for hints: "node" or "item". */
+  /** What the panel calls a rendering, its clickable parts and its source. */
+  readonly noun: string;
   readonly itemNoun: string;
+  readonly sourceName: string;
   /**
    * Renders the source and shows it, returning the diagram type. Throws an error with an
    * actionable message when the source cannot be rendered.
    */
-  render(source: string, context: RenderContext): Promise<string>;
+  render(source: string, title: string): Promise<string>;
   /** Hides the rendering and releases its resources (another renderer took over). */
   hide(): void;
   /** Highlights the parts with the given keys as selected. */
@@ -37,6 +32,7 @@ export interface Renderer {
   themeChanged(): Promise<void>;
   /** The source as shown in the source editor. */
   formatForEditing(source: string): string;
+  /** Zooming, for renderers that do not fit the panel by themselves. */
   zoomBy?(factor: number): void;
   zoomReset?(): void;
 }

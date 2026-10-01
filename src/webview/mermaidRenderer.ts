@@ -1,40 +1,68 @@
 // Renders Mermaid diagrams as SVG, scaled to fit the panel.
 
-import mermaid from "mermaid";
+import type { Mermaid } from "mermaid";
 import type { DiagramNode } from "../protocol";
 import type { Renderer, RendererHost } from "./renderer";
 import { isDarkTheme } from "./vscodeTheme";
 
-const NODE_SELECTOR = [
-  "g.node", // flowchart, class, state, ER, mindmap, ...
-  "g.actor-man", // sequence diagram actors
-  "rect.actor",
-  "text.actor",
-  "g.mindmap-node",
-  "g.eventWrapper", // timeline
-  "g.task", // gantt
-].join(", ");
+let loading: Promise<Mermaid> | undefined;
+const loadMermaid = () => (loading ??= import("mermaid").then((module) => module.default));
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 
-function initializeMermaid(): void {
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: isDarkTheme() ? "dark" : "default",
-    fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
-  });
+const TYPE_EXAMPLES = '"flowchart TD", "sequenceDiagram", "classDiagram", "erDiagram", "mindmap"';
+
+/** Replaces Mermaid's error for an unknown diagram type, which quotes the whole source. */
+function describeError(error: unknown): unknown {
+  // Mermaid quotes the source without front matter, directives and comments.
+  const text =
+    error instanceof Error && error.name === "UnknownDiagramError"
+      ? /for text: (.*)$/s.exec(error.message)?.[1]?.trim()
+      : undefined;
+  if (text === undefined) {
+    return error;
+  }
+  if (text.startsWith("```")) {
+    return new Error(
+      `Remove the code fence around the diagram: the source must start with the diagram type, e.g. ${TYPE_EXAMPLES}.`,
+    );
+  }
+  if (!text) {
+    return new Error(
+      `The diagram is empty: start it with the diagram type, e.g. ${TYPE_EXAMPLES}.`,
+    );
+  }
+  const type = text.split(/\s/, 1)[0]?.slice(0, 40);
+  return new Error(
+    `Unknown diagram type "${type}": the first line must declare the type, e.g. ${TYPE_EXAMPLES}.`,
+  );
+}
+
+/** The text of an element, with its lines (separate text nodes) separated by spaces. */
+function textOf(element: Element): string {
+  const parts: string[] = [];
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    parts.push(walker.currentNode.nodeValue ?? "");
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 export class MermaidRenderer implements Renderer {
   readonly language = "mermaid";
-  readonly zoomable = true;
+  readonly noun = "diagram";
   readonly itemNoun = "node";
+  readonly sourceName = "Mermaid source";
 
+  /** Whether Mermaid must be initialized (again) for the current VS Code theme. */
+  private themeStale = true;
   private renderCounter = 0;
+  /** The selectable nodes of the shown diagram, by the elements that show them. */
+  private nodes = new Map<Element, DiagramNode>();
+  private selectedKeys: ReadonlySet<string> = new Set();
   private zoom = 1;
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
@@ -48,9 +76,9 @@ export class MermaidRenderer implements Renderer {
     private readonly diagram: HTMLElement,
     private readonly zoomButton: HTMLButtonElement,
   ) {
-    initializeMermaid();
     diagram.addEventListener("click", (event) => {
-      const node = event.target instanceof Element ? this.nodeFor(event.target) : undefined;
+      const element = event.target instanceof Element && event.target.closest(".diagram-node");
+      const node = element ? this.nodes.get(element) : undefined;
       host.itemClicked(
         node ? { key: node.id, node } : undefined,
         event.ctrlKey || event.metaKey || event.shiftKey,
@@ -65,53 +93,58 @@ export class MermaidRenderer implements Renderer {
   }
 
   async render(source: string): Promise<string> {
-    const id = `diagram-svg-${++this.renderCounter}`;
-    try {
-      // Parse first, so that syntax errors do not leave Mermaid's error graphic in the DOM.
-      await mermaid.parse(source);
-      const { svg, diagramType, bindFunctions } = await mermaid.render(id, source);
-      this.diagram.innerHTML = svg;
-      bindFunctions?.(this.diagram);
-      this.diagram.hidden = false;
-      this.displayedSource = source;
-      this.prepareSvg();
-      if (this.fitting) {
-        this.fit();
-      } else {
-        this.setZoom(this.zoom);
-      }
-      return diagramType;
-    } catch (error) {
-      // Remove the temporary elements Mermaid leaves behind when rendering fails.
-      document.getElementById(id)?.remove();
-      document.getElementById(`d${id}`)?.remove();
-      throw error;
+    const mermaid = await loadMermaid();
+    if (this.themeStale) {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        // Throw errors instead of rendering them as a diagram, and clean up after failing.
+        suppressErrorRendering: true,
+        theme: isDarkTheme() ? "dark" : "default",
+        fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
+      });
+      this.themeStale = false;
     }
+    const id = `diagram-svg-${++this.renderCounter}`;
+    let result: Awaited<ReturnType<Mermaid["render"]>>;
+    try {
+      result = await mermaid.render(id, source);
+    } catch (error) {
+      throw describeError(error);
+    }
+    this.diagram.innerHTML = result.svg;
+    result.bindFunctions?.(this.diagram);
+    this.diagram.hidden = false;
+    this.displayedSource = source;
+    this.prepareSvg(id);
+    if (this.fitting) {
+      this.fit();
+    } else {
+      this.setZoom(this.zoom);
+    }
+    return result.diagramType;
   }
 
   hide(): void {
     this.diagram.hidden = true;
     this.diagram.innerHTML = "";
+    this.nodes.clear();
     this.displayedSource = undefined;
     this.naturalSize = undefined;
   }
 
   showSelection(keys: ReadonlySet<string>): void {
-    for (const element of this.diagram.querySelectorAll(NODE_SELECTOR)) {
-      const node = this.nodeFor(element);
-      element.classList.toggle("diagram-selected", node !== undefined && keys.has(node.id));
+    this.selectedKeys = keys;
+    for (const [element, node] of this.nodes) {
+      element.classList.toggle("diagram-selected", keys.has(node.id));
     }
   }
 
   async themeChanged(): Promise<void> {
-    initializeMermaid();
+    this.themeStale = true;
     if (this.displayedSource !== undefined) {
-      const selected = Array.from(this.diagram.querySelectorAll(".diagram-selected"), (element) =>
-        this.nodeFor(element),
-      ).flatMap((node) => (node ? [node.id] : []));
       try {
         await this.render(this.displayedSource);
-        this.showSelection(new Set(selected));
       } catch {
         // It rendered before with another theme; keep what is shown.
       }
@@ -138,37 +171,74 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
-  private nodeFor(target: Element): DiagramNode | undefined {
-    const element = target.closest(NODE_SELECTOR);
-    if (!element || !this.diagram.contains(element)) {
-      return undefined;
-    }
-    // Sequence diagram actors consist of a box and a text that are siblings; select by name.
-    const label = (
-      element.matches("rect.actor")
-        ? element.parentElement?.querySelector("text.actor")?.textContent
-        : element.textContent
-    )
-      ?.replace(/\s+/g, " ")
-      .trim();
-    const dataId = element.getAttribute("data-id");
-    const generatedId = /(?:flowchart|state|classId|entity)-(.+)-\d+$/.exec(element.id)?.[1];
-    const id = dataId ?? generatedId ?? label ?? element.id;
-    return { id, label: label || id };
-  }
-
-  /** Gives the SVG its natural size, so that zooming (and fitting) scales it as a whole. */
-  private prepareSvg(): void {
+  /** Finds the selectable nodes, and gives the SVG its natural size for zooming as a whole. */
+  private prepareSvg(svgId: string): void {
+    this.nodes.clear();
     this.naturalSize = undefined;
     const svg = this.diagram.querySelector("svg");
-    const viewBox = svg?.viewBox.baseVal;
-    if (!svg || !viewBox || viewBox.width <= 0 || viewBox.height <= 0) {
+    if (!svg) {
       return;
     }
-    this.naturalSize = { width: viewBox.width, height: viewBox.height };
-    svg.setAttribute("width", String(viewBox.width));
-    svg.setAttribute("height", String(viewBox.height));
-    svg.style.maxWidth = "none";
+    this.findNodes(svg, `${svgId}-`);
+    this.showSelection(this.selectedKeys);
+    const viewBox = svg.viewBox.baseVal;
+    if (viewBox.width > 0 && viewBox.height > 0) {
+      this.naturalSize = { width: viewBox.width, height: viewBox.height };
+      svg.setAttribute("width", String(viewBox.width));
+      svg.setAttribute("height", String(viewBox.height));
+      svg.style.maxWidth = "none";
+    }
+  }
+
+  private findNodes(svg: SVGSVGElement, idPrefix: string): void {
+    const add = (element: Element, node: DiagramNode) => {
+      element.classList.add("diagram-node");
+      this.nodes.set(element, node);
+    };
+    const withoutPrefix = (id: string) =>
+      id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id;
+
+    // Flowchart, class, state, ER, mind map, … nodes, with element ids like "flowchart-A-0".
+    for (const element of svg.querySelectorAll("g.node, g.rough-node")) {
+      // Class and entity boxes also list their members and attributes.
+      const label = textOf(element.querySelector(".label-group, .label.name") ?? element);
+      const domId = withoutPrefix(element.id);
+      const id = /^(?:flowchart|state|classId|entity)-(.+)-\d+$/.exec(domId)?.[1] ?? label;
+      add(element, { id: id || domId, label: label || id || domId });
+    }
+
+    // Sequence diagram participants. Their copies below the diagram lack the participant
+    // attributes, but have the same label.
+    const participants = new Map<string, DiagramNode>();
+    for (const element of svg.querySelectorAll('[data-et="participant"]')) {
+      const label = textOf(element);
+      const node = { id: element.getAttribute("data-id") || label, label };
+      participants.set(label, node);
+      add(element, node);
+    }
+    for (const element of svg.querySelectorAll(".actor-bottom")) {
+      const group = element.querySelector("text") ? element : element.parentElement;
+      const node = group && participants.get(textOf(group));
+      if (node) {
+        add(group, node);
+      }
+    }
+
+    // Gantt tasks: a bar and a label with ids derived from the task id.
+    for (const bar of svg.querySelectorAll("rect.task")) {
+      const text = document.getElementById(`${bar.id}-text`);
+      if (text) {
+        const node = { id: withoutPrefix(bar.id), label: textOf(text) };
+        add(bar, node);
+        add(text, node);
+      }
+    }
+
+    // Timeline periods and events.
+    for (const element of svg.querySelectorAll("g.timeline-node")) {
+      const label = textOf(element);
+      add(element, { id: label, label });
+    }
   }
 
   /** Scales large diagrams down to the panel width (and height, within reason). */

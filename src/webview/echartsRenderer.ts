@@ -1,11 +1,12 @@
 // Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
 
 import * as echarts from "echarts";
+import { errorMessage } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { asArray, isCartesian, isObject, type JsonObject, layoutOption } from "./echartsLayout";
 import { buildEChartsTheme } from "./echartsTheme";
 import { describeJsonError } from "./jsonErrors";
-import type { Hit, RenderContext, Renderer, RendererHost } from "./renderer";
+import type { Hit, Renderer, RendererHost } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 const THEME_NAME = "vscode";
@@ -174,10 +175,6 @@ function seriesTypes(option: JsonObject): string {
   return Array.from(new Set(types)).join(", ");
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function valueText(value: unknown): string | undefined {
   if (value === null || value === undefined || value === "") {
     return undefined;
@@ -214,8 +211,9 @@ const withModifier = (event: unknown) =>
 
 export class EChartsRenderer implements Renderer {
   readonly language = "echarts";
-  readonly zoomable = false;
-  readonly itemNoun = "item";
+  readonly noun = "chart";
+  readonly itemNoun = "chart item";
+  readonly sourceName = "ECharts option (JSON)";
 
   private readonly container: HTMLElement;
   private chart: echarts.ECharts | undefined;
@@ -242,12 +240,12 @@ export class EChartsRenderer implements Renderer {
     new ResizeObserver(() => this.scheduleResize()).observe(this.container);
   }
 
-  async render(source: string, context: RenderContext): Promise<string> {
+  async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
     const previous = this.chart ? { option: this.option, title: this.title } : undefined;
     this.show();
     this.option = option;
-    this.title = context.title;
+    this.title = title;
     this.legendSelected = undefined;
     this.selectedKeys = new Set();
     try {
@@ -264,7 +262,7 @@ export class EChartsRenderer implements Renderer {
           this.disposeChart();
         }
       }
-      throw new Error(`ECharts could not render this option: ${errorText(error)}`);
+      throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
     return seriesTypes(option);
   }

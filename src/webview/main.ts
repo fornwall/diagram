@@ -1,4 +1,10 @@
-import type { DiagramLanguage, DiagramNode, FromWebview, ToWebview } from "../protocol";
+import {
+  type DiagramLanguage,
+  type DiagramNode,
+  errorMessage,
+  type FromWebview,
+  type ToWebview,
+} from "../protocol";
 import { EChartsRenderer } from "./echartsRenderer";
 import { MermaidRenderer } from "./mermaidRenderer";
 import type { Hit, Renderer, RendererHost } from "./renderer";
@@ -36,8 +42,8 @@ const pickBanner = element("pick");
 const pickPrompt = element("pick-prompt");
 const pickDoneButton = element<HTMLButtonElement>("pick-done");
 
-/** The last source the extension asked to render, whether or not it rendered. */
-let current: { language: DiagramLanguage; source: string } | undefined;
+/** The last diagram the extension asked to render, whether or not it rendered. */
+let current: { renderer: Renderer; source: string } | undefined;
 /** The source shown in the editor when it was opened. */
 let editedFrom = "";
 /** Selected nodes or chart items, by renderer key. */
@@ -58,19 +64,10 @@ const renderers: Record<DiagramLanguage, Renderer> = {
 let active: Renderer = renderers.mermaid;
 let anythingShown = false;
 
-function errorMessage(error: unknown): string {
-  // Mermaid parse errors are not always Error instances, but carry a message.
-  if (typeof error === "object" && error !== null && "message" in error) {
-    return String(error.message);
-  }
-  return String(error);
-}
-
-function showError(language: DiagramLanguage, message: string): void {
-  const what = language === "echarts" ? "chart" : "diagram";
+function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
   const [summary = "", ...details] = message.split("\n");
-  errorElement.textContent = `This ${what} failed to render: ${summary}`;
+  errorElement.textContent = `This ${renderer.noun} failed to render: ${summary}`;
   if (details.length > 0) {
     const pre = document.createElement("pre");
     pre.textContent = details.join("\n");
@@ -79,14 +76,10 @@ function showError(language: DiagramLanguage, message: string): void {
   errorElement.hidden = false;
 }
 
-function updateLanguageUi(language: DiagramLanguage): void {
-  editButton.title =
-    language === "echarts" ? "Edit the ECharts option (JSON)" : "Edit the Mermaid source";
-  sourceInput.setAttribute(
-    "aria-label",
-    language === "echarts" ? "ECharts option (JSON)" : "Mermaid source",
-  );
-  const zoomable = anythingShown ? active.zoomable : renderers[language].zoomable;
+function updateLanguageUi(renderer: Renderer): void {
+  editButton.title = `Edit the ${renderer.sourceName}`;
+  sourceInput.setAttribute("aria-label", renderer.sourceName);
+  const zoomable = (anythingShown ? active : renderer).zoomBy !== undefined;
   for (const button of zoomButtons) {
     button.hidden = !zoomable;
   }
@@ -103,10 +96,14 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     post({ type: "renderError", requestId, message: `Unknown diagram language "${language}".` });
     return;
   }
-  current = { language, source };
+  const changed = current?.source !== source;
+  current = { renderer, source };
+  if (changed) {
+    sourceChanged();
+  }
   const previous = anythingShown ? active : undefined;
   try {
-    const diagramType = await renderer.render(source, { title: message.title });
+    const diagramType = await renderer.render(source, message.title);
     if (previous && previous !== renderer) {
       previous.hide();
     }
@@ -120,10 +117,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     if (renderer !== previous) {
       renderer.hide();
     }
-    showError(language, errorMessage(error));
+    showError(renderer, errorMessage(error));
     post({ type: "renderError", requestId, message: errorMessage(error) });
   }
-  updateLanguageUi(language);
+  updateLanguageUi(renderer);
   updateSelectionUi();
 }
 
@@ -178,13 +175,13 @@ function updateSelectionUi(): void {
   selectionLabel.textContent = labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint();
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
   pickDoneButton.disabled = labels.length === 0;
-  const what = current?.language === "echarts" ? "chart" : "diagram";
+  const { noun } = current?.renderer ?? renderers.mermaid;
   askInput.placeholder =
-    labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${what}…`;
+    labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${noun}…`;
 }
 
 function hint(): string {
-  const noun = current?.language === "echarts" ? "chart item" : "node";
+  const noun = (current?.renderer ?? renderers.mermaid).itemNoun;
   if (pick) {
     return pick.multiple
       ? `Click ${noun}s to pick them, then press Done.`
@@ -318,10 +315,34 @@ refreshButton.addEventListener("click", () => post({ type: "refresh" }));
 
 // Source editing.
 
-editButton.addEventListener("click", () => {
-  editedFrom = current ? renderers[current.language].formatForEditing(current.source) : "";
+const staleNote = document.createElement("p");
+staleNote.className = "note";
+staleNote.textContent =
+  "The diagram changed since you started editing. Apply replaces it with your version.";
+staleNote.hidden = true;
+sourceInput.after(staleNote);
+
+function openEditor(): void {
+  editedFrom = current ? current.renderer.formatForEditing(current.source) : "";
   sourceInput.value = editedFrom;
+  staleNote.hidden = true;
   editor.hidden = false;
+}
+
+/** Keeps an open editor from silently replacing a diagram that changed while editing. */
+function sourceChanged(): void {
+  if (editor.hidden) {
+    return;
+  }
+  if (sourceInput.value === editedFrom) {
+    openEditor();
+  } else {
+    staleNote.hidden = false;
+  }
+}
+
+editButton.addEventListener("click", () => {
+  openEditor();
   sourceInput.focus();
 });
 
@@ -344,9 +365,9 @@ zoomResetButton.addEventListener("click", () => active.zoomReset?.());
 canvas.addEventListener(
   "wheel",
   (event) => {
-    if ((event.ctrlKey || event.metaKey) && active.zoomable) {
+    if ((event.ctrlKey || event.metaKey) && active.zoomBy) {
       event.preventDefault();
-      active.zoomBy?.(event.deltaY < 0 ? 1.1 : 1 / 1.1);
+      active.zoomBy(event.deltaY < 0 ? 1.1 : 1 / 1.1);
     }
   },
   { passive: false },
