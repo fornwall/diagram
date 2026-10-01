@@ -261,7 +261,10 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
 function findJavaScript(value: unknown, path: string): void {
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      findJavaScript(item, `${path}[${index}]`);
+      // Primitive data points cannot contain callbacks; avoid building paths for large datasets.
+      if (item !== null && typeof item === "object") {
+        findJavaScript(item, `${path}[${index}]`);
+      }
     });
     return;
   }
@@ -269,8 +272,12 @@ function findJavaScript(value: unknown, path: string): void {
     return;
   }
   for (const [key, item] of Object.entries(value)) {
+    const callback = typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
+    if (!callback && (item === null || typeof item !== "object")) {
+      continue;
+    }
     const itemPath = path === "option" ? key : `${path}.${key}`;
-    if (CALLBACK_KEYS.has(key) && typeof item === "string" && isFunctionAt(item)) {
+    if (callback) {
       throw new Error(
         `${itemPath} is JavaScript code, but the option is JSON and cannot contain functions. ` +
           'Use a string template instead, such as "{b}: {c}" (name and value) or "{d}%" (pie percentage).',

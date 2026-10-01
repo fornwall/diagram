@@ -135,6 +135,33 @@ suite("echartsOption", () => {
     );
   });
 
+  test("checks callbacks inside data objects while skipping primitive data points", () => {
+    const option = {
+      series: [
+        {
+          type: "pie",
+          data: [
+            null,
+            1,
+            "function (p) { return p; }",
+            [
+              2,
+              {
+                value: 3,
+                label: { formatter: "p => p.value" },
+              },
+            ],
+          ],
+        },
+      ],
+    };
+    assert.match(
+      errorOf(JSON.stringify(option)),
+      /^series\[0\]\.data\[3\]\[1\]\.label\.formatter is JavaScript code/,
+    );
+    parseOption('{"series": [{"type": "pie", "data": [null, 1, "p => p.value"]}]}');
+  });
+
   test("accepts text that merely looks like code", () => {
     parseOption(
       `{"title": {"text": "function of time", "subtext": "Input => Output"}, ${BAR}, ` +
