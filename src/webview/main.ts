@@ -108,11 +108,18 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   clearSelection();
   editButton.title = `Edit the ${renderer.sourceName}`;
   sourceInput.setAttribute("aria-label", renderer.sourceName);
-  for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
-    button.hidden = !(active ?? renderer).zoomBy;
-  }
+  updateToolbar();
   updateSelectionUi();
 }
+
+/** Offers zooming when the rendering shown zooms, and editing once there is a source. */
+function updateToolbar(): void {
+  for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
+    button.hidden = !active?.zoomBy;
+  }
+  editButton.hidden = current === undefined;
+}
+updateToolbar();
 
 function showRefresh(from: string | undefined): void {
   refreshButton.hidden = from === undefined;
