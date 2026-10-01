@@ -173,70 +173,75 @@ function validateSeries(base: JsonObject): void {
     );
   }
   series.forEach((each, index) => {
-    if (!isPlainObject(each)) {
-      throw new Error(
-        `series[${index}] must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(each)}.`,
-      );
-    }
-    const type = each.type;
-    if (typeof type !== "string" || !type) {
-      throw new Error(
-        `series[${index}] has no "type". Set it to one of: ${SERIES_TYPES.join(", ")}.`,
-      );
-    }
-    if (!SERIES_TYPES.includes(type)) {
-      const sameName = SERIES_TYPES.find((each) => each.toLowerCase() === type.toLowerCase());
-      const hint = sameName
-        ? `types are case-sensitive: "${sameName}"`
-        : TYPE_HINTS[type.toLowerCase()];
-      const problem = type === "map" || type === "custom" ? "unsupported" : "unknown";
-      throw new Error(
-        `series[${index}] has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
-          `Valid types: ${SERIES_TYPES.join(", ")}.`,
-      );
-    }
-    const system = coordinateSystem(each);
-    if (system === "geo" || system === "bmap") {
-      throw new Error(
-        `series[${index}] (type "${type}") is drawn on a map${each.coordinateSystem ? "" : " by default"}, ` +
-          'but the panel has no map data; set "coordinateSystem": "cartesian2d" and add "xAxis" and "yAxis".',
-      );
-    }
-    const components = system === undefined ? undefined : COORDINATE_COMPONENTS[system];
-    if (components?.needs.some((name) => base[name] === undefined)) {
-      const needs = components.needs.map((name) => `"${name}"`);
-      throw new Error(
-        `series[${index}] (type "${type}") is drawn on the ${system} coordinate system and needs ` +
-          `${needs.length > 1 ? `${needs.slice(0, -1).join(", ")} and ${needs.at(-1)}` : needs[0]}, ` +
-          `e.g. ${components.example}.`,
-      );
-    }
-    if (type === "heatmap" && base.visualMap === undefined) {
-      throw new Error(
-        `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
-          '"visualMap": {"min": 0, "max": 10}.',
-      );
-    }
-    const nodes: unknown = each.data ?? each.nodes;
-    if (
-      type === "graph" &&
-      (each.layout ?? "none") === "none" &&
-      each.coordinateSystem === undefined &&
-      Array.isArray(nodes) &&
-      nodes.some(
-        (node) => !isPlainObject(node) || typeof node.x !== "number" || typeof node.y !== "number",
-      )
-    ) {
-      throw new Error(
-        `series[${index}] is a "graph" series without "layout", whose nodes need "x" and "y" to be ` +
-          'drawn; set "layout": "force" or "circular" to place them automatically.',
-      );
-    }
+    checkSeries(each, index, base);
   });
   if (base.geo !== undefined) {
     throw new Error(
       'The "geo" component is not available in the diagram panel, as it has no map data. ' +
         "Use another chart type.",
+    );
+  }
+}
+
+/** Checks that a series has a type that works from JSON, and what it needs to draw anything. */
+function checkSeries(each: unknown, index: number, base: JsonObject): void {
+  if (!isPlainObject(each)) {
+    throw new Error(
+      `series[${index}] must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(each)}.`,
+    );
+  }
+  const type = each.type;
+  if (typeof type !== "string" || !type) {
+    throw new Error(
+      `series[${index}] has no "type". Set it to one of: ${SERIES_TYPES.join(", ")}.`,
+    );
+  }
+  if (!SERIES_TYPES.includes(type)) {
+    const sameName = SERIES_TYPES.find((known) => known.toLowerCase() === type.toLowerCase());
+    const hint = sameName
+      ? `types are case-sensitive: "${sameName}"`
+      : TYPE_HINTS[type.toLowerCase()];
+    const problem = type === "map" || type === "custom" ? "unsupported" : "unknown";
+    throw new Error(
+      `series[${index}] has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
+        `Valid types: ${SERIES_TYPES.join(", ")}.`,
+    );
+  }
+  const system = coordinateSystem(each);
+  if (system === "geo" || system === "bmap") {
+    throw new Error(
+      `series[${index}] (type "${type}") is drawn on a map${each.coordinateSystem ? "" : " by default"}, ` +
+        'but the panel has no map data; set "coordinateSystem": "cartesian2d" and add "xAxis" and "yAxis".',
+    );
+  }
+  const components = system === undefined ? undefined : COORDINATE_COMPONENTS[system];
+  if (components?.needs.some((name) => base[name] === undefined)) {
+    const needs = components.needs.map((name) => `"${name}"`);
+    throw new Error(
+      `series[${index}] (type "${type}") is drawn on the ${system} coordinate system and needs ` +
+        `${needs.length > 1 ? `${needs.slice(0, -1).join(", ")} and ${needs.at(-1)}` : needs[0]}, ` +
+        `e.g. ${components.example}.`,
+    );
+  }
+  if (type === "heatmap" && base.visualMap === undefined) {
+    throw new Error(
+      `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
+        '"visualMap": {"min": 0, "max": 10}.',
+    );
+  }
+  const nodes: unknown = each.data ?? each.nodes;
+  if (
+    type === "graph" &&
+    (each.layout ?? "none") === "none" &&
+    each.coordinateSystem === undefined &&
+    Array.isArray(nodes) &&
+    nodes.some(
+      (node) => !isPlainObject(node) || typeof node.x !== "number" || typeof node.y !== "number",
+    )
+  ) {
+    throw new Error(
+      `series[${index}] is a "graph" series without "layout", whose nodes need "x" and "y" to be ` +
+        'drawn; set "layout": "force" or "circular" to place them automatically.',
     );
   }
 }
