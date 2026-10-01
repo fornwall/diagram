@@ -56,9 +56,36 @@ suite("echartsOption", () => {
   });
 
   test("requires the coordinate system of grid and radar series", () => {
-    assert.match(errorOf('{"series": [{"type": "line"}]}'), /needs both "xAxis" and "yAxis"/);
-    assert.match(errorOf('{"series": [{"type": "radar"}]}'), /needs a "radar" component/);
-    parseOption('{"series": [{"type": "scatter", "coordinateSystem": "polar"}]}');
+    assert.match(errorOf('{"series": [{"type": "line"}]}'), /needs "xAxis" and "yAxis", e\.g\./);
+    assert.match(
+      errorOf('{"series": [{"type": "radar"}]}'),
+      /radar coordinate system and needs "radar"/,
+    );
+    assert.match(
+      errorOf('{"angleAxis": {}, "series": [{"type": "bar", "coordinateSystem": "polar"}]}'),
+      /needs "polar", "angleAxis" and "radiusAxis"/,
+    );
+    assert.match(errorOf('{"series": [{"type": "parallel"}]}'), /needs "parallelAxis"/);
+    assert.match(errorOf('{"series": [{"type": "themeRiver"}]}'), /needs "singleAxis"/);
+    parseOption(
+      '{"polar": {}, "angleAxis": {}, "radiusAxis": {}, "series": [{"type": "scatter", "coordinateSystem": "polar"}]}',
+    );
+    parseOption(
+      `{${BAR}, "series": [{"type": "lines", "coordinateSystem": "cartesian2d", "data": []}]}`,
+    );
+  });
+
+  test("rejects series that would draw nothing", () => {
+    assert.match(errorOf('{"series": [{"type": "lines"}]}'), /drawn on a map by default/);
+    assert.match(
+      errorOf(`{${BAR}, "series": [{"type": "heatmap", "data": [[0, 0, 1]]}]}`),
+      /needs a "visualMap"/,
+    );
+    const graph = (extra: string) =>
+      `{"series": [{"type": "graph", "data": [{"name": "A"}, {"name": "B"}]${extra}}]}`;
+    assert.match(errorOf(graph("")), /set "layout": "force" or "circular"/);
+    parseOption(graph(', "layout": "force"'));
+    parseOption('{"series": [{"type": "graph", "data": [{"name": "A", "x": 0, "y": 0}]}]}');
   });
 
   test("finds JavaScript functions where ECharts accepts callbacks", () => {

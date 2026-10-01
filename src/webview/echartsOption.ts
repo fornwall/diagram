@@ -19,25 +19,57 @@ export function baseOption(option: JsonObject): JsonObject {
   return isPlainObject(option.baseOption) ? option.baseOption : option;
 }
 
-const CARTESIAN_TYPES = new Set([
-  "line",
-  "bar",
-  "scatter",
-  "effectScatter",
-  "pictorialBar",
-  "candlestick",
-  "boxplot",
-  "heatmap",
-]);
+/** The coordinate system that each series type is drawn on, unless the series sets another. */
+const DEFAULT_COORDINATE_SYSTEMS: Record<string, string> = {
+  line: "cartesian2d",
+  bar: "cartesian2d",
+  scatter: "cartesian2d",
+  effectScatter: "cartesian2d",
+  pictorialBar: "cartesian2d",
+  candlestick: "cartesian2d",
+  boxplot: "cartesian2d",
+  heatmap: "cartesian2d",
+  radar: "radar",
+  parallel: "parallel",
+  themeRiver: "singleAxis",
+  lines: "geo",
+};
 
-export function isCartesian(series: JsonObject): boolean {
-  const system = series.coordinateSystem;
-  return (
-    typeof series.type === "string" &&
-    CARTESIAN_TYPES.has(series.type) &&
-    (system === undefined || system === "cartesian2d")
-  );
+function coordinateSystem(series: JsonObject): string | undefined {
+  return typeof series.coordinateSystem === "string"
+    ? series.coordinateSystem
+    : DEFAULT_COORDINATE_SYSTEMS[String(series.type)];
 }
+
+export const isCartesian = (series: JsonObject) => coordinateSystem(series) === "cartesian2d";
+
+/** The components that each coordinate system needs, without which ECharts throws or draws nothing. */
+const COORDINATE_COMPONENTS: Record<string, { needs: string[]; example: string }> = {
+  cartesian2d: {
+    needs: ["xAxis", "yAxis"],
+    example: '"xAxis": {"type": "category", "data": ["Mon", "Tue"]}, "yAxis": {"type": "value"}',
+  },
+  polar: {
+    needs: ["polar", "angleAxis", "radiusAxis"],
+    example:
+      '"polar": {}, "angleAxis": {"type": "category", "data": ["N", "E", "S", "W"]}, "radiusAxis": {}',
+  },
+  radar: {
+    needs: ["radar"],
+    example:
+      '"radar": {"indicator": [{"name": "Speed", "max": 100}, {"name": "Cost", "max": 100}]}',
+  },
+  parallel: {
+    needs: ["parallelAxis"],
+    example: '"parallelAxis": [{"dim": 0, "name": "Price"}, {"dim": 1, "name": "Weight"}]',
+  },
+  singleAxis: { needs: ["singleAxis"], example: '"singleAxis": {"type": "time"}' },
+  calendar: { needs: ["calendar"], example: '"calendar": {"range": "2026"}' },
+  matrix: {
+    needs: ["matrix"],
+    example: '"matrix": {"x": {"data": ["A", "B"]}, "y": {"data": ["C", "D"]}}',
+  },
+};
 
 /**
  * Series types that work from JSON, as registered in echartsLibrary.ts: map needs map data and
@@ -162,16 +194,41 @@ function validateSeries(base: JsonObject): void {
           `Valid types: ${SERIES_TYPES.join(", ")}.`,
       );
     }
-    if (isCartesian(each) && (base.xAxis === undefined || base.yAxis === undefined)) {
+    const system = coordinateSystem(each);
+    if (system === "geo" || system === "bmap") {
       throw new Error(
-        `series[${index}] (type "${type}") is drawn on a grid and needs both "xAxis" and "yAxis", ` +
-          'e.g. "xAxis": {"type": "category", "data": ["Mon", "Tue"]}, "yAxis": {"type": "value"}.',
+        `series[${index}] (type "${type}") is drawn on a map${each.coordinateSystem ? "" : " by default"}, ` +
+          'but the panel has no map data; set "coordinateSystem": "cartesian2d" and add "xAxis" and "yAxis".',
       );
     }
-    if (type === "radar" && base.radar === undefined) {
+    const components = system === undefined ? undefined : COORDINATE_COMPONENTS[system];
+    if (components?.needs.some((name) => base[name] === undefined)) {
+      const needs = components.needs.map((name) => `"${name}"`);
       throw new Error(
-        `series[${index}] is a "radar" series and needs a "radar" component, e.g. "radar": ` +
-          '{"indicator": [{"name": "Speed", "max": 100}, {"name": "Cost", "max": 100}]}.',
+        `series[${index}] (type "${type}") is drawn on the ${system} coordinate system and needs ` +
+          `${needs.length > 1 ? `${needs.slice(0, -1).join(", ")} and ${needs.at(-1)}` : needs[0]}, ` +
+          `e.g. ${components.example}.`,
+      );
+    }
+    if (type === "heatmap" && base.visualMap === undefined) {
+      throw new Error(
+        `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
+          '"visualMap": {"min": 0, "max": 10}.',
+      );
+    }
+    const nodes: unknown = each.data ?? each.nodes;
+    if (
+      type === "graph" &&
+      (each.layout ?? "none") === "none" &&
+      each.coordinateSystem === undefined &&
+      Array.isArray(nodes) &&
+      nodes.some(
+        (node) => !isPlainObject(node) || typeof node.x !== "number" || typeof node.y !== "number",
+      )
+    ) {
+      throw new Error(
+        `series[${index}] is a "graph" series without "layout", whose nodes need "x" and "y" to be ` +
+          'drawn; set "layout": "force" or "circular" to place them automatically.',
       );
     }
   });
