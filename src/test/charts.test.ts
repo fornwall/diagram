@@ -55,6 +55,10 @@ suite("charts", () => {
       { name: "json", value: 2 },
     ]);
     assert.strictEqual(summary(chart("pie")), 'Charted "files" by "language".');
+    assert.strictEqual(
+      summary(chart("pie", { valueColumns: ["lines", "files"] })),
+      'Charted "lines" by "language"; left out "files", as a pie chart shows one value column.',
+    );
   });
 
   test("doughnut has an inner radius", () => {

@@ -193,11 +193,18 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     spec.labelColumn === undefined
       ? defaultLabelColumn(table, scatter)
       : findColumn(table, spec.labelColumn, "label");
-  const valueIndices = (
+  const columns =
     spec.valueColumns?.map((name) => findColumn(table, name, "value")) ??
-    defaultValueColumns(table, labelIndex)
-  ).slice(0, pie ? 1 : scatter ? 2 : undefined);
+    defaultValueColumns(table, labelIndex);
+  const valueIndices = columns.slice(0, pie ? 1 : scatter ? 2 : undefined);
   const name = (index: number) => table.columns[index]?.name ?? "";
+  const notes: string[] = [];
+  if (spec.valueColumns !== undefined && valueIndices.length < columns.length) {
+    const left = columns.slice(valueIndices.length).map(name);
+    notes.push(
+      `left out ${quoteAll(left)}, as a ${spec.type} chart shows ${pie ? "one value column" : "two value columns"}`,
+    );
+  }
   if (valueIndices.length === 0) {
     throw new Error(
       'No column holds numbers to chart. If the data was not split into columns as intended, set "format".',
@@ -215,7 +222,6 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     );
   }
 
-  const notes: string[] = [];
   let tableRows = table.rows;
   if (labelIndex !== undefined && hasTotalsRow(table, labelIndex, valueIndices)) {
     tableRows = tableRows.slice(0, -1);
