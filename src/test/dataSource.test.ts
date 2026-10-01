@@ -109,6 +109,21 @@ suite("dataSource", () => {
     assert.strictEqual(await readDataFile(file), "a,1");
   });
 
+  test("reads files that are not UTF-8 as Windows-1252", async () => {
+    const file = path.join(dir, "latin1.csv");
+    fs.writeFileSync(file, Buffer.from("café,1", "latin1"));
+    assert.strictEqual(await readDataFile(file), "café,1");
+  });
+
+  test("refuses binary files, such as spreadsheets", async () => {
+    const file = path.join(dir, "sales.xlsx");
+    fs.writeFileSync(file, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]));
+    await assert.rejects(
+      readDataFile(file),
+      /is not a text file \(it may be a spreadsheet\)\. Save its data as CSV/,
+    );
+  });
+
   test("reports how the data was read and charted", async () => {
     const chart = await loadChart({ type: "bar", data: "dir,size\nsrc,1\ntest,2" }, token);
     assert.match(chart.report, /^Charted "size" by "dir"\.\n\nThe data was read as: 2 rows;/);

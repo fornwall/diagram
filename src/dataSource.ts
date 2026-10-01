@@ -99,13 +99,24 @@ export async function readDataFile(file: string): Promise<string> {
   }
   const bytes = await vscode.workspace.fs.readFile(uri);
   // UTF-16 files, as PowerShell writes with >, start with a byte order mark.
-  const encoding =
-    bytes[0] === 0xff && bytes[1] === 0xfe
-      ? "utf-16le"
-      : bytes[0] === 0xfe && bytes[1] === 0xff
-        ? "utf-16be"
-        : "utf-8";
-  return new TextDecoder(encoding).decode(bytes);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(bytes);
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(bytes);
+  }
+  if (bytes.includes(0)) {
+    throw new Error(
+      `The file ${uri.fsPath} is not a text file (it may be a spreadsheet). ` +
+        "Save its data as CSV, or use a command that prints it.",
+    );
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // Excel on Windows saves CSV files in the Windows code page.
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
 }
 
 function tail(text: string): string {
