@@ -146,6 +146,21 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.tooltip, undefined);
   });
 
+  test("keeps the chart and legend clear of a timeline", () => {
+    const named = [
+      { type: "bar", name: "One", data: [1, 2] },
+      { type: "bar", name: "Two", data: [3, 4] },
+    ];
+    const option = layout(
+      { baseOption: bars({ timeline: { data: ["2025", "2026"] }, series: named }), options: [] },
+      { width: 400 },
+    );
+    assert.strictEqual(option.baseOption.legend.bottom, 50);
+    assert.strictEqual(option.baseOption.grid.bottom, 84);
+    const placed = layout(bars({ timeline: { top: 0 } }));
+    assert.strictEqual(placed.grid.bottom, 8);
+  });
+
   test("keepUserState carries legend selection and zoom ranges over", () => {
     const option: Option = layout(
       bars({ legend: {}, dataZoom: [{ type: "inside", startValue: 2, endValue: 5 }] }),

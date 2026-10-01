@@ -84,6 +84,10 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     }
   }
 
+  // A timeline takes the bottom of the chart, where ECharts places it unless told otherwise.
+  const timeline = asArray(base.timeline).find((t) => t.show !== false);
+  const timelineHeight = timeline && !has(timeline, [...BOX_KEYS, "orient"]) && responsive ? 44 : 0;
+
   // Legend: always there for several named series; the identity of a series is never only color.
   const pies = series.filter((s) => s.type === "pie");
   const pie = pies.length === 1 ? pies[0] : undefined;
@@ -119,7 +123,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       } else if (legendSide === "top") {
         Object.assign(legend, { top: titleHeight > 0 ? titleHeight : 6, left: "center" });
       } else {
-        Object.assign(legend, { bottom: 6, left: "center" });
+        Object.assign(legend, { bottom: timelineHeight + 6, left: "center" });
       }
     } else if (legend.orient === "vertical") {
       legendSide = legend.left !== undefined && legend.right === undefined ? "left" : "right";
@@ -131,7 +135,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 
   const reserved: Insets = {
     top: titleHeight + (legendSide === "top" ? 30 : 0),
-    bottom: legendSide === "bottom" ? 32 : 0,
+    bottom: timelineHeight + (legendSide === "bottom" ? 32 : 0),
     left: legendSide === "left" ? legendWidth + 16 : 0,
     right: legendSide === "right" ? legendWidth + 16 : 0,
   };
