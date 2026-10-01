@@ -472,7 +472,7 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
  * A rule: a line of dashes, as under the header of Markdown ("|---|--:|"), psql ("----+----"),
  * pip list and PowerShell tables, or of "=", as around tokei's.
  */
-const RULE = /^[\s|+:=-]*[-=][\s|+:=-]*$/;
+const RULE = /^(?=[^-=]*[-=])[\s|+:=-]+$/;
 
 /** Leaves out rules, and tells whether one is under the first line, making it a header. */
 function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {

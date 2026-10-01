@@ -419,6 +419,10 @@ suite("data", () => {
     assert.deepStrictEqual(df.columns, ["Name", "Size", "Mounted on"]);
   });
 
+  test("parses a long line that almost is a rule", () => {
+    assert.strictEqual(parse(`a 1\n${"-".repeat(1_000_000)}x 2`).rows.length, 2);
+  });
+
   test("parses a JSON array of objects, with the union of keys as columns", () => {
     assert.deepStrictEqual(parse('[{"a": "x", "b": 1}, {"b": "2", "c": true}]'), {
       columns: ["a", "b", "c"],
