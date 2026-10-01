@@ -122,6 +122,11 @@ button.link:hover {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
+#editor .note {
+  margin: 0;
+  color: var(--vscode-editorWarning-foreground);
+}
+
 textarea,
 input {
   box-sizing: border-box;
