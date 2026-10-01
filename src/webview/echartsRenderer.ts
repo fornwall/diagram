@@ -69,6 +69,17 @@ export class EChartsRenderer implements Renderer {
     this.container.hidden = true;
     canvas.append(this.container);
     new ResizeObserver(() => this.scheduleRelayout()).observe(this.container);
+    // Moving VS Code to another screen changes the pixel ratio without resizing the chart.
+    const watchPixelRatio = () =>
+      window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+        "change",
+        () => {
+          watchPixelRatio();
+          this.relayout();
+        },
+        { once: true },
+      );
+    watchPixelRatio();
   }
 
   async render(source: string, title: string): Promise<string> {
@@ -129,7 +140,9 @@ export class EChartsRenderer implements Renderer {
   }
 
   private createChart(echarts: typeof EChartsLibrary, theme: object): ECharts.ECharts {
-    const chart = echarts.init(this.container, theme);
+    const chart = echarts.init(this.container, theme, {
+      devicePixelRatio: window.devicePixelRatio,
+    });
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
@@ -179,16 +192,22 @@ export class EChartsRenderer implements Renderer {
       reducedMotion: this.reducedMotion.matches,
     });
     const laidOut = JSON.stringify(option);
-    if (relayout && laidOut === this.laidOut) {
+    // A chart draws at the pixel ratio it was created with, which e.g. zooming VS Code changes.
+    const sharp = this.chart?.getDevicePixelRatio() === window.devicePixelRatio;
+    if (relayout && sharp && laidOut === this.laidOut) {
       return;
     }
     if (!animate) {
       option.animation = false;
     }
-    this.chart ??= this.createChart(echarts, this.theme.echarts);
-    if (relayout) {
+    if (relayout && this.chart) {
       keepUserState(option, this.chart.getOption() as JsonObject);
     }
+    if (!sharp) {
+      this.chart?.dispose();
+      this.chart = undefined;
+    }
+    this.chart ??= this.createChart(echarts, this.theme.echarts);
     this.chart.setOption(option, { notMerge: true });
     this.laidOut = laidOut;
     this.shownSelected = [];
