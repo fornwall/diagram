@@ -468,7 +468,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
     `img-src ${webview.cspSource} data:`,
     `font-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
-    `script-src 'nonce-${nonce}' ${webview.cspSource}`,
+    `script-src 'nonce-${nonce}'`,
   ].join("; ");
 
   return `<!DOCTYPE html>

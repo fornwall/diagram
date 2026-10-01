@@ -280,7 +280,7 @@
     "check-types": "tsc --noEmit && tsc --noEmit -p src/webview && tsc --noEmit -p tsconfig.test.json",
     "lint": "biome check",
     "format": "biome check --write",
-    "compile-tests": "tsc -p tsconfig.test.json",
+    "compile-tests": "node -e \"fs.rmSync('out',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "pretest": "npm run compile && npm run compile-tests",
     "test": "vscode-test",
     "vsix": "vsce package --no-dependencies"
