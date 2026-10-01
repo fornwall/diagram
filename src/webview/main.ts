@@ -10,7 +10,15 @@ import { MermaidRenderer } from "./mermaidRenderer";
 import { type Hit, type Renderer, withModifier } from "./renderer";
 import "./style.css";
 
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
+interface State {
+  draft: string;
+}
+
+declare function acquireVsCodeApi(): {
+  postMessage(message: unknown): void;
+  getState(): State | undefined;
+  setState(state: State): void;
+};
 
 const vscode = acquireVsCodeApi();
 const post = (message: FromWebview) => vscode.postMessage(message);
@@ -292,12 +300,18 @@ document.addEventListener("keydown", (event) => {
 
 clearSelectionButton.addEventListener("click", clearSelection);
 
+// Keep an unsent message when the webview reloads, e.g. when moved to another window.
+const saveDraft = () => vscode.setState({ draft: askInput.value });
+askInput.value = vscode.getState()?.draft ?? "";
+askInput.addEventListener("input", saveDraft);
+
 askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = askInput.value.trim();
   if (text) {
     post({ type: "ask", text, nodes: Array.from(selection.values()) });
     askInput.value = "";
+    saveDraft();
   }
 });
 
