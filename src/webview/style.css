@@ -1,0 +1,167 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+header,
+footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  flex-wrap: wrap;
+}
+
+header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+footer {
+  flex-direction: column;
+  align-items: stretch;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+}
+
+button {
+  padding: 3px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary,
+header button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+button.secondary:hover,
+header button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button.link {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+}
+
+button.link:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+#error {
+  padding: 6px 12px;
+  background: var(--vscode-inputValidation-errorBackground);
+  border-bottom: 1px solid var(--vscode-inputValidation-errorBorder);
+  white-space: pre-wrap;
+}
+
+#editor:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+textarea,
+input {
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+}
+
+textarea {
+  min-height: 160px;
+  resize: vertical;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+textarea:focus,
+input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+#canvas {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+#empty {
+  margin-top: 2em;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+#diagram {
+  text-align: center;
+}
+
+#diagram :is(g.node, g.actor-man, rect.actor, text.actor, g.mindmap-node, g.eventWrapper, g.task) {
+  cursor: pointer;
+}
+
+#diagram .diagram-selected {
+  filter: drop-shadow(0 0 2px var(--vscode-focusBorder))
+    drop-shadow(0 0 6px var(--vscode-focusBorder));
+}
+
+#selection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 1.5em;
+  color: var(--vscode-descriptionForeground);
+}
+
+#ask-form {
+  display: flex;
+  gap: 6px;
+}
+
+#ask-form input {
+  flex: 1;
+  min-width: 0;
+}

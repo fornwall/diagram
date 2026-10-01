@@ -6,7 +6,7 @@
   "publisher": "fornwall",
   "license": "Apache-2.0",
   "engines": {
-    "vscode": "^1.138.0"
+    "vscode": "^1.140.0"
   },
   "categories": [
     "AI",
@@ -14,15 +14,101 @@
     "Visualization"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onWebviewPanel:diagram.panel"
+  ],
   "contributes": {
     "chatParticipants": [
       {
         "id": "diagram.participant",
         "name": "diagram",
         "fullName": "Diagram",
-        "description": "Create and explore Mermaid diagrams",
-        "isSticky": true
+        "description": "Draw, change and explain Mermaid diagrams",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "new",
+            "description": "Start a new diagram instead of changing the current one"
+          },
+          {
+            "name": "explain",
+            "description": "Explain the current diagram or the selected nodes"
+          },
+          {
+            "name": "show",
+            "description": "Show the diagram panel"
+          }
+        ],
+        "disambiguation": [
+          {
+            "category": "diagram",
+            "description": "The user wants to draw, visualize, update or explain a diagram, such as a flowchart, sequence diagram, class diagram, state machine, entity relationship diagram, architecture overview, mind map, timeline or Gantt chart.",
+            "examples": [
+              "Draw a sequence diagram of the login flow",
+              "Visualize the class hierarchy in this file",
+              "Make a flowchart of this algorithm",
+              "Add error handling to the diagram"
+            ]
+          }
+        ]
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "diagram_render",
+        "displayName": "Render Diagram",
+        "toolReferenceName": "diagram",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(type-hierarchy)",
+        "userDescription": "Show a Mermaid diagram in an interactive panel",
+        "modelDescription": "Renders a Mermaid diagram in an interactive panel next to the chat, and reports whether it rendered or the syntax error if it did not. Use it whenever a diagram (flowchart, sequence, class, state, ER, mind map, timeline, Gantt, ...) helps explain code, architecture, data flow or a plan. In the panel the user can select nodes, edit the source and send follow-up requests about the selected nodes; call diagram_getState to see the current source and selection before changing a diagram. Always pass the complete diagram, not a diff. Avoid click directives, HTML and hard-coded colors.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "The complete Mermaid diagram source, without a surrounding code fence."
+            },
+            "title": {
+              "type": "string",
+              "description": "A short title for the diagram, shown in the panel."
+            }
+          },
+          "required": [
+            "source"
+          ]
+        }
+      },
+      {
+        "name": "diagram_getState",
+        "displayName": "Get Diagram",
+        "toolReferenceName": "diagramState",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(type-hierarchy)",
+        "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
+        "modelDescription": "Returns the Mermaid source of the diagram currently shown in the interactive diagram panel, whether the user has edited it by hand, whether it fails to render, and which nodes the user has selected. Call it before changing an existing diagram, and when the user refers to 'this', 'these' or 'the selected' parts of the diagram.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "diagram.show",
+        "title": "Show Diagram Panel",
+        "category": "Diagram",
+        "icon": "$(type-hierarchy)"
       }
     ]
   },
@@ -31,7 +117,7 @@
     "compile": "npm run check-types && npm run lint && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "package": "npm run check-types && npm run lint && node esbuild.mjs --production",
-    "check-types": "tsc --noEmit",
+    "check-types": "tsc --noEmit && tsc --noEmit -p src/webview",
     "lint": "biome check",
     "format": "biome check --write",
     "compile-tests": "tsc -p tsconfig.test.json",
@@ -48,6 +134,7 @@
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
+    "mermaid": "^12.0.0",
     "typescript": "^7.0.2"
   },
   "allowScripts": {
