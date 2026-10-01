@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
-import { DiagramBlockFilter, diagramFence, extractDiagramBlocks, guessTitle } from "./blocks";
+import { codeFence, DiagramBlockFilter, guessTitle, lastDiagramBlock } from "./blocks";
 import type { DiagramPanel } from "./panel";
-import { CHART_TOOL } from "./tools";
+import {
+  CHART_TOOL,
+  type DiagramLanguage,
+  diagramNoun,
+  errorMessage,
+  isDiagramLanguage,
+} from "./protocol";
 
 export const PARTICIPANT_ID = "diagram.participant";
 
@@ -37,7 +43,7 @@ Do not output a mermaid or echarts code block: this request must not change the 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
   return async (request, context, stream, token) => {
     if (request.command === "show") {
-      if (!panel.hasDiagram) {
+      if (!panel.current) {
         stream.markdown("There is no diagram yet. Describe what you want me to draw.");
         return;
       }
@@ -69,20 +75,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const rendersBefore = panel.renderCount;
     const converse = () =>
       streamReply(request.model, messages, tools, request.toolInvocationToken, stream, token);
-    /** The diagram this request rendered, to restore it in later requests' history. */
-    const renderedDiagram = (): vscode.ChatResult | undefined => {
-      const current = panel.current;
-      if (panel.renderCount === rendersBefore || !current) {
-        return undefined;
-      }
-      panel.setOrigin("participant");
-      // A chart of a file or command is remembered by how it was drawn, as its data may be large.
-      return {
-        metadata: current.chart
-          ? { chart: current.chart }
-          : { language: current.language, source: current.source },
-      };
-    };
 
     try {
       let reply = await converse();
@@ -91,27 +83,35 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       }
 
       for (let attempt = 0; ; attempt++) {
-        const block = extractDiagramBlocks(reply).at(-1);
+        const block = lastDiagramBlock(reply);
         if (!block || token.isCancellationRequested) {
-          const result = renderedDiagram();
-          if (result) {
-            stream.button({ command: "diagram.show", title: "Show Chart" });
+          const diagram = panel.current;
+          if (panel.renderCount === rendersBefore || !diagram) {
+            return;
           }
-          return result;
+          // The chart tool drew a chart. Remember it for later requests' history, by how it was
+          // drawn if it charts a file or command, as its data may be large.
+          panel.setOrigin("participant");
+          showButton(stream, diagram.language);
+          return {
+            metadata: diagram.chart
+              ? { chart: diagram.chart }
+              : { language: diagram.language, source: diagram.source },
+          };
         }
-        const what = block.language === "echarts" ? "chart" : "diagram";
-        stream.progress(`Rendering ${what}…`);
+        const noun = diagramNoun(block.language);
+        stream.progress(`Rendering ${noun}…`);
         const outcome = await panel.render({ ...block, title: guessTitle(block) }, "participant");
-        if (outcome.ok) {
-          stream.button({
-            command: "diagram.show",
-            title: block.language === "echarts" ? "Show Chart" : "Show Diagram",
-          });
+        if (outcome.ok || outcome.kind === "unavailable") {
+          if (!outcome.ok) {
+            stream.markdown(`\n\n${outcome.error}`);
+          }
+          showButton(stream, block.language);
           return { metadata: block };
         }
         if (attempt >= MAX_REPAIR_ATTEMPTS) {
           stream.markdown(
-            `\n\nThe ${what} failed to render: ${outcome.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
+            `\n\nThe ${noun} failed to render: ${outcome.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
           );
           return { metadata: block };
         }
@@ -121,7 +121,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         messages.push(
           vscode.LanguageModelChatMessage.Assistant(reply),
           vscode.LanguageModelChatMessage.User(
-            `That ${what} failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${what} in a single ${block.language} code block.`,
+            `That ${noun} failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block.`,
           ),
         );
         reply = await converse();
@@ -133,6 +133,13 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       throw error;
     }
   };
+}
+
+function showButton(stream: vscode.ChatResponseStream, language: DiagramLanguage): void {
+  stream.button({
+    command: "diagram.show",
+    title: language === "echarts" ? "Show Chart" : "Show Diagram",
+  });
 }
 
 /**
@@ -149,8 +156,9 @@ async function streamReply(
 ): Promise<string> {
   let declined = false;
   for (let round = 0; ; round++) {
-    const options = { tools: round < MAX_TOOL_ROUNDS && !declined ? tools : [] };
-    const response = await model.sendRequest(messages, options, token);
+    // The tools are passed even when no more calls are run, as some models reject requests whose
+    // messages contain tool calls but no tools.
+    const response = await model.sendRequest(messages, { tools }, token);
     // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS
     // Code from rendering a second, non-interactive copy of it inline.
     const filter = new DiagramBlockFilter();
@@ -171,7 +179,15 @@ async function streamReply(
     if (rest) {
       stream.markdown(rest);
     }
-    if (calls.length === 0 || token.isCancellationRequested) {
+    if (token.isCancellationRequested) {
+      return reply;
+    }
+    if (filter.unterminated) {
+      stream.markdown(
+        "\n\nThe reply ended before the diagram was complete. Try again, or ask for a smaller diagram.",
+      );
+    }
+    if (calls.length === 0 || round > MAX_TOOL_ROUNDS) {
       return reply;
     }
 
@@ -184,26 +200,32 @@ async function streamReply(
     const results: vscode.LanguageModelToolResultPart[] = [];
     for (const call of calls) {
       let content: unknown[];
-      try {
-        const result = await vscode.lm.invokeTool(
-          call.name,
-          { input: call.input, toolInvocationToken },
-          token,
-        );
-        content = result.content;
-      } catch (error) {
-        if (token.isCancellationRequested) {
-          return reply;
+      if (declined || round === MAX_TOOL_ROUNDS) {
+        const why = declined
+          ? "the user declined an earlier tool call"
+          : "this request has made too many tool calls";
+        content = [new vscode.LanguageModelTextPart(`Not run, as ${why}. Answer without tools.`)];
+      } else {
+        try {
+          const result = await vscode.lm.invokeTool(
+            call.name,
+            { input: call.input, toolInvocationToken },
+            token,
+          );
+          content = result.content;
+        } catch (error) {
+          if (token.isCancellationRequested) {
+            return reply;
+          }
+          // Thrown when the user denies running the command; don't let the model ask again.
+          declined =
+            error instanceof vscode.CancellationError ||
+            (error instanceof Error && error.name === "Canceled");
+          const message = declined
+            ? "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted."
+            : `The tool call failed: ${errorMessage(error)}`;
+          content = [new vscode.LanguageModelTextPart(message)];
         }
-        // Thrown when the user denies running the command; don't let the model ask again.
-        const denied =
-          error instanceof vscode.CancellationError ||
-          (error instanceof Error && error.name === "Canceled");
-        declined ||= denied;
-        const message = denied
-          ? "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted."
-          : `The tool call failed: ${error instanceof Error ? error.message : String(error)}`;
-        content = [new vscode.LanguageModelTextPart(message)];
       }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
@@ -227,8 +249,8 @@ function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatM
       const source: unknown = turn.result.metadata?.source;
       const language: unknown = turn.result.metadata?.language ?? "mermaid";
       const chart: unknown = turn.result.metadata?.chart;
-      if (typeof source === "string" && (language === "mermaid" || language === "echarts")) {
-        text += `\n\n${diagramFence({ language, source })}`;
+      if (typeof source === "string" && isDiagramLanguage(language)) {
+        text += `\n\n${codeFence(source, language)}`;
       } else if (chart) {
         text += `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${JSON.stringify(chart)})`;
       }
@@ -247,10 +269,14 @@ async function referenceMessages(
   for (const reference of references) {
     const content = await referenceContent(reference.value);
     if (content) {
-      const description = reference.modelDescription ?? content.name;
+      const { name, text } = content;
+      const truncated =
+        text.length > MAX_REFERENCE_LENGTH
+          ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
+          : "";
       messages.push(
         vscode.LanguageModelChatMessage.User(
-          `Attached by the user (${description}):\n\n\`\`\`\n${content.text.slice(0, MAX_REFERENCE_LENGTH)}\n\`\`\``,
+          `Attached by the user (${reference.modelDescription ?? name}${truncated}):\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
         ),
       );
     }

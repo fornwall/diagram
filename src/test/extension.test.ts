@@ -51,6 +51,9 @@ suite("Extension", () => {
 
     const state = await invoke("diagram_getState", {});
     assert.match(state, /fails to render/);
+
+    const pick = await invoke("diagram_pickNodes", { prompt: "Which part?" });
+    assert.match(pick, /No node was picked: The diagram fails to render/);
   });
 
   test("renders an ECharts option", async () => {
@@ -138,25 +141,15 @@ suite("Extension", () => {
       source: "flowchart LR\n  A[Parser] --> B[Checker]",
       clickPrompt: "Explain {label} in more detail",
     });
-    assert.match(text, /Clicking a node sends your click prompt/);
+    assert.match(text, /Rendered the flowchart/);
   });
 
-  test("a new pick replaces a waiting one, and cancelling ends a pick", async () => {
-    await invoke("diagram_render", { source: "flowchart LR\n  A[Parser] --> B[Checker]" });
-
-    const first = invoke("diagram_pickNodes", { prompt: "Which part?" });
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const cancellation = new vscode.CancellationTokenSource();
-    const second = invoke("diagram_pickNodes", { prompt: "Which other part?" }, cancellation.token);
+  test("reports malformed input back to the agent", async () => {
+    assert.match(await invoke("diagram_render", {}), /"source" must be the complete diagram/);
     assert.match(
-      await first,
-      /No node was picked: Another request to pick nodes replaced this one/,
+      await invoke("diagram_render", { source: "A", language: "dot" }),
+      /Unknown language "dot"/,
     );
-
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    cancellation.cancel();
-    // VS Code may either return the tool's result or reject with a cancellation error.
-    const outcome = await second.catch((error: unknown) => `rejected: ${error}`);
-    assert.match(outcome, /cancel/i);
+    assert.match(await invoke("diagram_pickNodes", {}), /"prompt" must be the question/);
   });
 });

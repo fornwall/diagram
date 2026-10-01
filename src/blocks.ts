@@ -6,19 +6,29 @@ export interface DiagramBlock {
   source: string;
 }
 
-const DIAGRAM_FENCE = /```(mermaid|echarts)[^\S\n]*\n([\s\S]*?)\n?```/g;
+/**
+ * A ```mermaid or ```echarts block. Like {@link DiagramBlockFilter}, it only takes fences on lines of
+ * their own, so that a ``` inside a label does not end the block.
+ */
+const DIAGRAM_BLOCK =
+  /(?<![^\n])[^\S\n]*```(mermaid|echarts)[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*```[^\S\n]*(?![^\n])/g;
 
-/** Returns all ```mermaid and ```echarts code blocks in the given markdown, in order. */
-export function extractDiagramBlocks(markdown: string): DiagramBlock[] {
-  return Array.from(markdown.matchAll(DIAGRAM_FENCE), (match) => ({
+/** Returns the last non-empty ```mermaid or ```echarts block in the given markdown. */
+export function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
+  return Array.from(markdown.matchAll(DIAGRAM_BLOCK), (match) => ({
     language: match[1] as DiagramLanguage,
     source: (match[2] ?? "").trim(),
-  })).filter((block) => block.source.length > 0);
+  }))
+    .filter((block) => block.source.length > 0)
+    .at(-1);
 }
 
-/** Wraps diagram source in a fenced code block that is safe to embed in markdown. */
-export function diagramFence({ language, source }: DiagramBlock): string {
-  return `\`\`\`${language}\n${source.trim()}\n\`\`\``;
+/** Wraps text in a fenced code block that is safe to embed in markdown, whatever the text. */
+export function codeFence(text: string, language = ""): string {
+  // The fence must be longer than any run of backticks in the text.
+  const longestRun = Math.max(0, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length));
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  return `${fence}${language}\n${text.trim()}\n${fence}`;
 }
 
 /** Derives a short title for a diagram. */
@@ -101,10 +111,15 @@ export class DiagramBlockFilter {
 
   /** Returns the remaining text that can be shown, once all fragments have been pushed. */
   flush(): string {
-    const output = this.insideBlock ? "" : this.line.slice(this.passed);
+    const output = this.completeLine(this.line);
     this.line = "";
     this.passed = 0;
     return output;
+  }
+
+  /** Whether the text ended inside a diagram block, e.g. because the reply was cut off. */
+  get unterminated(): boolean {
+    return this.insideBlock;
   }
 
   private completeLine(line: string): string {

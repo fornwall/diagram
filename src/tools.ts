@@ -4,17 +4,13 @@ import type { ChartSpec } from "./chartSpec";
 import { buildChartOption, validateChartSpec } from "./charts";
 import { describeTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
-import type { DiagramPanel } from "./panel";
-import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
+import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
+import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
-export const RENDER_TOOL = "diagram_render";
-export const CHART_TOOL = "diagram_chart";
-export const GET_STATE_TOOL = "diagram_getState";
-export const PICK_NODES_TOOL = "diagram_pickNodes";
-
+/** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
   source: string;
-  language?: DiagramLanguage;
+  language?: string;
   title?: string;
   clickPrompt?: string;
 }
@@ -24,11 +20,21 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
-function interactionHint(clickPrompt: string | undefined): string {
-  const clicks = clickPrompt
-    ? "Clicking a node sends your click prompt to the chat on the user's behalf."
-    : `The user can select nodes and send follow-up requests about them; use ${PICK_NODES_TOOL} to ask them to click a node.`;
-  return `${clicks} The user can also edit the source; use ${GET_STATE_TOOL} to see the current source and selection.`;
+/** Returns the diagram to render, or what is wrong with the input. */
+function parseRenderInput(input: RenderInput): Diagram | string {
+  const { source, language = "mermaid", title, clickPrompt } = input;
+  if (typeof source !== "string" || !source.trim()) {
+    return '"source" must be the complete diagram, as a string.';
+  }
+  if (!isDiagramLanguage(language)) {
+    return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON.`;
+  }
+  return {
+    language,
+    source,
+    title: typeof title === "string" && title.trim() ? title : guessTitle({ language, source }),
+    clickPrompt: typeof clickPrompt === "string" && clickPrompt ? clickPrompt : undefined,
+  };
 }
 
 /** Lets any agent show a Mermaid diagram or an ECharts chart in the interactive diagram panel. */
@@ -38,35 +44,41 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RenderInput>,
   ): vscode.PreparedToolInvocation {
-    const { source, language = "mermaid", title } = options.input;
-    const what = language === "echarts" ? "chart" : "diagram";
+    const diagram = parseRenderInput(options.input);
     return {
-      invocationMessage: `Rendering ${what} "${title ?? guessTitle({ language, source })}"`,
+      invocationMessage:
+        typeof diagram === "string"
+          ? "Rendering a diagram"
+          : `Rendering ${diagramNoun(diagram.language)} "${diagram.title}"`,
     };
   }
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RenderInput>,
+    token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const { source, language = "mermaid", clickPrompt } = options.input;
-    if (!DIAGRAM_LANGUAGES.includes(language)) {
+    const diagram = parseRenderInput(options.input);
+    if (typeof diagram === "string") {
+      return textResult(`Nothing was rendered: ${diagram}`);
+    }
+    const outcome = await unlessCancelled(this.panel.render(diagram, "tool"), token);
+    const noun = diagramNoun(diagram.language);
+    if (outcome.ok) {
       return textResult(
-        `Unknown language "${language}": use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON.`,
+        `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.`,
       );
     }
-    const title = options.input.title ?? guessTitle({ language, source });
-    const outcome = await this.panel.render(
-      { language, source, title, clickPrompt: clickPrompt || undefined },
-      "tool",
-    );
     const fix =
-      language === "echarts"
+      diagram.language === "echarts"
         ? "Fix the ECharts option (it must be valid JSON, without functions)"
         : "Fix the Mermaid syntax";
-    const text = outcome.ok
-      ? `Rendered the ${outcome.diagramType} ${language === "echarts" ? "chart" : "diagram"} in the diagram panel next to the chat. ${interactionHint(clickPrompt)}`
-      : `The ${language === "echarts" ? "chart" : "diagram"} failed to render with this error:\n\n${outcome.error}\n\n${fix} and call ${RENDER_TOOL} again with the complete corrected source.`;
-    return textResult(text);
+    return textResult(
+      renderFailure(
+        outcome,
+        noun,
+        `${fix} and call ${RENDER_TOOL} again with the complete corrected source.`,
+      ),
+    );
   }
 }
 
@@ -84,7 +96,8 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     const prepared: vscode.PreparedToolInvocation = {
       invocationMessage: `Drawing a ${type} chart${source}`,
     };
-    if (command) {
+    // In an untrusted workspace, the command is not run and invoke says so.
+    if (command && vscode.workspace.isTrusted) {
       const folder = vscode.workspace.workspaceFolders?.[0];
       const message = new vscode.MarkdownString(
         `Run this command${folder ? ` in \`${folder.name}\`` : ""} and chart its output?`,
@@ -125,25 +138,27 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       source = JSON.stringify(buildChartOption(spec, loaded.table), null, 2);
       summary = describeTable(loaded.table);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       return textResult(
-        `No chart was drawn: ${message}\n\nFix the input and call ${CHART_TOOL} again.`,
+        `No chart was drawn: ${errorMessage(error)}\n\nFix the input and call ${CHART_TOOL} again.`,
       );
     }
 
-    const outcome = await this.panel.render(
-      {
-        language: "echarts",
-        source,
-        title: spec.title ?? defaultChartTitle(spec),
-        clickPrompt: clickPrompt || undefined,
-        chart: spec.file || spec.command ? spec : undefined,
-      },
-      "tool",
+    const outcome = await unlessCancelled(
+      this.panel.render(
+        {
+          language: "echarts",
+          source,
+          title: spec.title ?? defaultChartTitle(spec),
+          clickPrompt: clickPrompt || undefined,
+          chart: spec.file || spec.command ? spec : undefined,
+        },
+        "tool",
+      ),
+      token,
     );
     const text = outcome.ok
-      ? `Rendered a ${spec.type} chart of ${origin} in the diagram panel next to the chat. The data was read as: ${summary}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns. ${interactionHint(clickPrompt)}`
-      : `The chart failed to render with this error:\n\n${outcome.error}\n\nThe data was read as: ${summary}`;
+      ? `Rendered a ${spec.type} chart of ${origin} in the diagram panel next to the chat. The data was read as: ${summary}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`
+      : `${renderFailure(outcome, "chart", spec.options ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.` : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`)}\n\nThe data was read as: ${summary}`;
     return textResult(text);
   }
 }
@@ -187,6 +202,9 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     const { prompt, multiple = false } = options.input;
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      return textResult('No node was picked: "prompt" must be the question to show the user.');
+    }
     const outcome = await this.panel.pickNodes(prompt, multiple, token);
     return textResult(
       outcome.picked
@@ -194,6 +212,25 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
         : `No node was picked: ${outcome.reason}`,
     );
   }
+}
+
+/** Explains to the model why a diagram was not shown, and what to do next. */
+function renderFailure(
+  outcome: Extract<RenderOutcome, { ok: false }>,
+  noun: string,
+  fix: string,
+): string {
+  return outcome.kind === "invalid"
+    ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
+    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call the tool again to reopen the panel.`;
+}
+
+/** Settles like the promise, but rejects with a CancellationError once the token is cancelled. */
+function unlessCancelled<T>(promise: Promise<T>, token: vscode.CancellationToken): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
+    promise.then(resolve, reject).finally(() => listener.dispose());
+  });
 }
 
 function textResult(text: string): vscode.LanguageModelToolResult {

@@ -1,24 +1,40 @@
 import * as vscode from "vscode";
-import { diagramFence } from "./blocks";
+import { codeFence } from "./blocks";
 import type { ChartSpec } from "./chartSpec";
 import { buildChartOption } from "./charts";
 import { loadTable } from "./dataSource";
 import {
-  DIAGRAM_LANGUAGES,
+  CHART_TOOL,
   type DiagramLanguage,
   type DiagramNode,
+  diagramNoun,
+  errorMessage,
   type FromWebview,
+  RENDER_TOOL,
   type ToWebview,
 } from "./protocol";
 
 /** Who produced the diagram currently shown: the @diagram participant, or another agent through a tool. */
 export type DiagramOrigin = "participant" | "tool";
 
-export type RenderOutcome = { ok: true; diagramType: string } | { ok: false; error: string };
+/**
+ * A render fails as "invalid" when the source has an error, and as "unavailable" when the panel
+ * was closed or did not respond, which says nothing about the source.
+ */
+export type RenderOutcome =
+  | { ok: true; diagramType: string }
+  | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
 export type PickOutcome =
   | { picked: true; nodes: DiagramNode[] }
   | { picked: false; reason: string };
+
+type RenderMessage = Extract<ToWebview, { type: "render" }>;
+
+interface PendingRender {
+  message: RenderMessage;
+  resolve: (outcome: RenderOutcome) => void;
+}
 
 interface PendingPick {
   id: number;
@@ -58,6 +74,9 @@ const RENDER_TIMEOUT_MS = 15_000;
 export class DiagramPanel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
+  /** How many diagrams agents have rendered, to tell whether a request rendered one. */
+  renderCount = 0;
+
   private panel: vscode.WebviewPanel | undefined;
   private webviewReady: Promise<void> = Promise.resolve();
   private resolveWebviewReady: () => void = () => {};
@@ -65,29 +84,14 @@ export class DiagramPanel implements vscode.Disposable {
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
   private nextRequestId = 1;
-  private readonly pendingRenders = new Map<number, (outcome: RenderOutcome) => void>();
+  private readonly pendingRenders = new Map<number, PendingRender>();
   private pendingPick: PendingPick | undefined;
-
-  /** Counts the diagrams rendered by agents, to tell whether a request rendered one. */
-  private renders = 0;
   private refreshing = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     const state = context.workspaceState.get<DiagramState>(STATE_KEY);
     // State saved before charts were supported has no language.
-    this.state = state && {
-      ...state,
-      language: DIAGRAM_LANGUAGES.includes(state.language) ? state.language : "mermaid",
-    };
-  }
-
-  get hasDiagram(): boolean {
-    return this.state !== undefined;
-  }
-
-  /** How many diagrams agents have rendered so far. */
-  get renderCount(): number {
-    return this.renders;
+    this.state = state && { ...state, language: state.language ?? "mermaid" };
   }
 
   /** The diagram currently shown, if any. */
@@ -97,9 +101,10 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Renders a diagram produced by an agent, opening the panel if needed. */
   async render(diagram: Diagram, origin: DiagramOrigin): Promise<RenderOutcome> {
-    this.renders++;
+    this.renderCount++;
     this.state = { ...diagram, origin, editedByUser: false };
     this.selection = [];
+    this.cancelPick("The diagram was replaced before the user picked.");
     this.reveal();
     return this.renderCurrent();
   }
@@ -112,10 +117,9 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Shows the panel with the current diagram, if any. */
+  /** Shows the panel, opening it with the current diagram if it was closed. */
   show(): void {
-    this.reveal();
-    if (this.state) {
+    if (this.reveal() && this.state) {
       void this.renderCurrent();
     }
   }
@@ -129,21 +133,22 @@ export class DiagramPanel implements vscode.Disposable {
     multiple: boolean,
     token: vscode.CancellationToken,
   ): Promise<PickOutcome> {
-    if (!this.state) {
-      return { picked: false, reason: "There is no diagram to pick from." };
-    }
-    if (this.pendingPick) {
-      this.finishPick(this.pendingPick.id, {
+    const state = this.state;
+    if (!state) {
+      return {
         picked: false,
-        reason: "Another request to pick nodes replaced this one.",
-      });
+        reason: `There is no diagram to pick from. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`,
+      };
     }
-    if (!this.panel) {
-      this.reveal();
-      void this.renderCurrent();
-    } else {
-      this.panel.reveal(undefined, true);
+    if (state.error) {
+      const noun = diagramNoun(state.language);
+      return {
+        picked: false,
+        reason: `The ${noun} fails to render, so there is nothing to pick from. Render a working ${noun} first. The error is: ${state.error}`,
+      };
     }
+    this.cancelPick("Another request to pick nodes replaced this one.");
+    this.show();
 
     const id = this.nextRequestId++;
     const outcome = new Promise<PickOutcome>((resolve) => {
@@ -190,7 +195,7 @@ export class DiagramPanel implements vscode.Disposable {
     const lines = [`The ${what} currently shown in the diagram panel ("${state.title}"):`, ""];
     // A chart of a large file or command output can be too large for the model's context.
     if (state.source.length <= MAX_SOURCE_FOR_MODEL) {
-      lines.push(diagramFence(state), "");
+      lines.push(codeFence(state.source, state.language), "");
     } else {
       lines.push(
         `(The source is ${state.source.length} characters long, too long to show here.)`,
@@ -202,7 +207,7 @@ export class DiagramPanel implements vscode.Disposable {
         ? `file ${state.chart.file}`
         : `command \`${state.chart.command}\``;
       lines.push(
-        `It was drawn with diagram_chart from ${from}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call diagram_chart again rather than editing the generated option.`,
+        `It was drawn with ${CHART_TOOL} from ${from}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,
       );
     }
     if (state.error) {
@@ -226,10 +231,11 @@ export class DiagramPanel implements vscode.Disposable {
     this.panel?.dispose();
   }
 
-  private reveal(): void {
+  /** Reveals the panel, or creates it, in which case this returns true. */
+  private reveal(): boolean {
     if (this.panel) {
       this.panel.reveal(undefined, true);
-      return;
+      return false;
     }
     const panel = vscode.window.createWebviewPanel(
       DiagramPanel.viewType,
@@ -238,6 +244,7 @@ export class DiagramPanel implements vscode.Disposable {
       webviewOptions(this.context.extensionUri),
     );
     this.attach(panel);
+    return true;
   }
 
   private attach(panel: vscode.WebviewPanel): void {
@@ -261,16 +268,14 @@ export class DiagramPanel implements vscode.Disposable {
       this.panel = undefined;
       this.selection = [];
       this.resolveWebviewReady();
-      if (this.pendingPick) {
-        this.finishPick(this.pendingPick.id, {
-          picked: false,
-          reason: "The user closed the diagram panel.",
+      this.cancelPick("The user closed the diagram panel.");
+      for (const requestId of this.pendingRenders.keys()) {
+        this.finishRender(requestId, {
+          ok: false,
+          kind: "unavailable",
+          error: "The diagram panel was closed before it finished rendering.",
         });
       }
-      for (const resolve of this.pendingRenders.values()) {
-        resolve({ ok: false, error: "The diagram panel was closed before the diagram rendered." });
-      }
-      this.pendingRenders.clear();
     });
   }
 
@@ -278,9 +283,16 @@ export class DiagramPanel implements vscode.Disposable {
     switch (message.type) {
       case "ready":
         this.resolveWebviewReady();
-        // The webview lost its content (e.g. it was moved to another window): render again.
-        if (this.webviewLoadedBefore && this.state) {
-          void this.renderCurrent();
+        // The webview lost its content (e.g. it was moved to another window): render again,
+        // under the original request ids so that pending renders are answered.
+        if (this.webviewLoadedBefore) {
+          if (this.pendingRenders.size > 0) {
+            for (const pending of this.pendingRenders.values()) {
+              this.post(pending.message);
+            }
+          } else if (this.state) {
+            void this.renderCurrent();
+          }
           if (this.pendingPick) {
             const { id, prompt, multiple } = this.pendingPick;
             this.post({ type: "startPick", pickId: id, prompt, multiple });
@@ -289,15 +301,14 @@ export class DiagramPanel implements vscode.Disposable {
         this.webviewLoadedBefore = true;
         break;
       case "rendered":
-        this.pendingRenders.get(message.requestId)?.({
-          ok: true,
-          diagramType: message.diagramType,
-        });
-        this.pendingRenders.delete(message.requestId);
+        this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
       case "renderError":
-        this.pendingRenders.get(message.requestId)?.({ ok: false, error: message.message });
-        this.pendingRenders.delete(message.requestId);
+        this.finishRender(message.requestId, {
+          ok: false,
+          kind: "invalid",
+          error: message.message,
+        });
         break;
       case "selectionChanged":
         this.selection = message.nodes;
@@ -306,6 +317,7 @@ export class DiagramPanel implements vscode.Disposable {
         if (this.state) {
           this.state = { ...this.state, source: message.source, editedByUser: true };
           this.selection = [];
+          this.cancelPick("The user edited the diagram source instead of picking.");
           void this.renderCurrent();
         }
         break;
@@ -332,6 +344,11 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
+  private finishRender(requestId: number, outcome: RenderOutcome): void {
+    this.pendingRenders.get(requestId)?.resolve(outcome);
+    this.pendingRenders.delete(requestId);
+  }
+
   private finishPick(id: number, outcome: PickOutcome): void {
     if (this.pendingPick?.id !== id) {
       return;
@@ -342,6 +359,12 @@ export class DiagramPanel implements vscode.Disposable {
     resolve(outcome);
   }
 
+  private cancelPick(reason: string): void {
+    if (this.pendingPick) {
+      this.finishPick(this.pendingPick.id, { picked: false, reason });
+    }
+  }
+
   /** Loads the data of the current chart again and redraws it, replacing manual edits. */
   private async refreshChart(): Promise<void> {
     const chart = this.state?.chart;
@@ -349,7 +372,7 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     this.refreshing = true;
-    const rendersBefore = this.renders;
+    const rendersBefore = this.renderCount;
     const cancellation = new vscode.CancellationTokenSource();
     try {
       const { table } = await vscode.window.withProgress(
@@ -357,7 +380,7 @@ export class DiagramPanel implements vscode.Disposable {
         () => loadTable(chart, cancellation.token),
       );
       // An agent may have replaced the chart while its data was loading.
-      if (!this.state || this.renders !== rendersBefore) {
+      if (!this.state || this.renderCount !== rendersBefore) {
         return;
       }
       const source = JSON.stringify(buildChartOption(chart, table), null, 2);
@@ -365,9 +388,7 @@ export class DiagramPanel implements vscode.Disposable {
       this.selection = [];
       await this.renderCurrent();
     } catch (error) {
-      void vscode.window.showErrorMessage(
-        `Could not refresh the chart: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
     } finally {
       this.refreshing = false;
       cancellation.dispose();
@@ -376,44 +397,53 @@ export class DiagramPanel implements vscode.Disposable {
 
   private async renderCurrent(): Promise<RenderOutcome> {
     const state = this.state;
-    const panel = this.panel;
-    if (!state || !panel) {
-      return { ok: false, error: "There is no diagram to render." };
+    if (!state || !this.panel) {
+      return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
     }
-    panel.title = state.title;
+    this.panel.title = state.title;
 
-    const requestId = this.nextRequestId++;
+    const message: RenderMessage = {
+      type: "render",
+      requestId: this.nextRequestId++,
+      language: state.language,
+      source: state.source,
+      title: state.title,
+      clickPrompt: state.clickPrompt,
+      refreshable: state.chart !== undefined,
+    };
     const outcome = new Promise<RenderOutcome>((resolve) => {
-      const timeout = setTimeout(() => {
-        if (this.pendingRenders.delete(requestId)) {
-          resolve({ ok: false, error: "Timed out waiting for the diagram panel to render." });
-        }
-      }, RENDER_TIMEOUT_MS);
-      this.pendingRenders.set(requestId, (outcome) => {
-        clearTimeout(timeout);
-        resolve(outcome);
+      const timeout = setTimeout(
+        () =>
+          this.finishRender(message.requestId, {
+            ok: false,
+            kind: "unavailable",
+            error: `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
+          }),
+        RENDER_TIMEOUT_MS,
+      );
+      this.pendingRenders.set(message.requestId, {
+        message,
+        resolve: (outcome) => {
+          clearTimeout(timeout);
+          resolve(outcome);
+        },
       });
     });
     await this.webviewReady;
     // The render may have timed out, or the panel closed, while the webview was loading.
-    if (this.pendingRenders.has(requestId)) {
-      this.post({
-        type: "render",
-        requestId,
-        language: state.language,
-        source: state.source,
-        title: state.title,
-        clickPrompt: state.clickPrompt,
-        refreshable: state.chart !== undefined,
-      });
+    if (this.pendingRenders.has(message.requestId)) {
+      this.post(message);
     }
     const result = await outcome;
 
-    // Only record the outcome if the diagram was not replaced while rendering.
-    if (this.state?.source === state.source && this.state.language === state.language) {
-      this.state = { ...this.state, error: result.ok ? undefined : result.error };
-      await this.context.workspaceState.update(STATE_KEY, this.state);
+    // An unavailable panel says nothing about the source, and the diagram may have been replaced
+    // while rendering.
+    const latest = this.state;
+    const replaced = latest?.source !== state.source || latest.language !== state.language;
+    if (latest && !replaced && (result.ok || result.kind === "invalid")) {
+      this.state = { ...latest, error: result.ok ? undefined : result.error };
     }
+    await this.context.workspaceState.update(STATE_KEY, this.state);
     return result;
   }
 

@@ -1,11 +1,29 @@
-// Messages exchanged between the extension host and the diagram webview.
+// Shared by the extension host and the diagram webview, mainly the messages exchanged between them.
+
+export const RENDER_TOOL = "diagram_render";
+export const CHART_TOOL = "diagram_chart";
+export const GET_STATE_TOOL = "diagram_getState";
+export const PICK_NODES_TOOL = "diagram_pickNodes";
 
 /**
  * How a diagram's source is written: Mermaid syntax, or an Apache ECharts option object as JSON.
  */
-export const DIAGRAM_LANGUAGES: readonly string[] = ["mermaid", "echarts"];
+export const DIAGRAM_LANGUAGES = ["mermaid", "echarts"] as const;
 
-export type DiagramLanguage = "mermaid" | "echarts";
+export type DiagramLanguage = (typeof DIAGRAM_LANGUAGES)[number];
+
+export function isDiagramLanguage(value: unknown): value is DiagramLanguage {
+  return DIAGRAM_LANGUAGES.includes(value as DiagramLanguage);
+}
+
+/** What to call a diagram in the given language when talking to the user or the model. */
+export function diagramNoun(language: DiagramLanguage): "diagram" | "chart" {
+  return language === "echarts" ? "chart" : "diagram";
+}
+
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export interface DiagramNode {
   /**

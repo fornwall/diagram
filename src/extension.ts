@@ -1,16 +1,8 @@
 import * as vscode from "vscode";
 import { DiagramPanel } from "./panel";
 import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
-import {
-  CHART_TOOL,
-  ChartTool,
-  GET_STATE_TOOL,
-  GetDiagramStateTool,
-  PICK_NODES_TOOL,
-  PickDiagramNodesTool,
-  RENDER_TOOL,
-  RenderDiagramTool,
-} from "./tools";
+import { CHART_TOOL, GET_STATE_TOOL, PICK_NODES_TOOL, RENDER_TOOL } from "./protocol";
+import { ChartTool, GetDiagramStateTool, PickDiagramNodesTool, RenderDiagramTool } from "./tools";
 
 export function activate(context: vscode.ExtensionContext): void {
   const panel = new DiagramPanel(context);
@@ -36,5 +28,3 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 }
-
-export function deactivate(): void {}

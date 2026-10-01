@@ -1,34 +1,27 @@
 import * as assert from "node:assert";
-import { DiagramBlockFilter, extractDiagramBlocks, guessTitle } from "../blocks";
+import { codeFence, DiagramBlockFilter, guessTitle, lastDiagramBlock } from "../blocks";
 
 suite("blocks", () => {
-  test("extractDiagramBlocks finds all mermaid and echarts blocks in order", () => {
-    const markdown = [
-      "Here you go:",
-      "```mermaid",
-      "flowchart TD",
-      "  A --> B",
-      "```",
-      "```ts",
-      "const x = 1;",
-      "```",
-      "```mermaid  ",
-      "sequenceDiagram",
-      "  A->>B: hi",
-      "```",
-      "```echarts",
-      '{"series": []}',
-      "```",
-    ].join("\n");
-    assert.deepStrictEqual(extractDiagramBlocks(markdown), [
-      { language: "mermaid", source: "flowchart TD\n  A --> B" },
-      { language: "mermaid", source: "sequenceDiagram\n  A->>B: hi" },
-      { language: "echarts", source: '{"series": []}' },
-    ]);
+  test("lastDiagramBlock finds the last mermaid or echarts block", () => {
+    const mermaid =
+      "Here you go:\n```mermaid\nflowchart TD\n  A --> B\n```\n```ts\nconst x = 1;\n```\n";
+    assert.deepStrictEqual(lastDiagramBlock(mermaid), {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> B",
+    });
+    assert.deepStrictEqual(lastDiagramBlock(`${mermaid}\`\`\`echarts  \n{"series": []}\n\`\`\``), {
+      language: "echarts",
+      source: '{"series": []}',
+    });
   });
 
-  test("extractDiagramBlocks ignores unterminated and empty blocks", () => {
-    assert.deepStrictEqual(extractDiagramBlocks("```mermaid\n```\n```mermaid\nflowchart"), []);
+  test("lastDiagramBlock ignores unterminated and empty blocks", () => {
+    assert.strictEqual(lastDiagramBlock("```mermaid\n```\n```mermaid\nflowchart"), undefined);
+  });
+
+  test("codeFence uses a fence longer than any backticks in the text", () => {
+    assert.strictEqual(codeFence("A --> B", "mermaid"), "```mermaid\nA --> B\n```");
+    assert.strictEqual(codeFence('A["````"]'), '`````\nA["````"]\n`````');
   });
 
   test("guessTitle uses the frontmatter title", () => {
@@ -103,5 +96,24 @@ suite("blocks", () => {
     assert.strictEqual(filter.push("`mermaid\nA"), "");
     assert.strictEqual(filter.push("\n```\nDone"), "Done");
     assert.strictEqual(filter.flush(), "");
+  });
+
+  test("lastDiagramBlock and DiagramBlockFilter agree on what is a diagram block", () => {
+    const cases: { markdown: string; source?: string; shown: string; unterminated?: true }[] = [
+      { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
+      { markdown: "  ```mermaid  \nA\n  ```  \nB", source: "A", shown: "B" },
+      { markdown: "```mermaid\r\nA\r\n```\r\nB", source: "A", shown: "B" },
+      // Fences that are not on lines of their own neither open nor close a block.
+      { markdown: '```mermaid\nA["```"] ```\n```\n', source: 'A["```"] ```', shown: "" },
+      { markdown: "x ```mermaid\nA\n```\n", shown: "x ```mermaid\nA\n```\n" },
+      { markdown: "```mermaid\nA\n``` x\n", shown: "", unterminated: true },
+      { markdown: "Drawing:\n```echarts", shown: "Drawing:\n", unterminated: true },
+    ];
+    for (const { markdown, source, shown, unterminated = false } of cases) {
+      assert.strictEqual(lastDiagramBlock(markdown)?.source, source, markdown);
+      const filter = new DiagramBlockFilter();
+      assert.strictEqual(filter.push(markdown) + filter.flush(), shown, markdown);
+      assert.strictEqual(filter.unterminated, unterminated, markdown);
+    }
   });
 });
