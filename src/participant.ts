@@ -114,16 +114,16 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         block = await converse([]);
       }
 
-      // The chart tool may have drawn a chart. Remember it for later requests' history, by how it
-      // was drawn if it charts a file or command, as its data may be large.
-      const chart = panel.renderCount !== rendersBefore && panel.current;
-      if (chart) {
+      // A tool, such as the chart tool, may have drawn the diagram. Remember it for later requests'
+      // history, by how it was drawn if it charts a file or command, as its data may be large.
+      const drawn = panel.renderCount !== rendersBefore && panel.current;
+      if (drawn) {
         panel.setOrigin("participant");
-        showButton(stream, chart.language);
+        showButton(stream, drawn.language);
         return {
-          metadata: chart.chart
-            ? { chart: chart.chart }
-            : { language: chart.language, source: chart.source },
+          metadata: drawn.chart
+            ? { chart: drawn.chart }
+            : { language: drawn.language, source: drawn.source },
         };
       }
       if (failure) {
