@@ -261,7 +261,8 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
   }
   record.push(field);
   records.push(record);
-  return records.filter((r) => r.length > 1 || !isBlank(r[0] ?? ""));
+  // Spreadsheets save empty rows as ",,,".
+  return records.filter((r) => !r.every(isBlank) && !RULE.test(r.join(delimiter)));
 }
 
 /** The most common value, preferring the smallest on ties. */
@@ -649,13 +650,14 @@ function readRecords(text: string, format: DataFormat): Records {
     return parseJson(trimmed);
   }
   const { lines, underlined } = withoutRules(text.split(/\r?\n/).filter((line) => !isBlank(line)));
+  const header = underlined || undefined;
   const tabs = lines.filter((line) => line.includes("\t")).length;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
     try {
-      return { records: splitDelimited(text, "\t") };
+      return { records: splitDelimited(text, "\t"), header };
     } catch {
       // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
-      return { records: splitDelimited(text, "\t", false) };
+      return { records: splitDelimited(text, "\t", false), header };
     }
   }
   // Rows of a Markdown table may have fewer or more cells than its header.
@@ -665,7 +667,7 @@ function readRecords(text: string, format: DataFormat): Records {
   if (format === "auto" || format === "csv") {
     const records = splitCsv(text, lines[0] ?? "", format === "csv");
     if (records !== undefined) {
-      return { records };
+      return { records, header };
     }
   }
   return splitWhitespace(lines, underlined);

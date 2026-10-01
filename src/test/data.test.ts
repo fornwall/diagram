@@ -405,6 +405,20 @@ suite("data", () => {
     );
   });
 
+  test("leaves out rules and empty rows in CSV and TSV", () => {
+    assert.deepStrictEqual(parse("a,b\n1,2\n-----\n3,4\n,\n"), {
+      columns: ["a", "b"],
+      rows: [
+        [1, 2],
+        [3, 4],
+      ],
+    });
+    assert.deepStrictEqual(parse("name\tdesc\n----\t----\nx\ty\n\t\n"), {
+      columns: ["name", "desc"],
+      rows: [["x", "y"]],
+    });
+  });
+
   test("takes a percentage unit from the column name", () => {
     const table = parseTable("USER PID %CPU %MEM COMMAND\nroot 1 0.0 0.1 init\nfred 42 3.5 1.2 vi");
     assert.deepStrictEqual(table.columns[2], { name: "%CPU", numeric: true, unit: "%" });
