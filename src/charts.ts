@@ -243,11 +243,11 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     );
     const left = rows.length - charted.length;
     if (charted.length === 0) {
-      const columns = quoteAll(valueIndices.map(name));
+      const quoted = quoteAll(valueIndices.map(name));
       throw new Error(
         pie
-          ? `A pie chart needs positive numbers, but ${columns} has none.`
-          : `No row has numbers in both ${columns}.`,
+          ? `A pie chart needs positive numbers, but ${quoted} has none.`
+          : `No row has numbers in both ${quoted}.`,
       );
     }
     if (left > 0) {
