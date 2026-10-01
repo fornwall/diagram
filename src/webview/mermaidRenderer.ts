@@ -138,11 +138,12 @@ function darkScale({ palette, background }: ThemeColors): Record<string, string>
  * The diagram types whose items Mermaid draws without their data, and the parts of their
  * databases that findNodes reads it from.
  */
-const WITH_DATABASE = new Set(["pie", "gitGraph"]);
+const WITH_DATABASE = new Set(["pie", "gitGraph", "xychart"]);
 interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
+  getXYChartData?(): { plots: { title: string; data: [string, number][] }[] };
 }
 
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
@@ -461,6 +462,19 @@ export class MermaidRenderer implements Renderer {
         add(background, node);
       }
       add(label, node);
+    }
+
+    // XY chart bars, in the order of their plot's data, and lines (Mermaid draws no points), named
+    // like chart items.
+    const plots = db?.getXYChartData?.().plots ?? [];
+    for (const [i, { title, data }] of plots.entries()) {
+      const series = title || `Series ${i + 1}`;
+      const prefix = plots.length > 1 ? `${series}/` : "";
+      const bars = data.map(([x, y]) => ({ id: prefix + x, label: `${x}: ${y}` }));
+      addInOrder(svg.querySelectorAll(`g.bar-plot-${i} > rect`), bars);
+      for (const line of svg.querySelectorAll(`g.line-plot-${i} > path`)) {
+        add(line, { id: series, label: series });
+      }
     }
 
     // Timeline periods and events, and quadrant chart points.

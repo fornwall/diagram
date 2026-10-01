@@ -13,6 +13,7 @@ const MERMAID: Record<string, string> = {
   journey: "journey\n  section Work\n    Make tea: 5: Me",
   pie: 'pie\n  "Dogs" : 386\n  "Rats" : 2',
   gitGraph: 'gitGraph\n  commit id: "init"\n  branch develop\n  commit tag: "v1"',
+  xychart: "xychart\n  x-axis [jan, feb]\n  bar [10, 50]\n  line [15, 45]",
 };
 
 suite("webview", function () {
