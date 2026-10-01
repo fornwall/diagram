@@ -91,6 +91,13 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(option.aria, {});
   });
 
+  test("reserves room for a placed legend on the side ECharts shows it", () => {
+    const bottom = layout(bars({ legend: { left: 0 } })).grid;
+    assert.deepStrictEqual([bottom.top, bottom.bottom], [14, 40]);
+    const top = layout(bars({ legend: { top: 0 } })).grid;
+    assert.deepStrictEqual([top.top, top.bottom], [44, 8]);
+  });
+
   test("places sliders along the axis they control", () => {
     const option = layout(bars({ dataZoom: [{ type: "slider" }, { yAxisIndex: 0 }] }));
     assert.deepStrictEqual(option.dataZoom, [

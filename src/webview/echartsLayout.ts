@@ -121,12 +121,11 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       } else {
         Object.assign(legend, { bottom: 6, left: "center" });
       }
-    } else if (legend.bottom !== undefined) {
-      legendSide = "bottom";
     } else if (legend.orient === "vertical") {
       legendSide = legend.left !== undefined && legend.right === undefined ? "left" : "right";
     } else {
-      legendSide = "top";
+      // ECharts places a horizontal legend at the bottom unless told otherwise.
+      legendSide = legend.top !== undefined && legend.bottom === undefined ? "top" : "bottom";
     }
   }
 
