@@ -1,0 +1,57 @@
+{
+  "name": "diagram",
+  "displayName": "@diagram",
+  "description": "Interactive Mermaid diagrams for chat agents, with two-way interaction between you, the agent and the diagram.",
+  "version": "0.0.1",
+  "publisher": "fornwall",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.138.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Visualization"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "diagram.participant",
+        "name": "diagram",
+        "fullName": "Diagram",
+        "description": "Create and explore Mermaid diagrams",
+        "isSticky": true
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "npm run check-types && npm run lint && node esbuild.mjs --production",
+    "check-types": "tsc --noEmit",
+    "lint": "biome check",
+    "format": "biome check --write",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest": "npm run compile && npm run compile-tests",
+    "test": "vscode-test",
+    "vsix": "vsce package"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "~1.138.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "@vscode/vsce-sign@2.1.0": true
+  }
+}
