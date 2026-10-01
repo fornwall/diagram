@@ -41,12 +41,25 @@ function guessChartTitle(source: string): string {
   return "Chart";
 }
 
-/** Derives a short title from the first diagram line, e.g. "flowchart" or "sequenceDiagram". */
+/**
+ * Diagram types whose grammar has a title statement, as in "pie title Pets" or a gantt's
+ * "title Plan", by the start of their keyword. In other types, a "title" line may be a node.
+ */
+const TITLED_TYPE =
+  /^(?:architecture|C4|cynefin|gantt|gitGraph|info|journey|packet|pie|quadrantChart|radar|railroad-(?:ebnf-|peg-)?beta|requirement|sequenceDiagram|timeline|treemap|treeView|venn|wardley|xychart)/;
+/** A title statement, up to a comment, after a pie's "showData" and with a sequence's colon. */
+const TITLE_STATEMENT = /^(?:showData\s+)?title(?:\s+|:\s*)(.*?)\s*(?:%%.*)?$/i;
+
+/**
+ * Derives a short title from the frontmatter or a title statement, or else the diagram type, e.g.
+ * "flowchart" or "sequenceDiagram".
+ */
 function guessMermaidTitle(source: string): string {
+  let type: string | undefined;
   let inFrontmatter = false;
   for (const line of source.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed === "---") {
+    if (type === undefined && trimmed === "---") {
       inFrontmatter = !inFrontmatter;
       continue;
     }
@@ -60,9 +73,22 @@ function guessMermaidTitle(source: string): string {
     if (trimmed === "" || trimmed.startsWith("%%")) {
       continue;
     }
-    return trimmed.split(/\s+/)[0] ?? "Diagram";
+    let statement = trimmed;
+    if (type === undefined) {
+      type = trimmed.split(/\s+/)[0] ?? "Diagram";
+      if (!TITLED_TYPE.test(type)) {
+        return type;
+      }
+      // As in "pie title Pets".
+      statement = trimmed.slice(type.length).trim();
+    }
+    // An xychart's title may be quoted.
+    const title = TITLE_STATEMENT.exec(statement)?.[1]?.replace(/^"(.*)"$/, "$1");
+    if (title) {
+      return title;
+    }
   }
-  return "Diagram";
+  return type ?? "Diagram";
 }
 
 /**

@@ -31,6 +31,27 @@ suite("blocks", () => {
     );
   });
 
+  test("guessTitle uses a title statement", () => {
+    assert.strictEqual(mermaidTitle('pie title Pets\n  "Dogs" : 386'), "Pets");
+    assert.strictEqual(mermaidTitle("pie showData title Key elements"), "Key elements");
+    assert.strictEqual(
+      mermaidTitle("gantt\n  dateFormat YYYY-MM-DD\n  title A Gantt Diagram %% comment"),
+      "A Gantt Diagram",
+    );
+    assert.strictEqual(mermaidTitle('xychart-beta\n  title "Sales Revenue"'), "Sales Revenue");
+    assert.strictEqual(mermaidTitle("sequenceDiagram\n  title: Login\n  A->>B: hi"), "Login");
+    assert.strictEqual(
+      mermaidTitle('---\ntitle: "Front"\n---\njourney\n  title Statement'),
+      "Front",
+    );
+  });
+
+  test("guessTitle ignores title lines in diagrams without title statements", () => {
+    assert.strictEqual(mermaidTitle("flowchart LR\n  title Here --> B"), "flowchart");
+    assert.strictEqual(mermaidTitle("mindmap\n  root\n    title Here"), "mindmap");
+    assert.strictEqual(mermaidTitle("gantt\n  section title\n  title"), "gantt");
+  });
+
   test("guessTitle falls back to the diagram type", () => {
     assert.strictEqual(mermaidTitle("%% comment\n\nflowchart LR\n  A --> B"), "flowchart");
     assert.strictEqual(mermaidTitle("---\nconfig:\n  theme: dark\n---\nerDiagram"), "erDiagram");
