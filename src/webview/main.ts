@@ -293,7 +293,10 @@ function cancelPick(): void {
 
 element("pick-cancel").addEventListener("click", cancelPick);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
+  // Escape in the source editor or message box is for the text, e.g. to close a completion.
+  const typing =
+    event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+  if (event.key === "Escape" && !typing) {
     cancelPick();
   }
 });
