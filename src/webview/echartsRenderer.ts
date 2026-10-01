@@ -3,7 +3,7 @@
 import type * as ECharts from "echarts/core";
 import { errorMessage, isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { keepUserState, layoutOption } from "./echartsLayout";
+import { disableAnimation, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
@@ -69,6 +69,7 @@ export class EChartsRenderer implements Renderer {
     this.container.hidden = true;
     canvas.append(this.container);
     new ResizeObserver(() => this.scheduleRelayout()).observe(this.container);
+    this.reducedMotion.addEventListener("change", () => this.relayout());
     // Moving VS Code to another screen changes the pixel ratio without resizing the chart.
     const watchPixelRatio = () =>
       window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
@@ -188,7 +189,7 @@ export class EChartsRenderer implements Renderer {
       return;
     }
     if (!animate) {
-      option.animation = false;
+      disableAnimation(option);
     }
     if (relayout && this.chart) {
       keepUserState(option, this.chart.getOption() as JsonObject);

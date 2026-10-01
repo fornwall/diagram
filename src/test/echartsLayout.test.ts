@@ -52,6 +52,25 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(source, copy);
   });
 
+  test("respects reduced motion in timeline, media, and series overrides", () => {
+    const animated = bars({ animation: true, series: [{ type: "bar", animation: true }] });
+    const source = {
+      baseOption: animated,
+      options: [animated],
+      media: [{ query: { maxWidth: 400 }, option: animated }],
+    };
+    const option = layout(source, { reducedMotion: true });
+    for (const variant of [option.baseOption, option.options[0], option.media[0].option]) {
+      assert.strictEqual(variant.animation, false);
+      assert.strictEqual(variant.series[0].animation, false);
+    }
+    assert.strictEqual(animated.animation, true);
+    assert.strictEqual(animated.series[0].animation, true);
+    const unchanged = layout(animated);
+    assert.strictEqual(unchanged.animation, true);
+    assert.strictEqual(unchanged.series[0].animation, true);
+  });
+
   test("hides a chart title that repeats the panel title", () => {
     assert.strictEqual(
       layout(bars({ title: { text: "Sales" } }), { title: "sales" }).title.show,

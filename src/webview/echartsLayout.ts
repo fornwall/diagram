@@ -66,7 +66,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   const series = asArray(base.series);
   const cartesian = series.some(isCartesian);
   if (context.reducedMotion) {
-    option.animation = false;
+    disableAnimation(option);
   }
   hideRepeatedTitle(base, context.title);
   for (const legend of asArray(base.legend)) {
@@ -86,6 +86,21 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   styleSeries(series, asArray(base.yAxis), context.colors);
   addInteraction(base, series, cartesian, context.colors);
   return option;
+}
+
+/** Timeline and media options can override both global and per-series animation settings. */
+export function disableAnimation(option: JsonObject): void {
+  const variants = [
+    baseOption(option),
+    ...asArray(option.options),
+    ...asArray(option.media).flatMap((media) => asArray(media.option)),
+  ];
+  for (const variant of variants) {
+    variant.animation = false;
+    for (const series of asArray(variant.series)) {
+      series.animation = false;
+    }
+  }
 }
 
 /** Hides a chart title that repeats the panel header, keeping its subtitle. */
