@@ -51,7 +51,7 @@ export class EChartsRenderer implements Renderer {
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
   private title = "";
-  /** The laid-out option as last set, to skip relayouts that change nothing. */
+  /** The size and motion preference used by the last layout. */
   private laidOut = "";
   private selectedKeys: ReadonlySet<string> = new Set();
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
@@ -170,24 +170,28 @@ export class EChartsRenderer implements Renderer {
     if (!echarts) {
       return;
     }
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const reducedMotion = this.reducedMotion.matches;
+    const laidOut = `${width}:${height}:${reducedMotion}`;
+    // Check layout inputs before copying the data. Retaining a serialized option would also
+    // duplicate every data point in memory just to detect unchanged layouts.
+    const sharp = this.chart?.getDevicePixelRatio() === window.devicePixelRatio;
+    if (relayout && sharp && this.theme && laidOut === this.laidOut) {
+      return;
+    }
     if (!this.theme) {
       const colors = readThemeColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
       this.chart?.setTheme(this.theme.echarts);
     }
     const option = layoutOption(this.option ?? {}, {
-      width: this.container.clientWidth,
-      height: this.container.clientHeight,
+      width,
+      height,
       title: this.title,
       colors: this.theme.colors,
-      reducedMotion: this.reducedMotion.matches,
+      reducedMotion,
     });
-    const laidOut = JSON.stringify(option);
-    // A chart draws at the pixel ratio it was created with, which e.g. zooming VS Code changes.
-    const sharp = this.chart?.getDevicePixelRatio() === window.devicePixelRatio;
-    if (relayout && sharp && laidOut === this.laidOut) {
-      return;
-    }
     if (!animate) {
       disableAnimation(option);
     }

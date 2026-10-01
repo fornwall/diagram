@@ -203,7 +203,11 @@ function placeLegend(
 /** Places data zoom sliders along the axis they control, and visual maps below the chart. */
 function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
   for (const zoom of asArray(base.dataZoom)) {
-    if ((zoom.type !== undefined && zoom.type !== "slider") || has(zoom, BOX_KEYS)) {
+    if (
+      zoom.show === false ||
+      (zoom.type !== undefined && zoom.type !== "slider") ||
+      has(zoom, BOX_KEYS)
+    ) {
       continue;
     }
     // Without an orient, ECharts orients a slider along the axis it controls.

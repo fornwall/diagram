@@ -136,6 +136,16 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.grid.right, 58);
   });
 
+  test("does not reserve plot space for hidden zoom sliders", () => {
+    const dataZoom = [
+      { type: "slider", show: false },
+      { yAxisIndex: 0, show: false },
+    ];
+    const option = layout(bars({ dataZoom }));
+    assert.deepStrictEqual(option.grid, layout(bars()).grid);
+    assert.deepStrictEqual(option.dataZoom, dataZoom);
+  });
+
   test("lengthens a continuous visual map below the chart, but not the pieces of another", () => {
     const itemHeight = (visualMap: Option) => layout(bars({ visualMap })).visualMap.itemHeight;
     assert.strictEqual(itemHeight({ min: 0, max: 10 }), 200);
