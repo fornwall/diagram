@@ -36,6 +36,8 @@ suite("panel", function () {
       clickToAskQuery("Explain {label}, and how {label} is tested", "Parser"),
       "Explain Parser, and how Parser is tested",
     );
+    // Not taken as a replacement pattern.
+    assert.strictEqual(clickToAskQuery("Explain {label}", "$& $$"), "Explain $& $$");
   });
 
   test("clickToAskQuery appends the label when there is no placeholder", () => {

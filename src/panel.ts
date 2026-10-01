@@ -484,7 +484,7 @@ function failsToRender(language: DiagramLanguage, error: string): string {
  */
 export function clickToAskQuery(clickPrompt: string, label: string): string {
   return clickPrompt.includes("{label}")
-    ? clickPrompt.replaceAll("{label}", label)
+    ? clickPrompt.replaceAll("{label}", () => label)
     : `${clickPrompt} "${label}"`;
 }
 
