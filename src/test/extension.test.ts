@@ -88,6 +88,7 @@ suite("Extension", () => {
     const state = await invoke("diagram_getState", {});
     assert.match(state, /"Languages"/);
     assert.match(state, /```echarts/);
+    assert.match(state, /no chart items selected/);
     assert.doesNotMatch(state, /fails to render/);
   });
 

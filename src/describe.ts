@@ -32,10 +32,11 @@ export function describeDiagram(state: DiagramState, selection: readonly Diagram
       "The user has edited this source by hand since it was last generated. Keep their edits unless asked otherwise.",
     );
   }
+  const parts = state.language === "echarts" ? "chart items" : "nodes";
   lines.push(
     selection.length > 0
-      ? `The user has selected these nodes in the panel: ${nodeList(selection)}.`
-      : "The user has no nodes selected in the panel.",
+      ? `The user has selected these ${parts} in the panel: ${nodeList(selection)}.`
+      : `The user has no ${parts} selected in the panel.`,
   );
   return lines.join("\n");
 }
