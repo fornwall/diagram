@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
-import { type FromWebview, isFromWebview } from "../protocol";
+import { type FromWebview, isFromWebview, type ToWebview } from "../protocol";
 import { ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { newPanel } from "./newPanel";
 
@@ -80,6 +80,83 @@ suite("panel", function () {
       reason: "The user closed the diagram panel.",
     });
     assert.doesNotMatch(panel.describeForModel() ?? "", /fails to render/);
+  });
+
+  test("replacing a pending render ends it and replays only the latest diagram", async () => {
+    const panel = newPanel();
+    const sent: ToWebview[] = [];
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      post(message: ToWebview): void;
+    };
+    internals.post = (message) => sent.push(message);
+    try {
+      const first = panel.render(flowchart, "tool");
+      const second = panel.render({ ...flowchart, title: "Replacement" }, "tool");
+      assert.deepStrictEqual(await first, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram was replaced before it finished rendering.",
+      });
+      sent.length = 0;
+      internals.onMessage({ type: "ready" });
+      assert.strictEqual(sent.length, 1);
+      const latest = sent[0];
+      assert.ok(latest?.type === "render");
+      assert.strictEqual(latest.title, "Replacement");
+      internals.onMessage({
+        type: "rendered",
+        requestId: latest.requestId,
+        diagramType: "flowchart",
+      });
+      assert.ok((await second).ok);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("a completed render cannot mark a newer copy of the same source as broken", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      pendingRender: { message: { requestId: number } };
+    };
+    try {
+      const first = panel.render(flowchart, "tool");
+      internals.onMessage({
+        type: "renderError",
+        requestId: internals.pendingRender.message.requestId,
+        message: "Old error",
+      });
+      const second = panel.render(flowchart, "tool");
+      await first;
+      assert.strictEqual(panel.current?.error, undefined);
+      internals.onMessage({
+        type: "rendered",
+        requestId: internals.pendingRender.message.requestId,
+        diagramType: "flowchart",
+      });
+      assert.ok((await second).ok);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("saving failures do not turn successful renders into errors", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      context: vscode.ExtensionContext;
+    };
+    internals.context.workspaceState.update = async () => {
+      throw new Error("Storage is unavailable");
+    };
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      assert.strictEqual(panel.current?.source, flowchart.source);
+      assert.strictEqual(panel.current?.error, undefined);
+    } finally {
+      panel.dispose();
+    }
   });
 
   test("a pick ends when another pick, a new diagram or cancellation replaces it", async () => {
