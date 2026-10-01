@@ -11,7 +11,7 @@ export interface DiagramBlock {
  * their own, so that a ``` inside a label does not end the block.
  */
 const DIAGRAM_BLOCK =
-  /(?<![^\n])[^\S\n]*```(mermaid|echarts)[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*```[^\S\n]*(?![^\n])/g;
+  /(?<![^\n])[^\S\n]*```(mermaid|echarts)[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*`{3,}[^\S\n]*(?![^\n])/g;
 
 /** Returns the last non-empty ```mermaid or ```echarts block in the given markdown. */
 export function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
@@ -120,7 +120,7 @@ export class DiagramBlockFilter {
   private completeLine(line: string): string {
     const trimmed = line.trim();
     if (this.insideBlock) {
-      this.insideBlock = !/^```\s*$/.test(trimmed);
+      this.insideBlock = !/^`{3,}$/.test(trimmed);
       return "";
     }
     if (this.passed === 0 && /^```(?:mermaid|echarts)\s*$/.test(trimmed)) {

@@ -105,6 +105,8 @@ suite("blocks", () => {
       { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
       { markdown: "  ```mermaid  \nA\n  ```  \nB", source: "A", shown: "B" },
       { markdown: "```mermaid\r\nA\r\n```\r\nB", source: "A", shown: "B" },
+      // Like CommonMark, a longer closing fence also ends the block.
+      { markdown: "Intro\n```mermaid\nA\n````\nend", source: "A", shown: "Intro\nend" },
       // Fences that are not on lines of their own neither open nor close a block.
       { markdown: '```mermaid\nA["```"] ```\n```\n', source: 'A["```"] ```', shown: "" },
       { markdown: "x ```mermaid\nA\n```\n", shown: "x ```mermaid\nA\n```\n" },
