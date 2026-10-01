@@ -30,8 +30,12 @@ async function ask(
   {
     history = [],
     maxInputTokens = 100_000,
+    token = new vscode.CancellationTokenSource().token,
     ...overrides
-  }: Partial<vscode.ChatRequest & vscode.ChatContext & { maxInputTokens: number }> = {},
+  }: Partial<
+    vscode.ChatRequest &
+      vscode.ChatContext & { maxInputTokens: number; token: vscode.CancellationToken }
+  > = {},
 ) {
   const sent: {
     messages: vscode.LanguageModelChatMessage[];
@@ -76,7 +80,6 @@ async function ask(
       }
     },
   });
-  const token = new vscode.CancellationTokenSource().token;
   const result = await createParticipantHandler(panel)(request, { history }, stream, token);
   return { result: result || undefined, shown, sent, counted };
 }
@@ -92,6 +95,71 @@ function messageText(message: vscode.LanguageModelChatMessage | undefined): stri
 suite("participant", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
+
+  test("a cancelled request does not contact the model", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    cancellation.cancel();
+    try {
+      const { result, shown, sent } = await ask(panel, [[text(valid)]], {
+        token: cancellation.token,
+      });
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(shown, "");
+      assert.deepStrictEqual(sent, []);
+      assert.strictEqual(panel.current, undefined);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("ignores model output arriving after cancellation", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    try {
+      const { result, shown, sent } = await ask(
+        panel,
+        [
+          async () => {
+            cancellation.cancel();
+            return [
+              text(`Here it is:\n${valid}`),
+              new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
+            ];
+          },
+        ],
+        { token: cancellation.token },
+      );
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(shown, "");
+      assert.strictEqual(sent.length, 1);
+      assert.strictEqual(panel.current, undefined);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("cancellation during rendering does not start a repair request", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    panel.render = async () => {
+      cancellation.cancel();
+      return { ok: false, kind: "invalid", error: "Invalid diagram" };
+    };
+    try {
+      const { result, shown, sent } = await ask(panel, [[text(invalid)], [text(valid)]], {
+        token: cancellation.token,
+      });
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(shown, "");
+      assert.strictEqual(sent.length, 1);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
 
   test("renders a diagram written next to a tool call, without showing its source", async () => {
     const panel = newPanel();

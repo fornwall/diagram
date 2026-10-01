@@ -13,6 +13,9 @@ const MAX_TOOL_ROUNDS = 4;
 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
   return async (request, context, stream, token) => {
+    if (token.isCancellationRequested) {
+      return;
+    }
     if (request.command === "show") {
       if (!panel.current) {
         stream.markdown("There is no diagram yet. Describe what you want me to draw.");
@@ -57,6 +60,9 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         const noun = diagramNoun(block.language);
         stream.progress(`Rendering ${noun}…`);
         const outcome = await panel.render({ ...block, title: guessTitle(block) }, "participant");
+        if (token.isCancellationRequested) {
+          return;
+        }
         if (outcome.ok || outcome.kind === "unavailable") {
           if (!outcome.ok) {
             stream.markdown(`\n\n${outcome.error}`);
@@ -133,6 +139,9 @@ async function streamReply(
   /** Why further tool calls are answered without running them. */
   let notRun: string | undefined;
   for (let round = 0; ; round++) {
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     // Some models only support a single tool when a tool call is required. The tools are passed
     // even when calls are no longer run, as some models reject requests whose messages contain
     // tool calls but no tools.
@@ -148,6 +157,9 @@ async function streamReply(
     const calls: vscode.LanguageModelToolCallPart[] = [];
     const show = (markdown: string) => markdown && stream.markdown(markdown);
     for await (const part of response.stream) {
+      if (token.isCancellationRequested) {
+        throw new vscode.CancellationError();
+      }
       if (part instanceof vscode.LanguageModelTextPart) {
         reply += part.value;
         show(filter.push(part.value));
@@ -155,11 +167,11 @@ async function streamReply(
         calls.push(part);
       }
     }
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     show(filter.flush());
     diagram = filter.diagrams.at(-1) ?? diagram;
-    if (token.isCancellationRequested) {
-      return diagram;
-    }
     if (filter.unterminated) {
       stream.markdown(
         "\n\nThe reply ended before the diagram was complete. Try again, or ask for a smaller diagram.",
@@ -184,6 +196,9 @@ async function streamReply(
     const text = (value: string) => [new vscode.LanguageModelTextPart(value)];
     const results: vscode.LanguageModelToolResultPart[] = [];
     for (const call of calls) {
+      if (token.isCancellationRequested) {
+        throw new vscode.CancellationError();
+      }
       let content: unknown[];
       if (notRun) {
         content = text(`Not run, as ${notRun}. Answer without tools.`);
@@ -196,7 +211,7 @@ async function streamReply(
           content = (await vscode.lm.invokeTool(call.name, input, token)).content;
         } catch (error) {
           if (token.isCancellationRequested) {
-            return diagram;
+            throw error;
           }
           // The user declined the tool call, e.g. to run a command: a CancellationError, though
           // not always an instance of one. Don't let the model ask again.
