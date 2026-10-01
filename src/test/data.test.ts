@@ -437,6 +437,12 @@ suite("data", () => {
     assert.deepStrictEqual(df.columns, ["Name", "Size", "Mounted on"]);
   });
 
+  test("names 100,000 equally named columns", () => {
+    const columns = parse(`${"x,".repeat(100_000)}x\n${"1,".repeat(100_000)}1`).columns;
+    assert.strictEqual(columns.length, 100_001);
+    assert.strictEqual(columns[100_000], "x (100001)");
+  });
+
   test("parses a long line that almost is a rule", () => {
     assert.strictEqual(parse(`a 1\n${"-".repeat(1_000_000)}x 2`).rows.length, 2);
   });
