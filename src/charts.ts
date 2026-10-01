@@ -364,6 +364,10 @@ function cartesianOption(
     ...(line ? { boundaryGap: false } : {}),
     // The first row at the top.
     ...(horizontal ? { inverse: true } : {}),
+    // At the edge rather than at zero, where its labels would cover the negative values.
+    ...(rows.some(({ values }) => values.some((value) => value !== null && value < 0))
+      ? { axisLine: { onZero: false } }
+      : {}),
   };
   // With several series, the legend names them.
   const valueAxis = { type: "value", ...(header && names.length === 1 ? { name: names[0] } : {}) };

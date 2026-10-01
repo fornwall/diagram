@@ -132,6 +132,15 @@ suite("charts", () => {
     assert.strictEqual(option.yAxis.inverse, true);
   });
 
+  test("with negative values, the category axis is at the edge rather than at zero", () => {
+    assert.strictEqual(build(chart("bar")).xAxis.axisLine, undefined);
+    const balance = "month,balance\njan,5\nfeb,-3";
+    assert.deepStrictEqual(build(chart("bar"), balance).xAxis.axisLine, { onZero: false });
+    assert.deepStrictEqual(build(chart("horizontalBar"), balance).yAxis.axisLine, {
+      onZero: false,
+    });
+  });
+
   test("stackedBar stacks its series", () => {
     const option = build(chart("stackedBar"));
     assert.ok(option.series.every((s: Option) => s.type === "bar" && s.stack === "total"));
