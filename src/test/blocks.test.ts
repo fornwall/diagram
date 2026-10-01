@@ -42,7 +42,9 @@ suite("blocks", () => {
     assert.strictEqual(chartTitle('{"title": {"text": "Sales"}, "series": []}'), "Sales");
     assert.strictEqual(chartTitle('{"title": [{"text": "First"}]}'), "First");
     assert.strictEqual(chartTitle('{"series": []}'), "Chart");
-    assert.strictEqual(chartTitle("{not json"), "Chart");
+    for (const source of ["{not json", "null", "[]", '{"title": null}', '{"title": [5]}']) {
+      assert.strictEqual(chartTitle(source), "Chart", source);
+    }
   });
 
   function mermaidTitle(source: string): string {

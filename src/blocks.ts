@@ -39,15 +39,10 @@ export function guessTitle({ language, source }: DiagramBlock): string {
 /** Uses the title of an ECharts option, if any. */
 function guessChartTitle(source: string): string {
   try {
-    const option: unknown = JSON.parse(source);
-    const title =
-      typeof option === "object" && option !== null && "title" in option && option.title;
-    const first: unknown = Array.isArray(title) ? title[0] : title;
-    if (typeof first === "object" && first !== null && "text" in first) {
-      const text = first.text;
-      if (typeof text === "string" && text.trim()) {
-        return text.trim();
-      }
+    const { title } = JSON.parse(source) ?? {};
+    const text: unknown = (Array.isArray(title) ? title[0] : title)?.text;
+    if (typeof text === "string" && text.trim()) {
+      return text.trim();
     }
   } catch {
     // Invalid JSON is reported when rendering.
