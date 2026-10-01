@@ -4,7 +4,7 @@
     "lib": ["es2024"],
     "module": "preserve",
     "moduleResolution": "bundler",
-    "types": ["node", "vscode", "mocha"],
+    "types": ["node", "vscode"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -16,5 +16,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["src/webview"]
+  "exclude": ["src/webview", "src/test"]
 }
