@@ -17,13 +17,16 @@ const IDENTIFIER = /[A-Za-z_$][\w$]*/y;
 const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 /** What a model may write as a number, such as 0x1F, +1, .5, 5., 05 or -Infinity. */
 const NUMBER_LIKE = /[-+.\w]+/y;
-/** A JavaScript function, as models write formatters. */
-const FUNCTION = /(?:async\s+)?(?:function\b|(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>)/y;
+const FUNCTION = /\s*(?:async\s+)?(?:function\s*[\w$]*\s*\(|(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>)/y;
 
 function matchAt(pattern: RegExp, text: string, index: number): string | undefined {
   pattern.lastIndex = index;
   return pattern.exec(text)?.[0];
 }
+
+/** Whether the text starts a JavaScript function at the index, as models write formatters. */
+export const isFunctionAt = (text: string, index = 0) =>
+  matchAt(FUNCTION, text, index) !== undefined;
 
 /** A character as quoted in a message, with its code point if it may be invisible. */
 function quote(char: string): string {
@@ -112,7 +115,7 @@ class Scanner {
     if (char === "/") {
       this.failJavaScript("Comments are not allowed in JSON");
     }
-    if (matchAt(FUNCTION, this.text, this.index)) {
+    if (isFunctionAt(this.text, this.index)) {
       this.failJavaScript(
         'JavaScript functions are not allowed in JSON; use a string template such as "{b}: {c}" for formatters',
       );

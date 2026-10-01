@@ -2,7 +2,7 @@
 // ECharts would silently render as nothing.
 
 import { isPlainObject } from "../protocol";
-import { describeJsonError } from "./jsonErrors";
+import { describeJsonError, isFunctionAt } from "./jsonErrors";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -132,8 +132,6 @@ const CALLBACK_KEYS = new Set([
   "animationDuration",
   "animationDurationUpdate",
 ]);
-const JAVASCRIPT =
-  /^\s*(?:(?:async\s+)?function\s*[\w$]*\s*\(|(?:async\s+)?(?:\([^)]*\)|[\w$]+)\s*=>)/;
 
 function describe(value: unknown): string {
   if (value === null) {
@@ -253,7 +251,7 @@ function findJavaScript(value: unknown, path: string): void {
   }
   for (const [key, item] of Object.entries(value)) {
     const itemPath = path === "option" ? key : `${path}.${key}`;
-    if (CALLBACK_KEYS.has(key) && typeof item === "string" && JAVASCRIPT.test(item)) {
+    if (CALLBACK_KEYS.has(key) && typeof item === "string" && isFunctionAt(item)) {
       throw new Error(
         `${itemPath} is JavaScript code, but the option is JSON and cannot contain functions. ` +
           'Use a string template instead, such as "{b}: {c}" (name and value) or "{d}%" (pie percentage).',
