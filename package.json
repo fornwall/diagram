@@ -81,7 +81,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Renders a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, ...) or, with language \"echarts\", an Apache ECharts 6 chart (quantitative data) in an interactive panel next to the chat, where the user can select nodes, edit the source and send follow-up requests. Returns whether it rendered, or the error to fix. To chart data in a file or a command's output, use diagram_chart instead.",
+        "modelDescription": "Renders a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, ...) or, with language \"echarts\", an Apache ECharts 6 chart (quantitative data) in an interactive panel next to the chat, replacing the diagram shown there. In the panel, the user can select nodes, edit the source and send follow-up requests. Returns whether it rendered, or the error to fix. To chart data in a file or a command's output, use diagram_chart instead.",
         "tags": [
           "diagram",
           "mermaid",
@@ -126,7 +126,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, with the data given in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. Returns how the data was read, so that you can correct it. For full control over a chart, write an ECharts option and use diagram_render instead.",
+        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, replacing the diagram shown there. Give the data in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. Returns how the data was read, so that you can correct it. For full control over a chart, write an ECharts option and use diagram_render instead.",
         "tags": [
           "chart",
           "echarts",
