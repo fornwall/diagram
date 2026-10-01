@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import type { DataFormat } from "../chartSpec";
-import { parseNumber, parseTable } from "../data";
+import { parseTable } from "../data";
+import { parseNumber } from "../dataNumber";
 
 /** Parses a table, with its columns by name. */
 function parse(text: string, format?: DataFormat) {
