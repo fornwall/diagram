@@ -115,6 +115,13 @@ suite("echartsLayout", () => {
     assert.strictEqual(layout(bars()).xAxis.axisLabel, undefined);
   });
 
+  test("measures labels of charts with very many categories", () => {
+    const labels = Array.from({ length: 200_000 }, (_, index) => `Category ${index}`);
+    const axis = { type: "category", data: labels };
+    const option = layout(bars({ xAxis: axis, yAxis: axis, legend: { data: labels } }));
+    assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
+  });
+
   test("gives sankey nodes their own palette colors, also beyond eight", () => {
     const nodes = Array.from({ length: 10 }, (_, index) => ({ name: `N${index}` }));
     const option = layout({ series: [{ type: "sankey", data: nodes }] });

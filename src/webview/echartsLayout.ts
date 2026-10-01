@@ -17,7 +17,8 @@ function longestText(entries: unknown): number {
   }
   const text = (entry: unknown) =>
     String((isObject(entry) ? (entry.value ?? entry.name) : entry) ?? "");
-  return Math.max(0, ...entries.map((entry) => text(entry).length));
+  // Not Math.max(...entries), which overflows the stack with very many entries.
+  return entries.reduce((longest: number, entry) => Math.max(longest, text(entry).length), 0);
 }
 
 function seriesName(series: JsonObject): string | undefined {
