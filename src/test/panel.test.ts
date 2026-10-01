@@ -269,6 +269,64 @@ suite("panel", function () {
     }
   });
 
+  test("large manual chart edits survive a reload", async () => {
+    const values = new Map<string, unknown>();
+    const panel = newPanel(values);
+    const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
+    const edited = `${source}${" ".repeat(1_000_000)}`;
+    try {
+      const outcome = await panel.render(
+        {
+          language: "echarts",
+          source,
+          title: "Sizes",
+          chart: { type: "pie", file: "sizes.tsv" },
+        },
+        "tool",
+      );
+      assert.ok(outcome.ok);
+      const internals = panel as unknown as {
+        onMessage(message: FromWebview): void;
+        save(): Promise<void>;
+      };
+      internals.onMessage({ type: "sourceEdited", source: edited });
+      await internals.save();
+      const restored = newPanel(values);
+      try {
+        assert.strictEqual(restored.current?.source, edited);
+        assert.strictEqual(restored.current?.editedByUser, true);
+      } finally {
+        restored.dispose();
+      }
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("refreshing chart data ends a pending pick", async () => {
+    const panel = newPanel();
+    try {
+      const outcome = await panel.render(
+        {
+          language: "echarts",
+          source: JSON.stringify({ series: [{ type: "pie", data: [1] }] }),
+          title: "Sizes",
+          chart: { type: "pie", file: "sizes.tsv" },
+        },
+        "tool",
+      );
+      assert.ok(outcome.ok);
+      const picking = pick(panel);
+      await (panel as unknown as { refreshChart(): Promise<void> }).refreshChart();
+      assert.deepStrictEqual(await picking, {
+        picked: false,
+        reason: "The chart data was refreshed before the user picked.",
+      });
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("a refresh that started before a hand edit keeps the edit", async () => {
     const panel = newPanel();
     const pie = (name: string) =>

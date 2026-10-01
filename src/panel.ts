@@ -49,8 +49,8 @@ export interface Diagram {
 
 export interface DiagramState extends Omit<Diagram, "source"> {
   /**
-   * Left out of a large chart of a file or command when saving, as saving happens often. Such a
-   * chart is not drawn after a reload until the user presses Refresh.
+   * Large generated chart options are omitted when saving, requiring Refresh after a reload.
+   * Manual edits are always kept.
    */
   source?: string;
   origin: DiagramOrigin;
@@ -61,7 +61,7 @@ export interface DiagramState extends Omit<Diagram, "source"> {
 }
 
 const STATE_KEY = "diagram.state";
-/** Longer options of charts of files and commands are not saved, as saving happens often. */
+/** Large generated chart options can be reloaded; manual edits must be kept. */
 const MAX_SAVED_CHART_SOURCE = 1_000_000;
 const RENDER_TIMEOUT_MS = 15_000;
 
@@ -427,6 +427,7 @@ export class DiagramPanel implements vscode.Disposable {
         return;
       }
       const source = JSON.stringify(buildChart(chart, table).option, null, 2);
+      this.cancelPick("The chart data was refreshed before the user picked.");
       this.state = { ...this.state, source, editedByUser: false };
       this.selection = [];
       if (warning) {
@@ -443,7 +444,10 @@ export class DiagramPanel implements vscode.Disposable {
   private save(): Thenable<void> {
     const state = this.state;
     const saved =
-      state?.chart && state.source !== undefined && state.source.length > MAX_SAVED_CHART_SOURCE
+      state?.chart &&
+      !state.editedByUser &&
+      state.source !== undefined &&
+      state.source.length > MAX_SAVED_CHART_SOURCE
         ? { ...state, source: undefined, editedByUser: false, error: undefined }
         : state;
     return this.context.workspaceState.update(STATE_KEY, saved);
