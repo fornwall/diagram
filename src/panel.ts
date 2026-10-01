@@ -404,9 +404,10 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Loads the data of the current chart again and redraws it, replacing manual edits. */
+  /** Loads the data of the current chart again and redraws it, replacing earlier manual edits. */
   private async refreshChart(): Promise<void> {
     const chart = this.state?.chart;
+    const before = this.state?.source;
     if (!chart || this.refreshing) {
       return;
     }
@@ -416,8 +417,9 @@ export class DiagramPanel implements vscode.Disposable {
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
       );
-      // An agent may have replaced the chart, or the user closed the panel, while loading.
-      if (this.state?.chart !== chart || !this.panel) {
+      // While loading, an agent may have replaced the chart, or the user may have edited it (an
+      // edit made after pressing Refresh wins) or closed the panel.
+      if (this.state?.chart !== chart || this.state.source !== before || !this.panel) {
         return;
       }
       const source = JSON.stringify(buildChart(chart, table).option, null, 2);

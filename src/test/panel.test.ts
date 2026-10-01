@@ -173,6 +173,31 @@ suite("panel", function () {
     }
   });
 
+  test("a refresh that started before a hand edit keeps the edit", async () => {
+    const panel = newPanel();
+    const pie = (name: string) =>
+      JSON.stringify({ series: [{ type: "pie", data: [{ name, value: 1 }] }] });
+    try {
+      const chart = { type: "pie", file: "sizes.tsv" } as const;
+      const outcome = await panel.render(
+        { language: "echarts", source: pie("A"), title: "Sizes", chart },
+        "tool",
+      );
+      assert.ok(outcome.ok);
+      const internals = panel as unknown as {
+        onMessage(message: FromWebview): void;
+        refreshChart(): Promise<void>;
+      };
+      const refreshing = internals.refreshChart();
+      internals.onMessage({ type: "sourceEdited", source: pie("B") });
+      await refreshing;
+      assert.strictEqual(panel.current?.source, pie("B"));
+      assert.ok(panel.current?.editedByUser);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("pickNodes says why there is nothing to pick", async () => {
     const panel = newPanel();
     try {
