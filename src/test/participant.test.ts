@@ -157,4 +157,18 @@ suite("participant", function () {
       panel.dispose();
     }
   });
+
+  test("does not run tools that the model was not given", async () => {
+    const panel = newPanel();
+    try {
+      const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
+      const { sent } = await ask(panel, [[call], [text("Sorry.")]]);
+      assert.strictEqual(
+        messageText(sent[1]?.messages.at(-1)),
+        "There is no tool named diagram_getState. Use only the tools you were given.",
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
 });

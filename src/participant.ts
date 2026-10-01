@@ -220,6 +220,9 @@ async function streamReply(
       let content: unknown[];
       if (notRun) {
         content = text(`Not run, as ${notRun}. Answer without tools.`);
+      } else if (!tools.some((tool) => tool.name === call.name)) {
+        // invokeTool runs any registered tool, not only those the model was given.
+        content = text(`There is no tool named ${call.name}. Use only the tools you were given.`);
       } else {
         try {
           const input = { input: call.input, toolInvocationToken: request.toolInvocationToken };
@@ -228,12 +231,12 @@ async function streamReply(
           if (token.isCancellationRequested) {
             return diagram;
           }
-          // The user declined to run the command: a CancellationError, though not always an
-          // instance of one. Don't let the model ask again.
+          // The user declined the tool call, e.g. to run a command: a CancellationError, though
+          // not always an instance of one. Don't let the model ask again.
           if (error instanceof Error && error.name === "Canceled") {
             notRun = "the user declined an earlier tool call";
             content = text(
-              "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted.",
+              "The user declined this tool call. Do not try it again, and do not make up its result: tell the user briefly what you would have done with it.",
             );
           } else {
             content = text(`The tool call failed: ${errorMessage(error)}`);
