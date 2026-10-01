@@ -5,7 +5,6 @@
     "moduleResolution": "nodenext",
     "verbatimModuleSyntax": false,
     "outDir": "out",
-    "noEmit": false,
     "types": ["node", "vscode", "mocha"]
   },
   "include": ["src/test"],
