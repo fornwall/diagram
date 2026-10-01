@@ -141,6 +141,16 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
   });
 
+  test("keeps series laid out in a box clear of the title, with room for their labels", () => {
+    const box = (type: string) => {
+      const { top, left, right } = layout({ title: { text: "T" }, series: [{ type }] }).series[0];
+      return [top, left, right];
+    };
+    assert.deepStrictEqual(box("treemap"), [44, 12, 12]);
+    assert.deepStrictEqual(box("tree"), [44, 96, 96]);
+    assert.deepStrictEqual(box("sankey"), [44, 12, 144]);
+  });
+
   test("gives sankey nodes their own palette colors, also beyond eight", () => {
     const nodes = Array.from({ length: 10 }, (_, index) => ({ name: `N${index}` }));
     const option = layout({ series: [{ type: "sankey", data: nodes }] });

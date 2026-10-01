@@ -339,7 +339,8 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number):
     if (placed || !["funnel", "sankey", "tree", "treemap", "graph"].includes(type)) {
       continue;
     }
-    const side = type === "funnel" ? Math.round(width * 0.1) : 12;
+    // A tree keeps ECharts' default margin, for the labels left of its root and right of its leaves.
+    const side = Math.round(type === "tree" ? width * 0.12 : type === "funnel" ? width * 0.1 : 12);
     Object.assign(each, {
       top: reserved.top + 12,
       // Room for the breadcrumb below a treemap.
