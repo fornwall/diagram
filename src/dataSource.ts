@@ -93,8 +93,8 @@ export async function readDataFile(file: string): Promise<string> {
   }
   if (stat.size > MAX_BYTES) {
     throw new Error(
-      `The file ${uri.fsPath} is ${(stat.size / 1024 / 1024).toFixed(1)} MB, more than the ` +
-        `${MAX_MB} MB limit. Use a command that summarizes it instead.`,
+      `The file ${uri.fsPath} is larger than the ${MAX_MB} MB limit. ` +
+        "Use a command that summarizes it instead.",
     );
   }
   const bytes = await vscode.workspace.fs.readFile(uri);

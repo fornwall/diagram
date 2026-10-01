@@ -97,7 +97,7 @@ suite("dataSource", () => {
     await assert.rejects(readDataFile(dir), /is a directory/);
     const large = path.join(dir, "large.csv");
     fs.writeFileSync(large, Buffer.alloc(10 * 1024 * 1024 + 1));
-    await assert.rejects(readDataFile(large), /10\.0 MB, more than the 10 MB limit/);
+    await assert.rejects(readDataFile(large), /is larger than the 10 MB limit/);
   });
 
   test("reads UTF-16 files with a byte order mark", async () => {
