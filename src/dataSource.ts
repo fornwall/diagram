@@ -216,6 +216,9 @@ export async function runCommand(
       finish(reason);
     };
     const complete = (code: number | null, signal: NodeJS.Signals | null): void => {
+      if (settled) {
+        return;
+      }
       const output = Buffer.concat(stdout).toString("utf8");
       const errors = tail(Buffer.concat(stderr).toString("utf8"));
       const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;
@@ -261,10 +264,12 @@ export async function runCommand(
     // "close" comes once the output pipes are closed, which a process left running in the
     // background may prevent; then the output so far is used shortly after the command exits.
     child.on("exit", (code, signal) => {
-      graceTimer = setTimeout(() => {
-        killTree();
-        complete(code, signal);
-      }, EXIT_GRACE_MS);
+      if (!settled) {
+        graceTimer = setTimeout(() => {
+          killTree();
+          complete(code, signal);
+        }, EXIT_GRACE_MS);
+      }
     });
     child.on("close", (code, signal) => complete(code, signal));
   });
@@ -282,12 +287,20 @@ export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
 ): Promise<{ table: DataTable; warning?: string }> {
+  if (token.isCancellationRequested) {
+    throw new vscode.CancellationError();
+  }
+  let text: string;
+  let warning: string | undefined;
   if (spec.data !== undefined) {
-    return { table: parseTable(spec.data, spec.format) };
+    text = spec.data;
+  } else if (spec.file !== undefined) {
+    text = await readDataFile(spec.file);
+  } else {
+    ({ output: text, warning } = await runCommand(spec.command, token));
   }
-  if (spec.file !== undefined) {
-    return { table: parseTable(await readDataFile(spec.file), spec.format) };
+  if (token.isCancellationRequested) {
+    throw new vscode.CancellationError();
   }
-  const { output, warning } = await runCommand(spec.command, token);
-  return { table: parseTable(output, spec.format), ...(warning ? { warning } : {}) };
+  return { table: parseTable(text, spec.format), ...(warning ? { warning } : {}) };
 }

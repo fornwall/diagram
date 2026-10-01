@@ -25,6 +25,23 @@ suite("dataSource", () => {
     assert.strictEqual(env.HOME, "/home/x");
   });
 
+  test("cancelled requests do not load or parse data", async () => {
+    const source = new vscode.CancellationTokenSource();
+    source.cancel();
+    try {
+      await assert.rejects(
+        loadTable({ type: "bar", data: "not JSON", format: "json" }, source.token),
+        vscode.CancellationError,
+      );
+      await assert.rejects(
+        loadTable({ type: "bar", file: path.join(dir, "missing.csv") }, source.token),
+        vscode.CancellationError,
+      );
+    } finally {
+      source.dispose();
+    }
+  });
+
   suite("commands", () => {
     suiteSetup(function () {
       if (process.platform === "win32") {
