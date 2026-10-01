@@ -438,9 +438,10 @@ export class MermaidRenderer implements Renderer {
 
     // Git graph commits: one or more bullets each, with the commit id among their classes, in the
     // order of the database's commits (reversed from bottom to top), and a label with the id
-    // except for merges and cherry-picks. Mermaid generates ids like "1-7754f83" at random in
-    // each parse, so those commits go by their sequence number. Their tags follow in the same
-    // order, each commit's last first, as a box, a hole and a text. Tags need not be unique.
+    // except for merges and cherry-picks (or with showCommitLabel off). Mermaid generates ids like
+    // "1-7754f83" at random in each parse, so those commits go by their sequence number, and are
+    // named by the drawn id. Their tags follow in the same order, each commit's last first, as a
+    // box, a hole and a text. Tags need not be unique.
     const commits = db?.getCommitsArray?.() ?? [];
     if (db?.getDirection?.() === "BT") {
       commits.reverse();
@@ -453,18 +454,25 @@ export class MermaidRenderer implements Renderer {
     }
     const tagLabels = Array.from(svg.querySelectorAll("text.tag-label"));
     const tagCount = commits.reduce((count, { tags }) => count + tags.length, 0);
-    const commitNodes = new Map<string, DiagramNode>();
+    const commitLabels = new Map(
+      Array.from(svg.querySelectorAll("text.commit-label"), (label) => [textOf(label), label]),
+    );
     if (bullets.size === commits.length && tagLabels.length === tagCount) {
       for (const [i, [drawnId, elements]] of [...bullets].entries()) {
         const { id, message, seq, tags } = commits[i] as (typeof commits)[number];
         const generated = /^\d+-[0-9a-f]{7}$/.test(id);
+        const commitLabel = commitLabels.get(drawnId)?.parentElement;
         const node = {
           id: generated ? String(seq) : id,
-          label: tags.join(", ") || (generated ? message || drawnId : id),
+          label:
+            tags.join(", ") ||
+            (generated ? message || (commitLabel ? drawnId : `commit ${seq}`) : id),
         };
-        commitNodes.set(drawnId, node);
         for (const element of elements) {
           add(element, node);
+        }
+        if (commitLabel) {
+          add(commitLabel, node);
         }
         for (const tag of tagLabels.splice(0, tags.length)) {
           const hole = tag.previousElementSibling;
@@ -475,12 +483,6 @@ export class MermaidRenderer implements Renderer {
             add(background, node);
           }
         }
-      }
-    }
-    for (const label of svg.querySelectorAll("text.commit-label")) {
-      const node = commitNodes.get(textOf(label));
-      if (node && label.parentElement) {
-        add(label.parentElement, node);
       }
     }
     // Git graph branches, by their labels.
