@@ -49,9 +49,10 @@ function parsedLines(source: string): number[] {
   let text = normalized;
   /** The offset in the normalized source of each character of the text. */
   let origins = Array.from({ length: text.length }, (_, i) => i);
+  // Mermaid's patterns, in its order.
   for (const removed of [
     /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/gs,
-    /%%\{.*?\}%%/gs,
+    /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi,
     /^\s*%%(?!\{)[^\n]+\n?/gm,
     /^\s+/g,
   ]) {
