@@ -10,6 +10,7 @@
 - Picking nodes ends when the diagram is replaced or edited, and answers right away when the diagram fails to render.
 - `@diagram` says when a reply ends before its diagram is complete, and only ends a diagram at a closing fence on a line of its own.
 - The tools report malformed input instead of failing with a type error.
+- The panel no longer opens a second time after a window reload while its tab was in the background.
 
 ## 0.0.1
 

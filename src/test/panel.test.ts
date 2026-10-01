@@ -23,6 +23,19 @@ function newPanel(): DiagramPanel {
   return new DiagramPanel(context as unknown as vscode.ExtensionContext);
 }
 
+/** Waits until the webview tabs have the given labels, as tabs are updated asynchronously. */
+async function webviewTabs(labels: string[]): Promise<vscode.Tab[]> {
+  for (;;) {
+    const tabs = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
+    if (tabs.map((tab) => tab.label).join() === labels.join()) {
+      return tabs;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().token) {
   return panel.pickNodes("Which part?", false, token);
 }
@@ -98,6 +111,22 @@ suite("panel", function () {
       assert.match(panel.describeForModel() ?? "", /selected these nodes/);
       receive({ type: "ready" });
       assert.match(panel.describeForModel() ?? "", /no nodes selected/);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("opening the panel replaces a diagram tab left from before a reload", async () => {
+    vscode.window.createWebviewPanel(DiagramPanel.viewType, "Old", {
+      viewColumn: vscode.ViewColumn.Two,
+      preserveFocus: true,
+    });
+    const [old] = await webviewTabs(["Old"]);
+    const panel = newPanel();
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const [replacement] = await webviewTabs(["Flow"]);
+      assert.strictEqual(replacement?.group.viewColumn, old?.group.viewColumn);
     } finally {
       panel.dispose();
     }

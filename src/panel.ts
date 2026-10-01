@@ -228,13 +228,26 @@ export class DiagramPanel implements vscode.Disposable {
       this.panel.reveal(undefined, true);
       return false;
     }
+    // After a window reload, VS Code restores a panel in a background tab only once the tab is
+    // shown. Replace such a tab rather than open a second one.
+    const leftovers = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter(
+        (tab) =>
+          tab.input instanceof vscode.TabInputWebview &&
+          tab.input.viewType.endsWith(DiagramPanel.viewType),
+      );
     const panel = vscode.window.createWebviewPanel(
       DiagramPanel.viewType,
       "Diagram",
-      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      {
+        viewColumn: leftovers[0]?.group.viewColumn ?? vscode.ViewColumn.Beside,
+        preserveFocus: true,
+      },
       webviewOptions(this.context.extensionUri),
     );
     this.attach(panel);
+    void vscode.window.tabGroups.close(leftovers, true);
     return true;
   }
 
