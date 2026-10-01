@@ -22,9 +22,8 @@ export type DataFormat = (typeof DATA_FORMATS)[number];
 const SORT_ORDERS = ["ascending", "descending"] as const;
 
 /**
- * Where a chart's data comes from: inline data (CSV, TSV, JSON or whitespace-separated columns), a
- * file, absolute or relative to the first workspace folder, or a shell command whose standard
- * output is the data, run in the first workspace folder.
+ * Where a chart's data comes from: inline, a file (absolute or relative to the first workspace
+ * folder), or a shell command whose standard output is the data, run in the first workspace folder.
  */
 type ChartData =
   | { data: string; file?: undefined; command?: undefined }
