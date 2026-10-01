@@ -5,21 +5,29 @@ const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
 const analyze = process.argv.includes("--analyze");
 
-/** @type {import("esbuild").Plugin} */
+/**
+ * Prints errors and warnings with the location on the following line, as the problem matcher in
+ * .vscode/tasks.json expects, and marks the start and end of each build when watching.
+ * @type {import("esbuild").Plugin}
+ */
 const problemMatcherPlugin = {
   name: "esbuild-problem-matcher",
   setup(build) {
     build.onStart(() => {
-      console.log("[watch] build started");
+      if (watch) console.log("[watch] build started");
     });
-    build.onEnd((result) => {
-      for (const { text, location } of result.errors) {
-        console.error(`✘ [ERROR] ${text}`);
+    build.onEnd(({ errors, warnings }) => {
+      const messages = [
+        ...errors.map((message) => ["✘ [ERROR]", message]),
+        ...warnings.map((message) => ["▲ [WARNING]", message]),
+      ];
+      for (const [kind, { text, location }] of messages) {
+        console.error(`${kind} ${text}`);
         if (location) {
-          console.error(`    ${location.file}:${location.line}:${location.column}:`);
+          console.error(`    ${location.file}:${location.line}:${location.column + 1}:`);
         }
       }
-      console.log("[watch] build finished");
+      if (watch) console.log("[watch] build finished");
     });
   },
 };
