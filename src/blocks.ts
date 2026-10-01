@@ -1,4 +1,4 @@
-import type { DiagramLanguage } from "./protocol";
+import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
 export interface DiagramBlock {
@@ -10,8 +10,11 @@ export interface DiagramBlock {
  * A ```mermaid or ```echarts block. Like {@link DiagramBlockFilter}, it only takes fences on lines of
  * their own, so that a ``` inside a label does not end the block.
  */
-const DIAGRAM_BLOCK =
-  /(?<![^\n])[^\S\n]*```(mermaid|echarts)[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*`{3,}[^\S\n]*(?![^\n])/g;
+const DIAGRAM_BLOCK = new RegExp(
+  // \x60 is a backtick.
+  String.raw`(?<![^\n])[^\S\n]*\x60{3}(${DIAGRAM_LANGUAGES.join("|")})[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*\x60{3,}[^\S\n]*(?![^\n])`,
+  "g",
+);
 
 /** Returns the last non-empty ```mermaid or ```echarts block in the given markdown. */
 export function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
@@ -74,7 +77,7 @@ function guessMermaidTitle(source: string): string {
   return "Diagram";
 }
 
-const OPENING_FENCES = ["```mermaid", "```echarts"];
+const OPENING_FENCES = DIAGRAM_LANGUAGES.map((language) => `\`\`\`${language}`);
 
 /**
  * Removes ```mermaid and ```echarts code blocks from markdown that arrives in fragments, such as a
@@ -123,7 +126,7 @@ export class DiagramBlockFilter {
       this.insideBlock = !/^`{3,}$/.test(trimmed);
       return "";
     }
-    if (this.passed === 0 && /^```(?:mermaid|echarts)\s*$/.test(trimmed)) {
+    if (this.passed === 0 && OPENING_FENCES.includes(trimmed)) {
       this.insideBlock = true;
       return "";
     }
