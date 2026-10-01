@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { codeFence, DiagramBlockFilter, guessTitle, lastDiagramBlock } from "./blocks";
+import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import type { DiagramPanel } from "./panel";
 import {
   CHART_TOOL,
@@ -72,33 +72,17 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     // Charts of files and command output are drawn by the chart tool, which asks the user before
     // running a command.
     const tools = explain ? [] : vscode.lm.tools.filter((tool) => tool.name === CHART_TOOL);
-    const rendersBefore = panel.renderCount;
-    const converse = () =>
-      streamReply(request.model, messages, tools, request.toolInvocationToken, stream, token);
+    let rendersBefore = panel.renderCount;
+    const converse = () => streamReply(request, messages, tools, stream, token);
 
     try {
-      let reply = await converse();
+      let block = await converse();
       if (explain) {
         return;
       }
 
-      for (let attempt = 0; ; attempt++) {
-        const block = lastDiagramBlock(reply);
-        if (!block || token.isCancellationRequested) {
-          // The chart tool may have drawn a chart. Remember it for later requests' history, by how
-          // it was drawn if it charts a file or command, as its data may be large.
-          const diagram = panel.renderCount !== rendersBefore && panel.current;
-          if (!diagram) {
-            return;
-          }
-          panel.setOrigin("participant");
-          showButton(stream, diagram.language);
-          return {
-            metadata: diagram.chart
-              ? { chart: diagram.chart }
-              : { language: diagram.language, source: diagram.source },
-          };
-        }
+      let failure: { block: DiagramBlock; error: string } | undefined;
+      for (let attempt = 0; block && !token.isCancellationRequested; attempt++) {
         const noun = diagramNoun(block.language);
         stream.progress(`Rendering ${noun}…`);
         const outcome = await panel.render({ ...block, title: guessTitle(block) }, "participant");
@@ -109,22 +93,38 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
           showButton(stream, block.language);
           return { metadata: block };
         }
-        if (attempt >= MAX_REPAIR_ATTEMPTS) {
-          stream.markdown(
-            `\n\nThe ${noun} failed to render: ${outcome.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
-          );
-          return { metadata: block };
+        failure = { block, error: outcome.error };
+        rendersBefore = panel.renderCount;
+        if (attempt === MAX_REPAIR_ATTEMPTS) {
+          break;
         }
-
         stream.progress("Fixing a rendering error…");
         stream.markdown("\n\n---\n\n");
         messages.push(
-          vscode.LanguageModelChatMessage.Assistant(reply),
           vscode.LanguageModelChatMessage.User(
             `That ${noun} failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block.`,
           ),
         );
-        reply = await converse();
+        block = await converse();
+      }
+
+      // The chart tool may have drawn a chart. Remember it for later requests' history, by how it
+      // was drawn if it charts a file or command, as its data may be large.
+      const chart = panel.renderCount !== rendersBefore && panel.current;
+      if (chart) {
+        panel.setOrigin("participant");
+        showButton(stream, chart.language);
+        return {
+          metadata: chart.chart
+            ? { chart: chart.chart }
+            : { language: chart.language, source: chart.source },
+        };
+      }
+      if (failure) {
+        stream.markdown(
+          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${failure.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
+        );
+        return { metadata: failure.block };
       }
     } catch (error) {
       if (error instanceof vscode.LanguageModelError) {
@@ -143,23 +143,24 @@ function showButton(stream: vscode.ChatResponseStream, language: DiagramLanguage
 }
 
 /**
- * Streams the model's reply to the chat, calling the tools it asks for, and returns the text of
- * its final reply. The messages are extended with the tool calls and their results.
+ * Streams the model's reply to the chat without its diagram blocks, calling the tools it asks for.
+ * Extends the messages with the reply and tool calls, and returns the
+ * reply's last diagram block.
  */
 async function streamReply(
-  model: vscode.LanguageModelChat,
+  request: vscode.ChatRequest,
   messages: vscode.LanguageModelChatMessage[],
   tools: vscode.LanguageModelChatTool[],
-  toolInvocationToken: vscode.ChatParticipantToolToken,
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<DiagramBlock | undefined> {
+  let diagram: DiagramBlock | undefined;
   /** Why further tool calls are answered without running them. */
   let notRun: string | undefined;
   for (let round = 0; ; round++) {
     // The tools are passed even when calls are no longer run, as some models reject requests whose
     // messages contain tool calls but no tools.
-    const response = await model.sendRequest(messages, { tools }, token);
+    const response = await request.model.sendRequest(messages, { tools }, token);
     // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS
     // Code from rendering a second, non-interactive copy of it inline.
     const filter = new DiagramBlockFilter();
@@ -175,8 +176,9 @@ async function streamReply(
       }
     }
     show(filter.flush());
+    diagram = filter.diagrams.at(-1) ?? diagram;
     if (token.isCancellationRequested) {
-      return reply;
+      return diagram;
     }
     if (filter.unterminated) {
       stream.markdown(
@@ -184,7 +186,10 @@ async function streamReply(
       );
     }
     if (calls.length === 0 || round > MAX_TOOL_ROUNDS) {
-      return reply;
+      if (reply) {
+        messages.push(vscode.LanguageModelChatMessage.Assistant(reply));
+      }
+      return diagram;
     }
     if (round === MAX_TOOL_ROUNDS) {
       notRun ??= "this request has made too many tool calls";
@@ -204,11 +209,11 @@ async function streamReply(
         content = text(`Not run, as ${notRun}. Answer without tools.`);
       } else {
         try {
-          const input = { input: call.input, toolInvocationToken };
+          const input = { input: call.input, toolInvocationToken: request.toolInvocationToken };
           content = (await vscode.lm.invokeTool(call.name, input, token)).content;
         } catch (error) {
           if (token.isCancellationRequested) {
-            return reply;
+            return diagram;
           }
           // The user declined to run the command: a CancellationError, though not always an
           // instance of one. Don't let the model ask again.
