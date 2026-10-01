@@ -11,6 +11,7 @@ import {
   errorMessage,
   type FromWebview,
   isFromWebview,
+  isPlainObject,
   RENDER_TOOL,
   type ToWebview,
 } from "./protocol";
@@ -71,8 +72,10 @@ const RENDER_TIMEOUT_MS = 15_000;
 export class DiagramPanel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
-  /** How many diagrams agents have rendered, to tell whether a request rendered one. */
-  renderCount = 0;
+  /** How many diagrams agents have rendered, to tell whether one replaced a chart being refreshed. */
+  private renderCount = 0;
+  /** The id of the chat request that a tool rendered the current diagram for; see {@link adopt}. */
+  private toolRequestId: unknown;
 
   private panel: vscode.WebviewPanel | undefined;
   /**
@@ -96,9 +99,17 @@ export class DiagramPanel implements vscode.Disposable {
     return this.state;
   }
 
-  /** Renders a diagram produced by an agent, opening the panel if needed. */
-  async render(diagram: Diagram, origin: DiagramOrigin): Promise<RenderOutcome> {
+  /**
+   * Renders a diagram produced by an agent, opening the panel if needed. A tool passes the tool
+   * invocation token it was given, which tells which chat request the diagram is for.
+   */
+  async render(
+    diagram: Diagram,
+    origin: DiagramOrigin,
+    toolInvocationToken?: unknown,
+  ): Promise<RenderOutcome> {
     this.renderCount++;
+    this.toolRequestId = requestId(toolInvocationToken);
     this.state = { ...diagram, origin, editedByUser: false };
     this.selection = [];
     this.cancelPick("The diagram was replaced before the user picked.");
@@ -106,12 +117,19 @@ export class DiagramPanel implements vscode.Disposable {
     return this.renderCurrent();
   }
 
-  /** Records who produced the current diagram, which decides where requests about it go. */
-  setOrigin(origin: DiagramOrigin): void {
-    if (this.state) {
-      this.state = { ...this.state, origin };
-      void this.save();
+  /**
+   * If a tool rendered the current diagram for the participant's chat request with this tool
+   * invocation token, makes it the participant's, so that requests about it go to the participant,
+   * and returns it. Another agent may render at the same time.
+   */
+  adopt(toolInvocationToken: unknown): Readonly<DiagramState> | undefined {
+    const id = requestId(toolInvocationToken);
+    if (!this.state || id === undefined || id !== this.toolRequestId) {
+      return undefined;
     }
+    this.state = { ...this.state, origin: "participant" };
+    void this.save();
+    return this.state;
   }
 
   /** Shows the panel, opening it with the current diagram if it was closed. */
@@ -472,4 +490,12 @@ export function clickToAskQuery(clickPrompt: string, label: string): string {
   return clickPrompt.includes("{label}")
     ? clickPrompt.replaceAll("{label}", label)
     : `${clickPrompt} "${label}"`;
+}
+
+/**
+ * The id of the chat request that a tool invocation token is for. The token is opaque, and a tool
+ * is given a copy of the one passed to vscode.lm.invokeTool, so tokens are compared by this id.
+ */
+function requestId(toolInvocationToken: unknown): unknown {
+  return isPlainObject(toolInvocationToken) ? toolInvocationToken.requestId : undefined;
 }

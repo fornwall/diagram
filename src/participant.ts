@@ -77,7 +77,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const tools = vscode.lm.tools.filter(
       (tool) => attached.includes(tool) || (!explain && tool.name === CHART_TOOL),
     );
-    let rendersBefore = panel.renderCount;
     const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
       streamReply(request, messages, tools, required, stream, token);
 
@@ -100,7 +99,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
           return { metadata: block };
         }
         failure = { block, error: outcome.error };
-        rendersBefore = panel.renderCount;
         if (attempt === MAX_REPAIR_ATTEMPTS) {
           break;
         }
@@ -116,9 +114,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
       // A tool, such as the chart tool, may have drawn the diagram. Remember it for later requests'
       // history, by how it was drawn if it charts a file or command, as its data may be large.
-      const drawn = panel.renderCount !== rendersBefore && panel.current;
+      const drawn = panel.adopt(request.toolInvocationToken);
       if (drawn) {
-        panel.setOrigin("participant");
         showButton(stream, drawn.language);
         return {
           metadata: drawn.chart

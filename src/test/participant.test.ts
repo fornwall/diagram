@@ -4,6 +4,8 @@ import { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
+/** A model's reply, or a function giving it, e.g. after doing what a tool call would. */
+type Reply = Part[] | (() => Promise<Part[]>);
 
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
@@ -24,7 +26,7 @@ function newPanel(): DiagramPanel {
 /** Sends a request to the participant, with a model that gives the replies in turn. */
 async function ask(
   panel: DiagramPanel,
-  replies: Part[][],
+  replies: Reply[],
   { history = [], ...overrides }: Partial<vscode.ChatRequest & vscode.ChatContext> = {},
 ) {
   const sent: {
@@ -37,7 +39,8 @@ async function ask(
       options: vscode.LanguageModelChatRequestOptions,
     ) => {
       sent.push({ messages: [...messages], options });
-      const parts = replies.shift() ?? [];
+      const reply = replies.shift() ?? [];
+      const parts = typeof reply === "function" ? await reply() : reply;
       return {
         stream: (async function* () {
           yield* parts;
@@ -128,6 +131,33 @@ suite("participant", function () {
       ]);
       assert.strictEqual(keepsFailing.sent.length, 3);
       assert.match(keepsFailing.shown, /failed to render: .*Edit source/s);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("adopts a diagram that a tool drew for the request, but not one drawn for another", async () => {
+    const panel = newPanel();
+    try {
+      const diagram = {
+        language: "mermaid",
+        source: "flowchart TD\n  A --> B",
+        title: "A",
+      } as const;
+      const drawFor = (requestId: string) => async () => {
+        assert.ok((await panel.render(diagram, "tool", { requestId })).ok);
+        return [text("Done.")];
+      };
+      const toolInvocationToken = { requestId: "this" } as never;
+      const other = await ask(panel, [drawFor("other")], { toolInvocationToken });
+      assert.strictEqual(other.result, undefined);
+      assert.strictEqual(panel.current?.origin, "tool");
+      const own = await ask(panel, [drawFor("this")], { toolInvocationToken });
+      assert.deepStrictEqual(own.result?.metadata, {
+        language: "mermaid",
+        source: diagram.source,
+      });
+      assert.strictEqual(panel.current?.origin, "participant");
     } finally {
       panel.dispose();
     }
