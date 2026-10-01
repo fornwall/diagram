@@ -148,6 +148,7 @@ suite("echartsLayout", () => {
     };
     assert.deepStrictEqual(box("treemap"), [44, 12, 12]);
     assert.deepStrictEqual(box("tree"), [44, 96, 96]);
+    assert.deepStrictEqual(box("funnel"), [44, 80, 80]);
     assert.deepStrictEqual(box("sankey"), [44, 12, 144]);
   });
 
