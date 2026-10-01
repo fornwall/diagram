@@ -315,12 +315,7 @@ refreshButton.addEventListener("click", () => post({ type: "refresh" }));
 
 // Source editing.
 
-const staleNote = document.createElement("p");
-staleNote.className = "note";
-staleNote.textContent =
-  "The diagram changed since you started editing. Apply replaces it with your version.";
-staleNote.hidden = true;
-sourceInput.after(staleNote);
+const staleNote = element("stale-note");
 
 function openEditor(): void {
   editedFrom = current ? current.renderer.formatForEditing(current.source) : "";

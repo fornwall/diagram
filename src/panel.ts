@@ -534,6 +534,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
   <div id="error" role="alert" hidden></div>
   <section id="editor" hidden>
     <textarea id="source" spellcheck="false" aria-label="Diagram source"></textarea>
+    <p id="stale-note" class="note" hidden>The diagram changed since you started editing. Apply replaces it with your version.</p>
     <div class="actions">
       <button id="apply">Apply</button>
       <button id="cancel" class="secondary">Cancel</button>
