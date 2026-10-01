@@ -100,7 +100,7 @@ suite("blocks", () => {
     assert.strictEqual(filter.flush(), "");
   });
 
-  test("lastDiagramBlock and DiagramBlockFilter agree on what is a diagram block", () => {
+  test("DiagramBlockFilter follows CommonMark fences", () => {
     const cases: { markdown: string; source?: string; shown: string; unterminated?: true }[] = [
       { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
       { markdown: "  ```mermaid  \nA\n  ```  \nB", source: "A", shown: "B" },
@@ -112,11 +112,22 @@ suite("blocks", () => {
       { markdown: "x ```mermaid\nA\n```\n", shown: "x ```mermaid\nA\n```\n" },
       { markdown: "```mermaid\nA\n``` x\n", shown: "", unterminated: true },
       { markdown: "Drawing:\n```echarts", shown: "Drawing:\n", unterminated: true },
+      // Longer fences, tilde fences and info strings after the language.
+      { markdown: '````mermaid\nA["```"]\n```\n````\nB', source: 'A["```"]\n```', shown: "B" },
+      { markdown: "~~~ mermaid title\nA\n~~~~\nB", source: "A", shown: "B" },
+      { markdown: "~~~mermaid\nA\n```\n", shown: "", unterminated: true },
+      // A diagram fence inside another code block is just code.
+      {
+        markdown: "````md\n```mermaid\nA\n```\n````\n",
+        shown: "````md\n```mermaid\nA\n```\n````\n",
+      },
     ];
     for (const { markdown, source, shown, unterminated = false } of cases) {
       assert.strictEqual(lastDiagramBlock(markdown)?.source, source, markdown);
+      assertFiltered(markdown, shown);
       const filter = new DiagramBlockFilter();
-      assert.strictEqual(filter.push(markdown) + filter.flush(), shown, markdown);
+      filter.push(markdown);
+      filter.flush();
       assert.strictEqual(filter.unterminated, unterminated, markdown);
     }
   });

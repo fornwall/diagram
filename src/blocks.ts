@@ -1,4 +1,4 @@
-import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
+import { DIAGRAM_LANGUAGES, type DiagramLanguage, isDiagramLanguage } from "./protocol";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
 export interface DiagramBlock {
@@ -6,24 +6,12 @@ export interface DiagramBlock {
   source: string;
 }
 
-/**
- * A ```mermaid or ```echarts block. Like {@link DiagramBlockFilter}, it only takes fences on lines of
- * their own, so that a ``` inside a label does not end the block.
- */
-const DIAGRAM_BLOCK = new RegExp(
-  // \x60 is a backtick.
-  String.raw`(?<![^\n])[^\S\n]*\x60{3}(${DIAGRAM_LANGUAGES.join("|")})[^\S\n]*\n((?:[^\n]*\n)*?)[^\S\n]*\x60{3,}[^\S\n]*(?![^\n])`,
-  "g",
-);
-
-/** Returns the last non-empty ```mermaid or ```echarts block in the given markdown. */
+/** Returns the last complete, non-empty ```mermaid or ```echarts block in the given markdown. */
 export function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
-  return Array.from(markdown.matchAll(DIAGRAM_BLOCK), (match) => ({
-    language: match[1] as DiagramLanguage,
-    source: (match[2] ?? "").trim(),
-  }))
-    .filter((block) => block.source.length > 0)
-    .at(-1);
+  const filter = new DiagramBlockFilter();
+  filter.push(markdown);
+  filter.flush();
+  return filter.diagrams.at(-1);
 }
 
 /** Wraps text in a fenced code block that is safe to embed in markdown, whatever the text. */
@@ -77,19 +65,56 @@ function guessMermaidTitle(source: string): string {
   return "Diagram";
 }
 
-const OPENING_FENCES = DIAGRAM_LANGUAGES.map((language) => `\`\`\`${language}`);
+/**
+ * Parses an opening code fence: three or more backticks or tildes, followed by an info string whose
+ * first word is the language. Unlike CommonMark, any indentation is accepted, as fences in list
+ * items may be indented further.
+ */
+function openingFence(line: string): { fence: string; language: string } | undefined {
+  const match = /^\s*(`{3,}|~{3,})(.*)$/.exec(line.trimEnd());
+  if (!match) {
+    return undefined;
+  }
+  const [, fence = "", info = ""] = match;
+  // The info string of a backtick fence may not contain backticks, e.g. ```mermaid``` inline.
+  if (fence.startsWith("`") && info.includes("`")) {
+    return undefined;
+  }
+  return { fence, language: info.trim().split(/\s/, 1)[0] ?? "" };
+}
+
+/** Whether the line closes a block opened by the given fence: the same character, at least as many. */
+function isClosingFence(line: string, fence: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.length >= fence.length && trimmed === fence.charAt(0).repeat(trimmed.length);
+}
+
+/** Whether an unfinished line may still turn out to open a diagram block. */
+function mayOpenDiagramBlock(partialLine: string): boolean {
+  const [, fence = "", rest = ""] = /^\s*(`+|~+)?(.*)$/s.exec(partialLine) ?? [];
+  if (rest === "") {
+    return true;
+  }
+  const language = fence.length >= 3 ? openingFence(partialLine)?.language : undefined;
+  return (
+    language !== undefined && DIAGRAM_LANGUAGES.some((diagram) => diagram.startsWith(language))
+  );
+}
 
 /**
  * Removes ```mermaid and ```echarts code blocks from markdown that arrives in fragments, such as a
- * streamed language model reply. Text is passed through as soon as it cannot be the start of such
- * a block.
+ * streamed language model reply, and collects them. Text is passed through as soon as it cannot be
+ * the start of such a block. Fences inside other code blocks are left alone.
  */
 export class DiagramBlockFilter {
+  /** The complete, non-empty diagram blocks seen so far. */
+  readonly diagrams: DiagramBlock[] = [];
   /** The current, unfinished line. */
   private line = "";
   /** How much of the current line has already been passed through. */
   private passed = 0;
-  private insideBlock = false;
+  /** The code block the text is in, and the diagram it holds if it is a diagram block. */
+  private block: { fence: string; diagram?: DiagramBlock } | undefined;
 
   /** Adds a fragment, returning the text that can be shown. */
   push(fragment: string): string {
@@ -100,7 +125,8 @@ export class DiagramBlockFilter {
       this.line = this.line.slice(newline + 1);
       this.passed = 0;
     }
-    if (!this.insideBlock && !this.mayOpenBlock(this.line)) {
+    const hidden = this.block ? this.block.diagram !== undefined : mayOpenDiagramBlock(this.line);
+    if (!hidden) {
       output += this.line.slice(this.passed);
       this.passed = this.line.length;
     }
@@ -117,28 +143,32 @@ export class DiagramBlockFilter {
 
   /** Whether the text ended inside a diagram block, e.g. because the reply was cut off. */
   get unterminated(): boolean {
-    return this.insideBlock;
+    return this.block?.diagram !== undefined;
   }
 
   private completeLine(line: string): string {
-    const trimmed = line.trim();
-    if (this.insideBlock) {
-      this.insideBlock = !/^`{3,}$/.test(trimmed);
-      return "";
+    const shown = line.slice(this.passed);
+    if (!this.block) {
+      const opening = openingFence(line);
+      if (opening) {
+        // A line that may open a diagram block is held back by push, so none of it was shown.
+        const { fence, language } = opening;
+        this.block = isDiagramLanguage(language)
+          ? { fence, diagram: { language, source: "" } }
+          : { fence };
+      }
+      return this.block?.diagram ? "" : shown;
     }
-    if (this.passed === 0 && OPENING_FENCES.includes(trimmed)) {
-      this.insideBlock = true;
-      return "";
+    const { fence, diagram } = this.block;
+    if (isClosingFence(line, fence)) {
+      this.block = undefined;
+      const source = diagram?.source.trim();
+      if (diagram && source) {
+        this.diagrams.push({ language: diagram.language, source });
+      }
+    } else if (diagram) {
+      diagram.source += line;
     }
-    return line.slice(this.passed);
-  }
-
-  /** Whether an unfinished line may still turn out to open a diagram block. */
-  private mayOpenBlock(partialLine: string): boolean {
-    if (this.passed > 0) {
-      return false;
-    }
-    const start = partialLine.trimStart();
-    return OPENING_FENCES.some((fence) => fence.startsWith(start) || start.startsWith(fence));
+    return diagram ? "" : shown;
   }
 }
