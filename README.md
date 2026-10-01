@@ -2,6 +2,8 @@
 
 Interactive diagrams and charts for VS Code chat. Agents draw [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts in a panel beside the chat, and you answer by selecting, clicking and editing what they drew.
 
+Requires VS Code 1.140 or later, and chat set up with a language model, such as GitHub Copilot.
+
 ## Ask `@diagram`
 
 Describe a diagram, optionally attaching files with `#file`:
