@@ -149,10 +149,19 @@ export class MermaidRenderer implements Renderer {
     private readonly diagram: HTMLElement,
     private readonly zoomButton: HTMLElement,
   ) {
-    diagram.addEventListener("click", (event) => {
+    const activate = (event: MouseEvent | KeyboardEvent) => {
       const element = event.target instanceof Element && event.target.closest(".diagram-node");
       const node = element ? this.nodes.get(element) : undefined;
       host.itemClicked(node && { key: node.id, node }, withModifier(event));
+    };
+    diagram.addEventListener("click", activate);
+    // Nodes are buttons for the keyboard.
+    diagram.addEventListener("keydown", (event) => {
+      const onNode = event.target instanceof Element && this.nodes.has(event.target);
+      if (onNode && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        activate(event);
+      }
     });
     new ResizeObserver(() => {
       if (this.fitting && this.displayedSource !== undefined) {
@@ -205,7 +214,9 @@ export class MermaidRenderer implements Renderer {
   showSelection(keys: ReadonlySet<string>): void {
     this.selectedKeys = keys;
     for (const [element, node] of this.nodes) {
-      element.classList.toggle("diagram-selected", keys.has(node.id));
+      const selected = keys.has(node.id);
+      element.classList.toggle("diagram-selected", selected);
+      element.setAttribute("aria-pressed", String(selected));
     }
   }
 
@@ -257,9 +268,17 @@ export class MermaidRenderer implements Renderer {
   }
 
   private findNodes(svg: SVGSVGElement, idPrefix: string): void {
+    const focusable = new Set<string>();
     const add = (element: Element, node: DiagramNode) => {
       element.classList.add("diagram-node");
       this.nodes.set(element, node);
+      // One tab stop per node, although some are drawn as several elements.
+      if (!focusable.has(node.id)) {
+        focusable.add(node.id);
+        element.setAttribute("tabindex", "0");
+        element.setAttribute("role", "button");
+        element.setAttribute("aria-label", node.label);
+      }
     };
     const withoutPrefix = (id: string) =>
       id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id;

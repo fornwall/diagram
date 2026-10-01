@@ -195,7 +195,12 @@ input:focus {
   cursor: pointer;
 }
 
-#canvas:is(.picking, .click-to-ask) #diagram .diagram-node:hover {
+#diagram .diagram-node:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+#canvas:is(.picking, .click-to-ask) #diagram .diagram-node:is(:hover, :focus-visible) {
   filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
     drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));
 }

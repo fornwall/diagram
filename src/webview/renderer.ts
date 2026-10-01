@@ -36,6 +36,7 @@ export interface Renderer {
   zoomReset?(): void;
 }
 
-/** Whether a click adds to the selection instead of replacing it. */
+/** Whether a click, or a key press on a node, adds to the selection instead of replacing it. */
 export const withModifier = (event: unknown) =>
-  event instanceof MouseEvent && (event.ctrlKey || event.metaKey || event.shiftKey);
+  (event instanceof MouseEvent || event instanceof KeyboardEvent) &&
+  (event.ctrlKey || event.metaKey || event.shiftKey);
