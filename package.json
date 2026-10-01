@@ -291,7 +291,7 @@
     "compile-tests": "node -e \"fs.rmSync('out',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "pretest": "npm run compile && npm run compile-tests",
     "test": "vscode-test",
-    "vsix": "vsce package --no-dependencies"
+    "vsix": "vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
