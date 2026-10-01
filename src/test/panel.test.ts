@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
-import type { FromWebview } from "../protocol";
+import { type FromWebview, isFromWebview } from "../protocol";
 
 const flowchart: Diagram = {
   language: "mermaid",
@@ -55,6 +55,23 @@ suite("panel", function () {
       clickToAskQuery("Tell me more about", "Parser"),
       'Tell me more about "Parser"',
     );
+  });
+
+  test("isFromWebview accepts only well-formed messages", () => {
+    assert.ok(isFromWebview({ type: "ready" }));
+    assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
+    const malformed = [
+      null,
+      "ready",
+      [{ type: "ready" }],
+      { type: "toString" },
+      { type: "picked", pickId: "3", nodes: [] },
+      { type: "selectionChanged", nodes: [{ id: "A" }] },
+      { type: "ask", nodes: [] },
+    ];
+    for (const message of malformed) {
+      assert.ok(!isFromWebview(message), JSON.stringify(message));
+    }
   });
 
   test("closing the panel ends a waiting render and pick, without blaming the diagram", async () => {

@@ -10,6 +10,7 @@ import {
   diagramNoun,
   errorMessage,
   type FromWebview,
+  isFromWebview,
   RENDER_TOOL,
   type ToWebview,
 } from "./protocol";
@@ -231,9 +232,12 @@ export class DiagramPanel implements vscode.Disposable {
     this.webviewReady = false;
     panel.webview.html = webviewHtml(panel.webview, this.context.extensionUri);
 
-    const messageListener = panel.webview.onDidReceiveMessage((message: FromWebview) =>
-      this.onMessage(message),
-    );
+    const messageListener = panel.webview.onDidReceiveMessage((message: unknown) => {
+      // The webview renders content written by a model, so do not trust what it sends.
+      if (isFromWebview(message)) {
+        this.onMessage(message);
+      }
+    });
     panel.onDidDispose(() => {
       messageListener.dispose();
       this.panel = undefined;

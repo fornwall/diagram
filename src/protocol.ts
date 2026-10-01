@@ -78,3 +78,39 @@ export type FromWebview =
   | { type: "pickCancelled"; pickId: number }
   /** The user asked to reload the chart's data from its file or command. */
   | { type: "refresh" };
+
+type Check = (value: unknown) => boolean;
+const isString: Check = (value) => typeof value === "string";
+const isId: Check = (value) => Number.isSafeInteger(value);
+const isNode: Check = (value) =>
+  isPlainObject(value) && isString(value.id) && isString(value.label);
+const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
+
+/** How to check each field of each message from the webview. */
+const FROM_WEBVIEW_FIELDS: {
+  [M in FromWebview as M["type"]]: { [K in Exclude<keyof M, "type">]-?: Check };
+} = {
+  ready: {},
+  rendered: { requestId: isId, diagramType: isString },
+  renderError: { requestId: isId, message: isString },
+  selectionChanged: { nodes: isNodes },
+  sourceEdited: { source: isString },
+  ask: { text: isString, nodes: isNodes },
+  clickToAsk: { node: isNode },
+  picked: { pickId: isId, nodes: isNodes },
+  pickCancelled: { pickId: isId },
+  refresh: {},
+};
+
+/** Whether a message from the webview, whose content is not to be trusted, is well-formed. */
+export function isFromWebview(message: unknown): message is FromWebview {
+  if (
+    !isPlainObject(message) ||
+    typeof message.type !== "string" ||
+    !Object.hasOwn(FROM_WEBVIEW_FIELDS, message.type)
+  ) {
+    return false;
+  }
+  const fields: Record<string, Check> = FROM_WEBVIEW_FIELDS[message.type as FromWebview["type"]];
+  return Object.entries(fields).every(([key, check]) => check(message[key]));
+}
