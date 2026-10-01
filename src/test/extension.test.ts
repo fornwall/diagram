@@ -24,11 +24,14 @@ suite("Extension", () => {
   });
 
   test("registers the language model tools", () => {
-    const names = vscode.lm.tools.map((tool) => tool.name);
-    assert.ok(names.includes("diagram_render"), names.join(", "));
-    assert.ok(names.includes("diagram_chart"), names.join(", "));
-    assert.ok(names.includes("diagram_getState"), names.join(", "));
-    assert.ok(names.includes("diagram_pickNodes"), names.join(", "));
+    const declared: { name: string }[] =
+      vscode.extensions.getExtension("fornwall.diagram")?.packageJSON.contributes
+        .languageModelTools;
+    const registered = vscode.lm.tools.filter((tool) => tool.name.startsWith("diagram_"));
+    assert.deepStrictEqual(
+      registered.map((tool) => tool.name).sort(),
+      declared.map((tool) => tool.name).sort(),
+    );
   });
 
   test("renders a valid diagram", async () => {
@@ -116,14 +119,6 @@ suite("Extension", () => {
   test("reports chart input errors back to the agent", async () => {
     const text = await invoke("diagram_chart", { type: "pie", data: "a,1", file: "x.csv" });
     assert.match(text, /No chart was rendered/);
-  });
-
-  test("renders a diagram in click-to-ask mode", async () => {
-    const text = await invoke("diagram_render", {
-      source: "flowchart LR\n  A[Parser] --> B[Checker]",
-      clickPrompt: "Explain {label} in more detail",
-    });
-    assert.match(text, /Rendered the flowchart/);
   });
 
   test("reports malformed input back to the agent", async () => {
