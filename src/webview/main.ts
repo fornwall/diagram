@@ -90,7 +90,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(message.refreshFrom);
   const renderer = renderers[language];
-  const changed = current?.source !== source;
+  const changed = current?.source !== source || current.renderer !== renderer;
   current = { renderer, source };
   if (changed) {
     sourceChanged();
