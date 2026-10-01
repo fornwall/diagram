@@ -141,11 +141,7 @@ export class DiagramPanel implements vscode.Disposable {
       };
     }
     if (state.error) {
-      const noun = diagramNoun(state.language);
-      return {
-        picked: false,
-        reason: `The ${noun} fails to render, so there is nothing to pick from. Render a working ${noun} first. The error is: ${state.error}`,
-      };
+      return { picked: false, reason: failsToRender(state.language, state.error) };
     }
     this.cancelPick("Another request to pick nodes replaced this one.");
     this.show();
@@ -436,6 +432,9 @@ export class DiagramPanel implements vscode.Disposable {
     const replaced = latest?.source !== state.source || latest.language !== state.language;
     if (latest && !replaced && (result.ok || result.kind === "invalid")) {
       this.state = { ...latest, error: result.ok ? undefined : result.error };
+      if (!result.ok) {
+        this.cancelPick(failsToRender(latest.language, result.error));
+      }
     }
     await this.context.workspaceState.update(STATE_KEY, this.state);
     return result;
@@ -456,6 +455,11 @@ export class DiagramPanel implements vscode.Disposable {
 /** Where a chart's data comes from, e.g. "file sales.csv" or "command `du -s *`". */
 function dataOrigin({ file, command }: ChartSpec): string {
   return file ? `file ${file}` : `command \`${command}\``;
+}
+
+function failsToRender(language: DiagramLanguage, error: string): string {
+  const noun = diagramNoun(language);
+  return `The ${noun} fails to render, so there is nothing to pick from. Render a working ${noun} first. The error is: ${error}`;
 }
 
 /** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */

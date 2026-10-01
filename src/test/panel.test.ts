@@ -116,6 +116,15 @@ suite("panel", function () {
       assert.ok(!outcome.ok && outcome.kind === "invalid");
       const broken = await pick(panel);
       assert.ok(!broken.picked && /fails to render/.test(broken.reason), JSON.stringify(broken));
+
+      // A pick that starts before the render fails ends when it does.
+      const rendering = panel.render(
+        { ...flowchart, source: "flowchart TD\n  C --> --> D[" },
+        "tool",
+      );
+      const waiting = await pick(panel);
+      assert.ok(!waiting.picked && /fails to render/.test(waiting.reason), JSON.stringify(waiting));
+      assert.ok(!(await rendering).ok);
     } finally {
       panel.dispose();
     }
