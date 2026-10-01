@@ -39,12 +39,12 @@ Diagrams follow your VS Code color theme.
 
 ## Tools for other agents
 
-Any agent, e.g. in agent mode, can use the panel through these tools, which you can also attach with `#`:
+Any agent, e.g. in agent mode, can use the panel through these tools. Attach one with `#`, also in an `@diagram` request, to have the model call it first:
 
 | Tool | Reference | What it does |
 | --- | --- | --- |
 | `diagram_render` | `#diagram` | Renders Mermaid source, or an ECharts option as JSON, and reports the error if it does not render. |
-| `diagram_chart` | `#chart` | Charts data given inline, in a file or as a command's output: pie, doughnut, bar, horizontal or stacked bar, line, area or scatter. Reads CSV, TSV, JSON and whitespace-separated columns (such as `du` or `wc -l` output), and tells the agent how it read them. |
+| `diagram_chart` | `#chart` | Charts data given inline, in a file or as a command's output: pie, doughnut, bar, horizontal or stacked bar, line, area or scatter. Reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated columns (such as `du` or `wc -l` output), and tells the agent how it read them. |
 | `diagram_getState` | `#diagramState` | Returns the current source, whether you edited it or it fails to render, and your selection. |
 | `diagram_pickNodes` | `#diagramPick` | Asks you a question that you answer by clicking nodes, and waits for the answer. |
 
