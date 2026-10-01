@@ -2,12 +2,6 @@
 
 import { mix, type Rgba, type ThemeColors } from "./colors";
 
-/** Whether VS Code shows a dark theme, including dark high contrast. */
-export function isDarkTheme(): boolean {
-  const kind = document.body.dataset.vscodeThemeKind;
-  return kind === "vscode-dark" || kind === "vscode-high-contrast";
-}
-
 const fromHex = (hex: string): Rgba => ({
   r: Number.parseInt(hex.slice(1, 3), 16),
   g: Number.parseInt(hex.slice(3, 5), 16),
@@ -46,8 +40,9 @@ function parseColor(css: string): Rgba | undefined {
 /** Reads the colors and font that charts use from VS Code's CSS variables. */
 export function readThemeColors(): ThemeColors {
   const style = getComputedStyle(document.body);
-  const dark = isDarkTheme();
-  const highContrast = document.body.dataset.vscodeThemeKind?.startsWith("vscode-high-contrast");
+  const kind = document.body.dataset.vscodeThemeKind;
+  const dark = kind === "vscode-dark" || kind === "vscode-high-contrast";
+  const highContrast = kind?.startsWith("vscode-high-contrast");
   const fontSize = Number.parseFloat(style.getPropertyValue("--vscode-font-size")) || 13;
   const variable = (name: string) => parseColor(style.getPropertyValue(`--vscode-${name}`));
   // VS Code always defines these variables; the fallbacks only keep the chart legible without.

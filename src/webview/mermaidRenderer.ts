@@ -2,8 +2,9 @@
 
 import type { Mermaid } from "mermaid";
 import type { DiagramNode } from "../protocol";
+import { mix, type ThemeColors, toCss } from "./colors";
 import { type Renderer, type RendererHost, withModifier } from "./renderer";
-import { isDarkTheme } from "./vscodeTheme";
+import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
 const loadMermaid = () => (loading ??= import("mermaid").then((module) => module.default));
@@ -118,6 +119,20 @@ function describeError(error: unknown, source: string): unknown {
   return error;
 }
 
+/**
+ * Mermaid's dark theme colors mind maps, timelines, pies and kanban columns almost black. Use
+ * VS Code's chart colors instead, toned down to carry the theme's light text.
+ */
+function darkScale({ palette, background }: ThemeColors): Record<string, string> {
+  const scale = palette.slice(0, 12).map((hue) => toCss(mix(background, hue, 0.45)));
+  return Object.fromEntries(
+    scale.flatMap((color, i) => [
+      [`cScale${i}`, color],
+      [`pie${i + 1}`, color],
+    ]),
+  );
+}
+
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
 function textOf(element: Element): string {
   const parts: string[] = [];
@@ -178,14 +193,16 @@ export class MermaidRenderer implements Renderer {
       );
     }
     const mermaid = await loadMermaid();
+    const colors = readThemeColors();
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
       maxTextSize: MAX_TEXT_SIZE,
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
-      theme: isDarkTheme() ? "dark" : "default",
-      fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
+      theme: colors.dark ? "dark" : "default",
+      themeVariables: colors.dark ? darkScale(colors) : {},
+      fontFamily: colors.fontFamily,
     });
     const id = `diagram-svg-${++this.renderCounter}`;
     const result = await mermaid.render(id, source).catch((error: unknown) => {
