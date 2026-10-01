@@ -11,6 +11,7 @@
 - `@diagram` says when a reply ends before its diagram is complete, and only ends a diagram at a closing fence on a line of its own.
 - The tools report malformed input instead of failing with a type error.
 - The panel no longer opens a second time after a window reload while its tab was in the background.
+- A chart of a file or command over 1 MB is kept across window reloads only as a prompt to press Refresh, instead of being saved on every render.
 
 ## 0.0.1
 

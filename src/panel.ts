@@ -62,7 +62,14 @@ interface DiagramState extends Diagram {
   error?: string;
 }
 
+interface SavedState extends Omit<DiagramState, "source"> {
+  /** Left out for a large chart of a file or command, which Refresh can draw again. */
+  source?: string;
+}
+
 const STATE_KEY = "diagram.state";
+/** Longer options of charts of files and commands are not saved, as saving happens often. */
+const MAX_SAVED_CHART_SOURCE = 1_000_000;
 /** Longer diagram sources are left out of the description for the model. */
 const MAX_SOURCE_FOR_MODEL = 30_000;
 const RENDER_TIMEOUT_MS = 15_000;
@@ -89,9 +96,13 @@ export class DiagramPanel implements vscode.Disposable {
   private refreshing = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    const state = context.workspaceState.get<DiagramState>(STATE_KEY);
-    // State saved before charts were supported has no language.
-    this.state = state && { ...state, language: state.language ?? "mermaid" };
+    const state = context.workspaceState.get<SavedState>(STATE_KEY);
+    this.state = state && {
+      ...state,
+      // State saved before charts were supported has no language.
+      language: state.language ?? "mermaid",
+      source: state.source ?? REFRESH_PROMPT,
+    };
   }
 
   /** The diagram currently shown, if any. */
@@ -113,7 +124,7 @@ export class DiagramPanel implements vscode.Disposable {
   setOrigin(origin: DiagramOrigin): void {
     if (this.state) {
       this.state = { ...this.state, origin };
-      void this.context.workspaceState.update(STATE_KEY, this.state);
+      void this.save();
     }
   }
 
@@ -449,8 +460,17 @@ export class DiagramPanel implements vscode.Disposable {
         this.cancelPick(failsToRender(latest.language, result.error));
       }
     }
-    await this.context.workspaceState.update(STATE_KEY, this.state);
+    await this.save();
     return result;
+  }
+
+  private save(): Thenable<void> {
+    const state = this.state;
+    const saved: SavedState | undefined =
+      state?.chart && state.source.length > MAX_SAVED_CHART_SOURCE
+        ? { ...state, source: undefined, editedByUser: false, error: undefined }
+        : state;
+    return this.context.workspaceState.update(STATE_KEY, saved);
   }
 
   /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
@@ -464,6 +484,17 @@ export class DiagramPanel implements vscode.Disposable {
     void this.panel?.webview.postMessage(message);
   }
 }
+
+/** Shown instead of a chart whose option was too large to save. */
+const REFRESH_PROMPT = JSON.stringify({
+  title: {
+    text: "Press Refresh to draw this chart again",
+    subtext: "It was too large to keep when VS Code closed.",
+    left: "center",
+    top: "middle",
+  },
+  series: [{ type: "pie", data: [] }],
+});
 
 /** Where a chart's data comes from, e.g. "file sales.csv" or "command `du -s *`". */
 function dataOrigin({ file, command }: ChartSpec): string {

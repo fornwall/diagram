@@ -9,11 +9,10 @@ const flowchart: Diagram = {
   title: "Flow",
 };
 
-/** A panel of its own, with state that is not saved. */
-function newPanel(): DiagramPanel {
+/** A panel of its own, with state that is only saved in the given map. */
+function newPanel(values = new Map<string, unknown>()): DiagramPanel {
   const extension = vscode.extensions.getExtension("fornwall.diagram");
   assert.ok(extension);
-  const values = new Map<string, unknown>();
   const workspaceState: vscode.Memento = {
     keys: () => [...values.keys()],
     get: <T>(key: string, defaultValue?: T) => (values.get(key) as T | undefined) ?? defaultValue,
@@ -129,6 +128,39 @@ suite("panel", function () {
       assert.strictEqual(replacement?.group.viewColumn, old?.group.viewColumn);
     } finally {
       panel.dispose();
+    }
+  });
+
+  test("a large chart of a file is saved without its option, to be refreshed", async () => {
+    const values = new Map<string, unknown>();
+    const panel = newPanel(values);
+    const option = JSON.stringify({ series: [{ type: "pie", data: [{ name: "A", value: 1 }] }] });
+    try {
+      const outcome = await panel.render(
+        {
+          language: "echarts",
+          source: option + " ".repeat(1_000_000),
+          title: "Sizes",
+          chart: { type: "pie", file: "sizes.tsv" },
+        },
+        "tool",
+      );
+      assert.ok(outcome.ok);
+      const saved = values.get("diagram.state") as Diagram;
+      assert.strictEqual(saved.source, undefined);
+      assert.strictEqual(saved.title, "Sizes");
+    } finally {
+      panel.dispose();
+    }
+
+    const restored = newPanel(values);
+    try {
+      const diagram = restored.current;
+      assert.ok(diagram);
+      assert.match(diagram.source, /Press Refresh/);
+      assert.ok((await restored.render(diagram, "tool")).ok);
+    } finally {
+      restored.dispose();
     }
   });
 
