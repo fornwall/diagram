@@ -77,8 +77,17 @@ suite("charts", () => {
     ]);
     assert.strictEqual(
       summary(spec),
-      'Charted "files" by "language"; summed up the 2 rows after the first 2 as "Other".',
+      'Charted "files" by "language"; kept the first 2 rows and summed up the other 2 as "Other".',
     );
+  });
+
+  test("pie sums up a row named Other with the rest", () => {
+    const spec = chart("pie", { limit: 2 });
+    assert.deepStrictEqual(build(spec, "k,n\nOther,4\na,3\nb,2\nc,1").series[0].data, [
+      { name: "a", value: 3 },
+      { name: "b", value: 2 },
+      { name: "Other", value: 5 },
+    ]);
   });
 
   test("pie leaves out rows without a positive value before limiting", () => {
@@ -92,7 +101,7 @@ suite("charts", () => {
     assert.strictEqual(
       summary(spec, table),
       'Charted "n" by "k"; left out 3 rows without a positive value; ' +
-        'summed up the 2 rows after the first 2 as "Other".',
+        'kept the first 2 rows and summed up the other 2 as "Other".',
     );
     assert.throws(() => build(chart("pie"), "k,n\na,-1\nb,0"), /needs positive numbers/);
   });

@@ -258,16 +258,24 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   }
   rows = sortRows(rows, spec.sort);
   if (spec.limit !== undefined && rows.length > spec.limit) {
-    const rest = rows.slice(spec.limit);
-    rows = rows.slice(0, spec.limit);
     if (pie) {
-      rows.push({
-        label: "Other",
-        values: [rest.reduce((sum, row) => sum + (row.values[0] ?? 0), 0)],
-      });
-      notes.push(`summed up the ${rest.length} rows after the first ${spec.limit} as "Other"`);
+      // A row named "Other" in the data is summed up too, rather than becoming a second slice.
+      const kept: Row[] = [];
+      let other = 0;
+      let summed = 0;
+      for (const row of rows) {
+        if (kept.length < spec.limit && row.label !== "Other") {
+          kept.push(row);
+        } else {
+          other += row.values[0] ?? 0;
+          summed++;
+        }
+      }
+      rows = [...kept, { label: "Other", values: [other] }];
+      notes.push(`kept the first ${spec.limit} rows and summed up the other ${summed} as "Other"`);
     } else {
-      notes.push(`kept the first ${spec.limit} of ${rows.length + rest.length} rows`);
+      notes.push(`kept the first ${spec.limit} of ${rows.length} rows`);
+      rows = rows.slice(0, spec.limit);
     }
   }
 
