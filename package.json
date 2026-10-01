@@ -271,8 +271,7 @@
       {
         "command": "diagram.show",
         "title": "Show Diagram Panel",
-        "category": "Diagram",
-        "icon": "$(type-hierarchy)"
+        "category": "Diagram"
       }
     ]
   },
