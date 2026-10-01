@@ -82,9 +82,11 @@ export class DiagramPanel implements vscode.Disposable {
   renderCount = 0;
 
   private panel: vscode.WebviewPanel | undefined;
-  private webviewReady: Promise<void> = Promise.resolve();
-  private resolveWebviewReady: () => void = () => {};
-  private webviewLoadedBefore = false;
+  /**
+   * Whether the webview listens to messages. Until it does, messages are dropped, and once it does
+   * (again, after a reload), it is sent the pending renders and pick.
+   */
+  private webviewReady = false;
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
   private nextRequestId = 1;
@@ -155,7 +157,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.show();
 
     const id = this.nextRequestId++;
-    const outcome = new Promise<PickOutcome>((resolve) => {
+    return new Promise<PickOutcome>((resolve) => {
       const cancellation = token.onCancellationRequested(() =>
         this.finishPick(id, { picked: false, reason: "The request was cancelled." }),
       );
@@ -168,12 +170,8 @@ export class DiagramPanel implements vscode.Disposable {
           resolve(outcome);
         },
       };
-    });
-    await this.webviewReady;
-    if (this.pendingPick?.id === id) {
       this.post({ type: "startPick", pickId: id, prompt, multiple });
-    }
-    return outcome;
+    });
   }
 
   /** Takes over a panel restored by VS Code after a reload. */
@@ -230,10 +228,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.panel = panel;
     panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
     panel.webview.options = webviewOptions(this.context.extensionUri);
-    this.webviewLoadedBefore = false;
-    this.webviewReady = new Promise((resolve) => {
-      this.resolveWebviewReady = resolve;
-    });
+    this.webviewReady = false;
     panel.webview.html = webviewHtml(panel.webview, this.context.extensionUri);
 
     const messageListener = panel.webview.onDidReceiveMessage((message: FromWebview) =>
@@ -242,8 +237,8 @@ export class DiagramPanel implements vscode.Disposable {
     panel.onDidDispose(() => {
       messageListener.dispose();
       this.panel = undefined;
+      this.webviewReady = false;
       this.selection = [];
-      this.resolveWebviewReady();
       this.cancelPick("The user closed the diagram panel.");
       for (const requestId of this.pendingRenders.keys()) {
         this.finishRender(requestId, {
@@ -258,24 +253,21 @@ export class DiagramPanel implements vscode.Disposable {
   private onMessage(message: FromWebview): void {
     switch (message.type) {
       case "ready":
-        this.resolveWebviewReady();
-        // The webview lost its content (e.g. it was moved to another window): render again,
-        // under the original request ids so that pending renders are answered.
-        if (this.webviewLoadedBefore) {
-          this.selection = [];
-          if (this.pendingRenders.size > 0) {
-            for (const pending of this.pendingRenders.values()) {
-              this.post(pending.message);
-            }
-          } else if (this.state) {
-            void this.renderCurrent();
+        // The webview loaded, or lost its content and loaded again (e.g. when moved to another
+        // window). Pending renders keep their request ids, so that their callers are answered.
+        this.webviewReady = true;
+        this.selection = [];
+        if (this.pendingRenders.size > 0) {
+          for (const pending of this.pendingRenders.values()) {
+            this.post(pending.message);
           }
-          if (this.pendingPick) {
-            const { id, prompt, multiple } = this.pendingPick;
-            this.post({ type: "startPick", pickId: id, prompt, multiple });
-          }
+        } else if (this.state) {
+          void this.renderCurrent();
         }
-        this.webviewLoadedBefore = true;
+        if (this.pendingPick) {
+          const { id, prompt, multiple } = this.pendingPick;
+          this.post({ type: "startPick", pickId: id, prompt, multiple });
+        }
         break;
       case "rendered":
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
@@ -321,10 +313,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /**
-   * Shows the current diagram in the webview once it is ready, and keeps its render error, if any,
-   * for later requests.
-   */
+  /** Shows the current diagram in the webview, and keeps its render error, if any, for later requests. */
   private async renderCurrent(): Promise<RenderOutcome> {
     const state = this.state;
     if (!state || !this.panel) {
@@ -334,7 +323,6 @@ export class DiagramPanel implements vscode.Disposable {
     const { source, title } = state;
     const refreshFrom = state.chart && dataOrigin(state.chart);
     if (source === undefined) {
-      await this.webviewReady;
       this.post({ type: "needsRefresh", title, refreshFrom });
       return {
         ok: false,
@@ -352,7 +340,7 @@ export class DiagramPanel implements vscode.Disposable {
       clickPrompt: state.clickPrompt,
       refreshFrom,
     };
-    const outcome = new Promise<RenderOutcome>((resolve) => {
+    const result = await new Promise<RenderOutcome>((resolve) => {
       const timeout = setTimeout(
         () =>
           this.finishRender(message.requestId, {
@@ -369,13 +357,8 @@ export class DiagramPanel implements vscode.Disposable {
           resolve(outcome);
         },
       });
-    });
-    await this.webviewReady;
-    // The render may have timed out, or the panel closed, while the webview was loading.
-    if (this.pendingRenders.has(message.requestId)) {
       this.post(message);
-    }
-    const result = await outcome;
+    });
 
     // An unavailable panel says nothing about the source, and the diagram may have been replaced
     // while rendering.
@@ -460,7 +443,9 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   private post(message: ToWebview): void {
-    void this.panel?.webview.postMessage(message);
+    if (this.webviewReady) {
+      void this.panel?.webview.postMessage(message);
+    }
   }
 }
 
