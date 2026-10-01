@@ -388,20 +388,31 @@ function layOutRadar(base: JsonObject, reserved: Insets, width: number, height: 
   radar.radius = Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2);
 }
 
+/** What the user can change in a shown chart, by component: besides the zoom ranges. */
+const USER_STATE: Record<string, string[]> = {
+  legend: ["selected", "scrollDataIndex"],
+  timeline: ["currentIndex"],
+  visualMap: ["range", "selected"],
+};
+
 /**
  * Carries what the user changed in the shown chart over to a new layout of its option: the
- * legend selection and scroll position, and the zoom ranges.
+ * legend selection and scroll position, the timeline position, the visual map ranges and the zoom
+ * ranges.
  */
 export function keepUserState(option: JsonObject, shown: JsonObject): void {
   const base = baseOption(option);
-  const shownLegends = asArray(shown.legend);
-  asArray(base.legend).forEach((legend, index) => {
-    const current = shownLegends[index];
-    if (current) {
-      legend.selected = current.selected;
-      legend.scrollDataIndex = current.scrollDataIndex;
-    }
-  });
+  for (const [component, keys] of Object.entries(USER_STATE)) {
+    const shownComponents = asArray(shown[component]);
+    asArray(base[component]).forEach((each, index) => {
+      const current = shownComponents[index];
+      for (const key of keys) {
+        if (current?.[key] !== undefined) {
+          each[key] = current[key];
+        }
+      }
+    });
+  }
   const shownZooms = asArray(shown.dataZoom);
   asArray(base.dataZoom).forEach((zoom, index) => {
     const current = shownZooms[index];

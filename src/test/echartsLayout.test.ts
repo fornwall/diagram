@@ -158,4 +158,15 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.legend.scrollDataIndex, 3);
     assert.deepStrictEqual(option.dataZoom, [{ type: "inside", start: 10, end: 40 }]);
   });
+
+  test("keepUserState carries the timeline position and visual map range over", () => {
+    const option: Option = layout({
+      baseOption: { ...bars(), timeline: { data: ["2025", "2026"] }, visualMap: {} },
+      options: [{}, {}],
+    });
+    keepUserState(option, { timeline: [{ currentIndex: 1 }], visualMap: [{ range: [2, 5] }] });
+    assert.strictEqual(option.baseOption.timeline.currentIndex, 1);
+    assert.deepStrictEqual(option.baseOption.visualMap.range, [2, 5]);
+    assert.strictEqual(option.baseOption.visualMap.selected, undefined);
+  });
 });
