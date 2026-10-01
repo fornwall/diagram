@@ -1,0 +1,138 @@
+// What the @diagram participant sends a language model: its instructions, the conversation so far
+// and the user's attachments.
+
+import * as vscode from "vscode";
+import { codeFence } from "./blocks";
+import { CHART_TOOL, isDiagramLanguage } from "./protocol";
+
+/** Attached files are truncated to this many characters. */
+const MAX_REFERENCE_LENGTH = 50_000;
+
+const INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that draws diagrams and charts.
+They are rendered in an interactive panel next to the chat, where the user can select nodes or chart items, edit the source by hand and send follow-up requests.
+
+Pick what fits the content:
+- Mermaid, for structure and flow: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, timeline, gitGraph and so on, in a \`\`\`mermaid code block.
+- Apache ECharts 6, for quantitative data: pie, bar, line, area, scatter, radar, funnel, gauge, heatmap, treemap, sunburst, sankey and so on. Reply with an \`\`\`echarts code block containing the complete ECharts option object as strict JSON (double quotes, no comments, no functions; use string templates such as "{b}: {c}" for formatters). Put the data inline.
+- The ${CHART_TOOL} tool, to chart data in a file or the output of a shell command (e.g. "pie chart of the disk usage per folder": command "du -s *"), or larger inline data such as a pasted table. It loads and parses the data, renders the chart itself and tells you how the data was read; then reply with a short explanation and no code block. Prefer it over an echarts block whenever the data comes from a file or a command, and never invent data that a file or command would give.
+- If the user explicitly asks for Mermaid (or gives Mermaid source), use Mermaid, e.g. a Mermaid pie or xychart-beta chart; if they ask for ECharts, use ECharts.
+
+Rules:
+- Unless you used ${CHART_TOOL}, reply with a short explanation (a few sentences at most) followed by exactly one \`\`\`mermaid or \`\`\`echarts code block containing the complete diagram or chart. Never send partial diagrams or diffs.
+- The code block is not shown in the chat: the diagram appears in the panel instead. So do not refer to it as "below" or repeat its contents in the explanation; describe what the diagram shows or what you changed.
+- When a current diagram is given, treat the request as a change to it unless the user clearly asks for something new. Preserve node ids, the user's manual edits and everything the request does not touch.
+- When the user refers to "this", "these" or "the selection", they mean the nodes or chart items they have selected in the panel.
+- Mermaid: use short, stable node ids with human-readable labels. Quote labels that contain punctuation, e.g. A["parse(input)"].
+- Do not use click directives, HTML, hard-coded colors, backgrounds, fonts or sizes: the panel follows the user's VS Code theme and fits charts to the panel. Give an ECharts chart a short title.text; the panel shows it as its heading.
+- If the request is too ambiguous to draw, ask one clarifying question instead of guessing, without a code block.`;
+
+const EXPLAIN_INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that explains diagrams and charts.
+Explain the current diagram or chart to the user, focusing on the nodes or items they have selected if any, and answer their question about it.
+Do not output a mermaid or echarts code block: this request must not change the diagram.`;
+
+/**
+ * The messages asking the model to answer a request, to draw or, with `explain`, to explain
+ * `current`: the description of the current diagram, if any.
+ */
+export async function promptMessages(
+  request: vscode.ChatRequest,
+  context: vscode.ChatContext,
+  explain: boolean,
+  current: string | undefined,
+): Promise<vscode.LanguageModelChatMessage[]> {
+  return [
+    vscode.LanguageModelChatMessage.User(explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS),
+    ...historyMessages(context),
+    ...(await referenceMessages(context, request)),
+    ...(current ? [vscode.LanguageModelChatMessage.User(current)] : []),
+    vscode.LanguageModelChatMessage.User(request.prompt),
+  ];
+}
+
+function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatMessage[] {
+  const messages: vscode.LanguageModelChatMessage[] = [];
+  for (const turn of context.history) {
+    if (turn instanceof vscode.ChatRequestTurn) {
+      messages.push(vscode.LanguageModelChatMessage.User(turn.prompt));
+    } else {
+      let text = turn.response
+        .map((part) => (part instanceof vscode.ChatResponseMarkdownPart ? part.value.value : ""))
+        .join("");
+      // Diagrams are not shown in chat, so restore the one this turn produced.
+      const source: unknown = turn.result.metadata?.source;
+      const language: unknown = turn.result.metadata?.language;
+      const chart: unknown = turn.result.metadata?.chart;
+      if (typeof source === "string" && isDiagramLanguage(language)) {
+        text += `\n\n${codeFence(source, language)}`;
+      } else if (chart) {
+        text += `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${JSON.stringify(chart)})`;
+      }
+      if (text) {
+        messages.push(vscode.LanguageModelChatMessage.Assistant(text));
+      }
+    }
+  }
+  return messages;
+}
+
+/**
+ * The files, selections and text attached to this request and earlier ones, as later requests often
+ * refer to them. Each is read again, and given once.
+ */
+async function referenceMessages(
+  context: vscode.ChatContext,
+  request: vscode.ChatRequest,
+): Promise<vscode.LanguageModelChatMessage[]> {
+  const attachments = new Set<string>();
+  for (const turn of [...context.history, request]) {
+    if (turn instanceof vscode.ChatResponseTurn) {
+      continue;
+    }
+    // The references come in reverse order of their position in the prompt.
+    for (const { value, modelDescription } of [...turn.references].reverse()) {
+      const content = await referenceContent(value);
+      if (!content) {
+        continue;
+      }
+      const { name, text } = content;
+      const label = modelDescription ? `${name} (${modelDescription})` : name;
+      if (text === undefined) {
+        attachments.add(`Attached by the user: ${label}, which is not a text file.`);
+        continue;
+      }
+      const truncated =
+        text.length > MAX_REFERENCE_LENGTH
+          ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
+          : "";
+      attachments.add(
+        `Attached by the user: ${label}${truncated}\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
+      );
+    }
+  }
+  return Array.from(attachments, (text) => vscode.LanguageModelChatMessage.User(text));
+}
+
+/**
+ * The name and text of an attached file, selection or string. The text is left out for a folder or
+ * binary file. Other values, such as images, are skipped.
+ */
+async function referenceContent(
+  value: unknown,
+): Promise<{ name: string; text?: string } | undefined> {
+  if (typeof value === "string") {
+    return { name: "text", text: value };
+  }
+  const location = value instanceof vscode.Location ? value : undefined;
+  const uri = location?.uri ?? (value instanceof vscode.Uri ? value : undefined);
+  if (!uri) {
+    return undefined;
+  }
+  const path = vscode.workspace.asRelativePath(uri);
+  const name = location ? `${path}:${location.range.start.line + 1}` : path;
+  try {
+    const document = await vscode.workspace.openTextDocument(uri);
+    return { name, text: document.getText(location?.range) };
+  } catch {
+    return { name };
+  }
+}
