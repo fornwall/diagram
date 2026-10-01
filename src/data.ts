@@ -350,7 +350,6 @@ function splitMultiWordHeader(tokens: Token[][]): string[][] | undefined {
     header === undefined ||
     count < 2 ||
     header.length <= count ||
-    header.some((token) => isNumber(token.text)) ||
     rest.some((line) => line.length !== count)
   ) {
     return undefined;
@@ -444,11 +443,10 @@ function splitWhitespace(text: string): Records {
     };
   }
   const counts = tokens.map((line) => line.length);
-  if (counts.some((c) => c !== counts[0])) {
+  if (textHeader && counts.some((c) => c !== counts[0])) {
     const aligned = splitMultiWordHeader(tokens) ?? splitAtHeaderGaps(lines);
     if (aligned !== undefined) {
-      // Columns of text alone, as from docker ps, have no numbers to tell the header by.
-      return { records: aligned, header: aligned[0]?.some(isNumber) ? undefined : true };
+      return { records: aligned, header: true };
     }
   }
   // Under a header, as from ps aux, longer lines have spaces in the last column.

@@ -196,6 +196,26 @@ suite("data", () => {
     assert.deepStrictEqual(table.rows[2]?.[4], 4096);
   });
 
+  test("parses ls -l output whose first file could pass for an aligned header", () => {
+    const table = parse(
+      [
+        "total 12",
+        "-rw-r--r--  1 fred staff  1234 Jan  1 12:00 a.txt",
+        "-rw-r--r--  1 fred staff  5678 Feb  2 09:30 my notes.md",
+        "drwxr-xr-x  3 fred staff  4096 Mar  3 10:15 src",
+      ].join("\n"),
+    );
+    assert.strictEqual(table.rows.length, 3);
+    assert.deepStrictEqual(
+      table.rows.map((row) => [row[4], row[8]]),
+      [
+        [1234, "a.txt"],
+        [5678, "my notes.md"],
+        [4096, "src"],
+      ],
+    );
+  });
+
   test("parses aligned output with multi-word headers and empty cells", () => {
     assert.deepStrictEqual(
       parse(
