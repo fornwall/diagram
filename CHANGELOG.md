@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Charts with Apache ECharts 6.1, embedded in the panel. The model picks Mermaid for diagrams and ECharts for quantitative data, and `@diagram` can write either.
+- `diagram_chart` tool (`#chart`): render data as a pie, doughnut, bar, line, area or scatter chart, with the data inline, in a file, or from a shell command that you confirm first. Charts of files and commands can be refreshed from the panel.
+- `diagram_render` takes `language: "echarts"` to render an ECharts option.
+- Charts follow the VS Code theme, sit on the editor background and adapt their layout to the panel size; chart items can be selected, picked and clicked like diagram nodes.
+
 ## 0.0.1
 
 - `@diagram` chat participant that draws and changes Mermaid diagrams, with `/new`, `/explain` and `/show` commands, and retries when a diagram fails to render.

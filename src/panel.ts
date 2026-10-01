@@ -1,6 +1,15 @@
 import * as vscode from "vscode";
-import { mermaidFence } from "./mermaid";
-import type { DiagramNode, FromWebview, ToWebview } from "./protocol";
+import { diagramFence } from "./blocks";
+import type { ChartSpec } from "./chartSpec";
+import { buildChartOption } from "./charts";
+import { loadTable } from "./dataSource";
+import {
+  DIAGRAM_LANGUAGES,
+  type DiagramLanguage,
+  type DiagramNode,
+  type FromWebview,
+  type ToWebview,
+} from "./protocol";
 
 /** Who produced the diagram currently shown: the @diagram participant, or another agent through a tool. */
 export type DiagramOrigin = "participant" | "tool";
@@ -18,19 +27,28 @@ interface PendingPick {
   resolve: (outcome: PickOutcome) => void;
 }
 
-interface DiagramState {
+/** A diagram to show, as produced by an agent. */
+export interface Diagram {
+  language: DiagramLanguage;
   source: string;
   title: string;
+  /** When set, a plain click on a node sends this request to chat; see {@link clickToAskQuery}. */
+  clickPrompt?: string;
+  /** For a chart of data from a file or command: how to load the data and draw it again. */
+  chart?: ChartSpec;
+}
+
+interface DiagramState extends Diagram {
   origin: DiagramOrigin;
   /** Set when the user changed the source in the panel after it was last rendered by an agent. */
   editedByUser: boolean;
   /** The last render error, if the current source fails to render. */
   error?: string;
-  /** When set, a plain click on a node sends this request to chat; see {@link clickToAskQuery}. */
-  clickPrompt?: string;
 }
 
 const STATE_KEY = "diagram.state";
+/** Longer diagram sources are left out of the description for the model. */
+const MAX_SOURCE_FOR_MODEL = 30_000;
 const RENDER_TIMEOUT_MS = 15_000;
 
 /**
@@ -50,25 +68,48 @@ export class DiagramPanel implements vscode.Disposable {
   private readonly pendingRenders = new Map<number, (outcome: RenderOutcome) => void>();
   private pendingPick: PendingPick | undefined;
 
+  /** Counts the diagrams rendered by agents, to tell whether a request rendered one. */
+  private renders = 0;
+  private refreshing = false;
+
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
+    const state = context.workspaceState.get<DiagramState>(STATE_KEY);
+    // State saved before charts were supported has no language.
+    this.state = state && {
+      ...state,
+      language: DIAGRAM_LANGUAGES.includes(state.language) ? state.language : "mermaid",
+    };
   }
 
   get hasDiagram(): boolean {
     return this.state !== undefined;
   }
 
+  /** How many diagrams agents have rendered so far. */
+  get renderCount(): number {
+    return this.renders;
+  }
+
+  /** The diagram currently shown, if any. */
+  get current(): Diagram | undefined {
+    return this.state;
+  }
+
   /** Renders a diagram produced by an agent, opening the panel if needed. */
-  async render(
-    source: string,
-    title: string,
-    origin: DiagramOrigin,
-    clickPrompt?: string,
-  ): Promise<RenderOutcome> {
-    this.state = { source, title, origin, editedByUser: false, clickPrompt };
+  async render(diagram: Diagram, origin: DiagramOrigin): Promise<RenderOutcome> {
+    this.renders++;
+    this.state = { ...diagram, origin, editedByUser: false };
     this.selection = [];
     this.reveal();
     return this.renderCurrent();
+  }
+
+  /** Records who produced the current diagram, which decides where requests about it go. */
+  setOrigin(origin: DiagramOrigin): void {
+    if (this.state) {
+      this.state = { ...this.state, origin };
+      void this.context.workspaceState.update(STATE_KEY, this.state);
+    }
   }
 
   /** Shows the panel with the current diagram, if any. */
@@ -144,8 +185,26 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state) {
       return undefined;
     }
-    const lines = [`The diagram currently shown in the diagram panel ("${state.title}"):`, ""];
-    lines.push(mermaidFence(state.source), "");
+    const what =
+      state.language === "echarts" ? "chart, as an Apache ECharts option," : "Mermaid diagram";
+    const lines = [`The ${what} currently shown in the diagram panel ("${state.title}"):`, ""];
+    // A chart of a large file or command output can be too large for the model's context.
+    if (state.source.length <= MAX_SOURCE_FOR_MODEL) {
+      lines.push(diagramFence(state), "");
+    } else {
+      lines.push(
+        `(The source is ${state.source.length} characters long, too long to show here.)`,
+        "",
+      );
+    }
+    if (state.chart) {
+      const from = state.chart.file
+        ? `file ${state.chart.file}`
+        : `command \`${state.chart.command}\``;
+      lines.push(
+        `It was drawn with diagram_chart from ${from}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call diagram_chart again rather than editing the generated option.`,
+      );
+    }
     if (state.error) {
       lines.push(`It currently fails to render with this error: ${state.error}`);
     }
@@ -250,6 +309,9 @@ export class DiagramPanel implements vscode.Disposable {
           void this.renderCurrent();
         }
         break;
+      case "refresh":
+        void this.refreshChart();
+        break;
       case "ask":
         void this.askInChat(`${regarding(message.nodes)}${message.text}`);
         break;
@@ -280,6 +342,38 @@ export class DiagramPanel implements vscode.Disposable {
     resolve(outcome);
   }
 
+  /** Loads the data of the current chart again and redraws it, replacing manual edits. */
+  private async refreshChart(): Promise<void> {
+    const chart = this.state?.chart;
+    if (!chart || this.refreshing) {
+      return;
+    }
+    this.refreshing = true;
+    const rendersBefore = this.renders;
+    const cancellation = new vscode.CancellationTokenSource();
+    try {
+      const { table } = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
+        () => loadTable(chart, cancellation.token),
+      );
+      // An agent may have replaced the chart while its data was loading.
+      if (!this.state || this.renders !== rendersBefore) {
+        return;
+      }
+      const source = JSON.stringify(buildChartOption(chart, table), null, 2);
+      this.state = { ...this.state, source, editedByUser: false };
+      this.selection = [];
+      await this.renderCurrent();
+    } catch (error) {
+      void vscode.window.showErrorMessage(
+        `Could not refresh the chart: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.refreshing = false;
+      cancellation.dispose();
+    }
+  }
+
   private async renderCurrent(): Promise<RenderOutcome> {
     const state = this.state;
     const panel = this.panel;
@@ -306,15 +400,17 @@ export class DiagramPanel implements vscode.Disposable {
       this.post({
         type: "render",
         requestId,
+        language: state.language,
         source: state.source,
         title: state.title,
         clickPrompt: state.clickPrompt,
+        refreshable: state.chart !== undefined,
       });
     }
     const result = await outcome;
 
     // Only record the outcome if the diagram was not replaced while rendering.
-    if (this.state?.source === state.source) {
+    if (this.state?.source === state.source && this.state.language === state.language) {
       this.state = { ...this.state, error: result.ok ? undefined : result.error };
       await this.context.workspaceState.update(STATE_KEY, this.state);
     }
@@ -365,7 +461,8 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-  // Mermaid injects <style> elements into the SVGs it generates, hence 'unsafe-inline' for styles.
+  // Mermaid injects <style> elements into the SVGs it generates, and ECharts styles its tooltips
+  // inline, hence 'unsafe-inline' for styles.
   const csp = [
     "default-src 'none'",
     `img-src ${webview.cspSource} data:`,
@@ -390,6 +487,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
       <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
       <button id="zoom-reset" title="Reset zoom">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="refresh" title="Load the chart's data again" hidden>Refresh</button>
       <button id="edit" title="Edit the Mermaid source">Edit source</button>
     </div>
   </header>
@@ -402,14 +500,14 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
   </div>
   <div id="error" role="alert" hidden></div>
   <section id="editor" hidden>
-    <textarea id="source" spellcheck="false" aria-label="Mermaid source"></textarea>
+    <textarea id="source" spellcheck="false" aria-label="Diagram source"></textarea>
     <div class="actions">
       <button id="apply">Apply</button>
       <button id="cancel" class="secondary">Cancel</button>
     </div>
   </section>
   <main id="canvas">
-    <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw one.</div>
+    <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw a diagram or chart.</div>
     <div id="diagram"></div>
   </main>
   <footer>

@@ -106,6 +106,14 @@ button.link:hover {
   white-space: pre-wrap;
 }
 
+#error pre {
+  margin: 4px 0 0;
+  max-height: 12em;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 12px);
+}
+
 #editor:not([hidden]) {
   display: flex;
   flex-direction: column;
@@ -138,9 +146,33 @@ input:focus {
 }
 
 #canvas {
+  position: relative;
   flex: 1;
+  min-height: 0;
   overflow: auto;
+  /* A stable gutter keeps fitting a diagram to the width from toggling the scrollbar. */
+  scrollbar-gutter: stable;
   padding: 16px;
+}
+
+/* Charts fill the canvas and adapt to its size, on the editor background. */
+#canvas.chart-mode {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  padding: 0;
+}
+
+#canvas.chart-mode > :not(#chart) {
+  display: none;
+}
+
+#chart {
+  position: absolute;
+  inset: 8px 12px 10px;
+}
+
+#chart[hidden] {
+  display: none;
 }
 
 #empty {
@@ -153,11 +185,17 @@ input:focus {
   text-align: center;
 }
 
+#diagram svg {
+  display: inline-block;
+  vertical-align: top;
+}
+
 #diagram :is(g.node, g.actor-man, rect.actor, text.actor, g.mindmap-node, g.eventWrapper, g.task) {
   cursor: pointer;
 }
 
-#diagram:is(.picking, .click-to-ask)
+#canvas:is(.picking, .click-to-ask)
+  #diagram
   :is(g.node, g.actor-man, rect.actor, text.actor, g.mindmap-node, g.eventWrapper, g.task):hover {
   filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
     drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));

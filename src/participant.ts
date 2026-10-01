@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { extractMermaidBlocks, guessTitle, MermaidBlockFilter, mermaidFence } from "./mermaid";
+import { DiagramBlockFilter, diagramFence, extractDiagramBlocks, guessTitle } from "./blocks";
 import type { DiagramPanel } from "./panel";
+import { CHART_TOOL } from "./tools";
 
 export const PARTICIPANT_ID = "diagram.participant";
 
@@ -8,23 +9,30 @@ export const PARTICIPANT_ID = "diagram.participant";
 const MAX_REPAIR_ATTEMPTS = 2;
 /** Attached files are truncated to this many characters. */
 const MAX_REFERENCE_LENGTH = 50_000;
+/** How many rounds of tool calls a single reply may take. */
+const MAX_TOOL_ROUNDS = 4;
 
-const INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that draws Mermaid diagrams.
-The diagrams you produce are rendered in an interactive panel next to the chat, where the user can select nodes, edit the source by hand and send follow-up requests.
+const INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that draws diagrams and charts.
+They are rendered in an interactive panel next to the chat, where the user can select nodes or chart items, edit the source by hand and send follow-up requests.
+
+Pick the tool that fits the content:
+- Mermaid, for structure and flow: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, timeline, gitGraph and so on. Reply with a \`\`\`mermaid code block.
+- Apache ECharts 6, for quantitative data: pie, bar, line, area, scatter, radar, funnel, gauge, heatmap, treemap, sunburst, sankey and so on. Reply with an \`\`\`echarts code block containing the complete ECharts option object as strict JSON (double quotes, no comments, no functions; use string templates such as "{b}: {c}" for formatters). Put the data inline.
+- The ${CHART_TOOL} tool, to chart data in a file or the output of a shell command (e.g. "pie chart of the disk usage per folder": command "du -s *"), or larger inline data such as a pasted table. It loads and parses the data, renders the chart itself and tells you how the data was read; then reply with a short explanation and no code block. Prefer it over an echarts block whenever the data comes from a file or a command, and never invent data that a file or command would give.
+- If the user explicitly asks for Mermaid (or gives Mermaid source), use Mermaid, e.g. a Mermaid pie or xychart-beta chart; if they ask for ECharts, use ECharts.
 
 Rules:
-- Reply with a short explanation (a few sentences at most) followed by exactly one \`\`\`mermaid code block containing the complete diagram. Never send partial diagrams or diffs.
+- Unless you used ${CHART_TOOL}, reply with a short explanation (a few sentences at most) followed by exactly one \`\`\`mermaid or \`\`\`echarts code block containing the complete diagram or chart. Never send partial diagrams or diffs.
 - The code block is not shown in the chat: the diagram appears in the panel instead. So do not refer to it as "below" or repeat its contents in the explanation; describe what the diagram shows or what you changed.
-- When a current diagram is given, treat the request as a change to it unless the user clearly asks for something new. Preserve node ids, the user's manual edits and everything the request does not touch.
-- When the user refers to "this", "these" or "the selection", they mean the nodes they have selected in the panel.
-- Pick the diagram type that fits the content: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, timeline, gitGraph and so on.
-- Use short, stable node ids with human-readable labels. Quote labels that contain punctuation, e.g. A["parse(input)"].
-- Do not use click directives, HTML or hard-coded colors: the panel follows the user's VS Code theme.
+- When a current diagram is given, treat the request as a change to it unless the user clearly asks for something new. Preserve node ids, the user's manual edits and everything the request does not touch. A chart whose data comes from a file or command is changed by calling ${CHART_TOOL} again.
+- When the user refers to "this", "these" or "the selection", they mean the nodes or chart items they have selected in the panel.
+- Mermaid: use short, stable node ids with human-readable labels. Quote labels that contain punctuation, e.g. A["parse(input)"].
+- Do not use click directives, HTML, hard-coded colors, backgrounds, fonts or sizes: the panel follows the user's VS Code theme and fits charts to the panel. Give an ECharts chart a short title.text; the panel shows it as its heading.
 - If the request is too ambiguous to draw, ask one clarifying question instead of guessing, without a code block.`;
 
-const EXPLAIN_INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that explains Mermaid diagrams.
-Explain the current diagram to the user, focusing on the nodes they have selected if any, and answer their question about it.
-Do not output a mermaid code block: this request must not change the diagram.`;
+const EXPLAIN_INSTRUCTIONS = `You are @diagram, an assistant inside VS Code that explains diagrams and charts.
+Explain the current diagram or chart to the user, focusing on the nodes or items they have selected if any, and answer their question about it.
+Do not output a mermaid or echarts code block: this request must not change the diagram.`;
 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
   return async (request, context, stream, token) => {
@@ -55,28 +63,57 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     }
     messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
 
+    // Charts of files and command output are drawn by the chart tool, which asks the user before
+    // running a command.
+    const tools = explain ? [] : vscode.lm.tools.filter((tool) => tool.name === CHART_TOOL);
+    const rendersBefore = panel.renderCount;
+    const converse = () =>
+      streamReply(request.model, messages, tools, request.toolInvocationToken, stream, token);
+    /** The diagram this request rendered, to restore it in later requests' history. */
+    const renderedDiagram = (): vscode.ChatResult | undefined => {
+      const current = panel.current;
+      if (panel.renderCount === rendersBefore || !current) {
+        return undefined;
+      }
+      panel.setOrigin("participant");
+      // A chart of a file or command is remembered by how it was drawn, as its data may be large.
+      return {
+        metadata: current.chart
+          ? { chart: current.chart }
+          : { language: current.language, source: current.source },
+      };
+    };
+
     try {
-      let reply = await streamReply(request.model, messages, stream, token);
+      let reply = await converse();
       if (explain) {
         return;
       }
 
       for (let attempt = 0; ; attempt++) {
-        const source = extractMermaidBlocks(reply).at(-1);
-        if (!source || token.isCancellationRequested) {
-          return;
+        const block = extractDiagramBlocks(reply).at(-1);
+        if (!block || token.isCancellationRequested) {
+          const result = renderedDiagram();
+          if (result) {
+            stream.button({ command: "diagram.show", title: "Show Chart" });
+          }
+          return result;
         }
-        stream.progress("Rendering diagram…");
-        const outcome = await panel.render(source, guessTitle(source), "participant");
+        const what = block.language === "echarts" ? "chart" : "diagram";
+        stream.progress(`Rendering ${what}…`);
+        const outcome = await panel.render({ ...block, title: guessTitle(block) }, "participant");
         if (outcome.ok) {
-          stream.button({ command: "diagram.show", title: "Show Diagram" });
-          return { metadata: { source } };
+          stream.button({
+            command: "diagram.show",
+            title: block.language === "echarts" ? "Show Chart" : "Show Diagram",
+          });
+          return { metadata: block };
         }
         if (attempt >= MAX_REPAIR_ATTEMPTS) {
           stream.markdown(
-            `\n\nThe diagram failed to render: ${outcome.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
+            `\n\nThe ${what} failed to render: ${outcome.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
           );
-          return { metadata: { source } };
+          return { metadata: block };
         }
 
         stream.progress("Fixing a rendering error…");
@@ -84,10 +121,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         messages.push(
           vscode.LanguageModelChatMessage.Assistant(reply),
           vscode.LanguageModelChatMessage.User(
-            `That diagram failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete diagram in a single mermaid code block.`,
+            `That ${what} failed to render with this error:\n\n${outcome.error}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${what} in a single ${block.language} code block.`,
           ),
         );
-        reply = await streamReply(request.model, messages, stream, token);
+        reply = await converse();
       }
     } catch (error) {
       if (error instanceof vscode.LanguageModelError) {
@@ -98,29 +135,83 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
   };
 }
 
+/**
+ * Streams the model's reply to the chat, calling the tools it asks for, and returns the text of
+ * its final reply. The messages are extended with the tool calls and their results.
+ */
 async function streamReply(
   model: vscode.LanguageModelChat,
   messages: vscode.LanguageModelChatMessage[],
+  tools: vscode.LanguageModelChatTool[],
+  toolInvocationToken: vscode.ChatParticipantToolToken,
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<string> {
-  const response = await model.sendRequest(messages, {}, token);
-  // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS Code
-  // from rendering a second, non-interactive copy of it inline.
-  const filter = new MermaidBlockFilter();
-  let reply = "";
-  for await (const fragment of response.text) {
-    reply += fragment;
-    const visible = filter.push(fragment);
-    if (visible) {
-      stream.markdown(visible);
+  let declined = false;
+  for (let round = 0; ; round++) {
+    const options = { tools: round < MAX_TOOL_ROUNDS && !declined ? tools : [] };
+    const response = await model.sendRequest(messages, options, token);
+    // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS
+    // Code from rendering a second, non-interactive copy of it inline.
+    const filter = new DiagramBlockFilter();
+    let reply = "";
+    const calls: vscode.LanguageModelToolCallPart[] = [];
+    for await (const part of response.stream) {
+      if (part instanceof vscode.LanguageModelTextPart) {
+        reply += part.value;
+        const visible = filter.push(part.value);
+        if (visible) {
+          stream.markdown(visible);
+        }
+      } else if (part instanceof vscode.LanguageModelToolCallPart) {
+        calls.push(part);
+      }
+    }
+    const rest = filter.flush();
+    if (rest) {
+      stream.markdown(rest);
+    }
+    if (calls.length === 0 || token.isCancellationRequested) {
+      return reply;
+    }
+
+    messages.push(
+      vscode.LanguageModelChatMessage.Assistant([
+        ...(reply ? [new vscode.LanguageModelTextPart(reply)] : []),
+        ...calls,
+      ]),
+    );
+    const results: vscode.LanguageModelToolResultPart[] = [];
+    for (const call of calls) {
+      let content: unknown[];
+      try {
+        const result = await vscode.lm.invokeTool(
+          call.name,
+          { input: call.input, toolInvocationToken },
+          token,
+        );
+        content = result.content;
+      } catch (error) {
+        if (token.isCancellationRequested) {
+          return reply;
+        }
+        // Thrown when the user denies running the command; don't let the model ask again.
+        const denied =
+          error instanceof vscode.CancellationError ||
+          (error instanceof Error && error.name === "Canceled");
+        declined ||= denied;
+        const message = denied
+          ? "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted."
+          : `The tool call failed: ${error instanceof Error ? error.message : String(error)}`;
+        content = [new vscode.LanguageModelTextPart(message)];
+      }
+      results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
+    }
+    messages.push(vscode.LanguageModelChatMessage.User(results));
+    if (reply && !reply.endsWith("\n")) {
+      stream.markdown("\n\n");
     }
   }
-  const rest = filter.flush();
-  if (rest) {
-    stream.markdown(rest);
-  }
-  return reply;
 }
 
 function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatMessage[] {
@@ -134,8 +225,12 @@ function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatM
         .join("");
       // Diagrams are not shown in chat, so restore the one this turn produced.
       const source: unknown = turn.result.metadata?.source;
-      if (typeof source === "string") {
-        text += `\n\n${mermaidFence(source)}`;
+      const language: unknown = turn.result.metadata?.language ?? "mermaid";
+      const chart: unknown = turn.result.metadata?.chart;
+      if (typeof source === "string" && (language === "mermaid" || language === "echarts")) {
+        text += `\n\n${diagramFence({ language, source })}`;
+      } else if (chart) {
+        text += `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${JSON.stringify(chart)})`;
       }
       if (text) {
         messages.push(vscode.LanguageModelChatMessage.Assistant(text));
