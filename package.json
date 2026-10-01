@@ -186,6 +186,7 @@
               "items": {
                 "type": "string"
               },
+              "minItems": 1,
               "description": "The columns with the values, one series each. Defaults to the numeric columns, leaving out identifiers (id, rank, pid, …) and columns in another unit than the first."
             },
             "sort": {
