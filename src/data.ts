@@ -426,11 +426,12 @@ function splitWhitespace(text: string): Records {
     tokens.shift();
   }
   const [header = [], ...data] = tokens;
+  const textHeader = !header.some((token) => isNumber(token.text));
   // Rows that start with a name, under a header that starts after it, as printed by free and R.
   const named = header.length + 1;
   const indent = header[0]?.start ?? 0;
   if (
-    !header.some((token) => isNumber(token.text)) &&
+    textHeader &&
     data.some((line) => line.length === named) &&
     data.every((line) => line.length <= named && (line[0]?.end ?? 0) <= indent)
   ) {
@@ -452,9 +453,7 @@ function splitWhitespace(text: string): Records {
   }
   // Under a header, as from ps aux, longer lines have spaces in the last column.
   const count =
-    !header.some((token) => isNumber(token.text)) &&
-    data.length > 0 &&
-    data.every((line) => line.length >= header.length)
+    textHeader && data.length > 0 && data.every((line) => line.length >= header.length)
       ? header.length
       : mode(counts);
   return { records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)) };
