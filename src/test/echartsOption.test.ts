@@ -89,6 +89,41 @@ suite("echartsOption", () => {
     parseOption('{"series": [{"type": "graph", "data": [{"name": "A", "x": 0, "y": 0}]}]}');
   });
 
+  test("explains empty or malformed coordinate components", () => {
+    for (const xAxis of [null, [], false, "category", 0]) {
+      assert.match(
+        errorOf(JSON.stringify({ xAxis, yAxis: {}, series: [{ type: "bar", data: [1] }] })),
+        /needs "xAxis" and "yAxis"/,
+      );
+    }
+    for (const visualMap of [null, [], false]) {
+      assert.match(
+        errorOf(
+          JSON.stringify({
+            xAxis: {},
+            yAxis: {},
+            visualMap,
+            series: [{ type: "heatmap", data: [[0, 0, 1]] }],
+          }),
+        ),
+        /needs a "visualMap"/,
+      );
+    }
+  });
+
+  test("explains unknown coordinate systems, including inherited property names", () => {
+    for (const coordinateSystem of ["cartesian", "constructor", "toString", "__proto__"]) {
+      assert.match(
+        errorOf(JSON.stringify({ series: [{ type: "scatter", coordinateSystem }] })),
+        /unknown coordinate system/,
+      );
+    }
+    parseOption(
+      '{"series": [{"type": "graph", "coordinateSystem": "view", "layout": "circular"}]}',
+    );
+    parseOption('{"series": [{"type": "pie", "coordinateSystem": "none"}]}');
+  });
+
   test("finds JavaScript functions where ECharts accepts callbacks", () => {
     const formatter = errorOf(
       `{${BAR}, "series": [{"type": "bar", "label": {"formatter": "function (p) { return p.name; }"}}]}`,

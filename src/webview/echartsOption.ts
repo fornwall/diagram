@@ -214,8 +214,19 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
         'but the panel has no map data; set "coordinateSystem": "cartesian2d" and add "xAxis" and "yAxis".',
     );
   }
+  if (
+    system !== undefined &&
+    system !== "none" &&
+    system !== "view" &&
+    !Object.hasOwn(COORDINATE_COMPONENTS, system)
+  ) {
+    throw new Error(
+      `series[${index}] has the unknown coordinate system "${system}". ` +
+        `Use one of: ${Object.keys(COORDINATE_COMPONENTS).join(", ")}, view, none.`,
+    );
+  }
   const components = system === undefined ? undefined : COORDINATE_COMPONENTS[system];
-  if (components?.needs.some((name) => base[name] === undefined)) {
+  if (components?.needs.some((name) => asArray(base[name]).length === 0)) {
     const needs = components.needs.map((name) => `"${name}"`);
     throw new Error(
       `series[${index}] (type "${type}") is drawn on the ${system} coordinate system and needs ` +
@@ -223,7 +234,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
         `e.g. ${components.example}.`,
     );
   }
-  if (type === "heatmap" && base.visualMap === undefined) {
+  if (type === "heatmap" && asArray(base.visualMap).length === 0) {
     throw new Error(
       `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
         '"visualMap": {"min": 0, "max": 10}.',
@@ -233,7 +244,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
   if (
     type === "graph" &&
     (each.layout ?? "none") === "none" &&
-    each.coordinateSystem === undefined &&
+    (each.coordinateSystem === undefined || each.coordinateSystem === "view") &&
     Array.isArray(nodes) &&
     nodes.some(
       (node) => !isPlainObject(node) || typeof node.x !== "number" || typeof node.y !== "number",

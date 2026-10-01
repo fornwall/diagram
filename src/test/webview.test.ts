@@ -87,4 +87,28 @@ suite("webview", function () {
     assert.ok(!outcome.ok && outcome.kind === "invalid");
     assert.match(outcome.error, /unsupported type "custom"/);
   });
+
+  test("recovers from invalid chart components and renders an explicit graph view", async () => {
+    const invalid = await render({
+      language: "echarts",
+      source: '{"xAxis": null, "yAxis": {}, "series": [{"type": "bar", "data": [1]}]}',
+    });
+    assert.ok(!invalid.ok);
+    assert.match(invalid.error, /needs "xAxis" and "yAxis"/);
+    const graph = await render({
+      language: "echarts",
+      source: JSON.stringify({
+        series: [
+          {
+            type: "graph",
+            coordinateSystem: "view",
+            layout: "circular",
+            data: [{ name: "A" }, { name: "B" }],
+            links: [{ source: 0, target: 1 }],
+          },
+        ],
+      }),
+    });
+    assert.deepStrictEqual(graph, { ok: true, diagramType: "graph" });
+  });
 });
