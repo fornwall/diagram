@@ -138,9 +138,11 @@ function darkScale({ palette, background }: ThemeColors): Record<string, string>
  * The diagram types whose items Mermaid draws without their data, and the parts of their
  * databases that findNodes reads it from.
  */
-const WITH_DATABASE = new Set(["pie"]);
+const WITH_DATABASE = new Set(["pie", "gitGraph"]);
 interface DiagramDb {
   getSections?(): Map<string, number>;
+  getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
+  getDirection?(): string;
 }
 
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
@@ -414,6 +416,52 @@ export class MermaidRenderer implements Renderer {
       svg.querySelectorAll("g.legend"),
       sections.map(({ node }) => node),
     );
+
+    // Git graph commits: one or more bullets each, with the commit id among their classes, in the
+    // order of the database's commits (reversed from bottom to top), and a label with the id
+    // except for merges and cherry-picks. Mermaid generates ids like "1-7754f83" at random in
+    // each parse, so those commits go by their sequence number.
+    const commits = db?.getCommitsArray?.() ?? [];
+    if (db?.getDirection?.() === "BT") {
+      commits.reverse();
+    }
+    const bullets = new Map<string, Element[]>();
+    for (const bullet of svg.querySelectorAll(".commit-bullets > *")) {
+      const classes = bullet.getAttribute("class")?.split(" ") ?? [];
+      const id = classes.filter((name) => !/^commit(?:\d+|-[a-z-]+\d*)?$/.test(name)).join(" ");
+      bullets.set(id, [...(bullets.get(id) ?? []), bullet]);
+    }
+    const commitNodes = new Map<string, DiagramNode>();
+    if (bullets.size === commits.length) {
+      for (const [i, [drawnId, elements]] of [...bullets].entries()) {
+        const { id, message, seq, tags } = commits[i] as (typeof commits)[number];
+        const generated = /^\d+-[0-9a-f]{7}$/.test(id);
+        const node = {
+          id: generated ? String(seq) : id,
+          label: tags.join(", ") || (generated ? message || drawnId : id),
+        };
+        commitNodes.set(drawnId, node);
+        for (const element of elements) {
+          add(element, node);
+        }
+      }
+    }
+    for (const label of svg.querySelectorAll("text.commit-label")) {
+      const node = commitNodes.get(textOf(label));
+      if (node && label.parentElement) {
+        add(label.parentElement, node);
+      }
+    }
+    // Git graph branches, by their labels.
+    for (const label of svg.querySelectorAll("g.branchLabel")) {
+      const name = textOf(label);
+      const node = { id: name, label: name };
+      const background = label.previousElementSibling;
+      if (background?.matches("rect.branchLabelBkg")) {
+        add(background, node);
+      }
+      add(label, node);
+    }
 
     // Timeline periods and events, and quadrant chart points.
     for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
