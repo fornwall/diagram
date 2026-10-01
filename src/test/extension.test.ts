@@ -107,8 +107,10 @@ suite("Extension", () => {
       title: "Sales",
       data: "region,sales\nNorth,10\nSouth,20\nEast,5",
     });
-    assert.match(text, /Rendered the bar chart of inline data/);
-    assert.match(text, /3 rows/);
+    assert.match(
+      text,
+      /^Rendered the bar chart of inline data .*\. Charted "sales" by "region"\.\n\nThe data was read as: 3 rows;/,
+    );
 
     const state = await invoke("diagram_getState", {});
     assert.match(state, /"Sales"/);
@@ -128,6 +130,10 @@ suite("Extension", () => {
   test("reports chart input errors back to the agent", async () => {
     const text = await invoke("diagram_chart", { type: "pie", data: "a,1", file: "x.csv" });
     assert.match(text, /No chart was rendered/);
+    assert.match(
+      await invoke("diagram_chart", { type: "bar", data: "a b\nc d" }),
+      /^No chart was rendered: No column holds numbers.*\n\nThe data was read as: 2 rows; columns: "Column 1" \(text\)/,
+    );
   });
 
   test("reports malformed input back to the agent", async () => {

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { commandEnvironment, loadChart, loadTable, readDataFile, runCommand } from "../dataSource";
+import { commandEnvironment, loadTable, readDataFile, runCommand } from "../dataSource";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -121,15 +121,6 @@ suite("dataSource", () => {
     await assert.rejects(
       readDataFile(file),
       /is not a text file \(it may be a spreadsheet\)\. Save its data as CSV/,
-    );
-  });
-
-  test("reports how the data was read and charted", async () => {
-    const chart = await loadChart({ type: "bar", data: "dir,size\nsrc,1\ntest,2" }, token);
-    assert.match(chart.report, /^Charted "size" by "dir"\.\n\nThe data was read as: 2 rows;/);
-    await assert.rejects(
-      loadChart({ type: "bar", data: "a b\nc d" }, token),
-      /^Error: No column holds numbers.*\n\nThe data was read as: 2 rows; columns: "Column 1" \(text\)/,
     );
   });
 });

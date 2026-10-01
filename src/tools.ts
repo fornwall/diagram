@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
 import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
-import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
+import { buildChart, describeTable } from "./charts";
+import { loadTable, resolveFile } from "./dataSource";
 import { nodeList } from "./describe";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
@@ -175,6 +176,30 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
       : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
     return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${chart.report}`);
+  }
+}
+
+interface LoadedChart {
+  option: Record<string, unknown>;
+  /** How the data was read and charted, for a language model. */
+  report: string;
+}
+
+/**
+ * Loads a chart's data and charts it.
+ *
+ * @throws Error explaining why, with how the data was read if that worked, or
+ *   vscode.CancellationError.
+ */
+async function loadChart(spec: ChartSpec, token: vscode.CancellationToken): Promise<LoadedChart> {
+  const { table, warning } = await loadTable(spec, token);
+  const description = `The data was read as: ${describeTable(table)}`;
+  try {
+    const { option, summary } = buildChart(spec, table);
+    const report = [summary, warning, description].filter((part) => part !== undefined);
+    return { option, report: report.join("\n\n") };
+  } catch (error) {
+    throw new Error(`${errorMessage(error)}\n\n${description}`);
   }
 }
 

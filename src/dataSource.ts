@@ -1,4 +1,4 @@
-// Loading chart data from inline text, a file or a shell command, and charting it.
+// Loading chart data from inline text, a file or a shell command.
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -6,9 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "./chartSpec";
-import { buildChart, describeTable } from "./charts";
 import { type DataTable, parseTable } from "./data";
-import { errorMessage } from "./protocol";
 
 /** The largest file or command output that is read. */
 const MAX_MB = 10;
@@ -292,31 +290,4 @@ export async function loadTable(
   }
   const { output, warning } = await runCommand(spec.command, token);
   return { table: parseTable(output, spec.format), ...(warning ? { warning } : {}) };
-}
-
-export interface LoadedChart {
-  option: Record<string, unknown>;
-  /** How the data was read and charted, for a language model. */
-  report: string;
-}
-
-/**
- * Loads a chart's data with {@link loadTable} and charts it.
- *
- * @throws Error explaining why, with how the data was read if that worked, or
- *   vscode.CancellationError.
- */
-export async function loadChart(
-  spec: ChartSpec,
-  token: vscode.CancellationToken,
-): Promise<LoadedChart> {
-  const { table, warning } = await loadTable(spec, token);
-  const description = `The data was read as: ${describeTable(table)}`;
-  try {
-    const { option, summary } = buildChart(spec, table);
-    const report = [summary, warning, description].filter((part) => part !== undefined);
-    return { option, report: report.join("\n\n") };
-  } catch (error) {
-    throw new Error(`${errorMessage(error)}\n\n${description}`);
-  }
 }
