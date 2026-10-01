@@ -2,7 +2,7 @@
 
 import type { Mermaid } from "mermaid";
 import type { DiagramNode } from "../protocol";
-import type { Renderer, RendererHost } from "./renderer";
+import { type Renderer, type RendererHost, withModifier } from "./renderer";
 import { isDarkTheme } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -52,13 +52,10 @@ function textOf(element: Element): string {
 }
 
 export class MermaidRenderer implements Renderer {
-  readonly language = "mermaid";
   readonly noun = "diagram";
   readonly itemNoun = "node";
   readonly sourceName = "Mermaid source";
 
-  /** Whether Mermaid must be initialized (again) for the current VS Code theme. */
-  private themeStale = true;
   private renderCounter = 0;
   /** The selectable nodes of the shown diagram, by the elements that show them. */
   private nodes = new Map<Element, DiagramNode>();
@@ -66,7 +63,6 @@ export class MermaidRenderer implements Renderer {
   private zoom = 1;
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
-  private naturalSize: { width: number; height: number } | undefined;
   private displayedSource: string | undefined;
   private fitFrame = 0;
 
@@ -74,15 +70,12 @@ export class MermaidRenderer implements Renderer {
     host: RendererHost,
     private readonly canvas: HTMLElement,
     private readonly diagram: HTMLElement,
-    private readonly zoomButton: HTMLButtonElement,
+    private readonly zoomButton: HTMLElement,
   ) {
     diagram.addEventListener("click", (event) => {
       const element = event.target instanceof Element && event.target.closest(".diagram-node");
       const node = element ? this.nodes.get(element) : undefined;
-      host.itemClicked(
-        node ? { key: node.id, node } : undefined,
-        event.ctrlKey || event.metaKey || event.shiftKey,
-      );
+      host.itemClicked(node && { key: node.id, node }, withModifier(event));
     });
     new ResizeObserver(() => {
       if (this.fitting && this.displayedSource !== undefined) {
@@ -94,17 +87,14 @@ export class MermaidRenderer implements Renderer {
 
   async render(source: string): Promise<string> {
     const mermaid = await loadMermaid();
-    if (this.themeStale) {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: "strict",
-        // Throw errors instead of rendering them as a diagram, and clean up after failing.
-        suppressErrorRendering: true,
-        theme: isDarkTheme() ? "dark" : "default",
-        fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
-      });
-      this.themeStale = false;
-    }
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      // Throw errors instead of rendering them as a diagram, and clean up after failing.
+      suppressErrorRendering: true,
+      theme: isDarkTheme() ? "dark" : "default",
+      fontFamily: getComputedStyle(document.body).getPropertyValue("--vscode-font-family"),
+    });
     const id = `diagram-svg-${++this.renderCounter}`;
     const result = await mermaid.render(id, source).catch((error: unknown) => {
       throw describeError(error);
@@ -127,7 +117,6 @@ export class MermaidRenderer implements Renderer {
     this.diagram.innerHTML = "";
     this.nodes.clear();
     this.displayedSource = undefined;
-    this.naturalSize = undefined;
   }
 
   showSelection(keys: ReadonlySet<string>): void {
@@ -138,7 +127,6 @@ export class MermaidRenderer implements Renderer {
   }
 
   async themeChanged(): Promise<void> {
-    this.themeStale = true;
     if (this.displayedSource !== undefined) {
       try {
         await this.render(this.displayedSource);
@@ -171,7 +159,6 @@ export class MermaidRenderer implements Renderer {
   /** Finds the selectable nodes, and gives the SVG its natural size for zooming as a whole. */
   private prepareSvg(svgId: string): void {
     this.nodes.clear();
-    this.naturalSize = undefined;
     const svg = this.diagram.querySelector("svg");
     if (!svg) {
       return;
@@ -180,7 +167,6 @@ export class MermaidRenderer implements Renderer {
     this.showSelection(this.selectedKeys);
     const viewBox = svg.viewBox.baseVal;
     if (viewBox.width > 0 && viewBox.height > 0) {
-      this.naturalSize = { width: viewBox.width, height: viewBox.height };
       svg.setAttribute("width", String(viewBox.width));
       svg.setAttribute("height", String(viewBox.height));
       svg.style.maxWidth = "none";
@@ -240,7 +226,8 @@ export class MermaidRenderer implements Renderer {
 
   /** Scales large diagrams down to the panel width (and height, within reason). */
   private fit(): void {
-    if (!this.naturalSize) {
+    const natural = this.diagram.querySelector("svg")?.viewBox.baseVal;
+    if (!natural?.width || !natural.height) {
       this.setZoom(1);
       return;
     }
@@ -256,9 +243,8 @@ export class MermaidRenderer implements Renderer {
     if (width <= 0 || height <= 0) {
       return; // Not laid out yet (e.g. the panel is hidden); the resize observer fits later.
     }
-    const widthFit = width / this.naturalSize.width;
-    const heightFit = height / this.naturalSize.height;
-    this.setZoom(Math.min(1, widthFit, Math.max(heightFit, MIN_HEIGHT_FIT)));
+    const heightFit = Math.max(height / natural.height, MIN_HEIGHT_FIT);
+    this.setZoom(Math.min(1, width / natural.width, heightFit));
   }
 
   private setZoom(value: number): void {

@@ -7,7 +7,7 @@ import {
 } from "../protocol";
 import { EChartsRenderer } from "./echartsRenderer";
 import { MermaidRenderer } from "./mermaidRenderer";
-import type { Hit, Renderer, RendererHost } from "./renderer";
+import { type Hit, type Renderer, withModifier } from "./renderer";
 import "./style.css";
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -34,8 +34,9 @@ const selectionLabel = element("selection-label");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
-const zoomButtons = ["zoom-out", "zoom-reset", "zoom-in"].map((id) => element(id));
-const zoomResetButton = element<HTMLButtonElement>("zoom-reset");
+const zoomOutButton = element("zoom-out");
+const zoomResetButton = element("zoom-reset");
+const zoomInButton = element("zoom-in");
 const refreshButton = element<HTMLButtonElement>("refresh");
 const editButton = element<HTMLButtonElement>("edit");
 const pickBanner = element("pick");
@@ -55,10 +56,9 @@ let pick: { id: number; multiple: boolean } | undefined;
 
 // Rendering.
 
-const host: RendererHost = { itemClicked };
 const renderers: Record<DiagramLanguage, Renderer> = {
-  mermaid: new MermaidRenderer(host, canvas, diagram, zoomResetButton),
-  echarts: new EChartsRenderer(host, canvas),
+  mermaid: new MermaidRenderer({ itemClicked }, canvas, diagram, zoomResetButton),
+  echarts: new EChartsRenderer({ itemClicked }, canvas),
 };
 /** The renderer whose rendering is shown, once anything rendered. */
 let active: Renderer | undefined;
@@ -73,15 +73,6 @@ function showError(renderer: Renderer, message: string): void {
     errorElement.append(pre);
   }
   errorElement.hidden = false;
-}
-
-function updateLanguageUi(renderer: Renderer): void {
-  editButton.title = `Edit the ${renderer.sourceName}`;
-  sourceInput.setAttribute("aria-label", renderer.sourceName);
-  const zoomable = (active ?? renderer).zoomBy !== undefined;
-  for (const button of zoomButtons) {
-    button.hidden = !zoomable;
-  }
 }
 
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
@@ -120,7 +111,11 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });
   }
-  updateLanguageUi(renderer);
+  editButton.title = `Edit the ${renderer.sourceName}`;
+  sourceInput.setAttribute("aria-label", renderer.sourceName);
+  for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
+    button.hidden = !(active ?? renderer).zoomBy;
+  }
   updateSelectionUi();
 }
 
@@ -205,58 +200,35 @@ function clearSelection(): void {
   }
 }
 
-function toggleSelected(hit: Hit): void {
-  if (selection.has(hit.key)) {
-    selection.delete(hit.key);
-  } else {
-    selection.set(hit.key, hit.node);
-  }
-}
-
 function itemClicked(hit: Hit | undefined, modifier: boolean): void {
-  if (pick) {
-    if (!hit) {
-      return;
-    }
-    if (pick.multiple) {
-      toggleSelected(hit);
-      selectionChanged();
-    } else {
-      selection.clear();
-      selection.set(hit.key, hit.node);
-      selectionChanged();
-      post({ type: "picked", pickId: pick.id, nodes: [hit.node] });
-      endPick();
-    }
-    return;
-  }
-
-  if (clickPrompt && hit && !modifier) {
-    post({ type: "clickToAsk", node: hit.node });
-    return;
-  }
-
   if (!hit) {
-    if (!modifier) {
+    if (!pick && !modifier) {
       clearSelection();
     }
     return;
   }
-  if (modifier) {
-    toggleSelected(hit);
-  } else {
-    const onlyThisSelected = selection.size === 1 && selection.has(hit.key);
+  if (clickPrompt && !pick && !modifier) {
+    post({ type: "clickToAsk", node: hit.node });
+    return;
+  }
+  // A plain click selects only this item, or deselects it when nothing else is selected.
+  const single = pick ? !pick.multiple : !modifier;
+  if (single && !(selection.size === 1 && selection.has(hit.key))) {
     selection.clear();
-    if (!onlyThisSelected) {
-      selection.set(hit.key, hit.node);
-    }
+  }
+  if (!selection.delete(hit.key)) {
+    selection.set(hit.key, hit.node);
   }
   selectionChanged();
+  if (pick && !pick.multiple) {
+    post({ type: "picked", pickId: pick.id, nodes: [hit.node] });
+    endPick();
+  }
 }
 
 canvas.addEventListener("click", (event) => {
   if (event.target === canvas) {
-    itemClicked(undefined, event.ctrlKey || event.metaKey || event.shiftKey);
+    itemClicked(undefined, withModifier(event));
   }
 });
 
@@ -280,7 +252,7 @@ function endPick(): void {
 }
 
 pickDoneButton.addEventListener("click", () => {
-  if (pick && selection.size > 0) {
+  if (pick) {
     post({ type: "picked", pickId: pick.id, nodes: Array.from(selection.values()) });
     endPick();
   }
@@ -354,8 +326,8 @@ element("cancel").addEventListener("click", () => {
 
 // Zoom (Mermaid only; charts fit the panel).
 
-element("zoom-in").addEventListener("click", () => active?.zoomBy?.(1.25));
-element("zoom-out").addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
+zoomInButton.addEventListener("click", () => active?.zoomBy?.(1.25));
+zoomOutButton.addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
 zoomResetButton.addEventListener("click", () => active?.zoomReset?.());
 canvas.addEventListener(
   "wheel",

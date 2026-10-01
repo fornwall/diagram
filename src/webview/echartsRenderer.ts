@@ -13,7 +13,7 @@ import {
   seriesTypes,
 } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
-import type { Hit, Renderer, RendererHost } from "./renderer";
+import { type Hit, type Renderer, type RendererHost, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 /** A data item, or a node or edge of a graph, as ECharts' select actions refer to it. */
@@ -44,11 +44,7 @@ function parseItemKey(key: string): ItemRef {
   return { seriesIndex: Number(series), dataType: dataType || undefined, dataIndex: Number(data) };
 }
 
-const withModifier = (event: unknown) =>
-  event instanceof MouseEvent && (event.ctrlKey || event.metaKey || event.shiftKey);
-
 export class EChartsRenderer implements Renderer {
-  readonly language = "echarts";
   readonly noun = "chart";
   readonly itemNoun = "chart item";
   readonly sourceName = "ECharts option (JSON)";
@@ -85,7 +81,8 @@ export class EChartsRenderer implements Renderer {
     const option = parseOption(source);
     this.echarts ??= await import("echarts");
     const previous = this.chart && this.option && { option: this.option, title: this.title };
-    this.show();
+    this.canvas.classList.add("chart-mode");
+    this.container.hidden = false;
     this.option = option;
     this.title = title;
     this.selectedKeys = new Set();
@@ -116,7 +113,7 @@ export class EChartsRenderer implements Renderer {
   }
 
   showSelection(keys: ReadonlySet<string>): void {
-    this.selectedKeys = new Set(keys);
+    this.selectedKeys = keys;
     // ECharts toggles the selection of clicked items itself, after our click handlers ran.
     queueMicrotask(() => this.syncSelection());
   }
@@ -135,11 +132,6 @@ export class EChartsRenderer implements Renderer {
     } catch {
       return source;
     }
-  }
-
-  private show(): void {
-    this.canvas.classList.add("chart-mode");
-    this.container.hidden = false;
   }
 
   private createChart(echarts: typeof ECharts, theme: object): ECharts.ECharts {

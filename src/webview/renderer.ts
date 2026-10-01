@@ -1,4 +1,4 @@
-import type { DiagramLanguage, DiagramNode } from "../protocol";
+import type { DiagramNode } from "../protocol";
 
 /** A clickable part of a diagram: a Mermaid node or a chart data item. */
 export interface Hit {
@@ -14,7 +14,6 @@ export interface RendererHost {
 
 /** Renders one diagram language in the canvas area. */
 export interface Renderer {
-  readonly language: DiagramLanguage;
   /** What the panel calls a rendering, its clickable parts and its source. */
   readonly noun: string;
   readonly itemNoun: string;
@@ -36,3 +35,7 @@ export interface Renderer {
   zoomBy?(factor: number): void;
   zoomReset?(): void;
 }
+
+/** Whether a click adds to the selection instead of replacing it. */
+export const withModifier = (event: unknown) =>
+  event instanceof MouseEvent && (event.ctrlKey || event.metaKey || event.shiftKey);
