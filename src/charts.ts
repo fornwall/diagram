@@ -293,11 +293,6 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   };
 }
 
-/** The ECharts option for {@link buildChart}'s chart, for callers that need no summary. */
-export function buildChartOption(spec: ChartSpec, table: DataTable): Record<string, unknown> {
-  return buildChart(spec, table).option;
-}
-
 function pieOption(doughnut: boolean, name: string, rows: Row[]): Record<string, unknown> {
   return {
     tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },

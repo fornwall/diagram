@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
 import type { ChartSpec } from "./chartSpec";
-import { buildChartOption } from "./charts";
+import { buildChart } from "./charts";
 import { loadTable } from "./dataSource";
 import {
   CHART_TOOL,
@@ -373,25 +373,26 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.refreshing = true;
     const rendersBefore = this.renderCount;
-    const cancellation = new vscode.CancellationTokenSource();
     try {
-      const { table } = await vscode.window.withProgress(
+      const { table, warning } = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
-        () => loadTable(chart, cancellation.token),
+        (_progress, token) => loadTable(chart, token),
       );
       // An agent may have replaced the chart while its data was loading.
       if (!this.state || this.renderCount !== rendersBefore) {
         return;
       }
-      const source = JSON.stringify(buildChartOption(chart, table), null, 2);
+      const source = JSON.stringify(buildChart(chart, table).option, null, 2);
       this.state = { ...this.state, source, editedByUser: false };
       this.selection = [];
+      if (warning) {
+        void vscode.window.showWarningMessage(warning);
+      }
       await this.renderCurrent();
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
     } finally {
       this.refreshing = false;
-      cancellation.dispose();
     }
   }
 
