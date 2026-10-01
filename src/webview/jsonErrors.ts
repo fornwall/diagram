@@ -1,5 +1,7 @@
 // Precise, actionable descriptions of JSON syntax errors, for the model to repair its output.
 
+import { errorMessage } from "../protocol";
+
 class JsonSyntaxError extends Error {
   constructor(
     message: string,
@@ -212,7 +214,7 @@ class Scanner {
 }
 
 /** The line of the error position with a caret under it, cropped around long lines. */
-function excerpt(text: string, position: number): string {
+function excerpt(text: string, position: number, line: number): string {
   const lineStart = text.lastIndexOf("\n", position - 1) + 1;
   const lineEnd = text.indexOf("\n", position);
   const content = text.slice(lineStart, lineEnd < 0 ? undefined : lineEnd);
@@ -224,7 +226,7 @@ function excerpt(text: string, position: number): string {
   const shown = `${start > 0 ? "…" : ""}${content.slice(start, start + width)}${
     start + width < content.length ? "…" : ""
   }`;
-  const gutter = `${text.slice(0, lineStart).split("\n").length} | `;
+  const gutter = `${line} | `;
   // Tabs stay tabs below the line, so that the caret lines up whatever the tab width.
   const indent = before.replace(/[^\t]/g, " ");
   return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${indent}^`;
@@ -241,7 +243,7 @@ export function describeJsonError(text: string, error: unknown): string {
       const column = found.position - before.lastIndexOf("\n");
       return (
         `The ECharts option is not valid JSON: ${found.message} (line ${line}, column ${column}).\n` +
-        excerpt(text, found.position) +
+        excerpt(text, found.position, line) +
         (found.javaScript
           ? "\nWrite the option as strict JSON: double-quoted property names and strings, no " +
             "comments, no trailing commas and no functions."
@@ -250,5 +252,5 @@ export function describeJsonError(text: string, error: unknown): string {
     }
   }
   // The scanner and JSON.parse disagree, e.g. on nesting too deep for either.
-  return `The ECharts option is not valid JSON: ${error instanceof Error ? error.message : String(error)}`;
+  return `The ECharts option is not valid JSON: ${errorMessage(error)}`;
 }

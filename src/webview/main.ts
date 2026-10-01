@@ -92,11 +92,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   if (changed) {
     sourceChanged();
   }
-  const previous = active;
   try {
     const diagramType = await renderer.render(source, message.title);
-    if (previous !== renderer) {
-      previous?.hide();
+    if (active !== renderer) {
+      active?.hide();
     }
     active = renderer;
     emptyElement.hidden = true;
@@ -104,7 +103,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     clearSelection();
     post({ type: "rendered", requestId, diagramType });
   } catch (error) {
-    if (renderer !== previous) {
+    if (renderer !== active) {
       renderer.hide();
     }
     const text = errorMessage(error);
