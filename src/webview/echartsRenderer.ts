@@ -1,178 +1,26 @@
 // Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
 
-import * as echarts from "echarts";
+import type * as ECharts from "echarts";
 import { errorMessage } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { asArray, isCartesian, isObject, type JsonObject, layoutOption } from "./echartsLayout";
+import { keepUserState, layoutOption } from "./echartsLayout";
+import {
+  asArray,
+  baseOption,
+  isObject,
+  type JsonObject,
+  parseOption,
+  seriesTypes,
+} from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
-import { describeJsonError } from "./jsonErrors";
 import type { Hit, Renderer, RendererHost } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
-const THEME_NAME = "vscode";
-
-const SERIES_TYPES = [
-  "line",
-  "bar",
-  "pie",
-  "scatter",
-  "effectScatter",
-  "radar",
-  "tree",
-  "treemap",
-  "sunburst",
-  "map",
-  "graph",
-  "chord",
-  "gauge",
-  "funnel",
-  "parallel",
-  "sankey",
-  "boxplot",
-  "candlestick",
-  "lines",
-  "heatmap",
-  "pictorialBar",
-  "themeRiver",
-  "custom",
-];
-
-/** Map series need map data, which the panel does not have. */
-const AVAILABLE_TYPES = SERIES_TYPES.filter((type) => type !== "map").join(", ");
-
-const TYPE_HINTS: Record<string, string> = {
-  donut: 'for a donut chart, use "pie" with "radius": ["40%", "70%"]',
-  doughnut: 'for a donut chart, use "pie" with "radius": ["40%", "70%"]',
-  ring: 'for a donut chart, use "pie" with "radius": ["40%", "70%"]',
-  area: 'for an area chart, use "line" with "areaStyle": {}',
-  column: 'for a column chart, use "bar"',
-  histogram: 'for a histogram, use "bar"',
-  bubble: 'for a bubble chart, use "scatter" with "symbolSize"',
-  spline: 'for a smooth line, use "line" with "smooth": true',
-  network: 'for a network, use "graph"',
-  flow: 'for flows between nodes, use "sankey"',
-};
-
-/** Keys whose values are bulk data, skipped when looking for mistakes in the option. */
-const DATA_KEYS = new Set(["data", "nodes", "links", "edges", "source", "dimensions"]);
-const JAVASCRIPT = /^\s*(?:function\b|\([^)]*\)\s*=>|[\w$]+\s*=>)/;
-
-function describe(value: unknown): string {
-  if (value === null) {
-    return "null";
-  }
-  return Array.isArray(value) ? "an array" : `a ${typeof value}`;
-}
-
-/** Throws an actionable error for mistakes that ECharts would silently render as nothing. */
-function validateOption(option: JsonObject): void {
-  const base = isObject(option.baseOption) ? option.baseOption : option;
-  // Timeline options only patch the series of the base option, so only those are checked.
-  const list: unknown[] = Array.isArray(base.series)
-    ? base.series
-    : base.series === undefined
-      ? []
-      : [base.series];
-  const series = list.map((entry, index) => {
-    if (!isObject(entry)) {
-      throw new Error(
-        `series[${index}] must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(entry)}.`,
-      );
-    }
-    return entry;
-  });
-  if (series.length === 0) {
-    throw new Error(
-      'The ECharts option has no "series". Add at least one, e.g. "series": [{"type": "bar", ' +
-        '"data": [5, 20, 36]}] with "xAxis": {"type": "category", "data": ["A", "B", "C"]} and ' +
-        '"yAxis": {"type": "value"}.',
-    );
-  }
-  series.forEach((each, index) => {
-    const type = each.type;
-    if (typeof type !== "string" || !type) {
-      throw new Error(`series[${index}] has no "type". Set it to one of: ${AVAILABLE_TYPES}.`);
-    }
-    if (!SERIES_TYPES.includes(type)) {
-      const hint = TYPE_HINTS[type.toLowerCase()];
-      throw new Error(
-        `series[${index}] has the unknown type "${type}"${hint ? ` (${hint})` : ""}. ` +
-          `Valid types: ${AVAILABLE_TYPES}.`,
-      );
-    }
-    if (type === "map") {
-      throw new Error(
-        `series[${index}] is a "map", but geographic maps are not available in the diagram panel ` +
-          "(no map data is registered). Use another chart type, such as a bar chart by region.",
-      );
-    }
-    if (isCartesian(each) && (base.xAxis === undefined || base.yAxis === undefined)) {
-      throw new Error(
-        `series[${index}] (type "${type}") is drawn on a grid and needs both "xAxis" and "yAxis", ` +
-          'e.g. "xAxis": {"type": "category", "data": ["Mon", "Tue"]}, "yAxis": {"type": "value"}.',
-      );
-    }
-    if (type === "radar" && base.radar === undefined) {
-      throw new Error(
-        `series[${index}] is a "radar" series and needs a "radar" component, e.g. "radar": ` +
-          '{"indicator": [{"name": "Speed", "max": 100}, {"name": "Cost", "max": 100}]}.',
-      );
-    }
-  });
-  if (base.geo !== undefined) {
-    throw new Error(
-      'The "geo" component is not available in the diagram panel (no map data is registered). ' +
-        "Use another chart type.",
-    );
-  }
-  findJavaScript(option, "option");
-}
-
-function findJavaScript(value: unknown, path: string): void {
-  if (typeof value === "string") {
-    if (JAVASCRIPT.test(value)) {
-      throw new Error(
-        `${path} is JavaScript code, but the option is JSON and cannot contain functions. ` +
-          'Use a string template instead, such as "{b}: {c}" (name and value) or "{d}%" (pie percentage).',
-      );
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      findJavaScript(item, `${path}[${index}]`);
-    });
-  } else if (isObject(value)) {
-    for (const [key, item] of Object.entries(value)) {
-      if (!DATA_KEYS.has(key)) {
-        findJavaScript(item, path === "option" ? key : `${path}.${key}`);
-      }
-    }
-  }
-}
-
-function parseOption(source: string): JsonObject {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source);
-  } catch (error) {
-    throw new Error(describeJsonError(source, error));
-  }
-  if (!isObject(parsed)) {
-    throw new Error(
-      `The ECharts option must be a JSON object such as {"series": [...]}, not ${describe(parsed)}.`,
-    );
-  }
-  validateOption(parsed);
-  return parsed;
-}
-
-function seriesTypes(option: JsonObject): string {
-  const base = isObject(option.baseOption) ? option.baseOption : option;
-  const types = [base, ...asArray(option.options)]
-    .flatMap((each) => asArray(each.series))
-    .flatMap((each) => (typeof each.type === "string" ? [each.type] : []));
-  return Array.from(new Set(types)).join(", ");
+/** A data item, or a node or edge of a graph, as ECharts' select actions refer to it. */
+interface ItemRef {
+  seriesIndex: number;
+  dataType?: string | undefined;
+  dataIndex: number;
 }
 
 function valueText(value: unknown): string | undefined {
@@ -188,22 +36,12 @@ function valueText(value: unknown): string | undefined {
   return String(value);
 }
 
-interface SelectedItems {
-  seriesIndex: number;
-  dataType?: string;
-  dataIndex: number[];
-}
-
-const itemKey = (seriesIndex: number, dataIndex: number, dataType?: string) =>
+const itemKey = ({ seriesIndex, dataType, dataIndex }: ItemRef) =>
   `${seriesIndex}:${dataType ?? ""}:${dataIndex}`;
 
-function parseItemKey(key: string): { seriesIndex: number; dataIndex: number; dataType?: string } {
+function parseItemKey(key: string): ItemRef {
   const [series, dataType, data] = key.split(":");
-  return {
-    seriesIndex: Number(series),
-    dataIndex: Number(data),
-    ...(dataType ? { dataType } : {}),
-  };
+  return { seriesIndex: Number(series), dataType: dataType || undefined, dataIndex: Number(data) };
 }
 
 const withModifier = (event: unknown) =>
@@ -216,15 +54,18 @@ export class EChartsRenderer implements Renderer {
   readonly sourceName = "ECharts option (JSON)";
 
   private readonly container: HTMLElement;
-  private chart: echarts.ECharts | undefined;
-  private colors: ThemeColors | undefined;
+  /** The library, loaded on the first chart. */
+  private echarts: typeof ECharts | undefined;
+  private chart: ECharts.ECharts | undefined;
+  /** The current VS Code theme, read again after it changed. */
+  private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
   private title = "";
-  private signature = "";
+  /** The laid-out option as last set, to skip relayouts that change nothing. */
+  private laidOut = "";
   private selectedKeys: ReadonlySet<string> = new Set();
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
-  private shownSelected: SelectedItems[] = [];
-  private legendSelected: Record<string, boolean> | undefined;
+  private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
   private resizeFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -237,23 +78,23 @@ export class EChartsRenderer implements Renderer {
     this.container.id = "chart";
     this.container.hidden = true;
     canvas.append(this.container);
-    new ResizeObserver(() => this.scheduleResize()).observe(this.container);
+    new ResizeObserver(() => this.scheduleRelayout()).observe(this.container);
   }
 
   async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
-    const previous = this.chart ? { option: this.option, title: this.title } : undefined;
+    this.echarts ??= await import("echarts");
+    const previous = this.chart && this.option && { option: this.option, title: this.title };
     this.show();
     this.option = option;
     this.title = title;
-    this.legendSelected = undefined;
     this.selectedKeys = new Set();
     try {
       this.apply(true);
     } catch (error) {
       // A failed setOption can leave the instance broken: start over, with the previous chart.
       this.disposeChart();
-      if (previous?.option) {
+      if (previous) {
         this.option = previous.option;
         this.title = previous.title;
         try {
@@ -281,11 +122,8 @@ export class EChartsRenderer implements Renderer {
   }
 
   async themeChanged(): Promise<void> {
-    this.colors = undefined;
-    if (this.chart && this.option) {
-      this.disposeChart();
-      this.apply(false);
-    }
+    this.theme = undefined;
+    this.relayout();
   }
 
   formatForEditing(source: string): string {
@@ -304,16 +142,9 @@ export class EChartsRenderer implements Renderer {
     this.container.hidden = false;
   }
 
-  private ensureChart(): echarts.ECharts {
-    if (this.chart) {
-      return this.chart;
-    }
-    if (!this.colors) {
-      this.colors = readThemeColors();
-      echarts.registerTheme(THEME_NAME, buildEChartsTheme(this.colors));
-    }
-    const chart = echarts.init(this.container, THEME_NAME, { renderer: "canvas" });
-    chart.on("click", (params: echarts.ECElementEvent) => {
+  private createChart(echarts: typeof ECharts, theme: object): ECharts.ECharts {
+    const chart = echarts.init(this.container, theme);
+    chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
       }
@@ -326,15 +157,8 @@ export class EChartsRenderer implements Renderer {
       }
     });
     chart.on("selectchanged", (event) => {
-      this.shownSelected = (event as { selected?: SelectedItems[] }).selected ?? [];
+      this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
     });
-    chart.on("legendselectchanged", (event) => {
-      const selected = (event as { selected?: Record<string, boolean> }).selected;
-      if (selected) {
-        this.legendSelected = selected;
-      }
-    });
-    this.chart = chart;
     return chart;
   }
 
@@ -344,38 +168,59 @@ export class EChartsRenderer implements Renderer {
     this.chart?.dispose();
     this.chart = undefined;
     this.shownSelected = [];
-    this.signature = "";
+    this.laidOut = "";
   }
 
-  private layout() {
-    if (!this.colors) {
-      this.colors = readThemeColors();
-      echarts.registerTheme(THEME_NAME, buildEChartsTheme(this.colors));
+  /**
+   * Sets the option, laid out for the current size and theme. A relayout of the shown chart keeps
+   * what the user changed in it, and is skipped when the layout stays the same.
+   */
+  private apply(animate: boolean, relayout = false): void {
+    const echarts = this.echarts;
+    if (!echarts) {
+      return;
     }
-    return layoutOption(this.option ?? {}, {
+    if (!this.theme) {
+      const colors = readThemeColors();
+      this.theme = { colors, echarts: buildEChartsTheme(colors) };
+      this.chart?.setTheme(this.theme.echarts);
+    }
+    const option = layoutOption(this.option ?? {}, {
       width: this.container.clientWidth,
       height: this.container.clientHeight,
       title: this.title,
-      colors: this.colors,
+      colors: this.theme.colors,
       reducedMotion: this.reducedMotion.matches,
-      ...(this.legendSelected ? { legendSelected: this.legendSelected } : {}),
     });
-  }
-
-  /** Sets the option, laid out for the current size, replacing what the chart showed before. */
-  private apply(animate: boolean): void {
-    const { option, signature } = this.layout();
-    const chart = this.ensureChart();
+    const laidOut = JSON.stringify(option);
+    if (relayout && laidOut === this.laidOut) {
+      return;
+    }
     if (!animate) {
       option.animation = false;
     }
-    chart.setOption(option, { notMerge: true });
-    this.signature = signature;
+    this.chart ??= this.createChart(echarts, this.theme.echarts);
+    if (relayout) {
+      keepUserState(option, this.chart.getOption() as JsonObject);
+    }
+    this.chart.setOption(option, { notMerge: true });
+    this.laidOut = laidOut;
     this.shownSelected = [];
     this.syncSelection();
   }
 
-  private scheduleResize(): void {
+  /** Lays out the shown chart again, keeping what is shown if that fails. */
+  private relayout(): void {
+    if (this.chart && this.option) {
+      try {
+        this.apply(false, true);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  }
+
+  private scheduleRelayout(): void {
     if (!this.chart) {
       return;
     }
@@ -384,21 +229,13 @@ export class EChartsRenderer implements Renderer {
       this.chart?.resize();
       // Layout decisions (legend position, label rotation, …) follow once resizing settles.
       clearTimeout(this.relayoutTimer);
-      this.relayoutTimer = setTimeout(() => {
-        if (this.chart && this.option && this.layout().signature !== this.signature) {
-          try {
-            this.apply(false);
-          } catch {
-            // The option rendered before; keep what is shown.
-          }
-        }
-      }, 150);
+      this.relayoutTimer = setTimeout(() => this.relayout(), 150);
     });
   }
 
-  private hitFor(params: echarts.ECElementEvent): Hit {
+  private hitFor(params: ECharts.ECElementEvent): Hit {
     const { seriesIndex = 0, dataIndex } = params;
-    const dataType = typeof params.dataType === "string" ? params.dataType : undefined;
+    const { dataType } = params;
     const data: unknown = params.data;
     let label: string | undefined;
     if (dataType === "edge" && isObject(data)) {
@@ -407,15 +244,15 @@ export class EChartsRenderer implements Renderer {
       label = params.name.trim();
     }
     label ??= valueText(params.value) ?? `Item ${dataIndex + 1}`;
-    const base = isObject(this.option?.baseOption) ? this.option.baseOption : this.option;
-    const seriesCount = asArray(base?.series).length;
+    const seriesCount = asArray(baseOption(this.option ?? {}).series).length;
     const rawName = params.seriesName;
+    // ECharts names unnamed series "series\0<index>".
     const name =
       typeof rawName === "string" && rawName && !rawName.includes("\u0000")
         ? rawName
         : `Series ${seriesIndex + 1}`;
     return {
-      key: itemKey(seriesIndex, dataIndex, dataType),
+      key: itemKey({ seriesIndex, dataType, dataIndex }),
       node: { id: seriesCount > 1 ? `${name}/${label}` : label, label },
     };
   }
@@ -427,13 +264,14 @@ export class EChartsRenderer implements Renderer {
       return;
     }
     const shown = new Set<string>();
-    const stale: { seriesIndex: number; dataIndex: number; dataType?: string }[] = [];
-    for (const { seriesIndex, dataType, dataIndex } of this.shownSelected) {
+    const stale: ItemRef[] = [];
+    for (const { dataIndex, ...series } of this.shownSelected) {
       for (const index of dataIndex) {
-        const key = itemKey(seriesIndex, index, dataType);
+        const item = { ...series, dataIndex: index };
+        const key = itemKey(item);
         shown.add(key);
         if (!this.selectedKeys.has(key)) {
-          stale.push({ seriesIndex, dataIndex: index, ...(dataType ? { dataType } : {}) });
+          stale.push(item);
         }
       }
     }

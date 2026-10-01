@@ -1,10 +1,14 @@
 // Precise, actionable descriptions of JSON syntax errors, for the model to repair its output.
 
-class JsonSyntaxError {
+class JsonSyntaxError extends Error {
   constructor(
+    message: string,
     readonly position: number,
-    readonly problem: string,
-  ) {}
+    /** Whether the text uses JavaScript syntax that JSON lacks, a typical mistake of models. */
+    readonly javaScript: boolean,
+  ) {
+    super(message);
+  }
 }
 
 const IDENTIFIER = /[A-Za-z_$][\w$]*/y;
@@ -26,8 +30,12 @@ class Scanner {
     }
   }
 
-  private fail(problem: string, position = this.index): never {
-    throw new JsonSyntaxError(position, problem);
+  private fail(problem: string, position = this.index, javaScript = false): never {
+    throw new JsonSyntaxError(problem, position, javaScript);
+  }
+
+  private failJavaScript(problem: string, position = this.index): never {
+    this.fail(problem, position, true);
   }
 
   private whitespace(): void {
@@ -41,25 +49,24 @@ class Scanner {
     return IDENTIFIER.exec(this.text)?.[0];
   }
 
-  private unexpected(what: string): never {
+  private unexpected(what: string, word = this.word()): never {
     const char = this.text.charAt(this.index);
     if (char === "") {
       this.fail(`Unexpected end of input while expecting ${what}: the JSON is incomplete`);
     }
     if (char === "'") {
-      this.fail("Strings and property names must use double quotes, not single quotes");
+      this.failJavaScript("Strings and property names must use double quotes, not single quotes");
     }
     if (char === "/") {
-      this.fail("Comments are not allowed in JSON");
+      this.failJavaScript("Comments are not allowed in JSON");
     }
-    const word = this.word();
     if (word === "function" || this.text.startsWith("=>", this.index)) {
-      this.fail(
+      this.failJavaScript(
         'JavaScript functions are not allowed in JSON; use a string template such as "{b}: {c}" for formatters',
       );
     }
     if (word === "undefined" || word === "NaN" || word === "Infinity") {
-      this.fail(`${word} is not valid JSON; use null or a number`);
+      this.failJavaScript(`${word} is not valid JSON; use null or a number`);
     }
     if (word) {
       this.fail(`Unexpected "${word}" while expecting ${what}; strings must be in double quotes`);
@@ -78,10 +85,12 @@ class Scanner {
       this.string();
     } else if (char === "-" || (char >= "0" && char <= "9")) {
       this.number();
-    } else if (["true", "false", "null"].includes(this.word() ?? "")) {
-      this.index += (this.word() ?? "").length;
     } else {
-      this.unexpected("a value");
+      const word = this.word();
+      if (word !== "true" && word !== "false" && word !== "null") {
+        this.unexpected("a value", word);
+      }
+      this.index += word.length;
     }
   }
 
@@ -98,13 +107,15 @@ class Scanner {
       if (char === '"') {
         this.string();
       } else if (char === "}") {
-        this.fail('Trailing comma before "}" is not allowed in JSON', this.lastComma());
+        this.failJavaScript('Trailing comma before "}" is not allowed in JSON', this.lastComma());
       } else {
         const word = this.word();
         if (word) {
-          this.fail(`Property names must be in double quotes: write "${word}" instead of ${word}`);
+          this.failJavaScript(
+            `Property names must be in double quotes: write "${word}" instead of ${word}`,
+          );
         }
-        this.unexpected("a property name in double quotes");
+        this.unexpected("a property name in double quotes", word);
       }
       this.whitespace();
       if (this.text.charAt(this.index) !== ":") {
@@ -135,7 +146,7 @@ class Scanner {
     for (;;) {
       this.whitespace();
       if (this.text.charAt(this.index) === "]") {
-        this.fail('Trailing comma before "]" is not allowed in JSON', this.lastComma());
+        this.failJavaScript('Trailing comma before "]" is not allowed in JSON', this.lastComma());
       }
       this.value();
       this.whitespace();
@@ -177,7 +188,7 @@ class Scanner {
           this.index += 6;
           continue;
         }
-        if (!'"\\/bfnrt'.includes(escaped) || escaped === "") {
+        if (!escaped || !'"\\/bfnrt'.includes(escaped)) {
           this.fail(`Invalid escape "\\${escaped}" in string`);
         }
         this.index += 2;
@@ -200,51 +211,44 @@ class Scanner {
   }
 }
 
-function lineAndColumn(text: string, position: number): { line: number; column: number } {
-  const before = text.slice(0, position);
-  const line = before.split("\n").length;
-  const column = position - (before.lastIndexOf("\n") + 1) + 1;
-  return { line, column };
-}
-
-/** The offending line with a caret under the error position, cropped around long lines. */
-function excerpt(text: string, line: number, column: number): string {
-  const content = text.split("\n")[line - 1] ?? "";
+/** The line of the error position with a caret under it, cropped around long lines. */
+function excerpt(text: string, position: number): string {
+  const lineStart = text.lastIndexOf("\n", position - 1) + 1;
+  const lineEnd = text.indexOf("\n", position);
+  const content = text.slice(lineStart, lineEnd < 0 ? undefined : lineEnd);
+  const column = position - lineStart;
   const width = 100;
-  let start = 0;
-  if (content.length > width) {
-    start = Math.max(0, Math.min(column - 1 - width / 2, content.length - width));
-  }
+  const start =
+    content.length > width ? Math.max(0, Math.min(column - width / 2, content.length - width)) : 0;
+  const before = `${start > 0 ? "…" : ""}${content.slice(start, column)}`;
   const shown = `${start > 0 ? "…" : ""}${content.slice(start, start + width)}${
     start + width < content.length ? "…" : ""
   }`;
-  const gutter = `${line} | `;
-  const caretOffset = column - 1 - start + (start > 0 ? 1 : 0);
-  return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${" ".repeat(Math.max(0, caretOffset))}^`;
+  const gutter = `${text.slice(0, lineStart).split("\n").length} | `;
+  // Tabs stay tabs below the line, so that the caret lines up whatever the tab width.
+  const indent = before.replace(/[^\t]/g, " ");
+  return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${indent}^`;
 }
 
 /** Describes why `text` is not valid JSON, given the error thrown by JSON.parse. */
 export function describeJsonError(text: string, error: unknown): string {
-  let position: number | undefined;
-  let problem: string | undefined;
   try {
     new Scanner(text).scan();
-  } catch (located) {
-    if (located instanceof JsonSyntaxError) {
-      position = located.position;
-      problem = located.problem;
+  } catch (found) {
+    if (found instanceof JsonSyntaxError) {
+      const before = text.slice(0, found.position);
+      const line = before.split("\n").length;
+      const column = found.position - before.lastIndexOf("\n");
+      return (
+        `The ECharts option is not valid JSON: ${found.message} (line ${line}, column ${column}).\n` +
+        excerpt(text, found.position) +
+        (found.javaScript
+          ? "\nWrite the option as strict JSON: double-quoted property names and strings, no " +
+            "comments, no trailing commas and no functions."
+          : "")
+      );
     }
   }
-  const native = error instanceof Error ? error.message : String(error);
-  if (position === undefined) {
-    const match = /position (\d+)/.exec(native);
-    position = match ? Number(match[1]) : text.length;
-  }
-  const { line, column } = lineAndColumn(text, position);
-  return (
-    `The ECharts option is not valid JSON: ${problem ?? native} (line ${line}, column ${column}).\n` +
-    `${excerpt(text, line, column)}\n` +
-    "Write the option as strict JSON: double-quoted property names and strings, no comments, " +
-    "no trailing commas and no functions."
-  );
+  // The scanner and JSON.parse disagree, e.g. on nesting too deep for either.
+  return `The ECharts option is not valid JSON: ${error instanceof Error ? error.message : String(error)}`;
 }

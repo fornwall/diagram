@@ -2,43 +2,13 @@
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
 import { type ThemeColors, toCss } from "./colors";
-
-export type JsonObject = Record<string, unknown>;
-
-export function isObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** ECharts accepts most components as a single object or an array of them. */
-export function asArray(value: unknown): JsonObject[] {
-  if (Array.isArray(value)) {
-    return value.filter(isObject);
-  }
-  return isObject(value) ? [value] : [];
-}
+import { asArray, baseOption, isCartesian, isObject, type JsonObject } from "./echartsOption";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
 
-const CARTESIAN_TYPES = new Set([
-  "line",
-  "bar",
-  "scatter",
-  "effectScatter",
-  "pictorialBar",
-  "candlestick",
-  "boxplot",
-  "heatmap",
-]);
-
-export function isCartesian(series: JsonObject): boolean {
-  const system = series.coordinateSystem;
-  return (
-    typeof series.type === "string" &&
-    CARTESIAN_TYPES.has(series.type) &&
-    (system === undefined || system === "cartesian2d")
-  );
-}
+/** Space in pixels taken from each side of the chart by the title, legend, sliders, … */
+type Insets = Record<"top" | "bottom" | "left" | "right", number>;
 
 /** The text of a category or legend entry, which may be a plain value or `{value}`/`{name}`. */
 function entryText(entry: unknown): string {
@@ -71,19 +41,10 @@ export interface LayoutContext {
   title: string;
   colors: ThemeColors;
   reducedMotion: boolean;
-  /** Series the user toggled in the legend, kept across re-layouts. */
-  legendSelected?: Record<string, boolean>;
 }
 
-export interface LayoutResult {
-  option: JsonObject;
-  /** Changes when the layout decisions change, i.e. when the option must be set again. */
-  signature: string;
-}
-
-export function layoutOption(source: JsonObject, context: LayoutContext): LayoutResult {
+export function layoutOption(source: JsonObject, context: LayoutContext): JsonObject {
   const option = structuredClone(source);
-  const decisions: unknown[] = [];
   const { colors } = context;
   // Before the panel is laid out, assume a typical editor size; a resize corrects it.
   const width = context.width > 0 ? context.width : 800;
@@ -95,7 +56,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
   if (context.reducedMotion) {
     option.animation = false;
   }
-  const base = isObject(option.baseOption) ? option.baseOption : option;
+  const base = baseOption(option);
   // Options with media queries handle their own responsiveness.
   const responsive = option.media === undefined;
 
@@ -168,19 +129,9 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
     } else {
       legendSide = "top";
     }
-    if (context.legendSelected) {
-      for (const each of legends) {
-        each.selected = {
-          ...(isObject(each.selected) ? each.selected : {}),
-          ...context.legendSelected,
-        };
-      }
-    }
   }
-  decisions.push(compact, legendSide, titleHeight);
 
-  // Space taken by the title, legend and sliders, in pixels from each side.
-  const reserved = {
+  const reserved: Insets = {
     top: titleHeight + (legendSide === "top" ? 30 : 0),
     bottom: legendSide === "bottom" ? 32 : 0,
     left: legendSide === "left" ? legendWidth + 16 : 0,
@@ -189,8 +140,19 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
 
   if (responsive) {
     for (const zoom of asArray(base.dataZoom)) {
-      const slider = zoom.type === undefined || zoom.type === "slider";
-      if (slider && zoom.orient !== "vertical" && !has(zoom, BOX_KEYS)) {
+      if ((zoom.type !== undefined && zoom.type !== "slider") || has(zoom, BOX_KEYS)) {
+        continue;
+      }
+      // Without an orient, ECharts orients a slider along the axis it controls.
+      const vertical =
+        zoom.orient === "vertical" ||
+        (zoom.orient === undefined &&
+          (zoom.yAxisIndex ?? zoom.yAxisId) !== undefined &&
+          (zoom.xAxisIndex ?? zoom.xAxisId) === undefined);
+      if (vertical) {
+        Object.assign(zoom, { right: reserved.right + 8, width: 22 });
+        reserved.right += 38;
+      } else {
         Object.assign(zoom, { bottom: reserved.bottom + 8, height: 22 });
         reserved.bottom += 38;
       }
@@ -265,9 +227,6 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
           ...(labelWidth > maxWidth ? { width: maxWidth, overflow: "truncate" } : {}),
           ...label,
         };
-        decisions.push(rotate);
-      } else {
-        decisions.push(0);
       }
     }
     for (const axis of yAxes) {
@@ -281,7 +240,6 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
       if (labelWidth > maxWidth) {
         axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
       }
-      decisions.push(labelWidth > maxWidth ? maxWidth : 0);
     }
   }
 
@@ -313,7 +271,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
       nodes.forEach((node: unknown, index) => {
         if (isObject(node)) {
           const itemStyle = isObject(node.itemStyle) ? node.itemStyle : {};
-          itemStyle.color ??= toCss(colors.palette[index % 8] ?? colors.blue);
+          itemStyle.color ??= toCss(colors.palette[index % colors.palette.length] ?? colors.blue);
           node.itemStyle = itemStyle;
         }
       });
@@ -328,9 +286,9 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
   }
 
   if (responsive) {
-    layOutPie(pies, legend !== undefined, reserved, width, height, decisions);
+    layOutPie(pies, legend !== undefined, reserved, width, height);
     layOutBoxSeries(series, reserved, width);
-    layOutRadar(base, reserved, width, height, decisions);
+    layOutRadar(base, reserved, width, height);
   }
 
   // Tooltips by default: an axis crosshair for line and bar charts, per item otherwise.
@@ -359,16 +317,17 @@ export function layoutOption(source: JsonObject, context: LayoutContext): Layout
     }
   }
 
-  return { option, signature: JSON.stringify(decisions) };
+  // Describes the chart to screen readers.
+  base.aria ??= { enabled: true };
+  return option;
 }
 
 function layOutPie(
   pies: JsonObject[],
   hasLegend: boolean,
-  reserved: { top: number; bottom: number; left: number; right: number },
+  reserved: Insets,
   width: number,
   height: number,
-  decisions: unknown[],
 ): void {
   const pie = pies[0];
   if (pies.length !== 1 || !pie || has(pie, [...BOX_KEYS, "center"])) {
@@ -411,16 +370,10 @@ function layOutPie(
             ? 58
             : 50;
     pie.radius = `${radius}%`;
-    decisions.push(radius);
   }
-  decisions.push(outsideLabels);
 }
 
-function layOutBoxSeries(
-  series: JsonObject[],
-  reserved: { top: number; bottom: number; left: number; right: number },
-  width: number,
-): void {
+function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number): void {
   for (const each of series) {
     if (has(each, BOX_KEYS)) {
       continue;
@@ -460,13 +413,7 @@ function layOutBoxSeries(
   }
 }
 
-function layOutRadar(
-  base: JsonObject,
-  reserved: { top: number; bottom: number; left: number; right: number },
-  width: number,
-  height: number,
-  decisions: unknown[],
-): void {
+function layOutRadar(base: JsonObject, reserved: Insets, width: number, height: number): void {
   const radars = asArray(base.radar);
   const radar = radars[0];
   if (radars.length !== 1 || !radar || radar.center !== undefined || radar.radius !== undefined) {
@@ -479,5 +426,29 @@ function layOutRadar(
   const radius = snap(Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2));
   radar.center = [snap(reserved.left + boxWidth / 2), snap(reserved.top + boxHeight / 2)];
   radar.radius = radius;
-  decisions.push(radar.center, radius);
+}
+
+/**
+ * Carries what the user changed in the shown chart over to a new layout of its option: the
+ * legend selection and scroll position, and the zoom ranges.
+ */
+export function keepUserState(option: JsonObject, shown: JsonObject): void {
+  const base = baseOption(option);
+  const shownLegends = asArray(shown.legend);
+  asArray(base.legend).forEach((legend, index) => {
+    const current = shownLegends[index];
+    if (current) {
+      legend.selected = current.selected;
+      legend.scrollDataIndex = current.scrollDataIndex;
+    }
+  });
+  const shownZooms = asArray(shown.dataZoom);
+  asArray(base.dataZoom).forEach((zoom, index) => {
+    const current = shownZooms[index];
+    if (typeof current?.start === "number" && typeof current.end === "number") {
+      Object.assign(zoom, { start: current.start, end: current.end });
+      delete zoom.startValue;
+      delete zoom.endValue;
+    }
+  });
 }
