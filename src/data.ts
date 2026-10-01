@@ -397,7 +397,10 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
   if (header === undefined || rest.length === 0 || header.includes("\t")) {
     return undefined;
   }
-  const starts = Array.from(header.matchAll(/(?:^|\s{2,})(\S)/g), (m) => m.index + m[0].length - 1);
+  // Not with a regular expression such as /(?:^|\s{2,})\S/g, which takes quadratic time.
+  const starts = tokenize(header)
+    .filter((token, i, tokens) => token.start === 0 || token.start - (tokens[i - 1]?.end ?? 0) >= 2)
+    .map((token) => token.start);
   if (starts.length < 2) {
     return undefined;
   }

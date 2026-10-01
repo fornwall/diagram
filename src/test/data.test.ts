@@ -423,6 +423,16 @@ suite("data", () => {
     assert.strictEqual(parse(`a 1\n${"-".repeat(1_000_000)}x 2`).rows.length, 2);
   });
 
+  test("parses a header with many spaces at the end", () => {
+    assert.deepStrictEqual(parse(`name  size${" ".repeat(1_000_000)}\na     1\nb c   2`), {
+      columns: ["name", "size"],
+      rows: [
+        ["a", 1],
+        ["b c", 2],
+      ],
+    });
+  });
+
   test("parses a JSON array of objects, with the union of keys as columns", () => {
     assert.deepStrictEqual(parse('[{"a": "x", "b": 1}, {"b": "2", "c": true}]'), {
       columns: ["a", "b", "c"],
