@@ -35,6 +35,7 @@ suite("echartsOption", () => {
   test("explains missing and unknown series types", () => {
     assert.match(errorOf('{"series": [{"data": [1]}]}'), /series\[0\] has no "type"/);
     assert.match(errorOf('{"series": [{"type": "donut"}]}'), /unknown type "donut".*"radius"/);
+    assert.match(errorOf('{"series": [{"type": "themeriver"}]}'), /case-sensitive: "themeRiver"/);
     assert.match(errorOf('{"series": [1]}'), /series\[0\] must be an object.*not a number/);
   });
 

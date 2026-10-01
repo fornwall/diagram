@@ -185,7 +185,10 @@ function validateSeries(base: JsonObject): void {
       );
     }
     if (!SERIES_TYPES.includes(type)) {
-      const hint = TYPE_HINTS[type.toLowerCase()];
+      const sameName = SERIES_TYPES.find((each) => each.toLowerCase() === type.toLowerCase());
+      const hint = sameName
+        ? `types are case-sensitive: "${sameName}"`
+        : TYPE_HINTS[type.toLowerCase()];
       const problem = type === "map" || type === "custom" ? "unsupported" : "unknown";
       throw new Error(
         `series[${index}] has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
