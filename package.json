@@ -156,7 +156,7 @@
             },
             "data": {
               "type": "string",
-              "description": "Inline data: CSV, TSV, JSON (an array of objects or arrays, or an object mapping names to numbers) or whitespace-separated columns."
+              "description": "Inline data: CSV, TSV, JSON (an array of objects or arrays, an object mapping names to numbers, or JSON Lines), a Markdown table or whitespace-separated columns."
             },
             "file": {
               "type": "string",
@@ -175,7 +175,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "How the data is formatted. Detected automatically by default."
+              "description": "How the data is formatted. Defaults to \"auto\", which detects it and is the only one that reads Markdown tables; \"json\" includes JSON Lines."
             },
             "labelColumn": {
               "type": "string",
@@ -199,11 +199,11 @@
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Keeps only the first rows, after sorting. A pie or doughnut chart sums up the rest as \"Other\"."
+              "description": "Keeps only the first rows, after sorting. A pie or doughnut chart leaves out rows without a positive value and sums up the rest as \"Other\"."
             },
             "options": {
               "type": "object",
-              "description": "An ECharts option object deep-merged into the generated option, for fine-tuning, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Avoid colors, backgrounds and fonts."
+              "description": "An ECharts option object merged into the generated option, for fine-tuning: objects merge, null removes a setting, and other values replace it. An object given for \"series\" applies to every series, and an array of objects merges element by element, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Avoid colors, backgrounds and fonts."
             },
             "clickPrompt": {
               "type": "string",
@@ -221,7 +221,7 @@
         "displayName": "Get Diagram",
         "toolReferenceName": "diagramState",
         "canBeReferencedInPrompt": true,
-        "icon": "$(type-hierarchy)",
+        "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
         "modelDescription": "Returns the diagram or chart shown in the diagram panel: its source (Mermaid, or an ECharts option as JSON), whether the user edited it by hand or it fails to render, and which nodes or chart items the user selected. Call it before changing an existing diagram, and when the user refers to 'this', 'these' or 'the selected' parts of it.",
         "tags": [
@@ -242,7 +242,7 @@
         "displayName": "Pick Diagram Nodes",
         "toolReferenceName": "diagramPick",
         "canBeReferencedInPrompt": true,
-        "icon": "$(type-hierarchy)",
+        "icon": "$(target)",
         "userDescription": "Ask you to click nodes in the diagram panel, and wait for your answer",
         "modelDescription": "Asks the user to click one or more nodes or chart items in the diagram panel, and waits until they do. Returns the labels and ids of the picked nodes, or why none was picked. Use it when the answer to your question is a part of the diagram, e.g. 'Which step is failing?'. Render the diagram with diagram_render or diagram_chart first.",
         "tags": [
