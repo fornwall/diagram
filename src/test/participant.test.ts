@@ -25,7 +25,7 @@ function newPanel(): DiagramPanel {
 async function ask(
   panel: DiagramPanel,
   replies: Part[][],
-  toolReferences: { name: string }[] = [],
+  overrides: Partial<vscode.ChatRequest> = {},
 ) {
   const sent: {
     messages: vscode.LanguageModelChatMessage[];
@@ -49,9 +49,10 @@ async function ask(
     prompt: "Draw it",
     command: undefined,
     references: [],
-    toolReferences,
+    toolReferences: [],
     toolInvocationToken: undefined,
     model,
+    ...overrides,
   } as unknown as vscode.ChatRequest;
   let shown = "";
   const stream = new Proxy({} as vscode.ChatResponseStream, {
@@ -138,7 +139,7 @@ suite("participant", function () {
       const { sent } = await ask(
         panel,
         [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
-        [{ name: "diagram_getState" }],
+        { toolReferences: [{ name: "diagram_getState" }] },
       );
       const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
       assert.deepStrictEqual(toolNames, [
@@ -166,6 +167,32 @@ suite("participant", function () {
       assert.strictEqual(
         messageText(sent[1]?.messages.at(-1)),
         "There is no tool named diagram_getState. Use only the tools you were given.",
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("attaches referenced files, selections and text in prompt order", async () => {
+    const panel = newPanel();
+    try {
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+      assert.ok(folder);
+      const file = vscode.Uri.joinPath(folder, "sizes.tsv");
+      const references = [
+        { id: "folder", value: folder },
+        { id: "selection", value: new vscode.Location(file, new vscode.Range(1, 0, 2, 0)) },
+        { id: "text", value: "some text", modelDescription: "The terminal selection" },
+      ].reverse();
+      const { sent } = await ask(panel, [[text("Hm.")]], { references });
+      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      assert.deepStrictEqual(
+        attached?.map((message) => message.split("\n")[0]),
+        [
+          `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which is not a text file.`,
+          "Attached by the user: sizes.tsv:2",
+          "Attached by the user: text (The terminal selection)",
+        ],
       );
     } finally {
       panel.dispose();

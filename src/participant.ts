@@ -282,44 +282,56 @@ async function referenceMessages(
   references: readonly vscode.ChatPromptReference[],
 ): Promise<vscode.LanguageModelChatMessage[]> {
   const messages: vscode.LanguageModelChatMessage[] = [];
-  for (const reference of references) {
-    const content = await referenceContent(reference.value);
-    if (content) {
-      const { name, text } = content;
-      const truncated =
-        text.length > MAX_REFERENCE_LENGTH
-          ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
-          : "";
+  // The references come in reverse order of their position in the prompt.
+  for (const { value, modelDescription } of [...references].reverse()) {
+    const content = await referenceContent(value);
+    if (!content) {
+      continue;
+    }
+    const { name, text } = content;
+    const label = modelDescription ? `${name} (${modelDescription})` : name;
+    if (text === undefined) {
       messages.push(
         vscode.LanguageModelChatMessage.User(
-          `Attached by the user (${reference.modelDescription ?? name}${truncated}):\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
+          `Attached by the user: ${label}, which is not a text file.`,
         ),
       );
+      continue;
     }
+    const truncated =
+      text.length > MAX_REFERENCE_LENGTH
+        ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
+        : "";
+    messages.push(
+      vscode.LanguageModelChatMessage.User(
+        `Attached by the user: ${label}${truncated}\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
+      ),
+    );
   }
   return messages;
 }
 
+/**
+ * The name and text of an attached file, selection or string. The text is left out for a folder or
+ * binary file. Other values, such as images, are skipped.
+ */
 async function referenceContent(
   value: unknown,
-): Promise<{ name: string; text: string } | undefined> {
-  try {
-    if (value instanceof vscode.Uri) {
-      const document = await vscode.workspace.openTextDocument(value);
-      return { name: vscode.workspace.asRelativePath(value), text: document.getText() };
-    }
-    if (value instanceof vscode.Location) {
-      const document = await vscode.workspace.openTextDocument(value.uri);
-      return {
-        name: `${vscode.workspace.asRelativePath(value.uri)}:${value.range.start.line + 1}`,
-        text: document.getText(value.range),
-      };
-    }
-    if (typeof value === "string") {
-      return { name: "text", text: value };
-    }
-  } catch {
-    // Binary files, missing files and the like are skipped.
+): Promise<{ name: string; text?: string } | undefined> {
+  if (typeof value === "string") {
+    return { name: "text", text: value };
   }
-  return undefined;
+  const location = value instanceof vscode.Location ? value : undefined;
+  const uri = location?.uri ?? (value instanceof vscode.Uri ? value : undefined);
+  if (!uri) {
+    return undefined;
+  }
+  const path = vscode.workspace.asRelativePath(uri);
+  const name = location ? `${path}:${location.range.start.line + 1}` : path;
+  try {
+    const document = await vscode.workspace.openTextDocument(uri);
+    return { name, text: document.getText(location?.range) };
+  } catch {
+    return { name };
+  }
 }
