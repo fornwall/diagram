@@ -371,8 +371,9 @@ export class MermaidRenderer implements Renderer {
     };
 
     // Nodes and groups (subgraphs, composite states, kanban columns, architecture services, …).
-    // Their element ids are the source ids, some decorated like "flowchart-A-0", and mind map
-    // node ids are generated ("node_0").
+    // Their element ids are the source ids, some decorated like "flowchart-A-0". Mermaid makes up
+    // the ids of mind map nodes ("node_0"), notes ("note0", "state-A----note-2") and subgraphs
+    // titled with spaces and no id ("subGraph0"), so those go by their names.
     for (const element of svg.querySelectorAll(
       "g.node, g.rough-node, g.cluster, g.statediagram-cluster, g.architecture-service",
     )) {
@@ -382,10 +383,9 @@ export class MermaidRenderer implements Renderer {
       }
       const domId = element.getAttribute("data-id") ?? withoutPrefix(element.id);
       const decorated = /^(?:flowchart|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
-      const id =
-        decorated?.[1] ??
-        decorated?.[2] ??
-        (/^(?:node_\d+)?$/.test(domId) ? uniqueId(label) : domId);
+      const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
+        ? uniqueId(label)
+        : (decorated?.[1] ?? decorated?.[2] ?? domId);
       add(element, { id, label });
     }
 
