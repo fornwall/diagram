@@ -304,7 +304,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     rows = rows.map(({ label, values }) => ({
       label,
       values: values.map((value, i) =>
-        bytes[i] && value !== null ? Math.round((value / 1024 ** power) * 100) / 100 : value,
+        bytes[i] && value !== null ? value / 1024 ** power : value,
       ),
     }));
   }

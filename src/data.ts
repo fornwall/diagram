@@ -161,7 +161,7 @@ export function parseTable(text: string, format: DataFormat = "auto"): DataTable
     (format === "auto" &&
       (trimmed.startsWith("{") || (trimmed.startsWith("[") && trimmed.endsWith("]"))));
   // Not trimmed, as leading spaces align the columns of command output.
-  const table = tableFromRecords(json ? parseJson(trimmed) : splitText(content, format));
+  const table = tableFromRecords(json ? parseJson(content) : splitText(content, format));
   if (table.rows.length === 0 || table.columns.length === 0) {
     throw new Error("The data holds no values.");
   }

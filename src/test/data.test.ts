@@ -61,6 +61,12 @@ suite("data", () => {
     }
   });
 
+  test("parseNumber rejects overflow, including after converting byte units", () => {
+    for (const value of ["1e309", "1e308K", "-1e308MB", "1e300EiB"]) {
+      assert.strictEqual(parseNumber(value), undefined, value);
+    }
+  });
+
   test("parses CSV with a header and quoted fields", () => {
     const table = parseTable('name,count\n"Smith, J",3\n"say ""hi""",4\n\nplain,\n', "auto");
     assert.deepStrictEqual(table, {
@@ -471,6 +477,16 @@ suite("data", () => {
     });
   });
 
+  test("missing JSON fields do not inherit object properties", () => {
+    assert.deepStrictEqual(parse('[{"__proto__": 1, "constructor": 2}, {"value": 3}]'), {
+      columns: ["__proto__", "constructor", "value"],
+      rows: [
+        [1, 2, null],
+        [null, null, 3],
+      ],
+    });
+  });
+
   test("parses newline-delimited JSON", () => {
     assert.deepStrictEqual(parse('{"name": "a", "n": 1}\n{"name": "b", "n": 2}\n'), {
       columns: ["name", "n"],
@@ -479,6 +495,11 @@ suite("data", () => {
         ["b", 2],
       ],
     });
+  });
+
+  test("JSON Lines errors report the original line after blank lines", () => {
+    assert.throws(() => parse('{"n": 1}\n\n{"n": 2}\n\n{"n": }'), /Line 5 of the JSON Lines/);
+    assert.throws(() => parse('\n\n{"n": 1}\n\n{"n": }'), /Line 5 of the JSON Lines/);
   });
 
   test("parses a JSON array of arrays with and without a header", () => {

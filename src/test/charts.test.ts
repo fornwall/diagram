@@ -274,13 +274,23 @@ suite("charts", () => {
     const option = build(chart("bar"), df);
     assert.deepStrictEqual(seriesNames(option), ["Size (GiB)", "Used (GiB)", "Avail (GiB)"]);
     assert.deepStrictEqual(option.xAxis.data, ["/", "/dev/shm", "/run"]);
-    assert.deepStrictEqual(option.series[1].data, [300, 0.01, 0]);
+    assert.deepStrictEqual(option.series[1].data, [300, 12 / 1024, 0]);
     assert.strictEqual(
       summary(chart("bar"), df),
       'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; showed sizes in GiB.',
     );
     const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");
     assert.strictEqual(du.series[0].data[0], 1.5);
+  });
+
+  test("byte scaling preserves small values and differences between large values", () => {
+    const data = "file,size\nlarge,1GiB\nsmall,1B\nnearby,1073741825B";
+    const expected = [1, 1 / 1024 ** 3, 1073741825 / 1024 ** 3];
+    assert.deepStrictEqual(build(chart("bar"), data).series[0].data, expected);
+    assert.deepStrictEqual(
+      build(chart("pie"), data).series[0].data.map((item: Option) => item.value),
+      expected,
+    );
   });
 
   test("charts leave out a totals row", () => {

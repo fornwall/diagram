@@ -24,7 +24,12 @@ function recordsFromJsonArray(array: unknown[]): Records {
   if (array.every(isPlainObject)) {
     const keys = [...new Set(array.flatMap((item) => Object.keys(item)))];
     return {
-      records: [keys, ...array.map((item) => keys.map((key) => jsonCell(item[key])))],
+      records: [
+        keys,
+        ...array.map((item) =>
+          keys.map((key) => (Object.hasOwn(item, key) ? jsonCell(item[key]) : null)),
+        ),
+      ],
       header: true,
     };
   }
@@ -100,16 +105,19 @@ function recordsFromJson(value: unknown): Records {
  * undefined unless the first of several lines is a JSON value.
  */
 function parseJsonLines(text: string): unknown[] | undefined {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
+  const lines = text.split(/\r?\n/);
   if (lines.length < 2) {
     return undefined;
   }
   const values: unknown[] = [];
   for (const [i, line] of lines.entries()) {
+    if (line.trim() === "") {
+      continue;
+    }
     try {
       values.push(JSON.parse(line));
     } catch (error) {
-      if (i === 0) {
+      if (values.length === 0) {
         return undefined;
       }
       // Leaves out V8's "(line 1 column 8)", which counts lines from this one.

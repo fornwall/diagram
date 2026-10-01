@@ -54,10 +54,8 @@ export function parseNumber(
     return { value, unit: "%" };
   }
   const base = suffix.length === 2 && suffix.endsWith("B") ? 1000 : 1024;
-  return {
-    value: value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase()),
-    unit: "bytes",
-  };
+  const bytes = value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase());
+  return Number.isFinite(bytes) ? { value: bytes, unit: "bytes" } : undefined;
 }
 
 /**
