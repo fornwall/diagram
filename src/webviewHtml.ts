@@ -3,33 +3,27 @@
 
 import * as vscode from "vscode";
 
-/** Runs scripts, loads only the built files in dist, and keeps the content while hidden. */
-export function webviewOptions(
-  extensionUri: vscode.Uri,
-): vscode.WebviewPanelOptions & vscode.WebviewOptions {
-  return {
-    enableScripts: true,
-    retainContextWhenHidden: true,
-    localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
-  };
-}
-
-/** The page, with the stylesheet and script from dist and a fresh nonce for the script. */
-export function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-  const asset = (name: string) =>
-    webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", name));
+/**
+ * Loads the page into the webview, which may run scripts and load only the built files in dist.
+ * The options are set on every load as a restored panel has those of the extension version that
+ * created it, which may have been installed elsewhere.
+ */
+export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
+  const dist = vscode.Uri.joinPath(extensionUri, "dist");
+  webview.options = { enableScripts: true, localResourceRoots: [dist] };
+  const asset = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(dist, name));
   const nonce = crypto.randomUUID();
   // Mermaid injects <style> elements into the SVGs it generates, and ECharts styles its tooltips
-  // inline, hence 'unsafe-inline' for styles.
+  // inline, hence 'unsafe-inline' for styles. Scripts need the nonce; the chunks that the script
+  // imports inherit it.
   const csp = [
     "default-src 'none'",
     `img-src ${webview.cspSource} data:`,
-    `font-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'`,
   ].join("; ");
 
-  return `<!DOCTYPE html>
+  webview.html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">

@@ -14,7 +14,7 @@ import {
   RENDER_TOOL,
   type ToWebview,
 } from "./protocol";
-import { webviewHtml, webviewOptions } from "./webviewHtml";
+import { loadWebview } from "./webviewHtml";
 
 /** Who produced the diagram currently shown: the @diagram participant, or another agent through a tool. */
 type DiagramOrigin = "participant" | "tool";
@@ -218,7 +218,9 @@ export class DiagramPanel implements vscode.Disposable {
         viewColumn: leftovers[0]?.group.viewColumn ?? vscode.ViewColumn.Beside,
         preserveFocus: true,
       },
-      webviewOptions(this.context.extensionUri),
+      // Keeps the webview while hidden behind another tab, so that it can still render and be
+      // asked to pick, and keeps its zoom and source editor.
+      { retainContextWhenHidden: true },
     );
     this.attach(panel);
     void vscode.window.tabGroups.close(leftovers, true);
@@ -228,9 +230,8 @@ export class DiagramPanel implements vscode.Disposable {
   private attach(panel: vscode.WebviewPanel): void {
     this.panel = panel;
     panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
-    panel.webview.options = webviewOptions(this.context.extensionUri);
     this.webviewReady = false;
-    panel.webview.html = webviewHtml(panel.webview, this.context.extensionUri);
+    loadWebview(panel.webview, this.context.extensionUri);
 
     const messageListener = panel.webview.onDidReceiveMessage((message: unknown) => {
       // The webview renders content written by a model, so do not trust what it sends.
