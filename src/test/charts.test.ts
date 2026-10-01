@@ -361,17 +361,20 @@ suite("charts", () => {
     assert.strictEqual(option.series[1].label, undefined);
     assert.strictEqual(option.yAxis.type, "log");
     assert.deepStrictEqual(option.toolbox, {});
+    // null removes a generated setting.
+    const doughnut = build(chart("doughnut", { options: { series: { radius: null } } }));
+    assert.ok(!("radius" in doughnut.series[0]));
   });
 
   test("deepMerge merges objects, replaces arrays and values, and does not mutate", () => {
     const target = { a: { b: 1, c: [1, 2] }, d: "x", list: [{ k: 1 }, { k: 2 }] };
-    const source = { a: { c: [3] }, d: 5, list: [{ j: 1 }], e: null };
+    const source = { a: { b: null, c: [3] }, d: 5, list: [{ j: 1 }], e: null, f: { g: null } };
     const merged = deepMerge(target, source);
     assert.deepStrictEqual(merged, {
-      a: { b: 1, c: [3] },
+      a: { c: [3] },
       d: 5,
       list: [{ k: 1, j: 1 }, { k: 2 }],
-      e: null,
+      f: {},
     });
     assert.deepStrictEqual(target, {
       a: { b: 1, c: [1, 2] },

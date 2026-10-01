@@ -411,31 +411,31 @@ export function describeTable(table: DataTable): string {
 
 function mergeValue(target: unknown, source: unknown): unknown {
   if (isPlainObject(source)) {
-    if (isPlainObject(target)) {
-      return deepMerge(target, source);
-    }
     if (Array.isArray(target) && target.length > 0 && target.every(isPlainObject)) {
       // {"series": {...}} adjusts every series.
       return target.map((item) => deepMerge(item, source));
     }
-    return deepMerge({}, source);
+    return deepMerge(isPlainObject(target) ? target : {}, source);
   }
-  if (Array.isArray(source)) {
-    if (Array.isArray(target) && source.length > 0 && source.every(isPlainObject)) {
-      // {"series": [{...}]} adjusts the first series, and so on.
-      return Array.from({ length: Math.max(target.length, source.length) }, (_, i) =>
-        i < source.length ? mergeValue(target[i], source[i]) : target[i],
-      );
-    }
-    return source.map((item) => mergeValue(undefined, item));
+  if (
+    Array.isArray(source) &&
+    Array.isArray(target) &&
+    source.length > 0 &&
+    source.every(isPlainObject)
+  ) {
+    // {"series": [{...}]} adjusts the first series, and so on.
+    return Array.from({ length: Math.max(target.length, source.length) }, (_, i) =>
+      i < source.length ? mergeValue(target[i], source[i]) : target[i],
+    );
   }
-  return source;
+  return structuredClone(source);
 }
 
 /**
- * Returns a deep merge of source into target, without changing either. Plain objects merge
- * recursively and other values replace the target's, except that an array of objects merges
- * element-wise into an array, and an object merges into each object of an array.
+ * Returns a deep merge of source into target, without changing either, as a JSON Merge Patch
+ * (RFC 7396) does: plain objects merge recursively, null removes a key, and other values replace
+ * the target's. Unlike a merge patch, an array of objects merges element by element into an
+ * array, and an object merges into each object of an array.
  */
 export function deepMerge(
   target: Record<string, unknown>,
@@ -443,8 +443,10 @@ export function deepMerge(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...target };
   for (const [key, value] of Object.entries(source)) {
-    // Assigning "__proto__" would change the result's prototype.
-    if (key !== "__proto__") {
+    if (value === null) {
+      delete result[key];
+    } else if (key !== "__proto__") {
+      // Assigning "__proto__" would change the result's prototype.
       result[key] = mergeValue(target[key], value);
     }
   }
