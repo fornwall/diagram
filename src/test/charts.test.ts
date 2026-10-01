@@ -456,7 +456,8 @@ suite("charts", () => {
       options: { legend: { show: false } },
     };
     assert.deepStrictEqual(validateChartSpec(spec), spec);
-    assert.deepStrictEqual(validateChartSpec({ type: "bar", file: "a.csv", title: undefined }), {
+    const sparse = { type: "bar", file: "a.csv", title: undefined, data: null, limit: null };
+    assert.deepStrictEqual(validateChartSpec(sparse), {
       type: "bar",
       file: "a.csv",
     });
@@ -480,10 +481,10 @@ suite("charts", () => {
           'Unknown property "colour"',
           '"type" is "histogram"; it must be one of "pie"',
           'Give only one of "data", "file"',
-          '"limit" must be a positive integer',
-          '"sort" must be',
-          '"valueColumns" must be',
-          '"options" must be an object',
+          '"limit" is 2.5; it must be a positive integer',
+          '"sort" is "up"; it must be one of "ascending", "descending"',
+          '"valueColumns" is "size"; it must be a non-empty array',
+          '"options" is an array; it must be an object',
         ]) {
           assert.ok(error.message.includes(expected), `${expected} in ${error.message}`);
         }

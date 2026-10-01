@@ -89,29 +89,30 @@ export function validateChartSpec(value: unknown): ChartSpec {
       'The chart spec must be an object, e.g. {"type": "pie", "data": "name,value\\na,1\\nb,2"}.',
     );
   }
+  // Some models send null for the properties they leave out.
+  const input = Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
+  );
   const problems: string[] = [];
-  const optionalString = (key: "title" | "labelColumn"): void => {
-    if (value[key] !== undefined && typeof value[key] !== "string") {
-      problems.push(`"${key}" must be a string.`);
+  const expect = (key: keyof ChartSpec, valid: boolean, what: string): void => {
+    if (input[key] !== undefined && !valid) {
+      problems.push(`"${key}" is ${brief(input[key])}; it must be ${what}.`);
     }
   };
 
-  const unknown = Object.keys(value).filter((key) => !isOneOf(SPEC_KEYS, key));
+  const unknown = Object.keys(input).filter((key) => !isOneOf(SPEC_KEYS, key));
   if (unknown.length > 0) {
     problems.push(
       `Unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; ` +
         `the properties are ${quoteAll(SPEC_KEYS)}.`,
     );
   }
-  if (!isOneOf(CHART_TYPES, value.type)) {
-    problems.push(
-      value.type === undefined
-        ? `"type" is missing; it must be one of ${quoteAll(CHART_TYPES)}.`
-        : `"type" is ${JSON.stringify(value.type)}; it must be one of ${quoteAll(CHART_TYPES)}.`,
-    );
+  if (input.type === undefined) {
+    problems.push(`"type" is missing; it must be one of ${quoteAll(CHART_TYPES)}.`);
   }
-  optionalString("title");
-  const sources = (["data", "file", "command"] as const).filter((key) => value[key] !== undefined);
+  expect("type", isOneOf(CHART_TYPES, input.type), `one of ${quoteAll(CHART_TYPES)}`);
+  expect("title", typeof input.title === "string", "a string");
+  const sources = (["data", "file", "command"] as const).filter((key) => input[key] !== undefined);
   if (sources.length !== 1) {
     problems.push(
       sources.length === 0
@@ -121,44 +122,43 @@ export function validateChartSpec(value: unknown): ChartSpec {
     );
   }
   for (const key of sources) {
-    if (typeof value[key] !== "string" || value[key].trim() === "") {
-      problems.push(`"${key}" must be a non-empty string.`);
-    }
+    const text = input[key];
+    expect(key, typeof text === "string" && text.trim() !== "", "a non-empty string");
   }
-  if (value.format !== undefined && !isOneOf(DATA_FORMATS, value.format)) {
-    problems.push(`"format" must be one of ${quoteAll(DATA_FORMATS)}.`);
-  }
-  optionalString("labelColumn");
-  const valueColumns = value.valueColumns;
-  if (
-    valueColumns !== undefined &&
-    (!Array.isArray(valueColumns) ||
-      valueColumns.length === 0 ||
-      !valueColumns.every((column) => typeof column === "string"))
-  ) {
-    problems.push('"valueColumns" must be a non-empty array of column names (strings).');
-  }
-  if (value.sort !== undefined && !isOneOf(SORT_ORDERS, value.sort)) {
-    problems.push('"sort" must be "ascending" or "descending".');
-  }
-  if (
-    value.limit !== undefined &&
-    (typeof value.limit !== "number" || !Number.isInteger(value.limit) || value.limit < 1)
-  ) {
-    problems.push('"limit" must be a positive integer.');
-  }
-  if (value.options !== undefined && !isPlainObject(value.options)) {
-    problems.push('"options" must be an object (an ECharts option to merge into the chart).');
-  }
+  expect("format", isOneOf(DATA_FORMATS, input.format), `one of ${quoteAll(DATA_FORMATS)}`);
+  expect("labelColumn", typeof input.labelColumn === "string", "a string");
+  const columns = input.valueColumns;
+  expect(
+    "valueColumns",
+    Array.isArray(columns) && columns.length > 0 && columns.every((c) => typeof c === "string"),
+    'a non-empty array of column names, e.g. ["size"]',
+  );
+  expect("sort", isOneOf(SORT_ORDERS, input.sort), `one of ${quoteAll(SORT_ORDERS)}`);
+  const limit = input.limit;
+  expect(
+    "limit",
+    typeof limit === "number" && Number.isInteger(limit) && limit >= 1,
+    "a positive integer",
+  );
+  expect(
+    "options",
+    isPlainObject(input.options),
+    "an object (an ECharts option to merge into the chart)",
+  );
   if (problems.length > 0) {
     throw new Error(`Invalid chart spec:\n- ${problems.join("\n- ")}`);
   }
+  return input as ChartSpec;
+}
 
-  const spec: Record<string, unknown> = {};
-  for (const key of SPEC_KEYS) {
-    if (value[key] !== undefined) {
-      spec[key] = value[key];
-    }
+/** A value as quoted in an error message: JSON, shortened. */
+function brief(value: unknown): string {
+  if (Array.isArray(value)) {
+    return "an array";
   }
-  return spec as unknown as ChartSpec;
+  if (isPlainObject(value)) {
+    return "an object";
+  }
+  const json = JSON.stringify(value);
+  return json.length > 40 ? `${json.slice(0, 40)}…` : json;
 }
