@@ -413,8 +413,8 @@ export class DiagramPanel implements vscode.Disposable {
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
       );
-      // An agent may have replaced the chart while its data was loading.
-      if (!this.state || this.renderCount !== rendersBefore) {
+      // An agent may have replaced the chart, or the user closed the panel, while loading.
+      if (!this.state || !this.panel || this.renderCount !== rendersBefore) {
         return;
       }
       const source = JSON.stringify(buildChart(chart, table).option, null, 2);
