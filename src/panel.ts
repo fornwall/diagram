@@ -16,7 +16,7 @@ import {
 import { webviewHtml, webviewOptions } from "./webviewHtml";
 
 /** Who produced the diagram currently shown: the @diagram participant, or another agent through a tool. */
-export type DiagramOrigin = "participant" | "tool";
+type DiagramOrigin = "participant" | "tool";
 
 /**
  * A render fails as "invalid" when the source has an error, and as "unavailable" when the panel
@@ -26,9 +26,7 @@ export type RenderOutcome =
   | { ok: true; diagramType: string }
   | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
-export type PickOutcome =
-  | { picked: true; nodes: DiagramNode[] }
-  | { picked: false; reason: string };
+type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 
 type RenderMessage = Extract<ToWebview, { type: "render" }>;
 
@@ -98,12 +96,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     const state = context.workspaceState.get<SavedState>(STATE_KEY);
-    this.state = state && {
-      ...state,
-      // State saved before charts were supported has no language.
-      language: state.language ?? "mermaid",
-      source: state.source ?? REFRESH_PROMPT,
-    };
+    this.state = state && { ...state, source: state.source ?? REFRESH_PROMPT };
   }
 
   /** The diagram currently shown, if any. */
