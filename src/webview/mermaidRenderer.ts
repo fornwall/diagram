@@ -232,14 +232,9 @@ export class MermaidRenderer implements Renderer {
       return;
     }
     const style = getComputedStyle(this.canvas);
-    const width =
-      this.canvas.clientWidth -
-      Number.parseFloat(style.paddingLeft) -
-      Number.parseFloat(style.paddingRight);
-    const height =
-      this.canvas.clientHeight -
-      Number.parseFloat(style.paddingTop) -
-      Number.parseFloat(style.paddingBottom);
+    const sum = (a: string, b: string) => Number.parseFloat(a) + Number.parseFloat(b);
+    const width = this.canvas.clientWidth - sum(style.paddingLeft, style.paddingRight);
+    const height = this.canvas.clientHeight - sum(style.paddingTop, style.paddingBottom);
     if (width <= 0 || height <= 0) {
       return; // Not laid out yet (e.g. the panel is hidden); the resize observer fits later.
     }
