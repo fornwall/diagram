@@ -10,6 +10,7 @@ import {
 } from "../chartSpec";
 import { buildChart, deepMerge, describeTable } from "../charts";
 import { type DataTable, parseTable } from "../data";
+import { DiagramPanel } from "../panel";
 
 const LANGUAGES = parseTable(
   ["language,files,lines", "ts,10,1200", "css,3,300", "md,5,150", "json,2,80"].join("\n"),
@@ -372,6 +373,30 @@ suite("charts", () => {
       describeTable(parseTable("n\n1\n2\n3\n4\n5\na\nb\nc\nd")),
       /"n" \(numbers, 4 text cells: "a", "b", "c", …\)/,
     );
+  });
+
+  test("every chart type renders in ECharts", async function () {
+    // The first render loads the webview and ECharts.
+    this.timeout(20_000);
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const workspaceState = { get: () => undefined, update: async () => {} };
+    const context = { extensionUri: extension.extensionUri, workspaceState };
+    const panel = new DiagramPanel(context as unknown as vscode.ExtensionContext);
+    try {
+      const negative = "k,x,y\na,-1,3\nb,2,-4\nc,3,5";
+      const single = "k,x,y\na,1,2";
+      for (const type of CHART_TYPES) {
+        for (const table of [LANGUAGES, negative, single]) {
+          const option = build(chart(type), table);
+          const source = JSON.stringify(option);
+          const outcome = await panel.render({ language: "echarts", source, title: type }, "tool");
+          assert.deepStrictEqual(outcome, { ok: true, diagramType: option.series[0].type }, type);
+        }
+      }
+    } finally {
+      panel.dispose();
+    }
   });
 
   test("the tool schema lists the chart types and data formats", () => {
