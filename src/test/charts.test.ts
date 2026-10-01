@@ -147,6 +147,10 @@ suite("charts", () => {
   });
 
   test("line and area are lines, area with an area style", () => {
+    // Only a line's value axis need not start at zero.
+    assert.strictEqual(build(chart("line")).yAxis.scale, true);
+    assert.strictEqual(build(chart("area")).yAxis.scale, undefined);
+    assert.strictEqual(build(chart("bar")).yAxis.scale, undefined);
     const line = build(chart("line")).series[0];
     assert.strictEqual(line.type, "line");
     assert.strictEqual(line.showSymbol, undefined);

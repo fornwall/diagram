@@ -369,8 +369,14 @@ function cartesianOption(
       ? { axisLine: { onZero: false } }
       : {}),
   };
-  // With several series, the legend names them.
-  const valueAxis = { type: "value", ...(header && names.length === 1 ? { name: names[0] } : {}) };
+  const valueAxis = {
+    type: "value",
+    // With several series, the legend names them.
+    ...(header && names.length === 1 ? { name: names[0] } : {}),
+    // A line shows change, which would flatten out on an axis from zero to far above it; bars
+    // and areas show amounts by their length, which needs zero.
+    ...(type === "line" ? { scale: true } : {}),
+  };
   return {
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
