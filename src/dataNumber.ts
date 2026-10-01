@@ -6,6 +6,7 @@ import type { Cell } from "./data";
 /** What a column's numbers measure, as written in the data ("12%", "1.5G") or its name ("%CPU"). */
 export type Unit = "%" | "bytes";
 
+/** A percent sign, or a unit of bytes: "B", "K", "kB", "KiB", "Ki" and so on. */
 const SUFFIX = "%|Bi?|[KMGTPEk](?:i?B|i)?";
 
 /** A sign, which may be a typeset minus (−), and a currency symbol, as in "-$5". */
@@ -16,9 +17,12 @@ const NUMBER = new RegExp(
   String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
 );
 
-/** A number with a decimal comma, as "1,5" or "1.234,56" (or "1,234" with a thousands separator). */
+/**
+ * A number with a decimal comma and dots between thousands, as "1,5", "1.234,56" or "1.234" (and
+ * "1,234", which may have a thousands separator instead).
+ */
 const COMMA_NUMBER = new RegExp(
-  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+|\d+),\d+(?:${SUFFIX})?$`,
+  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:${SUFFIX})?$`,
 );
 
 /**

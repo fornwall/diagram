@@ -158,9 +158,10 @@ suite("data", () => {
       ["y", -0.25],
     ]);
     // As exported by Excel in many European locales.
-    assert.deepStrictEqual(parse("Name;Amount\nA;1.234,56\nB;999,00").rows, [
+    assert.deepStrictEqual(parse("Name;Amount\nA;1.234,56\nB;999,00\nC;2.000").rows, [
       ["A", 1234.56],
       ["B", 999],
+      ["C", 2000],
     ]);
   });
 
