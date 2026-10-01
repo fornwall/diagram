@@ -97,11 +97,10 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
-    const { clickPrompt: _, ...input } = options.input;
-    const { command, file } = input;
+    const { command, file } = options.input;
     let invocationMessage = "Rendering a chart";
     try {
-      invocationMessage = `Rendering chart "${chartTitle(validateChartSpec(input))}"`;
+      invocationMessage = `Rendering chart "${chartTitle(validateChartSpec(options.input))}"`;
     } catch {
       // Reported when the tool is invoked.
     }
@@ -136,11 +135,10 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     options: vscode.LanguageModelToolInvocationOptions<ChartInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const { clickPrompt, ...input } = options.input;
     let spec: ChartSpec;
     let chart: LoadedChart;
     try {
-      spec = validateChartSpec(input);
+      spec = validateChartSpec(options.input);
       chart = await loadChart(spec, token);
     } catch (error) {
       if (error instanceof vscode.CancellationError) {
@@ -157,7 +155,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
           language: "echarts",
           source: JSON.stringify(chart.option, null, 2),
           title: chartTitle(spec),
-          clickPrompt: nonBlank(clickPrompt),
+          clickPrompt: nonBlank(options.input.clickPrompt),
           chart: spec.file || spec.command ? spec : undefined,
         },
         "tool",

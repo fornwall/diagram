@@ -486,6 +486,8 @@ suite("charts", () => {
       type: "bar",
       file: "a.csv",
     });
+    const clickable = { type: "pie", data: "a 1", clickPrompt: "Explain {label}" };
+    assert.deepStrictEqual(validateChartSpec(clickable), { type: "pie", data: "a 1" });
     const json = validateChartSpec({ type: "pie", data: [{ name: "a", value: 1 }] });
     assert.deepStrictEqual(json, { type: "pie", data: '[{"name":"a","value":1}]' });
   });
@@ -505,7 +507,8 @@ suite("charts", () => {
         }),
       (error: Error) => {
         for (const expected of [
-          'Unknown property "colour"',
+          'Unknown property "colour"; the properties are "type", "title",',
+          '"options", "clickPrompt".',
           '"type" is "histogram"; it must be one of "pie"',
           'Give only one of "data", "file"',
           '"limit" is 2.5; it must be a positive integer',

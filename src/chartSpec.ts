@@ -79,7 +79,8 @@ function isOneOf(values: readonly string[], value: unknown): boolean {
 }
 
 /**
- * Checks a chart request from a language model and returns it as a {@link ChartSpec}.
+ * Checks a chart request from a language model, the input of the chart tool, and returns it as a
+ * {@link ChartSpec}. Its "clickPrompt" is left out, as the panel handles it for any diagram.
  *
  * @throws Error listing everything that needs to be fixed.
  */
@@ -90,7 +91,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
     );
   }
   // Some models send null for the properties they leave out.
-  const input = Object.fromEntries(
+  const { clickPrompt: _, ...input } = Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
   );
   // And JSON data as JSON rather than as text, which reads the same.
@@ -108,7 +109,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
   if (unknown.length > 0) {
     problems.push(
       `Unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; ` +
-        `the properties are ${quoteAll(SPEC_KEYS)}.`,
+        `the properties are ${quoteAll([...SPEC_KEYS, "clickPrompt"])}.`,
     );
   }
   if (input.type === undefined) {
