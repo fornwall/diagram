@@ -72,8 +72,6 @@ const RENDER_TIMEOUT_MS = 15_000;
 export class DiagramPanel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
-  /** How many diagrams agents have rendered, to tell whether one replaced a chart being refreshed. */
-  private renderCount = 0;
   /** The id of the chat request that a tool rendered the current diagram for; see {@link adopt}. */
   private toolRequestId: unknown;
 
@@ -108,7 +106,6 @@ export class DiagramPanel implements vscode.Disposable {
     origin: DiagramOrigin,
     toolInvocationToken?: unknown,
   ): Promise<RenderOutcome> {
-    this.renderCount++;
     this.toolRequestId = requestId(toolInvocationToken);
     this.state = { ...diagram, origin, editedByUser: false };
     this.selection = [];
@@ -414,14 +411,13 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     this.refreshing = true;
-    const rendersBefore = this.renderCount;
     try {
       const { table, warning } = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
       );
       // An agent may have replaced the chart, or the user closed the panel, while loading.
-      if (!this.state || !this.panel || this.renderCount !== rendersBefore) {
+      if (this.state?.chart !== chart || !this.panel) {
         return;
       }
       const source = JSON.stringify(buildChart(chart, table).option, null, 2);
