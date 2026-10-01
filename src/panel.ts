@@ -278,6 +278,7 @@ export class DiagramPanel implements vscode.Disposable {
         // The webview lost its content (e.g. it was moved to another window): render again,
         // under the original request ids so that pending renders are answered.
         if (this.webviewLoadedBefore) {
+          this.selection = [];
           if (this.pendingRenders.size > 0) {
             for (const pending of this.pendingRenders.values()) {
               this.post(pending.message);

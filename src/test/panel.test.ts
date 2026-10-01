@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { clickToAskQuery, type Diagram, DiagramPanel } from "../panel";
+import type { FromWebview } from "../protocol";
 
 const flowchart: Diagram = {
   language: "mermaid",
@@ -82,6 +83,21 @@ suite("panel", function () {
       const third = pick(panel, cancellation.token);
       cancellation.cancel();
       assert.deepStrictEqual(await third, { picked: false, reason: "The request was cancelled." });
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("a reloaded webview starts without a selection", async () => {
+    const panel = newPanel();
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const receive = (message: FromWebview) =>
+        (panel as unknown as { onMessage(message: FromWebview): void }).onMessage(message);
+      receive({ type: "selectionChanged", nodes: [{ id: "A", label: "Parser" }] });
+      assert.match(panel.describeForModel() ?? "", /selected these nodes/);
+      receive({ type: "ready" });
+      assert.match(panel.describeForModel() ?? "", /no nodes selected/);
     } finally {
       panel.dispose();
     }
