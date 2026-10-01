@@ -6,14 +6,6 @@ export interface DiagramBlock {
   source: string;
 }
 
-/** Returns the last complete, non-empty ```mermaid or ```echarts block in the given markdown. */
-export function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
-  const filter = new DiagramBlockFilter();
-  filter.push(markdown);
-  filter.flush();
-  return filter.diagrams.at(-1);
-}
-
 /** Wraps text in a fenced code block that is safe to embed in markdown, whatever the text. */
 export function codeFence(text: string, language = ""): string {
   // The fence must be longer than any run of backticks in the text.

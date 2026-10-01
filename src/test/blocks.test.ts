@@ -1,5 +1,12 @@
 import * as assert from "node:assert";
-import { codeFence, DiagramBlockFilter, guessTitle, lastDiagramBlock } from "../blocks";
+import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "../blocks";
+
+function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
+  const filter = new DiagramBlockFilter();
+  filter.push(markdown);
+  filter.flush();
+  return filter.diagrams.at(-1);
+}
 
 suite("blocks", () => {
   test("lastDiagramBlock finds the last mermaid or echarts block", () => {
@@ -144,11 +151,11 @@ suite("blocks", () => {
       },
     ];
     for (const { markdown, source, shown, unterminated = false } of cases) {
-      assert.strictEqual(lastDiagramBlock(markdown)?.source, source, markdown);
       assertFiltered(markdown, shown);
       const filter = new DiagramBlockFilter();
       filter.push(markdown);
       filter.flush();
+      assert.strictEqual(filter.diagrams.at(-1)?.source, source, markdown);
       assert.strictEqual(filter.unterminated, unterminated, markdown);
     }
   });
