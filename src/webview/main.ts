@@ -27,11 +27,18 @@ const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
 const zoomResetButton = element<HTMLButtonElement>("zoom-reset");
+const pickBanner = element("pick");
+const pickPrompt = element("pick-prompt");
+const pickDoneButton = element<HTMLButtonElement>("pick-done");
 
 let currentSource = "";
 let renderCounter = 0;
 let zoom = 1;
 const selection = new Map<Element, DiagramNode>();
+/** When set, a plain click on a node asks about it in chat. */
+let clickPrompt: string | undefined;
+/** The pick the user is asked to answer by clicking nodes, if any. */
+let pick: { id: number; multiple: boolean } | undefined;
 
 // Rendering.
 
@@ -91,6 +98,9 @@ window.addEventListener("message", async (event: MessageEvent<ToWebview>) => {
   switch (message.type) {
     case "render": {
       titleElement.textContent = message.title;
+      clickPrompt = message.clickPrompt;
+      diagram.classList.toggle("click-to-ask", clickPrompt !== undefined);
+      updateSelectionUi();
       try {
         const { diagramType } = await render(message.source);
         post({ type: "rendered", requestId: message.requestId, diagramType });
@@ -103,6 +113,14 @@ window.addEventListener("message", async (event: MessageEvent<ToWebview>) => {
     }
     case "clearSelection":
       clearSelection();
+      break;
+    case "startPick":
+      startPick(message.pickId, message.prompt, message.multiple);
+      break;
+    case "endPick":
+      if (pick?.id === message.pickId) {
+        endPick();
+      }
       break;
   }
 });
@@ -156,13 +174,23 @@ function updateSelectionUi(): void {
     element.classList.add("diagram-selected");
   }
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
-  selectionLabel.textContent =
-    labels.length > 0
-      ? `Selected: ${labels.join(", ")}`
-      : "Click nodes to select them (Ctrl/Cmd+click for several).";
-  clearSelectionButton.hidden = labels.length === 0;
+  selectionLabel.textContent = labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint();
+  clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
+  pickDoneButton.disabled = labels.length === 0;
   askInput.placeholder =
     labels.length > 0 ? "Ask about or change the selection…" : "Ask about or change the diagram…";
+}
+
+function hint(): string {
+  if (pick) {
+    return pick.multiple
+      ? "Click nodes to pick them, then press Done."
+      : "Click a node to pick it.";
+  }
+  if (clickPrompt) {
+    return "Click a node to ask about it in chat (Ctrl/Cmd+click to select nodes).";
+  }
+  return "Click nodes to select them (Ctrl/Cmd+click for several).";
 }
 
 function selectionChanged(): void {
@@ -177,25 +205,53 @@ function clearSelection(): void {
   }
 }
 
+function toggleSelected(found: { element: Element; node: DiagramNode }): void {
+  // Treat nodes with the same id (e.g. an actor shown at the top and bottom) as one.
+  const existing = Array.from(selection).find(([, node]) => node.id === found.node.id);
+  if (existing) {
+    selection.delete(existing[0]);
+  } else {
+    selection.set(found.element, found.node);
+  }
+}
+
 diagram.addEventListener("click", (event) => {
   const found = event.target instanceof Element ? nodeFor(event.target) : undefined;
-  const multiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
+  const modifier = event.ctrlKey || event.metaKey || event.shiftKey;
+
+  if (pick) {
+    if (!found) {
+      return;
+    }
+    if (pick.multiple) {
+      toggleSelected(found);
+      selectionChanged();
+    } else {
+      selection.clear();
+      selection.set(found.element, found.node);
+      selectionChanged();
+      post({ type: "picked", pickId: pick.id, nodes: [found.node] });
+      endPick();
+    }
+    return;
+  }
+
+  if (clickPrompt && found && !modifier) {
+    post({ type: "clickToAsk", node: found.node });
+    return;
+  }
+
   if (!found) {
-    if (!multiSelect) {
+    if (!modifier) {
       clearSelection();
     }
     return;
   }
-  // Treat nodes with the same id (e.g. an actor shown at the top and bottom) as one.
-  const existing = Array.from(selection).find(([, node]) => node.id === found.node.id);
-  if (multiSelect) {
-    if (existing) {
-      selection.delete(existing[0]);
-    } else {
-      selection.set(found.element, found.node);
-    }
+  if (modifier) {
+    toggleSelected(found);
   } else {
-    const onlyThisSelected = existing && selection.size === 1;
+    const onlyThisSelected =
+      selection.size === 1 && Array.from(selection.values())[0]?.id === found.node.id;
     selection.clear();
     if (!onlyThisSelected) {
       selection.set(found.element, found.node);
@@ -205,8 +261,48 @@ diagram.addEventListener("click", (event) => {
 });
 
 canvas.addEventListener("click", (event) => {
-  if (event.target === canvas) {
+  if (event.target === canvas && !pick) {
     clearSelection();
+  }
+});
+
+// Picking nodes on request of an agent.
+
+function startPick(id: number, prompt: string, multiple: boolean): void {
+  pick = { id, multiple };
+  clearSelection();
+  pickPrompt.textContent = prompt;
+  pickDoneButton.hidden = !multiple;
+  pickBanner.hidden = false;
+  diagram.classList.add("picking");
+  updateSelectionUi();
+}
+
+function endPick(): void {
+  pick = undefined;
+  pickBanner.hidden = true;
+  diagram.classList.remove("picking");
+  updateSelectionUi();
+}
+
+pickDoneButton.addEventListener("click", () => {
+  if (pick && selection.size > 0) {
+    post({ type: "picked", pickId: pick.id, nodes: Array.from(selection.values()) });
+    endPick();
+  }
+});
+
+function cancelPick(): void {
+  if (pick) {
+    post({ type: "pickCancelled", pickId: pick.id });
+    endPick();
+  }
+}
+
+element("pick-cancel").addEventListener("click", cancelPick);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    cancelPick();
   }
 });
 

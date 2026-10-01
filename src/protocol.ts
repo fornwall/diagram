@@ -8,8 +8,18 @@ export interface DiagramNode {
 }
 
 export type ToWebview =
-  | { type: "render"; requestId: number; source: string; title: string }
-  | { type: "clearSelection" };
+  | {
+      type: "render";
+      requestId: number;
+      source: string;
+      title: string;
+      /** When set, a plain click on a node asks this in chat instead of selecting the node. */
+      clickPrompt?: string;
+    }
+  | { type: "clearSelection" }
+  /** Asks the user to click nodes until the pick is answered or ended. */
+  | { type: "startPick"; pickId: number; prompt: string; multiple: boolean }
+  | { type: "endPick"; pickId: number };
 
 export type FromWebview =
   | { type: "ready" }
@@ -17,4 +27,7 @@ export type FromWebview =
   | { type: "renderError"; requestId: number; message: string }
   | { type: "selectionChanged"; nodes: DiagramNode[] }
   | { type: "sourceEdited"; source: string }
-  | { type: "ask"; text: string; nodes: DiagramNode[] };
+  | { type: "ask"; text: string; nodes: DiagramNode[] }
+  | { type: "clickToAsk"; node: DiagramNode }
+  | { type: "picked"; pickId: number; nodes: DiagramNode[] }
+  | { type: "pickCancelled"; pickId: number };

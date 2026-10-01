@@ -61,7 +61,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram in an interactive panel",
-        "modelDescription": "Renders a Mermaid diagram in an interactive panel next to the chat, and reports whether it rendered or the syntax error if it did not. Use it whenever a diagram (flowchart, sequence, class, state, ER, mind map, timeline, Gantt, ...) helps explain code, architecture, data flow or a plan. In the panel the user can select nodes, edit the source and send follow-up requests about the selected nodes; call diagram_getState to see the current source and selection before changing a diagram. Always pass the complete diagram, not a diff. Avoid click directives, HTML and hard-coded colors.",
+        "modelDescription": "Renders a Mermaid diagram in an interactive panel next to the chat, and reports whether it rendered or the syntax error if it did not. Use it whenever a diagram (flowchart, sequence, class, state, ER, mind map, timeline, Gantt, ...) helps explain code, architecture, data flow or a plan. In the panel the user can select nodes, edit the source and send follow-up requests about the selected nodes; call diagram_getState to see the current source and selection before changing a diagram. To let the user drill into an overview diagram, set clickPrompt; to ask the user a question they answer by clicking nodes, call diagram_pickNodes after rendering. Always pass the complete diagram, not a diff. Avoid click directives, HTML and hard-coded colors.",
         "tags": [
           "diagram",
           "mermaid",
@@ -77,6 +77,10 @@
             "title": {
               "type": "string",
               "description": "A short title for the diagram, shown in the panel."
+            },
+            "clickPrompt": {
+              "type": "string",
+              "description": "Optional. Makes the diagram explorable: a single click on a node immediately sends this request to the chat on the user's behalf, with {label} replaced by the node's label, e.g. \"Explain {label} in more detail\". Use it for overview diagrams the user may want to learn more about part by part."
             }
           },
           "required": [
@@ -100,6 +104,36 @@
         "inputSchema": {
           "type": "object",
           "properties": {}
+        }
+      },
+      {
+        "name": "diagram_pickNodes",
+        "displayName": "Pick Diagram Nodes",
+        "toolReferenceName": "diagramPick",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(type-hierarchy)",
+        "userDescription": "Ask you to click nodes in the diagram panel, and wait for your answer",
+        "modelDescription": "Asks the user to click one or more nodes in the diagram shown in the diagram panel, and waits until they do. Returns the label and Mermaid id of the picked nodes, or that the user cancelled. Use it when the answer to your question is a part of the diagram, e.g. 'Which part would you like to learn more about?' or 'Which step is failing?'. Render the diagram with diagram_render first. The prompt is shown above the diagram, so keep it to one short question.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "The question shown above the diagram, e.g. 'Which part would you like to learn more about?'"
+            },
+            "multiple": {
+              "type": "boolean",
+              "description": "Whether the user may pick several nodes, confirming with a Done button. Defaults to false: the first click answers."
+            }
+          },
+          "required": [
+            "prompt"
+          ]
         }
       }
     ],

@@ -7,6 +7,17 @@ export type DiagramOrigin = "participant" | "tool";
 
 export type RenderOutcome = { ok: true; diagramType: string } | { ok: false; error: string };
 
+export type PickOutcome =
+  | { picked: true; nodes: DiagramNode[] }
+  | { picked: false; reason: string };
+
+interface PendingPick {
+  id: number;
+  prompt: string;
+  multiple: boolean;
+  resolve: (outcome: PickOutcome) => void;
+}
+
 interface DiagramState {
   source: string;
   title: string;
@@ -15,6 +26,8 @@ interface DiagramState {
   editedByUser: boolean;
   /** The last render error, if the current source fails to render. */
   error?: string;
+  /** When set, a plain click on a node sends this request to chat; see {@link clickToAskQuery}. */
+  clickPrompt?: string;
 }
 
 const STATE_KEY = "diagram.state";
@@ -35,6 +48,7 @@ export class DiagramPanel implements vscode.Disposable {
   private selection: DiagramNode[] = [];
   private nextRequestId = 1;
   private readonly pendingRenders = new Map<number, (outcome: RenderOutcome) => void>();
+  private pendingPick: PendingPick | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
@@ -45,8 +59,13 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /** Renders a diagram produced by an agent, opening the panel if needed. */
-  async render(source: string, title: string, origin: DiagramOrigin): Promise<RenderOutcome> {
-    this.state = { source, title, origin, editedByUser: false };
+  async render(
+    source: string,
+    title: string,
+    origin: DiagramOrigin,
+    clickPrompt?: string,
+  ): Promise<RenderOutcome> {
+    this.state = { source, title, origin, editedByUser: false, clickPrompt };
     this.selection = [];
     this.reveal();
     return this.renderCurrent();
@@ -58,6 +77,53 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.state) {
       void this.renderCurrent();
     }
+  }
+
+  /**
+   * Asks the user to click nodes in the current diagram, and waits until they do, cancel, or the
+   * token is cancelled. A new pick ends any pick that is still waiting.
+   */
+  async pickNodes(
+    prompt: string,
+    multiple: boolean,
+    token: vscode.CancellationToken,
+  ): Promise<PickOutcome> {
+    if (!this.state) {
+      return { picked: false, reason: "There is no diagram to pick from." };
+    }
+    if (this.pendingPick) {
+      this.finishPick(this.pendingPick.id, {
+        picked: false,
+        reason: "Another request to pick nodes replaced this one.",
+      });
+    }
+    if (!this.panel) {
+      this.reveal();
+      void this.renderCurrent();
+    } else {
+      this.panel.reveal(undefined, true);
+    }
+
+    const id = this.nextRequestId++;
+    const outcome = new Promise<PickOutcome>((resolve) => {
+      const cancellation = token.onCancellationRequested(() =>
+        this.finishPick(id, { picked: false, reason: "The request was cancelled." }),
+      );
+      this.pendingPick = {
+        id,
+        prompt,
+        multiple,
+        resolve: (outcome) => {
+          cancellation.dispose();
+          resolve(outcome);
+        },
+      };
+    });
+    await this.webviewReady;
+    if (this.pendingPick?.id === id) {
+      this.post({ type: "startPick", pickId: id, prompt, multiple });
+    }
+    return outcome;
   }
 
   /** Takes over a panel restored by VS Code after a reload. */
@@ -136,6 +202,12 @@ export class DiagramPanel implements vscode.Disposable {
       this.panel = undefined;
       this.selection = [];
       this.resolveWebviewReady();
+      if (this.pendingPick) {
+        this.finishPick(this.pendingPick.id, {
+          picked: false,
+          reason: "The user closed the diagram panel.",
+        });
+      }
       for (const resolve of this.pendingRenders.values()) {
         resolve({ ok: false, error: "The diagram panel was closed before the diagram rendered." });
       }
@@ -150,6 +222,10 @@ export class DiagramPanel implements vscode.Disposable {
         // The webview lost its content (e.g. it was moved to another window): render again.
         if (this.webviewLoadedBefore && this.state) {
           void this.renderCurrent();
+          if (this.pendingPick) {
+            const { id, prompt, multiple } = this.pendingPick;
+            this.post({ type: "startPick", pickId: id, prompt, multiple });
+          }
         }
         this.webviewLoadedBefore = true;
         break;
@@ -175,9 +251,33 @@ export class DiagramPanel implements vscode.Disposable {
         }
         break;
       case "ask":
-        void this.askInChat(message.text, message.nodes);
+        void this.askInChat(`${regarding(message.nodes)}${message.text}`);
+        break;
+      case "clickToAsk":
+        if (this.state?.clickPrompt) {
+          void this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
+        }
+        break;
+      case "picked":
+        this.finishPick(message.pickId, { picked: true, nodes: message.nodes });
+        break;
+      case "pickCancelled":
+        this.finishPick(message.pickId, {
+          picked: false,
+          reason: "The user cancelled without picking a node.",
+        });
         break;
     }
+  }
+
+  private finishPick(id: number, outcome: PickOutcome): void {
+    if (this.pendingPick?.id !== id) {
+      return;
+    }
+    const { resolve } = this.pendingPick;
+    this.pendingPick = undefined;
+    this.post({ type: "endPick", pickId: id });
+    resolve(outcome);
   }
 
   private async renderCurrent(): Promise<RenderOutcome> {
@@ -203,7 +303,13 @@ export class DiagramPanel implements vscode.Disposable {
     await this.webviewReady;
     // The render may have timed out, or the panel closed, while the webview was loading.
     if (this.pendingRenders.has(requestId)) {
-      this.post({ type: "render", requestId, source: state.source, title: state.title });
+      this.post({
+        type: "render",
+        requestId,
+        source: state.source,
+        title: state.title,
+        clickPrompt: state.clickPrompt,
+      });
     }
     const result = await outcome;
 
@@ -216,12 +322,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
-  private async askInChat(text: string, nodes: DiagramNode[]): Promise<void> {
-    const about =
-      nodes.length > 0
-        ? `Regarding ${nodes.map((node) => `"${node.label}"`).join(", ")} in the diagram: `
-        : "Regarding the diagram: ";
-    const query = this.state?.origin === "tool" ? `${about}${text}` : `@diagram ${about}${text}`;
+  private async askInChat(text: string): Promise<void> {
+    const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
     await vscode.commands.executeCommand("workbench.action.chat.open", { query });
     this.post({ type: "clearSelection" });
   }
@@ -229,6 +331,22 @@ export class DiagramPanel implements vscode.Disposable {
   private post(message: ToWebview): void {
     void this.panel?.webview.postMessage(message);
   }
+}
+
+function regarding(nodes: DiagramNode[]): string {
+  return nodes.length > 0
+    ? `Regarding ${nodes.map((node) => `"${node.label}"`).join(", ")} in the diagram: `
+    : "Regarding the diagram: ";
+}
+
+/**
+ * Builds the chat request sent when a node is clicked in click-to-ask mode: `{label}` in the prompt
+ * is replaced by the node's label, which is otherwise appended.
+ */
+export function clickToAskQuery(clickPrompt: string, label: string): string {
+  return clickPrompt.includes("{label}")
+    ? clickPrompt.replaceAll("{label}", label)
+    : `${clickPrompt} "${label}"`;
 }
 
 export function webviewOptions(
@@ -275,6 +393,13 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
       <button id="edit" title="Edit the Mermaid source">Edit source</button>
     </div>
   </header>
+  <div id="pick" role="status" hidden>
+    <span id="pick-prompt"></span>
+    <div class="actions">
+      <button id="pick-done" hidden>Done</button>
+      <button id="pick-cancel" class="secondary">Cancel</button>
+    </div>
+  </div>
   <div id="error" role="alert" hidden></div>
   <section id="editor" hidden>
     <textarea id="source" spellcheck="false" aria-label="Mermaid source"></textarea>

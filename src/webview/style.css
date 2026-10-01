@@ -85,6 +85,20 @@ button.link:hover {
   text-decoration: underline;
 }
 
+#pick:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--vscode-inputValidation-infoBackground);
+  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder);
+}
+
+#pick-prompt {
+  font-weight: 600;
+}
+
 #error {
   padding: 6px 12px;
   background: var(--vscode-inputValidation-errorBackground);
@@ -143,9 +157,17 @@ input:focus {
   cursor: pointer;
 }
 
+#diagram:is(.picking, .click-to-ask)
+  :is(g.node, g.actor-man, rect.actor, text.actor, g.mindmap-node, g.eventWrapper, g.task):hover {
+  filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
+    drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));
+}
+
+/* Stacked shadows give selected nodes a solid outline, whatever their shape. */
 #diagram .diagram-selected {
-  filter: drop-shadow(0 0 2px var(--vscode-focusBorder))
-    drop-shadow(0 0 6px var(--vscode-focusBorder));
+  filter: drop-shadow(0 0 1px var(--vscode-focusBorder))
+    drop-shadow(0 0 1px var(--vscode-focusBorder)) drop-shadow(0 0 1px var(--vscode-focusBorder))
+    drop-shadow(0 0 5px var(--vscode-focusBorder));
 }
 
 #selection {
