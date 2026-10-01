@@ -1,7 +1,7 @@
 // Parsing tabular data (JSON, CSV, TSV or whitespace-separated command output) for charts.
 
 import type { DataFormat } from "./chartSpec";
-import { errorMessage } from "./protocol";
+import { errorMessage, isPlainObject } from "./protocol";
 
 /** A table cell: text, a number, or null when empty. */
 export type Cell = string | number | null;
@@ -465,10 +465,6 @@ function jsonField(value: unknown): Field {
     return Number.isFinite(value) ? value : null;
   }
   return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isScalar(value: unknown): boolean {

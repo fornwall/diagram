@@ -1,6 +1,6 @@
 // A request to render data as a chart, as given to the diagram_chart tool, and its validation.
 
-import { isPlainObject } from "./data";
+import { isPlainObject } from "./protocol";
 
 export const CHART_TYPES = [
   "pie",

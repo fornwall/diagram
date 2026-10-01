@@ -1,8 +1,9 @@
 // Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
+import { isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
-import { asArray, baseOption, isCartesian, isObject, type JsonObject } from "./echartsOption";
+import { asArray, baseOption, isCartesian, type JsonObject } from "./echartsOption";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
@@ -16,7 +17,7 @@ function longestText(entries: unknown): number {
     return 0;
   }
   const text = (entry: unknown) =>
-    String((isObject(entry) ? (entry.value ?? entry.name) : entry) ?? "");
+    String((isPlainObject(entry) ? (entry.value ?? entry.name) : entry) ?? "");
   // Not Math.max(...entries), which overflows the stack with very many entries.
   return entries.reduce((longest: number, entry) => Math.max(longest, text(entry).length), 0);
 }
@@ -30,7 +31,7 @@ function hasNegativeValues(data: unknown): boolean {
     return false;
   }
   return data.some((item) => {
-    const value = isObject(item) ? item.value : item;
+    const value = isPlainObject(item) ? item.value : item;
     return Array.isArray(value)
       ? value.some((v) => typeof v === "number" && v < 0)
       : typeof value === "number" && value < 0;
@@ -90,7 +91,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     const named = series.length >= 2 && series.every((s) => seriesName(s) !== undefined);
     // A small pie has no room for labels, so its slices are named by a legend instead.
     const smallPie =
-      pie !== undefined && !isObject(pie.label) && (width < 420 || height - titleHeight < 260);
+      pie !== undefined && !isPlainObject(pie.label) && (width < 420 || height - titleHeight < 260);
     if (named || smallPie) {
       base.legend = {};
     }
@@ -208,7 +209,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     // Category labels: rotate them when they would overlap, and truncate very long ones.
     const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
     for (const axis of xAxes) {
-      const label = isObject(axis.axisLabel) ? axis.axisLabel : {};
+      const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
       const count = Array.isArray(axis.data) ? axis.data.length : 0;
       if (count === 0 || label.rotate !== undefined || label.interval !== undefined) {
         continue;
@@ -227,7 +228,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       }
     }
     for (const axis of yAxes) {
-      const label = isObject(axis.axisLabel) ? axis.axisLabel : {};
+      const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
       const maxWidth = Math.round(width * (compact ? 0.3 : 0.22));
       if (label.width === undefined && longestText(axis.data) * charWidth > maxWidth) {
         axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
@@ -238,7 +239,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   const background = toCss(colors.background);
   for (const each of series) {
     if (each.type === "bar") {
-      const itemStyle = isObject(each.itemStyle) ? each.itemStyle : {};
+      const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
       if (each.stack !== undefined) {
         // A thin gap in the background color separates stacked segments.
         if (itemStyle.borderColor === undefined && itemStyle.borderWidth === undefined) {
@@ -257,14 +258,14 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       // own categorical color instead.
       const nodes: unknown = each.data ?? each.nodes;
       (Array.isArray(nodes) ? nodes : []).forEach((node: unknown, index) => {
-        if (isObject(node)) {
-          const itemStyle = isObject(node.itemStyle) ? node.itemStyle : {};
+        if (isPlainObject(node)) {
+          const itemStyle = isPlainObject(node.itemStyle) ? node.itemStyle : {};
           itemStyle.color ??= toCss(colors.palette[index % colors.palette.length] ?? colors.blue);
           node.itemStyle = itemStyle;
         }
       });
     }
-    if (each.type === "line" && isObject(each.areaStyle)) {
+    if (each.type === "line" && isPlainObject(each.areaStyle)) {
       const area = each.areaStyle;
       if (area.opacity === undefined && area.color === undefined) {
         // A wash rather than a block, unless stacked areas need to read as bands.
@@ -328,12 +329,12 @@ function layOutPie(
   });
   const boxWidth = width - reserved.left - reserved.right - 16;
   const boxHeight = height - reserved.top - reserved.bottom - 16;
-  let label = isObject(pie.label) ? pie.label : {};
+  let label = isPlainObject(pie.label) ? pie.label : {};
   const small = boxWidth < 380 || boxHeight < 220;
   if (label.show === undefined && label.position === undefined && hasLegend && small) {
     // Too small for labels around the pie: the legend and tooltip name the slices.
     label = pie.label = { ...label, show: false };
-    pie.labelLine = { ...(isObject(pie.labelLine) ? pie.labelLine : {}), show: false };
+    pie.labelLine = { ...(isPlainObject(pie.labelLine) ? pie.labelLine : {}), show: false };
   }
   if (pie.radius === undefined) {
     const outsideLabels =

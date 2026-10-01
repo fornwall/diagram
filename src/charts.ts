@@ -1,7 +1,8 @@
 // Turning a table and a chart request into an Apache ECharts option.
 
 import { type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
-import { type Cell, type DataTable, isPlainObject, isYear } from "./data";
+import { type Cell, type DataTable, isYear } from "./data";
+import { isPlainObject } from "./protocol";
 
 /** Finds a column by name, exactly or else ignoring case and surrounding spaces. */
 function findColumn(table: DataTable, name: string, role: string): number {

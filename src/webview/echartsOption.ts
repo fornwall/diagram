@@ -1,25 +1,22 @@
 // Parses and checks ECharts options written as JSON, with actionable errors for mistakes that
 // ECharts would silently render as nothing.
 
+import { isPlainObject } from "../protocol";
 import { describeJsonError } from "./jsonErrors";
 
 export type JsonObject = Record<string, unknown>;
 
-export function isObject(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /** ECharts accepts most components as a single object or an array of them. */
 export function asArray(value: unknown): JsonObject[] {
   if (Array.isArray(value)) {
-    return value.filter(isObject);
+    return value.filter(isPlainObject);
   }
-  return isObject(value) ? [value] : [];
+  return isPlainObject(value) ? [value] : [];
 }
 
 /** The option that holds the components: the base option of a timeline, or the option itself. */
 export function baseOption(option: JsonObject): JsonObject {
-  return isObject(option.baseOption) ? option.baseOption : option;
+  return isPlainObject(option.baseOption) ? option.baseOption : option;
 }
 
 const CARTESIAN_TYPES = new Set([
@@ -118,7 +115,7 @@ export function parseOption(source: string): JsonObject {
   } catch (error) {
     throw new Error(describeJsonError(source, error));
   }
-  if (!isObject(option)) {
+  if (!isPlainObject(option)) {
     throw new Error(
       `The ECharts option must be a JSON object such as {"series": [...]}, not ${describe(option)}.`,
     );
@@ -143,7 +140,7 @@ function validateSeries(base: JsonObject): void {
     );
   }
   series.forEach((each, index) => {
-    if (!isObject(each)) {
+    if (!isPlainObject(each)) {
       throw new Error(
         `series[${index}] must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(each)}.`,
       );
@@ -191,7 +188,7 @@ function findJavaScript(value: unknown, path: string): void {
     });
     return;
   }
-  if (!isObject(value)) {
+  if (!isPlainObject(value)) {
     return;
   }
   for (const [key, item] of Object.entries(value)) {

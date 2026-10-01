@@ -1,17 +1,10 @@
 // Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
 
 import type * as ECharts from "echarts";
-import { errorMessage } from "../protocol";
+import { errorMessage, isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { keepUserState, layoutOption } from "./echartsLayout";
-import {
-  asArray,
-  baseOption,
-  isObject,
-  type JsonObject,
-  parseOption,
-  seriesTypes,
-} from "./echartsOption";
+import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type Hit, type Renderer, type RendererHost, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
@@ -230,7 +223,7 @@ export class EChartsRenderer implements Renderer {
     const { seriesIndex = 0, dataIndex, dataType } = params;
     const data: unknown = params.data;
     let label: string | undefined;
-    if (dataType === "edge" && isObject(data)) {
+    if (dataType === "edge" && isPlainObject(data)) {
       label = `${String(data.source)} → ${String(data.target)}`;
     } else if (typeof params.name === "string" && params.name.trim()) {
       label = params.name.trim();
