@@ -185,6 +185,27 @@ suite("data", () => {
     ]);
   });
 
+  test("parses localized scientific notation without dropping exponents", () => {
+    assert.deepStrictEqual(parse("name;value\na;1,25e3\nb;-2,5E-2\nc;1.234,5e1").rows, [
+      ["a", 1250],
+      ["b", -0.025],
+      ["c", 12345],
+    ]);
+    assert.deepStrictEqual(parseNumber("1,5e2KiB", true), { value: 150 * 1024, unit: "bytes" });
+  });
+
+  test("explicit headers do not change the numeric format or unit of their values", () => {
+    const table = parseTable('[{"1,5": "1,234", "1M": 12}, {"1,5": "2,345", "1M": 34}]');
+    assert.deepStrictEqual(table.columns, [
+      { name: "1,5", numeric: true },
+      { name: "1M", numeric: true },
+    ]);
+    assert.deepStrictEqual(table.rows, [
+      [1234, 12],
+      [2345, 34],
+    ]);
+  });
+
   test("keeps thousands separators in columns without decimal commas", () => {
     assert.deepStrictEqual(parse("a;12,345\nb;56,789").rows, [
       ["a", 12345],

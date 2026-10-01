@@ -104,14 +104,15 @@ function tableFromRecords({ records, header }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
+  const values = header ? records.slice(1) : records;
   const decimalComma = Array.from({ length: width }, (_, column) =>
-    hasDecimalCommas(records, column),
+    hasDecimalCommas(values, column),
   );
   const units = Array.from({ length: width }, () => new Set<Unit>());
-  const cells = records.map((record) =>
+  const cells = records.map((record, row) =>
     Array.from({ length: width }, (_, column): Cell => {
       const field = record[column] ?? null;
-      if (typeof field !== "string") {
+      if (typeof field !== "string" || (header && row === 0)) {
         return field;
       }
       const number = parseNumber(field, decimalComma[column]);

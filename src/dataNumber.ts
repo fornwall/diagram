@@ -22,7 +22,7 @@ const NUMBER = new RegExp(
  * "1,234", which may have a thousands separator instead).
  */
 const COMMA_NUMBER = new RegExp(
-  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:${SUFFIX})?$`,
+  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:[eE][-+]?\d+)?(?:${SUFFIX})?$`,
 );
 
 /**
