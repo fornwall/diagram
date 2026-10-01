@@ -115,6 +115,20 @@ suite("data", () => {
     ]);
   });
 
+  test("rule-looking lines inside quoted fields do not turn data into a header", () => {
+    for (const [format, delimiter] of [
+      ["csv", ","],
+      ["tsv", "\t"],
+    ] as const) {
+      const table = parseTable(`"a\n---\nb"${delimiter}2\nc${delimiter}3`, format);
+      assert.strictEqual(table.header, false);
+      assert.deepStrictEqual(table.rows, [
+        ["a\n---\nb", 2],
+        ["c", 3],
+      ]);
+    }
+  });
+
   test("strips a byte order mark before a quoted header", () => {
     assert.deepStrictEqual(parse('﻿"name","count"\n"a",1'), {
       columns: ["name", "count"],

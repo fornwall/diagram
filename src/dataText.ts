@@ -33,7 +33,7 @@ function withoutRules(lines: string[]): { lines: string[]; underlined: boolean }
  * Splits text into delimited records. With quoting, "quoted" fields may contain delimiters,
  * newlines and "" escapes.
  */
-function splitDelimited(text: string, delimiter: string, quoting = true): string[][] {
+function splitDelimited(text: string, delimiter: string, quoting = true): Records {
   const records: string[][] = [];
   let record: string[] = [];
   let field = "";
@@ -41,6 +41,21 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
   let fieldStart = true;
   let line = 1;
   let quoteLine = 0;
+  let underlined = false;
+  const finishRecord = (): void => {
+    record.push(field);
+    // Spreadsheets save empty rows as ",,,".
+    if (!record.every(isBlank)) {
+      if (RULE.test(record.join(delimiter))) {
+        underlined ||= records.length === 1;
+      } else {
+        records.push(record);
+      }
+    }
+    record = [];
+    field = "";
+    fieldStart = true;
+  };
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
@@ -71,11 +86,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
         i++;
       }
       line++;
-      record.push(field);
-      records.push(record);
-      record = [];
-      field = "";
-      fieldStart = true;
+      finishRecord();
     } else {
       field += char;
       if (char !== " " && char !== "\t") {
@@ -89,10 +100,8 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
         `quoted field is written twice, as in "say ""hi""".`,
     );
   }
-  record.push(field);
-  records.push(record);
-  // Spreadsheets save empty rows as ",,,".
-  return records.filter((r) => !r.every(isBlank) && !RULE.test(r.join(delimiter)));
+  finishRecord();
+  return { records, header: underlined || undefined };
 }
 
 /** The most common value, preferring the smallest on ties. */
@@ -121,24 +130,26 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
  * into as many fields, or when the first line has no delimiter (as in docker ps output, with
  * commas in a column) or commas only separate thousands (as in "apples 1,234").
  */
-function splitCsv(text: string, firstLine: string, strict: boolean): string[][] | undefined {
-  let best: { records: string[][]; uniform: number; width: number } | undefined;
+function splitCsv(text: string, firstLine: string, strict: boolean): Records | undefined {
+  let best: { table: Records; uniform: number; width: number } | undefined;
   for (const delimiter of [",", ";"]) {
     if (
-      !strict &&
-      (!firstLine.includes(delimiter) ||
-        (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(",")))
+      !text.includes(delimiter) ||
+      (!strict &&
+        (!firstLine.includes(delimiter) ||
+          (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(","))))
     ) {
       continue;
     }
-    let records: string[][];
+    let table: Records;
     try {
-      records = splitDelimited(text, delimiter);
+      table = splitDelimited(text, delimiter);
     } catch {
       continue;
     }
+    const { records } = table;
     const width = mode(records.map((record) => record.length));
-    const matching = records.filter((record) => record.length === width).length;
+    const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
     // Lines may have fewer or more fields than the header, as with cloc --csv.
     if (width < 2 || (matching < records.length * 0.8 && records.some((r) => r.length < 2))) {
       continue;
@@ -151,10 +162,10 @@ function splitCsv(text: string, firstLine: string, strict: boolean): string[][] 
       uniform > best.uniform ||
       (uniform === best.uniform && width >= best.width)
     ) {
-      best = { records, uniform, width };
+      best = { table, uniform, width };
     }
   }
-  return best?.records ?? (strict ? splitDelimited(text, ",") : undefined);
+  return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
 
 /** Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. */
@@ -316,14 +327,13 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
 /** Splits text in the given format, or else in the one that fits it best, into records. */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
   const { lines, underlined } = withoutRules(text.split(/\r?\n/).filter((line) => !isBlank(line)));
-  const header = underlined || undefined;
   const tabs = lines.filter((line) => line.includes("\t")).length;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
     try {
-      return { records: splitDelimited(text, "\t"), header };
+      return splitDelimited(text, "\t");
     } catch {
       // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
-      return { records: splitDelimited(text, "\t", false), header };
+      return splitDelimited(text, "\t", false);
     }
   }
   // Rows of a Markdown table may have fewer or more cells than its header.
@@ -331,9 +341,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     return { records: splitPipes(lines), header: true };
   }
   if (format === "auto" || format === "csv") {
-    const records = splitCsv(text, lines[0] ?? "", format === "csv");
-    if (records !== undefined) {
-      return { records, header };
+    const table = splitCsv(text, lines[0] ?? "", format === "csv");
+    if (table !== undefined) {
+      return table;
     }
   }
   return splitWhitespace(lines, underlined);
