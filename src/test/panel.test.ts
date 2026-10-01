@@ -26,7 +26,10 @@ function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().
   return panel.pickNodes("Which part?", false, token);
 }
 
-suite("panel", () => {
+suite("panel", function () {
+  // The first render loads the webview, which can take a while.
+  this.timeout(10_000);
+
   test("clickToAskQuery replaces {label}", () => {
     assert.strictEqual(
       clickToAskQuery("Explain {label}, and how {label} is tested", "Parser"),

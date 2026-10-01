@@ -77,7 +77,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Renders a Mermaid diagram or an Apache ECharts 6 chart in an interactive panel next to the chat, and reports whether it rendered or the error if it did not. Use Mermaid (the default) for structure and flow: flowchart, sequence, class, state, ER, mind map, timeline, Gantt, ... Use language \"echarts\" with an ECharts option object as JSON for quantitative data: pie, bar, line, scatter, radar, heatmap, treemap, sankey, ... To chart data in a file or a command's output, use diagram_chart instead. In the panel the user can select nodes or chart items, edit the source and send follow-up requests about the selection; call diagram_getState to see the current source and selection before changing a diagram. To let the user drill into an overview diagram, set clickPrompt; to ask the user a question they answer by clicking nodes, call diagram_pickNodes after rendering. Always pass the complete diagram, not a diff. Avoid click directives, HTML, hard-coded colors, backgrounds and fonts: the panel follows the VS Code theme and fits charts to its size.",
+        "modelDescription": "Renders a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, ...) or, with language \"echarts\", an Apache ECharts 6 chart (quantitative data) in an interactive panel next to the chat, where the user can select nodes, edit the source and send follow-up requests. Returns whether it rendered, or the error to fix. To chart data in a file or a command's output, use diagram_chart instead.",
         "tags": [
           "diagram",
           "mermaid",
@@ -90,7 +90,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "The complete diagram, without a surrounding code fence: Mermaid source, or for language \"echarts\" an ECharts option object as strict JSON (no functions; use string templates such as \"{b}: {c}\" for formatters)."
+              "description": "The complete diagram, not a diff, without a surrounding code fence: Mermaid source, or for language \"echarts\" an ECharts option object as strict JSON (no functions; use string templates such as \"{b}: {c}\" for formatters). Leave out click directives, HTML, colors, backgrounds and fonts: the panel follows the VS Code theme and fits charts to its size."
             },
             "language": {
               "type": "string",
@@ -111,7 +111,8 @@
           },
           "required": [
             "source"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -121,7 +122,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Render data, inline, from a file or from a command's output, as a chart in the diagram panel",
-        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat. Give the data in exactly one way: inline (data), as a workspace file (file: CSV, TSV, JSON or whitespace-separated columns), or as a shell command whose output is the data (command, run in the first workspace folder after the user confirms; e.g. \"du -s *\" or \"git shortlog -sn HEAD\"). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. The data is parsed into columns (a header row is detected), the label column and numeric value columns are picked automatically unless given, and the result tells you how the data was read. The user can reload a chart of a file or command with Refresh. For charts that need full control, write an ECharts option and use diagram_render with language \"echarts\" instead.",
+        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, with the data given in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. Returns how the data was read, so that you can correct it. For full control over a chart, write an ECharts option and use diagram_render instead.",
         "tags": [
           "chart",
           "echarts",
@@ -155,7 +156,7 @@
             },
             "file": {
               "type": "string",
-              "description": "A file with the data, absolute or relative to the first workspace folder."
+              "description": "A file with the data, in any of the formats of data, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
@@ -207,7 +208,8 @@
           },
           "required": [
             "type"
-          ]
+          ],
+          "additionalProperties": false
         }
       },
       {
@@ -217,7 +219,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Returns the source (Mermaid, or an ECharts option as JSON) of the diagram or chart currently shown in the interactive diagram panel, whether the user has edited it by hand, whether it fails to render, and which nodes or chart items the user has selected. Call it before changing an existing diagram or chart, and when the user refers to 'this', 'these' or 'the selected' parts of the diagram.",
+        "modelDescription": "Returns the diagram or chart shown in the diagram panel: its source (Mermaid, or an ECharts option as JSON), whether the user edited it by hand or it fails to render, and which nodes or chart items the user selected. Call it before changing an existing diagram, and when the user refers to 'this', 'these' or 'the selected' parts of it.",
         "tags": [
           "diagram",
           "mermaid",
@@ -227,7 +229,8 @@
         ],
         "inputSchema": {
           "type": "object",
-          "properties": {}
+          "properties": {},
+          "additionalProperties": false
         }
       },
       {
@@ -237,7 +240,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Ask you to click nodes in the diagram panel, and wait for your answer",
-        "modelDescription": "Asks the user to click one or more nodes (or chart items) in the diagram or chart shown in the diagram panel, and waits until they do. Returns the label and id of the picked nodes, or that the user cancelled. Use it when the answer to your question is a part of the diagram, e.g. 'Which part would you like to learn more about?' or 'Which step is failing?'. Render the diagram with diagram_render or diagram_chart first. The prompt is shown above the diagram, so keep it to one short question.",
+        "modelDescription": "Asks the user to click one or more nodes or chart items in the diagram panel, and waits until they do. Returns the labels and ids of the picked nodes, or why none was picked. Use it when the answer to your question is a part of the diagram, e.g. 'Which step is failing?'. Render the diagram with diagram_render or diagram_chart first.",
         "tags": [
           "diagram",
           "mermaid",
@@ -250,7 +253,7 @@
           "properties": {
             "prompt": {
               "type": "string",
-              "description": "The question shown above the diagram, e.g. 'Which part would you like to learn more about?'"
+              "description": "One short question, shown above the diagram, e.g. 'Which part would you like to learn more about?'"
             },
             "multiple": {
               "type": "boolean",
@@ -259,7 +262,8 @@
           },
           "required": [
             "prompt"
-          ]
+          ],
+          "additionalProperties": false
         }
       }
     ],
