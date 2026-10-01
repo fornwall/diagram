@@ -24,12 +24,9 @@ export interface DataTable {
   header: boolean;
 }
 
-/** A field as read from the data: text, or a JSON number or null. */
-type Field = string | number | null;
-
 /** Records of fields, the first of which is the header if `header`, or may be if undefined. */
 interface Records {
-  records: Field[][];
+  records: Cell[][];
   header?: boolean;
 }
 
@@ -80,7 +77,7 @@ function isNumber(text: string | undefined): boolean {
  * Whether a column writes numbers with a decimal comma: some field can only be read that way
  * ("1,5", "1234,5"), and none only with thousands separators ("1,234.5", "1,234,567").
  */
-function hasDecimalCommas(records: Field[][], column: number): boolean {
+function hasDecimalCommas(records: Cell[][], column: number): boolean {
   let decimal = false;
   for (const record of records) {
     const text = record[column];
@@ -140,7 +137,7 @@ function hasHeader(rows: Cell[][]): boolean {
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
-function columnNames(header: Field[], width: number): string[] {
+function columnNames(header: Cell[], width: number): string[] {
   const seen = new Set<string>();
   return Array.from({ length: width }, (_, column) => {
     const name = String(header[column] ?? "").trim() || `Column ${column + 1}`;
@@ -457,7 +454,7 @@ function splitWhitespace(text: string): Records {
   return { records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)) };
 }
 
-function jsonField(value: unknown): Field {
+function jsonCell(value: unknown): Cell {
   if (value === null || value === undefined) {
     return null;
   }
@@ -478,15 +475,15 @@ function recordsFromJsonArray(array: unknown[]): Records {
   if (array.every(isPlainObject)) {
     const keys = [...new Set(array.flatMap((item) => Object.keys(item)))];
     return {
-      records: [keys, ...array.map((item) => keys.map((key) => jsonField(item[key])))],
+      records: [keys, ...array.map((item) => keys.map((key) => jsonCell(item[key])))],
       header: true,
     };
   }
   if (array.every(Array.isArray)) {
-    return { records: array.map((row) => row.map(jsonField)) };
+    return { records: array.map((row) => row.map(jsonCell)) };
   }
   if (array.every(isScalar)) {
-    return { records: [["value"], ...array.map((item) => [jsonField(item)])], header: true };
+    return { records: [["value"], ...array.map((item) => [jsonCell(item)])], header: true };
   }
   throw new Error("The JSON array mixes objects, arrays and plain values.");
 }
@@ -515,7 +512,7 @@ function recordsFromJson(value: unknown): Records {
     return {
       records: [
         names,
-        ...Array.from({ length }, (_, row) => columns.map((column) => jsonField(column[row]))),
+        ...Array.from({ length }, (_, row) => columns.map((column) => jsonCell(column[row]))),
       ],
       header: true,
     };
@@ -529,7 +526,7 @@ function recordsFromJson(value: unknown): Records {
   }
   if (columns.every(isScalar)) {
     return {
-      records: [["name", "value"], ...names.map((name, i) => [name, jsonField(columns[i])])],
+      records: [["name", "value"], ...names.map((name, i) => [name, jsonCell(columns[i])])],
       header: true,
     };
   }
