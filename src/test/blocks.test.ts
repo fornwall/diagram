@@ -31,6 +31,11 @@ suite("blocks", () => {
     assert.strictEqual(codeFence('A["````"]'), '`````\nA["````"]\n`````');
   });
 
+  test("codeFence handles large sources with many backtick runs", () => {
+    const source = `${"`x".repeat(200_000)}\n\`\`\`\`\`\``;
+    assert.strictEqual(codeFence(source), `\`\`\`\`\`\`\`\n${source}\n\`\`\`\`\`\`\``);
+  });
+
   test("guessTitle uses the frontmatter title", () => {
     assert.strictEqual(
       mermaidTitle('---\ntitle: "Login flow"\n---\nsequenceDiagram'),

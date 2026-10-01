@@ -138,7 +138,7 @@ export async function promptMessages(
     ]);
     withDiagrams &&= userTokens + fullTokens <= left;
     const text = withDiagrams ? full : short;
-    const size = userTokens + (withDiagrams ? fullTokens : shortTokens);
+    const size = userTokens + (withDiagrams || short === full ? fullTokens : shortTokens);
     if (size > left) {
       break;
     }

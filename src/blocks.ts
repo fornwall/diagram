@@ -9,7 +9,10 @@ export interface DiagramBlock {
 /** Wraps text in a fenced code block that is safe to embed in markdown, whatever the text. */
 export function codeFence(text: string, language = ""): string {
   // The fence must be longer than any run of backticks in the text.
-  const longestRun = Math.max(0, ...Array.from(text.matchAll(/`+/g), (run) => run[0].length));
+  let longestRun = 0;
+  for (const [run] of text.matchAll(/`+/g)) {
+    longestRun = Math.max(longestRun, run.length);
+  }
   const fence = "`".repeat(Math.max(3, longestRun + 1));
   return `${fence}${language}\n${text.trim()}\n${fence}`;
 }

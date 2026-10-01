@@ -320,6 +320,35 @@ suite("participant", function () {
     }
   });
 
+  test("counts prose-only history after leaving out a diagram", async () => {
+    const panel = newPanel();
+    try {
+      const history = [
+        new RequestTurn("Earlier question", undefined, [], "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart("x".repeat(12_000))],
+          {},
+          "diagram.participant",
+        ),
+        new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart("Here it is.")],
+          { metadata: { language: "mermaid", source: "y".repeat(20_000) } },
+          "diagram.participant",
+        ),
+      ];
+      const maxInputTokens = 4_000;
+      const { sent } = await ask(panel, [[text("Hm.")]], { history, maxInputTokens });
+      const messages = sent[0]?.messages.map(messageText) ?? [];
+      assert.ok(messages.some((message) => message.includes("I drew a diagram, left out here")));
+      assert.ok(!messages.includes("Earlier question"));
+      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+      assert.ok(tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("shortens the attachments that don't fit the model's input, and says so", async () => {
     const panel = newPanel();
     try {
