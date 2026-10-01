@@ -385,10 +385,14 @@ export class DiagramPanel implements vscode.Disposable {
     // An unavailable panel says nothing about the source, and the diagram may have been replaced
     // while rendering.
     const latest = this.state;
-    if (latest && version === this.renderVersion && (result.ok || result.kind === "invalid")) {
-      this.state = { ...latest, error: result.ok ? undefined : result.error };
+    if (latest && version === this.renderVersion) {
+      if (result.ok || result.kind === "invalid") {
+        this.state = { ...latest, error: result.ok ? undefined : result.error };
+      }
       if (!result.ok) {
-        this.cancelPick(failsToRender(latest.language, result.error));
+        this.cancelPick(
+          result.kind === "invalid" ? failsToRender(latest.language, result.error) : result.error,
+        );
       }
     }
     await this.save();
@@ -498,9 +502,23 @@ export class DiagramPanel implements vscode.Disposable {
     this.post({ type: "clearSelection" });
   }
 
-  private post(message: ToWebview): void {
-    if (this.webviewReady) {
-      void this.panel?.webview.postMessage(message);
+  private async post(message: ToWebview): Promise<void> {
+    if (!this.webviewReady || !this.panel) {
+      return;
+    }
+    let error: string;
+    try {
+      if (await this.panel.webview.postMessage(message)) {
+        return;
+      }
+      error = "The diagram panel is unavailable. Reopen it and try again.";
+    } catch (cause) {
+      error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
+    }
+    if (message.type === "render") {
+      this.finishRender(message.requestId, { ok: false, kind: "unavailable", error });
+    } else if (message.type === "startPick") {
+      this.finishPick(message.pickId, { picked: false, reason: error });
     }
   }
 }

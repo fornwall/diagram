@@ -115,6 +115,58 @@ suite("panel", function () {
     }
   });
 
+  test("an unavailable render ends a waiting pick without blaming the source", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      pendingRender: { message: { requestId: number } };
+      finishRender(requestId: number, outcome: unknown): void;
+    };
+    try {
+      const rendering = panel.render(flowchart, "tool");
+      const picking = pick(panel);
+      const outcome = {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram panel did not respond within 15 seconds.",
+      };
+      internals.finishRender(internals.pendingRender.message.requestId, outcome);
+      assert.deepStrictEqual(await rendering, outcome);
+      assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
+      assert.strictEqual(panel.current?.error, undefined);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("failed message delivery ends render and pick requests", async () => {
+    for (const rejected of [false, true]) {
+      const panel = newPanel();
+      const internals = panel as unknown as {
+        panel: vscode.WebviewPanel;
+        webviewReady: boolean;
+      };
+      try {
+        panel.show();
+        internals.webviewReady = true;
+        internals.panel.webview.postMessage = async () => {
+          if (rejected) {
+            throw new Error("Disconnected");
+          }
+          return false;
+        };
+        const rendering = panel.render(flowchart, "tool");
+        const picking = pick(panel);
+        const outcome = await rendering;
+        assert.ok(!outcome.ok && outcome.kind === "unavailable");
+        assert.match(outcome.error, rejected ? /Disconnected/ : /Reopen it/);
+        assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
+        assert.strictEqual(panel.current?.error, undefined);
+      } finally {
+        panel.dispose();
+      }
+    }
+  });
+
   test("a completed render cannot mark a newer copy of the same source as broken", async () => {
     const panel = newPanel();
     const internals = panel as unknown as {
