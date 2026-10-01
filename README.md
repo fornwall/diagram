@@ -26,7 +26,7 @@ Chat can also route diagram and chart requests to `@diagram` without you mention
 
 ## Use the panel
 
-- **Select** nodes or chart items, such as pie slices and bars, by clicking (Ctrl/Cmd+click for several). The agent sees the selection.
+- **Select** nodes or chart items, such as pie slices and bars, by clicking (Ctrl/Cmd+click or Shift+click for several). The agent sees the selection.
 - **Send to chat**: type a request at the bottom of the panel. It mentions the selected nodes and goes to whoever drew the diagram: `@diagram`, or the agent that called a tool.
 - **Edit source**: change the Mermaid source or the ECharts option by hand. The agent sees your edits and is told to keep them.
 - **Refresh** a chart of a file or a command's output to load the data again.
@@ -46,7 +46,7 @@ Any agent, e.g. in agent mode, can use the panel through these tools, which you 
 | `diagram_getState` | `#diagramState` | Returns the current source, whether you edited it or it fails to render, and your selection. |
 | `diagram_pickNodes` | `#diagramPick` | Asks you a question that you answer by clicking nodes, and waits for the answer. |
 
-`diagram_render` and `diagram_chart` take an optional `clickPrompt`, such as `"Explain {label} in more detail"`: a click on a node then sends that request to chat right away, for diagrams you explore part by part. Ctrl/Cmd+click still selects.
+`diagram_render` and `diagram_chart` take an optional `clickPrompt`, such as `"Explain {label} in more detail"`: a click on a node then sends that request to chat right away, for diagrams you explore part by part. Ctrl/Cmd+click or Shift+click still selects.
 
 VS Code asks you before a command runs or a file outside the trusted workspace is read. Commands only run in trusted workspaces.
 

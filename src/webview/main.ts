@@ -193,9 +193,9 @@ function hint(noun: string): string {
       : `Click a ${noun} to pick it.`;
   }
   if (clickPrompt) {
-    return `Click a ${noun} to ask about it in chat (Ctrl/Cmd+click to select ${noun}s).`;
+    return `Click a ${noun} to ask about it in chat (Ctrl/Cmd/Shift+click to select ${noun}s).`;
   }
-  return `Click ${noun}s to select them (Ctrl/Cmd+click for several).`;
+  return `Click ${noun}s to select them (Ctrl/Cmd/Shift+click for several).`;
 }
 
 function selectionChanged(): void {
