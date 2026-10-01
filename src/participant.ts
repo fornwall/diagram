@@ -62,7 +62,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const messages = [
       vscode.LanguageModelChatMessage.User(explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS),
       ...historyMessages(context),
-      ...(await referenceMessages(request.references)),
+      ...(await referenceMessages(context, request)),
     ];
     if (current) {
       messages.push(vscode.LanguageModelChatMessage.User(current));
@@ -278,37 +278,41 @@ function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatM
   return messages;
 }
 
+/**
+ * The files, selections and text attached to this request and earlier ones, as later requests often
+ * refer to them. Each is read again, and given once.
+ */
 async function referenceMessages(
-  references: readonly vscode.ChatPromptReference[],
+  context: vscode.ChatContext,
+  request: vscode.ChatRequest,
 ): Promise<vscode.LanguageModelChatMessage[]> {
-  const messages: vscode.LanguageModelChatMessage[] = [];
-  // The references come in reverse order of their position in the prompt.
-  for (const { value, modelDescription } of [...references].reverse()) {
-    const content = await referenceContent(value);
-    if (!content) {
+  const attachments = new Set<string>();
+  for (const turn of [...context.history, request]) {
+    if (turn instanceof vscode.ChatResponseTurn) {
       continue;
     }
-    const { name, text } = content;
-    const label = modelDescription ? `${name} (${modelDescription})` : name;
-    if (text === undefined) {
-      messages.push(
-        vscode.LanguageModelChatMessage.User(
-          `Attached by the user: ${label}, which is not a text file.`,
-        ),
-      );
-      continue;
-    }
-    const truncated =
-      text.length > MAX_REFERENCE_LENGTH
-        ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
-        : "";
-    messages.push(
-      vscode.LanguageModelChatMessage.User(
+    // The references come in reverse order of their position in the prompt.
+    for (const { value, modelDescription } of [...turn.references].reverse()) {
+      const content = await referenceContent(value);
+      if (!content) {
+        continue;
+      }
+      const { name, text } = content;
+      const label = modelDescription ? `${name} (${modelDescription})` : name;
+      if (text === undefined) {
+        attachments.add(`Attached by the user: ${label}, which is not a text file.`);
+        continue;
+      }
+      const truncated =
+        text.length > MAX_REFERENCE_LENGTH
+          ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
+          : "";
+      attachments.add(
         `Attached by the user: ${label}${truncated}\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
-      ),
-    );
+      );
+    }
   }
-  return messages;
+  return Array.from(attachments, (text) => vscode.LanguageModelChatMessage.User(text));
 }
 
 /**

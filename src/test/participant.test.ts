@@ -25,7 +25,7 @@ function newPanel(): DiagramPanel {
 async function ask(
   panel: DiagramPanel,
   replies: Part[][],
-  overrides: Partial<vscode.ChatRequest> = {},
+  { history = [], ...overrides }: Partial<vscode.ChatRequest & vscode.ChatContext> = {},
 ) {
   const sent: {
     messages: vscode.LanguageModelChatMessage[];
@@ -63,7 +63,7 @@ async function ask(
     },
   });
   const token = new vscode.CancellationTokenSource().token;
-  const result = await createParticipantHandler(panel)(request, { history: [] }, stream, token);
+  const result = await createParticipantHandler(panel)(request, { history }, stream, token);
   return { result: result || undefined, shown, sent };
 }
 
@@ -194,6 +194,37 @@ suite("participant", function () {
           "Attached by the user: text (The terminal selection)",
         ],
       );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("gives the model earlier turns, with their diagrams and attachments", async () => {
+    const panel = newPanel();
+    try {
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+      assert.ok(folder);
+      const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
+      // The constructors are hidden from the API, but not at runtime.
+      type Constructor<T> = new (...args: unknown[]) => T;
+      const RequestTurn = vscode.ChatRequestTurn as unknown as Constructor<vscode.ChatRequestTurn>;
+      const ResponseTurn =
+        vscode.ChatResponseTurn as unknown as Constructor<vscode.ChatResponseTurn>;
+      const history = [
+        new RequestTurn("Draw #file:sizes.tsv", undefined, references, "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart("Here it is.")],
+          { metadata: { language: "mermaid", source: "flowchart TD\n  A --> B" } },
+          "diagram.participant",
+        ),
+      ];
+      const { sent } = await ask(panel, [[text("Hm.")]], { history, references });
+      const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
+      assert.deepStrictEqual(
+        messages.map((message) => message.split("\n")[0]),
+        ["Draw #file:sizes.tsv", "Here it is.", "Attached by the user: sizes.tsv", "Draw it"],
+      );
+      assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
     } finally {
       panel.dispose();
     }
