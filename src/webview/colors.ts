@@ -45,5 +45,6 @@ export interface ThemeColors {
   green: Rgba;
   red: Rgba;
   fontFamily: string;
+  /** The size of chart text, a step below VS Code's font size. */
   fontSize: number;
 }

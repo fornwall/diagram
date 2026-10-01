@@ -23,7 +23,7 @@ const colors: ThemeColors = {
   green: gray,
   red: gray,
   fontFamily: "sans-serif",
-  fontSize: 13,
+  fontSize: 12,
 };
 
 function layout(option: JsonObject, context: Partial<LayoutContext> = {}): Option {

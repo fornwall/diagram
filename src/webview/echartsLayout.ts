@@ -10,12 +10,14 @@ const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[ke
 /** Space in pixels taken from each side of the chart by the title, legend, sliders, … */
 type Insets = Record<"top" | "bottom" | "left" | "right", number>;
 
-/** The text of a category or legend entry, which may be a plain value or `{value}`/`{name}`. */
-function entryText(entry: unknown): string {
-  if (isObject(entry)) {
-    return String(entry.value ?? entry.name ?? "");
+/** The length of the longest category or legend entry; each is a value or `{value}`/`{name}`. */
+function longestText(entries: unknown): number {
+  if (!Array.isArray(entries)) {
+    return 0;
   }
-  return entry === null || entry === undefined ? "" : String(entry);
+  const text = (entry: unknown) =>
+    String((isObject(entry) ? (entry.value ?? entry.name) : entry) ?? "");
+  return Math.max(0, ...entries.map((entry) => text(entry).length));
 }
 
 function seriesName(series: JsonObject): string | undefined {
@@ -50,8 +52,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   const width = context.width > 0 ? context.width : 800;
   const height = context.height > 0 ? context.height : 500;
   const compact = width < 560 || height < 340;
-  const fontSize = Math.max(11, colors.fontSize - 1);
-  const charWidth = fontSize * 0.6;
+  const charWidth = colors.fontSize * 0.6;
 
   if (context.reducedMotion) {
     option.animation = false;
@@ -61,9 +62,6 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   const responsive = option.media === undefined;
 
   const series = asArray(base.series);
-  if (isObject(base.series)) {
-    base.series = series;
-  }
   const cartesian = series.some(isCartesian);
 
   // Titles: hide one that repeats the panel header.
@@ -89,28 +87,29 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 
   // Legend: always there for several named series; the identity of a series is never only color.
   const pies = series.filter((s) => s.type === "pie");
-  let legends = asArray(base.legend);
-  if (legends.length === 0 && base.legend === undefined && responsive) {
+  if (base.legend === undefined && responsive) {
     const named = series.length >= 2 && series.every((s) => seriesName(s) !== undefined);
     // A small pie has no room for labels, so its slices are named by a legend instead.
     const smallPie =
       pies.length === 1 && !isObject(pies[0]?.label) && (width < 420 || height - titleHeight < 260);
     if (named || smallPie) {
       base.legend = {};
-      legends = asArray(base.legend);
     }
   }
-  const legend = legends.find((l) => l.show !== false);
+  const legend = asArray(base.legend).find((l) => l.show !== false);
   let legendSide: "top" | "bottom" | "left" | "right" | undefined;
   let legendWidth = 0;
   if (legend) {
     const names = Array.isArray(legend.data)
-      ? legend.data.map(entryText)
+      ? legend.data
       : pies.length > 0 || series.some((s) => s.type === "funnel")
-        ? series.flatMap((s) => (Array.isArray(s.data) ? s.data.map(entryText) : []))
-        : series.map((s) => seriesName(s) ?? "");
-    const longest = Math.max(4, ...names.map((name) => name.length));
-    legendWidth = Math.round(Math.min(width * 0.32, longest * charWidth + 12 + 5 + 24));
+        ? series.flatMap((s) => (Array.isArray(s.data) ? s.data : []))
+        : series.map(seriesName);
+    // The icon, the gap after it and the padding around the legend.
+    const extra = 12 + 5 + 24;
+    legendWidth = Math.round(
+      Math.min(width * 0.32, Math.max(4, longestText(names)) * charWidth + extra),
+    );
     legend.type ??= "scroll";
     if (!has(legend, [...BOX_KEYS, "orient"]) && responsive) {
       // Beside a pie or other non-grid chart when there is room, as it then uses the height.
@@ -186,7 +185,6 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 
   const xAxes = asArray(base.xAxis);
   const yAxes = asArray(base.yAxis);
-  const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
 
   if (cartesian && responsive) {
     const grids = asArray(base.grid);
@@ -210,14 +208,15 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     }
 
     // Category labels: rotate them when they would overlap, and truncate very long ones.
+    const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
     for (const axis of xAxes) {
-      const labels = Array.isArray(axis.data) ? axis.data.map(entryText) : [];
       const label = isObject(axis.axisLabel) ? axis.axisLabel : {};
-      if (labels.length === 0 || label.rotate !== undefined || label.interval !== undefined) {
+      const count = Array.isArray(axis.data) ? axis.data.length : 0;
+      if (count === 0 || label.rotate !== undefined || label.interval !== undefined) {
         continue;
       }
-      const labelWidth = Math.max(...labels.map((text) => text.length)) * charWidth;
-      const slot = plotWidth / labels.length;
+      const labelWidth = longestText(axis.data) * charWidth;
+      const slot = plotWidth / count;
       if (labelWidth > slot - 8) {
         const rotate = labelWidth > slot * 3 ? 45 : 30;
         const maxWidth = Math.max(60, Math.round(height * 0.22));
@@ -230,14 +229,9 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       }
     }
     for (const axis of yAxes) {
-      const labels = Array.isArray(axis.data) ? axis.data.map(entryText) : [];
       const label = isObject(axis.axisLabel) ? axis.axisLabel : {};
-      if (labels.length === 0 || label.width !== undefined) {
-        continue;
-      }
-      const labelWidth = Math.max(...labels.map((text) => text.length)) * charWidth;
       const maxWidth = Math.round(width * (compact ? 0.3 : 0.22));
-      if (labelWidth > maxWidth) {
+      if (label.width === undefined && longestText(axis.data) * charWidth > maxWidth) {
         axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
       }
     }
@@ -247,8 +241,6 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   for (const each of series) {
     if (each.type === "bar") {
       const itemStyle = isObject(each.itemStyle) ? each.itemStyle : {};
-      const axis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];
-      const horizontal = axis?.type === "category";
       if (each.stack !== undefined) {
         // A thin gap in the background color separates stacked segments.
         if (itemStyle.borderColor === undefined && itemStyle.borderWidth === undefined) {
@@ -256,6 +248,8 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
         }
       } else if (itemStyle.borderRadius === undefined && !hasNegativeValues(each.data)) {
         // Rounded data ends, square at the baseline.
+        const axis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];
+        const horizontal = axis?.type === "category";
         itemStyle.borderRadius = horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0];
       }
       each.itemStyle = itemStyle;
@@ -263,12 +257,8 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     if (each.type === "sankey" && each.color === undefined) {
       // ECharts colors sankey nodes by value along the palette, mixing hues; give each node its
       // own categorical color instead.
-      const nodes = Array.isArray(each.data)
-        ? each.data
-        : Array.isArray(each.nodes)
-          ? each.nodes
-          : [];
-      nodes.forEach((node: unknown, index) => {
+      const nodes: unknown = each.data ?? each.nodes;
+      (Array.isArray(nodes) ? nodes : []).forEach((node: unknown, index) => {
         if (isObject(node)) {
           const itemStyle = isObject(node.itemStyle) ? node.itemStyle : {};
           itemStyle.color ??= toCss(colors.palette[index % colors.palette.length] ?? colors.blue);
@@ -293,8 +283,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 
   // Tooltips by default: an axis crosshair for line and bar charts, per item otherwise.
   if (base.tooltip === undefined) {
-    const axisTrigger =
-      cartesian && series.some((s) => s.type === "line" || s.type === "bar") && xAxes.length > 0;
+    const axisTrigger = cartesian && series.some((s) => s.type === "line" || s.type === "bar");
     const onlyBars = series.every((s) => s.type === "bar");
     base.tooltip = axisTrigger
       ? { trigger: "axis", axisPointer: { type: onlyBars ? "shadow" : "line" } }
@@ -373,43 +362,23 @@ function layOutPie(
   }
 }
 
+/** Keeps series that ECharts lays out in a box clear of the title, legend and other components. */
 function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number): void {
   for (const each of series) {
-    if (has(each, BOX_KEYS)) {
+    const type = String(each.type);
+    const placed = has(each, BOX_KEYS) || (type === "graph" && (each.layout ?? "none") === "none");
+    if (placed || !["funnel", "sankey", "tree", "treemap", "graph"].includes(type)) {
       continue;
     }
-    switch (each.type) {
-      case "funnel":
-        Object.assign(each, {
-          top: reserved.top + 12,
-          bottom: reserved.bottom + 12,
-          left: reserved.left + Math.round(width * 0.1),
-          right: reserved.right + Math.round(width * 0.1),
-        });
-        break;
-      case "sankey":
-        Object.assign(each, {
-          top: reserved.top + 12,
-          bottom: reserved.bottom + 12,
-          left: reserved.left + 12,
-          // Room for the labels right of the last column of nodes.
-          right: reserved.right + Math.round(Math.min(160, width * 0.18)),
-        });
-        break;
-      case "tree":
-      case "treemap":
-      case "graph":
-        if (each.type === "graph" && (each.layout === undefined || each.layout === "none")) {
-          break;
-        }
-        Object.assign(each, {
-          top: reserved.top + 12,
-          bottom: reserved.bottom + (each.type === "treemap" ? 36 : 12),
-          left: reserved.left + 12,
-          right: reserved.right + 12,
-        });
-        break;
-    }
+    const side = type === "funnel" ? Math.round(width * 0.1) : 12;
+    Object.assign(each, {
+      top: reserved.top + 12,
+      // Room for the breadcrumb below a treemap.
+      bottom: reserved.bottom + (type === "treemap" ? 36 : 12),
+      left: reserved.left + side,
+      // Room for the labels right of the last column of sankey nodes.
+      right: reserved.right + (type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side),
+    });
   }
 }
 

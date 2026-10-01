@@ -48,6 +48,7 @@ export function readThemeColors(): ThemeColors {
   const style = getComputedStyle(document.body);
   const dark = isDarkTheme();
   const highContrast = document.body.dataset.vscodeThemeKind?.startsWith("vscode-high-contrast");
+  const fontSize = Number.parseFloat(style.getPropertyValue("--vscode-font-size")) || 13;
   const variable = (name: string) => parseColor(style.getPropertyValue(`--vscode-${name}`));
   // VS Code always defines these variables; the fallbacks only keep the chart legible without.
   const background = {
@@ -96,6 +97,6 @@ export function readThemeColors(): ThemeColors {
     green,
     red,
     fontFamily: style.getPropertyValue("--vscode-font-family").trim() || "system-ui, sans-serif",
-    fontSize: Number.parseFloat(style.getPropertyValue("--vscode-font-size")) || 13,
+    fontSize: Math.max(11, fontSize - 1),
   };
 }

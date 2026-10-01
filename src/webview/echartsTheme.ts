@@ -12,7 +12,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
   const accent = toCss(colors.blue);
   const accentWash = toCss({ ...colors.blue, a: 0.15 });
   const subtleFill = toCss({ ...colors.foreground, a: colors.dark ? 0.06 : 0.04 });
-  const font = { fontFamily: colors.fontFamily, fontSize: Math.max(11, colors.fontSize - 1) };
+  const font = { fontFamily: colors.fontFamily, fontSize: colors.fontSize };
 
   const axisLine = { lineStyle: { color: axisColor, width: 1 } };
   const axisTick = { lineStyle: { color: axisColor } };
