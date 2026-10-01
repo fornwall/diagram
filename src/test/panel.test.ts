@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { clickToAskQuery, type Diagram, DiagramPanel } from "../panel";
+import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
 import type { FromWebview } from "../protocol";
 
 const flowchart: Diagram = {
@@ -146,7 +146,7 @@ suite("panel", function () {
         "tool",
       );
       assert.ok(outcome.ok);
-      const saved = values.get("diagram.state") as Diagram;
+      const saved = values.get("diagram.state") as DiagramState;
       assert.strictEqual(saved.source, undefined);
       assert.strictEqual(saved.title, "Sizes");
     } finally {
@@ -155,10 +155,12 @@ suite("panel", function () {
 
     const restored = newPanel(values);
     try {
-      const diagram = restored.current;
-      assert.ok(diagram);
-      assert.match(diagram.source, /Press Refresh/);
-      assert.ok((await restored.render(diagram, "tool")).ok);
+      assert.strictEqual(restored.current?.title, "Sizes");
+      restored.show();
+      assert.match(restored.describeForModel() ?? "", /Not drawn.*press Refresh/);
+      const picking = await pick(restored);
+      assert.ok(!picking.picked && /too large to keep/.test(picking.reason));
+      assert.ok((await restored.render(flowchart, "tool")).ok);
     } finally {
       restored.dispose();
     }

@@ -53,17 +53,17 @@ export interface Diagram {
   chart?: ChartSpec;
 }
 
-interface DiagramState extends Diagram {
+export interface DiagramState extends Omit<Diagram, "source"> {
+  /**
+   * Left out of a large chart of a file or command when saving, as saving happens often. Such a
+   * chart is not drawn after a reload until the user presses Refresh.
+   */
+  source?: string;
   origin: DiagramOrigin;
   /** Set when the user changed the source in the panel after it was last rendered by an agent. */
   editedByUser: boolean;
   /** The last render error, if the current source fails to render. */
   error?: string;
-}
-
-interface SavedState extends Omit<DiagramState, "source"> {
-  /** Left out for a large chart of a file or command, which Refresh can draw again. */
-  source?: string;
 }
 
 const STATE_KEY = "diagram.state";
@@ -95,12 +95,11 @@ export class DiagramPanel implements vscode.Disposable {
   private refreshing = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    const state = context.workspaceState.get<SavedState>(STATE_KEY);
-    this.state = state && { ...state, source: state.source ?? REFRESH_PROMPT };
+    this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
   }
 
   /** The diagram currently shown, if any. */
-  get current(): Diagram | undefined {
+  get current(): Readonly<DiagramState> | undefined {
     return this.state;
   }
 
@@ -143,6 +142,12 @@ export class DiagramPanel implements vscode.Disposable {
       return {
         picked: false,
         reason: `There is no diagram to pick from. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`,
+      };
+    }
+    if (state.source === undefined) {
+      return {
+        picked: false,
+        reason: `The chart is not drawn, as it was too large to keep when VS Code closed. Draw it again with ${CHART_TOOL} first.`,
       };
     }
     if (state.error) {
@@ -196,10 +201,12 @@ export class DiagramPanel implements vscode.Disposable {
     const lines = [
       `The ${what} currently shown in the diagram panel ("${state.title}"):`,
       "",
-      // A chart of a large file or command output can be too large for the model's context.
-      state.source.length <= MAX_SOURCE_FOR_MODEL
-        ? codeFence(state.source, state.language)
-        : `(The source is ${state.source.length} characters long, too long to show here.)`,
+      state.source === undefined
+        ? "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)"
+        : // A chart of a large file or command output can be too large for the model's context.
+          state.source.length <= MAX_SOURCE_FOR_MODEL
+          ? codeFence(state.source, state.language)
+          : `(The source is ${state.source.length} characters long, too long to show here.)`,
       "",
     ];
     if (state.chart) {
@@ -409,15 +416,26 @@ export class DiagramPanel implements vscode.Disposable {
       return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
     }
     this.panel.title = state.title;
+    const { source, title } = state;
+    const refreshFrom = state.chart && dataOrigin(state.chart);
+    if (source === undefined) {
+      await this.webviewReady;
+      this.post({ type: "needsRefresh", title, refreshFrom });
+      return {
+        ok: false,
+        kind: "unavailable",
+        error: "The chart must be drawn again with Refresh.",
+      };
+    }
 
     const message: RenderMessage = {
       type: "render",
       requestId: this.nextRequestId++,
       language: state.language,
-      source: state.source,
-      title: state.title,
+      source,
+      title,
       clickPrompt: state.clickPrompt,
-      refreshFrom: state.chart && dataOrigin(state.chart),
+      refreshFrom,
     };
     const outcome = new Promise<RenderOutcome>((resolve) => {
       const timeout = setTimeout(
@@ -447,7 +465,7 @@ export class DiagramPanel implements vscode.Disposable {
     // An unavailable panel says nothing about the source, and the diagram may have been replaced
     // while rendering.
     const latest = this.state;
-    const replaced = latest?.source !== state.source || latest.language !== state.language;
+    const replaced = latest?.source !== source || latest.language !== state.language;
     if (latest && !replaced && (result.ok || result.kind === "invalid")) {
       this.state = { ...latest, error: result.ok ? undefined : result.error };
       if (!result.ok) {
@@ -460,8 +478,8 @@ export class DiagramPanel implements vscode.Disposable {
 
   private save(): Thenable<void> {
     const state = this.state;
-    const saved: SavedState | undefined =
-      state?.chart && state.source.length > MAX_SAVED_CHART_SOURCE
+    const saved =
+      state?.chart && state.source !== undefined && state.source.length > MAX_SAVED_CHART_SOURCE
         ? { ...state, source: undefined, editedByUser: false, error: undefined }
         : state;
     return this.context.workspaceState.update(STATE_KEY, saved);
@@ -478,17 +496,6 @@ export class DiagramPanel implements vscode.Disposable {
     void this.panel?.webview.postMessage(message);
   }
 }
-
-/** Shown instead of a chart whose option was too large to save. */
-const REFRESH_PROMPT = JSON.stringify({
-  title: {
-    text: "Press Refresh to draw this chart again",
-    subtext: "It was too large to keep when VS Code closed.",
-    left: "center",
-    top: "middle",
-  },
-  series: [{ type: "pie", data: [] }],
-});
 
 function failsToRender(language: DiagramLanguage, error: string): string {
   const noun = diagramNoun(language);

@@ -47,6 +47,11 @@ export type ToWebview =
       /** Where the chart's data can be reloaded from, e.g. "file sales.csv" or "command `du -s *`". */
       refreshFrom?: string;
     }
+  /**
+   * Sent instead of render to a webview that just loaded, for a chart that was too large to keep
+   * when VS Code closed: shows its title and asks the user to press Refresh.
+   */
+  | { type: "needsRefresh"; title: string; refreshFrom?: string }
   | { type: "clearSelection" }
   /** Asks the user to click nodes until the pick is answered or ended. */
   | { type: "startPick"; pickId: number; prompt: string; multiple: boolean }

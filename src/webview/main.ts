@@ -80,8 +80,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
-  refreshButton.hidden = message.refreshFrom === undefined;
-  refreshButton.title = `Load the data again from ${message.refreshFrom}`;
+  showRefresh(message.refreshFrom);
   const renderer = renderers[language] as Renderer | undefined;
   if (!renderer) {
     post({ type: "renderError", requestId, message: `Unknown diagram language "${language}".` });
@@ -118,6 +117,19 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   updateSelectionUi();
 }
 
+function showRefresh(from: string | undefined): void {
+  refreshButton.hidden = from === undefined;
+  refreshButton.title = `Load the data again from ${from}`;
+}
+
+/** Shows the title of a chart that was not kept, and asks to draw it again. */
+function showNeedsRefresh({ title, refreshFrom }: { title: string; refreshFrom?: string }): void {
+  titleElement.textContent = title;
+  showRefresh(refreshFrom);
+  emptyElement.textContent =
+    "This chart was too large to keep when VS Code closed. Press Refresh to draw it again.";
+}
+
 // Renders one at a time, in order, so that a slow render cannot overtake a later one.
 let queue = Promise.resolve();
 function enqueue(task: () => Promise<void>): void {
@@ -129,6 +141,9 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   switch (message.type) {
     case "render":
       enqueue(() => render(message));
+      break;
+    case "needsRefresh":
+      enqueue(async () => showNeedsRefresh(message));
       break;
     case "clearSelection":
       clearSelection();
