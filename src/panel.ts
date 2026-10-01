@@ -321,6 +321,76 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
+  /**
+   * Shows the current diagram in the webview once it is ready, and keeps its render error, if any,
+   * for later requests.
+   */
+  private async renderCurrent(): Promise<RenderOutcome> {
+    const state = this.state;
+    if (!state || !this.panel) {
+      return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
+    }
+    this.panel.title = state.title;
+    const { source, title } = state;
+    const refreshFrom = state.chart && dataOrigin(state.chart);
+    if (source === undefined) {
+      await this.webviewReady;
+      this.post({ type: "needsRefresh", title, refreshFrom });
+      return {
+        ok: false,
+        kind: "unavailable",
+        error: "The chart waits for the user to refresh it.",
+      };
+    }
+
+    const message: RenderMessage = {
+      type: "render",
+      requestId: this.nextRequestId++,
+      language: state.language,
+      source,
+      title,
+      clickPrompt: state.clickPrompt,
+      refreshFrom,
+    };
+    const outcome = new Promise<RenderOutcome>((resolve) => {
+      const timeout = setTimeout(
+        () =>
+          this.finishRender(message.requestId, {
+            ok: false,
+            kind: "unavailable",
+            error: `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
+          }),
+        RENDER_TIMEOUT_MS,
+      );
+      this.pendingRenders.set(message.requestId, {
+        message,
+        resolve: (outcome) => {
+          clearTimeout(timeout);
+          resolve(outcome);
+        },
+      });
+    });
+    await this.webviewReady;
+    // The render may have timed out, or the panel closed, while the webview was loading.
+    if (this.pendingRenders.has(message.requestId)) {
+      this.post(message);
+    }
+    const result = await outcome;
+
+    // An unavailable panel says nothing about the source, and the diagram may have been replaced
+    // while rendering.
+    const latest = this.state;
+    const replaced = latest?.source !== source || latest.language !== state.language;
+    if (latest && !replaced && (result.ok || result.kind === "invalid")) {
+      this.state = { ...latest, error: result.ok ? undefined : result.error };
+      if (!result.ok) {
+        this.cancelPick(failsToRender(latest.language, result.error));
+      }
+    }
+    await this.save();
+    return result;
+  }
+
   private finishRender(requestId: number, outcome: RenderOutcome): void {
     this.pendingRenders.get(requestId)?.resolve(outcome);
     this.pendingRenders.delete(requestId);
@@ -371,72 +441,6 @@ export class DiagramPanel implements vscode.Disposable {
     } finally {
       this.refreshing = false;
     }
-  }
-
-  private async renderCurrent(): Promise<RenderOutcome> {
-    const state = this.state;
-    if (!state || !this.panel) {
-      return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
-    }
-    this.panel.title = state.title;
-    const { source, title } = state;
-    const refreshFrom = state.chart && dataOrigin(state.chart);
-    if (source === undefined) {
-      await this.webviewReady;
-      this.post({ type: "needsRefresh", title, refreshFrom });
-      return {
-        ok: false,
-        kind: "unavailable",
-        error: "The chart must be drawn again with Refresh.",
-      };
-    }
-
-    const message: RenderMessage = {
-      type: "render",
-      requestId: this.nextRequestId++,
-      language: state.language,
-      source,
-      title,
-      clickPrompt: state.clickPrompt,
-      refreshFrom,
-    };
-    const outcome = new Promise<RenderOutcome>((resolve) => {
-      const timeout = setTimeout(
-        () =>
-          this.finishRender(message.requestId, {
-            ok: false,
-            kind: "unavailable",
-            error: `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
-          }),
-        RENDER_TIMEOUT_MS,
-      );
-      this.pendingRenders.set(message.requestId, {
-        message,
-        resolve: (outcome) => {
-          clearTimeout(timeout);
-          resolve(outcome);
-        },
-      });
-    });
-    await this.webviewReady;
-    // The render may have timed out, or the panel closed, while the webview was loading.
-    if (this.pendingRenders.has(message.requestId)) {
-      this.post(message);
-    }
-    const result = await outcome;
-
-    // An unavailable panel says nothing about the source, and the diagram may have been replaced
-    // while rendering.
-    const latest = this.state;
-    const replaced = latest?.source !== source || latest.language !== state.language;
-    if (latest && !replaced && (result.ok || result.kind === "invalid")) {
-      this.state = { ...latest, error: result.ok ? undefined : result.error };
-      if (!result.ok) {
-        this.cancelPick(failsToRender(latest.language, result.error));
-      }
-    }
-    await this.save();
-    return result;
   }
 
   private save(): Thenable<void> {
