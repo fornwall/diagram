@@ -106,10 +106,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (token.isCancellationRequested) {
         return;
       }
-      if (error instanceof vscode.LanguageModelError) {
-        return { errorDetails: { message: error.message } };
-      }
-      throw error;
+      return { errorDetails: { message: errorMessage(error) } };
     }
   };
 }

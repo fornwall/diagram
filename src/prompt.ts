@@ -184,7 +184,7 @@ export async function fitToolResults(
     token,
   );
   const room = budget - sum(await Promise.all(earlier.map(tokens)));
-  const { texts } = await fitTexts(
+  const { texts, left } = await fitTexts(
     parts.map(({ value }) => ({
       length: value.length,
       shorten: (length: number) =>
@@ -195,6 +195,11 @@ export async function fitToolResults(
     room,
     tokens,
   );
+  if (left < 0) {
+    throw new Error(
+      `The conversation is too large for ${model.name}, even with shortened tool results. Start a new chat or choose a model with a larger context.`,
+    );
+  }
   for (const [index, part] of parts.entries()) {
     part.value = texts[index] ?? part.value;
   }

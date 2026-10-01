@@ -327,6 +327,35 @@ suite("participant", function () {
     }
   });
 
+  test("stops with a clear error when tool rounds exhaust the model's context", async () => {
+    const panel = newPanel();
+    try {
+      const { sent, result } = await ask(
+        panel,
+        [[text("x".repeat(20_000)), new vscode.LanguageModelToolCallPart("1", "unknown", {})]],
+        { maxInputTokens: 4_000 },
+      );
+      assert.strictEqual(sent.length, 1);
+      assert.match(result?.errorDetails?.message ?? "", /too large for Fake.*Start a new chat/);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("reports model connection failures as chat errors", async () => {
+    const panel = newPanel();
+    try {
+      const { result } = await ask(panel, [
+        async () => {
+          throw new Error("Connection lost. Try again.");
+        },
+      ]);
+      assert.strictEqual(result?.errorDetails?.message, "Connection lost. Try again.");
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("attaches referenced files, selections and text in prompt order", async () => {
     const panel = newPanel();
     try {
