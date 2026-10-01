@@ -275,7 +275,27 @@ suite("participant", function () {
       const { sent } = await ask(panel, [[call], [text("Sorry.")]]);
       assert.strictEqual(
         messageText(sent[1]?.messages.at(-1)),
-        "There is no tool named diagram_getState. Use only the tools you were given.",
+        "The tool diagram_getState is not available in this round. Use only the tools you were given.",
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("required tool rounds run only the tool exposed in that round", async () => {
+    const panel = newPanel();
+    try {
+      const call = new vscode.LanguageModelToolCallPart("1", "diagram_chart", {});
+      const { sent } = await ask(panel, [[call], [text("Sorry.")]], {
+        toolReferences: [{ name: "diagram_getState" }],
+      });
+      assert.deepStrictEqual(
+        sent[0]?.options.tools?.map((tool) => tool.name),
+        ["diagram_getState"],
+      );
+      assert.strictEqual(
+        messageText(sent[1]?.messages.at(-1)),
+        "The tool diagram_chart is not available in this round. Use only the tools you were given.",
       );
     } finally {
       panel.dispose();

@@ -202,9 +202,11 @@ async function streamReply(
       let content: unknown[];
       if (notRun) {
         content = text(`Not run, as ${notRun}. Answer without tools.`);
-      } else if (!tools.some((tool) => tool.name === call.name)) {
+      } else if (!options.tools?.some((tool) => tool.name === call.name)) {
         // invokeTool runs any registered tool, not only those the model was given.
-        content = text(`There is no tool named ${call.name}. Use only the tools you were given.`);
+        content = text(
+          `The tool ${call.name} is not available in this round. Use only the tools you were given.`,
+        );
       } else {
         try {
           const input = { input: call.input, toolInvocationToken: request.toolInvocationToken };
