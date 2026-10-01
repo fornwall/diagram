@@ -44,6 +44,29 @@ suite("webview", function () {
     assert.match(fenced.error, /^Remove the code fence/);
   });
 
+  test("reports Mermaid errors on the line of the source", async () => {
+    // Mermaid numbers the lines without front matter, directives, comments and leading blank lines.
+    const source =
+      "---\ntitle: T\n---\n%%{init: {}}%%\n\nflowchart TD\n  %% note\n  A --> B\n  B -> C";
+    const outcome = await render({ source });
+    assert.ok(!outcome.ok);
+    assert.match(outcome.error, /^Parse error on line 9:/);
+    const yaml = await render({ source: "---\ntitle: [\n---\nflowchart TD" });
+    assert.ok(!yaml.ok);
+    assert.match(yaml.error, /^Invalid YAML in the front matter on line \d+: /);
+  });
+
+  test("explains Mermaid's limits", async () => {
+    const edges = Array.from({ length: 501 }, (_, i) => `  n${i} --> n${i + 1}`);
+    const outcome = await render({ source: `flowchart TD\n${edges.join("\n")}` });
+    assert.ok(!outcome.ok);
+    assert.match(outcome.error, /^The diagram has more than 500 edges/);
+    // Mermaid would draw a message in place of the diagram.
+    const long = await render({ source: `flowchart TD\n${"  A --> B\n".repeat(5000)}` });
+    assert.ok(!long.ok);
+    assert.match(long.error, /^The diagram is too long/);
+  });
+
   test("renders charts, and switches between charts and diagrams", async () => {
     const option = {
       xAxis: { type: "category", data: ["A", "B"] },

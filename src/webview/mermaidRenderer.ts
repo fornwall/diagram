@@ -13,18 +13,15 @@ const MAX_ZOOM = 4;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 
+/** Mermaid's default limit: it draws a longer source as an error message instead. */
+const MAX_TEXT_SIZE = 50_000;
+
 const TYPE_EXAMPLES = '"flowchart TD", "sequenceDiagram", "classDiagram", "erDiagram", "mindmap"';
 
 /** Replaces Mermaid's error for an unknown diagram type, which quotes the whole source. */
-function describeError(error: unknown): unknown {
+function unknownTypeError(message: string): Error {
   // Mermaid quotes the source without front matter, directives and comments.
-  const text =
-    error instanceof Error && error.name === "UnknownDiagramError"
-      ? /for text: (.*)$/s.exec(error.message)?.[1]?.trim()
-      : undefined;
-  if (text === undefined) {
-    return error;
-  }
+  const text = /for text: (.*)$/s.exec(message)?.[1]?.trim() ?? "";
   if (text.startsWith("```")) {
     return new Error(
       `Remove the code fence around the diagram: the source must start with the diagram type, e.g. ${TYPE_EXAMPLES}.`,
@@ -39,6 +36,86 @@ function describeError(error: unknown): unknown {
   return new Error(
     `Unknown diagram type "${type}": the first line must declare the type, e.g. ${TYPE_EXAMPLES}.`,
   );
+}
+
+/**
+ * The source line of each line that Mermaid parses. Mermaid parses the source without its front
+ * matter, directives, comment lines and leading blank lines (see preprocessDiagram in Mermaid),
+ * and numbers the lines in its errors accordingly.
+ */
+function parsedLines(source: string): number[] {
+  const normalized = source.replace(/\r\n?/g, "\n");
+  let text = normalized;
+  /** The offset in the normalized source of each character of the text. */
+  let origins = Array.from({ length: text.length }, (_, i) => i);
+  for (const removed of [
+    /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/gs,
+    /%%\{.*?\}%%/gs,
+    /^\s*%%(?!\{)[^\n]+\n?/gm,
+    /^\s+/g,
+  ]) {
+    let kept = "";
+    const keptOrigins: number[] = [];
+    let from = 0;
+    const keep = (to: number) => {
+      kept += text.slice(from, to);
+      for (const origin of origins.slice(from, to)) {
+        keptOrigins.push(origin);
+      }
+    };
+    for (const match of text.matchAll(removed)) {
+      keep(match.index);
+      from = match.index + match[0].length;
+    }
+    keep(text.length);
+    text = kept;
+    origins = keptOrigins;
+  }
+  // The origins of the parsed lines increase, so count the source lines in one pass.
+  let line = 1;
+  let counted = 0;
+  const lineAt = (offset = normalized.length) => {
+    for (; counted < offset; counted++) {
+      if (normalized[counted] === "\n") {
+        line++;
+      }
+    }
+    return line;
+  };
+  const lines = [lineAt(origins[0])];
+  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) {
+    lines.push(lineAt(origins[i + 1]));
+  }
+  return lines;
+}
+
+/** Makes Mermaid's error clear, and its line numbers those of the source. */
+function describeError(error: unknown, source: string): unknown {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+  if (error.name === "UnknownDiagramError") {
+    return unknownTypeError(error.message);
+  }
+  // js-yaml numbers the lines of the front matter after its "---" line, from 0.
+  const yaml = error as Error & { reason?: string; mark?: { line: number } };
+  if (error.name === "YAMLException" && yaml.mark) {
+    return new Error(
+      `Invalid YAML in the front matter on line ${yaml.mark.line + 2}: ${yaml.reason ?? error.message}.`,
+    );
+  }
+  const edgeLimit = /^Edge limit exceeded.* the limit is (\d+)/.exec(error.message);
+  if (edgeLimit) {
+    return new Error(
+      `The diagram has more than ${edgeLimit[1]} edges, more than Mermaid draws: split it into smaller diagrams.`,
+    );
+  }
+  const lines = parsedLines(source);
+  error.message = error.message.replace(
+    /\bon line (\d+)/g,
+    (_, line: string) => `on line ${lines[Number(line) - 1] ?? line}`,
+  );
+  return error;
 }
 
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
@@ -86,10 +163,16 @@ export class MermaidRenderer implements Renderer {
   }
 
   async render(source: string): Promise<string> {
+    if (source.length > MAX_TEXT_SIZE) {
+      throw new Error(
+        `The diagram is too long: ${source.length} characters, where Mermaid allows ${MAX_TEXT_SIZE}. Split it into smaller diagrams.`,
+      );
+    }
     const mermaid = await loadMermaid();
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
+      maxTextSize: MAX_TEXT_SIZE,
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
       theme: isDarkTheme() ? "dark" : "default",
@@ -97,7 +180,7 @@ export class MermaidRenderer implements Renderer {
     });
     const id = `diagram-svg-${++this.renderCounter}`;
     const result = await mermaid.render(id, source).catch((error: unknown) => {
-      throw describeError(error);
+      throw describeError(error, source);
     });
     this.diagram.innerHTML = result.svg;
     result.bindFunctions?.(this.diagram);
