@@ -1,4 +1,5 @@
-// Parsing tabular data (JSON, CSV, TSV or whitespace-separated command output) for charts.
+// Parsing tabular data (JSON, CSV, TSV, Markdown tables or whitespace-separated command output)
+// for charts.
 
 import type { DataFormat } from "./chartSpec";
 import { errorMessage, isPlainObject } from "./protocol";
