@@ -365,6 +365,16 @@ export class MermaidRenderer implements Renderer {
       }
     }
 
+    // User journey tasks: groups of the task box, its people, and a line down to its score. The
+    // name is in a text per line, which may also have an HTML label (in a switch) to stand in for.
+    for (const line of svg.querySelectorAll("line.task-line")) {
+      const group = line.parentElement;
+      const label = group && Array.from(group.querySelectorAll("text.task"), textOf).join(" ");
+      if (group && label) {
+        add(group, { id: label, label });
+      }
+    }
+
     // Timeline periods and events, and quadrant chart points.
     for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
       const label = textOf(element);
