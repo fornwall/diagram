@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
-import type { ChartSpec } from "./chartSpec";
-import { buildChartOption, validateChartSpec } from "./charts";
+import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import { buildChartOption } from "./charts";
 import { describeTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";

@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
-import type { ChartSpec, ChartType } from "../chartSpec";
-import { buildChartOption, deepMerge, validateChartSpec } from "../charts";
+import { type ChartSpec, type ChartType, validateChartSpec } from "../chartSpec";
+import { buildChartOption, deepMerge } from "../charts";
 import type { DataTable } from "../data";
 
 const LANGUAGES: DataTable = {
@@ -335,7 +335,7 @@ suite("charts", () => {
     assert.strictEqual(({} as { polluted?: boolean }).polluted, undefined);
   });
 
-  test("validateChartSpec accepts a valid spec, as an object or JSON", () => {
+  test("validateChartSpec accepts a valid spec", () => {
     const spec = {
       type: "pie",
       title: "Sizes",
@@ -348,7 +348,6 @@ suite("charts", () => {
       options: { legend: { show: false } },
     };
     assert.deepStrictEqual(validateChartSpec(spec), spec);
-    assert.deepStrictEqual(validateChartSpec(JSON.stringify(spec)), spec);
     assert.deepStrictEqual(validateChartSpec({ type: "bar", file: "a.csv", title: undefined }), {
       type: "bar",
       file: "a.csv",
@@ -386,7 +385,7 @@ suite("charts", () => {
     assert.throws(() => validateChartSpec({ type: "pie" }), /exactly one of "data"/);
     assert.throws(() => validateChartSpec({ type: "pie", data: " " }), /non-empty string/);
     assert.throws(() => validateChartSpec({ data: "a" }), /"type" is missing/);
-    assert.throws(() => validateChartSpec("[1"), /not valid JSON/);
+    assert.throws(() => validateChartSpec("[1"), /must be an object/);
     assert.throws(() => validateChartSpec(null), /must be an object/);
   });
 });
