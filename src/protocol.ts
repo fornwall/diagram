@@ -44,8 +44,8 @@ export type ToWebview =
       title: string;
       /** When set, a plain click on a node asks this in chat instead of selecting the node. */
       clickPrompt?: string;
-      /** Whether the chart's data comes from a file or command, so that it can be reloaded. */
-      refreshable: boolean;
+      /** Where the chart's data can be reloaded from, e.g. "file sales.csv" or "command `du -s *`". */
+      refreshFrom?: string;
     }
   | { type: "clearSelection" }
   /** Asks the user to click nodes until the pick is answered or ended. */

@@ -203,11 +203,8 @@ export class DiagramPanel implements vscode.Disposable {
       );
     }
     if (state.chart) {
-      const from = state.chart.file
-        ? `file ${state.chart.file}`
-        : `command \`${state.chart.command}\``;
       lines.push(
-        `It was drawn with ${CHART_TOOL} from ${from}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,
+        `It was drawn with ${CHART_TOOL} from ${dataOrigin(state.chart)}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,
       );
     }
     if (state.error) {
@@ -410,7 +407,7 @@ export class DiagramPanel implements vscode.Disposable {
       source: state.source,
       title: state.title,
       clickPrompt: state.clickPrompt,
-      refreshable: state.chart !== undefined,
+      refreshFrom: state.chart && dataOrigin(state.chart),
     };
     const outcome = new Promise<RenderOutcome>((resolve) => {
       const timeout = setTimeout(
@@ -458,6 +455,11 @@ export class DiagramPanel implements vscode.Disposable {
   private post(message: ToWebview): void {
     void this.panel?.webview.postMessage(message);
   }
+}
+
+/** Where a chart's data comes from, e.g. "file sales.csv" or "command `du -s *`". */
+function dataOrigin({ file, command }: ChartSpec): string {
+  return file ? `file ${file}` : `command \`${command}\``;
 }
 
 function regarding(nodes: DiagramNode[]): string {
@@ -518,7 +520,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
       <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
       <button id="zoom-reset" title="Reset zoom">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-      <button id="refresh" title="Load the chart's data again" hidden>Refresh</button>
+      <button id="refresh" hidden>Refresh</button>
       <button id="edit" title="Edit the Mermaid source">Edit source</button>
     </div>
   </header>

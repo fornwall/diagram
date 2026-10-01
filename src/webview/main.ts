@@ -89,7 +89,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
-  refreshButton.hidden = !message.refreshable;
+  refreshButton.hidden = message.refreshFrom === undefined;
+  refreshButton.title = `Load the data again from ${message.refreshFrom}`;
   const renderer = renderers[language] as Renderer | undefined;
   if (!renderer) {
     post({ type: "renderError", requestId, message: `Unknown diagram language "${language}".` });
