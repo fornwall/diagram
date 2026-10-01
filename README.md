@@ -48,7 +48,7 @@ Any agent, e.g. in agent mode, can use the panel through these tools, which you 
 
 `diagram_render` and `diagram_chart` take an optional `clickPrompt`, such as `"Explain {label} in more detail"`: a click on a node then sends that request to chat right away, for diagrams you explore part by part. Ctrl/Cmd+click or Shift+click still selects.
 
-VS Code asks you before a command runs or a file outside the trusted workspace is read. Commands only run in trusted workspaces.
+VS Code asks you before a command runs, and before reading a file outside the workspace (or any file in an untrusted one). Commands only run in trusted workspaces.
 
 ## Development
 
