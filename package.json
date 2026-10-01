@@ -283,7 +283,7 @@
     "compile-tests": "tsc -p tsconfig.test.json",
     "pretest": "npm run compile && npm run compile-tests",
     "test": "vscode-test",
-    "vsix": "vsce package"
+    "vsix": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
