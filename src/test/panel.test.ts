@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
 import { type FromWebview, isFromWebview } from "../protocol";
+import { ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { newPanel } from "./newPanel";
 
 const flowchart: Diagram = {
@@ -103,6 +104,81 @@ suite("panel", function () {
       cancellation.cancel();
       assert.deepStrictEqual(await third, { picked: false, reason: "The request was cancelled." });
     } finally {
+      panel.dispose();
+    }
+  });
+
+  test("cancelled render tools leave the current diagram and closed panel alone", async () => {
+    const state: DiagramState = { ...flowchart, origin: "tool", editedByUser: true };
+    const values = new Map<string, unknown>([["diagram.state", state]]);
+    const panel = newPanel(values);
+    const cancellation = new vscode.CancellationTokenSource();
+    cancellation.cancel();
+    try {
+      const tools = [
+        { tool: new RenderDiagramTool(panel), input: { source: "flowchart LR\n  C --> D" } },
+        { tool: new ChartTool(panel), input: { type: "bar" as const, data: "A,1\nB,2" } },
+      ];
+      for (const { tool, input } of tools) {
+        await assert.rejects(
+          tool.invoke({ input } as never, cancellation.token),
+          vscode.CancellationError,
+        );
+        assert.strictEqual(panel.current, state);
+        assert.strictEqual(values.get("diagram.state"), state);
+      }
+      await webviewTabs([]);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("a cancelled pick leaves an existing pick active", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    cancellation.cancel();
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const active = pick(panel);
+      assert.deepStrictEqual(await pick(panel, cancellation.token), {
+        picked: false,
+        reason: "The request was cancelled.",
+      });
+      panel.dispose();
+      assert.deepStrictEqual(await active, {
+        picked: false,
+        reason: "The user closed the diagram panel.",
+      });
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("tools report malformed input without throwing during preparation", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    try {
+      for (const tool of [
+        new RenderDiagramTool(panel),
+        new ChartTool(panel),
+        new PickDiagramNodesTool(panel),
+      ]) {
+        for (const input of [null, undefined, [], 42]) {
+          const options = { input } as never;
+          assert.doesNotThrow(() => tool.prepareInvocation(options));
+          const result = await tool.invoke(options, cancellation.token);
+          assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
+          assert.match(
+            result.content[0].value,
+            /Nothing was rendered|No chart was rendered|No node was picked/,
+          );
+        }
+      }
+      assert.strictEqual(panel.current, undefined);
+    } finally {
+      cancellation.dispose();
       panel.dispose();
     }
   });

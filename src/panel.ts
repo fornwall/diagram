@@ -145,6 +145,9 @@ export class DiagramPanel implements vscode.Disposable {
     multiple: boolean,
     token: vscode.CancellationToken,
   ): Promise<PickOutcome> {
+    if (token.isCancellationRequested) {
+      return { picked: false, reason: "The request was cancelled." };
+    }
     const state = this.state;
     if (!state) {
       return {

@@ -5,7 +5,14 @@ import { buildChart, describeTable } from "./charts";
 import { loadTable, resolveFile } from "./dataSource";
 import { nodeList } from "./describe";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
-import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
+import {
+  CHART_TOOL,
+  diagramNoun,
+  errorMessage,
+  isDiagramLanguage,
+  isPlainObject,
+  RENDER_TOOL,
+} from "./protocol";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
@@ -25,7 +32,7 @@ const FENCED_SOURCE = /^\s*(`{3,}|~{3,})[ \t]*([^\s`]*)[^\n]*\n([\s\S]*?)\n[ \t]
 
 /** Returns the diagram to render, or what is wrong with the input. */
 function parseRenderInput(input: RenderInput): Diagram | string {
-  if (typeof input.source !== "string" || !input.source.trim()) {
+  if (!isPlainObject(input) || typeof input.source !== "string" || !input.source.trim()) {
     return 'Give "source", the complete diagram, as a string.';
   }
   const [, , fenceLanguage, unfenced] = FENCED_SOURCE.exec(input.source) ?? [];
@@ -68,7 +75,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       return textResult(`Nothing was rendered: ${diagram}`);
     }
     const outcome = await unlessCancelled(
-      this.panel.render(diagram, "tool", options.toolInvocationToken),
+      () => this.panel.render(diagram, "tool", options.toolInvocationToken),
       token,
     );
     const noun = diagramNoun(diagram.language);
@@ -101,14 +108,17 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
-    const { command, file } = options.input;
-    let invocationMessage = "Rendering a chart";
+    let spec: ChartSpec;
     try {
-      invocationMessage = `Rendering chart "${chartTitle(validateChartSpec(options.input))}"`;
+      spec = validateChartSpec(options.input);
     } catch {
       // Reported when the tool is invoked.
+      return { invocationMessage: "Rendering a chart" };
     }
-    const prepared: vscode.PreparedToolInvocation = { invocationMessage };
+    const { command, file } = spec;
+    const prepared: vscode.PreparedToolInvocation = {
+      invocationMessage: `Rendering chart "${chartTitle(spec)}"`,
+    };
     // In an untrusted workspace, the command is not run and invoke says so.
     if (command && vscode.workspace.isTrusted) {
       const folder = vscode.workspace.workspaceFolders?.[0];
@@ -154,17 +164,18 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     }
 
     const outcome = await unlessCancelled(
-      this.panel.render(
-        {
-          language: "echarts",
-          source: JSON.stringify(chart.option, null, 2),
-          title: chartTitle(spec),
-          clickPrompt: nonBlank(options.input.clickPrompt),
-          chart: spec.file || spec.command ? spec : undefined,
-        },
-        "tool",
-        options.toolInvocationToken,
-      ),
+      () =>
+        this.panel.render(
+          {
+            language: "echarts",
+            source: JSON.stringify(chart.option, null, 2),
+            title: chartTitle(spec),
+            clickPrompt: nonBlank(options.input.clickPrompt),
+            chart: spec.file || spec.command ? spec : undefined,
+          },
+          "tool",
+          options.toolInvocationToken,
+        ),
       token,
     );
     if (outcome.ok) {
@@ -239,7 +250,7 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<PickNodesInput>,
   ): vscode.PreparedToolInvocation {
-    const prompt = nonBlank(options.input.prompt);
+    const prompt = nonBlank(options.input?.prompt);
     return {
       invocationMessage: prompt
         ? `Waiting for you to pick in the diagram: ${prompt}`
@@ -251,7 +262,7 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
     options: vscode.LanguageModelToolInvocationOptions<PickNodesInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const prompt = nonBlank(options.input.prompt);
+    const prompt = nonBlank(options.input?.prompt);
     if (!prompt) {
       return textResult('No node was picked: Give "prompt", the question to show the user.');
     }
@@ -276,12 +287,23 @@ function renderFailure(
     : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call ${tool} again to reopen the panel.`;
 }
 
-/** Settles like the promise, but rejects with a CancellationError once the token is cancelled. */
-function unlessCancelled<T>(promise: Promise<T>, token: vscode.CancellationToken): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
-    promise.then(resolve, reject).finally(() => listener.dispose());
+/** Starts only while active, and stops waiting when the token is cancelled. */
+async function unlessCancelled<T>(
+  operation: () => Promise<T>,
+  token: vscode.CancellationToken,
+): Promise<T> {
+  if (token.isCancellationRequested) {
+    throw new vscode.CancellationError();
+  }
+  let listener: vscode.Disposable | undefined;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
   });
+  try {
+    return await Promise.race([operation(), cancelled]);
+  } finally {
+    listener?.dispose();
+  }
 }
 
 /** The value, if it is a string with more than whitespace: a model may pass anything. */
