@@ -440,7 +440,15 @@ export class DiagramPanel implements vscode.Disposable {
   /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
   private async askInChat(text: string): Promise<void> {
     const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
-    await vscode.commands.executeCommand("workbench.action.chat.open", { query });
+    try {
+      await vscode.commands.executeCommand("workbench.action.chat.open", { query });
+    } catch (error) {
+      // E.g. chat is disabled. The selection is kept, to try again.
+      void vscode.window.showErrorMessage(
+        `Could not send the request to chat: ${errorMessage(error)}`,
+      );
+      return;
+    }
     this.post({ type: "clearSelection" });
   }
 
