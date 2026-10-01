@@ -461,6 +461,37 @@ function splitWhitespace(text: string): Records {
   return { records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)) };
 }
 
+/** A line of dashes, as under a header in Markdown ("|---|--:|"), psql ("----+---") or mysql. */
+const RULE = /^[\s|+:-]*-[\s|+:-]*$/;
+
+/**
+ * Splits a table drawn with "|" between cells and a rule under its header, as in Markdown or
+ * printed by psql and mysql. Returns undefined unless it has a rule and all other lines have as
+ * many cells.
+ */
+function splitPipes(lines: string[]): Records | undefined {
+  const records: string[][] = [];
+  let header: boolean | undefined;
+  for (const line of lines) {
+    if (RULE.test(line)) {
+      header ||= records.length === 1;
+    } else if (!/^\(\d+ rows?\)$/.test(line.trim())) {
+      // Leaves out the outer "|"s, and psql's row count below the table.
+      const cells = line
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split(/(?<!\\)\|/);
+      records.push(cells.map((cell) => cell.replaceAll("\\|", "|")));
+    }
+  }
+  const width = records[0]?.length ?? 0;
+  if (header === undefined || width < 2 || records.some((record) => record.length !== width)) {
+    return undefined;
+  }
+  return { records, header: header || undefined };
+}
+
 function jsonCell(value: unknown): Cell {
   if (value === null || value === undefined) {
     return null;
@@ -594,6 +625,10 @@ function readRecords(text: string, format: DataFormat): Records {
       // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
       return { records: splitDelimited(text, "\t", false) };
     }
+  }
+  const pipes = format === "auto" ? splitPipes(lines) : undefined;
+  if (pipes !== undefined) {
+    return pipes;
   }
   if (format === "auto" || format === "csv") {
     const records = splitCsv(text, lines[0] ?? "", format === "csv");

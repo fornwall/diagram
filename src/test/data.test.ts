@@ -335,6 +335,24 @@ suite("data", () => {
     );
   });
 
+  test("parses tables drawn with pipes, as in Markdown and by psql and mysql", () => {
+    const expected = {
+      columns: ["lang", "lines"],
+      rows: [
+        ["ts", 1200],
+        ["css", 300],
+      ],
+    };
+    for (const table of [
+      "| lang | lines |\n|:-----|------:|\n| ts | 1,200 |\n| css | 300 |",
+      " lang | lines\n------+-------\n ts   |  1200\n css  |   300\n(2 rows)",
+      "+------+-------+\n| lang | lines |\n+------+-------+\n| ts   |  1200 |\n| css  |   300 |\n+------+-------+",
+    ]) {
+      assert.deepStrictEqual(parse(table), expected, table);
+    }
+    assert.deepStrictEqual(parse("a | b\n--|--\nx\\|y | 1").rows, [["x|y", 1]]);
+  });
+
   test("takes a percentage unit from the column name", () => {
     const table = parseTable("USER PID %CPU %MEM COMMAND\nroot 1 0.0 0.1 init\nfred 42 3.5 1.2 vi");
     assert.deepStrictEqual(table.columns[2], { name: "%CPU", numeric: true, unit: "%" });
