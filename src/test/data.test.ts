@@ -431,7 +431,9 @@ suite("data", () => {
     assert.deepStrictEqual(parse("dir size\nsrc 12\ntest 3").columns, ["dir", "size"]);
   });
 
-  test("parses 200,000 rows", () => {
+  test("parses 200,000 rows", function () {
+    // Takes about a second, or longer on a busy machine; quadratic time would take minutes.
+    this.timeout(10_000);
     const lines = Array.from({ length: 200_000 }, (_, i) => `row ${i} /a`);
     assert.strictEqual(parse(lines.join("\n")).rows.length, 200_000);
     assert.strictEqual(parse(lines.join("\n").replaceAll(" ", ",")).rows.length, 200_000);
