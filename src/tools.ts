@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
-import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
+import { type Diagram, type DiagramPanel, nodeList, type RenderOutcome } from "./panel";
 import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
@@ -30,8 +30,8 @@ function parseRenderInput(input: RenderInput): Diagram | string {
   return {
     language,
     source,
-    title: typeof title === "string" && title.trim() ? title : guessTitle({ language, source }),
-    clickPrompt: typeof clickPrompt === "string" && clickPrompt ? clickPrompt : undefined,
+    title: nonBlank(title) ?? guessTitle({ language, source }),
+    clickPrompt: nonBlank(clickPrompt),
   };
 }
 
@@ -144,18 +144,23 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
         {
           language: "echarts",
           source: JSON.stringify(chart.option, null, 2),
-          title: spec.title ?? defaultChartTitle(spec),
-          clickPrompt: clickPrompt || undefined,
+          title: nonBlank(spec.title) ?? defaultChartTitle(spec),
+          clickPrompt: nonBlank(clickPrompt),
           chart: spec.file || spec.command ? spec : undefined,
         },
         "tool",
       ),
       token,
     );
-    const text = outcome.ok
-      ? `Rendered a ${spec.type} chart of ${chart.origin} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`
-      : `${renderFailure(outcome, "chart", spec.options ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.` : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`)}\n\n${chart.report}`;
-    return textResult(text);
+    if (outcome.ok) {
+      return textResult(
+        `Rendered a ${spec.type} chart of ${chart.origin} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
+      );
+    }
+    const fix = spec.options
+      ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
+      : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
+    return textResult(`${renderFailure(outcome, "chart", fix)}\n\n${chart.report}`);
   }
 }
 
@@ -197,14 +202,14 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
     options: vscode.LanguageModelToolInvocationOptions<PickNodesInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const { prompt, multiple = false } = options.input;
-    if (typeof prompt !== "string" || !prompt.trim()) {
+    const prompt = nonBlank(options.input.prompt);
+    if (!prompt) {
       return textResult('No node was picked: "prompt" must be the question to show the user.');
     }
-    const outcome = await this.panel.pickNodes(prompt, multiple, token);
+    const outcome = await this.panel.pickNodes(prompt, options.input.multiple === true, token);
     return textResult(
       outcome.picked
-        ? `The user picked: ${outcome.nodes.map((node) => `"${node.label}" (id: ${node.id})`).join(", ")}.`
+        ? `The user picked: ${nodeList(outcome.nodes)}.`
         : `No node was picked: ${outcome.reason}`,
     );
   }
@@ -227,6 +232,11 @@ function unlessCancelled<T>(promise: Promise<T>, token: vscode.CancellationToken
     const listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
     promise.then(resolve, reject).finally(() => listener.dispose());
   });
+}
+
+/** The value, if it is a string with more than whitespace: a model may pass anything. */
+function nonBlank(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function textResult(text: string): vscode.LanguageModelToolResult {

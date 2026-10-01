@@ -215,12 +215,11 @@ export class DiagramPanel implements vscode.Disposable {
         "The user has edited this source by hand since it was last generated. Keep their edits unless asked otherwise.",
       );
     }
-    if (this.selection.length > 0) {
-      const nodes = this.selection.map((node) => `"${node.label}" (id: ${node.id})`).join(", ");
-      lines.push(`The user has selected these nodes in the panel: ${nodes}.`);
-    } else {
-      lines.push("The user has no nodes selected in the panel.");
-    }
+    lines.push(
+      this.selection.length > 0
+        ? `The user has selected these nodes in the panel: ${nodeList(this.selection)}.`
+        : "The user has no nodes selected in the panel.",
+    );
     return lines.join("\n");
   }
 
@@ -457,6 +456,11 @@ export class DiagramPanel implements vscode.Disposable {
 /** Where a chart's data comes from, e.g. "file sales.csv" or "command `du -s *`". */
 function dataOrigin({ file, command }: ChartSpec): string {
   return file ? `file ${file}` : `command \`${command}\``;
+}
+
+/** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
+export function nodeList(nodes: DiagramNode[]): string {
+  return nodes.map((node) => `"${node.label}" (id: ${node.id})`).join(", ");
 }
 
 function regarding(nodes: DiagramNode[]): string {
