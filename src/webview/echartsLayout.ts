@@ -77,21 +77,19 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
       }
     }
     const atTop = title.bottom === undefined && (typeof title.top !== "number" || title.top < 40);
-    if (title.show !== false && atTop) {
-      const lines = (title.text ? 22 : 0) + (title.subtext ? 18 : 0);
-      if (lines > 0) {
-        titleHeight = Math.max(titleHeight, lines + 10);
-      }
+    if (title.show !== false && atTop && (title.text || title.subtext)) {
+      titleHeight = Math.max(titleHeight, 10 + (title.text ? 22 : 0) + (title.subtext ? 18 : 0));
     }
   }
 
   // Legend: always there for several named series; the identity of a series is never only color.
   const pies = series.filter((s) => s.type === "pie");
+  const pie = pies.length === 1 ? pies[0] : undefined;
   if (base.legend === undefined && responsive) {
     const named = series.length >= 2 && series.every((s) => seriesName(s) !== undefined);
     // A small pie has no room for labels, so its slices are named by a legend instead.
     const smallPie =
-      pies.length === 1 && !isObject(pies[0]?.label) && (width < 420 || height - titleHeight < 260);
+      pie !== undefined && !isObject(pie.label) && (width < 420 || height - titleHeight < 260);
     if (named || smallPie) {
       base.legend = {};
     }
@@ -275,7 +273,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
 
   if (responsive) {
-    layOutPie(pies, legend !== undefined, reserved, width, height);
+    layOutPie(pie, legend !== undefined, reserved, width, height);
     layOutBoxSeries(series, reserved, width);
     layOutRadar(base, reserved, width, height);
   }
@@ -311,14 +309,13 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 }
 
 function layOutPie(
-  pies: JsonObject[],
+  pie: JsonObject | undefined,
   hasLegend: boolean,
   reserved: Insets,
   width: number,
   height: number,
 ): void {
-  const pie = pies[0];
-  if (pies.length !== 1 || !pie || has(pie, [...BOX_KEYS, "center"])) {
+  if (!pie || has(pie, [...BOX_KEYS, "center"])) {
     return;
   }
   // ECharts 6 lays out pies in a box; the radius percentage is relative to the box.
@@ -330,23 +327,18 @@ function layOutPie(
   });
   const boxWidth = width - reserved.left - reserved.right - 16;
   const boxHeight = height - reserved.top - reserved.bottom - 16;
-  const label = isObject(pie.label) ? pie.label : undefined;
-  let outsideLabels =
-    label?.show !== false &&
-    !["inside", "inner", "center"].includes(String(label?.position ?? "outside"));
-  if (
-    outsideLabels &&
-    label?.show === undefined &&
-    label?.position === undefined &&
-    hasLegend &&
-    (boxWidth < 380 || boxHeight < 220)
-  ) {
+  let label = isObject(pie.label) ? pie.label : {};
+  const small = boxWidth < 380 || boxHeight < 220;
+  if (label.show === undefined && label.position === undefined && hasLegend && small) {
     // Too small for labels around the pie: the legend and tooltip name the slices.
-    pie.label = { ...label, show: false };
+    label = pie.label = { ...label, show: false };
     pie.labelLine = { ...(isObject(pie.labelLine) ? pie.labelLine : {}), show: false };
-    outsideLabels = false;
   }
   if (pie.radius === undefined) {
+    const outsideLabels =
+      label.show !== false &&
+      !["inside", "inner", "center"].includes(String(label.position ?? "outside"));
+    // In a wide box, the labels fit beside the pie, which can then take more of the height.
     const ratio = boxWidth / Math.max(1, boxHeight);
     const radius = !outsideLabels
       ? 90
@@ -383,8 +375,8 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number):
 
 function layOutRadar(base: JsonObject, reserved: Insets, width: number, height: number): void {
   const radars = asArray(base.radar);
-  const radar = radars[0];
-  if (radars.length !== 1 || !radar || radar.center !== undefined || radar.radius !== undefined) {
+  const radar = radars.length === 1 ? radars[0] : undefined;
+  if (!radar || radar.center !== undefined || radar.radius !== undefined) {
     return;
   }
   const boxWidth = width - reserved.left - reserved.right;
