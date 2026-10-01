@@ -83,33 +83,34 @@ async function referenceMessages(
   context: vscode.ChatContext,
   request: vscode.ChatRequest,
 ): Promise<vscode.LanguageModelChatMessage[]> {
-  const attachments = new Set<string>();
-  for (const turn of [...context.history, request]) {
-    if (turn instanceof vscode.ChatResponseTurn) {
-      continue;
-    }
-    // The references come in reverse order of their position in the prompt.
-    for (const { value, modelDescription } of [...turn.references].reverse()) {
-      const content = await referenceContent(value);
-      if (!content) {
-        continue;
-      }
-      const { name, text } = content;
-      const label = modelDescription ? `${name} (${modelDescription})` : name;
-      if (text === undefined) {
-        attachments.add(`Attached by the user: ${label}, which is not a text file.`);
-        continue;
-      }
-      const truncated =
-        text.length > MAX_REFERENCE_LENGTH
-          ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
-          : "";
-      attachments.add(
-        `Attached by the user: ${label}${truncated}\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`,
-      );
-    }
+  // The references come in reverse order of their position in the prompt.
+  const references = [...context.history, request].flatMap((turn) =>
+    turn instanceof vscode.ChatResponseTurn ? [] : [...turn.references].reverse(),
+  );
+  const attachments = await Promise.all(references.map(describeReference));
+  return Array.from(new Set(attachments.filter((text) => text !== undefined)), (text) =>
+    vscode.LanguageModelChatMessage.User(text),
+  );
+}
+
+async function describeReference({
+  value,
+  modelDescription,
+}: vscode.ChatPromptReference): Promise<string | undefined> {
+  const content = await referenceContent(value);
+  if (!content) {
+    return undefined;
   }
-  return Array.from(attachments, (text) => vscode.LanguageModelChatMessage.User(text));
+  const { name, text } = content;
+  const label = `Attached by the user: ${name}${modelDescription ? ` (${modelDescription})` : ""}`;
+  if (text === undefined) {
+    return `${label}, which is not a text file.`;
+  }
+  const truncated =
+    text.length > MAX_REFERENCE_LENGTH
+      ? `, truncated to the first ${MAX_REFERENCE_LENGTH} of its ${text.length} characters`
+      : "";
+  return `${label}${truncated}\n\n${codeFence(text.slice(0, MAX_REFERENCE_LENGTH))}`;
 }
 
 /**
