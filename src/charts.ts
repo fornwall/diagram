@@ -310,14 +310,17 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 
 function pieOption(doughnut: boolean, name: string, rows: Row[]): Record<string, unknown> {
   return {
-    tooltip: { formatter: "{b}: {c} ({d}%)" },
-    legend: { type: "scroll" },
+    // The series name says what the values are, e.g. "size (MiB)".
+    tooltip: { formatter: "{a}<br/>{b}: {c} ({d}%)" },
+    legend: {},
     series: [
       {
         type: "pie",
         name,
         ...(doughnut ? { radius: ["45%", "72%"] } : {}),
         label: { formatter: "{b}: {d}%" },
+        // Labels of slices under 1% would overlap; the legend and tooltip still name them.
+        minShowLabelAngle: 3.6,
         data: rows.map(({ label, values: [value] }) => ({ name: label, value })),
       },
     ],
