@@ -155,10 +155,24 @@ suite("charts", () => {
     assert.throws(() => build(chart("scatter", { valueColumns: ["files"] })), /two numeric/);
   });
 
-  test("the label column defaults to the first column when all are numeric", () => {
-    const option = build(chart("bar"), "year,sales\n2023,5\n2024,7");
-    assert.deepStrictEqual(option.xAxis.data, ["2023", "2024"]);
-    assert.deepStrictEqual(seriesNames(option), ["sales"]);
+  test("without text columns, rows are labeled by identifiers, years or their numbers", () => {
+    const years = build(chart("bar"), "year,sales\n2023,5\n2024,7");
+    assert.deepStrictEqual(years.xAxis.data, ["2023", "2024"]);
+    assert.deepStrictEqual(seriesNames(years), ["sales"]);
+    assert.deepStrictEqual(build(chart("pie"), "pid,rss\n812,5\n4242,7").series[0].data, [
+      { name: "812", value: 5 },
+      { name: "4242", value: 7 },
+    ]);
+    for (const data of ["[5, 3, 9]", "5\n3\n9", '{"values": [5, 3, 9]}']) {
+      const option = build(chart("bar"), data);
+      assert.deepStrictEqual(option.xAxis.data, ["1", "2", "3"], data);
+      assert.deepStrictEqual(option.series[0].data, [5, 3, 9], data);
+    }
+    assert.deepStrictEqual(seriesNames(build(chart("line"), '{"a": [1, 2], "b": [3, 4]}')), [
+      "a",
+      "b",
+    ]);
+    assert.strictEqual(summary(chart("pie"), "[5, 3, 9]"), 'Charted "value" by row number.');
   });
 
   test("the label column defaults to a text column that names each row", () => {

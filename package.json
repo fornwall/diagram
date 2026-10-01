@@ -175,14 +175,14 @@
             },
             "labelColumn": {
               "type": "string",
-              "description": "The column with the labels (categories or slice names), by its header or its generated name such as \"Column 2\". Defaults to the first text column."
+              "description": "The column with the labels (categories or slice names), by its header or its generated name such as \"Column 2\". Defaults to the first text column with distinct values that do not start with a digit, else the first text column. Without text columns, a first column of identifiers or years is the label column, or else rows are labeled 1, 2, 3, …."
             },
             "valueColumns": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "The columns with the values, one series each. Defaults to all numeric columns."
+              "description": "The columns with the values, one series each. Defaults to the numeric columns other than the label column, leaving out identifier columns (named like id, #, rank, pid or user_id, or counting 1, 2, 3, …) unless no others are left, and columns of another unit than the first (such as Use% next to sizes)."
             },
             "sort": {
               "type": "string",

@@ -110,7 +110,7 @@ function isNumeric(rows: Cell[][], column: number): boolean {
   return numbers > 0 && numbers >= others;
 }
 
-function isYear(cell: Cell | undefined): boolean {
+export function isYear(cell: Cell | undefined): boolean {
   return typeof cell === "number" && Number.isInteger(cell) && cell >= 1000 && cell < 3000;
 }
 

@@ -1,7 +1,7 @@
 // Turning a table and a chart request into an Apache ECharts option.
 
 import { type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
-import { type Cell, type DataTable, isPlainObject } from "./data";
+import { type Cell, type DataTable, isPlainObject, isYear } from "./data";
 
 /** Finds a column by name, exactly or else ignoring case and surrounding spaces. */
 function findColumn(table: DataTable, name: string, role: string): number {
@@ -55,13 +55,20 @@ function namesRows(table: DataTable, column: number): boolean {
 
 /**
  * The default label column: the first text column that names each row, else the first text
- * column, else (except for scatter charts, which need none) the first column.
+ * column. Without text, a first column of identifiers or years labels the others (except in
+ * scatter charts), and otherwise none does: rows are labeled by their numbers.
  */
 function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefined {
   const text = table.columns.flatMap((column, i) =>
     !column.numeric && table.rows.some((row) => row[i] !== null) ? [i] : [],
   );
-  return text.find((i) => namesRows(table, i)) ?? text[0] ?? (scatter ? undefined : 0);
+  if (text.length > 0) {
+    return text.find((i) => namesRows(table, i)) ?? text[0];
+  }
+  const first = table.columns[0]?.name ?? "";
+  const labels =
+    table.columns.length > 1 && (isIdName(first) || table.rows.every((row) => isYear(row[0])));
+  return labels && !scatter ? 0 : undefined;
 }
 
 /** The columns that `keep` is true for, or all of them if it is true for none. */
@@ -216,8 +223,8 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     );
   }
   let rows = sortRows(
-    tableRows.map((row) => ({
-      label: labelIndex === undefined ? "" : String(row[labelIndex] ?? ""),
+    tableRows.map((row, i) => ({
+      label: labelIndex === undefined ? String(i + 1) : String(row[labelIndex] ?? ""),
       values: valueIndices.map((index) => {
         const cell = row[index];
         return typeof cell === "number" ? cell : null;
@@ -274,7 +281,12 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   const values = scatter
     ? `${JSON.stringify(names[1])} against ${JSON.stringify(names[0])}`
     : quoteAll(names);
-  const by = labelIndex === undefined ? "" : ` by ${JSON.stringify(name(labelIndex))}`;
+  const by =
+    labelIndex !== undefined
+      ? ` by ${JSON.stringify(name(labelIndex))}`
+      : scatter
+        ? ""
+        : " by row number";
   return {
     option: spec.options === undefined ? option : deepMerge(option, spec.options),
     summary: `Charted ${values}${by}${notes.map((note) => `; ${note}`).join("")}.`,
