@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
-import { buildChartOption, describeTable } from "./charts";
-import { loadTable, resolveFile } from "./dataSource";
+import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
@@ -127,16 +126,14 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   ): Promise<vscode.LanguageModelToolResult> {
     const { clickPrompt, ...input } = options.input;
     let spec: ChartSpec;
-    let source: string;
-    let summary: string;
-    let origin: string;
+    let chart: LoadedChart;
     try {
       spec = validateChartSpec(input);
-      const loaded = await loadTable(spec, token);
-      origin = loaded.origin;
-      source = JSON.stringify(buildChartOption(spec, loaded.table), null, 2);
-      summary = describeTable(loaded.table);
+      chart = await loadChart(spec, token);
     } catch (error) {
+      if (error instanceof vscode.CancellationError) {
+        throw error;
+      }
       return textResult(
         `No chart was drawn: ${errorMessage(error)}\n\nFix the input and call ${CHART_TOOL} again.`,
       );
@@ -146,7 +143,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       this.panel.render(
         {
           language: "echarts",
-          source,
+          source: JSON.stringify(chart.option, null, 2),
           title: spec.title ?? defaultChartTitle(spec),
           clickPrompt: clickPrompt || undefined,
           chart: spec.file || spec.command ? spec : undefined,
@@ -156,8 +153,8 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       token,
     );
     const text = outcome.ok
-      ? `Rendered a ${spec.type} chart of ${origin} in the diagram panel next to the chat. The data was read as: ${summary}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`
-      : `${renderFailure(outcome, "chart", spec.options ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.` : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`)}\n\nThe data was read as: ${summary}`;
+      ? `Rendered a ${spec.type} chart of ${chart.origin} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`
+      : `${renderFailure(outcome, "chart", spec.options ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.` : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`)}\n\n${chart.report}`;
     return textResult(text);
   }
 }

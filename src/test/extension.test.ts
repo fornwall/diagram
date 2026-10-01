@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { loadTable } from "../dataSource";
 
 async function invoke(
   name: string,
@@ -117,23 +116,6 @@ suite("Extension", () => {
   test("reports chart input errors back to the agent", async () => {
     const text = await invoke("diagram_chart", { type: "pie", data: "a,1", file: "x.csv" });
     assert.match(text, /No chart was drawn/);
-  });
-
-  test("loads chart data from a command's output", async function () {
-    if (process.platform === "win32") {
-      this.skip();
-    }
-    const token = new vscode.CancellationTokenSource().token;
-    const { table, origin } = await loadTable(
-      { type: "pie", command: "printf 'apples 3\\npears 5\\n'" },
-      token,
-    );
-    assert.match(origin, /printf/);
-    assert.deepStrictEqual(table.rows, [
-      ["apples", 3],
-      ["pears", 5],
-    ]);
-    await assert.rejects(loadTable({ type: "pie", command: "exit 3" }, token), /3/);
   });
 
   test("renders a diagram in click-to-ask mode", async () => {

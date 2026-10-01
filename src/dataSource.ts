@@ -1,11 +1,14 @@
-// Loading chart data from inline text, a file or a shell command.
+// Loading chart data from inline text, a file or a shell command, and charting it.
 
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "./chartSpec";
+import { buildChart, describeTable } from "./charts";
 import { type DataTable, parseTable } from "./data";
+import { errorMessage } from "./protocol";
 
 /** The largest file or command output that is read, in bytes. */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -50,8 +53,8 @@ export function commandEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   return result;
 }
 
-function firstWorkspaceFolder(): vscode.Uri | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri;
+function firstWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+  return vscode.workspace.workspaceFolders?.[0];
 }
 
 /**
@@ -74,10 +77,10 @@ export function resolveFile(file: string): vscode.Uri {
         "Give an absolute path.",
     );
   }
-  return vscode.Uri.joinPath(folder, file);
+  return vscode.Uri.joinPath(folder.uri, file);
 }
 
-async function readDataFile(file: string): Promise<string> {
+export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
   let stat: vscode.FileStat;
   try {
@@ -97,7 +100,15 @@ async function readDataFile(file: string): Promise<string> {
         `${MAX_BYTES / 1024 / 1024} MB limit. Use a command that summarizes it instead.`,
     );
   }
-  return new TextDecoder("utf-8").decode(await vscode.workspace.fs.readFile(uri));
+  const bytes = await vscode.workspace.fs.readFile(uri);
+  // UTF-16 files, as PowerShell writes with >, start with a byte order mark.
+  const encoding =
+    bytes[0] === 0xff && bytes[1] === 0xfe
+      ? "utf-16le"
+      : bytes[0] === 0xfe && bytes[1] === 0xff
+        ? "utf-16be"
+        : "utf-8";
+  return new TextDecoder(encoding).decode(bytes);
 }
 
 function tail(text: string): string {
@@ -105,26 +116,43 @@ function tail(text: string): string {
   return trimmed.length > STDERR_TAIL ? `…${trimmed.slice(-STDERR_TAIL)}` : trimmed;
 }
 
-/** Runs a shell command and returns its standard output. */
-function runCommand(command: string, token: vscode.CancellationToken): Promise<string> {
+/**
+ * Runs a shell command (with /bin/sh, or cmd.exe on Windows) in the first workspace folder and
+ * returns its standard output, with a warning if it failed but printed something anyway (as du
+ * does for unreadable directories).
+ */
+export async function runCommand(
+  command: string,
+  token: vscode.CancellationToken,
+  timeoutMs = COMMAND_TIMEOUT_MS,
+): Promise<{ output: string; warning?: string }> {
   if (!vscode.workspace.isTrusted) {
-    return Promise.reject(
-      new Error(
-        "Commands are not run in an untrusted workspace. Trust the workspace (Workspaces: " +
-          'Manage Workspace Trust), or give the data with "data" or "file" instead.',
-      ),
+    throw new Error(
+      "Commands are not run in an untrusted workspace. Trust the workspace (Workspaces: " +
+        'Manage Workspace Trust), or give the data with "data" or "file" instead.',
     );
   }
-  if (token.isCancellationRequested) {
-    return Promise.reject(new vscode.CancellationError());
+  const folder = firstWorkspaceFolder();
+  if (folder !== undefined && folder.uri.scheme !== "file") {
+    throw new Error(
+      `Commands run on this computer, but the workspace folder ${folder.name} is not on it. ` +
+        'Give the data with "data" or "file" instead.',
+    );
   }
-  const cwd = firstWorkspaceFolder()?.fsPath ?? os.homedir();
+  const cwd = folder?.uri.fsPath ?? os.homedir();
+  if (!fs.existsSync(cwd)) {
+    throw new Error(`Commands run in ${cwd}, which does not exist.`);
+  }
+  if (token.isCancellationRequested) {
+    throw new vscode.CancellationError();
+  }
   const windows = process.platform === "win32";
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
       env: commandEnvironment(),
-      shell: vscode.env.shell || true,
+      // The model writes POSIX shell commands, which the user's own shell (e.g. fish) may not run.
+      shell: true,
       // A process group of its own, so that killing it also stops the command's children.
       detached: !windows,
       stdio: ["ignore", "pipe", "pipe"],
@@ -150,7 +178,7 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
     };
     // Settles the promise once. Output pipes are closed too, as a process that left the
     // command's process group (e.g. with setsid) may keep them open indefinitely.
-    const finish = (error: Error | undefined, output?: string): void => {
+    const finish = (result: Error | { output: string; warning?: string }): void => {
       if (settled) {
         return;
       }
@@ -160,10 +188,10 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
       cancellation.dispose();
       child.stdout.destroy();
       child.stderr.destroy();
-      if (error !== undefined) {
-        reject(error);
+      if (result instanceof Error) {
+        reject(result);
       } else {
-        resolve(output ?? "");
+        resolve(result);
       }
     };
     const kill = (reason: Error): void => {
@@ -171,32 +199,33 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
       finish(reason);
     };
     const complete = (code: number | null, signal: NodeJS.Signals | null): void => {
-      const errors = tail(Buffer.concat(stderr).toString("utf8"));
-      const errorOutput = errors === "" ? "" : `\nIts error output:\n${errors}`;
-      if (code !== 0) {
-        const status = code === null ? `was killed by ${signal}` : `failed with exit code ${code}`;
-        finish(new Error(`The command \`${command}\` ${status}.${errorOutput}`));
-        return;
-      }
       const output = Buffer.concat(stdout).toString("utf8");
-      if (output.trim() === "") {
-        finish(
-          new Error(
-            `The command \`${command}\` printed nothing to standard output.` +
-              (errorOutput === "" ? "" : errorOutput),
-          ),
-        );
-        return;
+      const errors = tail(Buffer.concat(stderr).toString("utf8"));
+      const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;
+      const failure =
+        code === 0
+          ? undefined
+          : code === null
+            ? `was killed by ${signal}`
+            : `exited with code ${code}`;
+      if (output.trim() !== "") {
+        finish({
+          output,
+          ...(failure === undefined
+            ? {}
+            : {
+                warning: `The command ${failure}, so its output may be incomplete.${errorOutput}`,
+              }),
+        });
+      } else {
+        const status = failure === undefined ? "" : ` and ${failure}`;
+        finish(new Error(`The command printed nothing to standard output${status}.${errorOutput}`));
       }
-      finish(undefined, output);
     };
 
     const timer = setTimeout(
-      () =>
-        kill(
-          new Error(`The command \`${command}\` timed out after ${COMMAND_TIMEOUT_MS / 1000} s.`),
-        ),
-      COMMAND_TIMEOUT_MS,
+      () => kill(new Error(`The command timed out after ${timeoutMs / 1000} s.`)),
+      timeoutMs,
     );
     const cancellation = token.onCancellationRequested(() => kill(new vscode.CancellationError()));
 
@@ -205,7 +234,7 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
       if (stdoutBytes > MAX_BYTES) {
         kill(
           new Error(
-            `The command \`${command}\` printed more than ${MAX_BYTES / 1024 / 1024} MB. ` +
+            `The command printed more than ${MAX_BYTES / 1024 / 1024} MB. ` +
               "Narrow its output down, e.g. by filtering or with head.",
           ),
         );
@@ -221,9 +250,7 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
         stderrBytes -= stderr.shift()?.length ?? 0;
       }
     });
-    child.on("error", (error) =>
-      finish(new Error(`Could not run the command \`${command}\`: ${error.message}`)),
-    );
+    child.on("error", (error) => finish(new Error(`Could not run the command: ${error.message}`)));
     // "close" comes once the output pipes are closed, which a process left running in the
     // background may prevent; then the output so far is used shortly after the command exits.
     child.on("exit", (code, signal) => {
@@ -237,45 +264,60 @@ function runCommand(command: string, token: vscode.CancellationToken): Promise<s
 }
 
 /**
- * Loads the text of a chart's data, from `spec.data`, `spec.file` (absolute, or relative to the
- * first workspace folder) or the standard output of `spec.command` (run in a shell in the first
- * workspace folder, only in a trusted workspace). Files and command output are limited to 10 MB,
- * and commands to 60 seconds.
+ * Loads and parses a chart's data: `spec.data`, the file `spec.file` or the output of
+ * `spec.command`. Files and command output are limited to 10 MB, and commands to 60 seconds.
  *
- * @returns The text, and where it came from for messages, e.g. "file src/x.csv".
- * @throws Error explaining why the data could not be loaded, or vscode.CancellationError.
- */
-export async function loadChartData(
-  spec: ChartSpec,
-  token: vscode.CancellationToken,
-): Promise<{ text: string; origin: string }> {
-  if (spec.data !== undefined) {
-    return { text: spec.data, origin: "inline data" };
-  }
-  if (spec.file !== undefined) {
-    return { text: await readDataFile(spec.file), origin: `file ${spec.file}` };
-  }
-  if (spec.command !== undefined) {
-    return { text: await runCommand(spec.command, token), origin: `command \`${spec.command}\`` };
-  }
-  throw new Error('The chart has no data: give one of "data", "file" or "command".');
-}
-
-/**
- * Loads a chart's data with {@link loadChartData} and parses it with {@link parseTable}.
- *
+ * @returns The table, where it came from for messages (e.g. "file src/x.csv"), and a warning when
+ *   a command failed but printed data anyway.
  * @throws Error explaining why the data could not be loaded or parsed, or
  *   vscode.CancellationError.
  */
 export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
-): Promise<{ table: DataTable; origin: string }> {
-  const { text, origin } = await loadChartData(spec, token);
+): Promise<{ table: DataTable; origin: string; warning?: string }> {
+  if (spec.data !== undefined) {
+    return { table: parseTable(spec.data, spec.format), origin: "inline data" };
+  }
+  if (spec.file !== undefined) {
+    return {
+      table: parseTable(await readDataFile(spec.file), spec.format),
+      origin: `file ${spec.file}`,
+    };
+  }
+  if (spec.command !== undefined) {
+    const { output, warning } = await runCommand(spec.command, token);
+    const origin = `command \`${spec.command}\``;
+    return { table: parseTable(output, spec.format), origin, ...(warning ? { warning } : {}) };
+  }
+  throw new Error('The chart has no data: give one of "data", "file" or "command".');
+}
+
+export interface LoadedChart {
+  option: Record<string, unknown>;
+  /** Where the data came from, e.g. "file src/x.csv". */
+  origin: string;
+  /** How the data was read and charted, for a language model. */
+  report: string;
+}
+
+/**
+ * Loads a chart's data with {@link loadTable} and charts it.
+ *
+ * @throws Error explaining why, with how the data was read if that worked, or
+ *   vscode.CancellationError.
+ */
+export async function loadChart(
+  spec: ChartSpec,
+  token: vscode.CancellationToken,
+): Promise<LoadedChart> {
+  const { table, origin, warning } = await loadTable(spec, token);
+  const description = `The data was read as: ${describeTable(table)}`;
   try {
-    return { table: parseTable(text, spec.format ?? "auto"), origin };
+    const { option, summary } = buildChart(spec, table);
+    const report = [summary, warning, description].filter((part) => part !== undefined);
+    return { option, origin, report: report.join("\n\n") };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Could not read the data from ${origin}: ${message}`);
+    throw new Error(`${errorMessage(error)}\n\n${description}`);
   }
 }

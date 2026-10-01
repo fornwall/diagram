@@ -160,7 +160,7 @@
             },
             "command": {
               "type": "string",
-              "description": "A shell command whose standard output is the data, run in the first workspace folder. The user is asked to confirm it."
+              "description": "A shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder. The user is asked to confirm it."
             },
             "format": {
               "type": "string",

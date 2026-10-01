@@ -1,6 +1,7 @@
 // Parsing tabular data (JSON, CSV, TSV or whitespace-separated command output) for charts.
 
 import type { DataFormat } from "./chartSpec";
+import { errorMessage } from "./protocol";
 
 /** A table cell: text, a number, or null when empty. */
 export type Cell = string | number | null;
@@ -583,8 +584,7 @@ function parseJson(text: string): { records: Field[][]; header?: boolean } {
   } catch (error) {
     value = parseJsonLines(text);
     if (value === undefined) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`The data is not valid JSON: ${message}.`);
+      throw new Error(`The data is not valid JSON: ${errorMessage(error)}.`);
     }
   }
   return recordsFromJson(value);
