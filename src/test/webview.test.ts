@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
-import * as vscode from "vscode";
-import { type Diagram, DiagramPanel, type RenderOutcome } from "../panel";
+import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
+import { newPanel } from "./newPanel";
 
 const MERMAID: Record<string, string> = {
   "flowchart-v2": "flowchart LR\n  A[Parser] --> B[Checker]",
@@ -18,11 +18,7 @@ suite("webview", function () {
 
   let panel: DiagramPanel;
   suiteSetup(() => {
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
-    const workspaceState = { get: () => undefined, update: async () => {} };
-    const context = { extensionUri: extension.extensionUri, workspaceState };
-    panel = new DiagramPanel(context as unknown as vscode.ExtensionContext);
+    panel = newPanel();
   });
   suiteTeardown(() => panel.dispose());
 

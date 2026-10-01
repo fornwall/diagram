@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { DiagramPanel } from "../panel";
+import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
+import { newPanel } from "./newPanel";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
 /** A model's reply, or a function giving it, e.g. after doing what a tool call would. */
@@ -10,18 +11,6 @@ type Reply = Part[] | (() => Promise<Part[]>);
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
 const invalid = "```mermaid\nflowchart TD\n  A --> --> B[\n```";
-
-function newPanel(): DiagramPanel {
-  const extension = vscode.extensions.getExtension("fornwall.diagram");
-  assert.ok(extension);
-  const values = new Map<string, unknown>();
-  const workspaceState = {
-    get: (key: string) => values.get(key),
-    update: async (key: string, value: unknown) => void values.set(key, value),
-  };
-  const context = { extensionUri: extension.extensionUri, workspaceState };
-  return new DiagramPanel(context as unknown as vscode.ExtensionContext);
-}
 
 /** Sends a request to the participant, with a model that gives the replies in turn. */
 async function ask(
