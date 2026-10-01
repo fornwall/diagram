@@ -11,6 +11,7 @@ const MERMAID: Record<string, string> = {
   mindmap: "mindmap\n  root((Plan))\n    Research",
   timeline: "timeline\n  2025 : Started\n  2026 : Shipped",
   journey: "journey\n  section Work\n    Make tea: 5: Me",
+  pie: 'pie\n  "Dogs" : 386\n  "Rats" : 2',
 };
 
 suite("webview", function () {

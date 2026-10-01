@@ -134,6 +134,15 @@ function darkScale({ palette, background }: ThemeColors): Record<string, string>
   );
 }
 
+/**
+ * The diagram types whose items Mermaid draws without their data, and the parts of their
+ * databases that findNodes reads it from.
+ */
+const WITH_DATABASE = new Set(["pie"]);
+interface DiagramDb {
+  getSections?(): Map<string, number>;
+}
+
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
 function textOf(element: Element): string {
   const parts: string[] = [];
@@ -229,11 +238,19 @@ export class MermaidRenderer implements Renderer {
     const result = await mermaid.render(id, source).catch((error: unknown) => {
       throw describeError(error, source);
     });
+    // mermaid.render keeps the diagram's database to itself: parse again for it. Should that
+    // fail, the items are just not selectable.
+    const db: DiagramDb | undefined = WITH_DATABASE.has(result.diagramType)
+      ? await mermaid.mermaidAPI.getDiagramFromText(source).then(
+          (parsed) => parsed.db as DiagramDb,
+          () => undefined,
+        )
+      : undefined;
     this.diagram.innerHTML = result.svg;
     result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
-    this.prepareSvg(id);
+    this.prepareSvg(id, db);
     if (this.fitting) {
       this.fit();
     } else {
@@ -289,13 +306,13 @@ export class MermaidRenderer implements Renderer {
   }
 
   /** Finds the selectable nodes, and gives the SVG its natural size for zooming as a whole. */
-  private prepareSvg(svgId: string): void {
+  private prepareSvg(svgId: string, db?: DiagramDb): void {
     this.nodes.clear();
     const svg = this.diagram.querySelector("svg");
     if (!svg) {
       return;
     }
-    this.findNodes(svg, `${svgId}-`);
+    this.findNodes(svg, `${svgId}-`, db);
     this.showSelection(this.selectedKeys);
     const viewBox = svg.viewBox.baseVal;
     if (viewBox.width > 0 && viewBox.height > 0) {
@@ -305,7 +322,7 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
-  private findNodes(svg: SVGSVGElement, idPrefix: string): void {
+  private findNodes(svg: SVGSVGElement, idPrefix: string, db?: DiagramDb): void {
     const focusable = new Set<string>();
     const add = (element: Element, node: DiagramNode) => {
       element.classList.add("diagram-node");
@@ -316,6 +333,14 @@ export class MermaidRenderer implements Renderer {
         element.setAttribute("tabindex", "0");
         element.setAttribute("role", "button");
         element.setAttribute("aria-label", node.label);
+      }
+    };
+    /** Adds the elements that show the nodes in order, when there is one for each node. */
+    const addInOrder = (elements: NodeListOf<Element>, nodes: DiagramNode[]) => {
+      if (elements.length === nodes.length) {
+        for (const [i, element] of elements.entries()) {
+          add(element, nodes[i] as DiagramNode);
+        }
       }
     };
     const withoutPrefix = (id: string) =>
@@ -374,6 +399,21 @@ export class MermaidRenderer implements Renderer {
         add(group, { id: label, label });
       }
     }
+
+    // Pie slices and their percentages, for the sections of at least 1% (see createPieArcs in
+    // Mermaid), and legend entries, for all sections.
+    const sections = Array.from(db?.getSections?.() ?? [], ([label, value]) => ({
+      node: { id: label, label },
+      value,
+    }));
+    const sum = sections.reduce((total, { value }) => total + value, 0);
+    const slices = sections.filter(({ value }) => (value / sum) * 100 >= 1).map(({ node }) => node);
+    addInOrder(svg.querySelectorAll("path.pieCircle"), slices);
+    addInOrder(svg.querySelectorAll("text.slice"), slices);
+    addInOrder(
+      svg.querySelectorAll("g.legend"),
+      sections.map(({ node }) => node),
+    );
 
     // Timeline periods and events, and quadrant chart points.
     for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
