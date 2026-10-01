@@ -181,13 +181,24 @@ export class MermaidRenderer implements Renderer {
     const withoutPrefix = (id: string) =>
       id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id;
 
-    // Flowchart, class, state, ER, mind map, … nodes, with element ids like "flowchart-A-0".
-    for (const element of svg.querySelectorAll("g.node, g.rough-node")) {
+    // Nodes and groups (subgraphs, composite states, kanban columns, architecture services, …).
+    // Their element ids are the source ids, some decorated like "flowchart-A-0", and mind map
+    // node ids are generated ("node_0").
+    for (const element of svg.querySelectorAll(
+      "g.node, g.rough-node, g.cluster, g.statediagram-cluster, g.architecture-service",
+    )) {
       // Class and entity boxes also list their members and attributes.
-      const label = textOf(element.querySelector(".label-group, .label.name") ?? element);
-      const domId = withoutPrefix(element.id);
-      const id = /^(?:flowchart|state|classId|entity)-(.+)-\d+$/.exec(domId)?.[1] ?? label;
-      add(element, { id: id || domId, label: label || id || domId });
+      const label = textOf(
+        element.querySelector(".label-group, .label.name, .cluster-label") ?? element,
+      );
+      if (!label) {
+        continue; // Start and end states, forks and joins.
+      }
+      const domId = element.getAttribute("data-id") ?? withoutPrefix(element.id);
+      const decorated = /^(?:flowchart|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
+      const id =
+        decorated?.[1] ?? decorated?.[2] ?? (/^(?:node_\d+)?$/.test(domId) ? label : domId);
+      add(element, { id, label });
     }
 
     // Sequence diagram participants. Their copies below the diagram lack the participant
@@ -217,8 +228,8 @@ export class MermaidRenderer implements Renderer {
       }
     }
 
-    // Timeline periods and events.
-    for (const element of svg.querySelectorAll("g.timeline-node")) {
+    // Timeline periods and events, and quadrant chart points.
+    for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
       const label = textOf(element);
       add(element, { id: label, label });
     }
