@@ -92,7 +92,32 @@ suite("echartsOption", () => {
     assert.doesNotMatch(message, /strict JSON/);
     assert.match(errorOf("{series: []}"), /instead of series[\s\S]*strict JSON/);
     assert.match(errorOf("{'series': []}"), /double quotes, not single quotes/);
-    assert.match(errorOf('{"a": 1} // note'), /Unexpected content after the end/);
+    assert.match(errorOf('{"a": 1} // note'), /Comments are not allowed[\s\S]*strict JSON/);
+  });
+
+  test("names the typical mistakes in JSON written by models", () => {
+    const cases: [string, RegExp][] = [
+      ['{"series": [{"type": "pie", "data": [1, 2', /incomplete, with "\]}\]}" left to close/],
+      ['{"series": [{"type": "pie"} {"type": "bar"}]}', /Missing "," before this element/],
+      ['{"title": {"text": "A"}\n "series": []}', /Missing "," before this property \(line 2/],
+      ['{"series": [{"type": "pie"}}', /the array opened at line 1, column 12 must be closed/],
+      ['{"a": {"formatter": (p) => p.name}}', /JavaScript functions are not allowed/],
+      ['{"a": {"formatter": p => p.name}}', /JavaScript functions are not allowed/],
+      ['{"color": new echarts.graphic.LinearGradient()}', /"colorStops"/],
+      ['```json\n{"series": []}\n```', /^[^\n]*Remove the code fence/],
+      ["option = {}", /Unexpected "option": the source must be the JSON object alone/],
+      ['{"a": {}}, "b": 1}', /check for a "}" that closes it too early/],
+      ['{"data": [0x1F]}', /Invalid number 0x1F: JSON numbers are decimal/],
+      ['{"data": [.5, 1]}', /Invalid number \.5/],
+      ['{"data": [-Infinity]}', /-Infinity is not valid JSON/],
+      ['{"data": [1, 2, ...]}', /no placeholders/],
+      ['{"show": True}', /use true, false or null/],
+      ['{"text": “A”}', /straight double quotes/],
+      ['{"a": []}', /Unexpected " " \(U\+00A0\)/],
+    ];
+    for (const [source, expected] of cases) {
+      assert.match(errorOf(source), expected, source);
+    }
   });
 
   test("keeps tabs in the caret line of an excerpt", () => {
