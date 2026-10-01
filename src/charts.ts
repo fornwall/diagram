@@ -72,27 +72,36 @@ function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefi
   return labels && !scatter ? 0 : undefined;
 }
 
-/** The columns that `keep` is true for, or all of them if it is true for none. */
-function preferring(columns: number[], keep: (column: number) => boolean): number[] {
+/** The columns that `keep` is true for, unless fewer than the `needed` ones are. */
+function preferring(
+  columns: number[],
+  needed: number,
+  keep: (column: number) => boolean,
+): number[] {
   const kept = columns.filter(keep);
-  return kept.length > 0 ? kept : columns;
+  return kept.length >= needed ? kept : columns;
 }
 
 /**
- * The default value columns: the numeric columns other than the label column, preferably not
- * ones that identify or number the rows, and only those with the unit of the first (leaving out
- * the Use% next to the sizes of df -h).
+ * The default value columns, of which the chart needs at least `needed`: the numeric columns other
+ * than the label column, preferably not ones that identify or number the rows, and only those with
+ * the unit of the first (leaving out the Use% next to the sizes of df -h).
  */
-function defaultValueColumns(table: DataTable, labelIndex: number | undefined): number[] {
+function defaultValueColumns(
+  table: DataTable,
+  labelIndex: number | undefined,
+  needed: number,
+): number[] {
   const numeric = table.columns.flatMap((column, i) =>
     column.numeric && i !== labelIndex ? [i] : [],
   );
   const values = preferring(
-    preferring(numeric, (i) => !isIdName(table.columns[i]?.name ?? "")),
+    preferring(numeric, needed, (i) => !isIdName(table.columns[i]?.name ?? "")),
+    needed,
     (i) => !numbersRows(table, i),
   );
   const unit = table.columns[values[0] ?? 0]?.unit;
-  return values.filter((i) => table.columns[i]?.unit === unit);
+  return preferring(values, needed, (i) => table.columns[i]?.unit === unit);
 }
 
 /**
@@ -195,7 +204,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
       : findColumn(table, spec.labelColumn, "label");
   const columns =
     spec.valueColumns?.map((name) => findColumn(table, name, "value")) ??
-    defaultValueColumns(table, labelIndex);
+    defaultValueColumns(table, labelIndex, scatter ? 2 : 1);
   const valueIndices = columns.slice(0, pie ? 1 : scatter ? 2 : undefined);
   const name = (index: number) => table.columns[index]?.name ?? "";
   const notes: string[] = [];

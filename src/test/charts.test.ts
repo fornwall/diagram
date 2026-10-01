@@ -199,6 +199,18 @@ suite("charts", () => {
     assert.throws(() => build(chart("scatter"), "x,y\n1,\n,2"), /No row has numbers in both/);
   });
 
+  test("scatter plots columns that bar charts leave out by default against each other", () => {
+    // A column numbering the rows is a likely x, and x and y often have different units.
+    assert.strictEqual(
+      summary(chart("scatter"), "size,ms\n1,0.5\n2,0.9\n3,1.4"),
+      'Charted "ms" against "size".',
+    );
+    assert.strictEqual(
+      summary(chart("scatter"), "file,size,lines\na,10K,100\nb,20K,300"),
+      'Charted "lines" against "size (KiB)" by "file"; showed sizes in KiB.',
+    );
+  });
+
   test("scatter needs two numeric columns", () => {
     assert.throws(() => build(chart("scatter", { valueColumns: ["files"] })), /two numeric/);
   });
