@@ -29,18 +29,10 @@ export type RenderOutcome =
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 
-type RenderMessage = Extract<ToWebview, { type: "render" }>;
-
-interface PendingRender {
-  message: RenderMessage;
-  resolve: (outcome: RenderOutcome) => void;
-}
-
-interface PendingPick {
-  id: number;
-  prompt: string;
-  multiple: boolean;
-  resolve: (outcome: PickOutcome) => void;
+/** A request to the webview awaiting its answer, sent again if the webview reloads. */
+interface Pending<Type extends ToWebview["type"], Outcome> {
+  message: Extract<ToWebview, { type: Type }>;
+  resolve: (outcome: Outcome) => void;
 }
 
 /** A diagram to show, as produced by an agent. */
@@ -91,8 +83,8 @@ export class DiagramPanel implements vscode.Disposable {
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
   private nextRequestId = 1;
-  private readonly pendingRenders = new Map<number, PendingRender>();
-  private pendingPick: PendingPick | undefined;
+  private readonly pendingRenders = new Map<number, Pending<"render", RenderOutcome>>();
+  private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private refreshing = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -157,21 +149,19 @@ export class DiagramPanel implements vscode.Disposable {
     this.cancelPick("Another request to pick nodes replaced this one.");
     this.show();
 
-    const id = this.nextRequestId++;
+    const message = { type: "startPick", pickId: this.nextRequestId++, prompt, multiple } as const;
     return new Promise<PickOutcome>((resolve) => {
       const cancellation = token.onCancellationRequested(() =>
-        this.finishPick(id, { picked: false, reason: "The request was cancelled." }),
+        this.finishPick(message.pickId, { picked: false, reason: "The request was cancelled." }),
       );
       this.pendingPick = {
-        id,
-        prompt,
-        multiple,
+        message,
         resolve: (outcome) => {
           cancellation.dispose();
           resolve(outcome);
         },
       };
-      this.post({ type: "startPick", pickId: id, prompt, multiple });
+      this.post(message);
     });
   }
 
@@ -270,8 +260,7 @@ export class DiagramPanel implements vscode.Disposable {
           void this.renderCurrent();
         }
         if (this.pendingPick) {
-          const { id, prompt, multiple } = this.pendingPick;
-          this.post({ type: "startPick", pickId: id, prompt, multiple });
+          this.post(this.pendingPick.message);
         }
         break;
       case "rendered":
@@ -336,7 +325,7 @@ export class DiagramPanel implements vscode.Disposable {
       };
     }
 
-    const message: RenderMessage = {
+    const message = {
       type: "render",
       requestId: this.nextRequestId++,
       language: state.language,
@@ -344,7 +333,7 @@ export class DiagramPanel implements vscode.Disposable {
       title,
       clickPrompt: state.clickPrompt,
       refreshFrom,
-    };
+    } as const;
     const result = await new Promise<RenderOutcome>((resolve) => {
       const timeout = setTimeout(
         () =>
@@ -385,7 +374,7 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   private finishPick(id: number, outcome: PickOutcome): void {
-    if (this.pendingPick?.id !== id) {
+    if (this.pendingPick?.message.pickId !== id) {
       return;
     }
     const { resolve } = this.pendingPick;
@@ -396,7 +385,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   private cancelPick(reason: string): void {
     if (this.pendingPick) {
-      this.finishPick(this.pendingPick.id, { picked: false, reason });
+      this.finishPick(this.pendingPick.message.pickId, { picked: false, reason });
     }
   }
 
