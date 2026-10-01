@@ -548,6 +548,52 @@ suite("data", () => {
     ]);
   });
 
+  test("reads markers of missing values in numeric columns as empty", () => {
+    const table = parseTable(
+      [
+        "country,gdp,population,growth,note",
+        "Sweden,541.2,10.35,-,None",
+        "Norway,N/A,5.38,1.2%,NA",
+        "Denmark,356.1,NULL,—,-",
+        "Finland,#N/A,5.54,n/a,-",
+        "Iceland,NaN,0.37,0.8%,-",
+      ].join("\n"),
+    );
+    assert.strictEqual(table.header, true);
+    assert.deepStrictEqual(
+      table.columns.map((column) => column.numeric),
+      [false, true, true, true, false],
+    );
+    assert.deepStrictEqual(table.rows, [
+      ["Sweden", 541.2, 10.35, null, "None"],
+      ["Norway", null, 5.38, 1.2, "NA"],
+      ["Denmark", 356.1, null, null, "-"],
+      ["Finland", null, 5.54, null, "-"],
+      ["Iceland", null, 0.37, 0.8, "-"],
+    ]);
+    // Labels that look like markers stay labels.
+    assert.deepStrictEqual(parse("plan,users\nNone,12\nPro,30\nNA,5").rows, [
+      ["None", 12],
+      ["Pro", 30],
+      ["NA", 5],
+    ]);
+  });
+
+  test("reads -- in docker stats output for a stopped container as empty", () => {
+    const table = parseTable(
+      [
+        "CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     PIDS",
+        "b5d2a2d1c3e4   web       0.00%     3.98MiB / 15.5GiB     0.03%     2",
+        "0a1b2c3d4e5f   old       --        -- / --               --        --",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      table.columns.map((column) => column.numeric),
+      [false, false, true, false, true, true],
+    );
+    assert.deepStrictEqual(table.rows[1], ["0a1b2c3d4e5f", "old", null, "-- / --", null, null]);
+  });
+
   test("throws helpful errors for empty or invalid data", () => {
     assert.throws(() => parseTable("  \n"), /^Error: The data is empty\. Give JSON, CSV/);
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);

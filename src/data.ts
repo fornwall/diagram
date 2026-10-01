@@ -30,6 +30,13 @@ export interface Records {
   header?: boolean;
 }
 
+/**
+ * Text that marks a missing value, as spreadsheets ("#N/A"), databases ("NULL"), pandas ("NaN",
+ * "None", "<NA>") and command output ("-", "--") write it. Like an empty cell it neither makes a
+ * column numeric nor keeps it from being so, but outside numeric columns it stays, as a label.
+ */
+const MISSING = /^(?:-+|[\u2013\u2014]|#?n\/a|na|<na>|nan|null|none)$/i;
+
 function isNumeric(rows: Cell[][], column: number): boolean {
   let numbers = 0;
   let others = 0;
@@ -37,7 +44,7 @@ function isNumeric(rows: Cell[][], column: number): boolean {
     const cell = row[column];
     if (typeof cell === "number") {
       numbers++;
-    } else if (typeof cell === "string") {
+    } else if (typeof cell === "string" && !MISSING.test(cell)) {
       others++;
     }
   }
@@ -116,6 +123,14 @@ function tableFromRecords({ records, header }: Records): DataTable {
   const rows = named ? cells.slice(1) : cells;
   const columns = columnNames(named ? (records[0] ?? []) : [], width).map((name, column) => {
     const numeric = isNumeric(rows, column);
+    if (numeric) {
+      for (const row of rows) {
+        const cell = row[column];
+        if (typeof cell === "string" && MISSING.test(cell)) {
+          row[column] = null;
+        }
+      }
+    }
     const found = [...(units[column] ?? [])];
     const unit =
       found.length === 0 && name.includes("%") ? "%" : found.length === 1 ? found[0] : undefined;
@@ -127,7 +142,8 @@ function tableFromRecords({ records, header }: Records): DataTable {
 /**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
  * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
- * {@link parseNumber}) become numbers, and empty cells null.
+ * {@link parseNumber}) become numbers, and empty cells null, as do markers of missing values such
+ * as "N/A" and "-" in numeric columns.
  *
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
