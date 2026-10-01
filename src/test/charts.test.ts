@@ -76,6 +76,22 @@ suite("charts", () => {
     );
   });
 
+  test("pie leaves out rows without a positive value before limiting", () => {
+    const table = "k,n\na,3\nb,-2\nc,0\nd,\ne,2\nf,1\ng,1";
+    const spec = chart("pie", { limit: 2 });
+    assert.deepStrictEqual(build(spec, table).series[0].data, [
+      { name: "a", value: 3 },
+      { name: "e", value: 2 },
+      { name: "Other", value: 2 },
+    ]);
+    assert.strictEqual(
+      summary(spec, table),
+      'Charted "n" by "k"; left out 3 rows without a positive value; ' +
+        'summed up the 2 rows after the first 2 as "Other".',
+    );
+    assert.throws(() => build(chart("pie"), "k,n\na,-1\nb,0"), /needs positive numbers/);
+  });
+
   test("bar has a category x axis and one series per value column", () => {
     const option = build(chart("bar"));
     // The webview adds the tooltip and legend.
@@ -151,8 +167,9 @@ suite("charts", () => {
     assert.deepStrictEqual(build(chart("scatter"), table).series[0].data, [[1, 2]]);
     assert.strictEqual(
       summary(chart("scatter"), table),
-      'Charted "y" against "x"; left out 1 row without a value.',
+      'Charted "y" against "x"; left out 1 row without both an x and a y value.',
     );
+    assert.throws(() => build(chart("scatter"), "x,y\n1,\n,2"), /No row has numbers in both/);
   });
 
   test("scatter needs two numeric columns", () => {

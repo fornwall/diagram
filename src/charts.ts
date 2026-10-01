@@ -223,16 +223,34 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
       `left out the last row, ${JSON.stringify(table.rows.at(-1)?.[labelIndex])}, a total of the others`,
     );
   }
-  let rows = sortRows(
-    tableRows.map((row, i) => ({
-      label: labelIndex === undefined ? String(i + 1) : String(row[labelIndex] ?? ""),
-      values: valueIndices.map((index) => {
-        const cell = row[index];
-        return typeof cell === "number" ? cell : null;
-      }),
-    })),
-    spec.sort,
-  );
+  let rows: Row[] = tableRows.map((row, i) => ({
+    label: labelIndex === undefined ? String(i + 1) : String(row[labelIndex] ?? ""),
+    values: valueIndices.map((index) => {
+      const cell = row[index];
+      return typeof cell === "number" ? cell : null;
+    }),
+  }));
+  if (pie || scatter) {
+    // ECharts leaves out negative pie slices, and zero ones would only add overlapping labels.
+    const charted = rows.filter(({ values }) =>
+      pie ? (values[0] ?? 0) > 0 : !values.includes(null),
+    );
+    const left = rows.length - charted.length;
+    if (charted.length === 0) {
+      const columns = quoteAll(valueIndices.map(name));
+      throw new Error(
+        pie
+          ? `A pie chart needs positive numbers, but ${columns} has none.`
+          : `No row has numbers in both ${columns}.`,
+      );
+    }
+    if (left > 0) {
+      const without = pie ? "a positive value" : "both an x and a y value";
+      notes.push(`left out ${left} ${left === 1 ? "row" : "rows"} without ${without}`);
+    }
+    rows = charted;
+  }
+  rows = sortRows(rows, spec.sort);
   if (spec.limit !== undefined && rows.length > spec.limit) {
     const rest = rows.slice(spec.limit);
     rows = rows.slice(0, spec.limit);
@@ -245,10 +263,6 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     } else {
       notes.push(`kept the first ${spec.limit} of ${rows.length + rest.length} rows`);
     }
-  }
-  const empty = pie || scatter ? rows.filter((row) => row.values.includes(null)).length : 0;
-  if (empty > 0) {
-    notes.push(`left out ${empty} ${empty === 1 ? "row" : "rows"} without a value`);
   }
 
   // Sizes in bytes are shown in the unit that suits the largest.
@@ -304,9 +318,7 @@ function pieOption(doughnut: boolean, name: string, rows: Row[]): Record<string,
         name,
         ...(doughnut ? { radius: ["45%", "72%"] } : {}),
         label: { formatter: "{b}: {d}%" },
-        data: rows.flatMap(({ label, values: [value = null] }) =>
-          value === null ? [] : [{ name: label, value }],
-        ),
+        data: rows.map(({ label, values: [value] }) => ({ name: label, value })),
       },
     ],
   };
@@ -328,9 +340,7 @@ function scatterOption(
       {
         type: "scatter",
         name: yName,
-        data: rows.flatMap(({ label, values: [x = null, y = null] }) =>
-          x === null || y === null ? [] : [labeled ? { name: label, value: [x, y] } : [x, y]],
-        ),
+        data: rows.map(({ label, values }) => (labeled ? { name: label, value: values } : values)),
       },
     ],
   };
