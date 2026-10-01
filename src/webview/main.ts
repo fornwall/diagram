@@ -68,7 +68,7 @@ const renderers: Record<DiagramLanguage, Renderer> = {
   mermaid: new MermaidRenderer({ itemClicked }, canvas, diagram, zoomResetButton),
   echarts: new EChartsRenderer({ itemClicked }, canvas),
 };
-/** The renderer whose rendering is shown, once anything rendered. */
+/** The renderer whose rendering is shown, if any. */
 let active: Renderer | undefined;
 
 function showError(renderer: Renderer, message: string): void {
@@ -95,19 +95,21 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   if (changed) {
     sourceChanged();
   }
+  emptyElement.hidden = true;
   try {
     const diagramType = await renderer.render(source, message.title);
     if (active !== renderer) {
       active?.hide();
     }
     active = renderer;
-    emptyElement.hidden = true;
     errorElement.hidden = true;
     post({ type: "rendered", requestId, diagramType });
   } catch (error) {
-    if (renderer !== active) {
-      renderer.hide();
-    }
+    // Show only the error, as the title, Refresh, clicks and the source editor are now for the
+    // diagram that failed, which is also the one the extension describes to the model.
+    active?.hide();
+    renderer.hide();
+    active = undefined;
     const text = errorMessage(error);
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });

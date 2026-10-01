@@ -306,7 +306,8 @@ export class DiagramPanel implements vscode.Disposable {
         void this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
         break;
       case "clickToAsk":
-        if (this.state?.clickPrompt) {
+        // A diagram that fails to render has no nodes: the click was on the one it replaced.
+        if (this.state?.clickPrompt && !this.state.error) {
           void this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;

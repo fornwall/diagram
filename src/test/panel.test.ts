@@ -173,6 +173,26 @@ suite("panel", function () {
     }
   });
 
+  test("a diagram that fails to render takes no clicks", async () => {
+    const panel = newPanel();
+    const asked: string[] = [];
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      askInChat(text: string): void;
+    };
+    internals.askInChat = (text) => asked.push(text);
+    try {
+      assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
+      const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete" };
+      assert.ok(!(await panel.render({ ...flowchart, ...broken }, "tool")).ok);
+      // A click on the previous diagram, e.g. one sent just before it was replaced.
+      internals.onMessage({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
+      assert.deepStrictEqual(asked, []);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("a refresh that started before a hand edit keeps the edit", async () => {
     const panel = newPanel();
     const pie = (name: string) =>

@@ -85,7 +85,6 @@ export class EChartsRenderer implements Renderer {
   async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
     this.echarts ??= await import("./echartsLibrary");
-    const previous = this.chart && this.option && { option: this.option, title: this.title };
     this.canvas.classList.add("chart-mode");
     this.container.hidden = false;
     this.option = option;
@@ -94,17 +93,8 @@ export class EChartsRenderer implements Renderer {
     try {
       this.apply(true);
     } catch (error) {
-      // A failed setOption can leave the instance broken: start over, with the previous chart.
+      // A failed setOption can leave the instance broken: start over.
       this.disposeChart();
-      if (previous) {
-        this.option = previous.option;
-        this.title = previous.title;
-        try {
-          this.apply(false);
-        } catch {
-          this.disposeChart();
-        }
-      }
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
     return seriesTypes(option);
