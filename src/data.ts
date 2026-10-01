@@ -27,27 +27,24 @@ export interface DataTable {
 /** A field as read from the data: text, or a JSON number or null. */
 type Field = string | number | null;
 
+/** Records of fields, the first of which is the header if `header`, or may be if undefined. */
+interface Records {
+  records: Field[][];
+  header?: boolean;
+}
+
 const SUFFIX = "%|B|[KMGTPEk](?:i?B|i)?";
 
+/** A number with optional thousands separators, as "1,234.5", and suffix. */
 const NUMBER = new RegExp(
   String.raw`^([-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
 );
 
-/** A number with a decimal comma ("1,5", "1.234,56") or a thousands separator ("1,234"). */
+/** A number with a decimal comma, as "1,5" or "1.234,56" (or "1,234" with a thousands separator). */
 const COMMA_NUMBER = new RegExp(String.raw`^[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+),\d+(?:${SUFFIX})?$`);
-
-/** A number that can only have thousands separators: "1,234.5" or "1,234,567". */
-const THOUSANDS = new RegExp(
-  String.raw`^[-+]?\d{1,3}(?:(?:,\d{3})+\.\d*|(?:,\d{3}){2,})(?:${SUFFIX})?$`,
-);
-
-/** A number that may have a thousands separator: "1,234" (but not "1,5" or "1234,5"). */
-const MAYBE_THOUSANDS = new RegExp(String.raw`^[-+]?\d{1,3}(?:,\d{3})+(?:${SUFFIX})?$`);
 
 /** A number with thousands separators within text, as in "apples 1,234". */
 const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
-
-const SIZE_POWERS: Record<string, number> = { B: 0, K: 1, M: 2, G: 3, T: 4, P: 5, E: 6 };
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
@@ -55,8 +52,7 @@ const SIZE_POWERS: Record<string, number> = { B: 0, K: 1, M: 2, G: 3, T: 4, P: 5
  * K as 1024 as du -h does).
  */
 export function parseNumber(text: string): { value: number; unit?: Unit } | undefined {
-  const match = NUMBER.exec(text.trim());
-  const digits = match?.[1];
+  const [, digits, suffix] = NUMBER.exec(text.trim()) ?? [];
   if (digits === undefined) {
     return undefined;
   }
@@ -64,7 +60,6 @@ export function parseNumber(text: string): { value: number; unit?: Unit } | unde
   if (!Number.isFinite(value)) {
     return undefined;
   }
-  const suffix = match?.[2];
   if (suffix === undefined) {
     return { value };
   }
@@ -72,7 +67,7 @@ export function parseNumber(text: string): { value: number; unit?: Unit } | unde
     return { value, unit: "%" };
   }
   return {
-    value: value * 1024 ** (SIZE_POWERS[suffix.charAt(0).toUpperCase()] ?? 0),
+    value: value * 1024 ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase()),
     unit: "bytes",
   };
 }
@@ -82,19 +77,20 @@ function isNumber(text: string | undefined): boolean {
 }
 
 /**
- * Whether a column writes numbers with a decimal comma: some field is like "1,5" or "1234,5"
- * (which cannot have a thousands separator), and none like "1,234.5" (which can only).
+ * Whether a column writes numbers with a decimal comma: some field can only be read that way
+ * ("1,5", "1234,5"), and none only with thousands separators ("1,234.5", "1,234,567").
  */
 function hasDecimalCommas(records: Field[][], column: number): boolean {
   let decimal = false;
   for (const record of records) {
-    const field = record[column];
-    if (typeof field === "string") {
-      const text = field.trim();
-      if (THOUSANDS.test(text)) {
+    const text = record[column];
+    if (typeof text === "string" && text.includes(",")) {
+      const comma = COMMA_NUMBER.test(text.trim());
+      const point = NUMBER.test(text.trim());
+      if (point && !comma) {
         return false;
       }
-      decimal ||= COMMA_NUMBER.test(text) && !MAYBE_THOUSANDS.test(text);
+      decimal ||= comma && !point;
     }
   }
   return decimal;
@@ -145,27 +141,20 @@ function hasHeader(rows: Cell[][]): boolean {
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
 function columnNames(header: Field[], width: number): string[] {
-  const names: string[] = [];
   const seen = new Set<string>();
-  for (let column = 0; column < width; column++) {
-    const field = header[column];
-    const text = field === null || field === undefined ? "" : String(field).trim();
-    const name = text === "" ? `Column ${column + 1}` : text;
+  return Array.from({ length: width }, (_, column) => {
+    const name = String(header[column] ?? "").trim() || `Column ${column + 1}`;
     let unique = name;
     for (let n = 2; seen.has(unique); n++) {
       unique = `${name} (${n})`;
     }
     seen.add(unique);
-    names.push(unique);
-  }
-  return names;
+    return unique;
+  });
 }
 
-/**
- * Builds a table from records of fields, converting text to numbers where it is one. The first
- * record is the header when `header` is true, or when it looks like one if undefined.
- */
-function tableFromRecords(records: Field[][], header?: boolean): DataTable {
+/** Builds a table from records, converting text to numbers where it is one. */
+function tableFromRecords({ records, header }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   const decimalComma = Array.from({ length: width }, (_, column) =>
@@ -265,7 +254,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): string
   }
   record.push(field);
   records.push(record);
-  return records.filter((r) => !(r.length === 1 && isBlank(r[0] ?? "")));
+  return records.filter((r) => r.length > 1 || !isBlank(r[0] ?? ""));
 }
 
 /** The most common value, preferring the smallest on ties. */
@@ -428,7 +417,7 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
  * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
  * as printed by df or docker ps, are matched to the data columns by position.
  */
-function splitWhitespace(text: string): { records: string[][]; header?: boolean } {
+function splitWhitespace(text: string): Records {
   const lines = text.split(/\r?\n/).filter((line) => !isBlank(line));
   const tokens = lines.map(tokenize);
   // ls -l starts with "total 16".
@@ -458,8 +447,7 @@ function splitWhitespace(text: string): { records: string[][]; header?: boolean 
     const aligned = splitMultiWordHeader(tokens) ?? splitAtHeaderGaps(lines);
     if (aligned !== undefined) {
       // Columns of text alone, as from docker ps, have no numbers to tell the header by.
-      const text = aligned[0]?.every((field) => !isNumber(field));
-      return { records: aligned, header: text ? true : undefined };
+      return { records: aligned, header: aligned[0]?.some(isNumber) ? undefined : true };
     }
   }
   // Under a header, as from ps aux, longer lines have spaces in the last column.
@@ -490,7 +478,7 @@ function isScalar(value: unknown): boolean {
   return !isPlainObject(value) && !Array.isArray(value);
 }
 
-function recordsFromJsonArray(array: unknown[]): { records: Field[][]; header?: boolean } {
+function recordsFromJsonArray(array: unknown[]): Records {
   if (array.length === 0) {
     throw new Error("The JSON array is empty.");
   }
@@ -510,30 +498,31 @@ function recordsFromJsonArray(array: unknown[]): { records: Field[][]; header?: 
   throw new Error("The JSON array mixes objects, arrays and plain values.");
 }
 
-function recordsFromJson(value: unknown): { records: Field[][]; header?: boolean } {
+function recordsFromJson(value: unknown): Records {
   if (Array.isArray(value)) {
     return recordsFromJsonArray(value);
   }
   if (!isPlainObject(value)) {
     throw new Error("The JSON is neither an array nor an object.");
   }
-  const entries = Object.entries(value);
-  if (entries.length === 0) {
+  const names = Object.keys(value);
+  const columns = Object.values(value);
+  if (names.length === 0) {
     throw new Error("The JSON object is empty.");
   }
-  const columns = entries.map(([, item]) => item);
   const length = Array.isArray(columns[0]) ? columns[0].length : 0;
   if (
     length > 0 &&
-    columns.every((item) => Array.isArray(item) && item.length === length && item.every(isScalar))
+    columns.every(
+      (item): item is unknown[] =>
+        Array.isArray(item) && item.length === length && item.every(isScalar),
+    )
   ) {
     // Columns: {"label": ["a", "b"], "count": [1, 2]}.
     return {
       records: [
-        entries.map(([name]) => name),
-        ...Array.from({ length }, (_, row) =>
-          columns.map((column) => jsonField((column as unknown[])[row])),
-        ),
+        names,
+        ...Array.from({ length }, (_, row) => columns.map((column) => jsonField(column[row]))),
       ],
       header: true,
     };
@@ -547,7 +536,7 @@ function recordsFromJson(value: unknown): { records: Field[][]; header?: boolean
   }
   if (columns.every(isScalar)) {
     return {
-      records: [["name", "value"], ...entries.map(([name, item]) => [name, jsonField(item)])],
+      records: [["name", "value"], ...names.map((name, i) => [name, jsonField(columns[i])])],
       header: true,
     };
   }
@@ -556,7 +545,7 @@ function recordsFromJson(value: unknown): { records: Field[][]; header?: boolean
     return {
       records: [
         [keys.includes("name") ? "key" : "name", ...keys],
-        ...rows.map((row, i) => [entries[i]?.[0] ?? null, ...row]),
+        ...rows.map((row, i) => [names[i] ?? null, ...row]),
       ],
       header: true,
     };
@@ -577,7 +566,7 @@ function parseJsonLines(text: string): unknown[] | undefined {
   }
 }
 
-function parseJson(text: string): { records: Field[][]; header?: boolean } {
+function parseJson(text: string): Records {
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -590,7 +579,7 @@ function parseJson(text: string): { records: Field[][]; header?: boolean } {
   return recordsFromJson(value);
 }
 
-function readRecords(text: string, format: DataFormat): { records: Field[][]; header?: boolean } {
+function readRecords(text: string, format: DataFormat): Records {
   const trimmed = text.trim();
   if (
     format === "json" ||
@@ -626,15 +615,14 @@ function readRecords(text: string, format: DataFormat): { records: Field[][]; he
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
 export function parseTable(text: string, format: DataFormat = "auto"): DataTable {
-  const content = text.replace(/^﻿/, "");
+  const content = text.replace(/^\uFEFF/, "");
   if (isBlank(content)) {
     throw new Error(
       "The data is empty. Give JSON, CSV, TSV or whitespace-separated columns such as the " +
         "output of du, wc or df.",
     );
   }
-  const { records, header } = readRecords(content, format);
-  const table = tableFromRecords(records, header);
+  const table = tableFromRecords(readRecords(content, format));
   if (table.rows.length === 0 || table.columns.length === 0) {
     throw new Error("The data holds no values.");
   }
