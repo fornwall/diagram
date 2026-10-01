@@ -81,11 +81,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   clickPrompt = message.clickPrompt;
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(message.refreshFrom);
-  const renderer = renderers[language] as Renderer | undefined;
-  if (!renderer) {
-    post({ type: "renderError", requestId, message: `Unknown diagram language "${language}".` });
-    return;
-  }
+  const renderer = renderers[language];
   const changed = current?.source !== source;
   current = { renderer, source };
   if (changed) {

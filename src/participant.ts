@@ -242,7 +242,7 @@ function historyMessages(context: vscode.ChatContext): vscode.LanguageModelChatM
         .join("");
       // Diagrams are not shown in chat, so restore the one this turn produced.
       const source: unknown = turn.result.metadata?.source;
-      const language: unknown = turn.result.metadata?.language ?? "mermaid";
+      const language: unknown = turn.result.metadata?.language;
       const chart: unknown = turn.result.metadata?.chart;
       if (typeof source === "string" && isDiagramLanguage(language)) {
         text += `\n\n${codeFence(source, language)}`;
