@@ -324,16 +324,20 @@ editButton.addEventListener("click", () => {
   sourceInput.focus();
 });
 
-element("apply").addEventListener("click", () => {
+function closeEditor(): void {
   editor.hidden = true;
+  // Hiding the focused button would leave the focus nowhere.
+  editButton.focus();
+}
+
+element("apply").addEventListener("click", () => {
+  closeEditor();
   if (sourceInput.value !== editedFrom) {
     post({ type: "sourceEdited", source: sourceInput.value });
   }
 });
 
-element("cancel").addEventListener("click", () => {
-  editor.hidden = true;
-});
+element("cancel").addEventListener("click", closeEditor);
 
 // Zoom (Mermaid only; charts fit the panel).
 
