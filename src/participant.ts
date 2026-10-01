@@ -85,12 +85,12 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       for (let attempt = 0; ; attempt++) {
         const block = lastDiagramBlock(reply);
         if (!block || token.isCancellationRequested) {
-          const diagram = panel.current;
-          if (panel.renderCount === rendersBefore || !diagram) {
+          // The chart tool may have drawn a chart. Remember it for later requests' history, by how
+          // it was drawn if it charts a file or command, as its data may be large.
+          const diagram = panel.renderCount !== rendersBefore && panel.current;
+          if (!diagram) {
             return;
           }
-          // The chart tool drew a chart. Remember it for later requests' history, by how it was
-          // drawn if it charts a file or command, as its data may be large.
           panel.setOrigin("participant");
           showButton(stream, diagram.language);
           return {
@@ -154,9 +154,10 @@ async function streamReply(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<string> {
-  let declined = false;
+  /** Why further tool calls are answered without running them. */
+  let notRun: string | undefined;
   for (let round = 0; ; round++) {
-    // The tools are passed even when no more calls are run, as some models reject requests whose
+    // The tools are passed even when calls are no longer run, as some models reject requests whose
     // messages contain tool calls but no tools.
     const response = await model.sendRequest(messages, { tools }, token);
     // The diagram is shown in the panel, so keep its source out of the chat. This also keeps VS
@@ -190,6 +191,9 @@ async function streamReply(
     if (calls.length === 0 || round > MAX_TOOL_ROUNDS) {
       return reply;
     }
+    if (round === MAX_TOOL_ROUNDS) {
+      notRun ??= "this request has made too many tool calls";
+    }
 
     messages.push(
       vscode.LanguageModelChatMessage.Assistant([
@@ -197,34 +201,30 @@ async function streamReply(
         ...calls,
       ]),
     );
+    const text = (value: string) => [new vscode.LanguageModelTextPart(value)];
     const results: vscode.LanguageModelToolResultPart[] = [];
     for (const call of calls) {
       let content: unknown[];
-      if (declined || round === MAX_TOOL_ROUNDS) {
-        const why = declined
-          ? "the user declined an earlier tool call"
-          : "this request has made too many tool calls";
-        content = [new vscode.LanguageModelTextPart(`Not run, as ${why}. Answer without tools.`)];
+      if (notRun) {
+        content = text(`Not run, as ${notRun}. Answer without tools.`);
       } else {
         try {
-          const result = await vscode.lm.invokeTool(
-            call.name,
-            { input: call.input, toolInvocationToken },
-            token,
-          );
-          content = result.content;
+          const input = { input: call.input, toolInvocationToken };
+          content = (await vscode.lm.invokeTool(call.name, input, token)).content;
         } catch (error) {
           if (token.isCancellationRequested) {
             return reply;
           }
-          // Thrown when the user denies running the command; don't let the model ask again.
-          declined =
-            error instanceof vscode.CancellationError ||
-            (error instanceof Error && error.name === "Canceled");
-          const message = declined
-            ? "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted."
-            : `The tool call failed: ${errorMessage(error)}`;
-          content = [new vscode.LanguageModelTextPart(message)];
+          // The user declined to run the command: a CancellationError, though not always an
+          // instance of one. Don't let the model ask again.
+          if (error instanceof Error && error.name === "Canceled") {
+            notRun = "the user declined an earlier tool call";
+            content = text(
+              "The user declined this tool call. Do not try it again, and do not make up the data: tell the user briefly what you would have charted.",
+            );
+          } else {
+            content = text(`The tool call failed: ${errorMessage(error)}`);
+          }
         }
       }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
