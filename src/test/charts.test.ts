@@ -393,6 +393,10 @@ suite("charts", () => {
       describeTable(parseTable("x\n1")),
       '1 row; columns: "x" (numbers)\nRows:\n[1]',
     );
+    assert.match(
+      describeTable({ columns: [{ name: "x", numeric: true }], rows: [[null]], header: true }),
+      /"x" \(empty\)/,
+    );
   });
 
   test("describeTable points out text cells in numeric columns", () => {

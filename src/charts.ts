@@ -111,11 +111,10 @@ function defaultValueColumns(
  */
 function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: number[]): boolean {
   const last = table.rows.at(-1);
-  const others = table.rows.slice(0, -1);
   const label = last?.[labelColumn];
   if (
     last === undefined ||
-    others.length < 2 ||
+    table.rows.length < 3 ||
     typeof label !== "string" ||
     !/^(?:total|totals|sum|grand total)\s*:?$/i.test(label)
   ) {
@@ -125,10 +124,13 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
   for (const column of valueColumns) {
     const total = last[column];
     if (typeof total === "number") {
-      const sum = others.reduce(
-        (acc, row) => acc + (typeof row[column] === "number" ? row[column] : 0),
-        0,
-      );
+      let sum = 0;
+      for (let i = 0; i < table.rows.length - 1; i++) {
+        const value = table.rows[i]?.[column];
+        if (typeof value === "number") {
+          sum += value;
+        }
+      }
       if (Math.abs(total - sum) > Math.abs(total) * 0.01) {
         return false;
       }
@@ -417,25 +419,37 @@ const PREVIEW_ROWS = 5;
 const TEXT_EXAMPLES = 3;
 
 function describeColumn(table: DataTable, column: number): string {
-  const cells = table.rows.map((row) => row[column] ?? null);
-  if (cells.every((cell) => cell === null)) {
-    return "empty";
-  }
   const { numeric, unit } = table.columns[column] ?? {};
   if (!numeric) {
-    return "text";
+    return table.rows.some((row) => row[column] != null) ? "text" : "empty";
   }
   const kind = unit === "bytes" ? "bytes" : unit === "%" ? "percentages" : "numbers";
   // Charts leave out text cells in numeric columns.
-  const texts = cells.filter((cell) => typeof cell === "string");
-  if (texts.length === 0) {
+  let empty = true;
+  let texts = 0;
+  const examples: string[] = [];
+  for (const row of table.rows) {
+    const cell = row[column];
+    if (cell != null) {
+      empty = false;
+    }
+    if (typeof cell === "string") {
+      texts++;
+      if (examples.length < TEXT_EXAMPLES) {
+        examples.push(JSON.stringify(cell));
+      }
+    }
+  }
+  if (empty) {
+    return "empty";
+  }
+  if (texts === 0) {
     return kind;
   }
-  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => JSON.stringify(text));
-  if (texts.length > TEXT_EXAMPLES) {
+  if (texts > TEXT_EXAMPLES) {
     examples.push("…");
   }
-  const count = `${texts.length} text ${texts.length === 1 ? "cell" : "cells"}`;
+  const count = `${texts} text ${texts === 1 ? "cell" : "cells"}`;
   return `${kind}, ${count}: ${examples.join(", ")}`;
 }
 
