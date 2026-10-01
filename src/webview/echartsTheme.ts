@@ -14,14 +14,14 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
   const subtleFill = toCss({ ...colors.foreground, a: colors.dark ? 0.06 : 0.04 });
   const font = { fontFamily: colors.fontFamily, fontSize: colors.fontSize };
 
-  const axisLine = { lineStyle: { color: axisColor, width: 1 } };
+  const axisLine = { lineStyle: { color: axisColor } };
   const axisTick = { lineStyle: { color: axisColor } };
   const axis = {
     axisLine,
     axisTick,
     axisLabel: { color: muted, ...font },
     nameTextStyle: { color: muted, ...font },
-    splitLine: { lineStyle: { color: grid, width: 1, type: "solid" } },
+    splitLine: { lineStyle: { color: grid } },
     minorSplitLine: { lineStyle: { color: toCss({ ...colors.gridLine, a: 0.5 }) } },
     splitArea: { areaStyle: { color: [subtleFill, "transparent"] } },
   };
@@ -65,14 +65,12 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     tooltip: {
       backgroundColor: toCss(colors.hoverBackground),
       borderColor: toCss(colors.hoverBorder),
-      borderWidth: 1,
       padding: [6, 10],
       textStyle: { color: toCss(colors.hoverForeground), ...font },
-      extraCssText:
-        "border-radius: 4px; box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));",
+      extraCssText: "box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));",
     },
     axisPointer: {
-      lineStyle: { color: axisColor, width: 1 },
+      lineStyle: { color: axisColor },
       crossStyle: { color: axisColor },
       shadowStyle: { color: subtleFill },
       label: {
@@ -100,7 +98,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     line: {
       symbol: "circle",
       symbolSize: 7,
-      lineStyle: { width: 2, cap: "round", join: "round" },
+      lineStyle: { cap: "round", join: "round" },
       // A ring in the background color keeps markers legible where they cross lines.
       itemStyle: { borderColor: bg, borderWidth: 1.5 },
     },
