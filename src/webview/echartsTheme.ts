@@ -3,10 +3,10 @@
 import { mix, type ThemeColors, toCss } from "./colors";
 
 export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> {
-  const fg = toCss(colors.foreground);
+  const foreground = toCss(colors.foreground);
   const muted = toCss(colors.muted);
-  const bg = toCss(colors.background);
-  const grid = toCss(colors.gridLine);
+  const background = toCss(colors.background);
+  const gridColor = toCss(colors.gridLine);
   const axisColor = toCss(colors.axisLine);
   const disabled = toCss(mix(colors.background, colors.muted, 0.45));
   const accent = toCss(colors.blue);
@@ -21,7 +21,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     axisTick,
     axisLabel: { color: muted, ...font },
     nameTextStyle: { color: muted, ...font },
-    splitLine: { lineStyle: { color: grid } },
+    splitLine: { lineStyle: { color: gridColor } },
     minorSplitLine: { lineStyle: { color: toCss({ ...colors.gridLine, a: 0.5 }) } },
     splitArea: { areaStyle: { color: [subtleFill, "transparent"] } },
   };
@@ -36,7 +36,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     darkMode: colors.dark,
     color: colors.palette.map(toCss),
     backgroundColor: "transparent",
-    textStyle: { color: fg, ...font },
+    textStyle: { color: foreground, ...font },
     animationDuration: 500,
     animationDurationUpdate: 350,
     animationEasing: "cubicOut",
@@ -46,11 +46,16 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     title: {
       left: 4,
       top: 4,
-      textStyle: { color: fg, fontFamily: colors.fontFamily, fontSize: 14, fontWeight: 600 },
+      textStyle: {
+        color: foreground,
+        fontFamily: colors.fontFamily,
+        fontSize: 14,
+        fontWeight: 600,
+      },
       subtextStyle: { color: muted, ...font },
     },
     legend: {
-      textStyle: { color: fg, ...font },
+      textStyle: { color: foreground, ...font },
       inactiveColor: disabled,
       inactiveBorderColor: disabled,
       itemGap: 14,
@@ -58,7 +63,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       itemHeight: 12,
       icon: "roundRect",
       pageTextStyle: { color: muted, ...font },
-      pageIconColor: fg,
+      pageIconColor: foreground,
       pageIconInactiveColor: disabled,
       pageIconSize: 11,
     },
@@ -87,7 +92,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     radar: {
       ...axis,
       axisName: { color: muted, ...font },
-      axisLine: { lineStyle: { color: grid } },
+      axisLine: { lineStyle: { color: gridColor } },
       splitArea: { show: false },
     },
     angleAxis: axis,
@@ -100,48 +105,54 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       symbolSize: 7,
       lineStyle: { cap: "round", join: "round" },
       // A ring in the background color keeps markers legible where they cross lines.
-      itemStyle: { borderColor: bg, borderWidth: 1.5 },
+      itemStyle: { borderColor: background, borderWidth: 1.5 },
     },
     bar: { barMaxWidth: 28 },
-    scatter: { symbolSize: 10, itemStyle: { opacity: 0.85, borderColor: bg, borderWidth: 1 } },
+    scatter: {
+      symbolSize: 10,
+      itemStyle: { opacity: 0.85, borderColor: background, borderWidth: 1 },
+    },
     pie: {
-      itemStyle: { borderColor: bg, borderWidth: 2, borderRadius: 3 },
-      label: { color: fg },
+      itemStyle: { borderColor: background, borderWidth: 2, borderRadius: 3 },
+      label: { color: foreground },
       labelLine: { lineStyle: { color: axisColor } },
     },
-    funnel: { itemStyle: { borderColor: bg, borderWidth: 2 }, label: { color: fg } },
-    sunburst: { itemStyle: { borderColor: bg, borderWidth: 2 } },
+    funnel: {
+      itemStyle: { borderColor: background, borderWidth: 2 },
+      label: { color: foreground },
+    },
+    sunburst: { itemStyle: { borderColor: background, borderWidth: 2 } },
     treemap: {
-      itemStyle: { borderColor: bg, gapWidth: 2 },
+      itemStyle: { borderColor: background, gapWidth: 2 },
       breadcrumb: {
-        itemStyle: { color: subtleFill, borderColor: grid, textStyle: { color: fg } },
-        emphasis: { itemStyle: { color: grid } },
+        itemStyle: { color: subtleFill, borderColor: gridColor, textStyle: { color: foreground } },
+        emphasis: { itemStyle: { color: gridColor } },
       },
     },
     graph: {
       lineStyle: { color: axisColor, opacity: 0.8 },
-      label: { color: fg },
-      itemStyle: { borderColor: bg, borderWidth: 1 },
+      label: { color: foreground },
+      itemStyle: { borderColor: background, borderWidth: 1 },
     },
     sankey: {
       lineStyle: { color: "gradient", opacity: 0.25 },
-      label: { color: fg },
+      label: { color: foreground },
       itemStyle: { borderWidth: 0 },
       emphasis: { lineStyle: { opacity: 0.5 } },
     },
     tree: {
       lineStyle: { color: axisColor },
-      label: { color: fg },
+      label: { color: foreground },
       itemStyle: { borderColor: accent },
     },
     gauge: {
-      axisLine: { lineStyle: { color: [[1, grid]] } },
+      axisLine: { lineStyle: { color: [[1, gridColor]] } },
       axisTick: { lineStyle: { color: axisColor } },
       splitLine: { lineStyle: { color: axisColor } },
       axisLabel: { color: muted },
       title: { color: muted },
-      detail: { color: fg },
-      anchor: { itemStyle: { color: bg, borderColor: accent } },
+      detail: { color: foreground },
+      anchor: { itemStyle: { color: background, borderColor: accent } },
     },
     candlestick: {
       itemStyle: {
@@ -152,53 +163,53 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       },
     },
     boxplot: { itemStyle: { color: "transparent", borderWidth: 1.5 } },
-    heatmap: { itemStyle: { borderColor: bg, borderWidth: 1 } },
+    heatmap: { itemStyle: { borderColor: background, borderWidth: 1 } },
 
     visualMap: {
       // Sequential: one hue, receding toward the background for small values.
       color: [accent, toCss(mix(colors.background, colors.blue, 0.15))],
-      textStyle: { color: fg, ...font },
-      handleStyle: { borderColor: bg },
+      textStyle: { color: foreground, ...font },
+      handleStyle: { borderColor: background },
     },
     dataZoom: {
-      borderColor: grid,
+      borderColor: gridColor,
       fillerColor: accentWash,
       textStyle: { color: muted, ...font },
-      handleStyle: { color: bg, borderColor: accent },
-      moveHandleStyle: { color: grid },
+      handleStyle: { color: background, borderColor: accent },
+      moveHandleStyle: { color: gridColor },
       brushStyle: { color: accentWash },
-      emphasis: { handleStyle: { borderColor: fg }, moveHandleStyle: { color: axisColor } },
-      dataBackground: { lineStyle: { color: axisColor }, areaStyle: { color: grid } },
+      emphasis: { handleStyle: { borderColor: foreground }, moveHandleStyle: { color: axisColor } },
+      dataBackground: { lineStyle: { color: axisColor }, areaStyle: { color: gridColor } },
       selectedDataBackground: { lineStyle: { color: accent }, areaStyle: { color: accentWash } },
     },
     timeline: {
       lineStyle: { color: axisColor },
       label: { color: muted },
       itemStyle: { color: axisColor },
-      checkpointStyle: { color: accent, borderColor: bg },
-      controlStyle: { color: fg, borderColor: fg },
+      checkpointStyle: { color: accent, borderColor: background },
+      controlStyle: { color: foreground, borderColor: foreground },
     },
     toolbox: {
       iconStyle: { borderColor: muted },
-      emphasis: { iconStyle: { borderColor: fg, textFill: fg } },
+      emphasis: { iconStyle: { borderColor: foreground, textFill: foreground } },
       feature: {
         dataView: {
-          backgroundColor: bg,
-          textColor: fg,
-          textareaColor: bg,
-          textareaBorderColor: grid,
+          backgroundColor: background,
+          textColor: foreground,
+          textareaColor: background,
+          textareaBorderColor: gridColor,
           buttonColor: accent,
-          buttonTextColor: bg,
+          buttonTextColor: background,
         },
       },
     },
     calendar: {
-      itemStyle: { color: "transparent", borderColor: grid },
+      itemStyle: { color: "transparent", borderColor: gridColor },
       splitLine: { lineStyle: { color: axisColor } },
       dayLabel: { color: muted },
       monthLabel: { color: muted },
       yearLabel: { color: muted },
     },
-    markLine: { label: { color: fg }, lineStyle: { color: axisColor } },
+    markLine: { label: { color: foreground }, lineStyle: { color: axisColor } },
   };
 }
