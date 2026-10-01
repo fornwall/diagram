@@ -253,9 +253,6 @@ export class DiagramPanel implements vscode.Disposable {
       this.resolveWebviewReady = resolve;
     });
     panel.webview.html = webviewHtml(panel.webview, this.context.extensionUri);
-    if (this.state) {
-      panel.title = this.state.title;
-    }
 
     const messageListener = panel.webview.onDidReceiveMessage((message: FromWebview) =>
       this.onMessage(message),
@@ -478,7 +475,7 @@ export function clickToAskQuery(clickPrompt: string, label: string): string {
     : `${clickPrompt} "${label}"`;
 }
 
-export function webviewOptions(
+function webviewOptions(
   extensionUri: vscode.Uri,
 ): vscode.WebviewPanelOptions & vscode.WebviewOptions {
   return {
@@ -491,9 +488,7 @@ export function webviewOptions(
 function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const asset = (name: string) =>
     webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", name));
-  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  const nonce = crypto.randomUUID();
   // Mermaid injects <style> elements into the SVGs it generates, and ECharts styles its tooltips
   // inline, hence 'unsafe-inline' for styles.
   const csp = [
