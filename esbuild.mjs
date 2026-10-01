@@ -1,7 +1,9 @@
+import { rmSync } from "node:fs";
 import * as esbuild from "esbuild";
 
 const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
+const analyze = process.argv.includes("--analyze");
 
 /** @type {import("esbuild").Plugin} */
 const problemMatcherPlugin = {
@@ -27,9 +29,13 @@ const common = {
   minify: production,
   sourcemap: !production,
   sourcesContent: false,
+  metafile: analyze,
   logLevel: "silent",
   plugins: [problemMatcherPlugin],
 };
+
+// Chunk names are hashed, so start from scratch to not ship stale chunks.
+rmSync("dist", { recursive: true, force: true });
 
 const contexts = await Promise.all([
   esbuild.context({
@@ -41,19 +47,26 @@ const contexts = await Promise.all([
     outfile: "dist/extension.js",
     external: ["vscode"],
   }),
+  // An ES module, so that the renderers can load Mermaid and ECharts on demand as chunks.
   esbuild.context({
     ...common,
-    entryPoints: ["src/webview/main.ts"],
-    format: "iife",
+    entryPoints: { webview: "src/webview/main.ts" },
+    format: "esm",
+    splitting: true,
+    outdir: "dist",
+    chunkNames: "chunks/[name]-[hash]",
     platform: "browser",
     target: "chrome140",
-    outfile: "dist/webview.js",
   }),
 ]);
 
 if (watch) {
   await Promise.all(contexts.map((ctx) => ctx.watch()));
 } else {
-  await Promise.all(contexts.map((ctx) => ctx.rebuild()));
+  const results = await Promise.all(contexts.map((ctx) => ctx.rebuild().catch(() => undefined)));
   await Promise.all(contexts.map((ctx) => ctx.dispose()));
+  if (results.includes(undefined)) process.exit(1);
+  if (analyze) {
+    for (const { metafile } of results) console.log(await esbuild.analyzeMetafile(metafile));
+  }
 }

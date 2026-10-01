@@ -468,7 +468,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
     `img-src ${webview.cspSource} data:`,
     `font-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
-    `script-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}' ${webview.cspSource}`,
   ].join("; ");
 
   return `<!DOCTYPE html>
@@ -520,7 +520,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
       <button type="submit">Send to chat</button>
     </form>
   </footer>
-  <script nonce="${nonce}" src="${asset("webview.js")}"></script>
+  <script type="module" nonce="${nonce}" src="${asset("webview.js")}"></script>
 </body>
 </html>`;
 }
