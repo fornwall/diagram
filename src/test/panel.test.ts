@@ -129,7 +129,11 @@ suite("panel", function () {
         message: "Old error",
       });
       const second = panel.render(flowchart, "tool");
-      await first;
+      assert.deepStrictEqual(await first, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram was replaced before it finished rendering.",
+      });
       assert.strictEqual(panel.current?.error, undefined);
       internals.onMessage({
         type: "rendered",
@@ -138,6 +142,44 @@ suite("panel", function () {
       });
       assert.ok((await second).ok);
     } finally {
+      panel.dispose();
+    }
+  });
+
+  test("replacing a render while it saves prevents an obsolete repair", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      pendingRender: { message: { requestId: number } };
+      context: vscode.ExtensionContext;
+    };
+    const save = Promise.withResolvers<void>();
+    const saving = Promise.withResolvers<void>();
+    internals.context.workspaceState.update = () => {
+      saving.resolve();
+      return save.promise;
+    };
+    try {
+      const first = panel.render(flowchart, "tool");
+      internals.onMessage({
+        type: "renderError",
+        requestId: internals.pendingRender.message.requestId,
+        message: "Old error",
+      });
+      await saving.promise;
+      const second = panel.render(flowchart, "tool");
+      save.resolve();
+      const outcome = await first;
+      assert.ok(!outcome.ok && outcome.kind === "unavailable");
+      internals.onMessage({
+        type: "rendered",
+        requestId: internals.pendingRender.message.requestId,
+        diagramType: "flowchart",
+      });
+      assert.ok((await second).ok);
+      assert.strictEqual(panel.current?.error, undefined);
+    } finally {
+      save.resolve();
       panel.dispose();
     }
   });

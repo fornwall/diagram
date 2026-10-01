@@ -333,12 +333,13 @@ export class DiagramPanel implements vscode.Disposable {
       return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
     }
     const version = ++this.renderVersion;
+    const replaced = {
+      ok: false,
+      kind: "unavailable",
+      error: "The diagram was replaced before it finished rendering.",
+    } as const;
     if (this.pendingRender) {
-      this.finishRender(this.pendingRender.message.requestId, {
-        ok: false,
-        kind: "unavailable",
-        error: "The diagram was replaced before it finished rendering.",
-      });
+      this.finishRender(this.pendingRender.message.requestId, replaced);
     }
     this.panel.title = state.title;
     const { source, title } = state;
@@ -391,7 +392,7 @@ export class DiagramPanel implements vscode.Disposable {
       }
     }
     await this.save();
-    return result;
+    return version === this.renderVersion ? result : replaced;
   }
 
   private finishRender(requestId: number, outcome: RenderOutcome): void {
