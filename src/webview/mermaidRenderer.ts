@@ -144,6 +144,26 @@ function textOf(element: Element): string {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The name of a node or group: the title of a box that also shows a stereotype, class members,
+ * entity attributes, a C4 type and description, requirement fields or kanban card metadata.
+ */
+function nameOf(element: Element): string {
+  const title = element.querySelector(".label-group, .label.name, .cluster-label, .c4-name");
+  if (title) {
+    return textOf(title);
+  }
+  // Requirement boxes and kanban cards draw each line as a label, the name first after any
+  // "<<Requirement>>" or "<<Element>>" line.
+  for (const line of element.querySelectorAll(".label")) {
+    const text = textOf(line);
+    if (text && !/^<<.*>>$/.test(text)) {
+      return text;
+    }
+  }
+  return textOf(element);
+}
+
 export class MermaidRenderer implements Renderer {
   readonly noun = "diagram";
   readonly itemNoun = "node";
@@ -307,10 +327,7 @@ export class MermaidRenderer implements Renderer {
     for (const element of svg.querySelectorAll(
       "g.node, g.rough-node, g.cluster, g.statediagram-cluster, g.architecture-service",
     )) {
-      // Class and entity boxes also list their members and attributes.
-      const label = textOf(
-        element.querySelector(".label-group, .label.name, .cluster-label") ?? element,
-      );
+      const label = nameOf(element);
       if (!label) {
         continue; // Start and end states, forks and joins.
       }
