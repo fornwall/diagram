@@ -143,7 +143,9 @@ interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
-  getXYChartData?(): { plots: { title: string; data: [string, number][] }[] };
+  getXYChartData?(): {
+    plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
+  };
 }
 
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
@@ -348,6 +350,20 @@ export class MermaidRenderer implements Renderer {
     };
     const withoutPrefix = (id: string) =>
       id.startsWith(idPrefix) ? id.slice(idPrefix.length) : id;
+    /** Ids for nodes that go by their names, numbering repeated names: "a", "a (2)", … */
+    const named = new Set<string>();
+    // The next number to try for each name, so that many equal names take linear time.
+    const next = new Map<string, number>();
+    const uniqueId = (name: string) => {
+      let id = name;
+      let n = next.get(name) ?? 2;
+      while (named.has(id)) {
+        id = `${name} (${n++})`;
+      }
+      next.set(name, n);
+      named.add(id);
+      return id;
+    };
 
     // Nodes and groups (subgraphs, composite states, kanban columns, architecture services, …).
     // Their element ids are the source ids, some decorated like "flowchart-A-0", and mind map
@@ -362,7 +378,9 @@ export class MermaidRenderer implements Renderer {
       const domId = element.getAttribute("data-id") ?? withoutPrefix(element.id);
       const decorated = /^(?:flowchart|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
       const id =
-        decorated?.[1] ?? decorated?.[2] ?? (/^(?:node_\d+)?$/.test(domId) ? label : domId);
+        decorated?.[1] ??
+        decorated?.[2] ??
+        (/^(?:node_\d+)?$/.test(domId) ? uniqueId(label) : domId);
       add(element, { id, label });
     }
 
@@ -399,7 +417,7 @@ export class MermaidRenderer implements Renderer {
       const group = line.parentElement;
       const label = group && Array.from(group.querySelectorAll("text.task"), textOf).join(" ");
       if (group && label) {
-        add(group, { id: label, label });
+        add(group, { id: uniqueId(label), label });
       }
     }
 
@@ -467,24 +485,28 @@ export class MermaidRenderer implements Renderer {
     // XY chart bars, in the order of their plot's data, and lines (Mermaid draws no points), named
     // like chart items.
     const plots = db?.getXYChartData?.().plots ?? [];
-    for (const [i, { title, data }] of plots.entries()) {
+    for (const [i, { type, title, data }] of plots.entries()) {
       const series = title || `Series ${i + 1}`;
+      if (type === "line") {
+        const line = { id: uniqueId(series), label: series };
+        for (const path of svg.querySelectorAll(`g.line-plot-${i} > path`)) {
+          add(path, line);
+        }
+        continue;
+      }
       const prefix = plots.length > 1 ? `${series}/` : "";
       const bars = data.map(([x, y]) => ({
-        id: prefix + x,
+        id: uniqueId(prefix + x),
         // A category without a value gets an invisible bar.
         label: y === undefined ? x : `${x}: ${y}`,
       }));
       addInOrder(svg.querySelectorAll(`g.bar-plot-${i} > rect`), bars);
-      for (const line of svg.querySelectorAll(`g.line-plot-${i} > path`)) {
-        add(line, { id: series, label: series });
-      }
     }
 
     // Timeline periods and events, and quadrant chart points.
     for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
       const label = textOf(element);
-      add(element, { id: label, label });
+      add(element, { id: uniqueId(label), label });
     }
   }
 
