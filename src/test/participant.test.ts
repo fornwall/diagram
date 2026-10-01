@@ -214,6 +214,31 @@ suite("participant", function () {
     }
   });
 
+  test("shortens tool results that don't fit the model's input, and says so", async () => {
+    const panel = newPanel();
+    try {
+      // The tools show the extension's own panel.
+      const source = `flowchart TD\n  A --> B\n%% ${"y".repeat(20_000)}`;
+      const input = { input: { source }, toolInvocationToken: undefined };
+      await vscode.lm.invokeTool("diagram_render", input);
+      const maxInputTokens = 4_000;
+      const { sent } = await ask(
+        panel,
+        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
+        { toolReferences: [{ name: "diagram_getState" }], maxInputTokens },
+      );
+      const messages = sent[1]?.messages.map(messageText) ?? [];
+      assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first \d+ of \d+ characters\]$/);
+      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+      assert.ok(
+        tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8,
+        `${tokens}`,
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("attaches referenced files, selections and text in prompt order", async () => {
     const panel = newPanel();
     try {

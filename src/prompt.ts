@@ -32,7 +32,8 @@ Do not output a mermaid or echarts code block: this request must not change the 
 
 /**
  * The share of the model's input tokens kept for what a request adds to its prompt in later rounds:
- * replies, tool results and requests to fix a diagram.
+ * replies, tool results and requests to fix a diagram. Tool results may take half of it, and what
+ * the prompt leaves.
  */
 const RESERVED_SHARE = 1 / 4;
 /** About the most tokens a message takes besides its text. */
@@ -76,8 +77,6 @@ export async function promptMessages(
   const exchanges = await pastExchanges(context.history);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
-  // A tokenizer makes at most one token of each UTF-8 byte. So if the bytes fit, the tokens do and
-  // need not be counted, which takes a call to the model's provider per text.
   const everything = [
     instructions,
     current ?? "",
@@ -89,9 +88,7 @@ export async function promptMessages(
       exchange.reply + exchange.diagram,
     ]),
   ];
-  const exact = sum(everything.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
-  const tokens = async (text: string) =>
-    MESSAGE_TOKENS + (exact ? await model.countTokens(text, token) : Buffer.byteLength(text));
+  const tokens = tokenCounter(model, everything, budget, token);
   const tooLarge = (what: string) =>
     `This request is too large for ${model.name}, which takes ${budget} tokens here (${model.maxInputTokens} less room for its reply): ${what}. Shorten your message${current ? ", start over without the current diagram with /new" : ""} or pick a model that takes more.`;
 
@@ -107,31 +104,23 @@ export async function promptMessages(
     );
   }
 
-  // Share what is left among the attachments, the smallest first, shortening those that don't fit.
-  const attached = await Promise.all(
-    attachments.map(async (attachment) => {
-      const text = attachmentText(attachment);
-      return { attachment, text, size: await tokens(text) };
-    }),
+  // Share what is left among the attachments, shortening those that don't fit.
+  const attached = await fitTexts(
+    attachments.map((attachment) => ({
+      attachment,
+      length: Math.min(attachment.text?.length ?? 0, MAX_ATTACHMENT_LENGTH),
+      shorten: (length: number) => attachmentText(attachment, length),
+    })),
+    left,
+    tokens,
   );
-  const bySize = attached.toSorted((a, b) => a.size - b.size);
-  for (const [rank, entry] of bySize.entries()) {
-    const share = Math.floor(left / (bySize.length - rank));
-    let length = Math.min(entry.attachment.text?.length ?? 0, MAX_ATTACHMENT_LENGTH);
-    while (entry.size > share) {
-      if (length === 0) {
-        const essentials = current
-          ? "your message and the current diagram leave"
-          : "your message leaves";
-        return tooLarge(`${essentials} no room for the attachment ${entry.attachment.name}`);
-      }
-      // Tokens are not spread evenly over the text, so this may take a few tries.
-      length = Math.floor(length * Math.min(share / entry.size, 0.9));
-      entry.text = attachmentText(entry.attachment, length);
-      entry.size = await tokens(entry.text);
-    }
-    left -= entry.size;
+  if (attached.misfit) {
+    const essentials = current
+      ? "your message and the current diagram leave"
+      : "your message leaves";
+    return tooLarge(`${essentials} no room for the attachment ${attached.misfit.attachment.name}`);
   }
+  left = attached.left;
 
   // The most recent exchanges that fit, giving up the diagrams of older ones first.
   const { User, Assistant } = vscode.LanguageModelChatMessage;
@@ -167,10 +156,116 @@ export async function promptMessages(
   return [
     User(instructions),
     ...history,
-    ...attached.map(({ text }) => User(text)),
+    ...attached.texts.map((text) => User(text)),
     ...(current ? [User(current)] : []),
     User(request.prompt),
   ];
+}
+
+/**
+ * Shortens the text of tool results so that, added to `messages`, they leave half the reserved share
+ * of the model's input for later rounds, saying so in them.
+ */
+export async function fitToolResults(
+  model: vscode.LanguageModelChat,
+  messages: readonly vscode.LanguageModelChatMessage[],
+  results: readonly vscode.LanguageModelToolResultPart[],
+  token: vscode.CancellationToken,
+): Promise<void> {
+  const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE / 2));
+  const earlier = messages.flatMap((message) => partTexts(message.content));
+  const parts = results.flatMap((result) =>
+    result.content.filter((part) => part instanceof vscode.LanguageModelTextPart),
+  );
+  const tokens = tokenCounter(
+    model,
+    [...earlier, ...parts.map((part) => part.value)],
+    budget,
+    token,
+  );
+  const room = budget - sum(await Promise.all(earlier.map(tokens)));
+  const { texts } = await fitTexts(
+    parts.map(({ value }) => ({
+      length: value.length,
+      shorten: (length: number) =>
+        length < value.length
+          ? `${value.slice(0, length)}\n\n[truncated: first ${length} of ${value.length} characters]`
+          : value,
+    })),
+    room,
+    tokens,
+  );
+  for (const [index, part] of parts.entries()) {
+    part.value = texts[index] ?? part.value;
+  }
+}
+
+/** The text of message parts, including tool calls and results. Images and other data are left out. */
+function partTexts(parts: readonly unknown[]): string[] {
+  return parts.flatMap((part) => {
+    if (part instanceof vscode.LanguageModelTextPart) {
+      return [part.value];
+    }
+    if (part instanceof vscode.LanguageModelToolCallPart) {
+      return [JSON.stringify(part.input)];
+    }
+    if (part instanceof vscode.LanguageModelToolResultPart) {
+      return partTexts(part.content);
+    }
+    return [];
+  });
+}
+
+/**
+ * Counts the tokens that a text takes in the model's input, where all of `texts` should fit in
+ * `budget`. A tokenizer makes at most one token of each UTF-8 byte. So if their bytes fit, the tokens
+ * do and need not be counted, which takes a call to the model's provider per text.
+ */
+function tokenCounter(
+  model: vscode.LanguageModelChat,
+  texts: string[],
+  budget: number,
+  token: vscode.CancellationToken,
+): (text: string) => Promise<number> {
+  const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
+  return async (text) =>
+    MESSAGE_TOKENS + (exact ? await model.countTokens(text, token) : Buffer.byteLength(text));
+}
+
+/**
+ * Shortens texts so that together they take at most `room` tokens, sharing it among them, the
+ * smallest first, so that what a small one leaves goes to the larger ones. Each has `length`
+ * characters of its own, and `shorten` gives it with fewer. Returns the texts, the tokens left and
+ * the first one that does not fit even with none of its own.
+ */
+async function fitTexts<T extends { length: number; shorten: (length: number) => string }>(
+  entries: T[],
+  room: number,
+  tokens: (text: string) => Promise<number>,
+): Promise<{ texts: string[]; left: number; misfit?: T }> {
+  const sized = await Promise.all(
+    entries.map(async (entry) => {
+      const text = entry.shorten(entry.length);
+      return { entry, text, size: await tokens(text) };
+    }),
+  );
+  let left = room;
+  let misfit: T | undefined;
+  for (const [rank, item] of sized.toSorted((a, b) => a.size - b.size).entries()) {
+    const share = Math.floor(left / (sized.length - rank));
+    let length = item.entry.length;
+    while (item.size > share && length > 0) {
+      // Tokens are not spread evenly over the text, so this may take a few tries.
+      length = Math.max(0, Math.floor(length * Math.min(share / item.size, 0.9)));
+      item.text = item.entry.shorten(length);
+      item.size = await tokens(item.text);
+    }
+    if (item.size > share) {
+      misfit ??= item.entry;
+    }
+    left -= item.size;
+  }
+  return { texts: sized.map(({ text }) => text), left, misfit };
 }
 
 function sum(numbers: number[]): number {

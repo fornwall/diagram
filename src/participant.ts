@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import type { DiagramPanel } from "./panel";
-import { promptMessages } from "./prompt";
+import { fitToolResults, promptMessages } from "./prompt";
 import { CHART_TOOL, type DiagramLanguage, diagramNoun, errorMessage } from "./protocol";
 
 export const PARTICIPANT_ID = "diagram.participant";
@@ -30,11 +30,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       return;
     }
 
-    const messages = await promptMessages(request, context, explain, current, token);
-    if (typeof messages === "string") {
-      return { errorDetails: { message: messages } };
-    }
-
     // Tools the user attached with #, which the model is made to call first. Charts of files and
     // command output are drawn by the chart tool, which asks the user before running a command.
     const attached = vscode.lm.tools.filter((tool) =>
@@ -43,10 +38,15 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const tools = vscode.lm.tools.filter(
       (tool) => attached.includes(tool) || (!explain && tool.name === CHART_TOOL),
     );
-    const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
-      streamReply(request, messages, tools, required, stream, token);
 
     try {
+      const messages = await promptMessages(request, context, explain, current, token);
+      if (typeof messages === "string") {
+        return { errorDetails: { message: messages } };
+      }
+      const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
+        streamReply(request, messages, tools, required, stream, token);
+
       let block = await converse(attached);
       if (explain) {
         return;
@@ -96,6 +96,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         return { metadata: failure.block };
       }
     } catch (error) {
+      // E.g. a CancellationError from counting tokens or sending a request.
+      if (token.isCancellationRequested) {
+        return;
+      }
       if (error instanceof vscode.LanguageModelError) {
         return { errorDetails: { message: error.message } };
       }
@@ -208,6 +212,7 @@ async function streamReply(
       }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
+    await fitToolResults(request.model, messages, results, token);
     messages.push(vscode.LanguageModelChatMessage.User(results));
     if (reply && !reply.endsWith("\n")) {
       stream.markdown("\n\n");
