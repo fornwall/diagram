@@ -6,39 +6,35 @@ import { type Cell, type DataTable, isPlainObject } from "./data";
 /** Finds a column by name, exactly or else ignoring case and surrounding spaces. */
 function findColumn(table: DataTable, name: string, role: string): number {
   const names = table.columns.map((column) => column.name);
-  const exact = names.indexOf(name);
-  if (exact !== -1) {
-    return exact;
+  let index = names.indexOf(name);
+  if (index === -1) {
+    const wanted = name.trim().toLowerCase();
+    index = names.findIndex((column) => column.toLowerCase() === wanted);
   }
-  const wanted = name.trim().toLowerCase();
-  const loose = names.findIndex((column) => column.trim().toLowerCase() === wanted);
-  if (loose !== -1) {
-    return loose;
+  if (index === -1) {
+    throw new Error(
+      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(names)}.`,
+    );
   }
-  throw new Error(
-    `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(names)}.`,
+  return index;
+}
+
+/** Whether a column name is like "id", "#", "index", "rank", "pid", "user_id" or "userId". */
+function isIdName(name: string): boolean {
+  return (
+    /^(?:id|#|no\.?|nr|num|index|idx|rank|row|pid|ppid|tid|uid|gid)$|[_ -]id$/i.test(name) ||
+    /[a-z]I[dD]$/.test(name)
   );
 }
 
-const ID_NAME = /^(?:id|#|no\.?|nr|num|index|idx|rank|row|pid|ppid|tid|uid|gid)$|[_ -]id$/i;
-/** A camel-case identifier name, as "userId". */
-const CAMEL_ID_NAME = /[a-z]I[dD]$/;
-
-/**
- * Whether a numeric column identifies rows rather than measuring something: it is named like
- * "id", "#", "index", "rank", "pid" or "user_id", or (when `sequenceToo`) it numbers the rows
- * 1, 2, 3, … or 0, 1, 2, ….
- */
-function isIdColumn(table: DataTable, column: number, sequenceToo: boolean): boolean {
-  const name = (table.columns[column]?.name ?? "").trim();
-  if (ID_NAME.test(name) || CAMEL_ID_NAME.test(name)) {
-    return true;
-  }
-  if (!sequenceToo || table.rows.length < 3) {
-    return false;
-  }
+/** Whether a column numbers the rows 1, 2, 3, … or 0, 1, 2, …. */
+function numbersRows(table: DataTable, column: number): boolean {
   const first = table.rows[0]?.[column];
-  return (first === 0 || first === 1) && table.rows.every((row, i) => row[column] === first + i);
+  return (
+    table.rows.length >= 3 &&
+    (first === 0 || first === 1) &&
+    table.rows.every((row, i) => row[column] === first + i)
+  );
 }
 
 /**
@@ -68,58 +64,59 @@ function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefi
   return text.find((i) => namesRows(table, i)) ?? text[0] ?? (scatter ? undefined : 0);
 }
 
+/** The columns that `keep` is true for, or all of them if it is true for none. */
+function preferring(columns: number[], keep: (column: number) => boolean): number[] {
+  const kept = columns.filter(keep);
+  return kept.length > 0 ? kept : columns;
+}
+
 /**
- * The default value columns: the numeric columns other than the label column, leaving out
- * identifier columns (see {@link isIdColumn}) unless nothing else is left, and columns of another
- * unit than the first (as the Use% next to the sizes of df -h).
+ * The default value columns: the numeric columns other than the label column, preferably not
+ * ones that identify or number the rows, and only those with the unit of the first (leaving out
+ * the Use% next to the sizes of df -h).
  */
 function defaultValueColumns(table: DataTable, labelIndex: number | undefined): number[] {
-  const candidates = table.columns.flatMap((column, i) =>
+  const numeric = table.columns.flatMap((column, i) =>
     column.numeric && i !== labelIndex ? [i] : [],
   );
-  const named = candidates.filter((i) => !isIdColumn(table, i, false));
-  const kept = named.length > 0 ? named : candidates;
-  const unnumbered = kept.filter((i) => !isIdColumn(table, i, true));
-  const values = unnumbered.length > 0 ? unnumbered : kept;
+  const values = preferring(
+    preferring(numeric, (i) => !isIdName(table.columns[i]?.name ?? "")),
+    (i) => !numbersRows(table, i),
+  );
   const unit = table.columns[values[0] ?? 0]?.unit;
   return values.filter((i) => table.columns[i]?.unit === unit);
 }
 
-const TOTAL_LABEL = /^(?:total|totals|sum|grand total)\s*:?$/i;
-
-/** How far a totals row's value may be from the sum of the other rows, relative to the value. */
-const TOTAL_TOLERANCE = 0.01;
-
 /**
- * Whether the last row sums up the others, as the "total" row of wc -l or du -c and the "SUM:" row
- * of cloc do: it is labeled "total", "totals" or "sum" (ignoring case and a trailing colon), and in
- * every value column where it has a number, that number is within 1% of the sum of the other rows.
- * At least two other rows are needed.
+ * Whether the last row sums up at least two others, as the "total" row of wc -l or du -c and the
+ * "SUM:" row of cloc do: it is labeled so, and where it has numbers, they are within 1% of the
+ * sums of the others.
  */
 function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: number[]): boolean {
   const last = table.rows.at(-1);
   const others = table.rows.slice(0, -1);
   const label = last?.[labelColumn];
-  if (last === undefined || others.length < 2 || typeof label !== "string") {
-    return false;
-  }
-  if (!TOTAL_LABEL.test(label.trim())) {
+  if (
+    last === undefined ||
+    others.length < 2 ||
+    typeof label !== "string" ||
+    !/^(?:total|totals|sum|grand total)\s*:?$/i.test(label)
+  ) {
     return false;
   }
   let checked = 0;
   for (const column of valueColumns) {
     const total = last[column];
-    if (typeof total !== "number") {
-      continue;
+    if (typeof total === "number") {
+      const sum = others.reduce(
+        (acc, row) => acc + (typeof row[column] === "number" ? row[column] : 0),
+        0,
+      );
+      if (Math.abs(total - sum) > Math.abs(total) * 0.01) {
+        return false;
+      }
+      checked++;
     }
-    const sum = others.reduce<number>((acc, row) => {
-      const cell = row[column];
-      return typeof cell === "number" ? acc + cell : acc;
-    }, 0);
-    if (Math.abs(total - sum) > Math.abs(total) * TOTAL_TOLERANCE) {
-      return false;
-    }
-    checked++;
   }
   return checked > 0;
 }
@@ -140,19 +137,13 @@ interface Row {
   values: (number | null)[];
 }
 
-function labelOf(cell: Cell | undefined): string {
-  return cell === null || cell === undefined ? "" : String(cell);
-}
-
 /** Sorts rows by their first value, empty values last. */
 function sortRows(rows: Row[], sort: ChartSpec["sort"]): Row[] {
   if (sort === undefined) {
     return rows;
   }
   const direction = sort === "ascending" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    const x = a.values[0] ?? null;
-    const y = b.values[0] ?? null;
+  return rows.toSorted(({ values: [x = null] }, { values: [y = null] }) => {
     if (x === null || y === null) {
       return x === y ? 0 : x === null ? 1 : -1;
     }
@@ -160,18 +151,18 @@ function sortRows(rows: Row[], sort: ChartSpec["sort"]): Row[] {
   });
 }
 
-const FEW_POINTS = 30;
+type CartesianType = Exclude<ChartType, "pie" | "doughnut" | "scatter">;
 
-const CARTESIAN_SERIES: Record<
-  Exclude<ChartType, "pie" | "doughnut" | "scatter">,
-  Record<string, unknown>
-> = {
+const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
   bar: { type: "bar" },
   horizontalBar: { type: "bar" },
   stackedBar: { type: "bar", stack: "total" },
   line: { type: "line" },
-  area: { type: "line", areaStyle: { opacity: 0.3 } },
+  area: { type: "line", areaStyle: {} },
 };
+
+/** Lines with more points than this are drawn without symbols. */
+const FEW_POINTS = 30;
 
 export interface Chart {
   /** The ECharts option, as plain JSON that leaves colors, fonts and layout to the webview. */
@@ -198,21 +189,21 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     spec.valueColumns?.map((name) => findColumn(table, name, "value")) ??
     defaultValueColumns(table, labelIndex)
   ).slice(0, pie ? 1 : scatter ? 2 : undefined);
+  const name = (index: number) => table.columns[index]?.name ?? "";
   if (valueIndices.length === 0) {
     throw new Error(
       'No column holds numbers to chart. If the data was not split into columns as intended, set "format".',
     );
   }
-  const columnName = (index: number | undefined) => table.columns[index ?? -1]?.name ?? "";
   for (const index of valueIndices) {
     if (!table.rows.some((row) => typeof row[index] === "number")) {
-      throw new Error(`The value column ${JSON.stringify(columnName(index))} holds no numbers.`);
+      throw new Error(`The value column ${JSON.stringify(name(index))} holds no numbers.`);
     }
   }
   if (scatter && valueIndices.length < 2) {
     throw new Error(
       "A scatter chart needs two numeric columns (x and y), but there is only " +
-        `${JSON.stringify(columnName(valueIndices[0]))}.`,
+        `${JSON.stringify(name(valueIndices[0] ?? 0))}.`,
     );
   }
 
@@ -224,32 +215,12 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
       `left out the last row, ${JSON.stringify(table.rows.at(-1)?.[labelIndex])}, a total of the others`,
     );
   }
-
-  // Sizes in bytes are shown in the unit that suits the largest.
-  const bytes = valueIndices.map((index) => table.columns[index]?.unit === "bytes");
-  let largest = 0;
-  for (const row of tableRows) {
-    valueIndices.forEach((index, i) => {
-      const cell = row[index];
-      if (bytes[i] && typeof cell === "number") {
-        largest = Math.max(largest, Math.abs(cell));
-      }
-    });
-  }
-  const power = bytePower(largest);
-  const sizeUnit = BYTE_UNITS[power];
-  if (bytes.includes(true) && power > 0) {
-    notes.push(`showed sizes in ${sizeUnit}`);
-  }
-  const scaled = (value: number, i: number) =>
-    bytes[i] ? Math.round((value / 1024 ** power) * 100) / 100 : value;
-
   let rows = sortRows(
     tableRows.map((row) => ({
-      label: labelIndex === undefined ? "" : labelOf(row[labelIndex]),
-      values: valueIndices.map((index, i) => {
+      label: labelIndex === undefined ? "" : String(row[labelIndex] ?? ""),
+      values: valueIndices.map((index) => {
         const cell = row[index];
-        return typeof cell === "number" ? scaled(cell, i) : null;
+        return typeof cell === "number" ? cell : null;
       }),
     })),
     spec.sort,
@@ -272,21 +243,38 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     notes.push(`left out ${empty} ${empty === 1 ? "row" : "rows"} without a value`);
   }
 
-  const names = valueIndices.map(
-    (index, i) => `${columnName(index)}${bytes[i] && power > 0 ? ` (${sizeUnit})` : ""}`,
-  );
-  let option: Record<string, unknown>;
-  if (pie) {
-    option = pieOption(spec.type === "doughnut", names[0] ?? "", rows);
-  } else if (scatter) {
-    option = scatterOption(table.header, names, rows);
-  } else {
-    option = cartesianOption(spec.type as keyof typeof CARTESIAN_SERIES, table.header, names, rows);
+  // Sizes in bytes are shown in the unit that suits the largest.
+  const bytes = valueIndices.map((index) => table.columns[index]?.unit === "bytes");
+  let largest = 0;
+  for (const { values } of rows) {
+    values.forEach((value, i) => {
+      if (bytes[i] && value !== null) {
+        largest = Math.max(largest, Math.abs(value));
+      }
+    });
   }
+  const power = bytePower(largest);
+  if (power > 0) {
+    notes.push(`showed sizes in ${BYTE_UNITS[power]}`);
+    rows = rows.map(({ label, values }) => ({
+      label,
+      values: values.map((value, i) =>
+        bytes[i] && value !== null ? Math.round((value / 1024 ** power) * 100) / 100 : value,
+      ),
+    }));
+  }
+  const unit = power > 0 ? ` (${BYTE_UNITS[power]})` : "";
+  const names = valueIndices.map((index, i) => name(index) + (bytes[i] ? unit : ""));
+
+  const option = pie
+    ? pieOption(spec.type === "doughnut", names[0] ?? "", rows)
+    : scatter
+      ? scatterOption(table.header, labelIndex !== undefined, names, rows)
+      : cartesianOption(spec.type as CartesianType, table.header, names, rows);
   const values = scatter
     ? `${JSON.stringify(names[1])} against ${JSON.stringify(names[0])}`
     : quoteAll(names);
-  const by = labelIndex === undefined ? "" : ` by ${JSON.stringify(columnName(labelIndex))}`;
+  const by = labelIndex === undefined ? "" : ` by ${JSON.stringify(name(labelIndex))}`;
   return {
     option: spec.options === undefined ? option : deepMerge(option, spec.options),
     summary: `Charted ${values}${by}${notes.map((note) => `; ${note}`).join("")}.`,
@@ -295,7 +283,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 
 function pieOption(doughnut: boolean, name: string, rows: Row[]): Record<string, unknown> {
   return {
-    tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+    tooltip: { formatter: "{b}: {c} ({d}%)" },
     legend: { type: "scroll" },
     series: [
       {
@@ -303,63 +291,66 @@ function pieOption(doughnut: boolean, name: string, rows: Row[]): Record<string,
         name,
         ...(doughnut ? { radius: ["45%", "72%"] } : {}),
         label: { formatter: "{b}: {d}%" },
-        data: rows
-          .filter((row) => row.values[0] !== null)
-          .map((row) => ({ name: row.label, value: row.values[0] })),
+        data: rows.flatMap(({ label, values: [value = null] }) =>
+          value === null ? [] : [{ name: label, value }],
+        ),
       },
     ],
   };
 }
 
-function scatterOption(header: boolean, names: string[], rows: Row[]): Record<string, unknown> {
-  const [xName = "", yName = ""] = names;
-  const data = rows.flatMap((row) => {
-    const [x, y] = row.values;
-    if (x === null || x === undefined || y === null || y === undefined) {
-      return [];
-    }
-    return [{ name: row.label === "" ? `(${x}, ${y})` : row.label, value: [x, y] }];
-  });
+function scatterOption(
+  header: boolean,
+  labeled: boolean,
+  [xName = "", yName = ""]: string[],
+  rows: Row[],
+): Record<string, unknown> {
   // Generated column names ("Column 2") would make poor axis names.
+  const axis = (name: string) => ({ type: "value", ...(header ? { name } : {}), scale: true });
   return {
-    tooltip: { trigger: "item", formatter: "{b}: ({c})" },
-    xAxis: { type: "value", ...(header ? { name: xName } : {}), scale: true },
-    yAxis: { type: "value", ...(header ? { name: yName } : {}), scale: true },
-    series: [{ type: "scatter", name: yName, data }],
+    tooltip: { formatter: labeled ? "{b}: ({c})" : "({c})" },
+    xAxis: axis(xName),
+    yAxis: axis(yName),
+    series: [
+      {
+        type: "scatter",
+        name: yName,
+        data: rows.flatMap(({ label, values: [x = null, y = null] }) =>
+          x === null || y === null ? [] : [labeled ? { name: label, value: [x, y] } : [x, y]],
+        ),
+      },
+    ],
   };
 }
 
+/** A bar or line chart, whose tooltip and legend the webview adds. */
 function cartesianOption(
-  type: keyof typeof CARTESIAN_SERIES,
+  type: CartesianType,
   header: boolean,
   names: string[],
   rows: Row[],
 ): Record<string, unknown> {
-  const several = names.length > 1;
-  const isLine = type === "line" || type === "area";
+  const line = type === "line" || type === "area";
   const horizontal = type === "horizontalBar";
   const categoryAxis = {
     type: "category",
     data: rows.map((row) => row.label),
-    axisLabel: { hideOverlap: true },
-    ...(isLine ? { boundaryGap: false } : {}),
+    ...(line ? { boundaryGap: false } : {}),
+    // The first row at the top.
     ...(horizontal ? { inverse: true } : {}),
   };
   // With several series, the legend names them.
-  const valueAxis = { type: "value", ...(header && !several ? { name: names[0] } : {}) };
-  const series = names.map((name, column) => ({
-    ...CARTESIAN_SERIES[type],
-    name,
-    ...(isLine ? { showSymbol: rows.length <= FEW_POINTS } : {}),
-    ...(several ? { emphasis: { focus: "series" } } : {}),
-    data: rows.map((row) => ({ name: row.label, value: row.values[column] ?? null })),
-  }));
+  const valueAxis = { type: "value", ...(header && names.length === 1 ? { name: names[0] } : {}) };
   return {
-    tooltip: { trigger: "axis", axisPointer: { type: isLine ? "line" : "shadow" } },
-    ...(several ? { legend: { type: "scroll" } } : {}),
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
-    series,
+    series: names.map((name, column) => ({
+      ...CARTESIAN_SERIES[type],
+      name,
+      ...(line && rows.length > FEW_POINTS ? { showSymbol: false } : {}),
+      ...(names.length > 1 ? { emphasis: { focus: "series" } } : {}),
+      data: rows.map((row) => row.values[column] ?? null),
+    })),
   };
 }
 
@@ -376,11 +367,11 @@ function describeColumn(table: DataTable, column: number): string {
     return "text";
   }
   const kind = unit === "bytes" ? "bytes" : unit === "%" ? "percentages" : "numbers";
-  const texts = cells.filter((cell): cell is string => typeof cell === "string");
+  // Charts leave out text cells in numeric columns.
+  const texts = cells.filter((cell) => typeof cell === "string");
   if (texts.length === 0) {
     return kind;
   }
-  // Charts leave such cells out.
   const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => JSON.stringify(text));
   if (texts.length > TEXT_EXAMPLES) {
     examples.push("…");
@@ -398,15 +389,12 @@ export function describeTable(table: DataTable): string {
     (column, i) => `${JSON.stringify(column.name)} (${describeColumn(table, i)})`,
   );
   const count = table.rows.length;
-  const lines = [`${count} ${count === 1 ? "row" : "rows"}; columns: ${columns.join(", ")}`];
-  lines.push(count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:");
-  for (const row of table.rows.slice(0, PREVIEW_ROWS)) {
-    lines.push(JSON.stringify(row));
-  }
-  return lines.join("\n");
+  return [
+    `${count} ${count === 1 ? "row" : "rows"}; columns: ${columns.join(", ")}`,
+    count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:",
+    ...table.rows.slice(0, PREVIEW_ROWS).map((row) => JSON.stringify(row)),
+  ].join("\n");
 }
-
-const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 function mergeValue(target: unknown, source: unknown): unknown {
   if (isPlainObject(source)) {
@@ -422,10 +410,9 @@ function mergeValue(target: unknown, source: unknown): unknown {
   if (Array.isArray(source)) {
     if (Array.isArray(target) && source.length > 0 && source.every(isPlainObject)) {
       // {"series": [{...}]} adjusts the first series, and so on.
-      const merged = target.map((item, i) =>
-        i < source.length ? mergeValue(item, source[i]) : item,
+      return Array.from({ length: Math.max(target.length, source.length) }, (_, i) =>
+        i < source.length ? mergeValue(target[i], source[i]) : target[i],
       );
-      return [...merged, ...source.slice(target.length).map((item) => mergeValue(undefined, item))];
     }
     return source.map((item) => mergeValue(undefined, item));
   }
@@ -443,7 +430,8 @@ export function deepMerge(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...target };
   for (const [key, value] of Object.entries(source)) {
-    if (!UNSAFE_KEYS.has(key)) {
+    // Assigning "__proto__" would change the result's prototype.
+    if (key !== "__proto__") {
       result[key] = mergeValue(target[key], value);
     }
   }

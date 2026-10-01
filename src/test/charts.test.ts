@@ -38,7 +38,6 @@ function seriesNames(option: Option): string[] {
 suite("charts", () => {
   test("pie uses the label column and the first value column", () => {
     const option = build(chart("pie"));
-    assert.strictEqual(option.tooltip.trigger, "item");
     assert.ok(option.legend);
     assert.strictEqual(option.series.length, 1);
     const [series] = option.series;
@@ -75,8 +74,9 @@ suite("charts", () => {
 
   test("bar has a category x axis and one series per value column", () => {
     const option = build(chart("bar"));
-    assert.strictEqual(option.tooltip.trigger, "axis");
-    assert.ok(option.legend);
+    // The webview adds the tooltip and legend.
+    assert.strictEqual(option.tooltip, undefined);
+    assert.strictEqual(option.legend, undefined);
     assert.deepStrictEqual(option.xAxis.type, "category");
     assert.deepStrictEqual(option.xAxis.data, ["ts", "css", "md", "json"]);
     assert.strictEqual(option.yAxis.type, "value");
@@ -87,20 +87,16 @@ suite("charts", () => {
         ["bar", "lines", "series"],
       ],
     );
-    assert.deepStrictEqual(option.series[1].data[0], { name: "ts", value: 1200 });
+    assert.deepStrictEqual(option.series[1].data, [1200, 300, 150, 80]);
     assert.strictEqual(summary(chart("bar")), 'Charted "files", "lines" by "language".');
   });
 
-  test("a single-series bar chart has no legend and names its value axis", () => {
+  test("a single-series bar chart names its value axis", () => {
     const spec = chart("bar", { valueColumns: ["lines"], sort: "ascending", limit: 2 });
     const option = build(spec);
-    assert.strictEqual(option.legend, undefined);
     assert.strictEqual(option.yAxis.name, "lines");
     assert.deepStrictEqual(option.xAxis.data, ["json", "md"]);
-    assert.deepStrictEqual(option.series[0].data, [
-      { name: "json", value: 80 },
-      { name: "md", value: 150 },
-    ]);
+    assert.deepStrictEqual(option.series[0].data, [80, 150]);
     assert.match(summary(spec), /; kept the first 2 of 4 rows\.$/);
   });
 
@@ -124,7 +120,7 @@ suite("charts", () => {
   test("line and area are lines, area with an area style", () => {
     const line = build(chart("line")).series[0];
     assert.strictEqual(line.type, "line");
-    assert.strictEqual(line.showSymbol, true);
+    assert.strictEqual(line.showSymbol, undefined);
     assert.strictEqual(line.areaStyle, undefined);
     const area = build(chart("area")).series[0];
     assert.strictEqual(area.type, "line");
@@ -139,7 +135,6 @@ suite("charts", () => {
 
   test("scatter plots the first value column against the second", () => {
     const option = build(chart("scatter"));
-    assert.strictEqual(option.tooltip.trigger, "item");
     assert.strictEqual(option.xAxis.name, "files");
     assert.strictEqual(option.yAxis.name, "lines");
     assert.deepStrictEqual(option.series[0].type, "scatter");
@@ -147,11 +142,9 @@ suite("charts", () => {
     assert.strictEqual(summary(chart("scatter")), 'Charted "lines" against "files" by "language".');
   });
 
-  test("scatter of numbers alone names points by their coordinates", () => {
+  test("scatter of numbers alone plots unnamed points", () => {
     const table = "x,y\n1,2\n3,";
-    assert.deepStrictEqual(build(chart("scatter"), table).series[0].data, [
-      { name: "(1, 2)", value: [1, 2] },
-    ]);
+    assert.deepStrictEqual(build(chart("scatter"), table).series[0].data, [[1, 2]]);
     assert.strictEqual(
       summary(chart("scatter"), table),
       'Charted "y" against "x"; left out 1 row without a value.',
@@ -207,23 +200,23 @@ suite("charts", () => {
     const option = build(chart("bar"), df);
     assert.deepStrictEqual(seriesNames(option), ["Size (GiB)", "Used (GiB)", "Avail (GiB)"]);
     assert.deepStrictEqual(option.xAxis.data, ["/", "/dev/shm", "/run"]);
-    assert.deepStrictEqual(
-      option.series[1].data.map((item: Option) => item.value),
-      [300, 0.01, 0],
-    );
+    assert.deepStrictEqual(option.series[1].data, [300, 0.01, 0]);
     assert.strictEqual(
       summary(chart("bar"), df),
       'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; showed sizes in GiB.',
     );
     const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");
-    assert.strictEqual(du.series[0].data[0].value, 1.5);
+    assert.strictEqual(du.series[0].data[0], 1.5);
   });
 
   test("charts leave out a totals row", () => {
     const wc = "  12 a.ts\n 345 b.ts\n   3 c.ts\n 360 total";
     for (const type of ["pie", "bar", "line", "horizontalBar"] as const) {
       const option = build(chart(type, { sort: "descending" }), wc);
-      const names = option.series[0].data.map((item: Option) => item.name);
+      const names =
+        type === "pie"
+          ? option.series[0].data.map((item: Option) => item.name)
+          : (option.yAxis.data ?? option.xAxis.data);
       assert.deepStrictEqual(names, ["b.ts", "a.ts", "c.ts"], type);
     }
     assert.strictEqual(
