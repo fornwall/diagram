@@ -21,16 +21,19 @@ export type DataFormat = (typeof DATA_FORMATS)[number];
 
 const SORT_ORDERS = ["ascending", "descending"] as const;
 
-export interface ChartSpec {
+/**
+ * Where a chart's data comes from: inline data (CSV, TSV, JSON or whitespace-separated columns), a
+ * file, absolute or relative to the first workspace folder, or a shell command whose standard
+ * output is the data, run in the first workspace folder.
+ */
+type ChartData =
+  | { data: string; file?: undefined; command?: undefined }
+  | { data?: undefined; file: string; command?: undefined }
+  | { data?: undefined; file?: undefined; command: string };
+
+export type ChartSpec = ChartData & {
   type: ChartType;
   title?: string;
-  // Exactly one of data, file and command gives the data.
-  /** Inline data: CSV, TSV, JSON or whitespace-separated columns. */
-  data?: string;
-  /** A file with the data, absolute or relative to the first workspace folder. */
-  file?: string;
-  /** A shell command whose standard output is the data, run in the first workspace folder. */
-  command?: string;
   /** How the data is formatted; detected when "auto" or not given. */
   format?: DataFormat;
   /** The column with the labels (categories, pie slice names, scatter point names). */
@@ -43,7 +46,7 @@ export interface ChartSpec {
   limit?: number;
   /** An ECharts option object that is deep-merged into the generated option, for fine-tuning. */
   options?: Record<string, unknown>;
-}
+};
 
 const SPEC_KEYS = [
   "type",

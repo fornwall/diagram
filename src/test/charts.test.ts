@@ -15,7 +15,10 @@ const LANGUAGES = parseTable(
   ["language,files,lines", "ts,10,1200", "css,3,300", "md,5,150", "json,2,80"].join("\n"),
 );
 
-function chart(type: ChartType, extra: Partial<ChartSpec> = {}): ChartSpec {
+function chart(
+  type: ChartType,
+  extra: Partial<Omit<ChartSpec, "data" | "file" | "command">> = {},
+): ChartSpec {
   return { type, data: "unused", ...extra };
 }
 

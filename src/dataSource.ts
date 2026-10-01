@@ -262,7 +262,7 @@ export async function runCommand(
 
 /**
  * Loads and parses a chart's data: `spec.data`, the file `spec.file` or the output of
- * `spec.command`. Files and command output are limited to 10 MB, and commands to 60 seconds.
+ * `spec.command`.
  *
  * @returns The table, and a warning when a command failed but printed data anyway.
  * @throws Error explaining why the data could not be loaded or parsed, or
@@ -278,11 +278,8 @@ export async function loadTable(
   if (spec.file !== undefined) {
     return { table: parseTable(await readDataFile(spec.file), spec.format) };
   }
-  if (spec.command !== undefined) {
-    const { output, warning } = await runCommand(spec.command, token);
-    return { table: parseTable(output, spec.format), ...(warning ? { warning } : {}) };
-  }
-  throw new Error('The chart has no data: give one of "data", "file" or "command".');
+  const { output, warning } = await runCommand(spec.command, token);
+  return { table: parseTable(output, spec.format), ...(warning ? { warning } : {}) };
 }
 
 export interface LoadedChart {
