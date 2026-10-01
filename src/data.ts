@@ -30,7 +30,7 @@ interface Records {
   header?: boolean;
 }
 
-const SUFFIX = "%|B|[KMGTPEk](?:i?B|i)?";
+const SUFFIX = "%|Bi?|[KMGTPEk](?:i?B|i)?";
 
 /** A number with optional thousands separators, as "1,234.5", and suffix. */
 const NUMBER = new RegExp(
@@ -45,8 +45,8 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
- * "12.5%" (as 12.5) and sizes like "512B", "1.5K", "12M", "3GiB" or "128Mi" (in bytes, taking
- * K as 1024 as du -h does).
+ * "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h prints
+ * them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB" (in units of 1000, as docker prints them).
  */
 export function parseNumber(text: string): { value: number; unit?: Unit } | undefined {
   const [, digits, suffix] = NUMBER.exec(text.trim()) ?? [];
@@ -63,8 +63,9 @@ export function parseNumber(text: string): { value: number; unit?: Unit } | unde
   if (suffix === "%") {
     return { value, unit: "%" };
   }
+  const base = suffix.length === 2 && suffix.endsWith("B") ? 1000 : 1024;
   return {
-    value: value * 1024 ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase()),
+    value: value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase()),
     unit: "bytes",
   };
 }

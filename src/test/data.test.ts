@@ -27,6 +27,10 @@ suite("data", () => {
       ["2KiB", 2048, "bytes"],
       ["128Mi", 128 * 1024 ** 2, "bytes"],
       ["1,500M", 1500 * 1024 ** 2, "bytes"],
+      ["0Bi", 0, "bytes"],
+      ["1.5kB", 1500, "bytes"],
+      ["187MB", 187e6, "bytes"],
+      ["2GB", 2e9, "bytes"],
     ];
     for (const [text, value, unit] of cases) {
       assert.deepStrictEqual(parseNumber(text), unit === undefined ? { value } : { value, unit });
