@@ -470,7 +470,11 @@ export class MermaidRenderer implements Renderer {
     for (const [i, { title, data }] of plots.entries()) {
       const series = title || `Series ${i + 1}`;
       const prefix = plots.length > 1 ? `${series}/` : "";
-      const bars = data.map(([x, y]) => ({ id: prefix + x, label: `${x}: ${y}` }));
+      const bars = data.map(([x, y]) => ({
+        id: prefix + x,
+        // A category without a value gets an invisible bar.
+        label: y === undefined ? x : `${x}: ${y}`,
+      }));
       addInOrder(svg.querySelectorAll(`g.bar-plot-${i} > rect`), bars);
       for (const line of svg.querySelectorAll(`g.line-plot-${i} > path`)) {
         add(line, { id: series, label: series });
