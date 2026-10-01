@@ -2,7 +2,8 @@ import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
 import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import { type LoadedChart, loadChart, resolveFile } from "./dataSource";
-import { type Diagram, type DiagramPanel, nodeList, type RenderOutcome } from "./panel";
+import { nodeList } from "./describe";
+import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import { CHART_TOOL, diagramNoun, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */

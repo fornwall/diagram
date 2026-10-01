@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { codeFence } from "./blocks";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { buildChart } from "./charts";
 import { loadTable } from "./dataSource";
+import { describeDiagram } from "./describe";
 import {
   CHART_TOOL,
   type DiagramLanguage,
@@ -69,8 +69,6 @@ export interface DiagramState extends Omit<Diagram, "source"> {
 const STATE_KEY = "diagram.state";
 /** Longer options of charts of files and commands are not saved, as saving happens often. */
 const MAX_SAVED_CHART_SOURCE = 1_000_000;
-/** Longer diagram sources are left out of the description for the model. */
-const MAX_SOURCE_FOR_MODEL = 30_000;
 const RENDER_TIMEOUT_MS = 15_000;
 
 /**
@@ -192,42 +190,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Describes the current diagram and the user's interactions with it, for a language model. */
   describeForModel(): string | undefined {
-    const state = this.state;
-    if (!state) {
-      return undefined;
-    }
-    const what =
-      state.language === "echarts" ? "chart, as an Apache ECharts option," : "Mermaid diagram";
-    const lines = [
-      `The ${what} currently shown in the diagram panel ("${state.title}"):`,
-      "",
-      state.source === undefined
-        ? "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)"
-        : // A chart of a large file or command output can be too large for the model's context.
-          state.source.length <= MAX_SOURCE_FOR_MODEL
-          ? codeFence(state.source, state.language)
-          : `(The source is ${state.source.length} characters long, too long to show here.)`,
-      "",
-    ];
-    if (state.chart) {
-      lines.push(
-        `It was drawn with ${CHART_TOOL} from ${dataOrigin(state.chart)}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,
-      );
-    }
-    if (state.error) {
-      lines.push(`It currently fails to render with this error: ${state.error}`);
-    }
-    if (state.editedByUser) {
-      lines.push(
-        "The user has edited this source by hand since it was last generated. Keep their edits unless asked otherwise.",
-      );
-    }
-    lines.push(
-      this.selection.length > 0
-        ? `The user has selected these nodes in the panel: ${nodeList(this.selection)}.`
-        : "The user has no nodes selected in the panel.",
-    );
-    return lines.join("\n");
+    return this.state && describeDiagram(this.state, this.selection);
   }
 
   dispose(): void {
@@ -500,11 +463,6 @@ export class DiagramPanel implements vscode.Disposable {
 function failsToRender(language: DiagramLanguage, error: string): string {
   const noun = diagramNoun(language);
   return `The ${noun} fails to render, so there is nothing to pick from. Render a working ${noun} first. The error is: ${error}`;
-}
-
-/** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
-export function nodeList(nodes: DiagramNode[]): string {
-  return nodes.map((node) => `"${node.label}" (id: ${node.id})`).join(", ");
 }
 
 function regarding(nodes: DiagramNode[]): string {
