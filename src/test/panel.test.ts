@@ -78,7 +78,18 @@ suite("panel", function () {
       assert.ok(internals.panel.active, "Show Panel should focus the diagram");
 
       await vscode.window.showTextDocument(document, editor.viewColumn);
+      for (let attempt = 0; attempt < 100 && internals.panel.active; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.ok(!internals.panel.active, "The editor should regain focus before annotating");
+      const reveal = internals.panel.reveal;
+      let revealed = false;
+      internals.panel.reveal = (...args) => {
+        revealed = true;
+        reveal.apply(internals.panel, args);
+      };
       assert.ok(panel.annotate({ marks: [], dim: false }).ok);
+      assert.ok(!revealed, "An annotation should not reveal a panel that is already visible");
       // reveal() crosses into the workbench asynchronously; let its focus events reach the host.
       await new Promise((resolve) => setTimeout(resolve, 100));
       assert.strictEqual(vscode.window.activeTextEditor?.document, document);

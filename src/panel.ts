@@ -321,7 +321,9 @@ export class DiagramPanel implements vscode.Disposable {
   /** Reveals the panel, or creates it, in which case this returns true. */
   private reveal(preserveFocus: boolean): boolean {
     if (this.panel) {
-      this.panel.reveal(undefined, preserveFocus);
+      if (!preserveFocus || !this.panel.visible) {
+        this.panel.reveal(undefined, preserveFocus);
+      }
       return false;
     }
     // After a window reload, VS Code restores a panel in a background tab only once the tab is
