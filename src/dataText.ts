@@ -169,10 +169,16 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     // On ties, as for "a;1,5", prefer semicolons: a comma is more likely a decimal comma than a
     // semicolon is part of a field.
     const uniform = matching === records.length ? 1 : 0;
+    // A numeric table such as "1,5;2,5" has more commas than semicolons. Splitting at those commas
+    // would turn its decimal numbers into separate columns, including text like "5;2".
     if (
       best === undefined ||
       uniform > best.uniform ||
-      (uniform === best.uniform && width >= best.width)
+      (uniform === best.uniform &&
+        (width >= best.width ||
+          records.every((row) =>
+            row.every((field) => parseNumber(String(field), true) !== undefined),
+          )))
     ) {
       best = { table, uniform, width };
     }

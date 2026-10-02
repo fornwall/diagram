@@ -233,6 +233,31 @@ suite("data", () => {
     ]);
   });
 
+  test("detects semicolons in headerless decimal-comma numeric tables", () => {
+    for (const format of ["auto", "csv"] as const) {
+      for (const text of ["1,5;2,5", '"1,5";"2,5"', "1,5;2,5\n3,5;4,5"]) {
+        assert.deepStrictEqual(
+          parse(text, format).rows,
+          text.includes("\n")
+            ? [
+                [1.5, 2.5],
+                [3.5, 4.5],
+              ]
+            : [[1.5, 2.5]],
+          `${format}: ${text}`,
+        );
+      }
+      assert.deepStrictEqual(parse("1.5;2.5\n3.5;4.5", format).rows, [
+        [1.5, 2.5],
+        [3.5, 4.5],
+      ]);
+      assert.deepStrictEqual(parse('"a;b",1,2\n"c;d",3,4', format).rows, [
+        ["a;b", 1, 2],
+        ["c;d", 3, 4],
+      ]);
+    }
+  });
+
   test("parses localized scientific notation without dropping exponents", () => {
     assert.deepStrictEqual(parse("name;value\na;1,25e3\nb;-2,5E-2\nc;1.234,5e1").rows, [
       ["a", 1250],
