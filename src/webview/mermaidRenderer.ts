@@ -296,7 +296,12 @@ export class MermaidRenderer implements Renderer {
       throw new Error("There is no diagram to make an image of.");
     }
     const mermaid = await loadMermaid();
-    mermaid.initialize({ ...this.config(), htmlLabels: false });
+    mermaid.initialize({
+      ...this.config(),
+      htmlLabels: false,
+      // Front matter and init directives must not put HTML labels back into an image.
+      secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
+    });
     try {
       const { svg } = await mermaid.render(`diagram-image-${++this.renderCounter}`, source);
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;

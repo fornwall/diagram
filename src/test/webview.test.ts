@@ -185,6 +185,36 @@ suite("webview", function () {
     assert.match(download as string, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
   });
 
+  test("exports Mermaid labels as SVG text despite diagram configuration", async () => {
+    assert.ok(
+      (
+        await render({
+          source:
+            "---\nconfig:\n  htmlLabels: true\n---\nflowchart LR\n A[Exported label] --> B[Other label]",
+        })
+      ).ok,
+    );
+    const exported = await evaluate(`(async () => {
+      const handle = document.getElementById("drag-out");
+      handle.dispatchEvent(new PointerEvent("pointerenter"));
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        const svg = dataTransfer.getData("image/svg+xml");
+        if (svg) {
+          const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+          return {
+            htmlLabels: parsed.querySelectorAll("foreignObject").length,
+            text: Array.from(parsed.querySelectorAll("text"), node => node.textContent).join("").replace(/\\s/g, "")
+          };
+        }
+      }
+      throw new Error("The diagram image was not prepared.");
+    })()`);
+    assert.deepStrictEqual(exported, { htmlLabels: 0, text: "ExportedlabelOtherlabel" });
+  });
+
   test("names an unknown Mermaid diagram type instead of repeating the source", async () => {
     const outcome = await render({ source: "flowchar TD\n  A --> B" });
     assert.ok(!outcome.ok);
