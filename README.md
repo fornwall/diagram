@@ -56,15 +56,17 @@ Hide the **Open in Diagram** actions with `diagram.codeLens.enabled`.
 
 ## Tools for other agents
 
-Any agent, e.g. in agent mode, can use the panel through these tools. Attach one with `#`, also in an `@diagram` request, to have the model call it first:
+Any chat agent can use these tools. Attach one with `#` to have it called first, including in an `@diagram` request:
 
 | Tool | Reference | What it does |
 | --- | --- | --- |
-| `diagram_render` | `#diagram` | Renders Mermaid source, or an ECharts option written as JSON or as JavaScript, which may use functions where ECharts takes callbacks, as `custom` series do. Mermaid nodes can link to places in the code. Reports the error if it does not render. |
-| `diagram_chart` | `#chart` | Charts data given inline, in a file or as a command's output: pie, doughnut, bar, horizontal or stacked bar, line, area, stacked area, scatter, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel. Reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated columns (such as `du` or `wc -l` output), works out which column labels, nests, flows into or measures what, and tells the agent how it read them. Can group the rows that share a label (summing, averaging or counting them) and draws a column of ISO dates on a time axis. |
+| `diagram_render` | `#diagram` | Renders Mermaid or ECharts JSON/JavaScript, including callbacks and custom series. Supports Mermaid code links and reports render errors. |
+| `diagram_chart` | `#chart` | Charts inline data, files or command output. Infers columns, supports grouping and date axes, and reports how it interpreted the data. |
 | `diagram_getState` | `#diagramState` | Returns the current source, whether you edited it or it fails to render, and your selection. |
-| `diagram_pickNodes` | `#diagramPick` | Asks you a question that you answer by clicking nodes, and waits for the answer. |
-| `diagram_annotate` | `#diagramAnnotate` | Marks nodes of the diagram already shown — as the step being explained, a problem, something that works, or a plain pointer — with a note each, a line above the diagram and the rest faded, without drawing it again. Each call replaces the marks before it. |
+| `diagram_pickNodes` | `#diagramPick` | Asks a question and waits for you to answer by clicking nodes. |
+| `diagram_annotate` | `#diagramAnnotate` | Marks current steps, problems, successes or points of interest, with optional notes, caption and fading. Replaces previous marks without redrawing. |
+
+`diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. It supports pie, doughnut, bar (vertical, horizontal or stacked), line, area (plain or stacked), scatter, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Grouping combines rows with the same labels by sum, mean, count, min, max or median; ISO dates become a time axis.
 
 `diagram_render` and `diagram_chart` take an optional `clickPrompt`, such as `"Explain {label} in more detail"`: a click on a node then sends that request to chat right away, for diagrams you explore part by part. Ctrl/Cmd+click or Shift+click still selects.
 
