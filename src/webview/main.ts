@@ -124,6 +124,7 @@ function showError(renderer: Renderer, message: string): void {
 }
 
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
+  forgetDragImage();
   const { language, source, requestId } = message;
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
@@ -308,6 +309,7 @@ function hint(noun: string): string {
 }
 
 function selectionChanged(): void {
+  forgetDragImage();
   updateSelectionUi();
   post({ type: "selectionChanged", nodes: Array.from(selection.values()) });
 }
@@ -470,54 +472,54 @@ saveButton.addEventListener("click", () => post({ type: "save", colors: readThem
  * being dragged there and then, and cannot wait for a diagram to be rendered again and rasterized.
  */
 let dragImage:
-  | { key: string; image: DiagramImage; png: string; preview: HTMLImageElement }
+  | { key: number; image: DiagramImage; png?: string; preview?: HTMLImageElement }
   | undefined;
 /** The image being made ready, if any, so that hovering the handle repeatedly makes one copy. */
-let preparingDragImage: string | undefined;
+let preparingDragImage: number | undefined;
+let imageVersion = 0;
+let dragError: string | undefined;
 /** Whether the file offered should be the SVG, as asked for with Shift as the drag starts. */
 let dragSvg = false;
 
 /** The background an image is drawn on: an image dropped elsewhere has no theme behind it. */
 const imageBackground = () => toCss(readThemeColors().background);
 
-/**
- * What the prepared image belongs to: the drawing, and the theme it is drawn in, which the body's
- * class and the root element's variables carry.
- */
-function dragImageKey(): string | undefined {
-  return (
-    current && `${current.renderer.noun}\u0000${document.body.className}\u0000${current.source}`
-  );
-}
-
 /** Drops the prepared image, which the next hover or press over the handle makes again. */
 function forgetDragImage(): void {
+  imageVersion++;
   dragImage = undefined;
   preparingDragImage = undefined;
+  dragError = undefined;
 }
 
 /** Makes the image of what is drawn ready, if it is not already, for a drag that may follow. */
 function prepareDragImage(): void {
-  const key = dragImageKey();
+  const key = imageVersion;
   const toImage = active?.toImage?.bind(active);
-  if (!key || !toImage || dragImage?.key === key || preparingDragImage === key) {
+  if (!toImage || dragImage?.key === key || preparingDragImage === key) {
     return;
   }
   preparingDragImage = key;
   void (async () => {
     try {
       const image = await toImage(imageBackground());
-      const png = await pngDataUrl(image);
-      // The picture shown under the pointer while dragging, decoded now so that it can be handed
-      // to setDragImage synchronously.
-      const preview = new Image();
-      preview.src = png;
-      await preview.decode();
+      let png: string | undefined;
+      let preview: HTMLImageElement | undefined;
+      try {
+        png = await pngDataUrl(image);
+        preview = new Image();
+        preview.src = png;
+        await preview.decode();
+      } catch {
+        // SVG remains usable when the browser cannot rasterize a diagram.
+      }
       if (preparingDragImage === key) {
         dragImage = { key, image, png, preview };
       }
     } catch (error) {
-      console.error(error);
+      if (preparingDragImage === key) {
+        dragError = `Could not prepare the image: ${errorMessage(error)}`;
+      }
     } finally {
       if (preparingDragImage === key) {
         preparingDragImage = undefined;
@@ -527,38 +529,52 @@ function prepareDragImage(): void {
 }
 
 // Hovering the handle is the earliest sign that a drag may be coming; pressing is the last.
-dragOutHandle.addEventListener("pointerenter", prepareDragImage);
+dragOutHandle.addEventListener("pointerenter", () => {
+  // Chart interactions and resizing can change its SVG without changing its source.
+  forgetDragImage();
+  prepareDragImage();
+});
 dragOutHandle.addEventListener("pointerdown", (event) => {
   dragSvg = event.shiftKey;
   prepareDragImage();
 });
 
 dragOutHandle.addEventListener("dragstart", (event) => {
-  const key = dragImageKey();
-  const ready = dragImage?.key === key ? dragImage : undefined;
+  const ready = dragImage?.key === imageVersion ? dragImage : undefined;
   if (!ready || !event.dataTransfer) {
     // Nothing can be dragged without an image, and the drag cannot wait for one.
     event.preventDefault();
     prepareDragImage();
-    transientHint("Preparing the image — start the drag again in a moment.");
+    transientHint(dragError ?? "Preparing the image — start the drag again in a moment.");
     return;
   }
   const { dataTransfer } = event;
   const title = titleElement.textContent?.trim() ?? "";
   const name = safeFileName(title, "diagram");
-  const url = dragSvg ? svgDataUrl(ready.image.svg) : ready.png;
+  const useSvg = dragSvg || !ready.png;
+  const url = useSvg ? svgDataUrl(ready.image.svg) : ready.png;
+  if (!dragSvg && !ready.png) {
+    transientHint("This drawing could not be converted to PNG. Dragging it as SVG instead.");
+  }
   dataTransfer.effectAllowed = "copy";
   // A file the drop target downloads from the data URL. This is what an application that takes
   // dropped files, such as a chat window, reads; the type it asks for decides the rest.
   dataTransfer.setData(
     "DownloadURL",
-    `${dragSvg ? "image/svg+xml" : "image/png"}:${name}.${dragSvg ? "svg" : "png"}:${url}`,
+    `${useSvg ? "image/svg+xml" : "image/png"}:${name}.${useSvg ? "svg" : "png"}:${url}`,
   );
   // For a target that takes rich text instead of a file, and one that prefers vector over pixels.
-  dataTransfer.setData("text/html", `<img src="${ready.png}" alt="${escapeHtml(title || name)}">`);
+  if (ready.png) {
+    dataTransfer.setData(
+      "text/html",
+      `<img src="${ready.png}" alt="${escapeHtml(title || name)}">`,
+    );
+  }
   dataTransfer.setData("image/svg+xml", ready.image.svg);
   try {
-    dataTransfer.setDragImage(ready.preview, 12, 12);
+    if (ready.preview) {
+      dataTransfer.setDragImage(ready.preview, 12, 12);
+    }
   } catch {
     // Not every build accepts an image that is not in the page; the default outline will do.
   }
@@ -613,7 +629,7 @@ function setViewMode(mode: ViewMode): void {
   panes.className = `view-${shown}`;
   const opening = shown !== "visual" && !sourceShown;
   sourceShown = shown !== "visual";
-  if (opening) {
+  if (opening && sourceInput.value === editedFrom) {
     loadSource();
   }
   saveState();
@@ -630,14 +646,18 @@ for (const [mode, button] of Object.entries(viewButtons)) {
 
 /** Keeps the editor from silently replacing a diagram that changed while editing. */
 function sourceChanged(source: string): void {
-  if (!sourceShown) {
+  if (!sourceShown && sourceInput.value === editedFrom) {
     return;
   }
   if (source === appliedSource) {
     // The applied edit came back: show it as rendered, unless it has been edited again since.
     if (sourceInput.value === appliedSource) {
       loadSource();
+    } else {
+      editedFrom = current?.renderer.formatForEditing(source) ?? source;
+      updateEditorActions();
     }
+    appliedSource = undefined;
   } else if (sourceInput.value === editedFrom) {
     loadSource();
   } else {

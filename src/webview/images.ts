@@ -106,5 +106,9 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
     throw new Error("This browser did not provide a canvas to draw the image on.");
   }
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/png");
+  const png = canvas.toDataURL("image/png");
+  if (!png.startsWith("data:image/png")) {
+    throw new Error("The browser could not create a PNG at this image size.");
+  }
+  return png;
 }

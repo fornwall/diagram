@@ -22,10 +22,52 @@ suite("webview", function () {
   this.timeout(20_000);
 
   let panel: DiagramPanel;
+  let webview: vscode.Webview;
   suiteSetup(() => {
     panel = newPanel();
+    panel.show();
+    webview = (panel as unknown as { panel: vscode.WebviewPanel }).panel.webview;
+    const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
+    assert.ok(nonce);
+    // Drive the actual DOM without adding test commands to the shipped webview.
+    webview.html = webview.html.replace(
+      '<script type="module"',
+      `<script nonce="${nonce}">
+        const acquire = acquireVsCodeApi;
+        acquireVsCodeApi = () => {
+          const api = acquire();
+          window.addEventListener("message", async ({data}) => {
+            if (data.type !== "testExpression") return;
+            try {
+              api.postMessage({type: "testResult", value: await new Function("return (" + data.expression + ")")()});
+            } catch (error) {
+              api.postMessage({type: "testResult", error: String(error)});
+            }
+          });
+          return api;
+        };
+      </script><script type="module"`,
+    );
   });
   suiteTeardown(() => panel.dispose());
+
+  function evaluate(expression: string): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        listener.dispose();
+        reject(new Error("The webview did not answer the test expression."));
+      }, 5000);
+      const listener = webview.onDidReceiveMessage((message) => {
+        if (message.type === "testResult") {
+          clearTimeout(timer);
+          listener.dispose();
+          if (message.error) reject(new Error(message.error));
+          else resolve(message.value);
+        }
+      });
+      void webview.postMessage({ type: "testExpression", expression });
+    });
+  }
 
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
@@ -34,6 +76,69 @@ suite("webview", function () {
     for (const [diagramType, source] of Object.entries(MERMAID)) {
       assert.deepStrictEqual(await render({ source }), { ok: true, diagramType });
     }
+  });
+
+  test("keeps unapplied source edits across view changes and incoming diagrams", async () => {
+    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const source = document.getElementById("source");
+      source.value = "flowchart LR\\n A --> Draft";
+      source.dispatchEvent(new Event("input"));
+      document.getElementById("view-visual").click();
+      document.getElementById("view-split").click();
+    })()`);
+    assert.strictEqual(
+      await evaluate('document.getElementById("source").value'),
+      "flowchart LR\n A --> Draft",
+    );
+    await evaluate('document.getElementById("view-visual").click()');
+    assert.ok((await render({ source: "flowchart LR\n A --> New" })).ok);
+    await evaluate('document.getElementById("view-source").click()');
+    assert.deepStrictEqual(
+      await evaluate(`({
+        source: document.getElementById("source").value,
+        stale: !document.getElementById("stale-note").hidden
+      })`),
+      { source: "flowchart LR\n A --> Draft", stale: true },
+    );
+    await evaluate('document.getElementById("revert").click()');
+    assert.strictEqual(
+      await evaluate('document.getElementById("source").value'),
+      "flowchart LR\n A --> New",
+    );
+    await evaluate('document.getElementById("view-visual").click()');
+  });
+
+  test("exports SVG when the browser cannot create a PNG", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+        })
+      ).ok,
+    );
+    const download = await evaluate(`(async () => {
+      const original = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = () => "data:,";
+      try {
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const download = dataTransfer.getData("DownloadURL");
+          if (download) return download;
+        }
+        throw new Error("The SVG fallback was not prepared.");
+      } finally {
+        HTMLCanvasElement.prototype.toDataURL = original;
+      }
+    })()`);
+    assert.strictEqual(typeof download, "string");
+    assert.match(download as string, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
   });
 
   test("names an unknown Mermaid diagram type instead of repeating the source", async () => {
