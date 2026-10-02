@@ -561,11 +561,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /**
-   * Shows an edit the user applied in the panel, and writes it back to the document a diagram was
-   * opened from. Their Apply is the one action that changes that file: a diagram an agent renders,
-   * or a chart it refreshes, only ever replaces what the panel shows.
-   */
+  /** Applies the user's source edit and writes it to its bound document, if any. */
   private async applyEdit(source: string): Promise<void> {
     const state = this.state;
     if (!state) {
@@ -584,11 +580,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /**
-   * Writes the diagram as it is shown into the block it was opened from, which Apply does for an
-   * edit of the user's own. This is how a diagram an agent drew reaches the document: there is
-   * nothing to apply then, as the source in the editor is the one that is rendered.
-   */
+  /** Writes the current diagram without requiring a source edit first. */
   private async writeShownToDocument(): Promise<void> {
     const state = this.state;
     if (!state?.document) {
@@ -609,7 +601,7 @@ export class DiagramPanel implements vscode.Disposable {
     await this.writeToDocument(state.document, state.source);
   }
 
-  /** Writes the diagram shown back into the block it was opened from, or says why it was not. */
+  /** Confirms agent replacements and follows the document block after a successful write. */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
     if (binding.replaced && !(await confirmReplacedWrite(binding))) {
       return;
@@ -620,8 +612,7 @@ export class DiagramPanel implements vscode.Disposable {
       void reportWriteFailure(binding, outcome.reason);
       return;
     }
-    // The block now holds this diagram, and may have moved, so the binding follows it and no longer
-    // counts as replaced. A diagram rendered while writing has a binding of its own to keep.
+    // Follow the written block, unless another diagram acquired its own binding while writing.
     const state = this.state;
     if (state?.document === binding) {
       this.state = { ...state, document: { uri: binding.uri, fence: outcome.fence } };
@@ -629,10 +620,11 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Loads the data of the current chart again and redraws it, replacing earlier manual edits. */
+  /** Reloads chart data, replacing earlier manual edits. */
   private async refreshChart(): Promise<void> {
     const chart = this.state?.chart;
-    const before = this.state?.source;
+    const version = this.renderVersion;
+    const panel = this.panel;
     if (!chart || this.refreshing) {
       return;
     }
@@ -642,9 +634,8 @@ export class DiagramPanel implements vscode.Disposable {
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
       );
-      // While loading, an agent may have replaced the chart, or the user may have edited it (an
-      // edit made after pressing Refresh wins) or closed the panel.
-      if (this.state?.chart !== chart || this.state.source !== before || !this.panel) {
+      // Any intervening render wins, even if an edit restored the same source.
+      if (this.renderVersion !== version || this.panel !== panel || !panel || !this.state) {
         return;
       }
       const source = JSON.stringify(buildChart(chart, table).option, null, 2);
@@ -663,7 +654,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Saves the chart shown as a self-contained HTML file, at a path the user picks. */
+  /** Saves a self-contained HTML chart at the path the user picks. */
   private async saveChart(colors: ThemeColors): Promise<void> {
     const state = this.state;
     if (state?.language !== "echarts" || this.saving) {
@@ -696,7 +687,7 @@ export class DiagramPanel implements vscode.Disposable {
       const chart = { title: state.title, source: state.source, colors };
       const html = await savedChartHtml(chart, this.context.extensionUri);
       await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(html));
-      // Not awaited: the message stays until dismissed, and the next chart can be saved meanwhile.
+      // Let the user save another chart while the notification stays open.
       void offerToOpen(target);
     } catch (error) {
       void vscode.window.showErrorMessage(`Could not save the chart: ${errorMessage(error)}`);

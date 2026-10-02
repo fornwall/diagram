@@ -585,6 +585,51 @@ suite("panel", function () {
     }
   });
 
+  for (const action of ["edit and revert", "close and reopen"]) {
+    test(`refresh does not overwrite the chart after ${action}`, async () => {
+      const panel = newPanel();
+      const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
+      const internals = panel as unknown as {
+        refreshChart(): Promise<void>;
+        applyEdit(source: string): Promise<void>;
+      };
+      const progress = vscode.window.withProgress;
+      const resumed = Promise.withResolvers<void>();
+      try {
+        const outcome = await panel.render(
+          {
+            language: "echarts",
+            source,
+            title: "Sizes",
+            chart: { type: "pie", file: "sizes.tsv" },
+          },
+          "tool",
+        );
+        assert.ok(outcome.ok);
+        vscode.window.withProgress = async (options, task) => {
+          await resumed.promise;
+          return progress(options, task);
+        };
+        const refreshing = internals.refreshChart();
+        if (action === "edit and revert") {
+          await internals.applyEdit(`${source} `);
+          await internals.applyEdit(source);
+        } else {
+          panel.dispose();
+          panel.show();
+        }
+        resumed.resolve();
+        await refreshing;
+        assert.strictEqual(panel.current?.source, source);
+        assert.strictEqual(panel.current?.editedByUser, action === "edit and revert");
+      } finally {
+        resumed.resolve();
+        vscode.window.withProgress = progress;
+        panel.dispose();
+      }
+    });
+  }
+
   test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
     const panel = newPanel();
     const sent: ToWebview[] = [];
