@@ -508,7 +508,7 @@ suite("charts", () => {
     assert.deepStrictEqual(series.data, [{ name: "ts", value: 10 }]);
     assert.strictEqual(
       summary(chart("gauge")),
-      'Charted "files" by "language"; showed the first of 4 rows, "ts"; scaled it to 20, the ' +
+      'Charted "files" by "language"; showed the first numeric value of 4 rows, "ts"; scaled it to 20, the ' +
         'total of "files".',
     );
     // Percentages fill a scale to 100, a lone value a round number above it, and "max" wins.
@@ -523,6 +523,30 @@ suite("charts", () => {
     const balance = "month,balance\njan,-3";
     assert.strictEqual(build(chart("gauge"), balance).series[0].min, -3);
     assert.match(summary(chart("gauge"), balance), /scaled it from -3 to 1, rounded up/);
+  });
+
+  test("gauge preserves missing readings instead of replacing them with zero", () => {
+    const data = "metric,value\nunavailable,\nmeasured,12";
+    assert.deepStrictEqual(build(chart("gauge"), data).series[0].data, [
+      { name: "measured", value: 12 },
+    ]);
+    assert.throws(
+      () => build(chart("gauge", { limit: 1 }), data),
+      /No numeric value remains in "value" for the gauge\. Remove "limit"/,
+    );
+    assert.deepStrictEqual(
+      build(chart("gauge", { limit: 1 }), "metric,value\nmeasured,0\nother,12").series[0].data,
+      [{ name: "measured", value: 0 }],
+    );
+  });
+
+  test("gauge counts rows without inheriting the input's percentage unit", () => {
+    const spec = chart("gauge", { aggregate: "count" });
+    const [series] = build(spec, "share,group\n10%,a\n20%,a\n30%,b").series;
+    assert.strictEqual(series.name, "rows");
+    assert.strictEqual(series.max, 3);
+    assert.strictEqual(series.detail, undefined);
+    assert.deepStrictEqual(series.data, [{ name: "a", value: 2 }]);
   });
 
   test("funnel orders its stages by value", () => {

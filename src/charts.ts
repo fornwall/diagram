@@ -786,7 +786,8 @@ function drawChart(reading: Reading): Record<string, unknown> {
         notes,
       );
     case "gauge": {
-      const percent = table.columns[columns.values[0] ?? 0]?.unit === "%";
+      const valueColumn = columns.values[0];
+      const percent = valueColumn !== undefined && table.columns[valueColumn]?.unit === "%";
       return gaugeOption(spec.max, percent, labeled, valueName, rows, notes);
     }
   }
@@ -1468,10 +1469,16 @@ function gaugeOption(
   notes: string[],
 ): Record<string, unknown> {
   const shown = rows.find(({ values }) => typeof values[0] === "number");
-  const value = shown?.values[0] ?? 0;
+  const value = shown?.values[0];
+  if (shown === undefined || typeof value !== "number") {
+    throw new Error(
+      `No numeric value remains in ${JSON.stringify(name)} for the gauge. ` +
+        'Remove "limit" or select rows with a numeric value.',
+    );
+  }
   if (rows.length > 1) {
     notes.push(
-      `showed the first of ${rows.length} rows, ${JSON.stringify(shown ? label(shown) : "")}`,
+      `showed the first numeric value of ${rows.length} rows, ${JSON.stringify(label(shown))}`,
     );
   }
   const total =
@@ -1498,7 +1505,7 @@ function gaugeOption(
         ...(min < 0 ? { min } : {}),
         max: scale,
         ...(percent ? { detail: { formatter: "{value}%" } } : {}),
-        data: [{ name: labeled && shown !== undefined ? label(shown) : name, value }],
+        data: [{ name: labeled ? label(shown) : name, value }],
       },
     ],
   };
