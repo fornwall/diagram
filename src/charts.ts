@@ -217,68 +217,25 @@ function sortRows(rows: Row[], sort: ChartSpec["sort"]): Row[] {
   });
 }
 
-/**
- * The families of chart types, which differ in what they read from a table — how many columns name
- * an item and how many give it a value — and in how they are drawn:
- *
- * - `cartesian`: categories along one axis, one series per value column.
- * - `xy`: points at two values.
- * - `partOfWhole`: shares of a total, one value each.
- * - `profile`: one axis per value column, one shape per row.
- * - `hierarchy`: levels of labels, with the values of the rows under a level summed up into it.
- * - `flow`: values flowing from one named node to another.
- * - `matrix`: one value per row and column.
- * - `distribution`: the spread of many raw numbers per group.
- * - `singleValue`: one number on a scale.
- */
-type Family =
-  | "cartesian"
-  | "xy"
-  | "partOfWhole"
-  | "profile"
-  | "hierarchy"
-  | "flow"
-  | "matrix"
-  | "distribution"
-  | "singleValue";
-
-const FAMILIES: Record<ChartType, Family> = {
-  pie: "partOfWhole",
-  doughnut: "partOfWhole",
-  funnel: "partOfWhole",
-  bar: "cartesian",
-  horizontalBar: "cartesian",
-  stackedBar: "cartesian",
-  line: "cartesian",
-  area: "cartesian",
-  stackedArea: "cartesian",
-  scatter: "xy",
-  radar: "profile",
-  treemap: "hierarchy",
-  sunburst: "hierarchy",
-  sankey: "flow",
-  heatmap: "matrix",
-  boxplot: "distribution",
-  gauge: "singleValue",
-};
-
-/** As many columns as the table holds: a series, a level, an axis or a box per column. */
-const MANY = Number.POSITIVE_INFINITY;
-
-/**
- * How many columns of each role a family reads at most, and how many value columns it needs: a
- * scatter chart plots an x against a y, and a radar chart needs two axes to have a shape.
- */
-const ROLES: Record<Family, { labels: number; values: number; needed: number }> = {
-  cartesian: { labels: 1, values: MANY, needed: 1 },
-  xy: { labels: 1, values: 2, needed: 2 },
-  partOfWhole: { labels: 1, values: 1, needed: 1 },
-  profile: { labels: 1, values: MANY, needed: 2 },
-  hierarchy: { labels: MANY, values: 1, needed: 1 },
-  flow: { labels: MANY, values: MANY, needed: 1 },
-  matrix: { labels: 2, values: MANY, needed: 1 },
-  distribution: { labels: 1, values: MANY, needed: 1 },
-  singleValue: { labels: 1, values: 1, needed: 1 },
+/** Maximum label/value columns and minimum value columns for each chart type. */
+const COLUMN_COUNTS: Record<ChartType, { labels: number; values: number; needed: number }> = {
+  pie: { labels: 1, values: 1, needed: 1 },
+  doughnut: { labels: 1, values: 1, needed: 1 },
+  funnel: { labels: 1, values: 1, needed: 1 },
+  bar: { labels: 1, values: Infinity, needed: 1 },
+  horizontalBar: { labels: 1, values: Infinity, needed: 1 },
+  stackedBar: { labels: 1, values: Infinity, needed: 1 },
+  line: { labels: 1, values: Infinity, needed: 1 },
+  area: { labels: 1, values: Infinity, needed: 1 },
+  stackedArea: { labels: 1, values: Infinity, needed: 1 },
+  scatter: { labels: 1, values: 2, needed: 2 },
+  radar: { labels: 1, values: Infinity, needed: 2 },
+  treemap: { labels: Infinity, values: 1, needed: 1 },
+  sunburst: { labels: Infinity, values: 1, needed: 1 },
+  sankey: { labels: Infinity, values: Infinity, needed: 1 },
+  heatmap: { labels: 2, values: Infinity, needed: 1 },
+  boxplot: { labels: 1, values: Infinity, needed: 1 },
+  gauge: { labels: 1, values: 1, needed: 1 },
 };
 
 /** Which columns of a table a chart reads, and in which role. */
@@ -305,23 +262,22 @@ function columnCount(count: number, role: string): string {
 }
 
 /**
- * How many value columns a chart shows once its label columns are known: a flow, a matrix or a
- * distribution reads one column of values when its labels already name every item — a source and a
- * target, a row and a column, a group — and one column per node, column or box when they do not.
+ * Sankey, heatmap and boxplot read one value column when labels identify each flow, cell or group;
+ * otherwise they read one value column per target, heatmap column or box.
  */
-function shownValues(family: Family, labels: number, separator: boolean, times: boolean): number {
-  switch (family) {
-    case "xy":
+function shownValues(type: ChartType, labels: number, separator: boolean, times: boolean): number {
+  switch (type) {
+    case "scatter":
       // On a time axis the label column is the x, so one column of values gives the y.
-      return times ? 1 : ROLES.xy.values;
-    case "flow":
-      return labels >= 2 || separator ? 1 : MANY;
-    case "matrix":
-      return labels >= 2 ? 1 : MANY;
-    case "distribution":
-      return labels >= 1 ? 1 : MANY;
+      return times ? 1 : 2;
+    case "sankey":
+      return labels >= 2 || separator ? 1 : Infinity;
+    case "heatmap":
+      return labels >= 2 ? 1 : Infinity;
+    case "boxplot":
+      return labels >= 1 ? 1 : Infinity;
     default:
-      return ROLES[family].values;
+      return COLUMN_COUNTS[type].values;
   }
 }
 
@@ -337,13 +293,13 @@ function shownValues(family: Family, labels: number, separator: boolean, times: 
  *   chart needs, saying which columns it has.
  */
 function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Columns {
-  const family = FAMILIES[spec.type];
-  const role = ROLES[family];
+  const { type } = spec;
+  const role = COLUMN_COUNTS[type];
   const name = (index: number) => table.columns[index]?.name ?? "";
   let labels: number[];
   if (spec.labelColumn === undefined) {
     if (role.labels === 1) {
-      const single = defaultLabelColumn(table, family === "xy");
+      const single = defaultLabelColumn(table, type === "scatter");
       labels = single === undefined ? [] : [single];
     } else {
       labels = defaultLabelColumns(table, role.labels);
@@ -358,14 +314,14 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
       );
     }
   }
-  if (family === "flow" && labels.length === 0) {
+  if (type === "sankey" && labels.length === 0) {
     throw new Error(
       "A sankey chart needs the nodes its flows run between to be named, but no column holds " +
         `text. Available columns: ${quoteAll(table.columns.map((column) => column.name))}. ` +
         'Give "labelColumn" as a source and a target column, e.g. ["from", "to"].',
     );
   }
-  if (family === "distribution" && spec.aggregate !== undefined) {
+  if (type === "boxplot" && spec.aggregate !== undefined) {
     throw new Error(
       'A box plot summarizes the raw rows of each group itself, and "aggregate" would leave it ' +
         'one number per group. Leave "aggregate" out, or chart the groups as a bar chart.',
@@ -373,7 +329,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
   }
 
   // A hierarchy and a flow read levels of their own from the paths in a single label column.
-  const nested = family === "hierarchy" || family === "flow";
+  const nested = type === "treemap" || type === "sunburst" || type === "sankey";
   const only = nested && labels.length === 1 ? labels[0] : undefined;
   const separator =
     only === undefined
@@ -385,7 +341,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
 
   // A chart with an axis of its own reads a label column of dates as times (see {@link
   // dateFormat}), which spaces its points by when they happened.
-  const dated = family === "cartesian" || family === "xy";
+  const dated = Object.hasOwn(CARTESIAN_SERIES, type) || type === "scatter";
   const dates = dated && labels.length === 1 ? labels[0] : undefined;
   const times =
     dates === undefined ? undefined : dateFormat(table.rows.map((row) => String(row[dates] ?? "")));
@@ -400,7 +356,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
 
   const given = spec.valueColumns?.map((column) => findColumn(table, column, "value"));
   // On a time axis the labels supply x, so scatter needs only one numeric value.
-  const needed = family === "xy" && times !== undefined ? 1 : role.needed;
+  const needed = type === "scatter" && times !== undefined ? 1 : role.needed;
   let values: number[] = [];
   if (spec.aggregate === "count") {
     // Counting rows gives one number per group, which a chart of two values cannot use.
@@ -415,7 +371,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
     }
   } else {
     const columns = given ?? defaultValueColumns(table, labels, needed);
-    const most = shownValues(family, labels.length, separator !== undefined, times !== undefined);
+    const most = shownValues(type, labels.length, separator !== undefined, times !== undefined);
     values = columns.slice(0, most);
     if (given !== undefined && values.length < columns.length) {
       notes.push(
@@ -437,7 +393,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
     if (values.length < needed) {
       const one = JSON.stringify(name(values[0] ?? 0));
       throw new Error(
-        family === "xy"
+        type === "scatter"
           ? `A scatter chart needs two numeric columns (x and y), but there is only ${one}.`
           : `A radar chart needs two numeric columns, one axis each, but there is only ${one}.`,
       );
@@ -614,7 +570,7 @@ function readRows(
   columns: Columns,
   notes: string[],
 ): { rows: Row[]; names: string[] } {
-  const family = FAMILIES[spec.type];
+  const { type } = spec;
   const valueIndices = columns.values;
   const name = (index: number) => table.columns[index]?.name ?? "";
 
@@ -628,7 +584,7 @@ function readRows(
   }
   // A hierarchy and a flow read the labels as levels, leaving out the empty ones so that "src/"
   // and "src" nest alike; any other chart keeps an empty label as the category it is.
-  const nested = family === "hierarchy" || family === "flow";
+  const nested = type === "treemap" || type === "sunburst" || type === "sankey";
   let rows: Row[] = tableRows.map((row, i) => ({
     labels: rowLabels(row, i, columns, nested),
     values: valueIndices.map((index) => {
@@ -670,8 +626,13 @@ function readRows(
   // A share of a total has no size without a positive value, and a point needs both an x and a y.
   // A flow with one node per value column leaves out single flows instead of whole rows.
   const positive =
-    family === "partOfWhole" || family === "hierarchy" || (family === "flow" && chained(columns));
-  if (positive || family === "xy") {
+    type === "pie" ||
+    type === "doughnut" ||
+    type === "funnel" ||
+    type === "treemap" ||
+    type === "sunburst" ||
+    (type === "sankey" && chained(columns));
+  if (positive || type === "scatter") {
     const charted = rows.filter(({ values }) =>
       positive ? (values[0] ?? 0) > 0 : !values.includes(null),
     );
@@ -747,7 +708,6 @@ function readRows(
 /** A table read as a chart: which columns play which role, and the rows to draw. */
 interface Reading {
   spec: ChartSpec;
-  family: Family;
   table: DataTable;
   columns: Columns;
   /** The value columns' names, carrying the unit that sizes in bytes are shown in. */
@@ -776,15 +736,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   const notes: string[] = [];
   const columns = readColumns(spec, table, notes);
   const { rows, names } = readRows(spec, table, columns, notes);
-  const reading: Reading = {
-    spec,
-    family: FAMILIES[spec.type],
-    table,
-    columns,
-    names,
-    rows,
-    notes,
-  };
+  const reading: Reading = { spec, table, columns, names, rows, notes };
   const option = drawChart(reading);
   return {
     option: spec.options === undefined ? option : deepMerge(option, spec.options),
@@ -794,43 +746,38 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 
 /** Draws the rows as the requested chart, adding what the drawing worked out to the notes. */
 function drawChart(reading: Reading): Record<string, unknown> {
-  const { spec, family, table, columns, names, rows, notes } = reading;
+  const { spec, table, columns, names, rows, notes } = reading;
   const name = (index: number) => table.columns[index]?.name ?? "";
   const labeled = columns.labels.length > 0;
   const valueName = names[0] ?? "";
   const axisOption = spec.options?.[spec.type === "horizontalBar" ? "yAxis" : "xAxis"];
   const axis = Array.isArray(axisOption) ? axisOption[0] : axisOption;
   const categoryTime = isPlainObject(axis) && axis.type === "category";
-  switch (family) {
-    case "cartesian":
-      return cartesianOption(
-        spec.type as CartesianType,
-        table.header,
-        columns.times,
-        names,
-        rows,
-        categoryTime,
-      );
-    case "xy":
+  switch (spec.type) {
+    case "bar":
+    case "horizontalBar":
+    case "stackedBar":
+    case "line":
+    case "area":
+    case "stackedArea":
+      return cartesianOption(spec.type, table.header, columns.times, names, rows, categoryTime);
+    case "scatter":
       return scatterOption(table.header, labeled, columns.times, names, rows, categoryTime);
-    case "partOfWhole":
-      return spec.type === "funnel"
-        ? funnelOption(valueName, spec.sort, rows, notes)
-        : pieOption(spec.type === "doughnut", valueName, rows);
-    case "profile":
+    case "pie":
+    case "doughnut":
+      return pieOption(spec.type === "doughnut", valueName, rows);
+    case "funnel":
+      return funnelOption(valueName, spec.sort, rows, notes);
+    case "radar":
       return radarOption(spec.max, names, rows);
-    case "hierarchy":
-      return hierarchyOption(
-        spec.type === "sunburst" ? "sunburst" : "treemap",
-        valueName,
-        rows,
-        notes,
-      );
-    case "flow":
+    case "treemap":
+    case "sunburst":
+      return hierarchyOption(spec.type, valueName, rows, notes);
+    case "sankey":
       return sankeyOption(chained(columns) ? undefined : names, valueName, rows, notes);
-    case "matrix":
+    case "heatmap":
       return heatmapOption(table.header, columns.labels.map(name), names, rows, notes);
-    case "distribution":
+    case "boxplot":
       return boxplotOption(
         table.header,
         labeled ? name(columns.labels[0] ?? 0) : undefined,
@@ -838,7 +785,7 @@ function drawChart(reading: Reading): Record<string, unknown> {
         rows,
         notes,
       );
-    case "singleValue": {
+    case "gauge": {
       const percent = table.columns[columns.values[0] ?? 0]?.unit === "%";
       return gaugeOption(spec.max, percent, labeled, valueName, rows, notes);
     }
@@ -846,36 +793,37 @@ function drawChart(reading: Reading): Record<string, unknown> {
 }
 
 /** Which column became which part of the chart, for a model that may have meant another. */
-function summarize({ family, table, columns, names }: Reading): string {
+function summarize({ spec, table, columns, names }: Reading): string {
   const labels = columns.labels.map((index) => JSON.stringify(table.columns[index]?.name ?? ""));
   const [first = "", second = ""] = labels;
   const values = quoteAll(names);
   const by = labels.length === 0 ? " by row number" : ` by ${labels.join(", ")}`;
   // Points and boxes that no column labels are not "by row number": nothing names them.
   const whenLabeled = labels.length === 0 ? "" : by;
-  switch (family) {
-    case "xy":
+  switch (spec.type) {
+    case "scatter":
       return columns.times === undefined
         ? `Charted ${JSON.stringify(names[1])} against ${JSON.stringify(names[0])}${whenLabeled}`
         : `Charted ${values} against ${first}`;
-    case "profile":
+    case "radar":
       return `Charted ${values} on an axis each${by}`;
-    case "hierarchy":
+    case "treemap":
+    case "sunburst":
       return chained(columns)
         ? `Charted ${values} by the levels of ${labels.join(", ")}`
         : `Charted ${values}${by}`;
-    case "flow":
+    case "sankey":
       if (labels.length >= 2) {
         return `Charted ${values} as flows from ${labels.join(" to ")}`;
       }
       return columns.separator === undefined
         ? `Charted ${values} as flows from ${first} to a node per value column`
         : `Charted ${values} as flows between the levels of ${first}`;
-    case "matrix":
+    case "heatmap":
       return labels.length >= 2
         ? `Charted ${values} by ${first} (rows) and ${second} (columns)`
         : `Charted ${values} (columns)${by} (rows)`;
-    case "distribution":
+    case "boxplot":
       return `Charted the spread of ${values}${whenLabeled}`;
     default:
       return `Charted ${values}${by}`;
