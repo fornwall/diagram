@@ -112,7 +112,10 @@ export function safeFileName(title: string, fallback: string): string {
     .slice(0, 80)
     // Windows keeps neither trailing dots nor trailing spaces.
     .replace(/[\s.]+$/, "");
-  return name || fallback;
+  // Windows reserves device names even with an extension, such as CON.svg.
+  return /^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³])(?:\s*\.|$)/i.test(name)
+    ? `_${name.slice(0, 79)}`
+    : name || fallback;
 }
 
 export type ToWebview =

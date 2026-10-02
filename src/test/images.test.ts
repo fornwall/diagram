@@ -14,4 +14,16 @@ suite("file names", () => {
     assert.strictEqual(safeFileName("...", "chart"), "chart");
     assert.ok(safeFileName("Long ".repeat(100), "diagram").length <= 80);
   });
+
+  test("avoids Windows device names, including names with extensions", () => {
+    for (const name of ["CON", "prn", "AUX", "NUL", "COM1", "LPT9", "COM¹", "LPT²", "COM³"]) {
+      assert.strictEqual(safeFileName(name, "diagram"), `_${name}`);
+      assert.strictEqual(safeFileName(`${name}.notes`, "diagram"), `_${name}.notes`);
+    }
+    assert.strictEqual(safeFileName("CON .notes", "diagram"), "_CON .notes");
+    for (const name of ["Console", "COM10", "LPT0", "AUX chart"]) {
+      assert.strictEqual(safeFileName(name, "diagram"), name);
+    }
+    assert.ok(safeFileName(`CON.${"a".repeat(100)}`, "diagram").length <= 80);
+  });
 });
