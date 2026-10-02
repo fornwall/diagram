@@ -1,10 +1,10 @@
 # @diagram
 
-Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts beside VS Code chat. Ask an agent to draw, then select parts, edit the source or send a follow-up request from the panel.
+Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts beside VS Code chat. Ask an agent to draw, then select parts, edit source or send a follow-up from the panel.
 
 You can also open `mermaid` and `echarts` blocks from Markdown files and apply edits back to the file.
 
-Requires VS Code 1.140 or later, and chat set up with a language model, such as GitHub Copilot.
+Requires VS Code 1.140 or later with chat configured, for example through GitHub Copilot.
 
 ## Ask `@diagram`
 
@@ -50,7 +50,9 @@ Diagrams follow your VS Code color theme.
 
 Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. The panel title names the file.
 
-**Apply** renders your edits and writes them back into that block, preserving its fence, indentation and surrounding text. Edits that fail to render stay in the panel; the file stays unchanged. You can undo a successful write in VS Code. If the block changed or cannot be identified safely, reopen it with **Open in Diagram** before writing. If an agent replaces the diagram, **Write to** applies its version after confirmation; rendering alone never changes the file. Changing between Mermaid and ECharts detaches the diagram from the original block.
+**Apply** renders your edits and writes them into the original block, preserving its fence, indentation and surrounding text. Failed renders leave the file unchanged and keep your edits in the panel. Writes can be undone in VS Code. If the block changed or cannot be identified safely, reopen it with **Open in Diagram**.
+
+If an agent replaces the diagram, **Write to** applies its version after confirmation; rendering alone never changes the file. Switching between Mermaid and ECharts detaches the diagram from the original block.
 
 Hide the **Open in Diagram** actions with `diagram.codeLens.enabled`.
 
@@ -68,9 +70,9 @@ Any chat agent can use these tools. Attach one with `#` to have it called first,
 
 `diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. It supports pie, doughnut, bar (vertical, horizontal or stacked), line, area (plain or stacked), scatter, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Grouping combines rows with the same labels by sum, mean, count, min, max or median; ISO dates become a time axis.
 
-`diagram_render` and `diagram_chart` take an optional `clickPrompt`, such as `"Explain {label} in more detail"`: a click on a node then sends that request to chat right away, for diagrams you explore part by part. Ctrl/Cmd+click or Shift+click still selects.
+`diagram_render` and `diagram_chart` accept `clickPrompt`, such as `"Explain {label} in more detail"`. Clicking a node or item sends that request to chat immediately, with its label substituted. Ctrl/Cmd+click or Shift+click still selects.
 
-`diagram_render` also takes `links`, which map Mermaid node ids to places in the code, such as `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30", "cli": "src/cli.ts"}`: a click on such a node opens the file there, with the lines selected. Links win over `clickPrompt`, while picking and Ctrl/Cmd/Shift+click still come first.
+`diagram_render` accepts `links` mapping Mermaid node ids to code, e.g. `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30", "cli": "src/cli.ts"}`. Clicking a linked node opens the file with those lines selected. Links take priority over `clickPrompt`; picking and Ctrl/Cmd/Shift+click take priority over both.
 
 VS Code asks you before a command runs, before reading a file outside the workspace, and before opening a linked file outside it (or any file in an untrusted workspace). Commands only run in trusted workspaces.
 

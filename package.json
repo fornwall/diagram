@@ -1,7 +1,7 @@
 {
   "name": "diagram",
   "displayName": "@diagram",
-  "description": "Chat agents draw Mermaid diagrams and Apache ECharts charts beside the chat, and you answer by selecting, clicking and editing them.",
+  "description": "Draw, select and edit Mermaid diagrams and Apache ECharts charts beside VS Code chat.",
   "version": "0.0.1",
   "publisher": "fornwall",
   "icon": "images/icon.png",
