@@ -142,13 +142,21 @@ suite("fences", () => {
     assert.strictEqual(relocateFence(other, read), undefined);
   });
 
-  test("relocateFence takes the copy nearest to where the fence was", () => {
+  test("relocateFence keeps an unchanged block but refuses ambiguous moved copies", () => {
     const text = "```mermaid\nA\n```\n```mermaid\nA\n```\n```mermaid\nA\n```\n";
     const fences = findDiagramFences(text);
     const read = { language: "mermaid", source: "A", indent: "" } as const;
     const near = (openingLine: number) =>
       relocateFence(fences, { ...read, openingLine, lastLine: openingLine + 1 })?.openingLine;
-    assert.deepStrictEqual([near(0), near(3), near(5), near(9)], [0, 3, 6, 6]);
+    assert.deepStrictEqual([near(0), near(3), near(5), near(9)], [0, 3, undefined, undefined]);
+  });
+
+  test("relocateFence does not substitute a duplicate for a block edited in place", () => {
+    const original = "```mermaid\nA\n```\n```mermaid\nA\n```\n";
+    const read = findDiagramFences(original)[0];
+    assert.ok(read);
+    const edited = findDiagramFences(original.replace("\nA\n", "\nB\n"));
+    assert.strictEqual(relocateFence(edited, read), undefined);
   });
 
   test("isDiagramFence accepts only fences, as a command may be called with anything", () => {

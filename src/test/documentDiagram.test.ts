@@ -205,6 +205,19 @@ suite("documentDiagram", function () {
     assert.match(outcome.reason, /Could not open gone\.md/);
   });
 
+  test("writeFence does not overwrite a duplicate when the original block changes", async () => {
+    const document = await markdown(
+      "```mermaid\nflowchart TD\n```\n\n```mermaid\nflowchart TD\n```\n",
+    );
+    const read = binding(document);
+    await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
+    const before = document.getText();
+    const outcome = await writeFence(read, "flowchart RL");
+    assert.ok(!outcome.written);
+    assert.match(outcome.reason, /Reopen it with Open in Diagram/);
+    assert.strictEqual(document.getText(), before);
+  });
+
   test("applying an edit in the panel writes it back to the document", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);

@@ -62,7 +62,7 @@ export async function writeFence(binding: DocumentBinding, source: string): Prom
   }
   const changed = {
     written: false,
-    reason: `The ${binding.fence.language} block in ${name} has changed since this ${noun} was opened, so it was not overwritten.`,
+    reason: `The ${binding.fence.language} block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
   } as const;
   const fence = relocateFence(findDiagramFences(document.getText()), binding.fence);
   if (!fence) {

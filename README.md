@@ -50,7 +50,7 @@ Diagrams follow your VS Code color theme.
 
 Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. The panel title names the file.
 
-**Apply** writes your edits back into that block, preserving its fence, indentation and surrounding text. You can undo the edit in VS Code. If an agent replaces the diagram, **Write to** applies its version after confirmation; rendering alone never changes the file. Changing between Mermaid and ECharts detaches the diagram from the original block.
+**Apply** renders your edits and writes them back into that block, preserving its fence, indentation and surrounding text. Edits that fail to render stay in the panel; the file stays unchanged. You can undo a successful write in VS Code. If the block changed or cannot be identified safely, reopen it with **Open in Diagram** before writing. If an agent replaces the diagram, **Write to** applies its version after confirmation; rendering alone never changes the file. Changing between Mermaid and ECharts detaches the diagram from the original block.
 
 Hide the **Open in Diagram** actions with `diagram.codeLens.enabled`.
 

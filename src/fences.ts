@@ -112,19 +112,27 @@ export function fenceAt(fences: readonly DiagramFence[], line: number): DiagramF
 }
 
 /**
- * Finds a fence again in a document that may have changed since it was read: the nearest block in
- * the same language that still holds the very same source. Returns nothing when it is gone or holds
- * something else, in which case a diagram must not be written over it.
+ * Finds an unchanged block at its original line, or a unique matching block that moved.
+ * An edited block or ambiguous copies must be reopened before writing to avoid replacing another
+ * diagram that happens to have the same source.
  */
 export function relocateFence(
   fences: readonly DiagramFence[],
   read: DiagramFence,
 ): DiagramFence | undefined {
-  const moved = (fence: DiagramFence) => Math.abs(fence.openingLine - read.openingLine);
+  const matches = (fence: DiagramFence) =>
+    fence.language === read.language && fence.source === read.source;
+  const original = fences.find((fence) => fence.openingLine === read.openingLine);
+  if (original) {
+    return matches(original) ? original : undefined;
+  }
   let found: DiagramFence | undefined;
   for (const fence of fences) {
-    if (fence.language === read.language && fence.source === read.source) {
-      found = found && moved(found) <= moved(fence) ? found : fence;
+    if (matches(fence)) {
+      if (found) {
+        return undefined;
+      }
+      found = fence;
     }
   }
   return found;
