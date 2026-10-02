@@ -196,6 +196,44 @@ suite("webview", function () {
     );
   });
 
+  test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {
+    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    await evaluate('document.getElementById("view-source").click()');
+    try {
+      assert.ok(
+        (
+          await render({
+            language: "echarts",
+            source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+          })
+        ).ok,
+      );
+      assert.strictEqual(
+        await evaluate(`(() => {
+          const svg = document.querySelector("#chart svg");
+          return svg.width.baseVal.value > 0 && svg.height.baseVal.value > 0;
+        })()`),
+        true,
+      );
+      assert.strictEqual(
+        await evaluate(`(async () => {
+          document.getElementById("view-visual").click();
+          const chart = document.getElementById("chart");
+          const svg = chart.querySelector("svg");
+          for (let attempt = 0; attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            if (chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
+              svg.height.baseVal.value === chart.clientHeight) return true;
+          }
+          return false;
+        })()`),
+        true,
+      );
+    } finally {
+      await evaluate('document.getElementById("view-visual").click()');
+    }
+  });
+
   test("exports SVG when the browser cannot create a PNG", async () => {
     assert.ok(
       (

@@ -171,10 +171,15 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  private createChart(echarts: typeof EChartsLibrary, theme: object): ECharts.ECharts {
+  private createChart(
+    echarts: typeof EChartsLibrary,
+    theme: object,
+    width: number,
+    height: number,
+  ): ECharts.ECharts {
     // The SVG renderer is registered in echartsLibrary.ts, but each instance still has to ask for
     // it: ECharts draws on a canvas unless told otherwise.
-    const chart = echarts.init(this.container, theme, { renderer: "svg" });
+    const chart = echarts.init(this.container, theme, { renderer: "svg", width, height });
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
@@ -211,8 +216,10 @@ export class EChartsRenderer implements Renderer {
     if (!echarts) {
       return;
     }
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    // Source view has no DOM dimensions. Keep an existing chart's size, or use an initial size
+    // for both the SVG and its layout; the resize observer fits it when the rendering is shown.
+    const width = this.container.clientWidth || this.chart?.getWidth() || 800;
+    const height = this.container.clientHeight || this.chart?.getHeight() || 500;
     const reducedMotion = this.reducedMotion.matches;
     const laidOut = `${width}:${height}:${reducedMotion}:${this.blurring()}`;
     // Check layout inputs before copying the data. Retaining a serialized option would also
@@ -241,7 +248,7 @@ export class EChartsRenderer implements Renderer {
     if (relayout && this.chart) {
       keepUserState(option, this.chart.getOption() as JsonObject);
     }
-    this.chart ??= this.createChart(echarts, this.theme.echarts);
+    this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
     this.chart.setOption(option, { notMerge: true });
     this.laidOut = laidOut;
     this.shownSelected = [];
@@ -286,13 +293,13 @@ export class EChartsRenderer implements Renderer {
   }
 
   private scheduleRelayout(): void {
-    // Without a size, e.g. while VS Code hides the panel, there is nothing to lay out.
-    if (!this.chart || this.container.clientWidth === 0) {
-      return;
-    }
     cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
-      this.chart?.resize();
+      // The panel can become hidden between the resize observation and this frame.
+      if (!this.chart || this.container.clientWidth === 0 || this.container.clientHeight === 0) {
+        return;
+      }
+      this.chart.resize({ width: "auto", height: "auto" });
       // Layout decisions (legend position, label rotation, …) follow once resizing settles.
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.relayout(), 150);

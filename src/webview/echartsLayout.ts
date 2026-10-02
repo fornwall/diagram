@@ -131,9 +131,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
   // Options with media queries handle their own responsiveness.
   if (option.media === undefined) {
-    // Before the panel is laid out, assume a typical editor size; a resize corrects it.
-    const width = context.width > 0 ? context.width : 800;
-    const height = context.height > 0 ? context.height : 500;
+    const { width, height } = context;
     const compact = width < 560 || height < 340;
     const charWidth = context.colors.fontSize * 0.6;
     layOut(base, series, cartesian, { width, height, compact, charWidth });
