@@ -43,13 +43,14 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let fieldStart = true;
   let line = 1;
   let quoteLine = 0;
+  let recordQuoted = false;
   let underlined = false;
   let width = 0;
   const finishRecord = (): void => {
     record.push(field);
     // Spreadsheets save empty rows as ",,,".
     if (!record.every(isBlank)) {
-      if (RULE.test(record.join(delimiter))) {
+      if (!recordQuoted && RULE.test(record.join(delimiter))) {
         underlined ||= records.length === 1;
       } else {
         width = Math.max(width, record.length);
@@ -61,6 +62,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     field = "";
     fieldStart = true;
     closedQuote = false;
+    recordQuoted = false;
   };
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -81,6 +83,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       }
     } else if (quoting && char === '"' && fieldStart) {
       quoted = true;
+      recordQuoted = true;
       quoteLine = line;
       field = "";
       fieldStart = false;
@@ -226,7 +229,7 @@ function splitPipes(lines: string[]): string[][] {
     line
       .trim()
       .replace(/^\|/, "")
-      .replace(/\|$/, "")
+      .replace(/(?<!\\)\|$/, "")
       .split(/(?<!\\)\|/)
       .map((cell) => cell.replaceAll("\\|", "|")),
   );
@@ -378,15 +381,23 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
   const { lines, underlined } = withoutRules(text.split(/\r?\n/).filter((line) => !isBlank(line)));
   const tabs = lines.filter((line) => line.includes("\t")).length;
+  let tabular: Records | undefined;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
     try {
-      return splitDelimited(text, "\t");
+      tabular = splitDelimited(text, "\t");
+      if (format === "tsv" || (tabular.records[0]?.length ?? 0) > 1) {
+        return tabular;
+      }
     } catch (error) {
       if (error instanceof TableSizeError) {
         throw error;
       }
       // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
-      return splitDelimited(text, "\t", false);
+      tabular = splitDelimited(text, "\t", false);
+      const first = tabular.records[0] ?? [];
+      if (format === "tsv" || (first.length > 1 && !String(first[0]).includes('"'))) {
+        return tabular;
+      }
     }
   }
   // Rows of a Markdown table may have fewer or more cells than its header.
@@ -399,5 +410,5 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return table;
     }
   }
-  return splitWhitespace(lines, underlined);
+  return tabular ?? splitWhitespace(lines, underlined);
 }

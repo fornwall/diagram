@@ -14,7 +14,7 @@ export function codeFence(text: string, language = ""): string {
     longestRun = Math.max(longestRun, run.length);
   }
   const fence = "`".repeat(Math.max(3, longestRun + 1));
-  return `${fence}${language}\n${text.trim()}\n${fence}`;
+  return `${fence}${language}\n${text}\n${fence}`;
 }
 
 /** Derives a short title for a diagram. */
@@ -22,12 +22,7 @@ export function guessTitle({ language, source }: DiagramBlock): string {
   return language === "echarts" ? guessChartTitle(source) : guessMermaidTitle(source);
 }
 
-/**
- * Uses the title of an ECharts option, if any. An option may also be written as JavaScript, which
- * only the webview evaluates: running it here would execute model-written code in the extension
- * host. Such an option therefore has no title to read, and falls back to the title the render tool
- * was given, or to "Chart" in a chat reply, which passes none.
- */
+/** Read JSON titles only: model-written JavaScript must never execute in the extension host. */
 function guessChartTitle(source: string): string {
   try {
     const { title } = JSON.parse(source) ?? {};
@@ -41,19 +36,13 @@ function guessChartTitle(source: string): string {
   return "Chart";
 }
 
-/**
- * Diagram types whose grammar has a title statement, as in "pie title Pets" or a gantt's
- * "title Plan", by the start of their keyword. In other types, a "title" line may be a node.
- */
+/** Types with title statements; in other types, a "title" line may be a node. */
 const TITLED_TYPE =
   /^(?:architecture|C4|cynefin|gantt|gitGraph|info|journey|packet|pie|quadrantChart|radar|railroad-(?:ebnf-|peg-)?beta|requirement|sequenceDiagram|timeline|treemap|treeView|venn|wardley|xychart)/;
 /** A title statement, up to a comment, after a pie's "showData" and with a sequence's colon. */
 const TITLE_STATEMENT = /^(?:showData\s+)?title(?:\s+|:\s*)(.*?)\s*(?:%%.*)?$/i;
 
-/**
- * Derives a short title from the frontmatter or a title statement, or else the diagram type, e.g.
- * "flowchart" or "sequenceDiagram".
- */
+/** Prefer frontmatter or a title statement, then fall back to the diagram type. */
 function guessMermaidTitle(source: string): string {
   let type: string | undefined;
   let inFrontmatter = false;
@@ -91,11 +80,7 @@ function guessMermaidTitle(source: string): string {
   return type ?? "Diagram";
 }
 
-/**
- * Parses an opening code fence: three or more backticks or tildes, followed by an info string whose
- * first word is the language. Unlike CommonMark, any indentation is accepted, as fences in list
- * items may be indented further; it is reported, as the content lines carry it too.
- */
+/** Parse a code fence, allowing extra indentation for Markdown list items. */
 export function openingFence(
   line: string,
 ): { indent: string; fence: string; language: string } | undefined {
@@ -146,16 +131,26 @@ export class DiagramBlockFilter {
 
   /** Adds a fragment, returning the text that can be shown. */
   push(fragment: string): string {
-    this.line += fragment;
     let output = "";
-    for (let newline = this.line.indexOf("\n"); newline !== -1; newline = this.line.indexOf("\n")) {
-      output += this.completeLine(this.line.slice(0, newline + 1));
-      this.line = this.line.slice(newline + 1);
+    let start = 0;
+    // Scan only new text: a chart option may be one long line arriving in tiny fragments.
+    for (
+      let newline = fragment.indexOf("\n");
+      newline !== -1;
+      newline = fragment.indexOf("\n", start)
+    ) {
+      output += this.completeLine(this.line + fragment.slice(start, newline + 1));
+      this.line = "";
       this.passed = 0;
+      start = newline + 1;
     }
-    const hidden = this.block ? this.block.diagram !== undefined : mayOpenDiagramBlock(this.line);
+    this.line += fragment.slice(start);
+    const hidden = this.block
+      ? this.block.diagram !== undefined
+      : this.passed === 0 && mayOpenDiagramBlock(this.line);
     if (!hidden) {
-      output += this.line.slice(this.passed);
+      // Once a line is visible, only inspect new text; rescanning a long streamed line is quadratic.
+      output += this.passed === 0 ? this.line : fragment.slice(start);
       this.passed = this.line.length;
     }
     return output;

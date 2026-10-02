@@ -57,7 +57,7 @@ export type ChartSpec = ChartData & {
   labelColumn?: string | string[];
   /** The columns with the values, one series each. */
   valueColumns?: string[];
-  /** The top of a gauge's scale, or of a radar chart's axes; inferred from the data otherwise. */
+  /** The top of a gauge's or radar chart's scale, in input units (bytes for sizes). */
   max?: number;
   /**
    * Collapses the rows that share a label (or, with several label columns, the same labels) into

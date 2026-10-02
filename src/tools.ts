@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle, isClosingFence, openingFence } from "./blocks";
+import { unlessCancelled } from "./cancellation";
 import {
   type ChartSpec,
   type ChartType,
@@ -310,7 +311,11 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
 
   invoke(
     options: vscode.LanguageModelToolInvocationOptions<AnnotateInput>,
+    token: vscode.CancellationToken,
   ): vscode.LanguageModelToolResult {
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     let annotation: Annotation;
     try {
       annotation = validateAnnotation(options.input);
@@ -419,25 +424,6 @@ function renderFailure(
   return outcome.kind === "invalid"
     ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
     : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call ${tool} again to reopen the panel.`;
-}
-
-/** Starts only while active, and stops waiting when the token is cancelled. */
-async function unlessCancelled<T>(
-  operation: () => Promise<T>,
-  token: vscode.CancellationToken,
-): Promise<T> {
-  if (token.isCancellationRequested) {
-    throw new vscode.CancellationError();
-  }
-  let listener: vscode.Disposable | undefined;
-  const cancelled = new Promise<never>((_resolve, reject) => {
-    listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
-  });
-  try {
-    return await Promise.race([operation(), cancelled]);
-  } finally {
-    listener?.dispose();
-  }
 }
 
 /** The value, if it is a string with more than whitespace: a model may pass anything. */

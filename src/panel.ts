@@ -29,26 +29,16 @@ import { savedChartFileName, savedChartHtml } from "./savedChart";
 import type { ThemeColors } from "./webview/colors";
 import { loadWebview } from "./webviewHtml";
 
-/**
- * Who produced the diagram currently shown: the @diagram participant, another agent through a tool,
- * or the user, by opening a diagram that is written in a document.
- */
+/** Routes follow-up questions to the participant or the agent that invoked a tool. */
 type DiagramOrigin = "participant" | "tool" | "document";
 
-/**
- * A render fails as "invalid" when the source has an error, and as "unavailable" when the panel
- * was closed or did not respond, which says nothing about the source.
- */
+/** "invalid" means a source error; "unavailable" means the panel closed or stopped responding. */
 export type RenderOutcome =
   | { ok: true; diagramType: string }
   | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 
-/**
- * What came of marking up the diagram shown: the marks it now carries, and the ids among them that
- * it has no node for, which are left unmarked.
- */
 export type AnnotateOutcome =
   | {
       ok: true;
@@ -65,25 +55,17 @@ interface Pending<Type extends ToWebview["type"], Outcome> {
   resolve: (outcome: Outcome) => void;
 }
 
-/** A diagram to show, as produced by an agent. */
 export interface Diagram {
   language: DiagramLanguage;
   source: string;
   title: string;
   /** When set, a plain click on a node sends this request to chat; see {@link clickToAskQuery}. */
   clickPrompt?: string;
-  /**
-   * Where the Mermaid nodes are in the code, by node id: a plain click on such a node opens its
-   * location, ahead of {@link clickPrompt}, while a pick and a modified click come first; see
-   * itemClicked in src/webview/main.ts.
-   */
+  /** Mermaid node locations. Links take precedence over clickPrompt on a plain click. */
   links?: NodeLinks;
   /** For a chart of data from a file or command: how to load the data and draw it again. */
   chart?: ChartSpec;
-  /**
-   * For a diagram opened from a fenced code block in a document: the block it came from, which the
-   * user's Apply writes their edits back into; see {@link applyEdit}.
-   */
+  /** Original Markdown block; Apply writes user edits back to it. */
   document?: DocumentBinding;
 }
 
@@ -105,10 +87,7 @@ const STATE_KEY = "diagram.state";
 const MAX_SAVED_CHART_SOURCE = 1_000_000;
 const RENDER_TIMEOUT_MS = 15_000;
 
-/**
- * The single interactive diagram panel shared by the @diagram participant and the language model
- * tools. It owns the current diagram and the user's interactions with it.
- */
+/** The panel shared by the chat participant and language model tools. */
 export class DiagramPanel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
@@ -116,22 +95,13 @@ export class DiagramPanel implements vscode.Disposable {
   private toolRequestId: unknown;
 
   private panel: vscode.WebviewPanel | undefined;
-  /**
-   * Whether the webview listens to messages. Until it does, messages are dropped, and once it does
-   * (again, after a reload), it is sent the pending render and pick.
-   */
+  /** Messages wait for "ready"; pending renders and picks are replayed after reloads. */
   private webviewReady = false;
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
-  /**
-   * The ids of the nodes of the rendering shown, as the webview reported them, or undefined when
-   * they are not known: nothing is drawn, or the rendering names no parts; see {@link drawnIds}.
-   */
+  /** Rendered node ids, or undefined when unavailable. */
   private nodeIds: string[] | undefined;
-  /**
-   * How an agent marked up the diagram shown, if it did. Kept only while that diagram is shown,
-   * never saved: the marks are commentary on the moment, not part of the diagram.
-   */
+  /** Transient marks: cleared on replacement, never persisted. */
   private annotation: Annotation | undefined;
   private nextRequestId = 1;
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
@@ -159,20 +129,14 @@ export class DiagramPanel implements vscode.Disposable {
     return this.nodeIds;
   }
 
-  /**
-   * Renders a diagram produced by an agent, or one the user opened from a document, opening the
-   * panel if needed. A tool passes the tool invocation token it was given, which tells which chat
-   * request the diagram is for.
-   */
+  /** Opens and renders a diagram, tracking the originating tool request for adoption. */
   async render(
     diagram: Diagram,
     origin: DiagramOrigin,
     toolInvocationToken?: unknown,
   ): Promise<RenderOutcome> {
     this.toolRequestId = requestId(toolInvocationToken);
-    // A diagram opened from a document keeps its binding when an agent replaces it, so that the user
-    // can still write what they end up with back to the file. Rendering never writes anything itself:
-    // the next write is the user's Apply, which asks them first; see DocumentBinding.replaced.
+    // Keep document bindings across agent replacements; a later Apply requires confirmation.
     const previousBinding = this.state?.document;
     const document =
       diagram.document ??
@@ -181,18 +145,13 @@ export class DiagramPanel implements vscode.Disposable {
         : undefined);
     this.state = { ...diagram, document, origin, editedByUser: false };
     this.selection = [];
-    // Another diagram is not the one an agent marked up, just as it is not the one the user selected in.
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
     this.reveal(origin !== "document");
     return this.renderCurrent();
   }
 
-  /**
-   * If a tool rendered the current diagram for the participant's chat request with this tool
-   * invocation token, makes it the participant's, so that requests about it go to the participant,
-   * and returns it. Another agent may render at the same time.
-   */
+  /** Adopts a tool render only if it belongs to this participant request. */
   adopt(toolInvocationToken: unknown): Readonly<DiagramState> | undefined {
     const id = requestId(toolInvocationToken);
     if (!this.state || id === undefined || id !== this.toolRequestId) {
@@ -257,11 +216,7 @@ export class DiagramPanel implements vscode.Disposable {
     });
   }
 
-  /**
-   * Marks up the diagram shown without drawing it again, replacing the marks from the call before:
-   * the webview puts the marks on the rendering that is already there. Ids the diagram has no node
-   * for are reported back rather than marked, so that an agent learns about its typo.
-   */
+  /** Replaces marks without redrawing, reporting any unknown node ids. */
   annotate(annotation: Annotation): AnnotateOutcome {
     const state = this.state;
     if (!state) {
@@ -281,14 +236,23 @@ export class DiagramPanel implements vscode.Disposable {
     }
     // The ids of the diagram as it is drawn now: opening the panel below draws it again.
     const ids = this.nodeIds;
-    const unknown = unknownNodeIds(
-      annotation.marks.map((mark) => mark.id),
-      ids,
-    );
-    const marks =
-      unknown.length > 0
-        ? annotation.marks.filter((mark) => !unknown.includes(mark.id))
-        : annotation.marks;
+    const known = ids && new Set(ids);
+    const claimed = new Set(annotation.marks.map((mark) => mark.id));
+    const marks: Annotation["marks"] = [];
+    const unknown: string[] = [];
+    for (const mark of annotation.marks) {
+      let id = mark.id;
+      // Preserve exact chart names. Only repair padding for a known, unclaimed node.
+      if (known && !known.has(id) && known.has(id.trim()) && !claimed.has(id.trim())) {
+        id = id.trim();
+        claimed.add(id);
+      }
+      if (known && !known.has(id)) {
+        unknown.push(mark.id);
+      } else {
+        marks.push(id === mark.id ? mark : { ...mark, id });
+      }
+    }
     this.annotation = { ...annotation, marks };
     // Showing the panel may have to open it, which renders the diagram again; the marks follow on
     // the webview's ready message either way.
@@ -434,7 +398,12 @@ export class DiagramPanel implements vscode.Disposable {
         break;
       case "clickToAsk":
         // A diagram that fails to render has no nodes: the click was on the one it replaced.
-        if (this.state?.clickPrompt && !this.state.error && !this.pendingRender) {
+        if (
+          this.state?.clickPrompt &&
+          !this.state.error &&
+          !this.pendingRender &&
+          !this.unavailable
+        ) {
           void this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
@@ -503,6 +472,8 @@ export class DiagramPanel implements vscode.Disposable {
       refreshFrom,
       writeTo: state.document && documentName(state.document),
     } as const;
+    // Preserve new source even if VS Code reloads before the webview answers.
+    let saved = this.save();
     const result = await new Promise<RenderOutcome>((resolve) => {
       const timeout = setTimeout(
         () =>
@@ -528,7 +499,11 @@ export class DiagramPanel implements vscode.Disposable {
     const latest = this.state;
     if (latest && version === this.renderVersion) {
       if (result.ok || result.kind === "invalid") {
-        this.state = { ...latest, error: result.ok ? undefined : result.error };
+        const error = result.ok ? undefined : result.error;
+        if (latest.error !== error) {
+          this.state = { ...latest, error };
+          saved = this.save();
+        }
       }
       if (!result.ok) {
         this.cancelPick(
@@ -536,7 +511,7 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
     }
-    await this.save();
+    await saved;
     return version === this.renderVersion ? result : replaced;
   }
 
@@ -769,7 +744,13 @@ export class DiagramPanel implements vscode.Disposable {
     const links = this.state?.links;
     // A diagram that fails to render has no nodes: the click was on the one it replaced. Node ids
     // are a model's words, so only the map's own entries count, not "constructor" and the like.
-    if (!links || this.state?.error || this.pendingRender || !Object.hasOwn(links, node.id)) {
+    if (
+      !links ||
+      this.state?.error ||
+      this.pendingRender ||
+      this.unavailable ||
+      !Object.hasOwn(links, node.id)
+    ) {
       return undefined;
     }
     return links[node.id];
@@ -820,6 +801,7 @@ export class DiagramPanel implements vscode.Disposable {
   /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
   private async askInChat(text: string): Promise<void> {
     const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
+    const selection = this.selection;
     try {
       await vscode.commands.executeCommand("workbench.action.chat.open", { query });
     } catch (error) {
@@ -829,7 +811,11 @@ export class DiagramPanel implements vscode.Disposable {
       );
       return;
     }
-    this.post({ type: "clearSelection" });
+    // Opening chat can take time; keep any selection made while it was opening.
+    if (this.selection === selection) {
+      this.selection = [];
+      this.post({ type: "clearSelection" });
+    }
   }
 
   private async post(message: ToWebview): Promise<void> {

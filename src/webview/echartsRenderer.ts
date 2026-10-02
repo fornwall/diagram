@@ -135,11 +135,14 @@ export class EChartsRenderer implements Renderer {
   }
 
   showMarks(annotation: Annotation): void {
+    const wasBlurring = this.blurring();
     this.annotation = annotation;
-    // Fading what is not marked is part of the option (see focusHighlighted), so a change there
-    // lays the chart out again, which dispatches the marks itself, as it does after a theme change.
-    this.relayout();
-    this.highlightMarks();
+    // Only dimming changes the option; relayout applies the highlights itself.
+    if (this.blurring() !== wasBlurring) {
+      this.relayout();
+    } else {
+      this.highlightMarks();
+    }
   }
 
   async themeChanged(): Promise<void> {
@@ -313,7 +316,8 @@ export class EChartsRenderer implements Renderer {
     if (dataType === "edge" && isPlainObject(data)) {
       label = `${String(data.source)} → ${String(data.target)}`;
     } else if (typeof params.name === "string" && params.name.trim()) {
-      label = params.name.trim();
+      // ECharts resolves annotations by the exact data name, including surrounding spaces.
+      label = params.name;
     }
     label ??= valueText(params.value) ?? `Item ${dataIndex + 1}`;
     const seriesCount = asArray(baseOption(this.option ?? {}).series).length;

@@ -1,16 +1,9 @@
-// The diagrams written as fenced code blocks in a Markdown document, and where their source sits in
-// it, so that the panel can open one and write the user's edits back into the same block. This is
-// free of VS Code so that it can be unit-tested, and it applies the fence rules of src/blocks.ts,
-// which reads the same blocks out of the markdown a model streams.
+// Locate Markdown diagrams for opening and write-back, using the same fence rules as chat.
 
 import { type DiagramBlock, isClosingFence, openingFence } from "./blocks";
 import { isDiagramLanguage, isPlainObject } from "./protocol";
 
-/**
- * A ```mermaid or ```echarts block in a document. Lines are counted from 0, as VS Code counts them,
- * and name the content alone: writing a diagram back replaces those lines and leaves the fence
- * markers, their length and their indentation as they are.
- */
+/** A Markdown diagram with zero-based line positions for write-back. */
 export interface DiagramFence extends DiagramBlock {
   /** The line the opening fence marker is on; the content starts on the line after it. */
   openingLine: number;
@@ -29,11 +22,7 @@ interface OpenFence {
   openingLine: number;
 }
 
-/**
- * Finds the diagrams written as fenced code blocks in a document, in the order they appear. A block
- * in another language is skipped along with the diagram fences inside it, which are code and not
- * diagrams of their own, and so is an empty block, which holds no diagram to open.
- */
+/** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
   const lines = text.split(/\r?\n/);
   // A trailing newline ends the last line rather than starting a line of content of its own.
@@ -69,12 +58,7 @@ export function findDiagramFences(text: string): DiagramFence[] {
   return fences;
 }
 
-/**
- * The diagram in a fence's content lines: the opening fence's indentation removed from each of them,
- * as CommonMark removes it, and no blank lines around it, as a diagram source needs none. What the
- * lines are indented by beyond the fence is kept, so that writing a source back unchanged leaves
- * the document exactly as it was.
- */
+/** Remove fence indentation and surrounding blank lines, preserving indentation within the source. */
 export function fenceSource(lines: readonly string[], indent: string): string {
   const content = lines.map((line) => stripIndent(line, indent.length));
   let first = 0;
@@ -88,11 +72,7 @@ export function fenceSource(lines: readonly string[], indent: string): string {
   return content.slice(first, last + 1).join("\n");
 }
 
-/**
- * Removes up to the given number of leading spaces or tabs from a content line, and no more, so
- * that deeper indentation is kept. A tab counts as one character rather than as the columns it
- * spans, which keeps reading a fence and writing it back consistent.
- */
+/** Strip up to `width` spaces or tabs, counting tabs as one character for consistent write-back. */
 function stripIndent(line: string, width: number): string {
   let start = 0;
   while (start < width && (line[start] === " " || line[start] === "\t")) {
@@ -101,11 +81,7 @@ function stripIndent(line: string, width: number): string {
   return line.slice(start);
 }
 
-/**
- * The fence to open for a cursor on the given line: the one it is in, else the next one below it,
- * else the last one above it, so that the command finds a diagram wherever the cursor is in a
- * document that holds one.
- */
+/** Open the enclosing fence, the next below the cursor, or the last in the document. */
 export function fenceAt(fences: readonly DiagramFence[], line: number): DiagramFence | undefined {
   const inside = fences.find((fence) => line >= fence.openingLine && line <= fence.lastLine + 1);
   return inside ?? fences.find((fence) => fence.openingLine > line) ?? fences.at(-1);
@@ -138,11 +114,7 @@ export function relocateFence(
   return found;
 }
 
-/**
- * Whether a value is a fence as {@link findDiagramFences} found it. The CodeLens hands its fence to
- * a command, so it comes back through VS Code, and another extension may call that command with
- * anything at all.
- */
+/** Validate command arguments, which can also come from other extensions. */
 export function isDiagramFence(value: unknown): value is DiagramFence {
   return (
     isPlainObject(value) &&

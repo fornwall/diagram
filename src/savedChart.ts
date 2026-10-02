@@ -1,6 +1,4 @@
-// A chart saved as one self-contained HTML file: the ECharts option, the colors the chart was
-// drawn in and the panel's chart code, all inlined so that the file opens in any browser and
-// needs no network. src/webview/standalone.ts is the script it inlines.
+// Offline HTML export with the chart, theme and renderer inlined.
 
 import * as vscode from "vscode";
 import { SAVED_CHART, type SavedChart, safeFileName } from "./protocol";
@@ -24,9 +22,12 @@ const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => HTML_ESCA
  */
 const embedJson = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
-/** The theme's font stack, kept to the characters a CSS font family is written with. */
+/** Preserve international font names without allowing CSS or HTML injection. */
 function fontStack(colors: ThemeColors): string {
-  return colors.fontFamily.replace(/[^\w\s,.'"()-]/g, "").trim() || "system-ui, sans-serif";
+  return (
+    colors.fontFamily.replace(/[^\p{L}\p{M}\p{N}_\s,.'"()-]/gu, "").trim() ||
+    "system-ui, sans-serif"
+  );
 }
 
 /** The name to save a chart titled `title` under, e.g. "Commits per author.html". */

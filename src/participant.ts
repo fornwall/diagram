@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
+import { unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
 import { fitToolResults, promptMessages } from "./prompt";
 import { CHART_TOOL, type DiagramLanguage, diagramNoun, errorMessage } from "./protocol";
@@ -42,12 +43,18 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
 
     try {
-      const messages = await promptMessages(request, context, explain, current, token);
+      const messages = await unlessCancelled(
+        () => promptMessages(request, context, explain, current, token),
+        token,
+      );
       if (typeof messages === "string") {
         return { errorDetails: { message: messages } };
       }
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
-        streamReply(request, messages, tools, required, stream, token, panel);
+        unlessCancelled(
+          () => streamReply(request, messages, tools, required, stream, token, panel),
+          token,
+        );
 
       let block = await converse(attached);
       if (explain) {
@@ -58,7 +65,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       for (let attempt = 0; block && !token.isCancellationRequested; attempt++) {
         const noun = diagramNoun(block.language);
         stream.progress(`Rendering ${noun}…`);
-        const outcome = await panel.render({ ...block, title: guessTitle(block) }, "participant");
+        const diagram = { ...block, title: guessTitle(block) };
+        const outcome = await unlessCancelled(() => panel.render(diagram, "participant"), token);
         if (token.isCancellationRequested) {
           return;
         }
@@ -233,6 +241,9 @@ async function streamReply(
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
     await fitToolResults(request.model, messages, results, token);
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     messages.push(vscode.LanguageModelChatMessage.User(results));
     if (reply && !reply.endsWith("\n")) {
       stream.markdown("\n\n");

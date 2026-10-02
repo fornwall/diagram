@@ -148,6 +148,14 @@ suite("echartsOption", () => {
     assert.match(errorOf(graph("")), /set "layout": "force" or "circular"/);
     parseOption(graph(', "layout": "force"'));
     parseOption('{"series": [{"type": "graph", "data": [{"name": "A", "x": 0, "y": 0}]}]}');
+    for (const value of ["NaN", "Infinity", "-Infinity"]) {
+      for (const axis of ["x", "y"]) {
+        assert.match(
+          errorOf(`{series: [{type: "graph", data: [{x: 0, y: 0, ${axis}: ${value}}]}]}`),
+          /nodes need "x" and "y"/,
+        );
+      }
+    }
   });
 
   test("explains empty or malformed coordinate components", () => {
@@ -232,6 +240,29 @@ suite("echartsOption", () => {
     parseOption(
       `{"title": {"text": "function of time", "subtext": "Input => Output"}, ${BAR}, ` +
         '"series": [{"type": "bar", "name": "x => y", "data": [1], "label": {"formatter": "{b} => {c}"}}]}',
+    );
+  });
+
+  test("treats dataset columns as data even when their names match callbacks", () => {
+    const dataset = {
+      source: [{ formatter: "x => x + 1", color: "function (x) { return x; }", value: 3 }],
+    };
+    for (const source of [dataset, [dataset]]) {
+      const option = { dataset: source, series: [{ type: "pie" }] };
+      parseOption(JSON.stringify(option));
+      parseOption(JSON.stringify({ baseOption: option }));
+      assert.match(
+        errorOf(JSON.stringify({ ...option, tooltip: { formatter: "x => x" } })),
+        /^tooltip\.formatter is JavaScript code/,
+      );
+    }
+    assert.match(
+      errorOf(`(() => {
+        const source = [];
+        source.push(source);
+        return {dataset: {source}, series: [{type: "pie"}]};
+      })()`),
+      /^dataset\.source\[0\] refers back to an object/,
     );
   });
 

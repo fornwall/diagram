@@ -113,8 +113,8 @@ export function safeFileName(title: string, fallback: string): string {
   if (/^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³])(?:\s*\.|$)/i.test(name)) {
     name = `_${name}`;
   }
-  // Truncation can expose trailing dots or spaces, which Windows does not keep.
-  return name.slice(0, 80).replace(/[\s.]+$/, "") || fallback;
+  // Truncation can split a surrogate pair or expose trailing dots and spaces.
+  return name.slice(0, 80).replace(/[\s.\uD800-\uDBFF]+$/u, "") || fallback;
 }
 
 export type ToWebview =

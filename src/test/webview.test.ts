@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
+import { validateAnnotation } from "../annotations";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel } from "./newPanel";
 
@@ -295,6 +296,28 @@ suite("webview", function () {
     assert.strictEqual(
       await evaluate('document.getElementById("source").value'),
       "flowchart LR\n A --> New",
+    );
+    await evaluate('document.getElementById("view-visual").click()');
+  });
+
+  test("acknowledges Apply when the edit matches the original unformatted chart source", async () => {
+    const source = '{"series":[{"type":"pie","data":[1,2]}]}';
+    assert.ok((await render({ language: "echarts", source })).ok);
+    await evaluate(`(() => {
+      document.getElementById("view-source").click();
+      const input = document.getElementById("source");
+      input.value = ${JSON.stringify(source)};
+      input.dispatchEvent(new Event("input"));
+    })()`);
+    assert.strictEqual(await evaluate('document.getElementById("apply").disabled'), false);
+    await nextRender(() => evaluate('document.getElementById("apply").click()'));
+    assert.deepStrictEqual(
+      await evaluate(`({
+        source: document.getElementById("source").value,
+        applyDisabled: document.getElementById("apply").disabled,
+        draft: window.readTestState().editor ?? null
+      })`),
+      { source: JSON.stringify(JSON.parse(source), null, 2), applyDisabled: true, draft: null },
     );
     await evaluate('document.getElementById("view-visual").click()');
   });
@@ -683,6 +706,78 @@ suite("webview", function () {
         return result;
       })()`),
       { scrolls: true, editorVisible: true, applyVisible: true, footerVisible: true },
+    );
+  });
+
+  test("disables stale drawing interactions during rendering and restores them after errors", async () => {
+    for (const series of ['[{type: "pie", data: [1]}]', "[]"]) {
+      const result = await render({
+        language: "echarts",
+        source: `(() => {
+          window.testRenderingInert = document.getElementById("canvas").inert;
+          return {series: ${series}};
+        })()`,
+      });
+      assert.strictEqual(result.ok, series !== "[]");
+      assert.deepStrictEqual(
+        await evaluate(`({
+          during: window.testRenderingInert,
+          after: document.getElementById("canvas").inert
+        })`),
+        { during: true, after: false },
+      );
+    }
+  });
+
+  test("selects and marks chart names with surrounding spaces without conflating them", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: JSON.stringify({
+            animation: false,
+            series: [
+              {
+                type: "pie",
+                data: [
+                  { name: "A", value: 1 },
+                  { name: " A ", value: 1 },
+                ],
+                itemStyle: { color: "#0000ff" },
+                emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+              },
+            ],
+          }),
+        })
+      ).ok,
+    );
+    assert.strictEqual(
+      await evaluate(`(() => {
+        const slice = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[1];
+        const box = slice.getBoundingClientRect();
+        const mouse = {
+          bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2
+        };
+        // ZRender accepts a click only after matching mouse down/up on the same item.
+        for (const type of ["mousedown", "mouseup", "click"]) {
+          slice.dispatchEvent(new MouseEvent(type, mouse));
+        }
+        return document.getElementById("selection-label").textContent;
+      })()`),
+      "Selected: “ A ”",
+    );
+    panel.annotate(validateAnnotation({ marks: [{ id: " A " }] }));
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const svg = document.querySelector("#chart svg");
+          const marked = svg.querySelectorAll('path[fill="#ff0000"]');
+          if (marked.length === 1) return marked[0].getBBox().x < svg.clientWidth / 2;
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        return false;
+      })()`),
+      true,
     );
   });
 

@@ -555,6 +555,12 @@ function rowLabels(
   return levels.length > 0 ? levels : [""];
 }
 
+function categoryAxisOverride(spec: ChartSpec): boolean {
+  const option = spec.options?.[spec.type === "horizontalBar" ? "yAxis" : "xAxis"];
+  const axis = Array.isArray(option) ? option[0] : option;
+  return isPlainObject(axis) && axis.type === "category";
+}
+
 /**
  * The rows to draw, in this order: the totals row (see {@link hasTotalsRow}) and the rows that
  * other rows nest under are left out, rows that share their labels are grouped (see
@@ -572,7 +578,7 @@ function readRows(
   table: DataTable,
   columns: Columns,
   notes: string[],
-): { rows: Row[]; names: string[] } {
+): { rows: Row[]; names: string[]; maxima: number[] } {
   const { type } = spec;
   const valueIndices = columns.values;
   const name = (index: number) => table.columns[index]?.name ?? "";
@@ -622,7 +628,7 @@ function readRows(
     );
   }
 
-  if (columns.times !== undefined) {
+  if (columns.times !== undefined && !categoryAxisOverride(spec)) {
     // A row without a date has nowhere to sit on a time axis.
     const dated = rows.filter((row) => label(row) !== "");
     const left = rows.length - dated.length;
@@ -711,7 +717,9 @@ function readRows(
     spec.aggregate === "count"
       ? ["rows"]
       : valueIndices.map((index, i) => name(index) + (bytes[i] ? unit : ""));
-  return { rows, names };
+  const max = spec.max;
+  const maxima = max === undefined ? [] : names.map((_, i) => max / (bytes[i] ? 1024 ** power : 1));
+  return { rows, names, maxima };
 }
 
 /** A table read as a chart: which columns play which role, and the rows to draw. */
@@ -721,6 +729,8 @@ interface Reading {
   columns: Columns;
   /** The value columns' names, carrying the unit that sizes in bytes are shown in. */
   names: string[];
+  /** Explicit axis maxima converted to the same units as the values. */
+  maxima: number[];
   rows: Row[];
   /** How the data was read, as the clauses of the summary; the drawing adds to it. */
   notes: string[];
@@ -744,8 +754,13 @@ export interface Chart {
 export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   const notes: string[] = [];
   const columns = readColumns(spec, table, notes);
-  const { rows, names } = readRows(spec, table, columns, notes);
-  const reading: Reading = { spec, table, columns, names, rows, notes };
+  const reading: Reading = {
+    spec,
+    table,
+    columns,
+    notes,
+    ...readRows(spec, table, columns, notes),
+  };
   const option = drawChart(reading);
   return {
     option: spec.options === undefined ? option : deepMerge(option, spec.options),
@@ -755,13 +770,11 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 
 /** Draws the rows as the requested chart, adding what the drawing worked out to the notes. */
 function drawChart(reading: Reading): Record<string, unknown> {
-  const { spec, table, columns, names, rows, notes } = reading;
+  const { spec, table, columns, names, maxima, rows, notes } = reading;
   const name = (index: number) => table.columns[index]?.name ?? "";
   const labeled = columns.labels.length > 0;
   const valueName = names[0] ?? "";
-  const axisOption = spec.options?.[spec.type === "horizontalBar" ? "yAxis" : "xAxis"];
-  const axis = Array.isArray(axisOption) ? axisOption[0] : axisOption;
-  const categoryTime = isPlainObject(axis) && axis.type === "category";
+  const categoryTime = categoryAxisOverride(spec);
   switch (spec.type) {
     case "bar":
     case "horizontalBar":
@@ -778,7 +791,7 @@ function drawChart(reading: Reading): Record<string, unknown> {
     case "funnel":
       return funnelOption(valueName, spec.sort, rows, notes);
     case "radar":
-      return radarOption(spec.max, names, rows);
+      return radarOption(maxima, names, rows);
     case "treemap":
     case "sunburst":
       return hierarchyOption(spec.type, valueName, rows, notes);
@@ -797,7 +810,7 @@ function drawChart(reading: Reading): Record<string, unknown> {
     case "gauge": {
       const valueColumn = columns.values[0];
       const percent = valueColumn !== undefined && table.columns[valueColumn]?.unit === "%";
-      return gaugeOption(spec.max, percent, labeled, valueName, rows, notes);
+      return gaugeOption(maxima[0], percent, labeled, valueName, rows, notes);
     }
   }
 }
@@ -1001,14 +1014,10 @@ function cartesianOption(
 }
 
 /**
- * A radar chart with one axis per value column and one shape per row. Each axis is scaled to its
- * own column, as the columns may be in different units, unless `max` gives them all one top.
+ * A radar chart with one axis per value column and one shape per row. Explicit maxima take
+ * precedence over each column's range.
  */
-function radarOption(
-  max: number | undefined,
-  names: string[],
-  rows: Row[],
-): Record<string, unknown> {
+function radarOption(maxima: number[], names: string[], rows: Row[]): Record<string, unknown> {
   const indicator = names.map((name, column) => {
     let low = 0;
     let high = 0;
@@ -1021,7 +1030,7 @@ function radarOption(
     }
     return {
       name,
-      max: max ?? (high > low ? high : high + 1),
+      max: maxima[column] ?? (high > low ? high : high + 1),
       // ECharts draws an axis from zero unless told otherwise, hiding negative values.
       ...(low < 0 ? { min: low } : {}),
     };
@@ -1419,7 +1428,7 @@ function boxplotOption(
     if (numbers.length === 0) {
       continue;
     }
-    const sorted = numbers.toSorted((x, y) => x - y);
+    const sorted = numbers.sort((x, y) => x - y);
     counted += sorted.length;
     categories.push(group);
     boxes.push([

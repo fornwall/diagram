@@ -295,7 +295,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
     (each.coordinateSystem === undefined || each.coordinateSystem === "view") &&
     Array.isArray(nodes) &&
     nodes.some(
-      (node) => !isPlainObject(node) || typeof node.x !== "number" || typeof node.y !== "number",
+      (node) => !isPlainObject(node) || !Number.isFinite(node.x) || !Number.isFinite(node.y),
     )
   ) {
     throw new Error(
@@ -312,7 +312,12 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
  * the walk is inside, which is what a cycle leads back to, rather than every object it has seen,
  * as the same value may well be used in several places.
  */
-function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): void {
+function findJavaScript(
+  value: unknown,
+  path: string,
+  inside: WeakSet<object>,
+  checkCallbacks = true,
+): void {
   if (value === null || typeof value !== "object" || ArrayBuffer.isView(value)) {
     return;
   }
@@ -327,7 +332,7 @@ function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): 
     value.forEach((item, index) => {
       // Primitive data points cannot contain callbacks; avoid building paths for large datasets.
       if (item !== null && typeof item === "object") {
-        findJavaScript(item, `${path}[${index}]`, inside);
+        findJavaScript(item, `${path}[${index}]`, inside, checkCallbacks);
       }
     });
     inside.delete(value);
@@ -340,7 +345,8 @@ function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): 
   // Layout copies inherited properties too, so validate the same values it will copy.
   for (const key in value) {
     const item = value[key];
-    const callback = typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
+    const callback =
+      checkCallbacks && typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
     if (!callback && (item === null || typeof item !== "object")) {
       continue;
     }
@@ -353,7 +359,8 @@ function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): 
           "(pie percentage).",
       );
     }
-    findJavaScript(item, itemPath, inside);
+    // Dataset columns and transform configuration hold data, not callback options.
+    findJavaScript(item, itemPath, inside, checkCallbacks && key !== "dataset");
   }
   inside.delete(value);
 }

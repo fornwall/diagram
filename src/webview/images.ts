@@ -72,14 +72,14 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
   const scale = Math.min(
     PNG_SCALE,
     MAX_PNG_SIDE / Math.max(width, height),
-    Math.sqrt(MAX_PNG_PIXELS / (width * height)),
+    Math.sqrt(MAX_PNG_PIXELS / width) / Math.sqrt(height),
   );
   const image = new Image();
   image.src = svgDataUrl(svg);
   await image.decode();
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(width * scale));
-  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.width = Math.max(1, Math.floor(width * scale));
+  canvas.height = Math.max(1, Math.floor(height * scale));
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("This browser did not provide a canvas to draw the image on.");

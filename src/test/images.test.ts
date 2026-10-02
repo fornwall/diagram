@@ -29,9 +29,12 @@ suite("PNG export", () => {
         [320, 200, 640, 400],
         [8000, 8000, 4000, 4000],
         [10000, 100, 8000, 80],
+        [7001, 7501, 3864, 4140],
+        [1e160, 1e160, 4000, 4000],
       ] as const) {
         await pngDataUrl({ svg: "<svg/>", width, height });
         assert.deepStrictEqual([canvas.width, canvas.height], [expectedWidth, expectedHeight]);
+        assert.ok(canvas.width * canvas.height <= 16_000_000);
       }
     } finally {
       for (const [key, descriptor] of [

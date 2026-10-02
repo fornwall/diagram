@@ -168,6 +168,15 @@ suite("data", () => {
     });
   });
 
+  test("quoted rule-looking cells remain data", () => {
+    assert.deepStrictEqual(parse('"label"\n"---"\n"x"', "csv").rows, [["label"], ["---"], ["x"]]);
+    assert.deepStrictEqual(parse('a\tb\n"---"\t"---"\nx\ty', "tsv").rows, [
+      ["a", "b"],
+      ["---", "---"],
+      ["x", "y"],
+    ]);
+  });
+
   test("parses CSV whose lines have different numbers of fields", () => {
     const cloc =
       'files,language,blank,code,"github.com/AlDanial/cloc v 1.98  T=0.05 s"\n' +
@@ -363,10 +372,33 @@ suite("data", () => {
     });
   });
 
+  test("tabs inside CSV fields do not change its delimiter", () => {
+    for (const delimiter of [",", ";"]) {
+      const rows = `"a\tb"${delimiter}1\n"c\td"${delimiter}2`;
+      for (const header of ["", `name${delimiter}value\n`]) {
+        assert.deepStrictEqual(parse(`${header}${rows}`).rows, [
+          ["a\tb", 1],
+          ["c\td", 2],
+        ]);
+      }
+      assert.deepStrictEqual(
+        parse(`name${delimiter}value\na\tb${delimiter}1\nc\td${delimiter}2`).rows,
+        [
+          ["a\tb", 1],
+          ["c\td", 2],
+        ],
+      );
+    }
+  });
+
   test("parses TSV with unbalanced quotes", () => {
     assert.deepStrictEqual(parse('4\t"odd name\n8\tother', "tsv").rows, [
       [4, '"odd name'],
       [8, "other"],
+    ]);
+    assert.deepStrictEqual(parse('4\t"odd,name\n8\tother,file').rows, [
+      [4, '"odd,name'],
+      [8, "other,file"],
     ]);
   });
 
@@ -531,6 +563,7 @@ suite("data", () => {
       assert.deepStrictEqual(parse(table), expected, table);
     }
     assert.deepStrictEqual(parse("a | b\n--|--\nx\\|y | 1").rows, [["x|y", 1]]);
+    assert.deepStrictEqual(parse("a | b\n--|--\n1 | x\\|").rows, [[1, "x|"]]);
     assert.deepStrictEqual(parse("| a | b |\n|---|---|\n| x | 1 |\n| y |").rows, [
       ["x", 1],
       ["y", null],

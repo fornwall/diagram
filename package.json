@@ -225,7 +225,7 @@
             },
             "max": {
               "type": "number",
-              "description": "The top of a gauge's scale, or of every axis of a radar chart. Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value."
+              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value."
             },
             "aggregate": {
               "type": "string",

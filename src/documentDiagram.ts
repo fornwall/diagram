@@ -1,50 +1,30 @@
-// A diagram that was opened from a fenced code block in a document: where it came from, and writing
-// what the user applies in the panel back into that very block. The file is only ever written for an
-// explicit action of the user's; see DiagramPanel.applyEdit.
-
 import * as vscode from "vscode";
 import { isClosingFence, openingFence } from "./blocks";
 import { type DiagramFence, fenceSource, findDiagramFences, relocateFence } from "./fences";
 import { diagramNoun, errorMessage } from "./protocol";
 
-/**
- * The block a diagram shown in the panel was opened from. The document is kept as a URI string and
- * the fence as plain lines and text, as the panel's state is saved as JSON; the fence is the one
- * last read or written, which is what the document must still hold for a write to go ahead.
- */
+/** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
 export interface DocumentBinding {
   /** The document, as vscode.Uri.toString(). */
   uri: string;
   fence: DiagramFence;
-  /**
-   * Set when an agent replaced the diagram after it was opened from the document: the binding is
-   * kept, so that the user can still write what they end up with back to the file, but what the
-   * panel shows is no longer what they opened, so the next write asks them first. An agent's render
-   * never writes by itself.
-   */
+  /** Agent replacements retain the binding but require confirmation before writing. */
   replaced?: boolean;
 }
 
-/** The name of the document a diagram came from, as the panel's title and its messages name it. */
 export function documentName({ uri }: DocumentBinding): string {
   const { path } = vscode.Uri.parse(uri);
   return path.split("/").pop() || path;
 }
 
-/** Whether a diagram was written back, and else why not, as the panel tells the user. */
 export type WriteOutcome =
   | { written: true; fence: DiagramFence }
   | { written: false; reason: string };
 
 /**
- * Writes a diagram into the block it was opened from, replacing its content lines alone: the fence
- * markers, their length and their indentation, the document's line endings and whether it ends with
- * a newline are all left as they are. The edit goes through a workspace edit, so that the user can
- * undo it in the editor.
- *
- * The block is located again first, as it may have moved and may have been edited since it was read.
- * A document that no longer holds what was read is never written over: the user is told instead.
- * If supplied, isCurrent also checks that the panel's write is still current after opening the file.
+ * Replaces an unchanged fence's content with an undoable workspace edit, preserving fence markers,
+ * indentation and line endings. Refuses ambiguous or changed blocks. isCurrent guards against
+ * panel changes while opening the document.
  */
 export async function writeFence(
   binding: DocumentBinding,
@@ -130,10 +110,7 @@ export async function writeFence(
   };
 }
 
-/**
- * Asks before writing a diagram that an agent drew into the document the panel's diagram was opened
- * from. Applying is the user's own action, but the diagram is no longer the one they opened.
- */
+/** Confirms writing an agent replacement back to the original document. */
 export async function confirmReplacedWrite(binding: DocumentBinding): Promise<boolean> {
   const name = documentName(binding);
   const noun = diagramNoun(binding.fence.language);
@@ -148,10 +125,7 @@ export async function confirmReplacedWrite(binding: DocumentBinding): Promise<bo
   return write !== undefined;
 }
 
-/**
- * Says why a diagram was not written back, and opens the document if the user wants to reconcile it
- * themselves, at the line the block was on.
- */
+/** Reports a failed write and offers to open the original block. */
 export async function reportWriteFailure(binding: DocumentBinding, reason: string): Promise<void> {
   const name = documentName(binding);
   if ((await vscode.window.showWarningMessage(reason, `Open ${name}`)) === undefined) {

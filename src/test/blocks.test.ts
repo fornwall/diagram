@@ -36,6 +36,11 @@ suite("blocks", () => {
     assert.strictEqual(codeFence(source), `\`\`\`\`\`\`\`\n${source}\n\`\`\`\`\`\`\``);
   });
 
+  test("codeFence preserves whitespace in attached source and selections", () => {
+    const source = "    if ready:\n        run()\n\n";
+    assert.strictEqual(codeFence(source, "python"), `\`\`\`python\n${source}\n\`\`\``);
+  });
+
   test("guessTitle uses the frontmatter title", () => {
     assert.strictEqual(
       mermaidTitle('---\ntitle: "Login flow"\n---\nsequenceDiagram'),
@@ -114,10 +119,29 @@ suite("blocks", () => {
     assertFiltered('Sales:\n```echarts\n{"series": []}\n```\nDone.', "Sales:\nDone.");
   });
 
+  test("DiagramBlockFilter collects a long chart line streamed in small fragments", () => {
+    const source = JSON.stringify({ series: [{ type: "line", data: Array(100_000).fill(42) }] });
+    const markdown = `Chart:\n\`\`\`echarts\n${source}\n\`\`\`\nDone.`;
+    const filter = new DiagramBlockFilter();
+    let shown = "";
+    for (let offset = 0; offset < markdown.length; offset += 100) {
+      shown += filter.push(markdown.slice(offset, offset + 100));
+    }
+    shown += filter.flush();
+    assert.strictEqual(shown, "Chart:\nDone.");
+    assert.deepStrictEqual(filter.diagrams, [{ language: "echarts", source }]);
+  });
+
   test("DiagramBlockFilter keeps other code blocks and inline mentions", () => {
     const markdown =
       "Use a ```mermaid``` block, e.g.:\n```ts\nconst x = 1;\n```\n  ```mermaidx\nkept\n";
     assertFiltered(markdown, markdown);
+  });
+
+  test("DiagramBlockFilter streams long prose before a diagram without losing text", () => {
+    const prose = "Ordinary prose. ".repeat(50_000);
+    const markdown = `${prose}\n\`\`\`mermaid\nflowchart LR\nA --> B\n\`\`\`\nDone.`;
+    assert.strictEqual(filterInFragments(markdown, 100), `${prose}\nDone.`);
   });
 
   test("DiagramBlockFilter hides an unterminated block", () => {

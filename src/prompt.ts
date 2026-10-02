@@ -66,6 +66,9 @@ export async function promptMessages(
   const { model } = request;
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
   const attachments = await readAttachments(request);
+  if (token.isCancellationRequested) {
+    throw new vscode.CancellationError();
+  }
   const exchanges = await pastExchanges(context.history);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
@@ -229,6 +232,9 @@ function tokenCounter(
   const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
   const counts = new Map<string, Promise<number>>();
   return (text) => {
+    if (token.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     let count = counts.get(text);
     if (!count) {
       count = exact

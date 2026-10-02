@@ -17,7 +17,7 @@ suite("annotations", () => {
       validateAnnotation({
         marks: [
           { id: "pay", mark: "problem", note: " times out after 30 s " },
-          // Node ids are trimmed, as a model may pad them, and "current" is the default mark.
+          // Preserve exact chart names; "current" is the default mark.
           { id: " retry " },
           { id: "done", mark: "good" },
           // A model may name a node without saying how to mark it, as a bare id.
@@ -29,7 +29,7 @@ suite("annotations", () => {
       {
         marks: [
           { id: "pay", kind: "problem", note: "times out after 30 s" },
-          { id: "retry", kind: "current" },
+          { id: " retry ", kind: "current" },
           { id: "done", kind: "good" },
           { id: "log", kind: "current" },
         ],
@@ -37,6 +37,13 @@ suite("annotations", () => {
         dim: true,
       },
     );
+  });
+
+  test("keeps names that differ only by surrounding spaces distinct", () => {
+    assert.deepStrictEqual(validateAnnotation({ marks: ["A", " A "] }).marks, [
+      { id: "A", kind: "current" },
+      { id: " A ", kind: "current" },
+    ]);
   });
 
   test("validateAnnotation reads an input without marks as clearing them", () => {

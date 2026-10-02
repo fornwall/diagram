@@ -570,6 +570,27 @@ suite("charts", () => {
     );
   });
 
+  test("explicit maxima use the same byte units as gauge and radar values", () => {
+    const gauge = build(chart("gauge", { max: 2048 }), "metric,value\nused,1KiB");
+    assert.strictEqual(gauge.series[0].name, "value (KiB)");
+    assert.strictEqual(gauge.series[0].data[0].value, 1);
+    assert.strictEqual(gauge.series[0].max, 2);
+    const radar = build(
+      chart("radar", { max: 2048, valueColumns: ["size", "count"] }),
+      "metric,size,count\na,1KiB,2",
+    );
+    assert.deepStrictEqual(radar.radar.indicator, [
+      { name: "size (KiB)", max: 2 },
+      { name: "count", max: 2048 },
+    ]);
+    assert.deepStrictEqual(radar.series[0].data[0].value, [1, 2]);
+    const counted = build(
+      chart("gauge", { max: 2048, aggregate: "count" }),
+      "metric,value\nused,1KiB\nused,1KiB",
+    );
+    assert.strictEqual(counted.series[0].max, 2048);
+  });
+
   test("gauge counts rows without inheriting the input's percentage unit", () => {
     const spec = chart("gauge", { aggregate: "count" });
     const [series] = build(spec, "share,group\n10%,a\n20%,a\n30%,b").series;
@@ -983,6 +1004,26 @@ suite("charts", () => {
         } finally {
           rendered.dispose();
         }
+      }
+    }
+  });
+
+  test("category axis overrides keep rows with missing dates", () => {
+    const data = "date,n\n2026-01-02,3\n,5\n2026-01-05,7";
+    for (const type of ["line", "horizontalBar", "scatter"] as const) {
+      const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
+      for (const override of [{ type: "category" }, [{ type: "category" }]]) {
+        const spec = chart(type, { options: { [axis]: override } });
+        const expected = [
+          ["2026-01-02", 3],
+          ["", 5],
+          ["2026-01-05", 7],
+        ];
+        assert.deepStrictEqual(
+          build(spec, data).series[0].data,
+          type === "horizontalBar" ? expected.map(([date, value]) => [value, date]) : expected,
+        );
+        assert.doesNotMatch(summary(spec, data), /without a date/);
       }
     }
   });

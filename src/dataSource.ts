@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 
@@ -299,7 +300,7 @@ export async function loadTable(
   if (spec.data !== undefined) {
     text = spec.data;
   } else if (spec.file !== undefined) {
-    text = await readDataFile(spec.file);
+    text = await unlessCancelled(() => readDataFile(spec.file), token);
   } else {
     ({ output: text, warning } = await runCommand(spec.command, token));
   }

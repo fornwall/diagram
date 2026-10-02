@@ -240,6 +240,91 @@ suite("panel", function () {
     }
   });
 
+  test("source is saved before the webview responds, without saving successful renders twice", async () => {
+    const values = new Map<string, unknown>();
+    const panel = newPanel(values);
+    const internals = panel as unknown as {
+      post(): void;
+      applyEdit(source: string): Promise<void>;
+      onMessage(message: FromWebview): void;
+      pendingRender: { message: { requestId: number } };
+      context: vscode.ExtensionContext;
+    };
+    internals.post = () => {};
+    let writes = 0;
+    const update = internals.context.workspaceState.update;
+    internals.context.workspaceState.update = (key, value) => {
+      writes++;
+      return update(key, value);
+    };
+    const finish = () =>
+      internals.onMessage({
+        type: "rendered",
+        requestId: internals.pendingRender.message.requestId,
+        diagramType: "flowchart",
+      });
+    try {
+      const rendering = panel.render(flowchart, "tool");
+      assert.strictEqual((values.get("diagram.state") as DiagramState).source, flowchart.source);
+      finish();
+      assert.ok((await rendering).ok);
+      assert.strictEqual(writes, 1);
+
+      const source = "flowchart LR\n  C --> D";
+      const editing = internals.applyEdit(source);
+      const saved = values.get("diagram.state") as DiagramState;
+      assert.strictEqual(saved.source, source);
+      assert.strictEqual(saved.editedByUser, true);
+      finish();
+      await editing;
+      assert.strictEqual(writes, 2);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("an unavailable rendering ignores stale clicks on the previous diagram", async () => {
+    const panel = newPanel();
+    const actions: string[] = [];
+    const internals = panel as unknown as {
+      post(): void;
+      onMessage(message: FromWebview): void;
+      pendingRender: { message: { requestId: number } };
+      finishRender(id: number, outcome: RenderOutcome): void;
+      askInChat(text: string): Promise<void>;
+      openLink(link: NodeLink, label: string): Promise<void>;
+    };
+    internals.post = () => {};
+    internals.askInChat = async () => {
+      actions.push("chat");
+    };
+    internals.openLink = async () => {
+      actions.push("file");
+    };
+    try {
+      const rendering = panel.render(
+        {
+          ...flowchart,
+          clickPrompt: "Explain {label}",
+          links: { A: { file: "sizes.tsv" } },
+        },
+        "tool",
+      );
+      internals.finishRender(internals.pendingRender.message.requestId, {
+        ok: false,
+        kind: "unavailable",
+        error: "The panel stopped responding.",
+      });
+      await rendering;
+      const node = { id: "A", label: "Parser" };
+      internals.onMessage({ type: "clickToAsk", node });
+      internals.onMessage({ type: "clickToOpen", node });
+      assert.deepStrictEqual(actions, []);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("a completed render cannot mark a newer copy of the same source as broken", async () => {
     const panel = newPanel();
     const internals = panel as unknown as {
@@ -475,6 +560,92 @@ suite("panel", function () {
       });
     } finally {
       cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("cancelling a chart stops waiting for a file read", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "fs");
+    assert.ok(descriptor);
+    const started = Promise.withResolvers<void>();
+    const data = Promise.withResolvers<Uint8Array>();
+    Object.defineProperty(vscode.workspace, "fs", {
+      configurable: true,
+      value: {
+        ...vscode.workspace.fs,
+        readFile: () => {
+          started.resolve();
+          return data.promise;
+        },
+      },
+    });
+    try {
+      const result = new ChartTool(panel).invoke(
+        { input: { type: "bar", file: "sizes.tsv" } } as never,
+        cancellation.token,
+      );
+      await started.promise;
+      cancellation.cancel();
+      await assert.rejects(result, vscode.CancellationError);
+      assert.strictEqual(panel.current, undefined);
+    } finally {
+      data.resolve(new TextEncoder().encode("name,value\nA,1"));
+      Object.defineProperty(vscode.workspace, "fs", descriptor);
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("a cancelled annotation leaves the current marks alone", () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    let marked = false;
+    panel.annotate = () => {
+      marked = true;
+      return { ok: false, reason: "Unexpected annotation" };
+    };
+    cancellation.cancel();
+    try {
+      assert.throws(
+        () => new AnnotateDiagramTool(panel).invoke({ input: {} } as never, cancellation.token),
+        vscode.CancellationError,
+      );
+      assert.strictEqual(marked, false);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("opening chat clears only the selection that sent the request", async () => {
+    const panel = newPanel();
+    const execute = vscode.commands.executeCommand;
+    const sent: ToWebview[] = [];
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      askInChat(text: string): Promise<void>;
+      post(message: ToWebview): void;
+      selection: { id: string; label: string }[];
+    };
+    internals.post = (message) => sent.push(message);
+    try {
+      for (const changed of [true, false]) {
+        const opened = Promise.withResolvers<void>();
+        vscode.commands.executeCommand = (() => opened.promise) as typeof execute;
+        internals.onMessage({ type: "selectionChanged", nodes: [{ id: "A", label: "Parser" }] });
+        const asking = internals.askInChat("Explain the selection");
+        if (changed) {
+          internals.onMessage({ type: "selectionChanged", nodes: [{ id: "B", label: "Checker" }] });
+        }
+        opened.resolve();
+        await asking;
+        assert.deepStrictEqual(sent, changed ? [] : [{ type: "clearSelection" }]);
+        assert.deepStrictEqual(internals.selection, changed ? [{ id: "B", label: "Checker" }] : []);
+      }
+    } finally {
+      vscode.commands.executeCommand = execute;
       panel.dispose();
     }
   });
@@ -919,6 +1090,31 @@ suite("panel", function () {
       assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
       assert.match(result.content[0].value, /These links name nodes the diagram does not have/);
       assert.match(result.content[0].value, /"Checker"\. Its node ids are "A", "B"\./);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("annotation ids prefer exact names and only repair unambiguous padding", () => {
+    const panel = newPanel();
+    const internals = panel as unknown as { state: DiagramState; nodeIds?: string[] };
+    internals.state = { ...flowchart, origin: "tool", editedByUser: false };
+    panel.show = () => {};
+    const annotate = (...ids: string[]) => {
+      const outcome = panel.annotate({
+        marks: ids.map((id) => ({ id, kind: "info" })),
+        dim: false,
+      });
+      assert.ok(outcome.ok);
+      return { ids: outcome.annotation.marks.map((mark) => mark.id), unknown: outcome.unknown };
+    };
+    try {
+      internals.nodeIds = ["A", "B", " B "];
+      assert.deepStrictEqual(annotate(" A ", " B "), { ids: ["A", " B "], unknown: [] });
+      assert.deepStrictEqual(annotate(" A ", "A"), { ids: ["A"], unknown: [" A "] });
+      assert.deepStrictEqual(annotate(" A ", "  A"), { ids: ["A"], unknown: ["  A"] });
+      internals.nodeIds = undefined;
+      assert.deepStrictEqual(annotate(" A "), { ids: [" A "], unknown: [] });
     } finally {
       panel.dispose();
     }

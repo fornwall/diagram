@@ -135,14 +135,13 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   showRefresh(message.refreshFrom);
   showWriteTo(message.writeTo);
   const renderer = renderers[language];
-  const changed = current?.source !== source || current.renderer !== renderer;
   current = { renderer, source };
   // The first diagram makes the source available, and with it the view chosen before a reload.
   setViewMode(viewMode);
-  if (changed) {
-    sourceChanged(source);
-  }
+  sourceChanged(source);
   emptyElement.hidden = true;
+  // The previous drawing may remain visible while rendering, but its actions are now stale.
+  canvas.inert = true;
   try {
     const diagramType = await renderer.render(source, message.title);
     if (active !== renderer) {
@@ -165,6 +164,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     const text = errorMessage(error);
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });
+  } finally {
+    canvas.inert = false;
   }
   // The extension forgets the selection and the marks when it sends a diagram, whether or not it
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.

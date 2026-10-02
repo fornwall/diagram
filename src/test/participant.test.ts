@@ -161,6 +161,149 @@ suite("participant", function () {
     }
   });
 
+  test("cancellation stops waiting for an unresponsive diagram panel", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    const rendering = Promise.withResolvers<void>();
+    const outcome = Promise.withResolvers<Awaited<ReturnType<DiagramPanel["render"]>>>();
+    panel.render = () => {
+      rendering.resolve();
+      return outcome.promise;
+    };
+    try {
+      const response = ask(panel, [[text(valid)]], { token: cancellation.token });
+      await rendering.promise;
+      cancellation.cancel();
+      const { result, sent } = await response;
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(sent.length, 1);
+    } finally {
+      outcome.resolve({ ok: true, diagramType: "flowchart" });
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  for (const phase of ["token counting", "model request", "response stream"] as const) {
+    test(`cancellation stops waiting for unresponsive ${phase}`, async () => {
+      const panel = newPanel();
+      const cancellation = new vscode.CancellationTokenSource();
+      const started = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const stall = async (at: typeof phase) => {
+        if (at === phase) {
+          started.resolve();
+          await resume.promise;
+        }
+      };
+      const model = {
+        name: "Unresponsive provider",
+        maxInputTokens: 2_000,
+        countTokens: async () => {
+          await stall("token counting");
+          return 1;
+        },
+        sendRequest: async () => {
+          await stall("model request");
+          return {
+            stream: (async function* () {
+              await stall("response stream");
+              yield text(valid);
+            })(),
+          };
+        },
+      } as unknown as vscode.LanguageModelChat;
+      try {
+        const response = ask(panel, [], { model, token: cancellation.token });
+        await started.promise;
+        cancellation.cancel();
+        const { result, shown } = await response;
+        assert.strictEqual(result, undefined);
+        assert.strictEqual(shown, "");
+        resume.resolve();
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(panel.current, undefined, "Late output must not replace the diagram");
+      } finally {
+        resume.resolve();
+        cancellation.dispose();
+        panel.dispose();
+      }
+    });
+  }
+
+  test("cancellation stops waiting for an unresponsive tool", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    const started = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<vscode.LanguageModelToolResult>();
+    const invokeTool = vscode.lm.invokeTool;
+    vscode.lm.invokeTool = () => {
+      started.resolve();
+      return resume.promise;
+    };
+    try {
+      const response = ask(
+        panel,
+        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
+        { toolReferences: [{ name: "diagram_getState" }], token: cancellation.token },
+      );
+      await started.promise;
+      cancellation.cancel();
+      const { result, sent } = await response;
+      assert.strictEqual(result, undefined);
+      resume.resolve(new vscode.LanguageModelToolResult([]));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.strictEqual(sent.length, 1, "Late tool results must not start another model request");
+      assert.strictEqual(panel.current, undefined);
+    } finally {
+      resume.resolve(new vscode.LanguageModelToolResult([]));
+      vscode.lm.invokeTool = invokeTool;
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
+  test("cancellation stops waiting for an attachment and skips subsequent history reads", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    const started = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<string>();
+    const opened: string[] = [];
+    const provider = vscode.workspace.registerTextDocumentContentProvider("diagram-cancel-test", {
+      provideTextDocumentContent: (uri) => {
+        opened.push(uri.path);
+        started.resolve();
+        return resume.promise;
+      },
+    });
+    const reference = (path: string): vscode.ChatPromptReference => ({
+      id: path,
+      value: vscode.Uri.parse(`diagram-cancel-test:${path}`),
+    });
+    try {
+      const response = ask(panel, [[text(valid)]], {
+        token: cancellation.token,
+        references: [reference("/current")],
+        history: [
+          new RequestTurn("Earlier", undefined, [reference("/history")], "diagram.participant"),
+        ],
+      });
+      await started.promise;
+      cancellation.cancel();
+      const { result, sent } = await response;
+      assert.strictEqual(result, undefined);
+      resume.resolve("Late attachment");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepStrictEqual(opened, ["/current"]);
+      assert.deepStrictEqual(sent, []);
+    } finally {
+      resume.resolve("Late attachment");
+      provider.dispose();
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
   test("renders a diagram written next to a tool call, without showing its source", async () => {
     const panel = newPanel();
     try {

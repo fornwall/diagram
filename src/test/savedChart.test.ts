@@ -28,6 +28,14 @@ suite("savedChart", () => {
     assert.ok(savedChartFileName("Long ".repeat(100)).length <= 85);
   });
 
+  test("truncating a title preserves valid Unicode file names", () => {
+    const prefix = "a".repeat(79);
+    const name = savedChartFileName(`${prefix}📊 Results`);
+    assert.strictEqual(name, `${prefix}.html`);
+    assert.doesNotThrow(() => encodeURIComponent(name));
+    assert.strictEqual(savedChartFileName("📊".repeat(50)), `${"📊".repeat(40)}.html`);
+  });
+
   test("writes a page that draws the chart with everything it needs inlined", async () => {
     const html = await build();
     assert.ok(html.startsWith("<!DOCTYPE html>"));
@@ -54,6 +62,19 @@ suite("savedChart", () => {
     const html = await build({ title: " " });
     assert.ok(!html.includes("<h1>"));
     assert.ok(html.includes("<title>Chart</title>"));
+  });
+
+  test("preserves international font names without allowing CSS or HTML injection", async () => {
+    const fontFamily = '"游ゴシック", "微軟正黑體", sans-serif';
+    const html = await build({ colors: { ...testColors, fontFamily } });
+    assert.ok(html.includes(`font-family: ${fontFamily};`));
+
+    const unsafe = await build({
+      colors: { ...testColors, fontFamily: "</style><script>alert(1)</script>;color:red" },
+    });
+    const styles = unsafe.slice(unsafe.indexOf("<style>"), unsafe.indexOf("</style>"));
+    assert.ok(!styles.includes("<script>"));
+    assert.ok(!styles.includes(";color:"));
   });
 
   test("keeps titles and labels from breaking out of the page", async () => {

@@ -1,40 +1,26 @@
-// Where a diagram's nodes are in the code, as given to the diagram_render tool, and its validation.
+// Validate and resolve Mermaid node links.
 
 import * as vscode from "vscode";
 import { resolveFile } from "./dataSource";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 
-/**
- * A place in the workspace that a diagram node links to, which a click on the node opens. The path
- * is kept as the model wrote it and resolved when opening, so that a link survives being saved
- * with the diagram and follows the workspace folder it is relative to.
- */
+/** Resolve paths when opened so saved links follow their workspace. Lines are one-based. */
 export interface NodeLink {
   /** The file, absolute or relative to the first workspace folder; see {@link resolveFile}. */
   file: string;
-  /** The first line to select and reveal, counted from 1; the file is shown from the top without it. */
   line?: number;
-  /** The last line to select, for a link to a range of lines. */
   endLine?: number;
 }
 
 /** The places a diagram's nodes link to, by node id as written in the Mermaid source. */
 export type NodeLinks = Record<string, NodeLink>;
 
-/** How a location is written, as told to the model when one of its links is left out. */
 export const LINK_SYNTAX = '"src/parser.ts", "src/parser.ts#L42" or "src/parser.ts#L42-L80"';
 
-/**
- * The line or range of lines after the "#" of a location. The digits are limited so that a number
- * too large to be exact is rejected as badly written rather than silently rounded.
- */
+/** Bound line numbers before parsing to avoid silently rounding oversized inputs. */
 const LINE_FRAGMENT = /^L(\d{1,7})(?:-L(\d{1,7}))?$/;
 
-/**
- * Checks the links a model gave for a diagram's nodes: a map from node id to a place in the
- * workspace. Entries that are not well-formed are left out and explained for the model, as a model
- * may send anything and one bad link must not keep the diagram from being drawn.
- */
+/** Skip malformed links and report them without preventing the diagram from rendering. */
 export function validateLinks(
   value: unknown,
   language: DiagramLanguage,
@@ -76,7 +62,6 @@ export function validateLinks(
   return links.length > 0 ? { links: Object.fromEntries(links), problems } : { problems };
 }
 
-/** Returns the place a location points to, or what is wrong with how it is written. */
 function parseLink(location: unknown): NodeLink | string {
   if (typeof location !== "string" || !location.trim()) {
     return "the location must be a non-empty string.";
@@ -121,7 +106,7 @@ function parseLink(location: unknown): NodeLink | string {
   return endLine === undefined ? { file, line } : { file, line, endLine };
 }
 
-/** A location as quoted back to the model, shortened so that a long one cannot flood the result. */
+/** Bound quoted locations in error messages. */
 function quote(text: string): string {
   return JSON.stringify(text.length > 60 ? `${text.slice(0, 60)}…` : text);
 }
@@ -134,15 +119,11 @@ export function linkText({ file, line, endLine }: NodeLink): string {
   return endLine === undefined ? `${file}#L${line}` : `${file}#L${line}-L${endLine}`;
 }
 
-/** The locations a diagram's nodes link to, by node id, as the panel shows them. */
 export function linkTexts(links: NodeLinks): Record<string, string> {
   return Object.fromEntries(Object.entries(links).map(([id, link]) => [id, linkText(link)]));
 }
 
-/**
- * What to select and reveal in a linked file: its lines, or the last line of a document that is
- * shorter than the link says, and nothing for a link without a line.
- */
+/** Clamp stale line references to the document; a path without a line opens at the top. */
 export function linkSelection(
   { line, endLine }: NodeLink,
   document: vscode.TextDocument,
