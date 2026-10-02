@@ -90,14 +90,14 @@ async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFen
     );
     return;
   }
-  // The lens may have been made before the document changed, so take the block as it is now: by its
-  // content where it moved, and else the one at its line, so that what the panel shows and what it
-  // remembers about the block are the document's own.
+  // Follow a moved block by its content, or an edited block at the same opening line.
   const fences = findDiagramFences(document.getText());
-  const current = relocateFence(fences, fence) ?? fenceAt(fences, fence.openingLine);
+  const current =
+    relocateFence(fences, fence) ??
+    fences.find((candidate) => candidate.openingLine === fence.openingLine);
   if (!current) {
     void vscode.window.showWarningMessage(
-      `${vscode.workspace.asRelativePath(uri)} no longer holds a diagram to open.`,
+      "This diagram block moved or was removed. Use its current Open in Diagram action.",
     );
     return;
   }

@@ -108,4 +108,23 @@ suite("markdownDiagrams", function () {
     await vscode.commands.executeCommand("diagram.openAtCursor");
     await webviewTab("flowchart — flow.md");
   });
+
+  test("a stale CodeLens does not open a different nearby diagram", async () => {
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: "```mermaid\nflowchart TD\n```\n\n```mermaid\nsequenceDiagram\n```\n",
+    });
+    const command = (await codeLenses(document))[0]?.command;
+    assert.ok(command);
+    const edit = new vscode.WorkspaceEdit();
+    // Leave the second diagram below the deleted block, as it could be in a live editor.
+    edit.replace(document.uri, new vscode.Range(0, 0, 3, 0), "\n\n\n");
+    assert.ok(await vscode.workspace.applyEdit(edit));
+    await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
+    const diagrams = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
+    assert.deepStrictEqual(diagrams, []);
+  });
 });
