@@ -162,6 +162,40 @@ suite("data", () => {
     assert.deepStrictEqual(parse("fruit;kg\napples;12\npears;3", "csv"), expected);
   });
 
+  test("reports unclosed CSV quotes instead of falling back to whitespace", () => {
+    for (const format of ["auto", "csv"] as const) {
+      for (const delimiter of [",", ";"]) {
+        assert.throws(
+          () => parseTable(`name${delimiter}value\na${delimiter}"1\nb${delimiter}2`, format),
+          /The quoted field that starts on line 2 is not closed/,
+        );
+      }
+    }
+  });
+
+  test("a quote error with one CSV delimiter does not reject the other", () => {
+    const data = 'name,note;value\na,"note;1\nb,plain;2';
+    for (const format of ["auto", "csv"] as const) {
+      assert.deepStrictEqual(parse(data, format), {
+        columns: ["name,note", "value"],
+        rows: [
+          ['a,"note', 1],
+          ["b,plain", 2],
+        ],
+      });
+    }
+  });
+
+  test("literal commas and quotes in whitespace-separated paths stay text", () => {
+    const data = '12 src/a,"odd name\n23 src/other';
+    for (const format of ["auto", "whitespace"] as const) {
+      assert.deepStrictEqual(parse(data, format).rows, [
+        [12, 'src/a,"odd name'],
+        [23, "src/other"],
+      ]);
+    }
+  });
+
   test("parses du -h output with decimal commas", () => {
     assert.deepStrictEqual(parse("44K\tsrc/test\n1,5M\tz.bin\n4,0K\ta\n").rows, [
       [44 * 1024, "src/test"],

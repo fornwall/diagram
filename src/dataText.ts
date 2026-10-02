@@ -132,6 +132,7 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
  */
 function splitCsv(text: string, firstLine: string, strict: boolean): Records | undefined {
   let best: { table: Records; uniform: number; width: number } | undefined;
+  let quoteError: unknown;
   for (const delimiter of [",", ";"]) {
     if (
       !text.includes(delimiter) ||
@@ -142,16 +143,27 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       continue;
     }
     let table: Records;
+    let candidateError: unknown;
     try {
       table = splitDelimited(text, delimiter);
-    } catch {
-      continue;
+    } catch (error) {
+      if (strict) {
+        quoteError ??= error;
+      }
+      candidateError = error;
+      table = splitDelimited(text, delimiter, false);
     }
     const { records } = table;
     const width = mode(records.map((record) => record.length));
     const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
     // Lines may have fewer or more fields than the header, as with cloc --csv.
     if (width < 2 || (matching < records.length * 0.8 && records.some((r) => r.length < 2))) {
+      continue;
+    }
+    if (candidateError !== undefined) {
+      // In auto mode, literal quotes in command output are not CSV errors unless the
+      // unquoted rows also fit this delimiter.
+      quoteError ??= candidateError;
       continue;
     }
     // On ties, as for "a;1,5", prefer semicolons: a comma is more likely a decimal comma than a
@@ -164,6 +176,9 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     ) {
       best = { table, uniform, width };
     }
+  }
+  if (best === undefined && quoteError !== undefined) {
+    throw quoteError;
   }
   return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
