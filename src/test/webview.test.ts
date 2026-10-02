@@ -78,6 +78,50 @@ suite("webview", function () {
     }
   });
 
+  test("ends panning when released outside the canvas or pointer capture is lost", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const captured = [];
+        let pointer;
+        // Synthetic pointer events cannot acquire native pointer capture.
+        canvas.setPointerCapture = id => { pointer = id; captured.push(id); };
+        canvas.hasPointerCapture = id => pointer === id;
+        canvas.releasePointerCapture = () => { pointer = undefined; };
+        Object.defineProperty(canvas, "scrollWidth", {value: canvas.clientWidth + 100, configurable: true});
+        const send = (target, type, pointerId, clientX = 100) => target.dispatchEvent(
+          new PointerEvent(type, {pointerId, clientX, clientY: 100, pointerType: "mouse",
+            button: 0, isPrimary: true, bubbles: true})
+        );
+        try {
+          send(canvas, "pointerdown", 1);
+          send(document.body, "pointerup", 1);
+          send(canvas, "pointermove", 1, 90);
+          const released = !canvas.classList.contains("panning") && captured.length === 0;
+          send(canvas, "pointerdown", 2);
+          send(canvas, "pointermove", 2, 90);
+          const restarted = canvas.classList.contains("panning") && captured.at(-1) === 2;
+          send(document.body, "pointerup", 3);
+          const unrelated = canvas.classList.contains("panning");
+          send(canvas, "lostpointercapture", 2);
+          const lostCapture = !canvas.classList.contains("panning");
+          const click = new MouseEvent("click", {bubbles: true, cancelable: true});
+          canvas.dispatchEvent(click);
+          return {released, restarted, unrelated, lostCapture, clickAllowed: !click.defaultPrevented};
+        } finally {
+          send(canvas, "pointercancel", 1);
+          send(canvas, "pointercancel", 2);
+          delete canvas.setPointerCapture;
+          delete canvas.hasPointerCapture;
+          delete canvas.releasePointerCapture;
+          delete canvas.scrollWidth;
+        }
+      })()`),
+      { released: true, restarted: true, unrelated: true, lostCapture: true, clickAllowed: true },
+    );
+  });
+
   test("keeps unapplied source edits across view changes and incoming diagrams", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
     await evaluate(`(() => {

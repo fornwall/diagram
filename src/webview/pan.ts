@@ -38,15 +38,17 @@ export function enablePanning(canvas: HTMLElement): void {
   };
   new ResizeObserver(showCursor).observe(canvas);
 
-  const stopDrag = () => {
-    if (!drag) {
+  const stopDrag = (event?: PointerEvent) => {
+    if (!drag || (event && event.pointerId !== drag.pointerId)) {
       return;
     }
-    if (canvas.hasPointerCapture(drag.pointerId)) {
-      canvas.releasePointerCapture(drag.pointerId);
+    const { pointerId } = drag;
+    drag = undefined;
+    panned = event?.type === "pointerup" && panned;
+    if (canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
     }
     canvas.classList.remove("panning");
-    drag = undefined;
   };
 
   canvas.addEventListener("pointerdown", (event) => {
@@ -100,8 +102,11 @@ export function enablePanning(canvas: HTMLElement): void {
     drag.y = event.clientY;
   });
 
-  canvas.addEventListener("pointerup", stopDrag);
-  canvas.addEventListener("pointercancel", stopDrag);
+  // A release can happen outside the canvas before movement starts pointer capture.
+  window.addEventListener("pointerup", stopDrag, true);
+  window.addEventListener("pointercancel", stopDrag, true);
+  canvas.addEventListener("lostpointercapture", stopDrag);
+  window.addEventListener("blur", () => stopDrag());
 
   // The click that ends a pan reaches the canvas and its nodes: swallow it before they see it.
   // Listeners on the canvas itself only lose it to this one if they are added later, hence
