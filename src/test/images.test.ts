@@ -1,5 +1,63 @@
 import * as assert from "node:assert";
 import { safeFileName } from "../protocol";
+import { pngDataUrl } from "../webview/images";
+
+suite("PNG export", () => {
+  test("bounds both canvas dimensions and total pixel memory", async () => {
+    const originalImage = Object.getOwnPropertyDescriptor(globalThis, "Image");
+    const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage: () => {} }),
+      toDataURL: () => "data:image/png;base64,test",
+    };
+    Object.defineProperty(globalThis, "Image", {
+      configurable: true,
+      value: class {
+        decode() {
+          return Promise.resolve();
+        }
+      },
+    });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { createElement: () => canvas },
+    });
+    try {
+      for (const [width, height, expectedWidth, expectedHeight] of [
+        [320, 200, 640, 400],
+        [8000, 8000, 4000, 4000],
+        [10000, 100, 8000, 80],
+      ] as const) {
+        await pngDataUrl({ svg: "<svg/>", width, height });
+        assert.deepStrictEqual([canvas.width, canvas.height], [expectedWidth, expectedHeight]);
+      }
+    } finally {
+      for (const [key, descriptor] of [
+        ["Image", originalImage],
+        ["document", originalDocument],
+      ] as const) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  });
+
+  test("rejects invalid dimensions before allocating an image", async () => {
+    for (const dimension of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      for (const [width, height] of [
+        [dimension, 100],
+        [100, dimension],
+      ] as const) {
+        await assert.rejects(
+          pngDataUrl({ svg: "<svg/>", width, height }),
+          /no valid dimensions for a PNG/,
+        );
+      }
+    }
+  });
+});
 
 suite("file names", () => {
   test("names a file after a title, without what file names cannot hold", () => {

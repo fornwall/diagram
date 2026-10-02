@@ -1,7 +1,4 @@
-// Handing the drawing out of the panel as an image: the rendering as standalone SVG markup, and a
-// PNG rasterized from it. Used to drag a diagram into another application, where the panel's
-// stylesheet, theme variables and click handlers are not available, so everything the image needs
-// has to be inside it.
+// Self-contained SVG and PNG exports for dragging into other applications.
 
 /** A rendering as an image, ready to leave the panel. */
 export interface DiagramImage {
@@ -12,30 +9,15 @@ export interface DiagramImage {
   height: number;
 }
 
-/**
- * How much larger the PNG is than the drawing, so that it stays sharp where it is dropped. Two is
- * what a retina screen shows, and what documents and chat messages are usually read at.
- */
 const PNG_SCALE = 2;
-
-/**
- * The largest PNG to rasterize, per side. A diagram far longer than this is dropped as SVG anyway,
- * and a canvas of tens of thousands of pixels either fails to allocate or produces a file too
- * large to send anywhere.
- */
 const MAX_PNG_SIDE = 8000;
+// Bound both dimensions and total pixels: an 8000² canvas alone occupies 256 MB.
+const MAX_PNG_PIXELS = 16_000_000;
 
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed"];
 
-/**
- * The rendering as standalone SVG markup, drawn on `background` so that it does not come out
- * transparent where it is dropped.
- *
- * The clone is cleaned of what only belongs in the panel: the keyboard and screen reader
- * attributes that make nodes activatable, and the tooltips that name where a node links to, which
- * would otherwise carry local file paths into an image the user shares.
- */
+/** Clones the drawing with a background and removes panel interaction attributes and file paths. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;
   svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
@@ -58,8 +40,7 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
       element.removeAttribute(attribute);
     }
   }
-  // The tooltips that name where a node links to are the panel's own, and would carry local file
-  // paths into an image the user shares. A tooltip the diagram itself asked for stays.
+  // Remove local file paths, keeping tooltips supplied by the diagram itself.
   for (const title of svg.querySelectorAll("title.diagram-link")) {
     title.remove();
   }
@@ -75,26 +56,21 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   return { svg: new XMLSerializer().serializeToString(svg), width, height };
 }
 
-/**
- * The markup as a data URL. Percent-encoded rather than base64, as the labels of a diagram may be
- * in any language and base64 in the browser only takes Latin-1.
- */
+/** Percent encoding preserves Unicode labels without a Latin-1 base64 conversion. */
 export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/**
- * The image rasterized as a PNG data URL, which is what most applications take when something is
- * dropped on them.
- *
- * Drawing SVG through an `img` element means the drawing is rendered in isolation, without the
- * page's stylesheet or any font it loaded: this works because the diagram's colors are written
- * into the markup and its font is one the system already has. It also means a diagram whose labels
- * are HTML in a `foreignObject` cannot be rasterized at all, which is why the renderers produce
- * markup without one.
- */
+/** Rasterizes self-contained SVG. The renderers must omit HTML foreignObject labels. */
 export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<string> {
-  const scale = Math.min(PNG_SCALE, MAX_PNG_SIDE / Math.max(width, height, 1));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error("The drawing has no valid dimensions for a PNG. Try exporting it as SVG.");
+  }
+  const scale = Math.min(
+    PNG_SCALE,
+    MAX_PNG_SIDE / Math.max(width, height),
+    Math.sqrt(MAX_PNG_PIXELS / (width * height)),
+  );
   const image = new Image();
   image.src = svgDataUrl(svg);
   await image.decode();
