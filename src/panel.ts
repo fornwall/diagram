@@ -172,8 +172,12 @@ export class DiagramPanel implements vscode.Disposable {
     // A diagram opened from a document keeps its binding when an agent replaces it, so that the user
     // can still write what they end up with back to the file. Rendering never writes anything itself:
     // the next write is the user's Apply, which asks them first; see DocumentBinding.replaced.
+    const previousBinding = this.state?.document;
     const document =
-      diagram.document ?? (this.state?.document && { ...this.state.document, replaced: true });
+      diagram.document ??
+      (previousBinding?.fence.language === diagram.language
+        ? { ...previousBinding, replaced: true }
+        : undefined);
     this.state = { ...diagram, document, origin, editedByUser: false };
     this.selection = [];
     // Another diagram is not the one an agent marked up, just as it is not the one the user selected in.
@@ -572,9 +576,10 @@ export class DiagramPanel implements vscode.Disposable {
     this.annotation = undefined;
     this.cancelPick("The user edited the diagram source instead of picking.");
     await this.renderCurrent();
-    const binding = this.state?.document;
-    // An agent may have replaced the diagram while it rendered; only what is shown is written.
-    if (binding && this.state?.source === source) {
+    const binding = state.document;
+    // An intervening render must not redirect this Apply to another document, even if the source
+    // happens to match.
+    if (binding && this.state?.document === binding && this.state.source === source) {
       await this.writeToDocument(binding, source);
     }
   }

@@ -5,7 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type DocumentBinding, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
-import type { DiagramState } from "../panel";
+import type { DiagramState, RenderOutcome } from "../panel";
 import { newPanel } from "./newPanel";
 
 suite("documentDiagram", function () {
@@ -125,6 +125,56 @@ suite("documentDiagram", function () {
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
   });
 
+  test("writeFence follows the block's current indentation", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const read = binding(document);
+    await edit(
+      document,
+      new vscode.Range(0, 0, 3, 0),
+      "- Flow:\n\n  ```mermaid\n  flowchart TD\n  ```\n",
+    );
+    const outcome = await writeFence(read, "flowchart LR\n  A --> B");
+    assert.ok(outcome.written);
+    assert.strictEqual(
+      document.getText(),
+      "- Flow:\n\n  ```mermaid\n  flowchart LR\n    A --> B\n  ```\n",
+    );
+    assert.strictEqual(outcome.fence.indent, "  ");
+    assert.strictEqual(outcome.fence.source, "flowchart LR\n  A --> B");
+  });
+
+  test("writeFence refuses source that would close the Markdown block", async () => {
+    for (const marker of ["```", "~~~"]) {
+      const before = `${marker}echarts\n{}\n${marker}\nAfter.\n`;
+      const document = await markdown(before);
+      const outcome = await writeFence(binding(document), `{ title: { text: \`\n${marker}\n\` } }`);
+      assert.ok(!outcome.written);
+      assert.match(outcome.reason, /closing Markdown fence/);
+      assert.strictEqual(document.getText(), before);
+    }
+
+    const document = await markdown("````echarts\n{}\n````\n");
+    const source = "{ title: { text: `\n```\n` } }";
+    assert.ok((await writeFence(binding(document), source)).written);
+    assert.strictEqual(document.getText(), `\`\`\`\`echarts\n${source}\n\`\`\`\`\n`);
+  });
+
+  test("writeFence reports rejected workspace edits", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const original = vscode.workspace.applyEdit;
+    vscode.workspace.applyEdit = async () => {
+      throw new Error("The document is read-only");
+    };
+    try {
+      const outcome = await writeFence(binding(document), "flowchart LR");
+      assert.ok(!outcome.written);
+      assert.match(outcome.reason, /Could not write the diagram.*The document is read-only/);
+      assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
+    } finally {
+      vscode.workspace.applyEdit = original;
+    }
+  });
+
   test("writeFence leaves a block that changed or is gone alone", async () => {
     const changed = await markdown("```mermaid\nflowchart TD\n```\n");
     const edited = binding(changed);
@@ -221,6 +271,51 @@ suite("documentDiagram", function () {
       // The diagram is still the document's, with the block as it was read.
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
       assert.strictEqual(panel.current?.source, "flowchart RL");
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("an Apply cannot write to a document opened while the edit renders", async () => {
+    const first = await markdown("```mermaid\nflowchart TD\n```\n");
+    const second = await markdown("```mermaid\nflowchart LR\n```\n");
+    const panel = newPanel(
+      new Map<string, unknown>([["diagram.state", openedState(binding(first))]]),
+    );
+    const internals = panel as unknown as {
+      state: DiagramState;
+      renderCurrent(): Promise<RenderOutcome>;
+      writeToDocument(): Promise<void>;
+    };
+    let written = false;
+    internals.renderCurrent = async () => {
+      internals.state = openedState(binding(second));
+      return { ok: true, diagramType: "flowchart" };
+    };
+    internals.writeToDocument = async () => {
+      written = true;
+    };
+    try {
+      await applyEdit(panel, "flowchart LR");
+      assert.strictEqual(written, false);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("changing diagram language drops the previous document binding", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const read = binding(document);
+    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    try {
+      const rendering = panel.render(
+        { language: "echarts", source: '{"series": []}', title: "Chart" },
+        "tool",
+      );
+      assert.strictEqual(panel.current?.document, undefined);
+      panel.dispose();
+      await rendering;
+      assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
     } finally {
       panel.dispose();
     }

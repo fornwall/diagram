@@ -3,6 +3,7 @@
 // explicit action of the user's; see DiagramPanel.applyEdit.
 
 import * as vscode from "vscode";
+import { isClosingFence, openingFence } from "./blocks";
 import { type DiagramFence, fenceSource, findDiagramFences, relocateFence } from "./fences";
 import { diagramNoun, errorMessage } from "./protocol";
 
@@ -53,10 +54,6 @@ export async function writeFence(binding: DocumentBinding, source: string): Prom
   if (!diagram) {
     return { written: false, reason: `There is no ${noun} to write to ${name}.` };
   }
-  const lines = diagram
-    .split("\n")
-    .map((line) => (line.trim() ? binding.fence.indent + line : line));
-
   let document: vscode.TextDocument;
   try {
     document = await vscode.workspace.openTextDocument(vscode.Uri.parse(binding.uri));
@@ -70,6 +67,17 @@ export async function writeFence(binding: DocumentBinding, source: string): Prom
   const fence = relocateFence(findDiagramFences(document.getText()), binding.fence);
   if (!fence) {
     return changed;
+  }
+  const lines = diagram.split("\n").map((line) => (line.trim() ? fence.indent + line : line));
+  const opening = openingFence(document.lineAt(fence.openingLine).text);
+  if (!opening) {
+    return changed;
+  }
+  if (lines.some((line) => isClosingFence(line, opening.fence))) {
+    return {
+      written: false,
+      reason: `The ${noun} contains a closing Markdown fence, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,
+    };
   }
 
   const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
@@ -90,8 +98,15 @@ export async function writeFence(binding: DocumentBinding, source: string): Prom
   const text = lines.join(eol);
   const edit = new vscode.WorkspaceEdit();
   edit.replace(document.uri, range, end.character === 0 ? `${text}${eol}` : text);
-  if (!(await vscode.workspace.applyEdit(edit))) {
-    return { written: false, reason: `Could not write the ${noun} to ${name}.` };
+  try {
+    if (!(await vscode.workspace.applyEdit(edit))) {
+      return { written: false, reason: `Could not write the ${noun} to ${name}.` };
+    }
+  } catch (error) {
+    return {
+      written: false,
+      reason: `Could not write the ${noun} to ${name}: ${errorMessage(error)}`,
+    };
   }
   // The block now holds the diagram that was written, and has grown or shrunk with it.
   return {
