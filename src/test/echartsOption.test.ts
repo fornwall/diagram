@@ -109,6 +109,14 @@ suite("echartsOption", () => {
     assert.match(errorOf('{"series": [{"type": "custom"}]}'), /needs "xAxis" and "yAxis"/);
   });
 
+  test("accepts a custom series drawn in pixels without axes", () => {
+    const option = parseOption(
+      '{series: [{type: "custom", coordinateSystem: null, data: [1], ' +
+        'renderItem: () => ({type: "circle", shape: {cx: 20, cy: 20, r: 10}})}]}',
+    );
+    assert.strictEqual(seriesTypes(option), "custom");
+  });
+
   test("requires the coordinate system of grid and radar series", () => {
     assert.match(errorOf('{"series": [{"type": "line"}]}'), /needs "xAxis" and "yAxis", e\.g\./);
     assert.match(
@@ -242,6 +250,20 @@ suite("echartsOption", () => {
         '{type: "line", data: [2], lineStyle: style}]}; })()',
     );
     assert.strictEqual(seriesTypes(shared), "line");
+  });
+
+  test("validates inherited properties that the layout copies", () => {
+    assert.match(
+      errorOf(
+        '(() => { const parent = {series: [{type: "pie"}]}; ' +
+          "const option = Object.create(parent); parent.self = option; return option; })()",
+      ),
+      /^self refers back to an object that contains it/,
+    );
+    assert.match(
+      errorOf('{series: [{type: "pie", label: Object.create({formatter: "p => p.name"})}]}'),
+      /^series\[0\]\.label\.formatter is JavaScript code in a string/,
+    );
   });
 
   test("describes syntax errors that JavaScript also rejects, with their position", () => {

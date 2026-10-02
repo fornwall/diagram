@@ -38,6 +38,10 @@ const DEFAULT_COORDINATE_SYSTEMS: Record<string, string> = {
 };
 
 function coordinateSystem(series: JsonObject): string | undefined {
+  // Custom series can draw directly in pixels, without any coordinate system.
+  if (series.coordinateSystem === null) {
+    return undefined;
+  }
   return typeof series.coordinateSystem === "string"
     ? series.coordinateSystem
     : DEFAULT_COORDINATE_SYSTEMS[String(series.type)];
@@ -309,7 +313,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
  * as the same value may well be used in several places.
  */
 function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): void {
-  if (value === null || typeof value !== "object") {
+  if (value === null || typeof value !== "object" || ArrayBuffer.isView(value)) {
     return;
   }
   if (inside.has(value)) {
@@ -333,7 +337,9 @@ function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): 
     inside.delete(value);
     return;
   }
-  for (const [key, item] of Object.entries(value)) {
+  // Layout copies inherited properties too, so validate the same values it will copy.
+  for (const key in value) {
+    const item = value[key];
     const callback = typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
     if (!callback && (item === null || typeof item !== "object")) {
       continue;

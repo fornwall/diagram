@@ -228,6 +228,19 @@ suite("webview", function () {
     assert.match(outcome.error, /unsupported type "map"/);
   });
 
+  test("renders custom shapes without a coordinate system", async () => {
+    assert.deepStrictEqual(
+      await render({
+        language: "echarts",
+        source:
+          '{series: [{type: "custom", coordinateSystem: null, data: [1], ' +
+          'renderItem: () => ({type: "circle", shape: {cx: 20, cy: 20, r: 10}})}]}',
+      }),
+      { ok: true, diagramType: "custom" },
+    );
+    assert.ok(await evaluate('document.querySelector("#chart svg path") !== null'));
+  });
+
   test("recovers from invalid chart components and renders an explicit graph view", async () => {
     const invalid = await render({
       language: "echarts",
