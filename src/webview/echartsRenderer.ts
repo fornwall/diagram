@@ -1,13 +1,15 @@
-// Renders Apache ECharts options, given as JSON, adapted to the panel size and VS Code theme.
+// Renders Apache ECharts options, given as JSON or JavaScript, adapted to the panel size and
+// VS Code theme. Charts draw as SVG; see src/webview/echartsLibrary.ts for why.
 
 import type * as ECharts from "echarts/core";
-import { errorMessage, isPlainObject } from "../protocol";
+import { type Annotation, errorMessage, isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { disableAnimation, keepUserState, layoutOption } from "./echartsLayout";
+import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
-import { type Hit, type Renderer, type RendererHost, withModifier } from "./renderer";
+import { type DiagramImage, standaloneSvg } from "./images";
+import { type Hit, type Renderer, type RendererHost, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 /** A data item, or a node or edge of a graph, as ECharts' select actions refer to it. */
@@ -38,10 +40,20 @@ function parseItemKey(key: string): ItemRef {
   return { seriesIndex: Number(series), dataType: dataType || undefined, dataIndex: Number(data) };
 }
 
+/**
+ * How ECharts finds the item an id names: by the name of the data item, and by its series when the
+ * id carries one, as the panel names an item of a chart with several series "Series/Name". ECharts
+ * finds nothing for an id that names no item, which is all a mark on a missing item comes to.
+ */
+function itemQuery(id: string, several: boolean): { name: string; seriesName?: string } {
+  const slash = several ? id.indexOf("/") : -1;
+  return slash > 0 ? { seriesName: id.slice(0, slash), name: id.slice(slash + 1) } : { name: id };
+}
+
 export class EChartsRenderer implements Renderer {
   readonly noun = "chart";
   readonly itemNoun = "chart item";
-  readonly sourceName = "ECharts option (JSON)";
+  readonly sourceName = "ECharts option (JSON or JavaScript)";
 
   private readonly container: HTMLElement;
   /** The library, loaded on the first chart. */
@@ -51,9 +63,11 @@ export class EChartsRenderer implements Renderer {
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
   private title = "";
-  /** The size and motion preference used by the last layout. */
+  /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
   private laidOut = "";
   private selectedKeys: ReadonlySet<string> = new Set();
+  /** The marks an agent put on the chart, which a new layout dispatches again. */
+  private annotation: Annotation = UNMARKED;
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
   private resizeFrame = 0;
@@ -63,6 +77,8 @@ export class EChartsRenderer implements Renderer {
   constructor(
     private readonly host: RendererHost,
     private readonly canvas: HTMLElement,
+    /** The colors to draw in: the VS Code theme in the panel, the saved ones in a saved chart. */
+    private readonly readColors: () => ThemeColors = readThemeColors,
   ) {
     this.container = document.createElement("div");
     this.container.id = "chart";
@@ -70,17 +86,6 @@ export class EChartsRenderer implements Renderer {
     canvas.append(this.container);
     new ResizeObserver(() => this.scheduleRelayout()).observe(this.container);
     this.reducedMotion.addEventListener("change", () => this.relayout());
-    // Moving VS Code to another screen changes the pixel ratio without resizing the chart.
-    const watchPixelRatio = () =>
-      window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
-        "change",
-        () => {
-          watchPixelRatio();
-          this.relayout();
-        },
-        { once: true },
-      );
-    watchPixelRatio();
   }
 
   async render(source: string, title: string): Promise<string> {
@@ -91,6 +96,7 @@ export class EChartsRenderer implements Renderer {
     this.option = option;
     this.title = title;
     this.selectedKeys = new Set();
+    this.annotation = UNMARKED;
     try {
       this.apply(true);
     } catch (error) {
@@ -114,9 +120,29 @@ export class EChartsRenderer implements Renderer {
     queueMicrotask(() => this.syncSelection());
   }
 
+  showMarks(annotation: Annotation): void {
+    this.annotation = annotation;
+    // Fading what is not marked is part of the option (see focusHighlighted), so a change there
+    // lays the chart out again, which dispatches the marks itself, as it does after a theme change.
+    this.relayout();
+    this.highlightMarks();
+  }
+
   async themeChanged(): Promise<void> {
     this.theme = undefined;
     this.relayout();
+  }
+
+  /**
+   * The chart as it is drawn. ECharts' SVG renderer writes real `text` elements and keeps its
+   * tooltips in separate HTML outside the SVG, so what is on screen is already the whole image.
+   */
+  async toImage(background: string): Promise<DiagramImage> {
+    const svg = this.container.querySelector("svg");
+    if (!svg) {
+      throw new Error("There is no chart to make an image of.");
+    }
+    return standaloneSvg(svg, background);
   }
 
   formatForEditing(source: string): string {
@@ -126,14 +152,15 @@ export class EChartsRenderer implements Renderer {
     try {
       return JSON.stringify(JSON.parse(source), null, 2);
     } catch {
+      // Not JSON: an option written as JavaScript, or one with an error, stays as it is.
       return source;
     }
   }
 
   private createChart(echarts: typeof EChartsLibrary, theme: object): ECharts.ECharts {
-    const chart = echarts.init(this.container, theme, {
-      devicePixelRatio: window.devicePixelRatio,
-    });
+    // The SVG renderer is registered in echartsLibrary.ts, but each instance still has to ask for
+    // it: ECharts draws on a canvas unless told otherwise.
+    const chart = echarts.init(this.container, theme, { renderer: "svg" });
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
@@ -173,15 +200,14 @@ export class EChartsRenderer implements Renderer {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
     const reducedMotion = this.reducedMotion.matches;
-    const laidOut = `${width}:${height}:${reducedMotion}`;
+    const laidOut = `${width}:${height}:${reducedMotion}:${this.blurring()}`;
     // Check layout inputs before copying the data. Retaining a serialized option would also
     // duplicate every data point in memory just to detect unchanged layouts.
-    const sharp = this.chart?.getDevicePixelRatio() === window.devicePixelRatio;
-    if (relayout && sharp && this.theme && laidOut === this.laidOut) {
+    if (relayout && this.theme && laidOut === this.laidOut) {
       return;
     }
     if (!this.theme) {
-      const colors = readThemeColors();
+      const colors = this.readColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
       this.chart?.setTheme(this.theme.echarts);
     }
@@ -195,18 +221,43 @@ export class EChartsRenderer implements Renderer {
     if (!animate) {
       disableAnimation(option);
     }
+    if (this.blurring()) {
+      focusHighlighted(option);
+    }
     if (relayout && this.chart) {
       keepUserState(option, this.chart.getOption() as JsonObject);
-    }
-    if (!sharp) {
-      this.chart?.dispose();
-      this.chart = undefined;
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts);
     this.chart.setOption(option, { notMerge: true });
     this.laidOut = laidOut;
     this.shownSelected = [];
     this.syncSelection();
+    this.highlightMarks();
+  }
+
+  /** Whether the chart fades what is not marked, which needs something to be marked at all. */
+  private blurring(): boolean {
+    return this.annotation.dim && this.annotation.marks.length > 0;
+  }
+
+  /**
+   * Marks items the way ECharts marks them itself: the marked ones highlighted, and the rest blurred
+   * while the annotation dims the chart. The color a mark reads in cannot come along, as emphasis is
+   * styled per series rather than per item; the notes above the chart carry it instead.
+   */
+  private highlightMarks(): void {
+    const chart = this.chart;
+    if (!chart) {
+      return;
+    }
+    // Drops the marks from before, and any blur with them.
+    chart.dispatchAction({ type: "downplay" });
+    const several = asArray(baseOption(this.option ?? {}).series).length > 1;
+    const batch = this.annotation.marks.map(({ id }) => itemQuery(id, several));
+    if (batch.length > 0) {
+      // One action, so that ECharts works out what to blur once, around all of the marks.
+      chart.dispatchAction({ type: "highlight", batch });
+    }
   }
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */

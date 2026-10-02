@@ -60,8 +60,63 @@ export interface LayoutContext {
   reducedMotion: boolean;
 }
 
+const needsCopy = (value: unknown) => Array.isArray(value) || isPlainObject(value);
+
+/**
+ * A deep copy of an option, so that the layout can fill in what it needs while leaving the option
+ * it was given untouched: the renderer keeps that one and lays it out again on a resize. Not
+ * structuredClone, which throws on an option written as JavaScript, as that holds functions (a
+ * custom series' renderItem, a formatter, …).
+ *
+ * Everything isPlainObject accepts is copied, as that is what every writer here reaches its
+ * targets through, so that no object a layout writes to is still one of the caller's. A copy is a
+ * plain object of every enumerable property, inherited ones included, as a series written with a
+ * prototype of its own keeps its type and its styles that way; a date is copied as a date and a
+ * typed array is left as it is, both keeping their value where properties cannot carry it.
+ * Functions are carried over by reference and primitives returned as they are. An array is only
+ * copied when it holds an object or an array, which keeps the data of a large chart out of the
+ * copy and is safe because nothing here writes to an array in place.
+ */
+function cloneOption(option: JsonObject): JsonObject {
+  const copy: JsonObject = {};
+  // for...in rather than Object.entries, to copy what the option inherits as well.
+  for (const key in option) {
+    const value = cloneValue(option[key]);
+    if (key === "__proto__") {
+      // An own "__proto__" key, which JSON.parse does produce, has to be defined rather than
+      // assigned: assigning it would reach the prototype setter and change the copy instead.
+      Object.defineProperty(copy, key, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    } else {
+      copy[key] = value;
+    }
+  }
+  return copy;
+}
+
+function cloneValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.some(needsCopy) ? value.map(cloneValue) : value;
+  }
+  if (!isPlainObject(value)) {
+    // A function or a primitive: never written to, and a function cannot be copied at all.
+    return value;
+  }
+  if (value instanceof Date) {
+    // A date is a value in the data of a time axis, not a record of properties to copy.
+    return new Date(value.getTime());
+  }
+  // The data of a large chart can be a typed array, which copying properties would turn into an
+  // object of its indices; the layout only reads data.
+  return ArrayBuffer.isView(value) ? value : cloneOption(value);
+}
+
 export function layoutOption(source: JsonObject, context: LayoutContext): JsonObject {
-  const option = structuredClone(source);
+  const option = cloneOption(source);
   const base = baseOption(option);
   const series = asArray(base.series);
   const cartesian = series.some(isCartesian);
@@ -88,17 +143,35 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   return option;
 }
 
-/** Timeline and media options can override both global and per-series animation settings. */
-export function disableAnimation(option: JsonObject): void {
-  const variants = [
+/** Timeline and media options can override both global and per-series animation settings, hence all. */
+function optionVariants(option: JsonObject): JsonObject[] {
+  return [
     baseOption(option),
     ...asArray(option.options),
     ...asArray(option.media).flatMap((media) => asArray(media.option)),
   ];
-  for (const variant of variants) {
+}
+
+export function disableAnimation(option: JsonObject): void {
+  for (const variant of optionVariants(option)) {
     variant.animation = false;
     for (const series of asArray(variant.series)) {
       series.animation = false;
+    }
+  }
+}
+
+/**
+ * Makes a highlighted item fade the rest of the chart, which is how an agent's marks stand out with
+ * everything else receding: ECharts blurs a chart around a highlighted item only when its series
+ * focuses on it. Replaces a focus of the option's own for as long as the marks dim the chart.
+ */
+export function focusHighlighted(option: JsonObject): void {
+  for (const variant of optionVariants(option)) {
+    for (const series of asArray(variant.series)) {
+      const emphasis = isPlainObject(series.emphasis) ? series.emphasis : {};
+      emphasis.focus = "self";
+      series.emphasis = emphasis;
     }
   }
 }

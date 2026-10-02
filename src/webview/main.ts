@@ -1,17 +1,29 @@
 import {
+  type Annotation,
   type DiagramLanguage,
+  type DiagramMark,
   type DiagramNode,
   errorMessage,
   type FromWebview,
+  safeFileName,
   type ToWebview,
 } from "../protocol";
+import { toCss } from "./colors";
 import { EChartsRenderer } from "./echartsRenderer";
+import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
 import { MermaidRenderer } from "./mermaidRenderer";
-import { type Hit, type Renderer, withModifier } from "./renderer";
+import { enablePanning } from "./pan";
+import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
+import { enableSplitter } from "./splitter";
 import "./style.css";
+import { readThemeColors } from "./vscodeTheme";
+
+/** What the panel shows: the rendering, both it and its source, or the source alone. */
+type ViewMode = "visual" | "split" | "source";
 
 interface State {
   draft: string;
+  view?: ViewMode;
 }
 
 declare function acquireVsCodeApi(): {
@@ -34,10 +46,13 @@ function element<T extends HTMLElement>(id: string): T {
 const titleElement = element("title");
 const errorElement = element("error");
 const emptyElement = element("empty");
+const panes = element("panes");
+const splitter = element("splitter");
 const canvas = element("canvas");
 const diagram = element("diagram");
-const editor = element("editor");
 const sourceInput = element<HTMLTextAreaElement>("source");
+const applyButton = element<HTMLButtonElement>("apply");
+const revertButton = element<HTMLButtonElement>("revert");
 const selectionLabel = element("selection-label");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
@@ -46,21 +61,46 @@ const zoomOutButton = element("zoom-out");
 const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
 const refreshButton = element<HTMLButtonElement>("refresh");
-const editButton = element<HTMLButtonElement>("edit");
+const saveButton = element<HTMLButtonElement>("save");
+const writeToButton = element<HTMLButtonElement>("write-to");
+const dragOutHandle = element("drag-out");
+const viewsGroup = element("views");
+const viewButtons: Record<ViewMode, HTMLButtonElement> = {
+  visual: element<HTMLButtonElement>("view-visual"),
+  split: element<HTMLButtonElement>("view-split"),
+  source: element<HTMLButtonElement>("view-source"),
+};
+const annotationBanner = element("annotation");
+const annotationCaption = element("annotation-caption");
+const annotationNotes = element("annotation-notes");
 const pickBanner = element("pick");
 const pickPrompt = element("pick-prompt");
 const pickDoneButton = element<HTMLButtonElement>("pick-done");
 
+// Before the click handlers it takes the clicks of a drag away from; see enablePanning.
+enablePanning(canvas);
+enableSplitter(splitter, panes);
+
 /** The last diagram the extension asked to render, whether or not it rendered. */
 let current: { renderer: Renderer; source: string } | undefined;
-/** The source shown in the editor when it was opened. */
+/** The source the editor last loaded, which its content is compared against for edits. */
 let editedFrom = "";
+/** The edit the editor last applied, which comes back as a diagram to render. */
+let appliedSource: string | undefined;
+/** Which view the user chose, which the panel shows once there is a diagram. */
+let viewMode: ViewMode = "visual";
+/** Whether the source editor is part of the view shown, so that it follows the diagram. */
+let sourceShown = false;
 /** Selected nodes or chart items, by renderer key. */
 const selection = new Map<string, DiagramNode>();
 /** When set, a plain click on a node asks about it in chat. */
 let clickPrompt: string | undefined;
+/** Where the nodes link to in the code, by node id: a plain click on one of them opens it. */
+let links = new Map<string, string>();
 /** The pick the user is asked to answer by clicking nodes, if any. */
 let pick: { id: number; multiple: boolean } | undefined;
+/** The labels of the nodes drawn, by node id, for renderings that name their parts. */
+let labels = new Map<string, string>();
 
 // Rendering.
 
@@ -87,13 +127,17 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   const { language, source, requestId } = message;
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
+  links = new Map(Object.entries(message.links ?? {}));
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(message.refreshFrom);
+  showWriteTo(message.writeTo);
   const renderer = renderers[language];
   const changed = current?.source !== source || current.renderer !== renderer;
   current = { renderer, source };
+  // The first diagram makes the source available, and with it the view chosen before a reload.
+  setViewMode(viewMode);
   if (changed) {
-    sourceChanged();
+    sourceChanged(source);
   }
   emptyElement.hidden = true;
   try {
@@ -102,8 +146,13 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
       active?.hide();
     }
     active = renderer;
+    renderer.showLinks?.(links);
+    const drawn = renderer.drawnNodes?.();
+    labels = new Map(drawn?.map((node) => [node.id, node.label]));
     errorElement.hidden = true;
-    post({ type: "rendered", requestId, diagramType });
+    // The ids go along so that the extension host can tell a model when it names a node that is
+    // not in the diagram, e.g. in a link or a mark.
+    post({ type: "rendered", requestId, diagramType, nodeIds: drawn?.map((node) => node.id) });
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
@@ -114,26 +163,56 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });
   }
-  // The extension forgets the selection when it sends a diagram, whether or not it renders.
+  // The extension forgets the selection and the marks when it sends a diagram, whether or not it
+  // renders; the marks of this one, if an agent puts any on it, follow in their own message.
   clearSelection();
-  editButton.title = `Edit the ${renderer.sourceName}`;
+  showAnnotation(UNMARKED);
+  describeViews(renderer);
   sourceInput.setAttribute("aria-label", renderer.sourceName);
   updateToolbar();
   updateSelectionUi();
 }
 
-/** Offers zooming when the rendering shown zooms, and editing once there is a source. */
+/**
+ * Offers zooming when the rendering shown zooms, saving while a chart is drawn, and the views
+ * once there is a source.
+ */
 function updateToolbar(): void {
   for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
     button.hidden = !active?.zoomBy;
   }
-  editButton.hidden = current === undefined;
+  saveButton.hidden = active !== renderers.echarts;
+  dragOutHandle.hidden = active?.toImage === undefined;
+  viewsGroup.hidden = current === undefined;
 }
 updateToolbar();
+
+/** Names the views after what the renderer draws and what its source is, e.g. "the chart". */
+function describeViews({ noun, sourceName }: Renderer): void {
+  const describe = (mode: ViewMode, text: string) => {
+    viewButtons[mode].title = text;
+    viewButtons[mode].setAttribute("aria-label", text);
+  };
+  describe("visual", `Show the ${noun}`);
+  describe("split", `Show the ${noun} and its source`);
+  describe("source", `Edit the ${sourceName}`);
+}
 
 function showRefresh(from: string | undefined): void {
   refreshButton.hidden = from === undefined;
   refreshButton.title = `Load the data again from ${from}`;
+}
+
+/**
+ * Offers writing the diagram as shown back into the document it was opened from. Apply writes an
+ * edit of the user's own, so this is for a diagram they have not edited, such as one an agent drew.
+ */
+function showWriteTo(file: string | undefined): void {
+  writeToButton.hidden = file === undefined;
+  if (file !== undefined) {
+    writeToButton.textContent = `Write to ${file}`;
+    writeToButton.title = `Write the diagram as shown into the code block in ${file}`;
+  }
 }
 
 /** Shows the title of a chart that was not kept, and asks to draw it again. */
@@ -162,6 +241,10 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "clearSelection":
       clearSelection();
       break;
+    case "annotate":
+      // In the render queue, so that marks sent right after a diagram land on that diagram.
+      enqueue(async () => showAnnotation(message));
+      break;
     case "startPick":
       startPick(message.pickId, message.prompt, message.multiple);
       break;
@@ -179,6 +262,8 @@ let themeFrame = 0;
 const themeObserver = new MutationObserver(() => {
   cancelAnimationFrame(themeFrame);
   themeFrame = requestAnimationFrame(() => {
+    // The image prepared for a drag was drawn in the colors that are now gone.
+    forgetDragImage();
     for (const renderer of Object.values(renderers)) {
       enqueue(() => renderer.themeChanged());
     }
@@ -210,8 +295,14 @@ function hint(noun: string): string {
       ? `Click ${noun}s to pick them, then press Done.`
       : `Click a ${noun} to pick it.`;
   }
+  const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
+  if (links.size > 0) {
+    return clickPrompt
+      ? `Click a linked ${noun} to open its code, any other to ask about it in chat ${orSelect}.`
+      : `Click a linked ${noun} to open its code ${orSelect}.`;
+  }
   if (clickPrompt) {
-    return `Click a ${noun} to ask about it in chat (Ctrl/Cmd/Shift+click to select ${noun}s).`;
+    return `Click a ${noun} to ask about it in chat ${orSelect}.`;
   }
   return `Click ${noun}s to select them (Ctrl/Cmd/Shift+click for several).`;
 }
@@ -235,9 +326,18 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
     }
     return;
   }
-  if (clickPrompt && !pick && !modifier) {
-    post({ type: "clickToAsk", node: hit.node });
-    return;
+  // What a plain click does, in order: answer a pick the agent is waiting for, open the code the
+  // node links to, ask the diagram's clickPrompt in chat, or select the node. A modified click
+  // always selects, so that every node can be selected whatever else a click does.
+  if (!pick && !modifier) {
+    if (links.has(hit.node.id)) {
+      post({ type: "clickToOpen", node: hit.node });
+      return;
+    }
+    if (clickPrompt) {
+      post({ type: "clickToAsk", node: hit.node });
+      return;
+    }
   }
   // A plain click selects only this item, or deselects it when nothing else is selected.
   const single = pick ? !pick.multiple : !modifier;
@@ -259,6 +359,39 @@ canvas.addEventListener("click", (event) => {
     itemClicked(undefined, withModifier(event));
   }
 });
+
+// The marks an agent put on the drawing, to walk the user through it.
+
+/**
+ * Puts an agent's marks on the rendering as it is, leaving the drawing itself alone, and shows the
+ * caption and the notes that came with them above it. An annotation with nothing in it clears all
+ * of that.
+ */
+function showAnnotation(next: Annotation): void {
+  active?.showMarks(next);
+  // An image prepared for a drag was made without these marks; a chart draws them into its SVG.
+  forgetDragImage();
+  const notes = next.marks.flatMap((mark) =>
+    mark.note === undefined ? [] : [noteRow(mark, mark.note)],
+  );
+  annotationCaption.textContent = next.caption ?? "";
+  annotationCaption.hidden = next.caption === undefined;
+  annotationNotes.replaceChildren(...notes);
+  annotationBanner.hidden = next.caption === undefined && notes.length === 0;
+}
+
+/** One note, after a dot in the color its mark reads in and the label of the node it is about. */
+function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
+  const row = document.createElement("li");
+  row.className = `diagram-mark-${kind}`;
+  const dot = document.createElement("span");
+  dot.className = "mark-dot";
+  const name = document.createElement("b");
+  // A chart item goes by the name a click gives it, which is the id itself.
+  name.textContent = labels.get(id) ?? id;
+  row.append(dot, name, document.createTextNode(` ${note}`));
+  return row;
+}
 
 // Picking nodes on request of an agent.
 
@@ -305,10 +438,14 @@ document.addEventListener("keydown", (event) => {
 
 clearSelectionButton.addEventListener("click", clearSelection);
 
-// Keep an unsent message when the webview reloads, e.g. when moved to another window.
-const saveDraft = () => vscode.setState({ draft: askInput.value });
-askInput.value = vscode.getState()?.draft ?? "";
-askInput.addEventListener("input", saveDraft);
+// Keep an unsent message and the chosen view when the webview reloads, e.g. moved to another window.
+function saveState(): void {
+  vscode.setState({ draft: askInput.value, view: viewMode });
+}
+const restored = vscode.getState();
+askInput.value = restored?.draft ?? "";
+viewMode = restored?.view ?? "visual";
+askInput.addEventListener("input", saveState);
 
 askForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -316,54 +453,220 @@ askForm.addEventListener("submit", (event) => {
   if (text) {
     post({ type: "ask", text, nodes: Array.from(selection.values()) });
     askInput.value = "";
-    saveDraft();
+    saveState();
   }
 });
 
 refreshButton.addEventListener("click", () => post({ type: "refresh" }));
+writeToButton.addEventListener("click", () => post({ type: "writeToDocument" }));
 
-// Source editing.
+// Saved charts keep the colors they are drawn in, which only the webview can read.
+saveButton.addEventListener("click", () => post({ type: "save", colors: readThemeColors() }));
+
+// Dragging the drawing out of the panel as an image, e.g. into a chat or a document.
+
+/**
+ * The image of what is drawn, made ready before a drag begins: `dragstart` has to describe what is
+ * being dragged there and then, and cannot wait for a diagram to be rendered again and rasterized.
+ */
+let dragImage:
+  | { key: string; image: DiagramImage; png: string; preview: HTMLImageElement }
+  | undefined;
+/** The image being made ready, if any, so that hovering the handle repeatedly makes one copy. */
+let preparingDragImage: string | undefined;
+/** Whether the file offered should be the SVG, as asked for with Shift as the drag starts. */
+let dragSvg = false;
+
+/** The background an image is drawn on: an image dropped elsewhere has no theme behind it. */
+const imageBackground = () => toCss(readThemeColors().background);
+
+/**
+ * What the prepared image belongs to: the drawing, and the theme it is drawn in, which the body's
+ * class and the root element's variables carry.
+ */
+function dragImageKey(): string | undefined {
+  return (
+    current && `${current.renderer.noun}\u0000${document.body.className}\u0000${current.source}`
+  );
+}
+
+/** Drops the prepared image, which the next hover or press over the handle makes again. */
+function forgetDragImage(): void {
+  dragImage = undefined;
+  preparingDragImage = undefined;
+}
+
+/** Makes the image of what is drawn ready, if it is not already, for a drag that may follow. */
+function prepareDragImage(): void {
+  const key = dragImageKey();
+  const toImage = active?.toImage?.bind(active);
+  if (!key || !toImage || dragImage?.key === key || preparingDragImage === key) {
+    return;
+  }
+  preparingDragImage = key;
+  void (async () => {
+    try {
+      const image = await toImage(imageBackground());
+      const png = await pngDataUrl(image);
+      // The picture shown under the pointer while dragging, decoded now so that it can be handed
+      // to setDragImage synchronously.
+      const preview = new Image();
+      preview.src = png;
+      await preview.decode();
+      if (preparingDragImage === key) {
+        dragImage = { key, image, png, preview };
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      if (preparingDragImage === key) {
+        preparingDragImage = undefined;
+      }
+    }
+  })();
+}
+
+// Hovering the handle is the earliest sign that a drag may be coming; pressing is the last.
+dragOutHandle.addEventListener("pointerenter", prepareDragImage);
+dragOutHandle.addEventListener("pointerdown", (event) => {
+  dragSvg = event.shiftKey;
+  prepareDragImage();
+});
+
+dragOutHandle.addEventListener("dragstart", (event) => {
+  const key = dragImageKey();
+  const ready = dragImage?.key === key ? dragImage : undefined;
+  if (!ready || !event.dataTransfer) {
+    // Nothing can be dragged without an image, and the drag cannot wait for one.
+    event.preventDefault();
+    prepareDragImage();
+    transientHint("Preparing the image — start the drag again in a moment.");
+    return;
+  }
+  const { dataTransfer } = event;
+  const title = titleElement.textContent?.trim() ?? "";
+  const name = safeFileName(title, "diagram");
+  const url = dragSvg ? svgDataUrl(ready.image.svg) : ready.png;
+  dataTransfer.effectAllowed = "copy";
+  // A file the drop target downloads from the data URL. This is what an application that takes
+  // dropped files, such as a chat window, reads; the type it asks for decides the rest.
+  dataTransfer.setData(
+    "DownloadURL",
+    `${dragSvg ? "image/svg+xml" : "image/png"}:${name}.${dragSvg ? "svg" : "png"}:${url}`,
+  );
+  // For a target that takes rich text instead of a file, and one that prefers vector over pixels.
+  dataTransfer.setData("text/html", `<img src="${ready.png}" alt="${escapeHtml(title || name)}">`);
+  dataTransfer.setData("image/svg+xml", ready.image.svg);
+  try {
+    dataTransfer.setDragImage(ready.preview, 12, 12);
+  } catch {
+    // Not every build accepts an image that is not in the page; the default outline will do.
+  }
+});
+
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+};
+const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => HTML_ESCAPES[char] ?? char);
+
+/** Says something in place of the selection for a moment, then puts the selection back. */
+let hintTimer: ReturnType<typeof setTimeout> | undefined;
+function transientHint(text: string): void {
+  selectionLabel.textContent = text;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(updateSelectionUi, 4000);
+}
+
+// The views, and source editing.
 
 const staleNote = element("stale-note");
 
-function openEditor(): void {
+/** Shows the source of the diagram as rendered, as the editor's starting point. */
+function loadSource(): void {
   editedFrom = current ? current.renderer.formatForEditing(current.source) : "";
   sourceInput.value = editedFrom;
   staleNote.hidden = true;
-  editor.hidden = false;
+  updateEditorActions();
 }
 
-/** Keeps an open editor from silently replacing a diagram that changed while editing. */
-function sourceChanged(): void {
-  if (editor.hidden) {
+function updateEditorActions(): void {
+  const edited = sourceInput.value !== editedFrom;
+  applyButton.disabled = !edited;
+  revertButton.disabled = !edited;
+}
+
+/**
+ * Shows the rendering, the source, or both. Showing the source loads it as rendered, while hiding
+ * it keeps unapplied edits for when it is shown again.
+ */
+function setViewMode(mode: ViewMode): void {
+  viewMode = mode;
+  // Before the first diagram there is no source to show.
+  const shown = current === undefined ? "visual" : mode;
+  for (const [name, button] of Object.entries(viewButtons)) {
+    button.setAttribute("aria-pressed", String(name === shown));
+  }
+  // On the panes, not the body: a body class change would look like a theme change.
+  panes.className = `view-${shown}`;
+  const opening = shown !== "visual" && !sourceShown;
+  sourceShown = shown !== "visual";
+  if (opening) {
+    loadSource();
+  }
+  saveState();
+}
+
+for (const [mode, button] of Object.entries(viewButtons)) {
+  button.addEventListener("click", () => {
+    setViewMode(mode as ViewMode);
+    if (sourceShown) {
+      sourceInput.focus();
+    }
+  });
+}
+
+/** Keeps the editor from silently replacing a diagram that changed while editing. */
+function sourceChanged(source: string): void {
+  if (!sourceShown) {
     return;
   }
-  if (sourceInput.value === editedFrom) {
-    openEditor();
+  if (source === appliedSource) {
+    // The applied edit came back: show it as rendered, unless it has been edited again since.
+    if (sourceInput.value === appliedSource) {
+      loadSource();
+    }
+  } else if (sourceInput.value === editedFrom) {
+    loadSource();
   } else {
     staleNote.hidden = false;
   }
 }
 
-editButton.addEventListener("click", () => {
-  openEditor();
-  sourceInput.focus();
-});
-
-function closeEditor(): void {
-  editor.hidden = true;
-  // Hiding the focused button would leave the focus nowhere.
-  editButton.focus();
+function applySource(): void {
+  if (sourceInput.value === editedFrom) {
+    return;
+  }
+  // The diagram that comes back is this edit, and not a change to warn about.
+  appliedSource = sourceInput.value;
+  staleNote.hidden = true;
+  post({ type: "sourceEdited", source: appliedSource });
 }
 
-element("apply").addEventListener("click", () => {
-  closeEditor();
-  if (sourceInput.value !== editedFrom) {
-    post({ type: "sourceEdited", source: sourceInput.value });
+sourceInput.addEventListener("input", updateEditorActions);
+sourceInput.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    applySource();
   }
 });
-
-element("cancel").addEventListener("click", closeEditor);
+applyButton.addEventListener("click", applySource);
+revertButton.addEventListener("click", () => {
+  loadSource();
+  sourceInput.focus();
+});
 
 // Zoom (Mermaid only; charts fit the panel).
 

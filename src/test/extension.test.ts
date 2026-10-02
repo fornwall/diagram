@@ -92,13 +92,15 @@ suite("Extension", () => {
     assert.doesNotMatch(state, /fails to render/);
   });
 
-  test("reports invalid ECharts JSON back to the agent", async () => {
+  test("reports an unparsable ECharts option back to the agent", async () => {
     const text = await invoke("diagram_render", {
-      source: '{"series": [{"type": "bar", }]}',
+      // Unclosed, and so neither JSON nor a JavaScript object literal; a trailing comma would be
+      // a syntax error only in JSON, which an option is no longer limited to.
+      source: '{"series": [{"type": "bar"}',
       language: "echarts",
     });
     assert.match(text, /failed to render/);
-    assert.match(text, /valid JSON/);
+    assert.match(text, /could not be parsed/);
   });
 
   test("charts inline data", async () => {
@@ -136,6 +138,43 @@ suite("Extension", () => {
     );
   });
 
+  test("marks the diagram already shown, and clears the marks again", async () => {
+    assert.match(
+      await invoke("diagram_render", {
+        source: "flowchart LR\n  parse[Parser] --> check[Checker]",
+        title: "Pipeline",
+      }),
+      /Rendered the flowchart/,
+    );
+    const marked = await invoke("diagram_annotate", {
+      marks: [
+        { id: "parse", mark: "current", note: "we are here" },
+        { id: "Checker", mark: "problem" },
+      ],
+      caption: "Step 1 of 2",
+      dim: true,
+    });
+    assert.match(marked, /^Marked 1 node on the diagram already shown in the panel/);
+    assert.match(marked, /parse \(current\)\./);
+    assert.match(marked, /The caption above it reads "Step 1 of 2"\./);
+    // The label of a node is not its id, so there is nothing to mark for it.
+    assert.match(
+      marked,
+      /These ids are not nodes of the diagram.*"Checker"\. Its ids are "parse", "check"\./,
+    );
+
+    // The marks belong to the state a later request sees, and the diagram is still the one drawn.
+    const state = await invoke("diagram_getState", {});
+    assert.match(
+      state,
+      /You have marked these nodes in the panel: parse \(current: we are here\)\./,
+    );
+    assert.match(state, /flowchart LR/);
+
+    assert.match(await invoke("diagram_annotate", {}), /^Cleared the marks on the diagram/);
+    assert.doesNotMatch(await invoke("diagram_getState", {}), /marked/);
+  });
+
   test("reports malformed input back to the agent", async () => {
     assert.match(
       await invoke("diagram_render", {}),
@@ -148,6 +187,10 @@ suite("Extension", () => {
     assert.match(
       await invoke("diagram_pickNodes", {}),
       /No node was picked: Give "prompt", the question/,
+    );
+    assert.match(
+      await invoke("diagram_annotate", { marks: [{ id: "a", mark: "red" }] }),
+      /Nothing was marked: Invalid marks:\n- Mark 1: "mark" must be one of/,
     );
   });
 });

@@ -1,8 +1,9 @@
-// Parses and checks ECharts options written as JSON, with actionable errors for mistakes that
-// ECharts would silently render as nothing.
+// Parses and checks ECharts options written as JSON, or as a JavaScript object literal when a
+// callback needs a function, with actionable errors for mistakes that ECharts would silently
+// render as nothing.
 
 import { isPlainObject } from "../protocol";
-import { describeJsonError, isFunctionAt } from "./jsonErrors";
+import { describeSourceError, isFunctionAt } from "./jsonErrors";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -29,6 +30,7 @@ const DEFAULT_COORDINATE_SYSTEMS: Record<string, string> = {
   candlestick: "cartesian2d",
   boxplot: "cartesian2d",
   heatmap: "cartesian2d",
+  custom: "cartesian2d",
   radar: "radar",
   parallel: "parallel",
   themeRiver: "singleAxis",
@@ -72,8 +74,8 @@ const COORDINATE_COMPONENTS: Record<string, { needs: string[]; example: string }
 };
 
 /**
- * Series types that work from JSON, as registered in echartsLibrary.ts: map needs map data and
- * custom a renderItem function.
+ * The series types registered in echartsLibrary.ts, which leaves out map as the panel has no map
+ * data.
  */
 export const SERIES_TYPES = [
   "line",
@@ -97,6 +99,7 @@ export const SERIES_TYPES = [
   "heatmap",
   "pictorialBar",
   "themeRiver",
+  "custom",
 ];
 
 const DONUT = 'for a donut chart, use "pie" with "radius": ["45%", "72%"]';
@@ -112,11 +115,9 @@ const TYPE_HINTS: Record<string, string> = {
   network: 'for a network, use "graph"',
   flow: 'for flows between nodes, use "sankey"',
   map: 'geographic maps are not available in the panel, as it has no map data; use e.g. "bar" by region',
-  custom:
-    "custom series need a renderItem function, which JSON cannot express; use a built-in type",
 };
 
-/** Keys whose values ECharts also accepts as functions, which JSON cannot express. */
+/** Keys whose values ECharts also accepts as functions, where a function in a string is wrong. */
 const CALLBACK_KEYS = new Set([
   "formatter",
   "valueFormatter",
@@ -134,28 +135,63 @@ const CALLBACK_KEYS = new Set([
 ]);
 
 function describe(value: unknown): string {
-  if (value === null) {
-    return "null";
+  if (value === null || value === undefined) {
+    return String(value);
   }
   return Array.isArray(value) ? "an array" : `a ${typeof value}`;
 }
 
 /** Parses the source of an ECharts option, throwing an error that says how to fix it. */
 export function parseOption(source: string): JsonObject {
-  let option: unknown;
-  try {
-    option = JSON.parse(source);
-  } catch (error) {
-    throw new Error(describeJsonError(source, error));
-  }
+  const option = evaluateSource(source);
   if (!isPlainObject(option)) {
     throw new Error(
-      `The ECharts option must be a JSON object such as {"series": [...]}, not ${describe(option)}.`,
+      'The ECharts option must be an object such as {"series": [...]}, written as JSON or as a ' +
+        `JavaScript object literal, not ${describe(option)}.`,
     );
   }
   validateSeries(baseOption(option));
-  findJavaScript(option, "option");
+  findJavaScript(option, "option", new WeakSet());
   return option;
+}
+
+/**
+ * The source as a value: JSON when it parses, otherwise evaluated as a JavaScript expression, as a
+ * custom series' renderItem and other callbacks need. The brackets make a leading "{" an object
+ * literal rather than a block, and a top-level "," a list of values rather than a sequence
+ * expression that would throw all but the last of them away; the line breaks keep a trailing "//"
+ * comment from swallowing the closing bracket.
+ */
+function evaluateSource(source: string): unknown {
+  try {
+    return JSON.parse(source);
+  } catch (jsonError) {
+    const values = evaluateExpressions(source, jsonError);
+    if (values.length === 1) {
+      return values[0];
+    }
+    throw new Error(
+      values.length === 0
+        ? 'The ECharts option is empty. Write the option object, e.g. {"series": [{"type": ' +
+            '"bar", "data": [5, 20, 36]}], "xAxis": {"type": "category", "data": ["A", "B", "C"]}, ' +
+            '"yAxis": {"type": "value"}}.'
+        : `The ECharts option source holds ${values.length} top-level values separated by ",": ` +
+            'only one top-level object is allowed, so check for a "}" that closes it too early.',
+    );
+  }
+}
+
+/**
+ * The values the source evaluates to as a JavaScript expression, which a top-level "," makes more
+ * than one. Only the webview evaluates a source, inside its sandboxed iframe.
+ */
+function evaluateExpressions(source: string, jsonError: unknown): unknown[] {
+  try {
+    const evaluate = new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[];
+    return evaluate();
+  } catch (scriptError) {
+    throw new Error(describeSourceError(source, jsonError, scriptError));
+  }
 }
 
 /** Checks the series of the base option; timeline options only patch them. */
@@ -183,7 +219,7 @@ function validateSeries(base: JsonObject): void {
   }
 }
 
-/** Checks that a series has a type that works from JSON, and what it needs to draw anything. */
+/** Checks that a series has a type the panel has, and what it needs to draw anything. */
 function checkSeries(each: unknown, index: number, base: JsonObject): void {
   if (!isPlainObject(each)) {
     throw new Error(
@@ -201,7 +237,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
     const hint = sameName
       ? `types are case-sensitive: "${sameName}"`
       : TYPE_HINTS[type.toLowerCase()];
-    const problem = type === "map" || type === "custom" ? "unsupported" : "unknown";
+    const problem = type === "map" ? "unsupported" : "unknown";
     throw new Error(
       `series[${index}] has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
         `Valid types: ${SERIES_TYPES.join(", ")}.`,
@@ -234,6 +270,14 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
         `e.g. ${components.example}.`,
     );
   }
+  if (type === "custom" && typeof each.renderItem !== "function") {
+    throw new Error(
+      `series[${index}] is a "custom" series, which draws nothing without a "renderItem" ` +
+        "function. Write the option as a JavaScript object literal rather than JSON, e.g. " +
+        '"renderItem": (params, api) => {const [x, y] = api.coord([api.value(0), api.value(1)]); ' +
+        'return {type: "circle", shape: {cx: x, cy: y, r: 6}, style: api.style()};}.',
+    );
+  }
   if (type === "heatmap" && asArray(base.visualMap).length === 0) {
     throw new Error(
       `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
@@ -257,18 +301,36 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
   }
 }
 
-/** Finds strings with JavaScript functions where ECharts would accept a callback. */
-function findJavaScript(value: unknown, path: string): void {
+/**
+ * Finds callbacks written as strings, which ECharts draws as the text they are, and objects that
+ * contain themselves, which a JavaScript source can build and no chart can be drawn from. A
+ * function itself is fine anywhere, as the source may be JavaScript. "inside" holds the objects
+ * the walk is inside, which is what a cycle leads back to, rather than every object it has seen,
+ * as the same value may well be used in several places.
+ */
+function findJavaScript(value: unknown, path: string, inside: WeakSet<object>): void {
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (inside.has(value)) {
+    throw new Error(
+      `${path} refers back to an object that contains it, and a chart cannot be drawn from a ` +
+        "cycle. Write out the value that each place needs instead of referring back.",
+    );
+  }
+  inside.add(value);
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
       // Primitive data points cannot contain callbacks; avoid building paths for large datasets.
       if (item !== null && typeof item === "object") {
-        findJavaScript(item, `${path}[${index}]`);
+        findJavaScript(item, `${path}[${index}]`, inside);
       }
     });
+    inside.delete(value);
     return;
   }
   if (!isPlainObject(value)) {
+    inside.delete(value);
     return;
   }
   for (const [key, item] of Object.entries(value)) {
@@ -279,12 +341,15 @@ function findJavaScript(value: unknown, path: string): void {
     const itemPath = path === "option" ? key : `${path}.${key}`;
     if (callback) {
       throw new Error(
-        `${itemPath} is JavaScript code, but the option is JSON and cannot contain functions. ` +
-          'Use a string template instead, such as "{b}: {c}" (name and value) or "{d}%" (pie percentage).',
+        `${itemPath} is JavaScript code in a string, which ECharts draws as that text. Write it ` +
+          "as a function, as the option itself may be written as JavaScript, or for a simple " +
+          'formatter use a string template such as "{b}: {c}" (name and value) or "{d}%" ' +
+          "(pie percentage).",
       );
     }
-    findJavaScript(item, itemPath);
+    findJavaScript(item, itemPath, inside);
   }
+  inside.delete(value);
 }
 
 /** The series types of the option, e.g. "bar, line". */

@@ -10,7 +10,16 @@ export const CHART_TYPES = [
   "stackedBar",
   "line",
   "area",
+  "stackedArea",
   "scatter",
+  "treemap",
+  "sunburst",
+  "sankey",
+  "heatmap",
+  "radar",
+  "boxplot",
+  "gauge",
+  "funnel",
 ] as const;
 
 export type ChartType = (typeof CHART_TYPES)[number];
@@ -20,6 +29,11 @@ export const DATA_FORMATS = ["auto", "csv", "tsv", "json", "whitespace"] as cons
 export type DataFormat = (typeof DATA_FORMATS)[number];
 
 const SORT_ORDERS = ["ascending", "descending"] as const;
+
+/** How the rows of a group combine into one row; see {@link ChartSpec.aggregate}. */
+export const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
+
+export type Aggregation = (typeof AGGREGATIONS)[number];
 
 /**
  * Where a chart's data comes from: inline, a file (absolute or relative to the first workspace
@@ -35,10 +49,22 @@ export type ChartSpec = ChartData & {
   title?: string;
   /** How the data is formatted; detected when "auto" or not given. */
   format?: DataFormat;
-  /** The column with the labels (categories, pie slice names, scatter point names). */
-  labelColumn?: string;
+  /**
+   * The column with the labels (categories, pie slice names, scatter point names), or several
+   * columns for the levels of a treemap or sunburst, the source and target of a sankey, or the
+   * rows and columns of a heatmap.
+   */
+  labelColumn?: string | string[];
   /** The columns with the values, one series each. */
   valueColumns?: string[];
+  /** The top of a gauge's scale, or of a radar chart's axes; inferred from the data otherwise. */
+  max?: number;
+  /**
+   * Collapses the rows that share a label (or, with several label columns, the same labels) into
+   * one, combining the values of each group this way. "count" counts the rows of a group, with no
+   * value column needed.
+   */
+  aggregate?: Aggregation;
   /** Sorts rows by the first value column. */
   sort?: (typeof SORT_ORDERS)[number];
   /** Keeps only the first rows (after sorting); a pie chart sums the rest up as "Other". */
@@ -56,6 +82,8 @@ const SPEC_KEYS = [
   "format",
   "labelColumn",
   "valueColumns",
+  "max",
+  "aggregate",
   "sort",
   "limit",
   "options",
@@ -75,6 +103,11 @@ export function quoteAll(values: readonly string[]): string {
 
 function isOneOf(values: readonly string[], value: unknown): boolean {
   return (values as readonly unknown[]).includes(value);
+}
+
+/** Whether a value names columns: a non-empty array of strings, as the column properties take. */
+function isColumnNames(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every((n) => typeof n === "string");
 }
 
 /**
@@ -130,12 +163,27 @@ export function validateChartSpec(value: unknown): ChartSpec {
     expect(key, typeof text === "string" && text.trim() !== "", "a non-empty string");
   }
   expect("format", isOneOf(DATA_FORMATS, input.format), `one of ${quoteAll(DATA_FORMATS)}`);
-  expect("labelColumn", typeof input.labelColumn === "string", "a string");
-  const columns = input.valueColumns;
+  expect(
+    "labelColumn",
+    typeof input.labelColumn === "string" || isColumnNames(input.labelColumn),
+    "a column name, or an array of them for the levels of a hierarchy, a source and a target, " +
+      'or rows and columns, e.g. ["from", "to"]',
+  );
   expect(
     "valueColumns",
-    Array.isArray(columns) && columns.length > 0 && columns.every((c) => typeof c === "string"),
+    isColumnNames(input.valueColumns),
     'a non-empty array of column names, e.g. ["size"]',
+  );
+  const max = input.max;
+  expect(
+    "max",
+    typeof max === "number" && Number.isFinite(max),
+    "a number (the top of a gauge's or a radar chart's scale)",
+  );
+  expect(
+    "aggregate",
+    isOneOf(AGGREGATIONS, input.aggregate),
+    `one of ${quoteAll(AGGREGATIONS)} (how the rows of a group combine)`,
   );
   expect("sort", isOneOf(SORT_ORDERS, input.sort), `one of ${quoteAll(SORT_ORDERS)}`);
   const limit = input.limit;

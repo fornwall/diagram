@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import type * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel } from "./newPanel";
 
@@ -67,6 +68,12 @@ suite("webview", function () {
     assert.match(long.error, /^The diagram is too long/);
   });
 
+  test("lets the webview compile an option written as JavaScript", () => {
+    panel.show();
+    const { webview } = (panel as unknown as { panel: vscode.WebviewPanel }).panel;
+    assert.match(webview.html, /script-src 'nonce-[\w-]+' 'unsafe-eval'/);
+  });
+
   test("renders charts, and switches between charts and diagrams", async () => {
     const option = {
       xAxis: { type: "category", data: ["A", "B"] },
@@ -79,13 +86,41 @@ suite("webview", function () {
     assert.ok((await render(chart)).ok);
   });
 
+  test("reports the node ids it drew, and marks them on the diagram it already shows", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual([...(panel.drawnIds ?? [])].sort(), ["A", "B"]);
+    const marked = panel.annotate({
+      marks: [
+        { id: "A", kind: "problem", note: "fails here" },
+        { id: "B", kind: "good" },
+      ],
+      caption: "Step 1 of 2",
+      dim: true,
+    });
+    assert.ok(marked.ok);
+    assert.deepStrictEqual(marked.unknown, []);
+    // The diagram is still the one that was rendered, and it still renders and picks.
+    assert.strictEqual(panel.current?.source, MERMAID["flowchart-v2"]);
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.ok((await render({ source: MERMAID.sequence })).ok);
+    assert.deepStrictEqual([...(panel.drawnIds ?? [])].sort(), ["Alice", "Bob"]);
+
+    // A chart's items are its data, which the panel does not name, so ids cannot be checked.
+    const pie = '{"series": [{"type": "pie", "data": [1]}]}';
+    assert.ok((await render({ language: "echarts", source: pie })).ok);
+    assert.strictEqual(panel.drawnIds, undefined);
+    const chartMarks = panel.annotate({ marks: [{ id: "1", kind: "info" }], dim: true });
+    assert.ok(chartMarks.ok);
+    assert.deepStrictEqual(chartMarks.unknown, []);
+  });
+
   test("explains charts that cannot render", async () => {
     const outcome = await render({
       language: "echarts",
-      source: '{"series": [{"type": "custom"}]}',
+      source: '{"series": [{"type": "map"}]}',
     });
     assert.ok(!outcome.ok && outcome.kind === "invalid");
-    assert.match(outcome.error, /unsupported type "custom"/);
+    assert.match(outcome.error, /unsupported type "map"/);
   });
 
   test("recovers from invalid chart components and renders an explicit graph view", async () => {

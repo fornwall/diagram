@@ -1,9 +1,10 @@
 // Renders Mermaid diagrams as SVG, scaled to fit the panel.
 
 import type { Mermaid } from "mermaid";
-import type { DiagramNode } from "../protocol";
+import { type Annotation, type DiagramNode, MARK_KINDS } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
-import { type Renderer, type RendererHost, withModifier } from "./renderer";
+import { type DiagramImage, standaloneSvg } from "./images";
+import { type Renderer, type RendererHost, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -16,6 +17,9 @@ const MIN_HEIGHT_FIT = 0.6;
 
 /** Mermaid's default limit: it draws a longer source as an error message instead. */
 const MAX_TEXT_SIZE = 50_000;
+
+/** The namespace of the <title> elements that show where a linked node leads. */
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 const TYPE_EXAMPLES = '"flowchart TD", "sequenceDiagram", "classDiagram", "erDiagram", "mindmap"';
 
@@ -192,6 +196,10 @@ export class MermaidRenderer implements Renderer {
   /** The selectable nodes of the shown diagram, by the elements that show them. */
   private nodes = new Map<Element, DiagramNode>();
   private selectedKeys: ReadonlySet<string> = new Set();
+  /** Where the nodes link to in the code, by node id, for as long as the diagram is shown. */
+  private links: ReadonlyMap<string, string> = new Map();
+  /** The marks an agent put on the diagram, which a re-render for a new theme puts back. */
+  private annotation: Annotation = UNMARKED;
   private zoom = 1;
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
@@ -226,15 +234,10 @@ export class MermaidRenderer implements Renderer {
     }).observe(canvas);
   }
 
-  async render(source: string): Promise<string> {
-    if (source.length > MAX_TEXT_SIZE) {
-      throw new Error(
-        `The diagram is too long: ${source.length} characters, where Mermaid allows ${MAX_TEXT_SIZE}. Split it into smaller diagrams.`,
-      );
-    }
-    const mermaid = await loadMermaid();
+  /** How Mermaid is configured for the current VS Code theme. */
+  private config(): Parameters<Mermaid["initialize"]>[0] {
     const colors = readThemeColors();
-    mermaid.initialize({
+    return {
       startOnLoad: false,
       securityLevel: "strict",
       maxTextSize: MAX_TEXT_SIZE,
@@ -243,7 +246,17 @@ export class MermaidRenderer implements Renderer {
       theme: colors.dark ? "dark" : "default",
       themeVariables: colors.dark ? darkScale(colors) : {},
       fontFamily: colors.fontFamily,
-    });
+    };
+  }
+
+  async render(source: string): Promise<string> {
+    if (source.length > MAX_TEXT_SIZE) {
+      throw new Error(
+        `The diagram is too long: ${source.length} characters, where Mermaid allows ${MAX_TEXT_SIZE}. Split it into smaller diagrams.`,
+      );
+    }
+    const mermaid = await loadMermaid();
+    mermaid.initialize(this.config());
     const id = `diagram-svg-${++this.renderCounter}`;
     const result = await mermaid.render(id, source).catch((error: unknown) => {
       throw describeError(error, source);
@@ -269,6 +282,35 @@ export class MermaidRenderer implements Renderer {
     return result.diagramType;
   }
 
+  /**
+   * The diagram as an image, rendered a second time with its labels as SVG text.
+   *
+   * Mermaid draws a label as HTML in a `foreignObject` unless told otherwise. Most applications
+   * that read SVG leave that out, so the labels would go missing where the image is dropped, and an
+   * SVG holding one cannot be rasterized to a PNG at all. The copy on screen keeps its HTML labels,
+   * which wrap better, and is left untouched: this render goes to a string, not into the panel.
+   */
+  async toImage(background: string): Promise<DiagramImage> {
+    const source = this.displayedSource;
+    if (source === undefined) {
+      throw new Error("There is no diagram to make an image of.");
+    }
+    const mermaid = await loadMermaid();
+    mermaid.initialize({ ...this.config(), htmlLabels: false });
+    try {
+      const { svg } = await mermaid.render(`diagram-image-${++this.renderCounter}`, source);
+      const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+      if (!(parsed instanceof SVGSVGElement)) {
+        throw new Error("Mermaid did not produce an SVG to make an image of.");
+      }
+      return standaloneSvg(parsed, background);
+    } finally {
+      // Leave Mermaid configured for the panel: a theme change or a resize may render before the
+      // next diagram arrives, and would otherwise draw the labels as plain text.
+      mermaid.initialize(this.config());
+    }
+  }
+
   hide(): void {
     this.diagram.hidden = true;
     this.diagram.innerHTML = "";
@@ -282,6 +324,42 @@ export class MermaidRenderer implements Renderer {
       const selected = keys.has(node.id);
       element.classList.toggle("diagram-selected", selected);
       element.setAttribute("aria-pressed", String(selected));
+    }
+  }
+
+  showMarks(annotation: Annotation): void {
+    this.annotation = annotation;
+    const kinds = new Map(annotation.marks.map((mark) => [mark.id, mark.kind]));
+    for (const [element, node] of this.nodes) {
+      const kind = kinds.get(node.id);
+      element.classList.toggle("diagram-marked", kind !== undefined);
+      for (const each of MARK_KINDS) {
+        element.classList.toggle(`diagram-mark-${each}`, each === kind);
+      }
+    }
+    // Nothing is faded while nothing is marked, however the annotation asks for it.
+    this.diagram.classList.toggle("dim-unmarked", annotation.dim && kinds.size > 0);
+  }
+
+  drawnNodes(): DiagramNode[] {
+    // Several elements can show one node, e.g. a Gantt task's bar and its label.
+    return [...new Map(Array.from(this.nodes.values(), (node) => [node.id, node])).values()];
+  }
+
+  showLinks(locations: ReadonlyMap<string, string>): void {
+    this.links = locations;
+    for (const [element, node] of this.nodes) {
+      const location = locations.get(node.id);
+      element.classList.toggle("diagram-linked", location !== undefined);
+      // SVG takes a tooltip as a <title> child, and shows the first one, so replace our own and
+      // leave any that Mermaid wrote where it is.
+      element.querySelector(":scope > title.diagram-link")?.remove();
+      if (location !== undefined) {
+        const title = document.createElementNS(SVG_NAMESPACE, "title");
+        title.classList.add("diagram-link");
+        title.textContent = `Open ${location}`;
+        element.prepend(title);
+      }
     }
   }
 
@@ -324,6 +402,8 @@ export class MermaidRenderer implements Renderer {
     }
     this.findNodes(svg, `${svgId}-`, db);
     this.showSelection(this.selectedKeys);
+    this.showLinks(this.links);
+    this.showMarks(this.annotation);
     const viewBox = svg.viewBox.baseVal;
     if (viewBox.width > 0 && viewBox.height > 0) {
       svg.setAttribute("width", String(viewBox.width));

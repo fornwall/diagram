@@ -1,9 +1,11 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { linkText, linkTexts, type NodeLink } from "../links";
 import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
 import { type FromWebview, isFromWebview, type ToWebview } from "../protocol";
-import { ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
+import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { newPanel } from "./newPanel";
+import { testColors } from "./themeColors";
 
 const flowchart: Diagram = {
   language: "mermaid",
@@ -51,6 +53,7 @@ suite("panel", function () {
   test("isFromWebview accepts only well-formed messages", () => {
     assert.ok(isFromWebview({ type: "ready" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
+    assert.ok(isFromWebview({ type: "save", colors: testColors }));
     const malformed = [
       null,
       "ready",
@@ -59,6 +62,11 @@ suite("panel", function () {
       { type: "picked", pickId: "3", nodes: [] },
       { type: "selectionChanged", nodes: [{ id: "A" }] },
       { type: "ask", nodes: [] },
+      { type: "save" },
+      // A saved chart needs every color to draw in.
+      { type: "save", colors: { ...testColors, palette: [] } },
+      { type: "save", colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
+      { type: "save", colors: { ...testColors, fontSize: Number.NaN } },
     ];
     for (const message of malformed) {
       assert.ok(!isFromWebview(message), JSON.stringify(message));
@@ -335,6 +343,7 @@ suite("panel", function () {
         new RenderDiagramTool(panel),
         new ChartTool(panel),
         new PickDiagramNodesTool(panel),
+        new AnnotateDiagramTool(panel),
       ]) {
         for (const input of [null, undefined, [], 42]) {
           const options = { input } as never;
@@ -343,7 +352,7 @@ suite("panel", function () {
           assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
           assert.match(
             result.content[0].value,
-            /Nothing was rendered|No chart was rendered|No node was picked/,
+            /Nothing was rendered|No chart was rendered|No node was picked|Nothing was marked/,
           );
         }
       }
@@ -440,6 +449,59 @@ suite("panel", function () {
     }
   });
 
+  test("only a click on a node with a link opens code", async () => {
+    const panel = newPanel();
+    const opened: string[] = [];
+    const internals = panel as unknown as {
+      onMessage(message: FromWebview): void;
+      openLink(link: NodeLink, label: string): Promise<void>;
+    };
+    internals.openLink = async (link, label) => void opened.push(`${label}: ${linkText(link)}`);
+    const click = (id: string) =>
+      internals.onMessage({ type: "clickToOpen", node: { id, label: id } });
+    const links = { A: { file: "sizes.tsv", line: 2 } };
+    try {
+      assert.ok((await panel.render({ ...flowchart, links }, "tool")).ok);
+      assert.match(panel.describeForModel() ?? "", /A → sizes\.tsv#L2/);
+      click("A");
+      // A node without a link, and an id that only Object.prototype has, link nowhere.
+      click("B");
+      click("constructor");
+      assert.deepStrictEqual(opened, ["A: sizes.tsv#L2"]);
+
+      // A diagram that fails to render has no nodes: the click was on the one it replaced.
+      const broken = { ...flowchart, source: "flowchart TD\n  A --> --> B[", links };
+      assert.ok(!(await panel.render(broken, "tool")).ok);
+      click("A");
+      assert.deepStrictEqual(opened, ["A: sizes.tsv#L2"]);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("opening a link shows the file with its lines selected", async () => {
+    const panel = newPanel();
+    const link = { file: "sizes.tsv", line: 2, endLine: 3 };
+    try {
+      assert.ok((await panel.render({ ...flowchart, links: { A: link } }, "tool")).ok);
+      await (
+        panel as unknown as { openLink(link: NodeLink, label: string): Promise<void> }
+      ).openLink(link, "Parser");
+      const shown = vscode.window.visibleTextEditors.find((editor) =>
+        editor.document.uri.path.endsWith("/sizes.tsv"),
+      );
+      assert.ok(shown, "the linked file is shown");
+      assert.strictEqual(shown.selection.start.line, 1);
+      assert.strictEqual(shown.selection.end.line, 2);
+      // Beside the diagram, rather than over it in its own tab group.
+      const diagramColumn = (panel as unknown as { panel?: vscode.WebviewPanel }).panel?.viewColumn;
+      assert.notStrictEqual(shown.viewColumn, diagramColumn);
+    } finally {
+      panel.dispose();
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    }
+  });
+
   test("large manual chart edits survive a reload", async () => {
     const values = new Map<string, unknown>();
     const panel = newPanel(values);
@@ -518,6 +580,121 @@ suite("panel", function () {
       await refreshing;
       assert.strictEqual(panel.current?.source, pie("B"));
       assert.ok(panel.current?.editedByUser);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
+    const panel = newPanel();
+    const sent: ToWebview[] = [];
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const internals = panel as unknown as { post(message: ToWebview): void };
+      const post = internals.post.bind(internals);
+      internals.post = (message) => {
+        sent.push(message);
+        post(message);
+      };
+      const outcome = panel.annotate({
+        marks: [{ id: "A", kind: "problem", note: "fails here" }],
+        caption: "Step 1 of 2",
+        dim: true,
+      });
+      assert.ok(outcome.ok && outcome.unknown.length === 0);
+      // Only the marks go to the webview: the diagram it already shows stays as it is.
+      assert.deepStrictEqual(
+        sent.map((message) => message.type),
+        ["annotate"],
+      );
+      const described = panel.describeForModel() ?? "";
+      assert.match(
+        described,
+        /You have marked these nodes in the panel: A \(problem: fails here\)\./,
+      );
+      assert.match(described, /caption above the diagram, which you wrote, reads: Step 1 of 2/);
+      assert.match(described, /Everything else is faded\./);
+
+      sent.length = 0;
+      const next = { ...flowchart, source: "flowchart LR\n  C[Lexer] --> D[Printer]" };
+      assert.ok((await panel.render(next, "tool")).ok);
+      assert.doesNotMatch(panel.describeForModel() ?? "", /marked/);
+      assert.deepStrictEqual(
+        sent.filter((message) => message.type === "annotate"),
+        [],
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("marking reports the ids the diagram has no node for", async () => {
+    const panel = newPanel();
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const drawn = panel.drawnIds;
+      assert.ok(drawn?.includes("A") && drawn.includes("B"), JSON.stringify(drawn));
+      const outcome = panel.annotate({
+        marks: [
+          { id: "A", kind: "good" },
+          // The label of A, not its id, so there is no such node.
+          { id: "Parser", kind: "problem" },
+        ],
+        dim: false,
+      });
+      assert.ok(outcome.ok);
+      assert.deepStrictEqual(outcome.unknown, ["Parser"]);
+      assert.deepStrictEqual(outcome.annotation.marks, [{ id: "A", kind: "good" }]);
+      // The links of a diagram are checked against the same ids, once it is drawn.
+      const links = { A: { file: "sizes.tsv" }, Checker: { file: "sizes.tsv" } };
+      const result = await new RenderDiagramTool(panel).invoke(
+        { input: { source: flowchart.source, links: linkTexts(links) } } as never,
+        new vscode.CancellationTokenSource().token,
+      );
+      assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
+      assert.match(result.content[0].value, /These links name nodes the diagram does not have/);
+      assert.match(result.content[0].value, /"Checker"\. Its node ids are "A", "B"\./);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("the marks go back on a webview that reloaded", async () => {
+    const panel = newPanel();
+    const sent: ToWebview[] = [];
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      assert.ok(panel.annotate({ marks: [{ id: "B", kind: "current" }], dim: false }).ok);
+      const internals = panel as unknown as {
+        onMessage(message: FromWebview): void;
+        post(message: ToWebview): void;
+      };
+      internals.post = (message) => sent.push(message);
+      internals.onMessage({ type: "ready" });
+      // The diagram first, then the marks that belong on it.
+      assert.deepStrictEqual(
+        sent.map((message) => message.type),
+        ["render", "annotate"],
+      );
+      const annotate = sent[1];
+      assert.ok(annotate?.type === "annotate");
+      assert.deepStrictEqual(annotate.marks, [{ id: "B", kind: "current" }]);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("annotate says why there is nothing to mark", async () => {
+    const panel = newPanel();
+    try {
+      const empty = panel.annotate({ marks: [], dim: false });
+      assert.ok(!empty.ok && /Render one with diagram_render/.test(empty.reason));
+
+      const broken = { ...flowchart, source: "flowchart TD\n  A --> --> B[" };
+      assert.ok(!(await panel.render(broken, "tool")).ok);
+      const outcome = panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
+      assert.ok(!outcome.ok);
+      assert.match(outcome.reason, /fails to render, so there is nothing to mark/);
     } finally {
       panel.dispose();
     }

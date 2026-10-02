@@ -1,4 +1,5 @@
-// Precise, actionable descriptions of JSON syntax errors, for the model to repair its output.
+// Precise, actionable descriptions of the syntax errors of an ECharts option source, which may be
+// written as JSON or as a JavaScript object literal, for the model to repair its output.
 
 import { errorMessage } from "../protocol";
 
@@ -6,7 +7,10 @@ class JsonSyntaxError extends Error {
   constructor(
     message: string,
     readonly position: number,
-    /** Whether the text uses JavaScript syntax that JSON lacks, a typical mistake of models. */
+    /**
+     * Whether the problem is only that JSON lacks this JavaScript syntax, which is allowed when
+     * the source is written as JavaScript, so that such a complaint is never the real error.
+     */
     readonly javaScript: boolean,
   ) {
     super(message);
@@ -17,6 +21,18 @@ const IDENTIFIER = /[A-Za-z_$][\w$]*/y;
 const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 /** What a model may write as a number, such as 0x1F, +1, .5, 5., 05 or -Infinity. */
 const NUMBER_LIKE = /[-+.\w]+/y;
+/** The number forms that JavaScript accepts and JSON does not, with "_" separators throughout. */
+const JAVASCRIPT_NUMBERS = [
+  // Hexadecimal, binary and octal integers, each with an optional BigInt "n".
+  /^[-+]?0[xX][\da-fA-F]+(?:_[\da-fA-F]+)*n?$/,
+  /^[-+]?0[bB][01]+(?:_[01]+)*n?$/,
+  /^[-+]?0[oO][0-7]+(?:_[0-7]+)*n?$/,
+  // A decimal BigInt, which has no fraction and no exponent.
+  /^[-+]?(?:0|[1-9]\d*(?:_\d+)*)n$/,
+  // A decimal with a "+" sign, a leading or trailing "." or an exponent, but no leading zero,
+  // which would be a legacy octal that strict mode rejects as well.
+  /^[-+]?(?!0[\d_])(?:\d+(?:_\d+)*(?:\.(?:\d+(?:_\d+)*)?)?|\.\d+(?:_\d+)*)(?:[eE][-+]?\d+(?:_\d+)*)?$/,
+];
 const FUNCTION = /\s*(?:async\s+)?(?:function\s*[\w$]*\s*\(|(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>)/y;
 
 function matchAt(pattern: RegExp, text: string, index: number): string | undefined {
@@ -58,7 +74,8 @@ class Scanner {
     this.whitespace();
     if (this.text.startsWith("```", this.index)) {
       this.fail(
-        'Remove the code fence around the option: the source must be the JSON object alone, starting with "{"',
+        "Remove the code fence around the option: the source must be the option object alone, " +
+          "as JSON or as a JavaScript object literal",
       );
     }
     this.value();
@@ -135,7 +152,14 @@ class Scanner {
     }
     const found = word ? `"${word}"` : quote(char);
     if (this.open.length === 0) {
-      this.fail(`Unexpected ${found}: the source must be the JSON object alone, starting with "{"`);
+      this.fail(
+        `Unexpected ${found}: write the option object itself, as JSON or as a JavaScript object ` +
+          "literal, with no assignment or statement around it",
+        this.index,
+        // A JavaScript source may be a parenthesized expression, such as an immediately called
+        // function, so a "(" here is not the error.
+        char === "(",
+      );
     }
     this.fail(
       `Unexpected ${found} while expecting ${what}${word ? "; strings must be in double quotes" : ""}`,
@@ -306,6 +330,10 @@ class Scanner {
       this.fail(
         `Invalid number ${token}: JSON numbers are decimal, without a leading "+" or zeros, and ` +
           'with digits on both sides of a "."',
+        this.index,
+        // JavaScript accepts .5, 0x1F or 1_000, so only a form it rejects too, such as the legacy
+        // octal 05, is the error of a JavaScript source.
+        JAVASCRIPT_NUMBERS.some((form) => form.test(token)),
       );
     }
     this.index += token.length;
@@ -331,23 +359,47 @@ function excerpt(text: string, position: number, line: number): string {
   return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${indent}^`;
 }
 
-/** Describes why `text` is not valid JSON, given the error thrown by JSON.parse. */
-export function describeJsonError(text: string, error: unknown): string {
+/**
+ * Describes a source that neither parses as JSON nor evaluates as a JavaScript expression. The
+ * engine reports no position for a `new Function` syntax error, so the scanner locates it instead,
+ * unless it only complains about JavaScript syntax, which is allowed here.
+ */
+export function describeSourceError(
+  text: string,
+  jsonError: unknown,
+  scriptError: unknown,
+): string {
   try {
     new Scanner(text).scan();
   } catch (found) {
     if (found instanceof JsonSyntaxError) {
+      if (found.javaScript) {
+        return describeScriptError(scriptError);
+      }
       const { line, column } = lineAndColumn(text, found.position);
       return (
-        `The ECharts option is not valid JSON: ${found.message} (line ${line}, column ${column}).\n` +
-        excerpt(text, found.position, line) +
-        (found.javaScript
-          ? "\nWrite the option as strict JSON: double-quoted property names and strings, no " +
-            "comments, no trailing commas and no functions."
-          : "")
+        `The ECharts option could not be parsed: ${found.message} (line ${line}, column ${column}).\n` +
+        excerpt(text, found.position, line)
       );
     }
   }
   // The scanner and JSON.parse disagree, e.g. on nesting too deep for either.
-  return `The ECharts option is not valid JSON: ${errorMessage(error)}`;
+  return `The ECharts option could not be parsed as JSON or as JavaScript: ${errorMessage(jsonError)}`;
+}
+
+/** Describes a source that failed to evaluate as JavaScript, which carries no position. */
+function describeScriptError(error: unknown): string {
+  if (error instanceof SyntaxError) {
+    return (
+      "The ECharts option is neither valid JSON nor a valid JavaScript object literal: " +
+      `${errorMessage(error)}. Write it as one object, as JSON or as JavaScript when a callback ` +
+      "needs a function."
+    );
+  }
+  return (
+    `The ECharts option threw while being evaluated as JavaScript: ${errorMessage(error)}. ` +
+    "The option is evaluated on its own, with no libraries in scope, so write values out: " +
+    'gradients as objects such as {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1, ' +
+    '"colorStops": [{"offset": 0, "color": "…"}, ...]}.'
+  );
 }

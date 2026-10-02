@@ -30,7 +30,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onWebviewPanel:diagram.panel"
+    "onWebviewPanel:diagram.panel",
+    "onLanguage:markdown"
   ],
   "contributes": {
     "chatParticipants": [
@@ -67,12 +68,13 @@
           },
           {
             "category": "chart",
-            "description": "The user wants to visualize data as a chart, such as a pie chart, bar chart, line chart or scatter plot, with the data given inline, in a file or as the output of a shell command.",
+            "description": "The user wants to visualize data as a chart, such as a pie chart, bar chart, line chart, scatter plot, treemap, sankey, heatmap, radar chart, box plot, gauge or funnel, with the data given inline, in a file or as the output of a shell command.",
             "examples": [
               "Render this data as a pie chart",
               "Bar chart of the lines of code per folder",
               "Plot the CSV file as a line chart",
-              "Show the disk usage of these directories as a pie chart"
+              "Show the disk usage of these directories as a pie chart",
+              "Treemap of the file sizes under src"
             ]
           }
         ]
@@ -86,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Renders a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, ...) or, with language \"echarts\", an Apache ECharts 6 chart (quantitative data) in an interactive panel next to the chat, replacing the diagram shown there. In the panel, the user can select nodes, edit the source and send follow-up requests. Returns whether it rendered, or the error to fix. To chart data in a file or a command's output, use diagram_chart instead.",
+        "modelDescription": "Renders a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, ...) or, with language \"echarts\", an Apache ECharts 6 chart (quantitative data) in an interactive panel next to the chat, replacing the diagram shown there. In the panel, the user can select nodes, edit the source and send follow-up requests. With \"links\", a Mermaid node can point at a place in the code, which a click on it opens. Returns whether it rendered, or the error to fix. To chart data in a file or a command's output, use diagram_chart instead.",
         "tags": [
           "diagram",
           "mermaid",
@@ -99,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "The complete diagram, not a diff, without a surrounding code fence: Mermaid source, or for language \"echarts\" an ECharts option object as strict JSON (no functions; use string templates such as \"{b}: {c}\" for formatters). Leave out click directives, HTML, colors, backgrounds and fonts: the panel follows the VS Code theme and fits charts to its size."
+              "description": "The complete diagram, not a diff, without a surrounding code fence: Mermaid source, or for language \"echarts\" an ECharts option object, as JSON or as a JavaScript object literal that may use functions wherever ECharts takes a callback (formatter, renderItem, symbolSize, labelLayout, ...), so \"type\": \"custom\" series work; string templates such as \"{b}: {c}\" are simpler for plain formatters. Leave out click directives, HTML, colors, backgrounds and fonts: the panel follows the VS Code theme and fits charts to its size."
             },
             "language": {
               "type": "string",
@@ -116,6 +118,13 @@
             "clickPrompt": {
               "type": "string",
               "description": "Makes the diagram explorable: a single click on a node or chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the node's label or the chart item's name, e.g. \"Explain {label} in more detail\". Use it for overview diagrams the user may want to learn more about part by part."
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Where the diagram's nodes are in the code, as a map from Mermaid node id, exactly as written in the source, to one location: a file path, absolute or relative to the first workspace folder, with an optional line or range of lines, e.g. {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\", \"cli\": \"src/cli.ts\"}. A click on such a node opens the file there, so link the nodes that stand for code you have read. Mermaid only: a chart's items are data points, not places in the code."
             }
           },
           "required": [
@@ -131,7 +140,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, replacing the diagram shown there. Give the data in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv' or 'bar chart of the lines of code per folder'. Returns how the data was read, so that you can correct it. For full control over a chart, write an ECharts option and use diagram_render instead.",
+        "modelDescription": "Renders data as a chart (Apache ECharts) in the interactive diagram panel next to the chat, replacing the diagram shown there. Give the data in exactly one way: inline (data), in a file (file) or as a shell command's output (command). Use it for requests like 'render this as a pie chart', 'plot sales.csv', 'bar chart of the lines of code per folder' or 'treemap of du -ah src'. Returns how the data was read, so that you can correct it. For full control over a chart, including callbacks such as renderItem for a custom series, write an ECharts option and use diagram_render instead.",
         "tags": [
           "chart",
           "echarts",
@@ -151,9 +160,18 @@
                 "stackedBar",
                 "line",
                 "area",
-                "scatter"
+                "stackedArea",
+                "scatter",
+                "treemap",
+                "sunburst",
+                "sankey",
+                "heatmap",
+                "radar",
+                "boxplot",
+                "gauge",
+                "funnel"
               ],
-              "description": "The chart type. horizontalBar suits long labels; scatter plots the first two value columns against each other."
+              "description": "The chart type. horizontalBar suits long labels; scatter plots the first two value columns against each other; treemap and sunburst nest path-like labels or several label columns, summing values up the tree; sankey flows from a source to a target column, or from the labels to one node per value column; heatmap pivots two label columns, or draws the value columns as its columns; radar draws an axis per value column; boxplot the spread of each group's numbers; gauge one value; funnel the stages by value."
             },
             "title": {
               "type": "string",
@@ -183,8 +201,19 @@
               "description": "How the data is formatted. Defaults to \"auto\", which detects it and is the only one that reads Markdown tables; \"json\" includes JSON Lines."
             },
             "labelColumn": {
-              "type": "string",
-              "description": "The column with the labels (categories or slice names), by its header or generated name such as \"Column 2\". Defaults to the first text column that names each row."
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                }
+              ],
+              "description": "The column with the labels (categories or slice names), by its header or generated name such as \"Column 2\". Defaults to the first text column that names each row. Several names, outermost first, give the levels of a treemap or sunburst, the stages of a sankey (source, target) or the rows and columns of a heatmap; a treemap, sunburst or sankey otherwise splits path-like labels such as \"src/webview/main.ts\" into levels. On a bar, line, area or scatter chart, a column of ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") becomes a time axis, which spaces the points by when they happened; ambiguous dates such as \"01/02/2026\" and plain years stay labels."
             },
             "valueColumns": {
               "type": "array",
@@ -192,7 +221,23 @@
                 "type": "string"
               },
               "minItems": 1,
-              "description": "The columns with the values, one series each. Defaults to the numeric columns, leaving out identifiers (id, rank, pid, …) and columns in another unit than the first."
+              "description": "The columns with the values, one series each. Defaults to the numeric columns, leaving out identifiers (id, rank, pid, …) and columns in another unit than the first. A pie, treemap, sunburst, gauge or funnel chart shows the first one only, and a boxplot the raw numbers of the first one."
+            },
+            "max": {
+              "type": "number",
+              "description": "The top of a gauge's scale, or of every axis of a radar chart. Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value."
+            },
+            "aggregate": {
+              "type": "string",
+              "enum": [
+                "sum",
+                "mean",
+                "count",
+                "min",
+                "max",
+                "median"
+              ],
+              "description": "Collapses the rows that share a label (or, with several label columns, the same labels) into one, combining the values of each group this way. \"count\" counts the rows of a group and needs no value column at all, for raw data such as one row per commit or per log line. Grouping happens before \"sort\" and \"limit\", so a limit keeps the largest groups rather than the first rows. A boxplot summarizes each group itself and takes no aggregate."
             },
             "sort": {
               "type": "string",
@@ -200,7 +245,7 @@
                 "ascending",
                 "descending"
               ],
-              "description": "Sorts the rows by the first value column."
+              "description": "Sorts the rows by the first value column, after grouping."
             },
             "limit": {
               "type": "integer",
@@ -209,7 +254,7 @@
             },
             "options": {
               "type": "object",
-              "description": "An ECharts option object merged into the generated option, for fine-tuning: objects merge, null removes a setting, and other values replace it. An object given for \"series\" applies to every series, and an array of objects merges element by element, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Avoid colors, backgrounds and fonts."
+              "description": "An ECharts option object merged into the generated option, for fine-tuning: objects merge, null removes a setting, and other values replace it. An object given for \"series\" applies to every series, and an array of objects merges element by element, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Avoid colors, backgrounds and fonts. This property arrives as JSON and so cannot hold functions; for callbacks, write a JavaScript option and render it with diagram_render."
             },
             "clickPrompt": {
               "type": "string",
@@ -229,7 +274,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Returns the diagram or chart shown in the diagram panel: its source (Mermaid, or an ECharts option as JSON), whether the user edited it by hand or it fails to render, and which nodes or chart items the user selected. Call it before changing an existing diagram, and when the user refers to 'this', 'these' or 'the selected' parts of it.",
+        "modelDescription": "Returns the diagram or chart shown in the diagram panel: its source (Mermaid, or an ECharts option as JSON or JavaScript), whether the user edited it by hand or it fails to render, and which nodes or chart items the user selected. Call it before changing an existing diagram, and when the user refers to 'this', 'these' or 'the selected' parts of it.",
         "tags": [
           "diagram",
           "mermaid",
@@ -275,6 +320,67 @@
           ],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "diagram_annotate",
+        "displayName": "Mark Up Diagram",
+        "toolReferenceName": "diagramAnnotate",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(pin)",
+        "userDescription": "Mark nodes in the diagram already shown, without drawing it again",
+        "modelDescription": "Marks nodes or chart items in the diagram already shown in the diagram panel, leaving the drawing exactly as it is: the marks go on top of it, so nothing moves or is redrawn. Use it to walk the user through a diagram step by step, to point at what is wrong, or to trace a path, instead of calling diagram_render again with a changed source, which would redraw the diagram and move everything. Each call replaces all the marks of the call before it, so pass every mark you still want; call it without marks to clear them. The marks are commentary on the diagram shown: a new diagram clears them, and they are not part of its source. Returns what is marked and names any id the diagram has no node for.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "echarts",
+          "chart",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "marks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "The node to mark: a Mermaid node id exactly as written in the source, or, in a chart, the item's name as the panel reports it (\"Series/Name\" when the chart has several series). Call diagram_getState first if you do not know the ids."
+                  },
+                  "mark": {
+                    "type": "string",
+                    "enum": [
+                      "current",
+                      "problem",
+                      "good",
+                      "info"
+                    ],
+                    "description": "How the mark reads, which decides the theme color it is drawn in: \"current\" (the default) for the step being explained, \"problem\" for something wrong or failing, \"good\" for something that works or the path to take, \"info\" to simply point at it."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "A short note about this node, at most 120 characters, shown above the diagram after the node's label, e.g. \"times out after 30 s\"."
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              },
+              "description": "The nodes to mark, at most 50, replacing the marks of the call before. Leave it out, or pass an empty array, to clear the marks."
+            },
+            "caption": {
+              "type": "string",
+              "description": "One short line shown above the diagram, at most 120 characters, e.g. \"Step 2 of 3: the request is retried here\"."
+            },
+            "dim": {
+              "type": "boolean",
+              "description": "Fades everything that is not marked, so that the marked nodes, or the marked path through the diagram, stand out. Defaults to false."
+            }
+          },
+          "additionalProperties": false
+        }
       }
     ],
     "commands": [
@@ -282,8 +388,24 @@
         "command": "diagram.show",
         "title": "Show Panel",
         "category": "Diagram"
+      },
+      {
+        "command": "diagram.openAtCursor",
+        "title": "Open Diagram at Cursor",
+        "category": "Diagram"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Diagram",
+      "properties": {
+        "diagram.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Show an **Open in Diagram** action above every `mermaid` and `echarts` code block in a Markdown file, which opens the diagram in the panel. The **Diagram: Open Diagram at Cursor** command opens one without it."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
@@ -302,8 +424,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.0.0",
-    "@types/vscode": "~1.138.0",
+    "@types/node": "^26.0.0",
+    "@types/vscode": "~1.140.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",

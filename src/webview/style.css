@@ -90,9 +90,51 @@ button.link {
   color: var(--vscode-textLink-foreground);
 }
 
+/*
+ * The handle that drags the drawing out of the panel as an image. Styled like the header's buttons
+ * but is none: it can only be dragged, which a button would promise the keyboard it could do.
+ */
+.drag-out {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: grab;
+}
+
+.drag-out:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.drag-out:active {
+  cursor: grabbing;
+}
+
 button.link:hover {
   background: none;
   text-decoration: underline;
+}
+
+/* The view buttons: the rendering, both, or the source alone, with the current one pressed. */
+.views {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.views button {
+  display: flex;
+  align-items: center;
+  padding: 3px 6px;
+}
+
+.views button[aria-pressed="true"] {
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+  background: var(--vscode-inputOption-activeBackground);
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 }
 
 #pick:not([hidden]) {
@@ -107,6 +149,69 @@ button.link:hover {
 
 #pick-prompt {
   font-weight: 600;
+}
+
+/* The caption and notes an agent sent with its marks, above the drawing they are about. */
+#annotation:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px;
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+#annotation-caption {
+  font-weight: 600;
+}
+
+#annotation-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  /* Many notes scroll rather than push the drawing out of the panel. */
+  max-height: 7em;
+  overflow-y: auto;
+  list-style: none;
+}
+
+#annotation-notes li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  /* One line each, however long a note is. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The colors marks read in, from the theme: the step being walked through, something wrong,
+   something that works, and a plain pointer. */
+.diagram-mark-current {
+  --mark-color: var(--vscode-focusBorder);
+}
+
+.diagram-mark-problem {
+  --mark-color: var(--vscode-charts-red, var(--vscode-errorForeground));
+}
+
+.diagram-mark-good {
+  --mark-color: var(--vscode-charts-green, var(--vscode-terminal-ansiGreen));
+}
+
+.diagram-mark-info {
+  --mark-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+}
+
+.mark-dot {
+  flex: none;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mark-color);
 }
 
 #error {
@@ -124,12 +229,64 @@ button.link:hover {
   font-size: var(--vscode-editor-font-size, 12px);
 }
 
-#editor:not([hidden]) {
+/* The source editor and the rendering, side by side in the split view. */
+#panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+#editor {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  box-sizing: border-box;
+  /* Fills the panel in the source view, and the handle's share of it in the split view. */
+  flex: 0 0 var(--source-size, 40%);
+  min-width: 0;
+  min-height: 0;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+#panes.view-source #editor {
+  flex: 1;
+}
+
+#panes.view-visual #editor {
+  display: none;
+}
+
+#splitter {
+  flex: 0 0 5px;
+  border-left: 1px solid var(--vscode-panel-border);
+  cursor: col-resize;
+}
+
+#splitter:is(:hover, .dragging) {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+}
+
+#splitter:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* The handle only has panes to resize in the split view. */
+#panes:is(.view-visual, .view-source) #splitter {
+  display: none;
+}
+
+/* A narrow panel stacks the panes rather than squeezing both into its width. */
+@media (max-width: 640px) {
+  #panes.view-split {
+    flex-direction: column;
+  }
+
+  #panes.view-split #splitter {
+    border-left: none;
+    border-top: 1px solid var(--vscode-panel-border);
+    cursor: row-resize;
+  }
 }
 
 #editor .note {
@@ -148,8 +305,10 @@ input {
 }
 
 textarea {
-  min-height: 160px;
-  resize: vertical;
+  /* Fills its pane, which the splitter sizes. */
+  flex: 1;
+  min-height: 60px;
+  resize: none;
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
 }
@@ -167,11 +326,16 @@ input:focus {
 #canvas {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   /* A stable gutter keeps fitting a diagram to the width from toggling the scrollbar. */
   scrollbar-gutter: stable;
   padding: 16px;
+}
+
+#panes.view-source #canvas {
+  display: none;
 }
 
 /* Charts fill the canvas and adapt to its size, on the editor background. */
@@ -214,9 +378,30 @@ input:focus {
   outline-offset: 2px;
 }
 
-#canvas:is(.picking, .click-to-ask) #diagram .diagram-node:is(:hover, :focus-visible) {
+/* A rendering larger than the panel is dragged around to scroll it; see pan.ts. */
+#canvas.pannable {
+  cursor: grab;
+}
+
+#canvas.panning,
+#canvas.panning .diagram-node {
+  cursor: grabbing;
+}
+
+/* Nodes that a click acts on, rather than selects: while picking, in click-to-ask mode, and those
+   that link to a place in the code. */
+#canvas:is(.picking, .click-to-ask) #diagram .diagram-node:is(:hover, :focus-visible),
+#diagram .diagram-linked:is(:hover, :focus-visible) {
   filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
     drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));
+}
+
+/* A node that links to code is underlined like a link, in the SVG text and the HTML labels that
+   Mermaid draws labels as. Nodes drawn without a label of their own keep the hover hint alone. */
+#diagram .diagram-linked:is(text, .nodeLabel),
+#diagram .diagram-linked :is(text, .nodeLabel) {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 /* Stacked shadows give selected nodes a solid outline, whatever their shape. */
@@ -224,6 +409,19 @@ input:focus {
   filter: drop-shadow(0 0 1px var(--vscode-focusBorder))
     drop-shadow(0 0 1px var(--vscode-focusBorder)) drop-shadow(0 0 1px var(--vscode-focusBorder))
     drop-shadow(0 0 5px var(--vscode-focusBorder));
+}
+
+/* A node an agent marked, haloed in the color its mark reads in. This comes after the selection so
+   that a node that is both shows what the agent is pointing at; the footer still names the
+   selection. */
+#diagram .diagram-marked {
+  filter: drop-shadow(0 0 1px var(--mark-color)) drop-shadow(0 0 1px var(--mark-color))
+    drop-shadow(0 0 2px var(--mark-color)) drop-shadow(0 0 8px var(--mark-color));
+}
+
+/* While the marks dim the diagram, the nodes outside them recede, as a chart's blur does. */
+#diagram.dim-unmarked .diagram-node:not(.diagram-marked) {
+  opacity: 0.35;
 }
 
 #selection {

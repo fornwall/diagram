@@ -1,8 +1,21 @@
 import * as vscode from "vscode";
+import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
 import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
-import { CHART_TOOL, GET_STATE_TOOL, PICK_NODES_TOOL, RENDER_TOOL } from "./protocol";
-import { ChartTool, GetDiagramStateTool, PickDiagramNodesTool, RenderDiagramTool } from "./tools";
+import {
+  ANNOTATE_TOOL,
+  CHART_TOOL,
+  GET_STATE_TOOL,
+  PICK_NODES_TOOL,
+  RENDER_TOOL,
+} from "./protocol";
+import {
+  AnnotateDiagramTool,
+  ChartTool,
+  GetDiagramStateTool,
+  PickDiagramNodesTool,
+  RenderDiagramTool,
+} from "./tools";
 
 export function activate(context: vscode.ExtensionContext): void {
   const panel = new DiagramPanel(context);
@@ -20,7 +33,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(CHART_TOOL, new ChartTool(panel)),
     vscode.lm.registerTool(GET_STATE_TOOL, new GetDiagramStateTool(panel)),
     vscode.lm.registerTool(PICK_NODES_TOOL, new PickDiagramNodesTool(panel)),
+    vscode.lm.registerTool(ANNOTATE_TOOL, new AnnotateDiagramTool(panel)),
     vscode.commands.registerCommand("diagram.show", () => panel.show()),
+    ...registerMarkdownDiagrams(panel),
     vscode.window.registerWebviewPanelSerializer(DiagramPanel.viewType, {
       async deserializeWebviewPanel(webviewPanel) {
         panel.restore(webviewPanel);

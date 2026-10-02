@@ -51,7 +51,7 @@ const contexts = await Promise.all([
     entryPoints: ["src/extension.ts"],
     format: "cjs",
     platform: "node",
-    target: "node24",
+    target: "node26",
     outfile: "dist/extension.js",
     external: ["vscode"],
   }),
@@ -65,6 +65,19 @@ const contexts = await Promise.all([
     chunkNames: "chunks/[name]-[hash]",
     platform: "browser",
     target: "chrome140",
+  }),
+  // The script of a saved chart's page, as one file with ECharts inlined, which src/savedChart.ts
+  // embeds in the HTML the user saves. Always minified and without a source map, as it is shipped
+  // inside those files, and for the browsers they may be opened in rather than for VS Code's.
+  esbuild.context({
+    ...common,
+    entryPoints: { standalone: "src/webview/standalone.ts" },
+    format: "iife",
+    platform: "browser",
+    target: ["chrome120", "firefox120", "safari17"],
+    outdir: "dist",
+    minify: true,
+    sourcemap: false,
   }),
 ]);
 

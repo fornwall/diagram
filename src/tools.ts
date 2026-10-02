@@ -1,16 +1,28 @@
 import * as vscode from "vscode";
+import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
-import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
+import {
+  type ChartSpec,
+  type ChartType,
+  dataOrigin,
+  quoteAll,
+  validateChartSpec,
+} from "./chartSpec";
 import { buildChart, describeTable } from "./charts";
 import { loadTable, resolveFile } from "./dataSource";
 import { nodeList } from "./describe";
-import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
+import { LINK_SYNTAX, validateLinks } from "./links";
+import { type Diagram, type DiagramPanel, type RenderOutcome, unknownNodeIds } from "./panel";
 import {
+  ANNOTATE_TOOL,
+  type Annotation,
   CHART_TOOL,
+  type DiagramLanguage,
   diagramNoun,
   errorMessage,
   isDiagramLanguage,
   isPlainObject,
+  nodeNoun,
   RENDER_TOOL,
 } from "./protocol";
 
@@ -20,6 +32,7 @@ interface RenderInput {
   language?: string;
   title?: string;
   clickPrompt?: string;
+  links?: Record<string, string>;
 }
 
 interface PickNodesInput {
@@ -30,8 +43,11 @@ interface PickNodesInput {
 /** A source wrapped in a code fence, as models sometimes send despite the schema. */
 const FENCED_SOURCE = /^\s*(`{3,}|~{3,})[ \t]*([^\s`]*)[^\n]*\n([\s\S]*?)\n[ \t]*\1\s*$/;
 
-/** Returns the diagram to render, or what is wrong with the input. */
-function parseRenderInput(input: RenderInput): Diagram | string {
+/**
+ * Returns the diagram to render, with the problems of any links that were left out, or what is
+ * wrong with the input. A bad link is reported but does not keep the diagram from being drawn.
+ */
+function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: string[] } | string {
   if (!isPlainObject(input) || typeof input.source !== "string" || !input.source.trim()) {
     return 'Give "source", the complete diagram, as a string.';
   }
@@ -40,13 +56,18 @@ function parseRenderInput(input: RenderInput): Diagram | string {
   const { title, clickPrompt } = input;
   const language = input.language ?? (isDiagramLanguage(fenceLanguage) ? fenceLanguage : "mermaid");
   if (!isDiagramLanguage(language)) {
-    return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON.`;
+    return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }
+  const { links, problems } = validateLinks(input.links, language);
   return {
-    language,
-    source,
-    title: nonBlank(title) ?? guessTitle({ language, source }),
-    clickPrompt: nonBlank(clickPrompt),
+    diagram: {
+      language,
+      source,
+      title: nonBlank(title) ?? guessTitle({ language, source }),
+      clickPrompt: nonBlank(clickPrompt),
+      links,
+    },
+    problems,
   };
 }
 
@@ -57,12 +78,12 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RenderInput>,
   ): vscode.PreparedToolInvocation {
-    const diagram = parseRenderInput(options.input);
+    const parsed = parseRenderInput(options.input);
     return {
       invocationMessage:
-        typeof diagram === "string"
+        typeof parsed === "string"
           ? "Rendering a diagram"
-          : `Rendering ${diagramNoun(diagram.language)} "${diagram.title}"`,
+          : `Rendering ${diagramNoun(parsed.diagram.language)} "${parsed.diagram.title}"`,
     };
   }
 
@@ -70,10 +91,11 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     options: vscode.LanguageModelToolInvocationOptions<RenderInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const diagram = parseRenderInput(options.input);
-    if (typeof diagram === "string") {
-      return textResult(`Nothing was rendered: ${diagram}`);
+    const parsed = parseRenderInput(options.input);
+    if (typeof parsed === "string") {
+      return textResult(`Nothing was rendered: ${parsed}`);
     }
+    const { diagram, problems } = parsed;
     const outcome = await unlessCancelled(
       () => this.panel.render(diagram, "tool", options.toolInvocationToken),
       token,
@@ -81,12 +103,14 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     const noun = diagramNoun(diagram.language);
     if (outcome.ok) {
       return textResult(
-        `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.`,
+        `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
+          leftOutLinks(problems) +
+          linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds),
       );
     }
     const fix =
       diagram.language === "echarts"
-        ? "Fix the ECharts option (it must be valid JSON, without functions)"
+        ? "Fix the ECharts option (JSON, or a JavaScript object literal for callbacks such as renderItem)"
         : "Fix the Mermaid syntax";
     return textResult(
       renderFailure(
@@ -94,7 +118,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
         noun,
         RENDER_TOOL,
         `${fix} and call ${RENDER_TOOL} again with the complete corrected source.`,
-      ),
+      ) + leftOutLinks(problems),
     );
   }
 }
@@ -273,6 +297,139 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
         : `No node was picked: ${outcome.reason}`,
     );
   }
+}
+
+/**
+ * Lets any agent mark up the diagram already shown, to walk the user through it without drawing it
+ * again. The drawing stays exactly where it is; only the marks on it change.
+ */
+export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInput> {
+  constructor(private readonly panel: DiagramPanel) {}
+
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<AnnotateInput>,
+  ): vscode.PreparedToolInvocation {
+    const language = this.panel.current?.language ?? "mermaid";
+    try {
+      return { invocationMessage: markingMessage(validateAnnotation(options.input), language) };
+    } catch {
+      // Reported when the tool is invoked.
+      return { invocationMessage: `Marking the ${diagramNoun(language)}` };
+    }
+  }
+
+  invoke(
+    options: vscode.LanguageModelToolInvocationOptions<AnnotateInput>,
+  ): vscode.LanguageModelToolResult {
+    let annotation: Annotation;
+    try {
+      annotation = validateAnnotation(options.input);
+    } catch (error) {
+      return textResult(
+        `Nothing was marked: ${errorMessage(error)}\n\nFix the input and call ${ANNOTATE_TOOL} again.`,
+      );
+    }
+    const outcome = this.panel.annotate(annotation);
+    if (!outcome.ok) {
+      return textResult(`Nothing was marked: ${outcome.reason}`);
+    }
+    const language = this.panel.current?.language ?? "mermaid";
+    const noun = diagramNoun(language);
+    const { marks, caption, dim } = outcome.annotation;
+    const parts = `${nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
+    const drawn = outcome.ids;
+    const sentences: string[] = [];
+    if (marks.length > 0) {
+      const listed = marks.map(({ id, kind }) => `${id} (${kind})`).join(", ");
+      sentences.push(
+        `Marked ${marks.length} ${parts} on the ${noun} already shown in the panel, which was not drawn again: ${listed}.`,
+      );
+      if (dim) {
+        sentences.push(`Everything else in the ${noun} is faded.`);
+      }
+      if (caption !== undefined) {
+        sentences.push(`The caption above it reads "${caption}".`);
+      }
+      sentences.push(
+        `The next call to ${ANNOTATE_TOOL} replaces these marks, and a new diagram clears them.`,
+      );
+      if (drawn === undefined) {
+        sentences.push(
+          `The ids were not checked, as the panel does not name the parts of this ${noun}: a mark on something it does not have simply does not show.`,
+        );
+      }
+    } else if (caption !== undefined) {
+      sentences.push(
+        `Put the caption "${caption}" above the ${noun} already shown and left nothing marked.`,
+      );
+    } else {
+      sentences.push(
+        `Cleared the marks on the ${noun} already shown, which is otherwise unchanged.`,
+      );
+    }
+    const unknown =
+      outcome.unknown.length > 0 && drawn
+        ? `\n\nThese ids are not ${nodeNoun(language)}s of the ${noun}, so nothing was marked for them: ` +
+          `${quoteAll(outcome.unknown)}. Its ids are ${idList(drawn)}.`
+        : "";
+    return textResult(sentences.join(" ") + unknown);
+  }
+}
+
+/** How marking reads in chat, e.g. `Marking "pay" in the diagram: Step 2 of 3`. */
+function markingMessage({ marks, caption }: Annotation, language: DiagramLanguage): string {
+  const noun = diagramNoun(language);
+  if (marks.length === 0) {
+    return caption === undefined
+      ? `Clearing the marks in the ${noun}`
+      : `Marking the ${noun}: ${caption}`;
+  }
+  // A few ids say more than their number; many of them would crowd the chat.
+  const what =
+    marks.length <= 3
+      ? marks.map(({ id }) => `"${id}"`).join(", ")
+      : `${marks.length} ${nodeNoun(language)}s`;
+  const where = `Marking ${what} in the ${noun}`;
+  return caption === undefined ? where : `${where}: ${caption}`;
+}
+
+/**
+ * Tells the model which of its links name a node the diagram does not have, which only the diagram
+ * as drawn can say: such a link is kept, but a click never finds it.
+ */
+function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | undefined): string {
+  if (!drawn) {
+    return "";
+  }
+  const unknown = unknownNodeIds(ids, drawn);
+  if (unknown.length === 0) {
+    return "";
+  }
+  return (
+    `\n\nThese links name nodes the diagram does not have, so nothing opens from them: ${quoteAll(unknown)}. ` +
+    `Its node ids are ${idList(drawn)}. Call ${RENDER_TOOL} again with the links corrected to add them.`
+  );
+}
+
+/** As many ids as a model needs to correct one it got wrong, and no more. */
+const MAX_LISTED_IDS = 40;
+
+function idList(ids: readonly string[]): string {
+  const listed = quoteAll(ids.slice(0, MAX_LISTED_IDS));
+  const left = ids.length - MAX_LISTED_IDS;
+  return left > 0 ? `${listed} and ${left} more` : listed;
+}
+
+/** Tells the model which of its links were left out and why, as the diagram is drawn without them. */
+function leftOutLinks(problems: readonly string[]): string {
+  if (problems.length === 0) {
+    return "";
+  }
+  return (
+    `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
+    `A link is a path, absolute or relative to the first workspace folder, with an optional line: ` +
+    `${LINK_SYNTAX}. Call ${RENDER_TOOL} again with the links corrected to add them.`
+  );
 }
 
 /** Explains to the model why a diagram was not shown, and what to do next. */

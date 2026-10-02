@@ -1,30 +1,10 @@
 import * as assert from "node:assert";
-import type { Rgba, ThemeColors } from "../webview/colors";
 import { keepUserState, type LayoutContext, layoutOption } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
+import { testColors as colors } from "./themeColors";
 
 // biome-ignore lint/suspicious/noExplicitAny: test access to the untyped option
 type Option = Record<string, any>;
-
-const gray: Rgba = { r: 128, g: 128, b: 128, a: 1 };
-const colors: ThemeColors = {
-  dark: true,
-  background: { r: 31, g: 31, b: 31, a: 1 },
-  foreground: { r: 204, g: 204, b: 204, a: 1 },
-  muted: gray,
-  gridLine: gray,
-  axisLine: gray,
-  focus: { r: 0, g: 120, b: 212, a: 1 },
-  hoverBackground: gray,
-  hoverBorder: gray,
-  hoverForeground: gray,
-  palette: Array.from({ length: 16 }, (_, index) => ({ r: index, g: 0, b: 0, a: 1 })),
-  blue: gray,
-  green: gray,
-  red: gray,
-  fontFamily: "sans-serif",
-  fontSize: 12,
-};
 
 function layout(option: JsonObject, context: Partial<LayoutContext> = {}): Option {
   return layoutOption(option, {
@@ -50,6 +30,82 @@ suite("echartsLayout", () => {
     const copy = structuredClone(source);
     layout(source);
     assert.deepStrictEqual(source, copy);
+  });
+
+  test("lays out an option that holds functions, leaving the source option untouched", () => {
+    const renderItem = () => ({ type: "rect" });
+    const formatter = () => "";
+    const data = [1, 2];
+    const source: Option = {
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: { type: "value" },
+      tooltip: { formatter },
+      series: [{ type: "custom", renderItem, data }],
+    };
+    const option = layout(source);
+    assert.strictEqual(option.series[0].renderItem, renderItem);
+    assert.strictEqual(option.tooltip.formatter, formatter);
+    assert.strictEqual(option.grid.left, 8);
+    // Data arrays are shared: the layout only ever writes to option and component objects.
+    assert.strictEqual(option.series[0].data, data);
+    assert.strictEqual(source.series[0].selectedMode, undefined);
+    assert.strictEqual(source.tooltip.confine, undefined);
+    assert.strictEqual(source.grid, undefined);
+  });
+
+  test("lays out a series with a prototype of its own, leaving the source option untouched", () => {
+    // A series can be written as {__proto__: {type: "pie"}, …}, which is valid JavaScript.
+    const series: Option = { data: [{ name: "a", value: 1 }] };
+    Object.setPrototypeOf(series, { type: "pie" });
+    const source = { series: [series], legend: {} };
+    const box = ({ left, right, top, radius }: Option) => [left, right, top, radius];
+    const wide = layout(source, { width: 1400, height: 900 });
+    assert.deepStrictEqual(box(wide.series[0]), [8, 94, 8, "68%"]);
+    assert.deepStrictEqual(Object.keys(series), ["data"]);
+    // The first layout is not written to the source, so a second one is not stale.
+    const narrow = layout(source, { width: 300, height: 220 });
+    assert.deepStrictEqual(box(narrow.series[0]), [8, 8, 8, "90%"]);
+  });
+
+  test("lays out a series written as a class instance, leaving the source option untouched", () => {
+    const node = { name: "a" };
+    class Sankey {
+      type = "sankey";
+      data = [node];
+    }
+    const series = new Sankey();
+    const option = layout({ series: [series] });
+    assert.strictEqual(option.series[0].top, 12);
+    assert.strictEqual(option.series[0].data[0].itemStyle.color, "#000000");
+    assert.deepStrictEqual(Object.keys(series), ["type", "data"]);
+    assert.deepStrictEqual(Object.keys(node), ["name"]);
+  });
+
+  test("copies an own __proto__ key as data, not as the prototype of the copy", () => {
+    // JSON.parse does produce an own "__proto__" key, unlike an object literal.
+    const legend: JsonObject = JSON.parse('{"__proto__": {"show": false}, "x": 1}');
+    const option = layout(bars({ legend }));
+    assert.strictEqual(Object.getPrototypeOf(option.legend), Object.prototype);
+    assert.deepStrictEqual(Object.getOwnPropertyDescriptor(option.legend, "__proto__")?.value, {
+      show: false,
+    });
+    // The legend is laid out, rather than inheriting the "show": false of the copied key.
+    const { show, x, type, top } = option.legend;
+    assert.deepStrictEqual([show, x, type, top], [undefined, 1, "scroll", 6]);
+  });
+
+  test("keeps a date and a typed array in chart data as they are", () => {
+    const point = new Date(86_400_000);
+    const time = { xAxis: { type: "time" }, series: [{ type: "line", data: [[point, 1]] }] };
+    const copied = layout(time).series[0].data[0][0];
+    assert.ok(copied instanceof Date && copied.getTime() === point.getTime(), String(copied));
+    assert.deepStrictEqual(Object.keys(copied), []);
+    // Sankey nodes are written to, but the source's date is not.
+    const node = new Date(0);
+    layout({ series: [{ type: "sankey", data: [node] }] });
+    assert.deepStrictEqual(Object.keys(node), []);
+    const data = new Float64Array([1, 2, 3]);
+    assert.strictEqual(layout(bars({ series: [{ type: "bar", data }] })).series[0].data, data);
   });
 
   test("respects reduced motion in timeline, media, and series overrides", () => {

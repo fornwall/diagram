@@ -22,7 +22,12 @@ export function guessTitle({ language, source }: DiagramBlock): string {
   return language === "echarts" ? guessChartTitle(source) : guessMermaidTitle(source);
 }
 
-/** Uses the title of an ECharts option, if any. */
+/**
+ * Uses the title of an ECharts option, if any. An option may also be written as JavaScript, which
+ * only the webview evaluates: running it here would execute model-written code in the extension
+ * host. Such an option therefore has no title to read, and falls back to the title the render tool
+ * was given, or to "Chart" in a chat reply, which passes none.
+ */
 function guessChartTitle(source: string): string {
   try {
     const { title } = JSON.parse(source) ?? {};
@@ -31,7 +36,7 @@ function guessChartTitle(source: string): string {
       return text.trim();
     }
   } catch {
-    // Invalid JSON is reported when rendering.
+    // A JavaScript option, or invalid source that is reported when rendering.
   }
   return "Chart";
 }
@@ -89,23 +94,25 @@ function guessMermaidTitle(source: string): string {
 /**
  * Parses an opening code fence: three or more backticks or tildes, followed by an info string whose
  * first word is the language. Unlike CommonMark, any indentation is accepted, as fences in list
- * items may be indented further.
+ * items may be indented further; it is reported, as the content lines carry it too.
  */
-function openingFence(line: string): { fence: string; language: string } | undefined {
-  const match = /^\s*(`{3,}|~{3,})(.*)$/.exec(line.trimEnd());
+export function openingFence(
+  line: string,
+): { indent: string; fence: string; language: string } | undefined {
+  const match = /^(\s*)(`{3,}|~{3,})(.*)$/.exec(line.trimEnd());
   if (!match) {
     return undefined;
   }
-  const [, fence = "", info = ""] = match;
+  const [, indent = "", fence = "", info = ""] = match;
   // The info string of a backtick fence may not contain backticks, e.g. ```mermaid``` inline.
   if (fence.startsWith("`") && info.includes("`")) {
     return undefined;
   }
-  return { fence, language: info.trim().split(/\s/, 1)[0] ?? "" };
+  return { indent, fence, language: info.trim().split(/\s/, 1)[0] ?? "" };
 }
 
 /** Whether the line closes a block opened by the given fence: the same character, at least as many. */
-function isClosingFence(line: string, fence: string): boolean {
+export function isClosingFence(line: string, fence: string): boolean {
   const trimmed = line.trim();
   return trimmed.length >= fence.length && trimmed === fence.charAt(0).repeat(trimmed.length);
 }
