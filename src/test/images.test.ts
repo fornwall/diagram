@@ -25,5 +25,11 @@ suite("file names", () => {
       assert.strictEqual(safeFileName(name, "diagram"), name);
     }
     assert.ok(safeFileName(`CON.${"a".repeat(100)}`, "diagram").length <= 80);
+    for (const trailing of [".", " "]) {
+      assert.strictEqual(
+        safeFileName(`CON.${"a".repeat(74)}${trailing}x`, "diagram"),
+        `_CON.${"a".repeat(74)}`,
+      );
+    }
   });
 });

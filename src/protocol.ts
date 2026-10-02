@@ -104,18 +104,17 @@ export const SAVED_CHART = "__diagramSavedChart";
  * `fallback` for a title that is empty or made of nothing else.
  */
 export function safeFileName(title: string, fallback: string): string {
-  const name = title
+  let name = title
     // Control and format characters, and what Windows does not allow in a name.
     .replace(/[\p{C}\\/:*?"<>|]/gu, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80)
-    // Windows keeps neither trailing dots nor trailing spaces.
-    .replace(/[\s.]+$/, "");
+    .trim();
   // Windows reserves device names even with an extension, such as CON.svg.
-  return /^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³])(?:\s*\.|$)/i.test(name)
-    ? `_${name.slice(0, 79)}`
-    : name || fallback;
+  if (/^(?:con|prn|aux|nul|(?:com|lpt)[1-9¹²³])(?:\s*\.|$)/i.test(name)) {
+    name = `_${name}`;
+  }
+  // Truncation can expose trailing dots or spaces, which Windows does not keep.
+  return name.slice(0, 80).replace(/[\s.]+$/, "") || fallback;
 }
 
 export type ToWebview =
