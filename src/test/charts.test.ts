@@ -591,6 +591,41 @@ suite("charts", () => {
     );
   });
 
+  test("min and max aggregate large groups without overflowing the call stack", () => {
+    const table: DataTable = {
+      header: true,
+      columns: [
+        { name: "group", numeric: false },
+        { name: "value", numeric: true },
+      ],
+      rows: Array.from({ length: 150_000 }, (_, i) => ["a", i - 75_000]),
+    };
+    assert.deepStrictEqual(
+      build(chart("bar", { aggregate: "min" }), table).series[0].data,
+      [-75_000],
+    );
+    assert.deepStrictEqual(
+      build(chart("bar", { aggregate: "max" }), table).series[0].data,
+      [74_999],
+    );
+  });
+
+  test("group and flow keys preserve control characters in labels", () => {
+    const data = JSON.stringify([
+      { from: "a\u0000b", to: "c", n: 2 },
+      { from: "a", to: "b\u0000c", n: 4 },
+    ]);
+    const heatmap = build(chart("heatmap", { aggregate: "sum" }), data);
+    assert.deepStrictEqual(heatmap.series[0].data, [
+      [0, 0, 2],
+      [1, 1, 4],
+    ]);
+    assert.deepStrictEqual(build(chart("sankey"), data).series[0].links, [
+      { source: "a\u0000b", target: "c", value: 2 },
+      { source: "a", target: "b\u0000c", value: 4 },
+    ]);
+  });
+
   test("count needs no value column, and counts rows before sorting and limiting", () => {
     const authors = "alice\nbob\nalice\ncarol\nalice\nbob";
     const spec = chart("bar", { aggregate: "count", sort: "descending", limit: 2 });
@@ -705,6 +740,7 @@ suite("charts", () => {
       ["2026-01-02 14:30\n2026-01-02 15:00:30.5", "ISO date-times"],
       ["2026-01\n2026-02", "ISO months"],
       ["2026/01/02\n2026/01/05", "dates written YYYY/MM/DD"],
+      ["2024-02-29\n2000-02-29", "ISO dates"],
     ] as const) {
       const data = `date,n\n${dates.split("\n")[0]},3\n${dates.split("\n")[1]},5`;
       assert.strictEqual(times(data).type, "time", dates);
@@ -715,6 +751,11 @@ suite("charts", () => {
       ["01/02/2026", "01/03/2026"],
       ["2026-13-01", "2026-13-02"],
       ["2026-01-32", "2026-01-33"],
+      ["2026-02-28", "2026-02-29"],
+      ["1900-02-28", "1900-02-29"],
+      ["2026-04-30", "2026-04-31"],
+      ["2026/02/28", "2026/02/31"],
+      ["2026-02-28T12:00Z", "2026-02-31T12:00Z"],
       ["2026-01-02", "2026-01-02T10:00:00Z"],
       ["Jan 2", "Jan 5"],
     ]) {

@@ -1,5 +1,6 @@
 // Turning a table and a chart request into an Apache ECharts option.
 
+import { dateFormat } from "./chartDates";
 import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
@@ -114,38 +115,6 @@ function pathSeparator(labels: string[]): string | undefined {
     }
   }
   return found;
-}
-
-/**
- * The date shapes that a column of labels is read as times in, with the name reported for each.
- * Only shapes that cannot be read any other way are here: "01/02/2026" is the second of January in
- * one country and the first of February in another, and a column of years is in practice a set of
- * categories, so both stay labels. The parts are bounded, so "2026-13-01" is no date either.
- */
-const DATE_FORMATS: { name: string; pattern: RegExp }[] = [
-  {
-    name: "ISO date-times",
-    pattern:
-      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])[T ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?$/,
-  },
-  { name: "ISO dates", pattern: /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/ },
-  { name: "ISO months", pattern: /^\d{4}-(?:0[1-9]|1[0-2])$/ },
-  {
-    name: "dates written YYYY/MM/DD",
-    pattern: /^\d{4}\/(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])$/,
-  },
-];
-
-/**
- * The shape of the dates in a column of labels, which ECharts reads itself on a time axis, or
- * undefined unless every label is a date written the same way.
- */
-function dateFormat(labels: string[]): string | undefined {
-  const dates = labels.filter((label) => label !== "");
-  if (dates.length === 0) {
-    return undefined;
-  }
-  return DATE_FORMATS.find(({ pattern }) => dates.every((date) => pattern.test(date)))?.name;
 }
 
 /** The columns that `keep` is true for, unless fewer than the `needed` ones are. */
@@ -498,9 +467,9 @@ function withoutNests(rows: Row[]): Row[] {
   return prefixes.size === 0 ? rows : rows.filter(({ labels }) => !prefixes.has(levelKey(labels)));
 }
 
-/** The labels of a row as one string, joined by a character that no label holds. */
+/** An unambiguous key, including when labels contain separator or control characters. */
 function levelKey(labels: string[]): string {
-  return labels.join("\u0000");
+  return JSON.stringify(labels);
 }
 
 /** What grouping did with the values of each group, for the note about it. */
@@ -523,9 +492,9 @@ function combine(numbers: number[], how: Aggregation): number | null {
     case "mean":
       return total() / numbers.length;
     case "min":
-      return Math.min(...numbers);
+      return numbers.reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
     case "max":
-      return Math.max(...numbers);
+      return numbers.reduce((max, value) => Math.max(max, value), Number.NEGATIVE_INFINITY);
     case "median":
       return quantile(
         numbers.toSorted((x, y) => x - y),
@@ -1154,7 +1123,7 @@ interface Flow {
 function sumFlows(flows: Flow[]): Flow[] {
   const summed = new Map<string, Flow>();
   for (const flow of flows) {
-    const key = `${flow.source}\u0000${flow.target}`;
+    const key = levelKey([flow.source, flow.target]);
     const found = summed.get(key);
     if (found === undefined) {
       summed.set(key, { ...flow });
@@ -1326,11 +1295,14 @@ function heatmapOption(
   const pivot = labelNames.length >= 2;
   const yCategories: string[] = [];
   const xCategories: string[] = pivot ? [] : [...names];
-  const category = (categories: string[], name: string) => {
-    const found = categories.indexOf(name);
-    if (found !== -1) {
+  const yIndices = new Map<string, number>();
+  const xIndices = new Map<string, number>();
+  const category = (categories: string[], indices: Map<string, number>, name: string) => {
+    const found = indices.get(name);
+    if (found !== undefined) {
       return found;
     }
+    indices.set(name, categories.length);
     categories.push(name);
     return categories.length - 1;
   };
@@ -1344,8 +1316,8 @@ function heatmapOption(
         empty++;
         continue;
       }
-      const y = category(yCategories, label(row));
-      const x = category(xCategories, row.labels[1] ?? "");
+      const y = category(yCategories, yIndices, label(row));
+      const x = category(xCategories, xIndices, row.labels[1] ?? "");
       const cell = cells.get(`${y} ${x}`);
       if (cell === undefined) {
         cells.set(`${y} ${x}`, [x, y, value]);

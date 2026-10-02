@@ -92,13 +92,17 @@ export async function readDataFile(file: string): Promise<string> {
         "such as du.",
     );
   }
-  if (stat.size > MAX_BYTES) {
-    throw new Error(
-      `The file ${uri.fsPath} is larger than the ${MAX_MB} MB limit. ` +
-        "Use a command that summarizes it instead.",
-    );
-  }
+  const checkSize = (size: number): void => {
+    if (size > MAX_BYTES) {
+      throw new Error(
+        `The file ${uri.fsPath} is larger than the ${MAX_MB} MB limit. ` +
+          "Use a command that summarizes it instead.",
+      );
+    }
+  };
+  checkSize(stat.size);
   const bytes = await vscode.workspace.fs.readFile(uri);
+  checkSize(bytes.byteLength);
   // UTF-16 files, as PowerShell writes with >, start with a byte order mark.
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
     return new TextDecoder("utf-16le").decode(bytes);
