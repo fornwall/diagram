@@ -186,6 +186,24 @@ suite("data", () => {
     }
   });
 
+  test("rejects text after closing CSV quotes instead of changing its value", () => {
+    for (const format of ["auto", "csv"] as const) {
+      for (const delimiter of [",", ";"]) {
+        assert.throws(
+          () => parseTable(`name${delimiter}value\na${delimiter}"12"3\nb${delimiter}4`, format),
+          /Unexpected text after a closing quote on line 2/,
+        );
+        assert.deepStrictEqual(
+          parse(`name${delimiter}value\n"a"  ${delimiter}"12" \n"b"${delimiter}4`, format).rows,
+          [
+            ["a", 12],
+            ["b", 4],
+          ],
+        );
+      }
+    }
+  });
+
   test("literal commas and quotes in whitespace-separated paths stay text", () => {
     const data = '12 src/a,"odd name\n23 src/other';
     for (const format of ["auto", "whitespace"] as const) {

@@ -38,6 +38,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let record: string[] = [];
   let field = "";
   let quoted = false;
+  let closedQuote = false;
   let fieldStart = true;
   let line = 1;
   let quoteLine = 0;
@@ -55,6 +56,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     record = [];
     field = "";
     fieldStart = true;
+    closedQuote = false;
   };
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -65,6 +67,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
           i++;
         } else {
           quoted = false;
+          closedQuote = true;
         }
       } else {
         field += char;
@@ -81,6 +84,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       record.push(field);
       field = "";
       fieldStart = true;
+      closedQuote = false;
     } else if (char === "\n" || char === "\r") {
       if (char === "\r" && text[i + 1] === "\n") {
         i++;
@@ -88,6 +92,12 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       line++;
       finishRecord();
     } else {
+      if (closedQuote && char !== " " && char !== "\t") {
+        throw new Error(
+          `Unexpected text after a closing quote on line ${line}. Separate fields with ` +
+            `the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
+        );
+      }
       field += char;
       if (char !== " " && char !== "\t") {
         fieldStart = false;
