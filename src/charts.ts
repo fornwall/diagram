@@ -771,11 +771,21 @@ function drawChart(reading: Reading): Record<string, unknown> {
   const name = (index: number) => table.columns[index]?.name ?? "";
   const labeled = columns.labels.length > 0;
   const valueName = names[0] ?? "";
+  const axisOption = spec.options?.[spec.type === "horizontalBar" ? "yAxis" : "xAxis"];
+  const axis = Array.isArray(axisOption) ? axisOption[0] : axisOption;
+  const categoryTime = isPlainObject(axis) && axis.type === "category";
   switch (family) {
     case "cartesian":
-      return cartesianOption(spec.type as CartesianType, table.header, columns.times, names, rows);
+      return cartesianOption(
+        spec.type as CartesianType,
+        table.header,
+        columns.times,
+        names,
+        rows,
+        categoryTime,
+      );
     case "xy":
-      return scatterOption(table.header, labeled, columns.times, names, rows);
+      return scatterOption(table.header, labeled, columns.times, names, rows, categoryTime);
     case "partOfWhole":
       return spec.type === "funnel"
         ? funnelOption(valueName, spec.sort, rows, notes)
@@ -914,6 +924,7 @@ function scatterOption(
   times: string | undefined,
   names: string[],
   rows: Row[],
+  categoryTime: boolean,
 ): Record<string, unknown> {
   // Generated column names ("Column 2") would make poor axis names.
   const axis = (name: string) => ({ type: "value", ...(header ? { name } : {}), scale: true });
@@ -927,7 +938,7 @@ function scatterOption(
         {
           type: "scatter",
           name: xName,
-          data: rows.map((row) => [timeValue(label(row)), row.values[0] ?? null]),
+          data: rows.map((row) => [timeValue(label(row), categoryTime), row.values[0] ?? null]),
         },
       ],
     };
@@ -956,6 +967,7 @@ function cartesianOption(
   times: string | undefined,
   names: string[],
   rows: Row[],
+  categoryTime: boolean,
 ): Record<string, unknown> {
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
@@ -996,8 +1008,8 @@ function cartesianOption(
         times === undefined
           ? (row.values[column] ?? null)
           : horizontal
-            ? [row.values[column] ?? null, timeValue(label(row))]
-            : [timeValue(label(row)), row.values[column] ?? null],
+            ? [row.values[column] ?? null, timeValue(label(row), categoryTime)]
+            : [timeValue(label(row), categoryTime), row.values[column] ?? null],
       ),
     })),
   };

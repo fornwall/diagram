@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { time as echartsTime } from "echarts";
+import { time as echartsTime, init as initECharts } from "echarts";
 import * as vscode from "vscode";
 import {
   CHART_TYPES,
@@ -855,6 +855,36 @@ suite("charts", () => {
       points.map((point) => +echartsTime.parse(point[0])),
       [+new Date(2026, 0, 2, 14, 30, 0, 500), +new Date(2026, 0, 2, 14, 30, 0, 50)],
     );
+  });
+
+  test("category axis overrides retain original timestamp labels", () => {
+    const dates = ["2026-01-02T14:30:00+05:30", "2026-01-02T14:30:00.5Z"];
+    const data = `date,n\n${dates.map((date) => `${date},3`).join("\n")}`;
+    for (const type of ["line", "horizontalBar", "scatter"] as const) {
+      const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
+      for (const override of [{ type: "category" }, [{ type: "category" }]]) {
+        const option = build(chart(type, { options: { [axis]: override } }), data);
+        assert.deepStrictEqual(
+          option.series[0].data,
+          dates.map((date) => (type === "horizontalBar" ? [3, date] : [date, 3])),
+        );
+        const rendered = initECharts(null, undefined, {
+          renderer: "svg",
+          ssr: true,
+          width: 1200,
+          height: 800,
+        });
+        try {
+          rendered.setOption(option);
+          const svg = rendered.renderToSVGString();
+          for (const date of dates) {
+            assert.ok(svg.includes(date), `${type} must display the original label ${date}`);
+          }
+        } finally {
+          rendered.dispose();
+        }
+      }
+    }
   });
 
   test("times are read only where the label column is an axis", () => {

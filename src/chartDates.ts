@@ -48,7 +48,10 @@ export function dateFormat(labels: string[]): string | undefined {
 }
 
 /** ECharts ignores offset minutes and reads short fractions as milliseconds, so normalize them. */
-export function timeValue(date: string): string | number {
+export function timeValue(date: string, asCategory = false): string | number {
+  if (asCategory) {
+    return date;
+  }
   if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(date)) {
     return Date.parse(date.replace(" ", "T"));
   }
