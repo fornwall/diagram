@@ -336,36 +336,23 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     const language = this.panel.current?.language ?? "mermaid";
     const noun = diagramNoun(language);
     const { marks, caption, dim } = outcome.annotation;
-    const parts = `${nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
     const drawn = outcome.ids;
     const sentences: string[] = [];
     if (marks.length > 0) {
+      const parts = `${nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
       const listed = marks.map(({ id, kind }) => `${id} (${kind})`).join(", ");
-      sentences.push(
-        `Marked ${marks.length} ${parts} on the ${noun} already shown in the panel, which was not drawn again: ${listed}.`,
-      );
+      sentences.push(`Marked ${marks.length} ${parts}: ${listed}.`);
       if (dim) {
-        sentences.push(`Everything else in the ${noun} is faded.`);
+        sentences.push("Unmarked items are faded.");
       }
-      if (caption !== undefined) {
-        sentences.push(`The caption above it reads "${caption}".`);
-      }
-      sentences.push(
-        `The next call to ${ANNOTATE_TOOL} replaces these marks, and a new diagram clears them.`,
-      );
       if (drawn === undefined) {
-        sentences.push(
-          `The ids were not checked, as the panel does not name the parts of this ${noun}: a mark on something it does not have simply does not show.`,
-        );
+        sentences.push("Item ids could not be verified; unknown items will not show marks.");
       }
-    } else if (caption !== undefined) {
-      sentences.push(
-        `Put the caption "${caption}" above the ${noun} already shown and left nothing marked.`,
-      );
     } else {
-      sentences.push(
-        `Cleared the marks on the ${noun} already shown, which is otherwise unchanged.`,
-      );
+      sentences.push(`Cleared the ${noun}'s marks.`);
+    }
+    if (caption !== undefined) {
+      sentences.push(`Caption: ${JSON.stringify(caption)}.`);
     }
     const unknown =
       outcome.unknown.length > 0 && drawn

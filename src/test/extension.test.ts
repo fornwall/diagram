@@ -154,9 +154,9 @@ suite("Extension", () => {
       caption: "Step 1 of 2",
       dim: true,
     });
-    assert.match(marked, /^Marked 1 node on the diagram already shown in the panel/);
-    assert.match(marked, /parse \(current\)\./);
-    assert.match(marked, /The caption above it reads "Step 1 of 2"\./);
+    assert.match(marked, /^Marked 1 node: parse \(current\)\./);
+    assert.match(marked, /Unmarked items are faded\./);
+    assert.match(marked, /Caption: "Step 1 of 2"\./);
     // The label of a node is not its id, so there is nothing to mark for it.
     assert.match(
       marked,
@@ -168,7 +168,7 @@ suite("Extension", () => {
     assert.match(state, /Marked nodes: parse \(current: we are here\)\./);
     assert.match(state, /flowchart LR/);
 
-    assert.match(await invoke("diagram_annotate", {}), /^Cleared the marks on the diagram/);
+    assert.strictEqual(await invoke("diagram_annotate", {}), "Cleared the diagram's marks.");
     assert.doesNotMatch(await invoke("diagram_getState", {}), /marked/);
   });
 
