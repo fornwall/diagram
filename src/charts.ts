@@ -482,27 +482,11 @@ const AGGREGATED: Record<Aggregation, string> = {
   median: "taking the median of their values",
 };
 
-/** The numbers of one column of a group as one value; `count` is handled by {@link groupRows}. */
-function combine(numbers: number[], how: Aggregation): number | null {
-  if (numbers.length === 0) {
-    return null;
-  }
-  const total = () => numbers.reduce((sum, number) => sum + number, 0);
-  switch (how) {
-    case "mean":
-      return total() / numbers.length;
-    case "min":
-      return numbers.reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
-    case "max":
-      return numbers.reduce((max, value) => Math.max(max, value), Number.NEGATIVE_INFINITY);
-    case "median":
-      return quantile(
-        numbers.toSorted((x, y) => x - y),
-        0.5,
-      );
-    default:
-      return total();
-  }
+interface GroupColumn {
+  value: number | null;
+  count: number;
+  /** Only a median needs to retain all observations. */
+  samples?: number[];
 }
 
 /**
@@ -511,24 +495,58 @@ function combine(numbers: number[], how: Aggregation): number | null {
  * many rows the group holds, which is the chart's only value then (see {@link readColumns}).
  */
 function groupRows(rows: Row[], how: Aggregation): Row[] {
-  const groups = new Map<string, { labels: string[]; columns: number[][]; rows: number }>();
+  const groups = new Map<string, { labels: string[]; columns: GroupColumn[]; rows: number }>();
   for (const { labels, values } of rows) {
     const key = levelKey(labels);
     let group = groups.get(key);
     if (group === undefined) {
-      group = { labels, columns: values.map(() => []), rows: 0 };
+      group = {
+        labels,
+        columns: values.map(() => ({
+          value: null,
+          count: 0,
+          samples: how === "median" ? [] : undefined,
+        })),
+        rows: 0,
+      };
       groups.set(key, group);
     }
     group.rows++;
-    values.forEach((value, column) => {
-      if (value !== null) {
-        group.columns[column]?.push(value);
+    values.forEach((value, index) => {
+      const column = group.columns[index];
+      if (value === null || column === undefined) {
+        return;
       }
+      column.count++;
+      if (column.samples !== undefined) {
+        column.samples.push(value);
+        return;
+      }
+      column.value =
+        how === "min"
+          ? Math.min(column.value ?? value, value)
+          : how === "max"
+            ? Math.max(column.value ?? value, value)
+            : (column.value ?? 0) + value;
     });
   }
   return [...groups.values()].map(({ labels, columns, rows: count }) => ({
     labels,
-    values: how === "count" ? [count] : columns.map((numbers) => combine(numbers, how)),
+    values:
+      how === "count"
+        ? [count]
+        : columns.map(({ value, count, samples }) => {
+            if (count === 0) {
+              return null;
+            }
+            if (samples !== undefined) {
+              return quantile(
+                samples.sort((x, y) => x - y),
+                0.5,
+              );
+            }
+            return how === "mean" ? (value ?? 0) / count : value;
+          }),
   }));
 }
 

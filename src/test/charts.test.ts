@@ -616,6 +616,41 @@ suite("charts", () => {
     );
   });
 
+  test("grouped columns skip missing observations but count every row", () => {
+    const data = "group,x,y\na,-3,\na,,8\na,9,4\nb,,\nc,0,-2";
+    const expected = {
+      sum: [
+        [6, null, 0],
+        [12, null, -2],
+      ],
+      mean: [
+        [3, null, 0],
+        [6, null, -2],
+      ],
+      min: [
+        [-3, null, 0],
+        [4, null, -2],
+      ],
+      max: [
+        [9, null, 0],
+        [8, null, -2],
+      ],
+      median: [
+        [3, null, 0],
+        [6, null, -2],
+      ],
+      count: [[3, 1, 1]],
+    };
+    for (const aggregate of ["sum", "mean", "min", "max", "median", "count"] as const) {
+      const option = build(chart("bar", { aggregate, valueColumns: ["x", "y"] }), data);
+      assert.deepStrictEqual(option.xAxis.data, ["a", "b", "c"]);
+      assert.deepStrictEqual(
+        option.series.map((series: Option) => series.data),
+        expected[aggregate],
+      );
+    }
+  });
+
   test("group and flow keys preserve control characters in labels", () => {
     const data = JSON.stringify([
       { from: "a\u0000b", to: "c", n: 2 },
