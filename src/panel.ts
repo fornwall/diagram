@@ -814,12 +814,18 @@ function basename(uri: vscode.Uri): string {
 
 /** Says where a chart was saved, and opens it in the user's browser if they ask. */
 async function offerToOpen(target: vscode.Uri): Promise<void> {
-  const open = await vscode.window.showInformationMessage(
-    `Saved the chart to ${basename(target)}.`,
-    "Open",
-  );
-  if (open) {
-    await vscode.env.openExternal(target);
+  try {
+    const open = await vscode.window.showInformationMessage(
+      `Saved the chart to ${basename(target)}.`,
+      "Open",
+    );
+    if (open && !(await vscode.env.openExternal(target))) {
+      throw new Error("No application accepted the file");
+    }
+  } catch (error) {
+    void vscode.window.showErrorMessage(
+      `Could not open the saved chart: ${errorMessage(error)}. Open ${target.fsPath} in your browser.`,
+    );
   }
 }
 

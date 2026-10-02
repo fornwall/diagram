@@ -261,6 +261,60 @@ suite("panel", function () {
     }
   });
 
+  for (const rejected of [false, true]) {
+    test(`opening a saved chart reports ${rejected ? "rejections" : "an unavailable browser"}`, async () => {
+      const state: DiagramState = {
+        language: "echarts",
+        source: '{"series":[]}',
+        title: "Chart",
+        origin: "tool",
+        editedByUser: false,
+      };
+      const panel = newPanel(new Map([["diagram.state", state]]));
+      const target = vscode.Uri.file("/saved-chart.html");
+      const saveDialog = vscode.window.showSaveDialog;
+      const information = vscode.window.showInformationMessage;
+      const error = vscode.window.showErrorMessage;
+      const open = vscode.env.openExternal;
+      const write = vscode.workspace.fs.writeFile;
+      const reported = Promise.withResolvers<string>();
+      let written = false;
+      vscode.window.showSaveDialog = async () => target;
+      vscode.window.showInformationMessage = async () => "Open" as never;
+      vscode.window.showErrorMessage = async (message: string) => {
+        reported.resolve(message);
+        return undefined;
+      };
+      vscode.workspace.fs.writeFile = async () => {
+        written = true;
+      };
+      vscode.env.openExternal = async (uri) => {
+        assert.strictEqual(uri.toString(), target.toString());
+        if (rejected) {
+          throw new Error("Browser unavailable");
+        }
+        return false;
+      };
+      try {
+        await (
+          panel as unknown as { saveChart(colors: typeof testColors): Promise<void> }
+        ).saveChart(testColors);
+        const message = await reported.promise;
+        assert.ok(written);
+        assert.match(message, /Could not open the saved chart/);
+        assert.ok(message.includes(target.fsPath));
+        assert.match(message, rejected ? /Browser unavailable/ : /No application accepted/);
+      } finally {
+        vscode.window.showSaveDialog = saveDialog;
+        vscode.window.showInformationMessage = information;
+        vscode.window.showErrorMessage = error;
+        vscode.env.openExternal = open;
+        vscode.workspace.fs.writeFile = write;
+        panel.dispose();
+      }
+    });
+  }
+
   test("a pick ends when another pick, a new diagram or cancellation replaces it", async () => {
     const panel = newPanel();
     try {
