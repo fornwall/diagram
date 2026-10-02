@@ -38,6 +38,9 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
 
+  for (const element of svg.querySelectorAll(".diagram-relationship-hit")) element.remove();
+  for (const element of svg.querySelectorAll("[data-diagram-id]"))
+    element.removeAttribute("data-diagram-id");
   for (const element of svg.querySelectorAll("[tabindex], [role], [aria-pressed]")) {
     for (const attribute of INTERACTION_ATTRIBUTES) {
       element.removeAttribute(attribute);

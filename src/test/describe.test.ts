@@ -17,7 +17,7 @@ suite("describeDiagram", () => {
     assert.ok(description.includes(chart.source ?? ""));
     assert.ok(description.includes(JSON.stringify(chart.chart)));
     assert.strictEqual(description.match(/sales\.csv/g)?.length, 1);
-    assert.match(description, /call diagram_chart with updated parameters/);
+    assert.match(description, /use diagram_updateChart with the loaded data/);
   });
 
   test("manual chart edits are preserved rather than regenerated", () => {

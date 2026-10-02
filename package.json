@@ -274,7 +274,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the current diagram or chart: Mermaid source or ECharts JSON/JavaScript, manual edits, render errors and selected nodes/items. Call before changing a diagram or when the user refers to \"this\", \"these\" or selected parts.",
+        "modelDescription": "Read the current diagram or chart: Mermaid source or ECharts JSON/JavaScript, manual edits, render errors and selected nodes/items. Call before changing a diagram or when the user refers to \"this\", \"these\" or selected parts. Lists selectable flowchart edges and sequence messages with exact relationship ids and endpoints for annotation.",
         "tags": [
           "diagram",
           "mermaid",
@@ -294,8 +294,8 @@
         "toolReferenceName": "diagramPick",
         "canBeReferencedInPrompt": true,
         "icon": "$(target)",
-        "userDescription": "Ask you to click nodes in the diagram panel, and wait for your answer",
-        "modelDescription": "Ask the user to select diagram nodes or chart items and wait for their answer, e.g. \"Which step is failing?\". Returns picked labels and ids, or why none was picked. First render with diagram_render or diagram_chart.",
+        "userDescription": "Ask you to select nodes, relationships or chart items in the diagram panel",
+        "modelDescription": "Ask the user to select diagram nodes or chart items and wait for their answer, e.g. \"Which step is failing?\". Returns picked labels and ids, or why none was picked. First render with diagram_render or diagram_chart. Mermaid flowchart edges and sequence messages are also selectable; picked relationships include ids and endpoints.",
         "tags": [
           "diagram",
           "mermaid",
@@ -327,8 +327,8 @@
         "toolReferenceName": "diagramAnnotate",
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
-        "userDescription": "Mark nodes in the diagram already shown, without drawing it again",
-        "modelDescription": "Mark existing nodes or chart items for walkthroughs, problems or paths without redrawing or moving the diagram. Each call replaces all marks; include every mark to keep, or omit marks to clear them. Marks do not change the source and clear on a new diagram. Returns marked and unknown ids.",
+        "userDescription": "Mark nodes, flowchart edges, sequence messages or chart items without drawing again",
+        "modelDescription": "Mark existing nodes or chart items for walkthroughs, problems or paths without redrawing or moving the diagram. Each call replaces all marks; include every mark to keep, or omit marks to clear them. Marks do not change the source and clear on a new diagram. Returns marked and unknown ids. For flowchart edges and sequence messages, read exact edge:/message: relationship ids using diagram_getState; pass those ids in marks.",
         "tags": [
           "diagram",
           "mermaid",
@@ -346,7 +346,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Exact Mermaid node id or chart item name reported by the panel (\"Series/Name\" for multiple series). Call diagram_getState first if ids are unknown."
+                    "description": "Exact Mermaid node id, edge:/message: relationship id, or chart item name reported by the panel. Call diagram_getState first; relationship ids may change when source changes."
                   },
                   "mark": {
                     "type": "string",
@@ -381,6 +381,305 @@
           },
           "additionalProperties": false
         }
+      },
+      {
+        "name": "diagram_findFiles",
+        "displayName": "Find Workspace Files",
+        "toolReferenceName": "diagramFiles",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "userDescription": "Find workspace files by glob before reading code to diagram. Returns bounded paths suitable for diagram_readFile and code links; reports truncation. Searches all workspace folders.",
+        "modelDescription": "Find workspace files by glob before reading code to diagram. Returns bounded paths suitable for diagram_readFile and code links; reports truncation. Searches all workspace folders.",
+        "tags": [
+          "diagram"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "glob": {
+              "type": "string",
+              "description": "Workspace-relative glob, e.g. **/*.ts or src/**. Defaults to **/*. Honors files.exclude and search.exclude and omits .git and node_modules.",
+              "maxLength": 1000
+            },
+            "maxResults": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Maximum paths returned; defaults to 100."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "diagram_searchText",
+        "displayName": "Search Workspace Text",
+        "toolReferenceName": "diagramSearch",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "userDescription": "Search a literal string in workspace text files, including unsaved open documents. Returns bounded matching lines with paths and line numbers. Narrow the glob when results or scanned files are truncated.",
+        "modelDescription": "Search a literal string in workspace text files, including unsaved open documents. Returns bounded matching lines with paths and line numbers. Narrow the glob when results or scanned files are truncated.",
+        "tags": [
+          "diagram"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Single-line literal text to find, not a regular expression.",
+              "maxLength": 500
+            },
+            "glob": {
+              "type": "string",
+              "description": "Workspace-relative glob, e.g. **/*.ts or src/**. Defaults to **/*. Honors files.exclude and search.exclude and omits .git and node_modules.",
+              "maxLength": 1000
+            },
+            "caseSensitive": {
+              "type": "boolean",
+              "description": "Defaults to false."
+            },
+            "maxResults": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Maximum matching lines returned; defaults to 50."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "diagram_readFile",
+        "displayName": "Read Workspace File",
+        "toolReferenceName": "diagramRead",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file-code)",
+        "userDescription": "Read a bounded line range from a workspace text file, including unsaved editor changes. Returns numbered lines for understanding code and linking diagram nodes. Only files inside an open workspace are accepted.",
+        "modelDescription": "Read a bounded line range from a workspace text file, including unsaved editor changes. Returns numbered lines for understanding code and linking diagram nodes. Only files inside an open workspace are accepted.",
+        "tags": [
+          "diagram"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Absolute path or URI from diagram_findFiles/diagram_searchText, or a path relative to the first workspace folder.",
+              "maxLength": 4096
+            },
+            "startLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First line, inclusive and 1-based; defaults to 1."
+            },
+            "endLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Last line, inclusive; defaults to startLine + 199. At most 500 lines per read."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "file"
+          ]
+        }
+      },
+      {
+        "name": "diagram_inspectData",
+        "displayName": "Inspect Chart Data",
+        "toolReferenceName": "diagramData",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(table)",
+        "userDescription": "Inspect columns and sample rows from the current chart or another data source",
+        "modelDescription": "Inspect data without rendering or changing the current diagram. Omit the source to inspect the current chart's loaded data without reloading it, or supply exactly one of data, file or command. Returns column names and inferred types, row count and a bounded sample. Commands and external file access require the same confirmation as diagram_chart. Inspection of an explicit source and subsequent charting load the source separately.",
+        "tags": [
+          "diagram"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "string",
+              "description": "Inline data: CSV, TSV, JSON (an array of objects or arrays, an object mapping names to numbers, or JSON Lines), a Markdown table or whitespace-separated columns."
+            },
+            "file": {
+              "type": "string",
+              "description": "Path to a file with the data, absolute or relative to the first workspace folder."
+            },
+            "command": {
+              "type": "string",
+              "description": "A shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder. The user is asked to confirm it."
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "csv",
+                "tsv",
+                "json",
+                "whitespace"
+              ],
+              "description": "Defaults to \"auto\" detection, required for Markdown tables. \"json\" also reads JSON Lines."
+            },
+            "sampleRows": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "description": "Number of sample rows, defaults to 5. Samples may be shortened to fit output limits."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "diagram_updateChart",
+        "displayName": "Update Current Chart",
+        "toolReferenceName": "diagramUpdate",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(graph)",
+        "userDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update.",
+        "modelDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update.",
+        "tags": [
+          "diagram"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "pie",
+                "doughnut",
+                "bar",
+                "horizontalBar",
+                "stackedBar",
+                "line",
+                "area",
+                "stackedArea",
+                "scatter",
+                "treemap",
+                "sunburst",
+                "sankey",
+                "heatmap",
+                "radar",
+                "boxplot",
+                "gauge",
+                "funnel"
+              ],
+              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value."
+            },
+            "title": {
+              "type": "string",
+              "description": "A short title for the chart, shown in the panel."
+            },
+            "labelColumn": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "minItems": 1
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), or heatmap rows/columns. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. Bar, line, area and scatter charts use ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") as a time axis with proportional spacing. Ambiguous dates (\"01/02/2026\") and plain years remain labels. Pass null to clear this setting; omit to keep it."
+            },
+            "valueColumns": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Value columns, one series each. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, treemap, sunburst, gauge and funnel use only the first; boxplot uses its raw numbers. Pass null to clear this setting; omit to keep it."
+            },
+            "max": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value. Pass null to clear this setting; omit to keep it."
+            },
+            "aggregate": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "sum",
+                    "mean",
+                    "count",
+                    "min",
+                    "max",
+                    "median"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Combine rows sharing the same label or labels. \"count\" counts rows without a value column, e.g. one row per commit or log entry. Grouping precedes \"sort\" and \"limit\"; sort descending to keep the largest groups. Omit for boxplot, which summarizes raw groups itself. Pass null to clear this setting; omit to keep it."
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ascending",
+                    "descending"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sorts the rows by the first value column, after grouping. Pass null to clear this setting; omit to keep it."
+            },
+            "limit": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep the first rows after sorting. Pie/doughnut exclude nonpositive values and combine omitted positive rows as \"Other\". Pass null to clear this setting; omit to keep it."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState; rejects stale updates when provided."
+            }
+          },
+          "additionalProperties": false
+        }
       }
     ],
     "commands": [
@@ -393,6 +692,19 @@
         "command": "diagram.openAtCursor",
         "title": "Open Diagram at Cursor",
         "category": "Diagram"
+      },
+      {
+        "command": "diagram.export",
+        "title": "Export\u2026",
+        "category": "Diagram",
+        "icon": "$(export)"
+      },
+      {
+        "command": "diagram.chartOptions",
+        "title": "Chart Options\u2026",
+        "category": "Diagram",
+        "icon": "$(gear)",
+        "enablement": "diagram.chartOptionsAvailable"
       }
     ],
     "menus": {
@@ -401,6 +713,25 @@
           "command": "diagram.openAtCursor",
           "when": "editorLangId == markdown",
           "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "diagram.export",
+          "when": "activeWebviewPanelId == diagram.panel",
+          "group": "navigation"
+        },
+        {
+          "command": "diagram.chartOptions",
+          "when": "activeWebviewPanelId == diagram.panel && diagram.chartOptionsAvailable",
+          "group": "navigation@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "diagram.export",
+          "when": "webviewId == diagram.panel && webviewSection == drawing",
+          "group": "1_export"
         }
       ]
     },

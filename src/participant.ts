@@ -3,14 +3,53 @@ import { type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import { unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
 import { fitToolResults, promptMessages } from "./prompt";
-import { CHART_TOOL, type DiagramLanguage, diagramNoun, errorMessage } from "./protocol";
+import {
+  ANNOTATE_TOOL,
+  CHART_TOOL,
+  type DiagramLanguage,
+  diagramNoun,
+  errorMessage,
+  FIND_FILES_TOOL,
+  GET_STATE_TOOL,
+  INSPECT_DATA_TOOL,
+  PICK_NODES_TOOL,
+  READ_FILE_TOOL,
+  RENDER_TOOL,
+  SEARCH_TEXT_TOOL,
+  UPDATE_CHART_TOOL,
+} from "./protocol";
 
 export const PARTICIPANT_ID = "diagram.participant";
 
 /** How many times to ask the model to fix a diagram that fails to render. */
 const MAX_REPAIR_ATTEMPTS = 2;
 /** How many rounds of tool calls a single reply may take. */
-const MAX_TOOL_ROUNDS = 4;
+const MAX_TOOL_ROUNDS = 12;
+/** Shared across exploration and render repairs, including parallel call batches. */
+const MAX_TOOL_CALLS = 32;
+
+const READ_ONLY_TOOLS = new Set([
+  GET_STATE_TOOL,
+  FIND_FILES_TOOL,
+  SEARCH_TEXT_TOOL,
+  READ_FILE_TOOL,
+]);
+const DEFAULT_TOOLS = new Set([
+  ...READ_ONLY_TOOLS,
+  RENDER_TOOL,
+  CHART_TOOL,
+  PICK_NODES_TOOL,
+  ANNOTATE_TOOL,
+  INSPECT_DATA_TOOL,
+  UPDATE_CHART_TOOL,
+]);
+
+interface ToolBudget {
+  rounds: number;
+  calls: number;
+  /** A decline or exhausted budget applies to every subsequent round and repair. */
+  notRun?: string;
+}
 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
   return async (request, context, stream, token) => {
@@ -34,11 +73,13 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       return;
     }
 
-    // Tools the user attached with #, which the model is made to call first. Charts of files and
-    // command output are drawn by the chart tool, which asks the user before running a command.
+    // Keep the default surface deliberate. Explicit external attachments are supported for
+    // drawing, but /explain only permits known read-only tools, even when others are attached.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
-    const tools = vscode.lm.tools.filter(
-      (tool) => attachedNames.has(tool.name) || (!explain && tool.name === CHART_TOOL),
+    const tools = vscode.lm.tools.filter((tool) =>
+      explain
+        ? READ_ONLY_TOOLS.has(tool.name)
+        : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name),
     );
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
 
@@ -50,9 +91,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (typeof messages === "string") {
         return { errorDetails: { message: messages } };
       }
+      const budget: ToolBudget = { rounds: 0, calls: 0 };
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
         unlessCancelled(
-          () => streamReply(request, messages, tools, required, stream, token, panel),
+          () => streamReply(request, messages, tools, required, stream, token, panel, budget),
           token,
         );
 
@@ -138,12 +180,11 @@ async function streamReply(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
   panel: DiagramPanel,
+  budget: ToolBudget,
 ): Promise<DiagramBlock | undefined> {
-  const lastToolRound = required.length + MAX_TOOL_ROUNDS;
+  const initialState = panel.current;
   let diagram: DiagramBlock | undefined;
   let diagramState = panel.current;
-  /** Why further tool calls are answered without running them. */
-  let notRun: string | undefined;
   for (let round = 0; ; round++) {
     if (token.isCancellationRequested) {
       throw new vscode.CancellationError();
@@ -151,7 +192,8 @@ async function streamReply(
     // Some models only support a single tool when a tool call is required. The tools are passed
     // even when calls are no longer run, as some models reject requests whose messages contain
     // tool calls but no tools.
-    const requiredTool = required[round];
+    const finalReply = budget.notRun !== undefined;
+    const requiredTool = finalReply ? undefined : required[round];
     const options: vscode.LanguageModelChatRequestOptions = requiredTool
       ? { tools: [requiredTool], toolMode: vscode.LanguageModelChatToolMode.Required }
       : { tools };
@@ -187,15 +229,21 @@ async function streamReply(
         "\n\nThe reply ended before the diagram was complete. Try again, or ask for a smaller diagram.",
       );
     }
-    if (calls.length === 0 || round > lastToolRound) {
+    if (calls.length === 0 || finalReply) {
       if (reply) {
         messages.push(vscode.LanguageModelChatMessage.Assistant(reply));
       }
-      // A later tool render or manual edit supersedes this earlier draft.
-      return panel.current === diagramState ? diagram : undefined;
+      if (calls.length > 0) {
+        stream.markdown(`\n\nStopped tool use because ${budget.notRun}.`);
+      }
+      // A successful tool render or manual edit remains authoritative, even when the model
+      // emits a fresh fence in its final reply. Re-rendering that fence would lose code links,
+      // chart data and presentation. A failed render may still be repaired by a fallback fence.
+      const changed = panel.current !== initialState && !panel.current?.error;
+      return !changed && panel.current === diagramState ? diagram : undefined;
     }
-    if (round === lastToolRound) {
-      notRun ??= "this request has made too many tool calls";
+    if (budget.rounds++ >= MAX_TOOL_ROUNDS) {
+      budget.notRun ??= "this request reached its tool round limit";
     }
 
     messages.push(
@@ -211,8 +259,11 @@ async function streamReply(
         throw new vscode.CancellationError();
       }
       let content: unknown[];
-      if (notRun) {
-        content = text(`Not run, as ${notRun}. Answer without tools.`);
+      if (budget.calls >= MAX_TOOL_CALLS) {
+        budget.notRun ??= "this request reached its tool call limit";
+      }
+      if (budget.notRun) {
+        content = text(`Not run, as ${budget.notRun}. Answer without tools.`);
       } else if (!options.tools?.some((tool) => tool.name === call.name)) {
         // invokeTool runs any registered tool, not only those the model was given.
         content = text(
@@ -220,6 +271,7 @@ async function streamReply(
         );
       } else {
         try {
+          budget.calls++;
           const input = { input: call.input, toolInvocationToken: request.toolInvocationToken };
           content = (await vscode.lm.invokeTool(call.name, input, token)).content;
         } catch (error) {
@@ -228,8 +280,11 @@ async function streamReply(
           }
           // The user declined the tool call, e.g. to run a command: a CancellationError, though
           // not always an instance of one. Don't let the model ask again.
-          if (error instanceof Error && error.name === "Canceled") {
-            notRun = "the user declined an earlier tool call";
+          if (
+            error instanceof Error &&
+            ["Canceled", "CancellationError", "AbortError"].includes(error.name)
+          ) {
+            budget.notRun = "the user declined an earlier tool call";
             content = text(
               "The user declined this tool call. Do not try it again, and do not make up its result: tell the user briefly what you would have done with it.",
             );

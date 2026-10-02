@@ -1,6 +1,9 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
+import type { ChartSpec } from "../chartSpec";
+import { buildChart } from "../charts";
+import { parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel } from "./newPanel";
 
@@ -97,6 +100,84 @@ suite("webview", function () {
         });
     });
   }
+
+  test("chart options apply several controls using cached command data and preserve the source", async () => {
+    const table = parseTable("name,amount,other\na,1,3\nb,4,7");
+    const chart: ChartSpec = {
+      type: "bar",
+      command: "this-command-must-never-run",
+      labelColumn: "name",
+      valueColumns: ["amount"],
+    };
+    assert.ok(
+      (
+        await panel.render(
+          {
+            language: "echarts",
+            source: JSON.stringify(buildChart(chart, table).option),
+            title: "Cached",
+            chart,
+            clickPrompt: "Explain {label}",
+          },
+          "tool",
+          undefined,
+          table,
+        )
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+      const section = document.getElementById("chart-options");
+      return { visible: !section.hidden, columns: section.querySelectorAll("#chart-option-label option").length };
+    })()`),
+      { visible: true, columns: 3 },
+    );
+    await nextRender(() =>
+      evaluate(`(() => {
+      document.getElementById("chart-option-chart").value = "pie";
+      document.getElementById("chart-option-aggregation").value = "sum";
+      document.getElementById("chart-option-sort").value = "descending";
+      document.getElementById("chart-option-row").value = "1";
+      document.querySelector("#chart-options .actions button").click();
+    })()`),
+    );
+    assert.strictEqual(panel.current?.chart?.command, chart.command);
+    assert.strictEqual(panel.current?.chart?.type, "pie");
+    assert.strictEqual(panel.current?.chart?.aggregate, "sum");
+    assert.strictEqual(panel.current?.chart?.sort, "descending");
+    assert.strictEqual(panel.current?.chart?.limit, 1);
+    assert.strictEqual(panel.current?.clickPrompt, "Explain {label}");
+    await evaluate(
+      `document.querySelector("#chart-options .chart-options-heading button").click()`,
+    );
+    assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
+  });
+
+  test("chart options recover inline data and close on arbitrary ECharts replacement", async () => {
+    const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          chart,
+          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
+        })
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), false);
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: '{"series":[{"type":"pie","data":[{"value":1,"name":"a"}]}]}',
+        })
+      ).ok,
+    );
+    assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
+    assert.strictEqual(panel.current?.chart, undefined);
+  });
 
   test("renders Mermaid diagrams of the common types", async () => {
     for (const [diagramType, source] of Object.entries(MERMAID)) {

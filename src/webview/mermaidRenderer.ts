@@ -4,6 +4,7 @@ import type { Mermaid } from "mermaid";
 import { type Annotation, type DiagramNode, MARK_KINDS } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
+import { shortestPath } from "./relationships";
 import { type Renderer, type RendererHost, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
@@ -142,8 +143,27 @@ function darkScale({ palette, background }: ThemeColors): Record<string, string>
  * The diagram types whose items Mermaid draws without their data, and the parts of their
  * databases that findNodes reads it from.
  */
-const WITH_DATABASE = new Set(["pie", "gitGraph", "xychart"]);
+const WITH_DATABASE = new Set([
+  "pie",
+  "gitGraph",
+  "xychart",
+  "flowchart-v2",
+  "flowchart",
+  "sequence",
+]);
 interface DiagramDb {
+  getData?(): {
+    edges: {
+      id: string;
+      start: string;
+      end: string;
+      label?: string;
+      thickness?: string;
+      arrowTypeStart?: string;
+      arrowTypeEnd?: string;
+    }[];
+  };
+  getMessages?(): { id: string; from?: string; to?: string; message?: string }[];
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
@@ -193,6 +213,7 @@ export class MermaidRenderer implements Renderer {
   readonly sourceName = "Mermaid source";
 
   private renderCounter = 0;
+  supportsPaths = false;
   /** The selectable nodes of the shown diagram, by the elements that show them. */
   private nodes = new Map<Element, DiagramNode>();
   private selectedKeys: ReadonlySet<string> = new Set();
@@ -273,6 +294,7 @@ export class MermaidRenderer implements Renderer {
     result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
+    this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
     this.prepareSvg(id, db);
     if (this.fitting) {
       this.fit();
@@ -346,6 +368,10 @@ export class MermaidRenderer implements Renderer {
     this.diagram.classList.toggle("dim-unmarked", annotation.dim && kinds.size > 0);
   }
 
+  findPath(from: string, to: string): DiagramNode[] | undefined {
+    return this.supportsPaths ? shortestPath(this.drawnNodes(), from, to) : undefined;
+  }
+
   drawnNodes(): DiagramNode[] {
     // Several elements can show one node, e.g. a Gantt task's bar and its label.
     return [...new Map(Array.from(this.nodes.values(), (node) => [node.id, node])).values()];
@@ -354,7 +380,7 @@ export class MermaidRenderer implements Renderer {
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
     for (const [element, node] of this.nodes) {
-      const location = locations.get(node.id);
+      const location = node.relationship ? undefined : locations.get(node.id);
       element.classList.toggle("diagram-linked", location !== undefined);
       // SVG takes a tooltip as a <title> child, and shows the first one, so replace our own and
       // leave any that Mermaid wrote where it is.
@@ -417,10 +443,129 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
+  /** Join renderer metadata to DOM IDs; endpoint names are never inferred from generated IDs. */
+  private findRelationships(
+    svg: SVGSVGElement,
+    db: DiagramDb | undefined,
+    add: (element: Element, node: DiagramNode) => void,
+  ): void {
+    const used = new Set(Array.from(this.nodes.values(), (node) => node.id));
+    const names = new Map(Array.from(this.nodes.values(), (node) => [node.id, node.label]));
+    const unique = (base: string) => {
+      let id = base;
+      for (let n = 2; used.has(id); n++) id = `${base} (${n})`;
+      used.add(id);
+      return id;
+    };
+    const plainText = (text: string) => {
+      const doc = new DOMParser().parseFromString(
+        text.replace(/<br\s*\/?\s*>/gi, " "),
+        "text/html",
+      );
+      return textOf(doc.body);
+    };
+    const addLine = (line: Element, node: DiagramNode) => {
+      add(line, node);
+      // A wide invisible stroke makes thin lines practical mouse targets without changing the drawing.
+      const hit = line.cloneNode(false) as SVGElement;
+      for (const name of hit.getAttributeNames()) {
+        if (!["d", "x1", "x2", "y1", "y2", "transform"].includes(name)) hit.removeAttribute(name);
+      }
+      hit.classList.add("diagram-relationship-hit");
+      hit.setAttribute("aria-hidden", "true");
+      line.before(hit);
+      add(hit, node);
+    };
+    const relation = (
+      kind: "edge" | "message",
+      id: string,
+      source: string,
+      target: string,
+      text: string,
+      start: boolean,
+      end: boolean,
+    ): DiagramNode => {
+      if (start && !end) [source, target] = [target, source];
+      const direction = start && end ? "both" : !start && !end ? "undirected" : "forward";
+      const arrow = direction === "both" ? "↔" : direction === "undirected" ? "—" : "→";
+      return {
+        id: unique(`${kind}:${id}`),
+        label: `${names.get(source) ?? source} ${arrow} ${names.get(target) ?? target}${text ? `: ${text}` : ""}`,
+        relationship: { kind, source, target, direction },
+      };
+    };
+    if (this.supportsPaths && db?.getData) {
+      const edges = db.getData().edges;
+      const byId = new Map<string, typeof edges>();
+      for (const edge of edges) byId.set(edge.id, [...(byId.get(edge.id) ?? []), edge]);
+      const labels = new Map(
+        Array.from(svg.querySelectorAll(".edgeLabel .label[data-id]"), (element) => [
+          element.getAttribute("data-id"),
+          element,
+        ]),
+      );
+      const lines = new Map(
+        Array.from(svg.querySelectorAll('[data-et="edge"][data-id]'), (line) => [
+          line.getAttribute("data-id"),
+          line,
+        ]),
+      );
+      for (const edge of edges) {
+        const line = lines.get(edge.id);
+        // Ambiguous duplicate renderer IDs cannot safely identify a relationship.
+        if (!line || byId.get(edge.id)?.length !== 1 || edge.thickness === "invisible") continue;
+        const label = labels.get(edge.id);
+        const node = relation(
+          "edge",
+          edge.id,
+          edge.start,
+          edge.end,
+          label ? textOf(label) : plainText(edge.label ?? ""),
+          edge.arrowTypeStart !== "none" && !!edge.arrowTypeStart,
+          edge.arrowTypeEnd !== "none" && !!edge.arrowTypeEnd,
+        );
+        addLine(line, node);
+        if (label) add(label, node);
+      }
+    }
+    if (db?.getMessages) {
+      const messages = new Map(db.getMessages().map((message) => [`i${message.id}`, message]));
+      for (const line of svg.querySelectorAll('[data-et="message"][data-id]')) {
+        const id = line.getAttribute("data-id") ?? "";
+        const message = messages.get(id);
+        if (
+          !message?.from ||
+          !message.to ||
+          line.getAttribute("data-from") !== message.from ||
+          line.getAttribute("data-to") !== message.to
+        )
+          continue;
+        const node = relation(
+          "message",
+          id,
+          message.from,
+          message.to,
+          plainText(message.message ?? ""),
+          line.hasAttribute("marker-start"),
+          line.hasAttribute("marker-end"),
+        );
+        // Mermaid emits the message's label immediately before its line (self messages are paths).
+        let label = line.previousElementSibling;
+        addLine(line, node);
+        while (label?.matches(".messageText")) {
+          add(label, node);
+          label = label.previousElementSibling;
+        }
+      }
+    }
+  }
+
   private findNodes(svg: SVGSVGElement, idPrefix: string, db?: DiagramDb): void {
     const focusable = new Set<string>();
     const add = (element: Element, node: DiagramNode) => {
       element.classList.add("diagram-node");
+      element.setAttribute("data-diagram-id", node.id);
+      if (node.relationship) element.classList.add("diagram-relationship");
       this.nodes.set(element, node);
       // One tab stop per node, although some are drawn as several elements.
       if (!focusable.has(node.id)) {
@@ -490,6 +635,8 @@ export class MermaidRenderer implements Renderer {
         add(group, node);
       }
     }
+
+    this.findRelationships(svg, db, add);
 
     // Gantt tasks: a bar and a label with ids derived from the task id.
     for (const bar of svg.querySelectorAll("rect.task")) {

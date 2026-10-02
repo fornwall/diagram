@@ -40,6 +40,9 @@ export interface Renderer {
    * its data, which the panel does not enumerate.
    */
   drawnNodes?(): DiagramNode[];
+  /** Whether the current drawing supports path selection between its nodes. */
+  readonly supportsPaths?: boolean;
+  findPath?(from: string, to: string): DiagramNode[] | undefined;
   /**
    * Marks the nodes that link to a place in the code, given by node id, as clickable and shows the
    * location as their tooltip. Only Mermaid nodes can link; chart items are data points.

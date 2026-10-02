@@ -138,6 +138,46 @@ suite("Extension", () => {
     );
   });
 
+  test("inspects and updates the current chart through registered tools", async () => {
+    await invoke("diagram_chart", {
+      type: "bar",
+      data: "region,sales\nNorth,10\nSouth,20\nEast,5",
+      title: "Regional sales",
+    });
+    const before = await invoke("diagram_getState", {});
+    const inspection = await invoke("diagram_inspectData", { sampleRows: 1 });
+    assert.match(inspection, /"rowCount":3/);
+    assert.match(inspection, /"name":"sales","numeric":true/);
+    assert.strictEqual(await invoke("diagram_getState", {}), before);
+
+    const changed = await invoke("diagram_updateChart", {
+      type: "horizontalBar",
+      sort: "descending",
+      limit: 2,
+    });
+    assert.match(changed, /^Updated the bar chart using the loaded data/);
+    const after = await invoke("diagram_getState", {});
+    assert.match(after, /"type":"horizontalBar"/);
+    assert.match(after, /"limit":2/);
+    assert.match(after, /Regional sales/);
+
+    const invalid = await invoke("diagram_updateChart", { valueColumns: ["missing"] });
+    assert.match(invalid, /^Chart was not updated:/);
+    assert.strictEqual(await invoke("diagram_getState", {}), after);
+  });
+
+  test("exposes bounded workspace discovery and file reads through registered tools", async () => {
+    const files = await invoke("diagram_findFiles", { glob: "**/sizes.tsv" });
+    assert.match(files, /sizes\.tsv/);
+    const contents = await invoke("diagram_readFile", {
+      file: "sizes.tsv",
+      startLine: 1,
+      endLine: 2,
+    });
+    assert.match(contents, /sizes\.tsv/);
+    assert.match(contents, /src/);
+  });
+
   test("marks the diagram already shown, and clears the marks again", async () => {
     assert.match(
       await invoke("diagram_render", {
@@ -160,7 +200,7 @@ suite("Extension", () => {
     // The label of a node is not its id, so there is nothing to mark for it.
     assert.match(
       marked,
-      /These ids are not nodes of the diagram.*"Checker"\. Its ids are "parse", "check"\./,
+      /These ids are not selectable items of the diagram.*"Checker"\. Its ids are "parse", "check", "edge:L_parse_check_0"\./,
     );
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.

@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { buildChart } from "../charts";
+import { parseTable } from "../data";
 import { linkText, linkTexts, type NodeLink } from "../links";
 import {
   clickToAskQuery,
@@ -118,7 +120,7 @@ suite("panel", function () {
   test("isFromWebview accepts only well-formed messages", () => {
     assert.ok(isFromWebview({ type: "ready" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
-    assert.ok(isFromWebview({ type: "save", colors: testColors }));
+    assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
     const malformed = [
       null,
       "ready",
@@ -127,11 +129,11 @@ suite("panel", function () {
       { type: "picked", pickId: "3", nodes: [] },
       { type: "selectionChanged", nodes: [{ id: "A" }] },
       { type: "ask", nodes: [] },
-      { type: "save" },
+      { type: "exportTheme", requestId: 1 },
       // A saved chart needs every color to draw in.
-      { type: "save", colors: { ...testColors, palette: [] } },
-      { type: "save", colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
-      { type: "save", colors: { ...testColors, fontSize: Number.NaN } },
+      { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
+      { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
+      { type: "exportTheme", requestId: 1, colors: { ...testColors, fontSize: Number.NaN } },
     ];
     for (const message of malformed) {
       assert.ok(!isFromWebview(message), JSON.stringify(message));
@@ -173,8 +175,9 @@ suite("panel", function () {
       });
       sent.length = 0;
       internals.onMessage({ type: "ready" });
-      assert.strictEqual(sent.length, 1);
-      const latest = sent[0];
+      assert.strictEqual(sent.length, 2);
+      assert.deepStrictEqual(sent[0], { type: "chartOptions", visible: false });
+      const latest = sent[1];
       assert.ok(latest?.type === "render");
       assert.strictEqual(latest.title, "Replacement");
       internals.onMessage({
@@ -486,7 +489,7 @@ suite("panel", function () {
     test(`opening a saved chart reports ${rejected ? "rejections" : "an unavailable browser"}`, async () => {
       const state: DiagramState = {
         language: "echarts",
-        source: '{"series":[]}',
+        source: '{"series":[{"type":"pie","data":[1,2]}]}',
         title: "Chart",
         origin: "tool",
         editedByUser: false,
@@ -495,11 +498,16 @@ suite("panel", function () {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-save-test-"));
       const target = vscode.Uri.file(path.join(directory, "chart.html"));
       const saveDialog = vscode.window.showSaveDialog;
+      const quickPick = vscode.window.showQuickPick;
       const information = vscode.window.showInformationMessage;
       const error = vscode.window.showErrorMessage;
       const open = vscode.env.openExternal;
       const reported = Promise.withResolvers<string>();
       try {
+        vscode.window.showQuickPick = (async () => ({
+          label: "Interactive HTML",
+          format: "html",
+        })) as unknown as typeof quickPick;
         vscode.window.showSaveDialog = async () => target;
         vscode.window.showInformationMessage = async () => "Open" as never;
         vscode.window.showErrorMessage = async (message: string) => {
@@ -513,15 +521,16 @@ suite("panel", function () {
           }
           return false;
         };
-        await (
-          panel as unknown as { saveChart(colors: typeof testColors): Promise<void> }
-        ).saveChart(testColors);
+        assert.ok(state.source);
+        assert.ok((await panel.render({ ...state, source: state.source }, "tool")).ok);
+        await panel.exportDiagram();
         const message = await reported.promise;
         assert.ok(fs.statSync(target.fsPath).size > 500_000);
         assert.match(message, /Could not open the saved chart/);
         assert.ok(message.includes(target.fsPath));
         assert.match(message, rejected ? /Browser unavailable/ : /No application accepted/);
       } finally {
+        vscode.window.showQuickPick = quickPick;
         vscode.window.showSaveDialog = saveDialog;
         vscode.window.showInformationMessage = information;
         vscode.window.showErrorMessage = error;
@@ -919,13 +928,12 @@ suite("panel", function () {
     }
   });
 
-  test("saving waits for a successful render and recovers when the panel does", async () => {
+  test("exporting waits for a successful render and reports an unavailable panel", async () => {
     const panel = newPanel();
     const internals = panel as unknown as {
       post(): void;
       pendingRender: { message: { requestId: number } };
       finishRender(id: number, outcome: RenderOutcome): void;
-      saveChart(colors: typeof testColors): Promise<void>;
     };
     internals.post = () => {};
     const warn = vscode.window.showWarningMessage;
@@ -943,7 +951,7 @@ suite("panel", function () {
     const chart = { language: "echarts", source: '{"series": []}', title: "Chart" } as const;
     try {
       const rendering = panel.render(chart, "tool");
-      await internals.saveChart(testColors);
+      await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
       assert.match(warning, /Wait.*rendering/);
       internals.finishRender(internals.pendingRender.message.requestId, {
@@ -952,22 +960,136 @@ suite("panel", function () {
         error: "The diagram panel did not respond.",
       });
       await rendering;
-      await internals.saveChart(testColors);
+      await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
-      assert.match(warning, /not saved.*did not respond.*Reopen/);
-
-      const retry = panel.render(chart, "tool");
-      internals.finishRender(internals.pendingRender.message.requestId, {
-        ok: true,
-        diagramType: "chart",
-      });
-      await retry;
-      panel.annotate({ marks: [], dim: false });
-      await internals.saveChart(testColors);
-      assert.strictEqual(dialogs, 1);
+      assert.match(warning, /unavailable.*did not respond.*Show Panel/);
     } finally {
       vscode.window.showWarningMessage = warn;
       vscode.window.showSaveDialog = save;
+      panel.dispose();
+    }
+  });
+
+  test("refresh preserves manual styling through panel state restoration", async () => {
+    const values = new Map<string, unknown>();
+    let panel = newPanel(values);
+    const chart = { type: "bar", data: "name,value\nC,20\nD,40" } as const;
+    const option = buildChart(chart, parseTable("name,value\nA,2\nB,4")).option;
+    try {
+      assert.ok(
+        (
+          await panel.render(
+            { language: "echarts", source: JSON.stringify(option), title: "Sales", chart },
+            "tool",
+          )
+        ).ok,
+      );
+      option.yAxis = {
+        ...(option.yAxis as object),
+        name: "Revenue",
+        axisLabel: { formatter: "USD {value}" },
+      };
+      await (panel as unknown as { applyEdit(source: string): Promise<void> }).applyEdit(
+        JSON.stringify(option),
+      );
+      panel.dispose();
+      panel = newPanel(values);
+      panel.show();
+      await (panel as unknown as { refreshChart(): Promise<void> }).refreshChart();
+      const refreshed = JSON.parse(panel.current?.source ?? "");
+      assert.deepStrictEqual(refreshed.series[0].data, [20, 40]);
+      assert.deepStrictEqual(refreshed.xAxis.data, ["C", "D"]);
+      assert.strictEqual(refreshed.yAxis.name, "Revenue");
+      assert.strictEqual(refreshed.yAxis.axisLabel.formatter, "USD {value}");
+      assert.ok(panel.current?.editedByUser);
+      assert.match(panel.describeForModel() ?? "", /diagram_updateChart preserves.*styling/);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("blocked custom source is preserved without loading data", async () => {
+    const panel = newPanel();
+    const progress = vscode.window.withProgress;
+    const showError = vscode.window.showErrorMessage;
+    let error = "";
+    let loads = 0;
+    const source = '{"series":[{"type":"pie","data":[1]}]}';
+    const edited = '{series:[{type:"pie",data:[1]}],tooltip:{formatter: () => "value"}}';
+    try {
+      await panel.render(
+        {
+          language: "echarts",
+          source,
+          title: "Chart",
+          chart: { type: "pie", data: "name,value\nA,1" },
+        },
+        "tool",
+      );
+      const internals = panel as unknown as {
+        applyEdit(source: string): Promise<void>;
+        refreshChart(): Promise<void>;
+      };
+      await internals.applyEdit(edited);
+      vscode.window.withProgress = async (options, task) => {
+        loads++;
+        return progress(options, task);
+      };
+      vscode.window.showErrorMessage = async (message: string) => {
+        error = message;
+        return undefined;
+      };
+      await internals.refreshChart();
+      assert.strictEqual(loads, 0);
+      assert.strictEqual(panel.current?.source, edited);
+      assert.match(error, /source is kept.*Reset Styling/);
+    } finally {
+      vscode.window.withProgress = progress;
+      vscode.window.showErrorMessage = showError;
+      panel.dispose();
+    }
+  });
+
+  test("a failed refresh render restores the previous source and presentation", async () => {
+    const panel = newPanel();
+    const showError = vscode.window.showErrorMessage;
+    let error = "";
+    try {
+      const chart = { type: "pie", data: "name,value\nA,9" } as const;
+      await panel.render(
+        {
+          language: "echarts",
+          source: JSON.stringify(buildChart(chart, parseTable("name,value\nA,1")).option),
+          title: "Chart",
+          chart,
+        },
+        "tool",
+      );
+      const before = panel.current;
+      const internals = panel as unknown as {
+        renderCurrent(): Promise<RenderOutcome>;
+        refreshChart(): Promise<void>;
+        renderVersion: number;
+      };
+      const render = internals.renderCurrent.bind(internals);
+      let calls = 0;
+      internals.renderCurrent = async () => {
+        if (calls++ === 0) {
+          internals.renderVersion++;
+          return { ok: false, kind: "invalid", error: "test refresh failure" };
+        }
+        return render();
+      };
+      vscode.window.showErrorMessage = async (message: string) => {
+        error = message;
+        return undefined;
+      };
+      await internals.refreshChart();
+      assert.strictEqual(panel.current?.source, before?.source);
+      assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
+      assert.match(error, /test refresh failure.*previous source and styling are kept/);
+    } finally {
+      vscode.window.showErrorMessage = showError;
       panel.dispose();
     }
   });
@@ -1174,12 +1296,13 @@ suite("panel", function () {
       };
       internals.post = (message) => sent.push(message);
       internals.onMessage({ type: "ready" });
-      // The diagram first, then the marks that belong on it.
+      // Restore the controls, then the diagram and the marks that belong on it.
       assert.deepStrictEqual(
         sent.map((message) => message.type),
-        ["render", "annotate"],
+        ["chartOptions", "render", "annotate"],
       );
-      const annotate = sent[1];
+      assert.deepStrictEqual(sent[0], { type: "chartOptions", visible: false });
+      const annotate = sent[2];
       assert.ok(annotate?.type === "annotate");
       assert.deepStrictEqual(annotate.marks, [{ id: "B", kind: "current" }]);
     } finally {

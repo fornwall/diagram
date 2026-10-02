@@ -8,6 +8,7 @@ import {
   safeFileName,
   type ToWebview,
 } from "../protocol";
+import { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
 import { EChartsRenderer } from "./echartsRenderer";
 import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
@@ -55,6 +56,7 @@ const sourceInput = element<HTMLTextAreaElement>("source");
 const applyButton = element<HTMLButtonElement>("apply");
 const revertButton = element<HTMLButtonElement>("revert");
 const selectionLabel = element("selection-label");
+const highlightPathButton = element<HTMLButtonElement>("highlight-path");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
@@ -63,7 +65,6 @@ const zoomOutButton = element("zoom-out");
 const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
 const refreshButton = element<HTMLButtonElement>("refresh");
-const saveButton = element<HTMLButtonElement>("save");
 const writeToButton = element<HTMLButtonElement>("write-to");
 const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
@@ -78,6 +79,8 @@ const annotationNotes = element("annotation-notes");
 const pickBanner = element("pick");
 const pickPrompt = element("pick-prompt");
 const pickDoneButton = element<HTMLButtonElement>("pick-done");
+
+const chartOptions = new ChartOptionsForm(element("chart-options"), post, focusContent);
 
 // Before the click handlers it takes the clicks of a drag away from; see enablePanning.
 enablePanning(canvas);
@@ -112,6 +115,7 @@ const renderers: Record<DiagramLanguage, Renderer> = {
 };
 /** The renderer whose rendering is shown, if any. */
 let active: Renderer | undefined;
+let renderedRequestId: number | undefined;
 
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
@@ -127,6 +131,7 @@ function showError(renderer: Renderer, message: string): void {
 
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
   forgetDragImage();
+  renderedRequestId = undefined;
   const { language, source, requestId } = message;
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
@@ -148,13 +153,20 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
       active?.hide();
     }
     active = renderer;
+    renderedRequestId = requestId;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
     labels = new Map(drawn?.map((node) => [node.id, node.label]));
     errorElement.hidden = true;
     // The ids go along so that the extension host can tell a model when it names a node that is
     // not in the diagram, e.g. in a link or a mark.
-    post({ type: "rendered", requestId, diagramType, nodeIds: drawn?.map((node) => node.id) });
+    post({
+      type: "rendered",
+      requestId,
+      diagramType,
+      nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
+      relationships: drawn?.filter((node) => node.relationship),
+    });
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
@@ -178,14 +190,13 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
 }
 
 /**
- * Offers zooming when the rendering shown zooms, saving while a chart is drawn, and the views
+ * Offers zooming when the rendering shown zooms, dragging images, and the views
  * once there is a source.
  */
 function updateToolbar(): void {
   for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
     button.hidden = !active?.zoomBy;
   }
-  saveButton.hidden = active !== renderers.echarts;
   dragOutHandle.hidden = active?.toImage === undefined;
   viewsGroup.hidden = current === undefined;
 }
@@ -236,6 +247,15 @@ function enqueue(task: () => void | Promise<void>): void {
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
   switch (message.type) {
+    case "export":
+      enqueue(() => exportDrawing(message));
+      break;
+    case "chartOptions":
+      enqueue(() => chartOptions.update(message.state, message.visible));
+      break;
+    case "chartOptionsError":
+      enqueue(() => chartOptions.showError(message.message));
+      break;
     case "render":
       enqueue(() => render(message));
       break;
@@ -288,10 +308,35 @@ function updateSelectionUi(): void {
   selectionLabel.textContent =
     labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(itemNoun);
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
+  highlightPathButton.hidden = !active?.supportsPaths || pick !== undefined;
+  const endpoints = Array.from(selection.values());
+  highlightPathButton.disabled =
+    endpoints.length !== 2 || endpoints.some((node) => node.relationship);
+  highlightPathButton.title = highlightPathButton.disabled
+    ? "Select two flowchart nodes, first the start and then the destination"
+    : `Highlight the shortest path from ${endpoints[0]?.label} to ${endpoints[1]?.label}`;
   pickDoneButton.disabled = labels.length === 0;
   askInput.placeholder =
     labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${noun}…`;
 }
+
+highlightPathButton.addEventListener("click", () => {
+  const endpoints = Array.from(selection.values());
+  const [from, to] = endpoints;
+  if (!from || !to || endpoints.length !== 2 || from.relationship || to.relationship) return;
+  const path = active?.findPath?.(from.id, to.id);
+  if (!path) {
+    transientHint(`No path from ${from.label} to ${to.label} following the arrows.`);
+    return;
+  }
+  selection.clear();
+  for (const node of path) selection.set(node.id, node);
+  selectionChanged();
+  canvas.focus();
+  transientHint(
+    `Highlighted the shortest path from ${from.label} to ${to.label} (${path.filter((node) => node.relationship).length} edges).`,
+  );
+});
 
 function hint(noun: string): string {
   if (pick) {
@@ -308,7 +353,10 @@ function hint(noun: string): string {
   if (clickPrompt) {
     return `Click a ${noun} to ask about it in chat ${orSelect}.`;
   }
-  return `Click ${noun}s to select them (Ctrl/Cmd/Shift+click for several).`;
+  const parts = active?.drawnNodes?.().some((node) => node.relationship)
+    ? "nodes or relationships"
+    : `${noun}s`;
+  return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
 }
 
 function selectionChanged(): void {
@@ -335,7 +383,7 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
   // node links to, ask the diagram's clickPrompt in chat, or select the node. A modified click
   // always selects, so that every node can be selected whatever else a click does.
   if (!pick && !modifier) {
-    if (links.has(hit.node.id)) {
+    if (!hit.node.relationship && links.has(hit.node.id)) {
       post({ type: "clickToOpen", node: hit.node });
       return;
     }
@@ -508,8 +556,35 @@ askForm.addEventListener("submit", (event) => {
 refreshButton.addEventListener("click", () => post({ type: "refresh" }));
 writeToButton.addEventListener("click", () => post({ type: "writeToDocument" }));
 
-// Saved charts keep the colors they are drawn in, which only the webview can read.
-saveButton.addEventListener("click", () => post({ type: "save", colors: readThemeColors() }));
+/** Capture an image in the render queue; rasterization must not hold up later renders. */
+async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
+  const { requestId, renderRequestId, format } = message;
+  const failed = (error: unknown) =>
+    post({ type: "exportError", requestId, message: errorMessage(error) });
+  try {
+    if (!active || renderedRequestId !== renderRequestId) {
+      throw new Error("The diagram changed before it could be exported. Try again.");
+    }
+    if (format === "html") {
+      if (active !== renderers.echarts)
+        throw new Error("Interactive HTML is only available for charts.");
+      post({ type: "exportTheme", requestId, colors: readThemeColors() });
+      return;
+    }
+    if (!active.toImage) throw new Error("This drawing cannot be exported as an image.");
+    const image = await active.toImage(imageBackground());
+    if (format === "svg") {
+      post({ type: "exportImage", requestId, format, data: image.svg });
+    } else {
+      void pngDataUrl(image).then(
+        (data) => post({ type: "exportImage", requestId, format, data }),
+        failed,
+      );
+    }
+  } catch (error) {
+    failed(error);
+  }
+}
 
 // Dragging the drawing out of the panel as an image, e.g. into a chat or a document.
 

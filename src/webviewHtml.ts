@@ -59,7 +59,6 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       <button id="zoom-reset" title="Reset zoom">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
       <button id="refresh" hidden>Refresh</button>
-      <button id="save" title="Save the chart as a self-contained HTML file" hidden>Save…</button>
       <button id="write-to" hidden></button>
       <span id="drag-out" class="drag-out" draggable="true" role="img" aria-label="Drag the drawing into another application as an image" title="Drag into another app as an image (hold Shift to drag SVG)" hidden>${IMAGE_ICON}</span>
       <div id="views" class="views" role="group" aria-label="View">
@@ -69,6 +68,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       </div>
     </div>
   </header>
+  <section id="chart-options" aria-label="Chart Options" hidden></section>
   <div id="pick" role="status" hidden>
     <span id="pick-prompt"></span>
     <div class="actions">
@@ -91,7 +91,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       </div>
     </section>
     <div id="splitter" role="separator" tabindex="0" aria-label="Resize the source editor" aria-controls="editor" aria-valuemin="15" aria-valuemax="85" title="Resize source editor (arrow keys); Enter to reset"></div>
-    <main id="canvas" aria-label="Diagram preview" tabindex="0">
+    <main id="canvas" data-vscode-context='{"webviewSection":"drawing"}' aria-label="Diagram preview" tabindex="0">
       <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw a diagram or chart, or use <strong>Open in Diagram</strong> above a Mermaid or ECharts code block in a Markdown file.</div>
       <div id="diagram"></div>
     </main>
@@ -99,6 +99,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   <footer>
     <div id="selection">
       <span id="selection-label" role="status" aria-live="polite" aria-atomic="true">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
+      <button id="highlight-path" class="link" hidden>Highlight Path</button>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>
     <form id="ask-form">

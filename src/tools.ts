@@ -10,6 +10,7 @@ import {
   validateChartSpec,
 } from "./chartSpec";
 import { buildChart, describeTable } from "./charts";
+import type { DataTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
 import { nodeList } from "./describe";
 import { LINK_SYNTAX, validateLinks } from "./links";
@@ -142,6 +143,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
     let spec: ChartSpec;
+
     try {
       spec = validateChartSpec(options.input);
     } catch {
@@ -183,12 +185,14 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     let spec: ChartSpec;
+    let chartTable: DataTable;
     let source: string;
     let report: string;
     let description: string | undefined;
     try {
       spec = validateChartSpec(options.input);
       const { table, warning } = await loadTable(spec, token);
+      chartTable = table;
       description = `The data was read as: ${describeTable(table)}`;
       const { option, summary } = buildChart(spec, table);
       source = JSON.stringify(option, null, 2);
@@ -210,10 +214,11 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
             source,
             title: chartTitle(spec),
             clickPrompt: nonBlank(options.input.clickPrompt),
-            chart: spec.file || spec.command ? spec : undefined,
+            chart: spec,
           },
           "tool",
           options.toolInvocationToken,
+          chartTable,
         ),
       token,
     );
@@ -334,7 +339,11 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     const drawn = outcome.ids;
     const sentences: string[] = [];
     if (marks.length > 0) {
-      const parts = `${nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
+      const includesRelationships =
+        language === "mermaid" &&
+        this.panel.drawnIds &&
+        marks.some((mark) => !this.panel.drawnIds?.includes(mark.id));
+      const parts = `${includesRelationships ? "item" : nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
       const listed = marks.map(({ id, kind }) => `${id} (${kind})`).join(", ");
       sentences.push(`Marked ${marks.length} ${parts}: ${listed}.`);
       if (dim) {
@@ -351,7 +360,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     }
     const unknown =
       outcome.unknown.length > 0 && drawn
-        ? `\n\nThese ids are not ${nodeNoun(language)}s of the ${noun}, so nothing was marked for them: ` +
+        ? `\n\nThese ids are not selectable items of the ${noun}, so nothing was marked for them: ` +
           `${quoteAll(outcome.unknown)}. Its ids are ${idList(drawn)}.`
         : "";
     return textResult(sentences.join(" ") + unknown);

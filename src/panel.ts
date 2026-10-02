@@ -1,9 +1,18 @@
 import * as os from "node:os";
 import * as vscode from "vscode";
+import { unlessCancelled } from "./cancellation";
+import { chartControls, withChartControls } from "./chartOptions";
+import {
+  assertChartPresentation,
+  type ChartPresentation,
+  captureChartPresentation,
+  rebuildChart,
+} from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
-import { buildChart } from "./charts";
+import { type ChartUpdateInput, updatedChartSpec } from "./chartTools";
+import { type DataTable, parseTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
-import { describeDiagram } from "./describe";
+import { describeDiagram, nodeList } from "./describe";
 import {
   confirmReplacedWrite,
   type DocumentBinding,
@@ -18,15 +27,17 @@ import {
   type DiagramLanguage,
   type DiagramNode,
   diagramNoun,
+  type ExportFormat,
+  type ExportResult,
   errorMessage,
   type FromWebview,
   isFromWebview,
   isPlainObject,
   RENDER_TOOL,
+  safeFileName,
   type ToWebview,
 } from "./protocol";
-import { savedChartFileName, savedChartHtml } from "./savedChart";
-import type { ThemeColors } from "./webview/colors";
+import { savedChartHtml } from "./savedChart";
 import { loadWebview } from "./webviewHtml";
 
 /** Routes follow-up questions to the participant or the agent that invoked a tool. */
@@ -63,8 +74,10 @@ export interface Diagram {
   clickPrompt?: string;
   /** Mermaid node locations. Links take precedence over clickPrompt on a plain click. */
   links?: NodeLinks;
-  /** For a chart of data from a file or command: how to load the data and draw it again. */
+  /** The original data request, retained for generated chart controls and refresh. */
   chart?: ChartSpec;
+  /** Generated baseline and manual styling overrides, without a copy of the data. */
+  chartPresentation?: ChartPresentation;
   /** Original Markdown block; Apply writes user edits back to it. */
   document?: DocumentBinding;
 }
@@ -102,6 +115,7 @@ export class DiagramPanel implements vscode.Disposable {
   private selection: DiagramNode[] = [];
   /** Rendered node ids, or undefined when unavailable. */
   private nodeIds: string[] | undefined;
+  private relationships: DiagramNode[] = [];
   /** Transient marks: cleared on replacement, never persisted. */
   private annotation: Annotation | undefined;
   private nextRequestId = 1;
@@ -111,15 +125,133 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private refreshing = false;
   private saving = false;
+  private renderedRequestId: number | undefined;
+  private pendingExport: Pending<"export", ExportResult> | undefined;
+  private chartTable: DataTable | undefined;
+  private chartOptionsVisible = false;
   private saveFailed = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
+    // Older saved states have no baseline against which manual changes can be distinguished.
+    if (this.state?.chart && !this.state.chartPresentation && this.state.source !== undefined) {
+      const chartPresentation = captureChartPresentation(this.state.source);
+      if (this.state.editedByUser) {
+        chartPresentation.blocked =
+          "This saved chart has manual edits without a generated baseline. " +
+          "Your source is kept. Use Reset Styling in Chart Options to return to the generated chart.";
+      }
+      this.state = { ...this.state, chartPresentation };
+    }
+    this.updateChartOptionsContext();
   }
 
   /** The diagram currently shown, if any. */
   get current(): Readonly<DiagramState> | undefined {
     return this.state;
+  }
+
+  /** Optimistic concurrency token, exposed to tools along with the current source. */
+  get revision(): number {
+    return this.renderVersion;
+  }
+
+  /** Inspection never refreshes a file or reruns a command. */
+  get loadedChartData(): DataTable | undefined {
+    const chart = this.state?.chart;
+    if (!this.chartTable && chart?.data !== undefined) {
+      this.chartTable = parseTable(chart.data, chart.format);
+    }
+    return this.chartTable;
+  }
+
+  /** Change generated settings atomically using the retained table and manual styling. */
+  async updateChart(
+    input: ChartUpdateInput,
+    token: vscode.CancellationToken,
+    toolInvocationToken?: unknown,
+  ): Promise<RenderOutcome> {
+    if (token.isCancellationRequested) throw new vscode.CancellationError();
+    const state = this.state;
+    if (!state?.chart)
+      throw new Error(
+        "The current diagram is not a generated chart. Create one with diagram_chart first.",
+      );
+    const chart = updatedChartSpec(state.chart, input);
+    if (input.revision !== undefined && input.revision !== this.renderVersion) {
+      throw new Error(
+        "The chart changed. Read diagram_getState and retry with its current revision.",
+      );
+    }
+    if (this.pendingRender)
+      throw new Error("Wait for the current diagram to finish rendering before updating it.");
+    assertChartPresentation(state.chartPresentation);
+    const table = this.loadedChartData;
+    if (!table)
+      throw new Error(
+        "The chart data is not loaded. Refresh it first; updating never rereads files or reruns commands.",
+      );
+    const rebuilt = rebuildChart(chart, table, state.chartPresentation);
+    const previousRequest = this.toolRequestId;
+    const selection = this.selection;
+    const annotation = this.annotation;
+    this.reveal(true);
+    const panel = this.panel;
+    this.state = {
+      ...state,
+      chart,
+      title: chart.title ?? state.title,
+      source: JSON.stringify(rebuilt.option, null, 2),
+      chartPresentation: rebuilt.presentation,
+      editedByUser: rebuilt.presentation.edits.length > 0,
+      origin: "tool",
+    };
+    this.toolRequestId = requestId(toolInvocationToken);
+    this.selection = [];
+    this.annotation = undefined;
+    this.cancelPick("The chart changed before the user picked.");
+    const revision = this.renderVersion + 1;
+    let cancelled = false;
+    const cancellation = token.onCancellationRequested(() => {
+      cancelled = true;
+      if (this.renderVersion === revision && this.pendingRender) {
+        this.finishRender(this.pendingRender.message.requestId, {
+          ok: false,
+          kind: "unavailable",
+          error: "Chart update was cancelled.",
+        });
+      }
+    });
+    let outcome: RenderOutcome;
+    try {
+      outcome = await this.renderCurrent();
+    } finally {
+      cancellation.dispose();
+    }
+    if ((!outcome.ok || cancelled) && this.renderVersion === revision) {
+      this.state = state;
+      this.toolRequestId = previousRequest;
+      this.selection = selection;
+      this.annotation = annotation;
+      await this.save();
+      if (
+        this.renderVersion === revision &&
+        this.panel === panel &&
+        panel &&
+        (cancelled || (!outcome.ok && outcome.kind === "invalid"))
+      ) {
+        // Restore the view even after cancellation, but do not make a cancelled tool wait for
+        // an unresponsive webview. The persisted source has already been restored above.
+        const restoring = this.renderCurrent();
+        if (!cancelled && !token.isCancellationRequested) {
+          await unlessCancelled(() => restoring, token);
+        }
+      }
+      if (!outcome.ok)
+        outcome = { ...outcome, error: `${outcome.error} The previous chart is kept.` };
+    }
+    if (cancelled || token.isCancellationRequested) throw new vscode.CancellationError();
+    return outcome;
   }
 
   /**
@@ -135,6 +267,7 @@ export class DiagramPanel implements vscode.Disposable {
     diagram: Diagram,
     origin: DiagramOrigin,
     toolInvocationToken?: unknown,
+    chartTable?: DataTable,
   ): Promise<RenderOutcome> {
     this.toolRequestId = requestId(toolInvocationToken);
     // Keep document bindings across agent replacements; a later Apply requires confirmation.
@@ -144,7 +277,18 @@ export class DiagramPanel implements vscode.Disposable {
       (previousBinding?.fence.language === diagram.language
         ? { ...previousBinding, replaced: true }
         : undefined);
-    this.state = { ...diagram, document, origin, editedByUser: false };
+    this.state = {
+      ...diagram,
+      document,
+      origin,
+      editedByUser: false,
+      chartPresentation: diagram.chart
+        ? (diagram.chartPresentation ?? captureChartPresentation(diagram.source))
+        : undefined,
+    };
+    this.chartTable = diagram.chart ? chartTable : undefined;
+    this.chartOptionsVisible = false;
+    this.updateChartOptionsContext();
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
@@ -236,7 +380,7 @@ export class DiagramPanel implements vscode.Disposable {
       return { ok: false, reason: failsToRender(state.language, state.error, "mark") };
     }
     // The ids of the diagram as it is drawn now: opening the panel below draws it again.
-    const ids = this.nodeIds;
+    const ids = this.nodeIds && [...this.nodeIds, ...this.relationships.map((node) => node.id)];
     const known = ids && new Set(ids);
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
     const marks: Annotation["marks"] = [];
@@ -276,7 +420,10 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Describes the current diagram and the user's interactions with it, for a language model. */
   describeForModel(): string | undefined {
-    return this.state && describeDiagram(this.state, this.selection, this.annotation);
+    return (
+      this.state &&
+      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships)}`
+    );
   }
 
   dispose(): void {
@@ -330,6 +477,7 @@ export class DiagramPanel implements vscode.Disposable {
     });
     panel.onDidDispose(() => {
       messageListener.dispose();
+      this.cancelExport("The diagram panel was closed before export finished.");
       this.panel = undefined;
       this.webviewReady = false;
       this.selection = [];
@@ -347,12 +495,14 @@ export class DiagramPanel implements vscode.Disposable {
   private onMessage(message: FromWebview): void {
     switch (message.type) {
       case "ready":
+        this.cancelExport("The diagram panel reloaded before export finished. Try again.");
         // The webview loaded, or lost its content and loaded again (e.g. when moved to another
         // window). Keep the pending request id so its caller is answered.
         this.webviewReady = true;
         this.webviewGeneration++;
         this.selection = [];
         if (this.pendingRender) {
+          this.sendChartOptions();
           this.post(this.pendingRender.message);
         } else if (this.state) {
           void this.renderCurrent();
@@ -370,6 +520,7 @@ export class DiagramPanel implements vscode.Disposable {
         // answer to a replaced render says nothing about the diagram now shown.
         if (this.pendingRender?.message.requestId === message.requestId) {
           this.nodeIds = message.nodeIds;
+          this.relationships = message.relationships?.filter((node) => node.relationship) ?? [];
         }
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
@@ -386,11 +537,22 @@ export class DiagramPanel implements vscode.Disposable {
       case "sourceEdited":
         void this.applyEdit(message.source);
         break;
+      case "closeChartOptions":
+        this.chartOptionsVisible = false;
+        break;
+      case "resetChartStyling":
+        void this.applyChartOptions(message);
+        break;
+      case "applyChartOptions":
+        void this.applyChartOptions(message);
+        break;
       case "refresh":
         void this.refreshChart();
         break;
-      case "save":
-        void this.saveChart(message.colors);
+      case "exportImage":
+      case "exportTheme":
+      case "exportError":
+        this.finishExport(message);
         break;
       case "writeToDocument":
         void this.writeShownToDocument();
@@ -436,9 +598,13 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state || !this.panel) {
       return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
     }
+    this.cancelExport("The diagram changed before export finished. Try again.");
+    this.renderedRequestId = undefined;
     const version = ++this.renderVersion;
+    this.sendChartOptions();
     // What was drawn before says nothing about the rendering being drawn now.
     this.nodeIds = undefined;
+    this.relationships = [];
     const replaced = {
       ok: false,
       kind: "unavailable",
@@ -453,7 +619,10 @@ export class DiagramPanel implements vscode.Disposable {
       ? `${state.title} — ${documentName(state.document)}`
       : state.title;
     const { source, title } = state;
-    const refreshFrom = state.chart && dataOrigin(state.chart);
+    const refreshFrom =
+      state.chart && (state.chart.file || state.chart.command)
+        ? dataOrigin(state.chart)
+        : undefined;
     if (source === undefined) {
       this.post({ type: "needsRefresh", title, refreshFrom });
       return {
@@ -521,6 +690,7 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.pendingRender?.message.requestId !== requestId) {
       return;
     }
+    this.renderedRequestId = outcome.ok ? requestId : undefined;
     const { resolve } = this.pendingRender;
     this.pendingRender = undefined;
     this.unavailable = !outcome.ok && outcome.kind === "unavailable" ? outcome.error : undefined;
@@ -549,7 +719,14 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state) {
       return;
     }
-    this.state = { ...state, source, editedByUser: true };
+    this.state = {
+      ...state,
+      source,
+      editedByUser: true,
+      chartPresentation: state.chart
+        ? captureChartPresentation(source, state.chartPresentation)
+        : undefined,
+    };
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The user edited the diagram source instead of picking.");
@@ -631,9 +808,130 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Reloads chart data, replacing earlier manual edits. */
+  private updateChartOptionsContext(): void {
+    void vscode.commands.executeCommand(
+      "setContext",
+      "diagram.chartOptionsAvailable",
+      this.state?.chart !== undefined,
+    );
+  }
+
+  /** Native editor action: opening options never reads a file or executes a command. */
+  toggleChartOptions(): void {
+    if (!this.state?.chart) {
+      void vscode.window.showInformationMessage(
+        "Chart Options is available for charts created from data.",
+      );
+      return;
+    }
+    this.chartOptionsVisible = !this.chartOptionsVisible;
+    this.show();
+    this.sendChartOptions();
+  }
+
+  private sendChartOptions(): void {
+    const state = this.state;
+    const chart = state?.chart;
+    if (!chart) {
+      this.post({ type: "chartOptions", visible: false });
+      return;
+    }
+    let unavailable: string | undefined;
+    if (!this.chartTable && chart.data !== undefined) {
+      try {
+        this.chartTable = parseTable(chart.data, chart.format);
+      } catch (error) {
+        unavailable = errorMessage(error);
+      }
+    }
+    let edited = false;
+    try {
+      assertChartPresentation(state.chartPresentation);
+    } catch {
+      edited = true;
+    }
+    this.post({
+      type: "chartOptions",
+      visible: this.chartOptionsVisible,
+      state: {
+        revision: this.renderVersion,
+        controls: chartControls(chart),
+        columns: this.chartTable?.columns ?? [],
+        rowCount: this.chartTable?.rows.length ?? 0,
+        edited,
+        unavailable:
+          unavailable ??
+          (this.chartTable
+            ? undefined
+            : "Press Refresh to load the data before changing chart options."),
+      },
+    });
+  }
+
+  private async applyChartOptions(
+    message: Extract<FromWebview, { type: "applyChartOptions" | "resetChartStyling" }>,
+  ): Promise<void> {
+    const state = this.state;
+    const panel = this.panel;
+    const previousTable = this.chartTable;
+    try {
+      if (!state?.chart || message.revision !== this.renderVersion) {
+        throw new Error("The chart changed. Reopen Chart Options and try again.");
+      }
+      if (!message.replaceSource) assertChartPresentation(state.chartPresentation);
+      const reset = message.type === "resetChartStyling";
+      let table = this.chartTable;
+      if (!table && reset) {
+        const loaded = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Window,
+            title: "Resetting chart styling and reloading data",
+          },
+          (_progress, token) => loadTable(state.chart as ChartSpec, token),
+        );
+        if (message.revision !== this.renderVersion || this.panel !== panel || !panel) return;
+        table = loaded.table;
+        if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);
+      }
+      if (!table) throw new Error("Press Refresh to load the chart data first.");
+      const chart = reset ? state.chart : withChartControls(state.chart, message.controls);
+      const { option, presentation } = rebuildChart(
+        chart,
+        table,
+        reset || message.replaceSource ? undefined : state.chartPresentation,
+      );
+      this.chartTable = table;
+      this.state = {
+        ...state,
+        chart,
+        chartPresentation: presentation,
+        source: JSON.stringify(option, null, 2),
+        editedByUser: presentation.edits.length > 0,
+      };
+      this.selection = [];
+      this.annotation = undefined;
+      this.cancelPick("Chart options changed before the user picked.");
+      const revision = this.renderVersion + 1;
+      const outcome = await this.renderCurrent();
+      if (!outcome.ok && this.renderVersion === revision) {
+        this.state = state;
+        this.chartTable = previousTable;
+        await this.save();
+        if (this.renderVersion !== revision || this.panel !== panel) return;
+        if (outcome.kind === "invalid") await this.renderCurrent();
+        throw new Error(
+          `The chart options could not be rendered. Your previous chart is kept. ${outcome.error}`,
+        );
+      }
+    } catch (error) {
+      this.post({ type: "chartOptionsError", message: errorMessage(error) });
+    }
+  }
+
+  /** Reloads chart data while retaining supported manual presentation edits. */
   private async refreshChart(): Promise<void> {
     const chart = this.state?.chart;
+    const presentation = this.state?.chartPresentation;
     const version = this.renderVersion;
     const panel = this.panel;
     if (!chart || this.refreshing) {
@@ -641,6 +939,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.refreshing = true;
     try {
+      assertChartPresentation(presentation);
       const { table, warning } = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
@@ -649,73 +948,180 @@ export class DiagramPanel implements vscode.Disposable {
       if (this.renderVersion !== version || this.panel !== panel || !panel || !this.state) {
         return;
       }
-      const source = JSON.stringify(buildChart(chart, table).option, null, 2);
+      const previousState = this.state;
+      const rebuilt = rebuildChart(chart, table, presentation);
+      const source = JSON.stringify(rebuilt.option, null, 2);
+      const previousTable = this.chartTable;
+      this.chartTable = table;
       this.cancelPick("The chart data was refreshed before the user picked.");
-      this.state = { ...this.state, source, editedByUser: false };
+      this.state = {
+        ...this.state,
+        source,
+        chartPresentation: rebuilt.presentation,
+        editedByUser: rebuilt.presentation.edits.length > 0,
+      };
       this.selection = [];
       this.annotation = undefined;
       if (warning) {
         void vscode.window.showWarningMessage(warning);
       }
-      await this.renderCurrent();
+      const outcome = await this.renderCurrent();
+      if (!outcome.ok && this.renderVersion === version + 1 && this.panel === panel) {
+        this.state = previousState;
+        this.chartTable = previousTable;
+        await this.save();
+        if (this.renderVersion !== version + 1 || this.panel !== panel) {
+          return;
+        }
+        if (outcome.kind === "invalid") {
+          await this.renderCurrent();
+        }
+        void vscode.window.showErrorMessage(
+          `Could not refresh the chart: ${outcome.error} The previous source and styling are kept.`,
+        );
+      }
     } catch (error) {
-      void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
+      if (this.renderVersion === version && this.panel === panel) {
+        void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
+      }
     } finally {
       this.refreshing = false;
     }
   }
 
-  /** Saves a self-contained HTML chart at the path the user picks. */
-  private async saveChart(colors: ThemeColors): Promise<void> {
+  /** Exports a snapshot through VS Code's format picker and save dialog. */
+  async exportDiagram(): Promise<void> {
+    if (this.saving) return;
     const state = this.state;
-    if (state?.language !== "echarts" || this.saving) {
+    let warning: string | undefined;
+    if (!state) {
+      warning = "Open or draw a diagram before exporting it.";
+    } else if (this.pendingRender) {
+      warning = "Wait for the diagram to finish rendering before exporting it.";
+    } else if (state.source === undefined) {
+      warning = "Press Refresh to draw the chart again, then export it.";
+    } else if (state.error) {
+      warning = `There is nothing to export, as the diagram fails to render: ${state.error}`;
+    } else if (
+      this.unavailable ||
+      !this.webviewReady ||
+      !this.panel ||
+      this.renderedRequestId === undefined
+    ) {
+      warning = `The diagram is unavailable. ${this.unavailable ?? ""} Use Diagram: Show Panel and try again.`;
+    }
+    if (warning || !state || state.source === undefined) {
+      void vscode.window.showWarningMessage(warning ?? "There is no diagram to export.");
       return;
     }
-    if (this.pendingRender) {
-      void vscode.window.showWarningMessage(
-        "Wait for the chart to finish rendering before saving it.",
-      );
-      return;
-    }
-    if (this.unavailable) {
-      void vscode.window.showWarningMessage(
-        `The chart was not saved: ${this.unavailable} Reopen the panel and try again.`,
-      );
-      return;
-    }
-    if (state.source === undefined) {
-      void vscode.window.showWarningMessage(
-        "The chart is not drawn, as it was too large to keep when VS Code closed. " +
-          "Press Refresh to draw it again, then save it.",
-      );
-      return;
-    }
-    if (state.error) {
-      void vscode.window.showWarningMessage(
-        `There is nothing to save, as the chart fails to render: ${state.error}`,
-      );
-      return;
-    }
+    const version = this.renderVersion;
     this.saving = true;
     try {
+      const formats: (vscode.QuickPickItem & { format: ExportFormat })[] = [
+        { label: "PNG image", description: ".png", format: "png" },
+        { label: "SVG image", description: ".svg", format: "svg" },
+      ];
+      if (state.language === "echarts") {
+        formats.push({
+          label: "Interactive HTML",
+          description: ".html · Works offline",
+          format: "html",
+        });
+      }
+      const choice = await vscode.window.showQuickPick(formats, {
+        title: "Export Diagram",
+        placeHolder: "Choose an export format",
+      });
+      if (!choice) return;
+      if (
+        version !== this.renderVersion ||
+        !this.panel ||
+        !this.webviewReady ||
+        this.renderedRequestId === undefined
+      ) {
+        throw new Error("The diagram changed or closed while choosing a format. Try again.");
+      }
+      const { format } = choice;
+      const result = await this.requestExport(format, this.renderedRequestId);
+      if (result.type === "exportError") throw new Error(result.message);
+      let bytes: Uint8Array;
+      if (format === "html" && result.type === "exportTheme") {
+        const html = await savedChartHtml(
+          { title: state.title, source: state.source, colors: result.colors },
+          this.context.extensionUri,
+        );
+        bytes = new TextEncoder().encode(html);
+      } else if (result.type === "exportImage" && result.format === format) {
+        if (format === "png") {
+          if (!/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(result.data)) {
+            throw new Error("The panel returned an invalid PNG image. Try exporting as SVG.");
+          }
+          bytes = Buffer.from(result.data.slice("data:image/png;base64,".length), "base64");
+        } else {
+          bytes = new TextEncoder().encode(result.data);
+        }
+      } else {
+        throw new Error("The panel returned the wrong export format. Try again.");
+      }
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
       const target = await vscode.window.showSaveDialog({
-        title: "Save Chart as HTML",
-        defaultUri: vscode.Uri.joinPath(folder, savedChartFileName(state.title)),
-        filters: { "HTML file": ["html", "htm"] },
+        title: `Export ${choice.label}`,
+        saveLabel: "Export",
+        defaultUri: vscode.Uri.joinPath(
+          folder,
+          `${safeFileName(state.title, "diagram")}.${format}`,
+        ),
+        filters: { [choice.label]: [format] },
       });
-      if (!target) {
-        return;
-      }
-      const chart = { title: state.title, source: state.source, colors };
-      const html = await savedChartHtml(chart, this.context.extensionUri);
-      await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(html));
-      // Let the user save another chart while the notification stays open.
-      void offerToOpen(target);
+      if (!target) return;
+      await vscode.workspace.fs.writeFile(target, bytes);
+      if (format === "html") void offerToOpen(target);
     } catch (error) {
-      void vscode.window.showErrorMessage(`Could not save the chart: ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`Could not export the diagram: ${errorMessage(error)}`);
     } finally {
       this.saving = false;
+    }
+  }
+
+  private requestExport(format: ExportFormat, renderRequestId: number): Promise<ExportResult> {
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(
+        () =>
+          this.finishExport({
+            type: "exportError",
+            requestId,
+            message:
+              "The diagram panel did not finish exporting within 15 seconds. Try again or choose SVG.",
+          }),
+        RENDER_TIMEOUT_MS,
+      );
+      const message = { type: "export", requestId, renderRequestId, format } as const;
+      this.pendingExport = {
+        message,
+        resolve: (result) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+      };
+      void this.post(message);
+    });
+  }
+
+  private finishExport(result: ExportResult): void {
+    if (this.pendingExport?.message.requestId !== result.requestId) return;
+    const { resolve } = this.pendingExport;
+    this.pendingExport = undefined;
+    resolve(result);
+  }
+
+  private cancelExport(message: string): void {
+    if (this.pendingExport) {
+      this.finishExport({
+        type: "exportError",
+        requestId: this.pendingExport.message.requestId,
+        message,
+      });
     }
   }
 
@@ -723,6 +1129,7 @@ export class DiagramPanel implements vscode.Disposable {
     const state = this.state;
     const saved =
       state?.chart &&
+      (state.chart.file !== undefined || state.chart.command !== undefined) &&
       !state.editedByUser &&
       state.source !== undefined &&
       state.source.length > MAX_SAVED_CHART_SOURCE
@@ -796,7 +1203,7 @@ export class DiagramPanel implements vscode.Disposable {
   private regarding(nodes: DiagramNode[]): string {
     const noun = diagramNoun(this.state?.language ?? "mermaid");
     return nodes.length > 0
-      ? `Regarding ${nodes.map((node) => `"${node.label}"`).join(", ")} in the ${noun}: `
+      ? `Regarding ${nodes.map((node) => (node.relationship ? nodeList([node]) : `"${node.label}"`)).join(", ")} in the ${noun}: `
       : `Regarding the ${noun}: `;
   }
 
@@ -841,6 +1248,8 @@ export class DiagramPanel implements vscode.Disposable {
     }
     if (message.type === "render") {
       this.finishRender(message.requestId, { ok: false, kind: "unavailable", error });
+    } else if (message.type === "export") {
+      this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
     } else if (message.type === "startPick") {
       this.finishPick(message.pickId, { picked: false, reason: error });
     }

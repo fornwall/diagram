@@ -12,6 +12,7 @@ import {
   type DiagramNode,
   nodeNoun,
   RENDER_TOOL,
+  UPDATE_CHART_TOOL,
 } from "./protocol";
 
 /** Longer diagram sources are left out of the description. */
@@ -22,16 +23,25 @@ export function describeDiagram(
   state: DiagramState,
   selection: readonly DiagramNode[],
   annotation?: Annotation,
+  relationships: readonly DiagramNode[] = [],
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [`Current ${what}: ${JSON.stringify(state.title)}`, "", describeSource(state), ""];
   if (state.chart) {
+    const refresh = state.chart.file !== undefined || state.chart.command !== undefined;
     lines.push(
-      `${CHART_TOOL} parameters: ${JSON.stringify(state.chart)}. Refresh reloads the data.`,
+      `${CHART_TOOL} parameters: ${JSON.stringify(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
     );
-    if (!state.editedByUser) {
-      lines.push(`To change this generated chart, call ${CHART_TOOL} with updated parameters.`);
+    if (state.chartPresentation?.blocked) {
+      lines.push(state.chartPresentation.blocked);
+    } else if (state.chartPresentation?.edits.length) {
+      lines.push(
+        `${UPDATE_CHART_TOOL} preserves supported manual styling. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must preserve those source customizations too.`,
+      );
     }
+    lines.push(
+      `To change this generated chart's type, columns, grouping, sort or limit, use ${UPDATE_CHART_TOOL} with the loaded data. Use ${CHART_TOOL} to change or reload its data source.`,
+    );
   }
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
   if (links.length > 0) {
@@ -50,7 +60,14 @@ export function describeDiagram(
   if (state.editedByUser) {
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
-  const parts = `${nodeNoun(state.language)}s`;
+  if (relationships.length > 0) {
+    lines.push(
+      `Selectable relationships (use these exact ids for ${ANNOTATE_TOOL}): ${nodeList(relationships)}.`,
+    );
+  }
+  const parts = selection.some((node) => node.relationship)
+    ? "items"
+    : `${nodeNoun(state.language)}s`;
   const marked = describeMarks(annotation, parts);
   if (marked) {
     lines.push(marked);
@@ -98,5 +115,13 @@ function describeSource({ source, language }: DiagramState): string {
 
 /** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
 export function nodeList(nodes: readonly DiagramNode[]): string {
-  return nodes.map((node) => `"${node.label}" (id: ${node.id})`).join(", ");
+  return nodes
+    .map((node) => {
+      const relation = node.relationship;
+      const details = relation
+        ? `; ${relation.kind}; from: ${relation.source}; to: ${relation.target}; direction: ${relation.direction}`
+        : "";
+      return `"${node.label}" (id: ${node.id}${details})`;
+    })
+    .join(", ");
 }

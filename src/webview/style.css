@@ -476,3 +476,74 @@ input:focus {
   flex: 1;
   min-width: 0;
 }
+
+#chart-options {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  max-height: 45vh;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.chart-options-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.chart-options-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+  min-width: 0;
+}
+.chart-options-fields label {
+  display: block;
+  margin-bottom: 4px;
+}
+#chart-options select,
+#chart-options input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 3px 5px;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+}
+.chart-options-fields select:focus,
+.chart-options-fields input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+.chart-column-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.chart-options-error {
+  color: var(--vscode-errorForeground);
+  white-space: pre-wrap;
+}
+#chart-options form > label:not([hidden]) {
+  display: block;
+  margin: 8px 0;
+}
+
+/* Relationship hit targets stay invisible when selected or annotated. */
+#diagram .diagram-relationship-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14px;
+  pointer-events: stroke;
+  filter: none;
+}
+#diagram .diagram-relationship.diagram-selected:is(path, line):not(.diagram-relationship-hit) {
+  /* biome-ignore lint/complexity/noImportantStyles: Overrides Mermaid inline edge colors. */
+  stroke: var(--vscode-focusBorder) !important;
+}
+#diagram .diagram-relationship.diagram-marked:is(path, line):not(.diagram-relationship-hit) {
+  /* biome-ignore lint/complexity/noImportantStyles: Overrides Mermaid inline edge colors. */
+  stroke: var(--mark-color) !important;
+}

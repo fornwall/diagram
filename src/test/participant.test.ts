@@ -10,6 +10,29 @@ type Reply = Part[] | (() => Promise<Part[]>);
 
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
+const defaultTools = [
+  "diagram_annotate",
+  "diagram_chart",
+  "diagram_findFiles",
+  "diagram_getState",
+  "diagram_inspectData",
+  "diagram_pickNodes",
+  "diagram_readFile",
+  "diagram_render",
+  "diagram_searchText",
+  "diagram_updateChart",
+];
+const readOnlyTools = [
+  "diagram_findFiles",
+  "diagram_getState",
+  "diagram_readFile",
+  "diagram_searchText",
+];
+const availableDefaults = () =>
+  vscode.lm.tools
+    .map((tool) => tool.name)
+    .filter((name) => defaultTools.includes(name))
+    .sort();
 const invalid = "```mermaid\nflowchart TD\n  A --> --> B[\n```";
 
 // The constructors are hidden from the API, but not at runtime.
@@ -327,7 +350,7 @@ suite("participant", function () {
   });
 
   for (const finalBlock of [false, true]) {
-    test(`keeps the latest diagram from ${finalBlock ? "the final reply" : "a tool"}`, async () => {
+    test(`preserves a tool render ${finalBlock ? "despite a later diagram fence" : "in history"}`, async () => {
       const panel = newPanel();
       const invokeTool = vscode.lm.invokeTool;
       const toolInvocationToken = { requestId: "latest-diagram" } as never;
@@ -356,11 +379,11 @@ suite("participant", function () {
           ],
           { toolReferences: [{ name: "diagram_render" }], toolInvocationToken },
         );
-        const source = finalBlock ? "flowchart TD\n  Final --> Result" : toolDiagram.source;
+        const source = toolDiagram.source;
         assert.strictEqual(panel.current?.source, source);
         assert.strictEqual(result?.metadata?.source, source);
         assert.strictEqual(panel.current?.origin, "participant");
-        assert.deepStrictEqual(panel.current?.links, finalBlock ? undefined : toolDiagram.links);
+        assert.deepStrictEqual(panel.current?.links, toolDiagram.links);
         assert.doesNotMatch(shown, /flowchart/);
       } finally {
         vscode.lm.invokeTool = invokeTool;
@@ -437,10 +460,7 @@ suite("participant", function () {
         { toolReferences: [{ name: "diagram_getState" }] },
       );
       const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
-      assert.deepStrictEqual(toolNames, [
-        ["diagram_getState"],
-        ["diagram_chart", "diagram_getState"],
-      ]);
+      assert.deepStrictEqual(toolNames, [["diagram_getState"], availableDefaults()]);
       assert.deepStrictEqual(
         sent.map(({ options }) => options.toolMode),
         [vscode.LanguageModelChatToolMode.Required, undefined],
@@ -457,11 +477,11 @@ suite("participant", function () {
   test("does not run tools that the model was not given", async () => {
     const panel = newPanel();
     try {
-      const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
+      const call = new vscode.LanguageModelToolCallPart("1", "unknown_external_tool", {});
       const { sent } = await ask(panel, [[call], [text("Sorry.")]]);
       assert.strictEqual(
         messageText(sent[1]?.messages.at(-1)),
-        "The tool diagram_getState is not available in this round. Use only the tools you were given.",
+        "The tool unknown_external_tool is not available in this round. Use only the tools you were given.",
       );
     } finally {
       panel.dispose();
@@ -482,12 +502,257 @@ suite("participant", function () {
       const { sent } = await ask(panel, [[call], [text("Done.")]], {
         toolReferences: [{ name: "diagram_getState" }],
       });
-      assert.deepStrictEqual(sent[1]?.options.tools?.map((tool) => tool.name).sort(), [
-        "diagram_chart",
-        "diagram_getState",
-      ]);
+      assert.deepStrictEqual(
+        sent[1]?.options.tools?.map((tool) => tool.name).sort(),
+        availableDefaults(),
+      );
     } finally {
       Object.defineProperty(vscode.lm, "tools", descriptor);
+      panel.dispose();
+    }
+  });
+
+  test("offers all built-in tools by default and only explicitly attached external tools", async () => {
+    const panel = newPanel();
+    const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
+    assert.ok(descriptor);
+    const names = [...defaultTools, "external_attached", "external_unattached", "diagram_unknown"];
+    Object.defineProperty(vscode.lm, "tools", {
+      configurable: true,
+      get: () => names.map((name) => ({ name, description: name, inputSchema: {} })),
+    });
+    const invoke = vscode.lm.invokeTool;
+    vscode.lm.invokeTool = async () => new vscode.LanguageModelToolResult([text("Done")]);
+    try {
+      const regular = await ask(panel, [[text("Ready.")]]);
+      assert.deepStrictEqual(
+        regular.sent[0]?.options.tools?.map((tool) => tool.name).sort(),
+        defaultTools,
+      );
+      const attached = await ask(
+        panel,
+        [[new vscode.LanguageModelToolCallPart("1", "external_attached", {})], [text("Done.")]],
+        { toolReferences: [{ name: "external_attached" }] },
+      );
+      assert.deepStrictEqual(
+        attached.sent[0]?.options.tools?.map((tool) => tool.name),
+        ["external_attached"],
+      );
+      assert.deepStrictEqual(attached.sent[1]?.options.tools?.map((tool) => tool.name).sort(), [
+        ...defaultTools,
+        "external_attached",
+      ]);
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      Object.defineProperty(vscode.lm, "tools", descriptor);
+      panel.dispose();
+    }
+  });
+
+  test("/explain rejects mutating and unknown tools even when explicitly attached", async () => {
+    const panel = newPanel();
+    await panel.render(
+      { language: "mermaid", source: "flowchart TD\n A --> B", title: "Original" },
+      "participant",
+    );
+    const before = panel.current;
+    const invoke = vscode.lm.invokeTool;
+    let invoked = 0;
+    vscode.lm.invokeTool = async () => {
+      invoked++;
+      return new vscode.LanguageModelToolResult([]);
+    };
+    try {
+      const { sent, result } = await ask(
+        panel,
+        [
+          [
+            "diagram_render",
+            "diagram_chart",
+            "diagram_updateChart",
+            "diagram_inspectData",
+            "diagram_annotate",
+            "diagram_pickNodes",
+            "external_tool",
+          ].map((name, i) => new vscode.LanguageModelToolCallPart(String(i), name, {})),
+          [text(valid)],
+        ],
+        {
+          command: "explain",
+          toolReferences: [
+            { name: "diagram_render" },
+            { name: "diagram_chart" },
+            { name: "external_tool" },
+          ],
+        },
+      );
+      assert.strictEqual(invoked, 0);
+      assert.strictEqual(panel.current, before);
+      assert.strictEqual(result, undefined);
+      assert.ok(sent[0]?.options.tools?.every((tool) => readOnlyTools.includes(tool.name)));
+      assert.strictEqual(sent[0]?.options.toolMode, undefined);
+      assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      panel.dispose();
+    }
+  });
+
+  test("supports extended exploration and stops after twelve tool rounds", async () => {
+    const panel = newPanel();
+    const invoke = vscode.lm.invokeTool;
+    let invoked = 0;
+    vscode.lm.invokeTool = async () => {
+      invoked++;
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    };
+    try {
+      const replies = Array.from({ length: 20 }, (_, i) => [
+        new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+      ]);
+      const { sent, shown } = await ask(panel, replies);
+      assert.strictEqual(invoked, 12);
+      assert.strictEqual(sent.length, 14);
+      assert.match(messageText(sent[13]?.messages.at(-1)), /tool round limit/);
+      assert.match(shown, /Stopped tool use.*tool round limit/);
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      panel.dispose();
+    }
+  });
+
+  test("bounds batched tool calls and permits a final explanation", async () => {
+    const panel = newPanel();
+    const invoke = vscode.lm.invokeTool;
+    let invoked = 0;
+    vscode.lm.invokeTool = async () => {
+      invoked++;
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    };
+    try {
+      const calls = Array.from(
+        { length: 40 },
+        (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+      );
+      const { sent, shown } = await ask(panel, [calls, [text("Exploration stopped.")]]);
+      assert.strictEqual(invoked, 32);
+      assert.strictEqual(sent.length, 2);
+      assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
+      assert.strictEqual(shown, "Exploration stopped.");
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      panel.dispose();
+    }
+  });
+
+  for (const name of ["Canceled", "CancellationError", "AbortError"]) {
+    test(`does not repeat a declined tool (${name}) in the batch or subsequent rounds`, async () => {
+      const panel = newPanel();
+      const invoke = vscode.lm.invokeTool;
+      let invoked = 0;
+      vscode.lm.invokeTool = async () => {
+        invoked++;
+        const error = new Error("Declined");
+        error.name = name;
+        throw error;
+      };
+      try {
+        const call = (id: string) =>
+          new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
+        const { sent, shown } = await ask(panel, [
+          [call("1"), call("2")],
+          [call("3")],
+          [text("Unreachable")],
+        ]);
+        assert.strictEqual(invoked, 1);
+        assert.strictEqual(sent.length, 2);
+        assert.match(messageText(sent[1]?.messages.at(-1)), /user declined/);
+        assert.match(shown, /Stopped tool use.*user declined/);
+      } finally {
+        vscode.lm.invokeTool = invoke;
+        panel.dispose();
+      }
+    });
+  }
+
+  test("shares the tool budget with rendering repairs", async () => {
+    const panel = newPanel();
+    const invoke = vscode.lm.invokeTool;
+    let invoked = 0;
+    vscode.lm.invokeTool = async () => {
+      invoked++;
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    };
+    try {
+      const calls = Array.from(
+        { length: 32 },
+        (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+      );
+      const { result, sent } = await ask(panel, [
+        calls,
+        [text(invalid)],
+        [new vscode.LanguageModelToolCallPart("repair", "diagram_getState", {})],
+        [text(valid)],
+      ]);
+      assert.strictEqual(invoked, 32);
+      assert.strictEqual(sent.length, 4);
+      assert.match(messageText(sent[3]?.messages.at(-1)), /tool call limit/);
+      assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      panel.dispose();
+    }
+  });
+
+  test("ordinary tool failures can be corrected in a later round", async () => {
+    const panel = newPanel();
+    const invoke = vscode.lm.invokeTool;
+    let invoked = 0;
+    vscode.lm.invokeTool = async () => {
+      if (++invoked === 1) throw new Error("Invalid input");
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    };
+    try {
+      const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
+      const { result, sent } = await ask(panel, [[call("1")], [call("2")], [text("Done.")]]);
+      assert.strictEqual(invoked, 2);
+      assert.match(messageText(sent[1]?.messages.at(-1)), /tool call failed: Invalid input/);
+      assert.strictEqual(result?.errorDetails, undefined);
+    } finally {
+      vscode.lm.invokeTool = invoke;
+      panel.dispose();
+    }
+  });
+
+  test("adopts chart provenance instead of copying its rendered data into history", async () => {
+    const panel = newPanel();
+    const invoke = vscode.lm.invokeTool;
+    const toolInvocationToken = { requestId: "chart-history" } as never;
+    const chart = { data: "name,value\na,1\nb,2", type: "bar" } as const;
+    const source =
+      '{ "xAxis": { "data": ["a", "b"] }, "yAxis": {}, "series": [{ "type": "bar", "data": [1, 2] }] }';
+    vscode.lm.invokeTool = async () => {
+      assert.ok(
+        (
+          await panel.render(
+            { language: "echarts", source, title: "Chart", chart },
+            "tool",
+            toolInvocationToken,
+          )
+        ).ok,
+      );
+      return new vscode.LanguageModelToolResult([text("Rendered")]);
+    };
+    try {
+      const { result } = await ask(
+        panel,
+        [[new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)], [text(valid)]],
+        { toolInvocationToken },
+      );
+      assert.deepStrictEqual(result?.metadata, { chart });
+      assert.strictEqual(panel.current?.source, source);
+    } finally {
+      vscode.lm.invokeTool = invoke;
       panel.dispose();
     }
   });

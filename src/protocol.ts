@@ -1,5 +1,6 @@
 // Shared by the extension host and the diagram webview, mainly the messages exchanged between them.
 
+import type { ChartOptionsState } from "./chartOptions";
 import type { ThemeColors } from "./webview/colors";
 
 export const RENDER_TOOL = "diagram_render";
@@ -7,6 +8,11 @@ export const CHART_TOOL = "diagram_chart";
 export const GET_STATE_TOOL = "diagram_getState";
 export const PICK_NODES_TOOL = "diagram_pickNodes";
 export const ANNOTATE_TOOL = "diagram_annotate";
+export const FIND_FILES_TOOL = "diagram_findFiles";
+export const SEARCH_TEXT_TOOL = "diagram_searchText";
+export const READ_FILE_TOOL = "diagram_readFile";
+export const INSPECT_DATA_TOOL = "diagram_inspectData";
+export const UPDATE_CHART_TOOL = "diagram_updateChart";
 
 /**
  * How a diagram's source is written: Mermaid syntax, or an Apache ECharts option object, which
@@ -47,6 +53,13 @@ export interface DiagramNode {
   id: string;
   /** The visible label of the node, or the name of the chart data item. */
   label: string;
+  /** Only flowchart edges and sequence messages have relationship metadata. */
+  relationship?: {
+    kind: "edge" | "message";
+    source: string;
+    target: string;
+    direction: "forward" | "both" | "undirected";
+  };
 }
 
 /**
@@ -117,7 +130,17 @@ export function safeFileName(title: string, fallback: string): string {
   return name.slice(0, 80).replace(/[\s.\uD800-\uDBFF]+$/u, "") || fallback;
 }
 
+export type ExportFormat = "png" | "svg" | "html";
+
+export type ExportResult = Extract<
+  FromWebview,
+  { type: "exportImage" | "exportTheme" | "exportError" }
+>;
+
 export type ToWebview =
+  | { type: "export"; requestId: number; renderRequestId: number; format: ExportFormat }
+  | { type: "chartOptions"; state?: ChartOptionsState; visible: boolean }
+  | { type: "chartOptionsError"; message: string }
   | {
       type: "render";
       requestId: number;
@@ -155,6 +178,14 @@ export type ToWebview =
   | { type: "endPick"; pickId: number };
 
 export type FromWebview =
+  | { type: "closeChartOptions" }
+  | { type: "resetChartStyling"; revision: number; replaceSource: boolean }
+  | {
+      type: "applyChartOptions";
+      revision: number;
+      controls: Record<string, unknown>;
+      replaceSource: boolean;
+    }
   | { type: "ready" }
   /**
    * For Mermaid, diagramType is Mermaid's diagram type, e.g. "flowchart-v2". For ECharts, it is
@@ -170,6 +201,8 @@ export type FromWebview =
        * such as a chart, whose items are its data; see drawnNodes in src/webview/renderer.ts.
        */
       nodeIds?: string[];
+      /** Selectable flowchart edges or sequence messages, with authoritative endpoints. */
+      relationships?: DiagramNode[];
     }
   | { type: "renderError"; requestId: number; message: string }
   | { type: "selectionChanged"; nodes: DiagramNode[] }
@@ -185,11 +218,9 @@ export type FromWebview =
   | { type: "pickCancelled"; pickId: number }
   /** The user asked to reload the chart's data from its file or command. */
   | { type: "refresh" }
-  /**
-   * The user asked to save the chart as an HTML file. The colors it is drawn in come along, as
-   * only the webview can read them from the VS Code theme.
-   */
-  | { type: "save"; colors: ThemeColors }
+  | { type: "exportImage"; requestId: number; format: "png" | "svg"; data: string }
+  | { type: "exportTheme"; requestId: number; colors: ThemeColors }
+  | { type: "exportError"; requestId: number; message: string }
   /**
    * The user asked to write the diagram as shown into the code block it was opened from, without
    * editing it first, which is how an agent's version reaches the document.
@@ -202,7 +233,15 @@ const isBoolean: Check = (value) => typeof value === "boolean";
 const isNumber: Check = (value) => typeof value === "number" && Number.isFinite(value);
 const isId: Check = (value) => Number.isSafeInteger(value);
 const isNode: Check = (value) =>
-  isPlainObject(value) && isString(value.id) && isString(value.label);
+  isPlainObject(value) &&
+  isString(value.id) &&
+  isString(value.label) &&
+  (value.relationship === undefined ||
+    (isPlainObject(value.relationship) &&
+      (value.relationship.kind === "edge" || value.relationship.kind === "message") &&
+      isString(value.relationship.source) &&
+      isString(value.relationship.target) &&
+      ["forward", "both", "undirected"].includes(value.relationship.direction as string)));
 const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
 const isStrings: Check = (value) => Array.isArray(value) && value.every(isString);
 /** For a field a message may leave out, such as the ids of a rendering that names no parts. */
@@ -241,7 +280,15 @@ const FROM_WEBVIEW_FIELDS: {
   [M in FromWebview as M["type"]]: { [K in Exclude<keyof M, "type">]-?: Check };
 } = {
   ready: {},
-  rendered: { requestId: isId, diagramType: isString, nodeIds: optional(isStrings) },
+  closeChartOptions: {},
+  resetChartStyling: { revision: isId, replaceSource: isBoolean },
+  applyChartOptions: { revision: isId, controls: isPlainObject, replaceSource: isBoolean },
+  rendered: {
+    requestId: isId,
+    diagramType: isString,
+    nodeIds: optional(isStrings),
+    relationships: optional(isNodes),
+  },
   renderError: { requestId: isId, message: isString },
   selectionChanged: { nodes: isNodes },
   sourceEdited: { source: isString },
@@ -251,7 +298,13 @@ const FROM_WEBVIEW_FIELDS: {
   picked: { pickId: isId, nodes: isNodes },
   pickCancelled: { pickId: isId },
   refresh: {},
-  save: { colors: isThemeColors },
+  exportImage: {
+    requestId: isId,
+    format: (value) => value === "png" || value === "svg",
+    data: isString,
+  },
+  exportTheme: { requestId: isId, colors: isThemeColors },
+  exportError: { requestId: isId, message: isString },
   writeToDocument: {},
 };
 
