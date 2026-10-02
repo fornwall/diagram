@@ -1,14 +1,6 @@
-// The parts of ECharts that an option can use in the panel, loaded as one chunk on the first
-// chart. Custom series are included although they cost about 17 KB, the most of any series here,
-// as a renderItem function draws what no built-in series can. Left out: the canvas renderer
-// (charts draw as SVG; see below), map series and the geo component (there is no map data) and
-// universal transitions (morphs between series types, which only animate a change).
-//
-// Charts draw as SVG rather than on a canvas, so that they stay sharp at any zoom and on any
-// screen without redrawing for its pixel ratio, their text is real text, and the drawing can be
-// handed out as a vector image. The cost is that a series with very many points becomes that many
-// DOM elements, where a canvas would draw them in one pass: ECharts' progressive rendering and
-// "large" series optimizations only apply to the canvas renderer.
+// Loaded on the first chart. SVG supports sharp text and vector export, but not the canvas
+// renderer's progressive/large-data optimizations. Maps (no map data), the canvas renderer and
+// universal transitions are omitted to keep the bundle smaller.
 
 import {
   BarChart,

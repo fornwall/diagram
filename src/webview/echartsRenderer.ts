@@ -40,13 +40,27 @@ function parseItemKey(key: string): ItemRef {
   return { seriesIndex: Number(series), dataType: dataType || undefined, dataIndex: Number(data) };
 }
 
-/**
- * How ECharts finds the item an id names: by the name of the data item, and by its series when the
- * id carries one, as the panel names an item of a chart with several series "Series/Name". ECharts
- * finds nothing for an id that names no item, which is all a mark on a missing item comes to.
- */
-function itemQuery(id: string, several: boolean): { name: string; seriesName?: string } {
-  const slash = several ? id.indexOf("/") : -1;
+/** Resolves the panel's "Series/Name" ids, including unnamed series and names containing slashes. */
+function itemQuery(
+  id: string,
+  series: JsonObject[],
+): { name: string; seriesIndex?: number; seriesName?: string } {
+  let prefixLength = 0;
+  let seriesIndex: number | undefined;
+  if (series.length > 1) {
+    for (const [index, each] of series.entries()) {
+      const prefix = `${each.name || `Series ${index + 1}`}/`;
+      if (prefix.length > prefixLength && id.startsWith(prefix)) {
+        prefixLength = prefix.length;
+        seriesIndex = index;
+      }
+    }
+  }
+  if (seriesIndex !== undefined) {
+    return { seriesIndex, name: id.slice(prefixLength) };
+  }
+  // Dataset dimensions can supply a series name absent from the source option.
+  const slash = series.length > 1 ? id.indexOf("/") : -1;
   return slash > 0 ? { seriesName: id.slice(0, slash), name: id.slice(slash + 1) } : { name: id };
 }
 
@@ -252,8 +266,8 @@ export class EChartsRenderer implements Renderer {
     }
     // Drops the marks from before, and any blur with them.
     chart.dispatchAction({ type: "downplay" });
-    const several = asArray(baseOption(this.option ?? {}).series).length > 1;
-    const batch = this.annotation.marks.map(({ id }) => itemQuery(id, several));
+    const series = asArray(baseOption(this.option ?? {}).series);
+    const batch = this.annotation.marks.map(({ id }) => itemQuery(id, series));
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
       chart.dispatchAction({ type: "highlight", batch });

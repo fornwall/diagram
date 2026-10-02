@@ -228,6 +228,47 @@ suite("webview", function () {
     assert.match(outcome.error, /unsupported type "map"/);
   });
 
+  test("highlights the right unnamed or slash-named chart series", async () => {
+    for (const names of [
+      [undefined, undefined],
+      ["Sales", "Sales/EU"],
+    ]) {
+      assert.ok(
+        (
+          await render({
+            language: "echarts",
+            source: JSON.stringify({
+              animation: false,
+              series: names.map((name, index) => ({
+                name,
+                type: "pie",
+                center: [index === 0 ? "25%" : "75%", "50%"],
+                radius: 30,
+                data: [{ name: "A", value: 1 }],
+                itemStyle: { color: "#0000ff" },
+                emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+              })),
+            }),
+          })
+        ).ok,
+      );
+      panel.annotate({ marks: [{ id: `${names[1] ?? "Series 2"}/A`, kind: "info" }], dim: false });
+      assert.strictEqual(
+        await evaluate(`(async () => {
+          for (let attempt = 0; attempt < 100; attempt++) {
+            const svg = document.querySelector("#chart svg");
+            const marked = svg.querySelectorAll('path[fill="#ff0000"]');
+            if (marked.length === 1) return marked[0].getBBox().x > svg.clientWidth / 2;
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
+          return false;
+        })()`),
+        true,
+        `Did not highlight the second series (${names[1] ?? "unnamed"}).`,
+      );
+    }
+  });
+
   test("renders custom shapes without a coordinate system", async () => {
     assert.deepStrictEqual(
       await render({
