@@ -215,6 +215,43 @@ suite("webview", function () {
     assert.deepStrictEqual(exported, { htmlLabels: 0, text: "ExportedlabelOtherlabel" });
   });
 
+  test("keeps Mermaid image export separate from an incoming render", async () => {
+    assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const original = DOMParser.prototype.parseFromString;
+        let exported;
+        DOMParser.prototype.parseFromString = function (source, type) {
+          const parsed = original.call(this, source, type);
+          if (String(source).includes('id="diagram-image-') && type === "image/svg+xml") {
+            exported = {
+              htmlLabels: parsed.querySelectorAll("foreignObject").length,
+              originalLabel: parsed.documentElement.textContent.includes("Original label")
+            };
+          }
+          return parsed;
+        };
+        try {
+          document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
+          window.dispatchEvent(new MessageEvent("message", {data: {
+            type: "render", language: "mermaid", requestId: -1,
+            source: "flowchart LR\\n C[Incoming label] --> D", title: "Incoming"
+          }}));
+          for (let attempt = 0; attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            if (exported && document.querySelector("#diagram").textContent.includes("Incoming label")) {
+              return exported;
+            }
+          }
+          throw new Error("Concurrent image export and render did not finish.");
+        } finally {
+          DOMParser.prototype.parseFromString = original;
+        }
+      })()`),
+      { htmlLabels: 0, originalLabel: true },
+    );
+  });
+
   test("names an unknown Mermaid diagram type instead of repeating the source", async () => {
     const outcome = await render({ source: "flowchar TD\n  A --> B" });
     assert.ok(!outcome.ok);

@@ -500,7 +500,11 @@ function prepareDragImage(): void {
     return;
   }
   preparingDragImage = key;
-  void (async () => {
+  // Mermaid rendering and export both change its global configuration (notably HTML labels).
+  enqueue(async () => {
+    if (preparingDragImage !== key) {
+      return;
+    }
     try {
       const image = await toImage(imageBackground());
       let png: string | undefined;
@@ -525,7 +529,7 @@ function prepareDragImage(): void {
         preparingDragImage = undefined;
       }
     }
-  })();
+  });
 }
 
 // Hovering the handle is the earliest sign that a drag may be coming; pressing is the last.
