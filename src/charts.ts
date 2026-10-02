@@ -1178,36 +1178,6 @@ interface Flow {
   value: number;
 }
 
-/** Sums the flows that run between the same two nodes, in the order they first appear. */
-function sumFlows(flows: Flow[]): Flow[] {
-  const summed = new Map<string, Flow>();
-  for (const flow of flows) {
-    const key = levelKey([flow.source, flow.target]);
-    const found = summed.get(key);
-    if (found === undefined) {
-      summed.set(key, { ...flow });
-    } else {
-      found.value = addValues(found.value, flow.value);
-    }
-  }
-  return [...summed.values()];
-}
-
-/** The flows of a hierarchy: one from every node to each of its children. */
-function hierarchyFlows(nodes: Node[]): Flow[] {
-  const flows: Flow[] = [];
-  const follow = (node: Node): void => {
-    for (const child of node.children ?? []) {
-      flows.push({ source: node.name, target: child.name, value: child.value });
-      follow(child);
-    }
-  };
-  for (const node of nodes) {
-    follow(node);
-  }
-  return flows;
-}
-
 /**
  * A cycle in the flows, as the nodes it runs through, or undefined when they form the directed
  * acyclic graph that a sankey needs. ECharts throws on a cycle without saying where it is.
@@ -1270,26 +1240,39 @@ function sankeyOption(
   rows: Row[],
   notes: string[],
 ): Record<string, unknown> {
+  const flows = new Map<string, Flow>();
   let empty = 0;
-  const flows = sumFlows(
-    targets === undefined
-      ? hierarchyFlows(buildHierarchy(rows).nodes)
-      : rows.flatMap((row) =>
-          row.values.flatMap((value, column) => {
-            if (value === null || value <= 0) {
-              empty++;
-              return [];
-            }
-            return [{ source: label(row), target: targets[column] ?? "", value }];
-          }),
-        ),
-  );
+  const addFlow = (source: string, target: string, value: number | null): void => {
+    if (value === null || value <= 0) {
+      empty++;
+      return;
+    }
+    const key = levelKey([source, target]);
+    const existing = flows.get(key);
+    if (existing === undefined) {
+      flows.set(key, { source, target, value });
+    } else {
+      existing.value = addValues(existing.value, value);
+    }
+  };
+  for (const row of rows) {
+    if (targets === undefined) {
+      // Each row contributes its value to every step along its path.
+      row.labels.slice(1).forEach((target, i) => {
+        addFlow(row.labels[i] ?? "", target, row.values[0] ?? null);
+      });
+    } else {
+      row.values.forEach((value, column) => {
+        addFlow(label(row), targets[column] ?? "", value);
+      });
+    }
+  }
   if (empty > 0) {
     notes.push(`left out ${empty} ${empty === 1 ? "flow" : "flows"} without a positive value`);
   }
   // ECharts draws a flow from a node to itself as a band to nowhere, and counts its value twice.
-  const drawn = flows.filter((flow) => flow.source !== flow.target);
-  const loops = flows.length - drawn.length;
+  const drawn = [...flows.values()].filter((flow) => flow.source !== flow.target);
+  const loops = flows.size - drawn.length;
   if (loops > 0) {
     notes.push(`left out ${loops} ${loops === 1 ? "flow" : "flows"} from a node to itself`);
   }
@@ -1313,15 +1296,10 @@ function sankeyOption(
         "back, or show the pairs as a heatmap.",
     );
   }
-  const nodes: string[] = [];
-  const seen = new Set<string>();
+  const nodes = new Set<string>();
   for (const { source, target } of drawn) {
-    for (const node of [source, target]) {
-      if (!seen.has(node)) {
-        seen.add(node);
-        nodes.push(node);
-      }
-    }
+    nodes.add(source);
+    nodes.add(target);
   }
   return {
     series: [
@@ -1330,7 +1308,7 @@ function sankeyOption(
         ...(targets === undefined && name ? { name } : {}),
         // Hovering a node dims everything that does not flow through it.
         emphasis: { focus: "adjacency" },
-        data: nodes.map((node) => ({ name: node })),
+        data: [...nodes].map((name) => ({ name })),
         links: drawn,
       },
     ],

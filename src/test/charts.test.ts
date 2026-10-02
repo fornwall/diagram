@@ -311,8 +311,8 @@ suite("charts", () => {
     assert.deepStrictEqual(series.data, [{ name: "a" }, { name: "b" }, { name: "c" }]);
     assert.deepStrictEqual(series.links, [
       { source: "a", target: "b", value: 3 },
-      { source: "a", target: "c", value: 2 },
       { source: "b", target: "c", value: 1 },
+      { source: "a", target: "c", value: 2 },
     ]);
     assert.strictEqual(
       summary(chart("sankey"), flows),
@@ -884,16 +884,22 @@ suite("charts", () => {
     }
   });
 
-  test("unzoned times stay local and pad fractional seconds for ECharts", () => {
-    const data = "date,n\n2026-01-02 14:30:00.5,3\n2026-01-02T14:30:00.05,5";
+  test("unzoned times stay local and normalize fractional seconds for ECharts", () => {
+    const data =
+      "date,n\n2026-01-02 14:30:00.5,3\n2026-01-02T14:30:00.05,5\n2026-01-02T14:30:00.123456789,7";
     const points: (string | number)[][] = build(chart("line"), data).series[0].data;
     assert.deepStrictEqual(points, [
       ["2026-01-02 14:30:00.500", 3],
       ["2026-01-02T14:30:00.050", 5],
+      ["2026-01-02T14:30:00.123", 7],
     ]);
     assert.deepStrictEqual(
       points.map((point) => +echartsTime.parse(point[0])),
-      [+new Date(2026, 0, 2, 14, 30, 0, 500), +new Date(2026, 0, 2, 14, 30, 0, 50)],
+      [
+        +new Date(2026, 0, 2, 14, 30, 0, 500),
+        +new Date(2026, 0, 2, 14, 30, 0, 50),
+        +new Date(2026, 0, 2, 14, 30, 0, 123),
+      ],
     );
   });
 

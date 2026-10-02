@@ -55,6 +55,9 @@ export function timeValue(date: string, asCategory = false): string | number {
   if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(date)) {
     return Date.parse(date.replace(" ", "T"));
   }
-  // Keep unzoned times local to the chart viewer, which may differ from the extension host.
-  return date.replace(/\.(\d{1,2})$/, (_, fraction: string) => `.${fraction.padEnd(3, "0")}`);
+  // Keep unzoned times local to the chart viewer and express their fraction in milliseconds.
+  return date.replace(
+    /\.(\d+)$/,
+    (_, fraction: string) => `.${fraction.padEnd(3, "0").slice(0, 3)}`,
+  );
 }
