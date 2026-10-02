@@ -423,6 +423,32 @@ suite("panel", function () {
     }
   });
 
+  test("render tools accept Markdown fences with longer closing markers", async () => {
+    const panel = newPanel();
+    const cancellation = new vscode.CancellationTokenSource();
+    const rendered: string[] = [];
+    panel.render = async (diagram) => {
+      rendered.push(`${diagram.language}: ${diagram.source.trim()}`);
+      return { ok: true, diagramType: "test" };
+    };
+    try {
+      const tool = new RenderDiagramTool(panel);
+      for (const source of ["```mermaid\nflowchart TD\n````", "  ~~~echarts\r\n{}\r\n~~~~  "]) {
+        await tool.invoke({ input: { source } } as never, cancellation.token);
+      }
+      assert.deepStrictEqual(rendered, ["mermaid: flowchart TD", "echarts: {}"]);
+      for (const source of ["```mermaid\n```", "~~~echarts\n  \n~~~~"]) {
+        const result = await tool.invoke({ input: { source } } as never, cancellation.token);
+        assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
+        assert.match(result.content[0].value, /Nothing was rendered: Give "source"/);
+      }
+      assert.strictEqual(rendered.length, 2);
+    } finally {
+      cancellation.dispose();
+      panel.dispose();
+    }
+  });
+
   test("tools report malformed input without throwing during preparation", async () => {
     const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
-import { guessTitle } from "./blocks";
+import { guessTitle, isClosingFence, openingFence } from "./blocks";
 import {
   type ChartSpec,
   type ChartType,
@@ -40,21 +40,29 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
-/** A source wrapped in a code fence, as models sometimes send despite the schema. */
-const FENCED_SOURCE = /^\s*(`{3,}|~{3,})[ \t]*([^\s`]*)[^\n]*\n([\s\S]*?)\n[ \t]*\1\s*$/;
-
 /**
  * Returns the diagram to render, with the problems of any links that were left out, or what is
  * wrong with the input. A bad link is reported but does not keep the diagram from being drawn.
  */
 function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: string[] } | string {
-  if (!isPlainObject(input) || typeof input.source !== "string" || !input.source.trim()) {
+  if (!isPlainObject(input) || typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
   }
-  const [, , fenceLanguage, unfenced] = FENCED_SOURCE.exec(input.source) ?? [];
-  const source = unfenced ?? input.source;
+  let { source, language } = input;
+  // Models sometimes include a Markdown fence despite the schema. Use the same rules as chat.
+  const trimmed = source.trim();
+  const firstNewline = trimmed.indexOf("\n");
+  const lastNewline = trimmed.lastIndexOf("\n");
+  const opening = firstNewline < 0 ? undefined : openingFence(trimmed.slice(0, firstNewline));
+  if (opening && isClosingFence(trimmed.slice(lastNewline + 1), opening.fence)) {
+    source = trimmed.slice(firstNewline + 1, lastNewline);
+    language ??= isDiagramLanguage(opening.language) ? opening.language : undefined;
+  }
+  if (!source.trim()) {
+    return 'Give "source", the complete diagram, as a string.';
+  }
   const { title, clickPrompt } = input;
-  const language = input.language ?? (isDiagramLanguage(fenceLanguage) ? fenceLanguage : "mermaid");
+  language ??= "mermaid";
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }
@@ -174,16 +182,22 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     let spec: ChartSpec;
-    let chart: LoadedChart;
+    let source: string;
+    let report: string;
+    let description: string | undefined;
     try {
       spec = validateChartSpec(options.input);
-      chart = await loadChart(spec, token);
+      const { table, warning } = await loadTable(spec, token);
+      description = `The data was read as: ${describeTable(table)}`;
+      const { option, summary } = buildChart(spec, table);
+      source = JSON.stringify(option, null, 2);
+      report = [summary, warning, description].filter(Boolean).join("\n\n");
     } catch (error) {
       if (error instanceof vscode.CancellationError) {
         throw error;
       }
       return textResult(
-        `No chart was rendered: ${errorMessage(error)}\n\nFix the input and call ${CHART_TOOL} again.`,
+        `No chart was rendered: ${errorMessage(error)}${description ? `\n\n${description}` : ""}\n\nFix the input and call ${CHART_TOOL} again.`,
       );
     }
 
@@ -192,7 +206,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
         this.panel.render(
           {
             language: "echarts",
-            source: JSON.stringify(chart.option, null, 2),
+            source,
             title: chartTitle(spec),
             clickPrompt: nonBlank(options.input.clickPrompt),
             chart: spec.file || spec.command ? spec : undefined,
@@ -204,37 +218,13 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     );
     if (outcome.ok) {
       return textResult(
-        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${chart.report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
+        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
       );
     }
     const fix = spec.options
       ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
       : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
-    return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${chart.report}`);
-  }
-}
-
-interface LoadedChart {
-  option: Record<string, unknown>;
-  /** How the data was read and charted, for a language model. */
-  report: string;
-}
-
-/**
- * Loads a chart's data and charts it.
- *
- * @throws Error explaining why, with how the data was read if that worked, or
- *   vscode.CancellationError.
- */
-async function loadChart(spec: ChartSpec, token: vscode.CancellationToken): Promise<LoadedChart> {
-  const { table, warning } = await loadTable(spec, token);
-  const description = `The data was read as: ${describeTable(table)}`;
-  try {
-    const { option, summary } = buildChart(spec, table);
-    const report = [summary, warning, description].filter((part) => part !== undefined);
-    return { option, report: report.join("\n\n") };
-  } catch (error) {
-    throw new Error(`${errorMessage(error)}\n\n${description}`);
+    return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${report}`);
   }
 }
 
