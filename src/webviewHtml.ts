@@ -90,20 +90,20 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
         <button id="revert" class="secondary" title="Discard your changes">Revert</button>
       </div>
     </section>
-    <div id="splitter" role="separator" tabindex="0" aria-label="Resize the source editor" aria-valuemin="15" aria-valuemax="85"></div>
-    <main id="canvas">
-      <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw a diagram or chart.</div>
+    <div id="splitter" role="separator" tabindex="0" aria-label="Resize the source editor" aria-controls="editor" aria-valuemin="15" aria-valuemax="85" title="Resize source editor (arrow keys); Enter to reset"></div>
+    <main id="canvas" aria-label="Diagram preview" tabindex="0">
+      <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw a diagram or chart, or use <strong>Open in Diagram</strong> above a Mermaid or ECharts code block in a Markdown file.</div>
       <div id="diagram"></div>
     </main>
   </div>
   <footer>
     <div id="selection">
-      <span id="selection-label">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
+      <span id="selection-label" role="status" aria-live="polite" aria-atomic="true">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>
     <form id="ask-form">
       <input id="ask-input" type="text" placeholder="Ask about or change the diagram…" aria-label="Message">
-      <button type="submit">Send to chat</button>
+      <button id="ask-submit" type="submit" disabled>Send to chat</button>
     </form>
   </footer>
   <script type="module" nonce="${nonce}" src="${asset("webview.js")}"></script>

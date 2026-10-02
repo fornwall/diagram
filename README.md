@@ -38,6 +38,7 @@ Chat can also route diagram and chart requests to `@diagram` without you mention
 - **Select** nodes or chart items by clicking; use Ctrl/Cmd+click or Shift+click for several. The agent sees your selection.
 - **Send to chat**: type a request at the bottom. It includes your selection and goes to `@diagram` or the agent that drew the diagram.
 - **Edit source**: use the top-right icons to show the source beside the diagram or alone. Press **Apply** (Ctrl/Cmd+Enter) to render your edits. Switching views or receiving a new diagram preserves unapplied edits; **Revert** loads the current diagram. The agent is told to preserve applied edits.
+- **Resize the source pane**: drag the divider in split view, or focus it with Tab and use the arrow keys. Home and End move it to its limits; Enter or a double-click restores its default size.
 - **Refresh** reloads a chart's file or command output, replacing manual source edits.
 - **Save** exports a chart as an HTML file containing its data, theme and chart library. It works offline in a browser.
 - **Drag out as an image**: drag the top-right picture handle into another application for a PNG; hold Shift for SVG. If PNG conversion fails, export falls back to SVG. Images use the current theme and omit code-link tooltips and their file paths.
@@ -50,7 +51,7 @@ Diagrams follow your VS Code color theme.
 
 ### Edit a diagram in a Markdown file
 
-Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. The panel title names the file.
+Click **Open in Diagram** above a `mermaid` or `echarts` block, or choose **Open Diagram at Cursor** from the Markdown editor's context menu. The command is also available in the Command Palette as **Diagram: Open Diagram at Cursor**. The panel title names the file.
 
 **Apply** renders your edits and writes them into the original block, preserving its fence, indentation and surrounding text. Failed renders leave the file unchanged and keep your edits in the panel. Writes can be undone in VS Code. If the block changed or cannot be identified safely, reopen it with **Open in Diagram**.
 

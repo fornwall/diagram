@@ -184,7 +184,7 @@ export class DiagramPanel implements vscode.Disposable {
     // Another diagram is not the one an agent marked up, just as it is not the one the user selected in.
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
-    this.reveal();
+    this.reveal(origin !== "document");
     return this.renderCurrent();
   }
 
@@ -203,9 +203,9 @@ export class DiagramPanel implements vscode.Disposable {
     return this.state;
   }
 
-  /** Shows the panel, opening it with the current diagram if it was closed. */
-  show(): void {
-    if ((this.reveal() || this.unavailable) && this.state) {
+  /** Shows and focuses the panel unless a background update asks to preserve focus. */
+  show(preserveFocus = false): void {
+    if ((this.reveal(preserveFocus) || this.unavailable) && this.state) {
       void this.renderCurrent();
     }
   }
@@ -292,7 +292,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.annotation = { ...annotation, marks };
     // Showing the panel may have to open it, which renders the diagram again; the marks follow on
     // the webview's ready message either way.
-    this.show();
+    this.show(true);
     this.post({ type: "annotate", ...this.annotation });
     return { ok: true, annotation: this.annotation, unknown, ids };
   }
@@ -319,9 +319,9 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /** Reveals the panel, or creates it, in which case this returns true. */
-  private reveal(): boolean {
+  private reveal(preserveFocus: boolean): boolean {
     if (this.panel) {
-      this.panel.reveal(undefined, true);
+      this.panel.reveal(undefined, preserveFocus);
       return false;
     }
     // After a window reload, VS Code restores a panel in a background tab only once the tab is
@@ -338,7 +338,7 @@ export class DiagramPanel implements vscode.Disposable {
       "Diagram",
       {
         viewColumn: leftovers[0]?.group.viewColumn ?? vscode.ViewColumn.Beside,
-        preserveFocus: true,
+        preserveFocus,
       },
       // Keeps the webview while hidden behind another tab, so that it can still render and be
       // asked to pick, and keeps its zoom and source editor.

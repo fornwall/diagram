@@ -59,6 +59,35 @@ suite("panel", function () {
     );
   });
 
+  test("explicitly showing the panel focuses it while agent updates preserve editor focus", async () => {
+    // Earlier suites dispose their panels asynchronously. Finish closing their tabs before this
+    // test opens an editor, so a disappearing group cannot move it into the panel's column.
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    const document = await vscode.workspace.openTextDocument({ content: "Keep editing here" });
+    const editor = await vscode.window.showTextDocument(document);
+    const panel = newPanel();
+    const internals = panel as unknown as { panel: vscode.WebviewPanel };
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      assert.strictEqual(vscode.window.activeTextEditor, editor);
+
+      panel.show();
+      for (let attempt = 0; attempt < 100 && !internals.panel.active; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.ok(internals.panel.active, "Show Panel should focus the diagram");
+
+      await vscode.window.showTextDocument(document, editor.viewColumn);
+      assert.ok(panel.annotate({ marks: [], dim: false }).ok);
+      // reveal() crosses into the workbench asynchronously; let its focus events reach the host.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.strictEqual(vscode.window.activeTextEditor?.document, document);
+      assert.ok(!internals.panel.active, "Agent annotations should leave focus in the editor");
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("isFromWebview accepts only well-formed messages", () => {
     assert.ok(isFromWebview({ type: "ready" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));

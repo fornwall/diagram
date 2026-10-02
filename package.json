@@ -395,6 +395,15 @@
         "category": "Diagram"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "diagram.openAtCursor",
+          "when": "editorLangId == markdown",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Diagram",
       "properties": {

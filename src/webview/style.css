@@ -21,6 +21,8 @@ footer {
   gap: 8px;
   padding: 6px 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 header {
@@ -46,6 +48,17 @@ h1 {
 .actions {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+}
+
+#write-to {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(100%, 24em);
 }
 
 button {
@@ -181,10 +194,11 @@ button.link:hover {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  /* One line each, however long a note is. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+#annotation-notes li > span:last-child {
+  min-width: 0;
 }
 
 /* The colors marks read in, from the theme: the step being walked through, something wrong,
@@ -207,7 +221,8 @@ button.link:hover {
 
 .mark-dot {
   flex: none;
-  align-self: center;
+  align-self: flex-start;
+  margin-top: 0.35em;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -219,6 +234,7 @@ button.link:hover {
   background: var(--vscode-inputValidation-errorBackground);
   border-bottom: 1px solid var(--vscode-inputValidation-errorBorder);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 #error pre {
@@ -260,6 +276,7 @@ button.link:hover {
   flex: 0 0 5px;
   border-left: 1px solid var(--vscode-panel-border);
   cursor: col-resize;
+  touch-action: none;
 }
 
 #splitter:is(:hover, .dragging) {
@@ -332,6 +349,11 @@ input:focus {
   /* A stable gutter keeps fitting a diagram to the width from toggling the scrollbar. */
   scrollbar-gutter: stable;
   padding: 16px;
+}
+
+#canvas:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 #panes.view-source #canvas {
@@ -430,6 +452,17 @@ input:focus {
   gap: 4px;
   min-height: 1.5em;
   color: var(--vscode-descriptionForeground);
+}
+
+#selection-label {
+  min-width: 0;
+  max-height: 4.5em;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+#clear-selection {
+  flex-shrink: 0;
 }
 
 #ask-form {

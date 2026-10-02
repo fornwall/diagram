@@ -21,6 +21,8 @@
 
 ### Fixes
 
+- Focus the panel when explicitly opened, while preserving editor focus for agent updates; offer opening Markdown diagrams from the editor context menu.
+- Keep toolbar actions, annotation notes and selections usable in narrow panels. Improve keyboard resizing, focus restoration and screen-reader selection feedback, and disable sending empty chat messages.
 - Preserve small byte values and differences between large values when scaling chart units; reject overflowing numeric values.
 - Keep missing JSON fields empty, including fields named `__proto__`; report JSON error locations correctly after blank lines.
 - Honor cancelled data requests and avoid redundant command cleanup after cancellation.

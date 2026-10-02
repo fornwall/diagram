@@ -17,12 +17,16 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
 
   /** Whether the panes are stacked, which is the case in a narrow panel. */
   const stacked = () => getComputedStyle(panes).flexDirection === "column";
+  const updateOrientation = () => {
+    splitter.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
+  };
 
   const setFraction = (value: number): void => {
     fraction = Math.min(MAX_FRACTION, Math.max(MIN_FRACTION, value));
     panes.style.setProperty("--source-size", `${(fraction * 100).toFixed(2)}%`);
     splitter.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-    splitter.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
+    splitter.setAttribute("aria-valuetext", `Source editor ${Math.round(fraction * 100)}%`);
+    updateOrientation();
   };
 
   splitter.addEventListener("pointerdown", (event) => {
@@ -54,8 +58,15 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
   };
   splitter.addEventListener("pointerup", stopDrag);
   splitter.addEventListener("pointercancel", stopDrag);
+  splitter.addEventListener("lostpointercapture", () => splitter.classList.remove("dragging"));
 
   splitter.addEventListener("keydown", (event) => {
+    const position = { Home: MIN_FRACTION, End: MAX_FRACTION, Enter: DEFAULT_FRACTION }[event.key];
+    if (position !== undefined) {
+      event.preventDefault();
+      setFraction(position);
+      return;
+    }
     const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
     if (step === undefined) {
       return;
@@ -68,4 +79,6 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
   splitter.addEventListener("dblclick", () => setFraction(DEFAULT_FRACTION));
 
   setFraction(fraction);
+  // Crossing the responsive breakpoint changes the separator's orientation without a drag.
+  new ResizeObserver(updateOrientation).observe(panes);
 }

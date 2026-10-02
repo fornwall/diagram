@@ -57,6 +57,7 @@ const selectionLabel = element("selection-label");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
+const askSubmit = element<HTMLButtonElement>("ask-submit");
 const zoomOutButton = element("zoom-out");
 const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
@@ -391,7 +392,9 @@ function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
   const name = document.createElement("b");
   // A chart item goes by the name a click gives it, which is the id itself.
   name.textContent = labels.get(id) ?? id;
-  row.append(dot, name, document.createTextNode(` ${note}`));
+  const text = document.createElement("span");
+  text.append(name, document.createTextNode(` ${note}`));
+  row.append(dot, text);
   return row;
 }
 
@@ -408,10 +411,19 @@ function startPick(id: number, prompt: string, multiple: boolean): void {
 }
 
 function endPick(): void {
+  const restoreFocus = pickBanner.contains(document.activeElement);
   pick = undefined;
   pickBanner.hidden = true;
   canvas.classList.remove("picking");
   updateSelectionUi();
+  if (restoreFocus) {
+    focusContent();
+  }
+}
+
+/** Keeps keyboard navigation in the visible content when a focused action disappears. */
+function focusContent(): void {
+  (viewMode === "source" ? sourceInput : canvas).focus();
 }
 
 pickDoneButton.addEventListener("click", () => {
@@ -438,7 +450,13 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-clearSelectionButton.addEventListener("click", clearSelection);
+clearSelectionButton.addEventListener("click", () => {
+  const restoreFocus = document.activeElement === clearSelectionButton;
+  clearSelection();
+  if (restoreFocus) {
+    focusContent();
+  }
+});
 
 // Keep an unsent message and the chosen view when the webview reloads, e.g. moved to another window.
 function saveState(): void {
@@ -447,7 +465,14 @@ function saveState(): void {
 const restored = vscode.getState();
 askInput.value = restored?.draft ?? "";
 viewMode = restored?.view ?? "visual";
-askInput.addEventListener("input", saveState);
+const updateAskSubmit = () => {
+  askSubmit.disabled = askInput.value.trim().length === 0;
+};
+updateAskSubmit();
+askInput.addEventListener("input", () => {
+  updateAskSubmit();
+  saveState();
+});
 
 askForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -455,6 +480,8 @@ askForm.addEventListener("submit", (event) => {
   if (text) {
     post({ type: "ask", text, nodes: Array.from(selection.values()) });
     askInput.value = "";
+    updateAskSubmit();
+    askInput.focus();
     saveState();
   }
 });

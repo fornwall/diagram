@@ -78,6 +78,117 @@ suite("webview", function () {
     }
   });
 
+  test("resizes the source pane to its limits and resets it with the keyboard", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        document.getElementById("view-split").click();
+        const splitter = document.getElementById("splitter");
+        splitter.focus();
+        const values = [];
+        try {
+          for (const key of ["Home", "End", "Enter"]) {
+            const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true});
+            splitter.dispatchEvent(event);
+            values.push({
+              value: splitter.getAttribute("aria-valuenow"),
+              prevented: event.defaultPrevented,
+              focused: document.activeElement === splitter
+            });
+          }
+          return values;
+        } finally {
+          document.getElementById("view-visual").click();
+        }
+      })()`),
+      [
+        { value: "15", prevented: true, focused: true },
+        { value: "85", prevented: true, focused: true },
+        { value: "40", prevented: true, focused: true },
+      ],
+    );
+  });
+
+  test("only enables sending to chat when the message contains text", async () => {
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const input = document.getElementById("ask-input");
+        const submit = document.querySelector('#ask-form button[type="submit"]');
+        const original = input.value;
+        try {
+          return ["", "   ", "Explain this node", ""].map(value => {
+            input.value = value;
+            input.dispatchEvent(new Event("input"));
+            return submit.disabled;
+          });
+        } finally {
+          input.value = original;
+          input.dispatchEvent(new Event("input"));
+        }
+      })()`),
+      [true, true, false, true],
+    );
+  });
+
+  test("returns keyboard focus to visible content after clearing the selection", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const node = document.querySelector("#diagram .diagram-node[tabindex]");
+        const clear = document.getElementById("clear-selection");
+        try {
+          return ["visual", "source"].map(view => {
+            node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+            document.getElementById("view-" + view).click();
+            const selected = !clear.hidden;
+            clear.focus();
+            clear.click();
+            return {
+              selected,
+              cleared: clear.hidden && !document.querySelector("#diagram .diagram-selected"),
+              focused: document.activeElement === document.getElementById(view === "source" ? "source" : "canvas")
+            };
+          });
+        } finally {
+          document.getElementById("view-visual").click();
+        }
+      })()`),
+      [
+        { selected: true, cleared: true, focused: true },
+        { selected: true, cleared: true, focused: true },
+      ],
+    );
+  });
+
+  test("restores focus after completing or cancelling a node pick", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        try {
+          return ["visual", "source"].flatMap(view => {
+            document.getElementById("view-" + view).click();
+            return ["pick-done", "pick-cancel"].map(id => {
+              window.dispatchEvent(new MessageEvent("message", {data: {
+                type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true
+              }}));
+              document.querySelector("#diagram .diagram-node[tabindex]")
+                .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+              const button = document.getElementById(id);
+              button.focus();
+              button.click();
+              return document.getElementById("pick").hidden &&
+                document.activeElement === document.getElementById(view === "source" ? "source" : "canvas");
+            });
+          });
+        } finally {
+          document.getElementById("view-visual").click();
+          document.getElementById("clear-selection").click();
+        }
+      })()`),
+      [true, true, true, true],
+    );
+  });
+
   test("ends panning when released outside the canvas or pointer capture is lost", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(

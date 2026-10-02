@@ -107,6 +107,10 @@ suite("markdownDiagrams", function () {
     editor.selection = new vscode.Selection(4, 0, 4, 0);
     await vscode.commands.executeCommand("diagram.openAtCursor");
     await webviewTab("flowchart — flow.md");
+    assert.ok(
+      vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputWebview,
+      "Opening a document diagram should focus its panel",
+    );
   });
 
   test("a stale CodeLens does not open a different nearby diagram", async () => {
