@@ -154,6 +154,48 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("exports chart dimensions while its rendering is hidden in Source view", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const chart = document.querySelector("#chart svg");
+        const width = chart.width.baseVal.value;
+        const height = chart.height.baseVal.value;
+        document.getElementById("view-source").click();
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        try {
+          for (let attempt = 0; attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            const dataTransfer = new DataTransfer();
+            handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+            const svg = dataTransfer.getData("image/svg+xml");
+            if (svg) {
+              const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+              return {
+                hidden: chart.getBoundingClientRect().width === 0,
+                sized: width > 0 && height > 0 && Number(image.getAttribute("width")) === width &&
+                  Number(image.getAttribute("height")) === height,
+                viewBox: image.getAttribute("viewBox") === "0 0 " + width + " " + height
+              };
+            }
+          }
+          throw new Error("The chart image was not prepared.");
+        } finally {
+          document.getElementById("view-visual").click();
+        }
+      })()`),
+      { hidden: true, sized: true, viewBox: true },
+    );
+  });
+
   test("exports SVG when the browser cannot create a PNG", async () => {
     assert.ok(
       (

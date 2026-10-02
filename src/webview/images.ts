@@ -27,8 +27,11 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   svg.removeAttribute("class");
 
   const box = source.viewBox.baseVal;
-  const width = box?.width || source.getBoundingClientRect().width;
-  const height = box?.height || source.getBoundingClientRect().height;
+  // ECharts sets width and height without a viewBox. Its DOM bounds disappear in Source view,
+  // but those intrinsic dimensions still describe the drawing.
+  const width = box?.width || source.width.baseVal.value || source.getBoundingClientRect().width;
+  const height =
+    box?.height || source.height.baseVal.value || source.getBoundingClientRect().height;
   if (!box?.width) {
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   }
