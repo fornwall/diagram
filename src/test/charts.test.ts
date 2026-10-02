@@ -331,6 +331,11 @@ suite("charts", () => {
       summary(chart("sankey"), stages),
       'Charted "n" as flows from "a" to "b" to "c".',
     );
+    assert.deepStrictEqual(build(chart("sankey"), "a,b,c,n\nx,y,z,3\nw,y,z,2").series[0].links, [
+      { source: "x", target: "y", value: 3 },
+      { source: "y", target: "z", value: 5 },
+      { source: "w", target: "y", value: 2 },
+    ]);
     assert.deepStrictEqual(build(chart("sankey"), DU).series[0].links, [
       { source: "src", target: "webview", value: 16 },
       { source: "webview", target: "colors.ts", value: 4 },

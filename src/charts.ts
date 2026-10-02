@@ -1136,7 +1136,7 @@ function sumFlows(flows: Flow[]): Flow[] {
   return [...summed.values()];
 }
 
-/** The flows of a hierarchy: one from every node to each of its children, summed by name. */
+/** The flows of a hierarchy: one from every node to each of its children. */
 function hierarchyFlows(nodes: Node[]): Flow[] {
   const flows: Flow[] = [];
   const follow = (node: Node): void => {
@@ -1148,7 +1148,7 @@ function hierarchyFlows(nodes: Node[]): Flow[] {
   for (const node of nodes) {
     follow(node);
   }
-  return sumFlows(flows);
+  return flows;
 }
 
 /**
