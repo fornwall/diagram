@@ -169,10 +169,8 @@ class Scanner {
   private value(): void {
     this.whitespace();
     const char = this.text.charAt(this.index);
-    if (char === "{") {
-      this.object();
-    } else if (char === "[") {
-      this.array();
+    if (char === "{" || char === "[") {
+      this.container(char === "{" ? "}" : "]");
     } else if (char === '"') {
       this.string();
     } else if (this.text.startsWith("...", this.index) || char === "…") {
@@ -188,57 +186,42 @@ class Scanner {
     }
   }
 
-  private object(): void {
-    this.open.push({ close: "}", position: this.index });
-    this.index++; // {
+  private container(close: "}" | "]"): void {
+    this.open.push({ close, position: this.index });
+    this.index++;
     this.whitespace();
-    if (this.text.charAt(this.index) === "}") {
+    if (this.text.charAt(this.index) === close) {
       this.close();
       return;
     }
     for (;;) {
       this.whitespace();
       const char = this.text.charAt(this.index);
-      if (char === '"') {
-        this.string();
-      } else if (char === "}") {
-        this.failJavaScript('Trailing comma before "}" is not allowed in JSON', this.lastComma());
-      } else {
-        const word = matchAt(IDENTIFIER, this.text, this.index);
-        if (word) {
-          this.failJavaScript(
-            `Property names must be in double quotes: write "${word}" instead of ${word}`,
-          );
+      if (char === close) {
+        this.failJavaScript(
+          `Trailing comma before "${close}" is not allowed in JSON`,
+          this.lastComma(),
+        );
+      }
+      if (close === "}") {
+        if (char !== '"') {
+          const word = matchAt(IDENTIFIER, this.text, this.index);
+          if (word) {
+            this.failJavaScript(
+              `Property names must be in double quotes: write "${word}" instead of ${word}`,
+            );
+          }
+          this.unexpected("a property name in double quotes");
         }
-        this.unexpected("a property name in double quotes");
-      }
-      this.whitespace();
-      if (this.text.charAt(this.index) !== ":") {
-        this.unexpected('":" after the property name');
-      }
-      this.index++;
-      this.value();
-      if (this.separator("}")) {
-        return;
-      }
-    }
-  }
-
-  private array(): void {
-    this.open.push({ close: "]", position: this.index });
-    this.index++; // [
-    this.whitespace();
-    if (this.text.charAt(this.index) === "]") {
-      this.close();
-      return;
-    }
-    for (;;) {
-      this.whitespace();
-      if (this.text.charAt(this.index) === "]") {
-        this.failJavaScript('Trailing comma before "]" is not allowed in JSON', this.lastComma());
+        this.string();
+        this.whitespace();
+        if (this.text.charAt(this.index) !== ":") {
+          this.unexpected('":" after the property name');
+        }
+        this.index++;
       }
       this.value();
-      if (this.separator("]")) {
+      if (this.separator(close)) {
         return;
       }
     }
