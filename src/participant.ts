@@ -35,12 +35,11 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     // Tools the user attached with #, which the model is made to call first. Charts of files and
     // command output are drawn by the chart tool, which asks the user before running a command.
-    const attached = vscode.lm.tools.filter((tool) =>
-      request.toolReferences.some((reference) => reference.name === tool.name),
-    );
+    const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
     const tools = vscode.lm.tools.filter(
-      (tool) => attached.includes(tool) || (!explain && tool.name === CHART_TOOL),
+      (tool) => attachedNames.has(tool.name) || (!explain && tool.name === CHART_TOOL),
     );
+    const attached = tools.filter((tool) => attachedNames.has(tool.name));
 
     try {
       const messages = await promptMessages(request, context, explain, current, token);

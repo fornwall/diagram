@@ -282,6 +282,30 @@ suite("participant", function () {
     }
   });
 
+  test("keeps attached tools available when the registry returns fresh descriptors", async () => {
+    const panel = newPanel();
+    const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
+    assert.ok(descriptor);
+    const available = vscode.lm.tools;
+    Object.defineProperty(vscode.lm, "tools", {
+      configurable: true,
+      get: () => available.map((tool) => ({ ...tool })),
+    });
+    try {
+      const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
+      const { sent } = await ask(panel, [[call], [text("Done.")]], {
+        toolReferences: [{ name: "diagram_getState" }],
+      });
+      assert.deepStrictEqual(sent[1]?.options.tools?.map((tool) => tool.name).sort(), [
+        "diagram_chart",
+        "diagram_getState",
+      ]);
+    } finally {
+      Object.defineProperty(vscode.lm, "tools", descriptor);
+      panel.dispose();
+    }
+  });
+
   test("required tool rounds run only the tool exposed in that round", async () => {
     const panel = newPanel();
     try {
