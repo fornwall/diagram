@@ -723,6 +723,10 @@ suite("charts", () => {
     const horizontal = build(chart("horizontalBar"), daily);
     assert.strictEqual(horizontal.xAxis.type, "value");
     assert.deepStrictEqual(horizontal.yAxis, { type: "time", inverse: true });
+    assert.deepStrictEqual(horizontal.series[0].data, [
+      [3, "2026-01-02"],
+      [5, "2026-01-05"],
+    ]);
     assert.match(
       summary(chart("horizontalBar"), daily),
       /\{"yAxis": \{"type": "category"\}\} in "options"/,

@@ -977,7 +977,9 @@ function cartesianOption(
       data: rows.map((row) =>
         times === undefined
           ? (row.values[column] ?? null)
-          : [label(row), row.values[column] ?? null],
+          : horizontal
+            ? [row.values[column] ?? null, label(row)]
+            : [label(row), row.values[column] ?? null],
       ),
     })),
   };
