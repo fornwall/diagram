@@ -124,17 +124,13 @@ async function openAtCursor(panel: DiagramPanel): Promise<void> {
   await openInPanel(panel, editor.document, fence);
 }
 
-/**
- * Shows a document's diagram in the panel, which remembers the block it came from, so that the
- * user's Apply writes their edits back into it. A diagram that fails to render is reported by the
- * panel itself, as it is for an agent's.
- */
+/** Opens a document diagram and reports failures that the webview cannot display. */
 async function openInPanel(
   panel: DiagramPanel,
   document: vscode.TextDocument,
   fence: DiagramFence,
 ): Promise<void> {
-  await panel.render(
+  const outcome = await panel.render(
     {
       language: fence.language,
       source: fence.source,
@@ -143,4 +139,7 @@ async function openInPanel(
     },
     "document",
   );
+  if (!outcome.ok && outcome.kind === "unavailable") {
+    void vscode.window.showWarningMessage(outcome.error);
+  }
 }

@@ -4,6 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
+import { registerMarkdownDiagrams } from "../markdownDiagrams";
+import { newPanel } from "./newPanel";
 
 /** Waits until a webview tab has this label, as tabs are updated asynchronously. */
 async function webviewTab(label: string): Promise<void> {
@@ -130,5 +132,42 @@ suite("markdownDiagrams", function () {
       .flatMap((group) => group.tabs)
       .filter((tab) => tab.input instanceof vscode.TabInputWebview);
     assert.deepStrictEqual(diagrams, []);
+  });
+
+  test("opening a diagram reports when the panel cannot display it", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: "```mermaid\nflowchart TD\n```\n",
+    });
+    const command = (await codeLenses(document))[0]?.command;
+    assert.ok(command);
+    const panel = newPanel();
+    const register = vscode.commands.registerCommand;
+    const warn = vscode.window.showWarningMessage;
+    let registrations: vscode.Disposable[] = [];
+    const reason = "The diagram panel did not respond within 15 seconds.";
+    let warning: string | undefined;
+    panel.render = async () => ({
+      ok: false,
+      kind: "unavailable",
+      error: reason,
+    });
+    vscode.commands.registerCommand = (name, callback, thisArg) =>
+      register(`test.${name}`, callback, thisArg);
+    vscode.window.showWarningMessage = (async (message: string) => {
+      warning = message;
+      return undefined;
+    }) as typeof warn;
+    try {
+      registrations = registerMarkdownDiagrams(panel);
+      vscode.commands.registerCommand = register;
+      await vscode.commands.executeCommand(`test.${command.command}`, ...(command.arguments ?? []));
+      assert.strictEqual(warning, reason);
+    } finally {
+      vscode.commands.registerCommand = register;
+      vscode.window.showWarningMessage = warn;
+      vscode.Disposable.from(...registrations).dispose();
+      panel.dispose();
+    }
   });
 });
