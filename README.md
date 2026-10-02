@@ -79,7 +79,7 @@ Any chat agent can use these tools. Attach one with `#` to have it called first,
 
 VS Code asks you before a command runs, before reading a file outside the workspace, and before opening a linked file outside it (or any file in an untrusted workspace). Commands only run in trusted workspaces.
 
-Relative file paths resolve from the first workspace folder. Commands run there using `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open. Files and command output are limited to 10 MiB; commands time out after 60 seconds. Tables are limited to 1,000,000 cells, including headers and empty cells. Summarize larger datasets before charting them.
+Relative file paths resolve from the first workspace folder. Commands run there using `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open. Files and command output are limited to 10 MiB; commands time out after 60 seconds. Tables are limited to 1,000,000 cells, including headers and empty cells. Treemap, sunburst and sankey charts accept up to 100 hierarchy levels per row. Summarize larger datasets before charting them.
 
 ## Development
 

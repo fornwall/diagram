@@ -303,6 +303,36 @@ suite("charts", () => {
     assert.throws(() => build(chart("treemap"), "k,n\na,0\nb,-1"), /treemap chart needs positive/);
   });
 
+  test("hierarchies accept 100 levels and reject deeper paths or label columns", () => {
+    for (const type of ["treemap", "sunburst", "sankey"] as const) {
+      for (const depth of [100, 101, 6000]) {
+        const levels = Array.from({ length: depth }, (_, i) => `level${i}`);
+        const table: DataTable = {
+          header: true,
+          columns: [
+            ...levels.map((name) => ({ name, numeric: false })),
+            { name: "value", numeric: true },
+          ],
+          rows: [[...levels, 1]],
+        };
+        const cases = [
+          () => build(chart(type), `path,value\n${levels.join("/")},1`),
+          () => build(chart(type, { labelColumn: levels }), table),
+        ];
+        for (const build of cases) {
+          if (depth === 100) {
+            assert.doesNotThrow(build);
+          } else {
+            assert.throws(
+              build,
+              /supports at most 100 hierarchy levels per row\. Select fewer label columns or shorten the paths/,
+            );
+          }
+        }
+      }
+    }
+  });
+
   test("sankey flows from a source column to a target column", () => {
     const flows = "from,to,n\na,b,3\nb,c,1\na,c,2";
     const [series] = build(chart("sankey"), flows).series;

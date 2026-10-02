@@ -81,6 +81,9 @@ function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefi
 /** The most text columns read as the levels of a hierarchy, the stages of a flow or a pivot. */
 const MOST_LEVELS = 3;
 
+/** Bounds prefix construction and recursive hierarchy traversal in both the host and renderer. */
+const MAX_LEVELS = 100;
+
 /**
  * The default label columns of a chart that reads several, outermost first: the text columns of a
  * table that has a few of them, as "region,country,sales" has two. Output with many text columns
@@ -593,6 +596,12 @@ function readRows(
     }),
   }));
   if (nested) {
+    if (rows.some(({ labels }) => labels.length > MAX_LEVELS)) {
+      throw new Error(
+        `A ${type} chart supports at most ${MAX_LEVELS} hierarchy levels per row. ` +
+          "Select fewer label columns or shorten the paths before charting them.",
+      );
+    }
     const nests = rows.length;
     rows = withoutNests(rows);
     const left = nests - rows.length;
