@@ -183,6 +183,49 @@ suite("participant", function () {
     }
   });
 
+  for (const finalBlock of [false, true]) {
+    test(`keeps the latest diagram from ${finalBlock ? "the final reply" : "a tool"}`, async () => {
+      const panel = newPanel();
+      const invokeTool = vscode.lm.invokeTool;
+      const toolInvocationToken = { requestId: "latest-diagram" } as never;
+      const toolDiagram = {
+        language: "mermaid",
+        source: "flowchart TD\n  Tool --> Result",
+        title: "Tool result",
+        links: { Tool: { file: "src/tools.ts" } },
+      } as const;
+      vscode.lm.invokeTool = async () => {
+        assert.ok((await panel.render(toolDiagram, "tool", toolInvocationToken)).ok);
+        return new vscode.LanguageModelToolResult([text("Rendered the diagram.")]);
+      };
+      try {
+        const { result, shown } = await ask(
+          panel,
+          [
+            [
+              text(valid),
+              new vscode.LanguageModelToolCallPart("1", "diagram_render", {
+                ...toolDiagram,
+                links: { Tool: "src/tools.ts" },
+              }),
+            ],
+            [text(finalBlock ? "```mermaid\nflowchart TD\n  Final --> Result\n```" : "Done.")],
+          ],
+          { toolReferences: [{ name: "diagram_render" }], toolInvocationToken },
+        );
+        const source = finalBlock ? "flowchart TD\n  Final --> Result" : toolDiagram.source;
+        assert.strictEqual(panel.current?.source, source);
+        assert.strictEqual(result?.metadata?.source, source);
+        assert.strictEqual(panel.current?.origin, "participant");
+        assert.deepStrictEqual(panel.current?.links, finalBlock ? undefined : toolDiagram.links);
+        assert.doesNotMatch(shown, /flowchart/);
+      } finally {
+        vscode.lm.invokeTool = invokeTool;
+        panel.dispose();
+      }
+    });
+  }
+
   test("asks the model to fix a diagram that fails to render", async () => {
     const panel = newPanel();
     try {

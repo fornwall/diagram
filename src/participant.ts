@@ -47,7 +47,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         return { errorDetails: { message: messages } };
       }
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
-        streamReply(request, messages, tools, required, stream, token);
+        streamReply(request, messages, tools, required, stream, token, panel);
 
       let block = await converse(attached);
       if (explain) {
@@ -129,9 +129,11 @@ async function streamReply(
   required: readonly vscode.LanguageModelChatTool[],
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
+  panel: DiagramPanel,
 ): Promise<DiagramBlock | undefined> {
   const lastToolRound = required.length + MAX_TOOL_ROUNDS;
   let diagram: DiagramBlock | undefined;
+  let diagramState = panel.current;
   /** Why further tool calls are answered without running them. */
   let notRun: string | undefined;
   for (let round = 0; ; round++) {
@@ -167,7 +169,11 @@ async function streamReply(
       throw new vscode.CancellationError();
     }
     show(filter.flush());
-    diagram = filter.diagrams.at(-1) ?? diagram;
+    const block = filter.diagrams.at(-1);
+    if (block) {
+      diagram = block;
+      diagramState = panel.current;
+    }
     if (filter.unterminated) {
       stream.markdown(
         "\n\nThe reply ended before the diagram was complete. Try again, or ask for a smaller diagram.",
@@ -177,7 +183,8 @@ async function streamReply(
       if (reply) {
         messages.push(vscode.LanguageModelChatMessage.Assistant(reply));
       }
-      return diagram;
+      // A later tool render or manual edit supersedes this earlier draft.
+      return panel.current === diagramState ? diagram : undefined;
     }
     if (round === lastToolRound) {
       notRun ??= "this request has made too many tool calls";
