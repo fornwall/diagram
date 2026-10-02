@@ -185,6 +185,55 @@ suite("webview", function () {
     assert.match(download as string, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
   });
 
+  test("keeps SVG export and rendering available while PNG decoding stalls", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source:
+            '{"animation": false, "series": [{"type": "pie", "data": [{"name": "Original", "value": 1}]}]}',
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+      const original = HTMLImageElement.prototype.decode;
+      let release;
+      let decoding = false;
+      const pending = new Promise(resolve => { release = resolve; });
+      HTMLImageElement.prototype.decode = function () {
+        decoding = true;
+        return pending.then(() => original.call(this));
+      };
+      const handle = document.getElementById("drag-out");
+      try {
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; !decoding && attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        const svgAvailable = dataTransfer.getData("image/svg+xml").includes("Original");
+        window.dispatchEvent(new MessageEvent("message", {data: {
+          type: "render", language: "echarts", requestId: -1, title: "Incoming",
+          source: JSON.stringify({animation: false, series: [{type: "pie", data: [{name: "Incoming", value: 1}]}]})
+        }}));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          if (document.querySelector("#chart svg")?.textContent.includes("Incoming")) {
+            return {svgAvailable, rendered: true};
+          }
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        return {svgAvailable, rendered: false};
+      } finally {
+        HTMLImageElement.prototype.decode = original;
+        release();
+      }
+    })()`),
+      { svgAvailable: true, rendered: true },
+    );
+  });
+
   test("exports Mermaid labels as SVG text despite diagram configuration", async () => {
     assert.ok(
       (

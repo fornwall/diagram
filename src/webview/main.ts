@@ -226,7 +226,7 @@ function showNeedsRefresh({ title, refreshFrom }: { title: string; refreshFrom?:
 
 // Renders one at a time, in order, so that a slow render cannot overtake a later one.
 let queue = Promise.resolve();
-function enqueue(task: () => Promise<void>): void {
+function enqueue(task: () => void | Promise<void>): void {
   queue = queue.then(task).catch((error: unknown) => console.error(error));
 }
 
@@ -237,14 +237,14 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       enqueue(() => render(message));
       break;
     case "needsRefresh":
-      enqueue(async () => showNeedsRefresh(message));
+      enqueue(() => showNeedsRefresh(message));
       break;
     case "clearSelection":
       clearSelection();
       break;
     case "annotate":
       // In the render queue, so that marks sent right after a diagram land on that diagram.
-      enqueue(async () => showAnnotation(message));
+      enqueue(() => showAnnotation(message));
       break;
     case "startPick":
       startPick(message.pickId, message.prompt, message.multiple);
@@ -471,9 +471,7 @@ saveButton.addEventListener("click", () => post({ type: "save", colors: readThem
  * The image of what is drawn, made ready before a drag begins: `dragstart` has to describe what is
  * being dragged there and then, and cannot wait for a diagram to be rendered again and rasterized.
  */
-let dragImage:
-  | { key: number; image: DiagramImage; png?: string; preview?: HTMLImageElement }
-  | undefined;
+let dragImage: { image: DiagramImage; png?: string; preview?: HTMLImageElement } | undefined;
 /** The image being made ready, if any, so that hovering the handle repeatedly makes one copy. */
 let preparingDragImage: number | undefined;
 let imageVersion = 0;
@@ -496,7 +494,7 @@ function forgetDragImage(): void {
 function prepareDragImage(): void {
   const key = imageVersion;
   const toImage = active?.toImage?.bind(active);
-  if (!toImage || dragImage?.key === key || preparingDragImage === key) {
+  if (!toImage || dragImage || preparingDragImage === key) {
     return;
   }
   preparingDragImage = key;
@@ -507,18 +505,10 @@ function prepareDragImage(): void {
     }
     try {
       const image = await toImage(imageBackground());
-      let png: string | undefined;
-      let preview: HTMLImageElement | undefined;
-      try {
-        png = await pngDataUrl(image);
-        preview = new Image();
-        preview.src = png;
-        await preview.decode();
-      } catch {
-        // SVG remains usable when the browser cannot rasterize a diagram.
-      }
       if (preparingDragImage === key) {
-        dragImage = { key, image, png, preview };
+        dragImage = { image };
+        // Rasterization does not touch Mermaid's configuration or need to hold up rendering.
+        void preparePng(dragImage);
       }
     } catch (error) {
       if (preparingDragImage === key) {
@@ -530,6 +520,18 @@ function prepareDragImage(): void {
       }
     }
   });
+}
+
+async function preparePng(ready: NonNullable<typeof dragImage>): Promise<void> {
+  try {
+    ready.png = await pngDataUrl(ready.image);
+    const preview = new Image();
+    preview.src = ready.png;
+    await preview.decode();
+    ready.preview = preview;
+  } catch {
+    // SVG is immediately usable, including while PNG decoding is pending or fails.
+  }
 }
 
 // Hovering the handle is the earliest sign that a drag may be coming; pressing is the last.
@@ -544,7 +546,7 @@ dragOutHandle.addEventListener("pointerdown", (event) => {
 });
 
 dragOutHandle.addEventListener("dragstart", (event) => {
-  const ready = dragImage?.key === imageVersion ? dragImage : undefined;
+  const ready = dragImage;
   if (!ready || !event.dataTransfer) {
     // Nothing can be dragged without an image, and the drag cannot wait for one.
     event.preventDefault();
@@ -558,7 +560,7 @@ dragOutHandle.addEventListener("dragstart", (event) => {
   const useSvg = dragSvg || !ready.png;
   const url = useSvg ? svgDataUrl(ready.image.svg) : ready.png;
   if (!dragSvg && !ready.png) {
-    transientHint("This drawing could not be converted to PNG. Dragging it as SVG instead.");
+    transientHint("PNG is not ready. Dragging the drawing as SVG instead.");
   }
   dataTransfer.effectAllowed = "copy";
   // A file the drop target downloads from the data URL. This is what an application that takes
