@@ -70,6 +70,22 @@ suite("links", () => {
     assert.ok(long.length > 0 && long.length < 120, long);
   });
 
+  test("validateLinks preserves node ids that name object properties", () => {
+    const locations = JSON.parse(
+      '{"__proto__": "src/parser.ts#L2", "constructor": "src/cli.ts", "toString": "src/main.ts"}',
+    );
+    const { links, problems } = validateLinks(locations, "mermaid");
+    assert.deepStrictEqual(problems, []);
+    assert.ok(links);
+    assert.strictEqual(Object.getPrototypeOf(links), Object.prototype);
+    assert.deepStrictEqual(Object.keys(links), ["__proto__", "constructor", "toString"]);
+    assert.deepStrictEqual(Object.getOwnPropertyDescriptor(links, "__proto__")?.value, {
+      file: "src/parser.ts",
+      line: 2,
+    });
+    assert.deepStrictEqual(linkTexts(links), locations);
+  });
+
   test("validateLinks reports links that are not an object, or are for a chart", () => {
     for (const value of ["src/parser.ts", ["src/parser.ts"], 42]) {
       assert.deepStrictEqual(validateLinks(value, "mermaid"), {

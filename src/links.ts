@@ -58,7 +58,7 @@ export function validateLinks(
       ],
     };
   }
-  const links: NodeLinks = {};
+  const links: [string, NodeLink][] = [];
   const problems: string[] = [];
   for (const [key, location] of Object.entries(value)) {
     const id = key.trim();
@@ -70,10 +70,10 @@ export function validateLinks(
     if (typeof link === "string") {
       problems.push(`${JSON.stringify(id)}: ${link}`);
     } else {
-      links[id] = link;
+      links.push([id, link]);
     }
   }
-  return Object.keys(links).length > 0 ? { links, problems } : { problems };
+  return links.length > 0 ? { links: Object.fromEntries(links), problems } : { problems };
 }
 
 /** Returns the place a location points to, or what is wrong with how it is written. */
