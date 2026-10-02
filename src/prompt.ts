@@ -122,16 +122,18 @@ export async function promptMessages(
   let withDiagrams = true;
   for (const { prompt, attachments, reply, diagram } of exchanges.toReversed()) {
     const added = attachments.filter((text) => !given.has(text));
-    const full = reply + diagram;
-    const short = diagram ? `${reply}\n\n(I drew a diagram, left out here.)` : full;
-    const [userTokens, fullTokens, shortTokens] = await Promise.all([
+    const short = diagram ? `${reply}\n\n(I drew a diagram, left out here.)` : reply;
+    let text = withDiagrams ? reply + diagram : short;
+    const [userTokens, replyTokens] = await Promise.all([
       Promise.all([prompt, ...added].map(tokens)).then(sum),
-      full ? tokens(full) : 0,
-      short === full ? 0 : tokens(short),
+      text ? tokens(text) : 0,
     ]);
-    withDiagrams &&= userTokens + fullTokens <= left;
-    const text = withDiagrams ? full : short;
-    const size = userTokens + (withDiagrams || short === full ? fullTokens : shortTokens);
+    let size = userTokens + replyTokens;
+    if (withDiagrams && size > left && diagram) {
+      withDiagrams = false;
+      text = short;
+      size = userTokens + (await tokens(text));
+    }
     if (size > left) {
       break;
     }
@@ -226,8 +228,17 @@ function tokenCounter(
   token: vscode.CancellationToken,
 ): (text: string) => Promise<number> {
   const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
-  return async (text) =>
-    MESSAGE_TOKENS + (exact ? await model.countTokens(text, token) : Buffer.byteLength(text));
+  const counts = new Map<string, Promise<number>>();
+  return (text) => {
+    let count = counts.get(text);
+    if (!count) {
+      count = exact
+        ? Promise.resolve(model.countTokens(text, token)).then((size) => MESSAGE_TOKENS + size)
+        : Promise.resolve(MESSAGE_TOKENS + Buffer.byteLength(text));
+      counts.set(text, count);
+    }
+    return count;
+  };
 }
 
 /**

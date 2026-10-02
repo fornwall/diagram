@@ -497,6 +497,33 @@ suite("participant", function () {
     }
   });
 
+  test("counts repeated history once and skips unused shortened replies", async () => {
+    const panel = newPanel();
+    try {
+      const history = [1, 2].flatMap(() => [
+        new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart("Here it is.")],
+          { metadata: { language: "mermaid", source: "x".repeat(2_800) } },
+          "diagram.participant",
+        ),
+      ]);
+      const { sent, counted } = await ask(panel, [[text("Hm.")]], {
+        history,
+        maxInputTokens: 4_000,
+      });
+      const messages = sent[0]?.messages.map(messageText) ?? [];
+      assert.strictEqual(
+        messages.filter((message) => message.includes("x".repeat(2_800))).length,
+        2,
+      );
+      // Instructions, the shared prompt and the shared complete reply.
+      assert.strictEqual(counted, 3);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("shortens the attachments that don't fit the model's input, and says so", async () => {
     const panel = newPanel();
     try {
