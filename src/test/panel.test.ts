@@ -650,6 +650,59 @@ suite("panel", function () {
     }
   });
 
+  test("saving waits for a successful render and recovers when the panel does", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      post(): void;
+      pendingRender: { message: { requestId: number } };
+      finishRender(id: number, outcome: RenderOutcome): void;
+      saveChart(colors: typeof testColors): Promise<void>;
+    };
+    internals.post = () => {};
+    const warn = vscode.window.showWarningMessage;
+    const save = vscode.window.showSaveDialog;
+    let warning = "";
+    let dialogs = 0;
+    vscode.window.showWarningMessage = async (message: string) => {
+      warning = message;
+      return undefined;
+    };
+    vscode.window.showSaveDialog = async () => {
+      dialogs++;
+      return undefined;
+    };
+    const chart = { language: "echarts", source: '{"series": []}', title: "Chart" } as const;
+    try {
+      const rendering = panel.render(chart, "tool");
+      await internals.saveChart(testColors);
+      assert.strictEqual(dialogs, 0);
+      assert.match(warning, /Wait.*rendering/);
+      internals.finishRender(internals.pendingRender.message.requestId, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram panel did not respond.",
+      });
+      await rendering;
+      await internals.saveChart(testColors);
+      assert.strictEqual(dialogs, 0);
+      assert.match(warning, /not saved.*did not respond.*Reopen/);
+
+      const retry = panel.render(chart, "tool");
+      internals.finishRender(internals.pendingRender.message.requestId, {
+        ok: true,
+        diagramType: "chart",
+      });
+      await retry;
+      panel.annotate({ marks: [], dim: false });
+      await internals.saveChart(testColors);
+      assert.strictEqual(dialogs, 1);
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      vscode.window.showSaveDialog = save;
+      panel.dispose();
+    }
+  });
+
   test("refreshing chart data ends a pending pick", async () => {
     const panel = newPanel();
     try {

@@ -625,20 +625,20 @@ export class DiagramPanel implements vscode.Disposable {
   /** Confirms agent replacements and follows the document block after a successful write. */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
     const version = this.renderVersion;
+    const isCurrent = () =>
+      this.renderVersion === version &&
+      this.state?.document === binding &&
+      this.state.source === source;
     if (binding.replaced && !(await confirmReplacedWrite(binding))) {
       return;
     }
-    if (
-      this.renderVersion !== version ||
-      this.state?.document !== binding ||
-      this.state.source !== source
-    ) {
+    if (!isCurrent()) {
       void vscode.window.showWarningMessage(
         "The diagram changed while you were confirming the write. Review it and write it again.",
       );
       return;
     }
-    const outcome = await writeFence(binding, source);
+    const outcome = await writeFence(binding, source, isCurrent);
     if (!outcome.written) {
       // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
       void reportWriteFailure(binding, outcome.reason);
@@ -690,6 +690,18 @@ export class DiagramPanel implements vscode.Disposable {
   private async saveChart(colors: ThemeColors): Promise<void> {
     const state = this.state;
     if (state?.language !== "echarts" || this.saving) {
+      return;
+    }
+    if (this.pendingRender) {
+      void vscode.window.showWarningMessage(
+        "Wait for the chart to finish rendering before saving it.",
+      );
+      return;
+    }
+    if (this.unavailable) {
+      void vscode.window.showWarningMessage(
+        `The chart was not saved: ${this.unavailable} Reopen the panel and try again.`,
+      );
       return;
     }
     if (state.source === undefined) {

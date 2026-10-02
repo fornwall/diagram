@@ -44,8 +44,13 @@ export type WriteOutcome =
  *
  * The block is located again first, as it may have moved and may have been edited since it was read.
  * A document that no longer holds what was read is never written over: the user is told instead.
+ * If supplied, isCurrent also checks that the panel's write is still current after opening the file.
  */
-export async function writeFence(binding: DocumentBinding, source: string): Promise<WriteOutcome> {
+export async function writeFence(
+  binding: DocumentBinding,
+  source: string,
+  isCurrent?: () => boolean,
+): Promise<WriteOutcome> {
   const name = documentName(binding);
   const noun = diagramNoun(binding.fence.language);
   // Written as a fence is read: no blank lines around the diagram, and every line indented like the
@@ -59,6 +64,12 @@ export async function writeFence(binding: DocumentBinding, source: string): Prom
     document = await vscode.workspace.openTextDocument(vscode.Uri.parse(binding.uri));
   } catch (error) {
     return { written: false, reason: `Could not open ${name}: ${errorMessage(error)}` };
+  }
+  if (isCurrent && !isCurrent()) {
+    return {
+      written: false,
+      reason: "The diagram changed before it could be written. Review it and write it again.",
+    };
   }
   const changed = {
     written: false,

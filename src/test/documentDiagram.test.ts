@@ -419,6 +419,43 @@ suite("documentDiagram", function () {
     }
   });
 
+  for (const change of ["replacement", "edit and revert"] as const) {
+    test(`a pending document open does not write after ${change}`, async () => {
+      const document = await markdown("```mermaid\nflowchart TD\n```\n");
+      const before = document.getText();
+      const state = { ...openedState(binding(document)), source: "flowchart LR" };
+      const panel = newPanel(new Map<string, unknown>([["diagram.state", state]]));
+      const internals = panel as unknown as { state: DiagramState; renderVersion: number };
+      const open = vscode.workspace.openTextDocument;
+      const warn = vscode.window.showWarningMessage;
+      const opened = Promise.withResolvers<vscode.TextDocument>();
+      let warning = "";
+      vscode.workspace.openTextDocument = (() => opened.promise) as typeof open;
+      vscode.window.showWarningMessage = async (message: string) => {
+        warning = message;
+        return undefined;
+      };
+      try {
+        const writing = writeShown(panel);
+        if (change === "replacement") {
+          internals.state = { ...state, document: { ...binding(document) } };
+        } else {
+          // Even restoring the same source invalidates the write that was already pending.
+          internals.renderVersion += 2;
+        }
+        opened.resolve(document);
+        await writing;
+        assert.strictEqual(document.getText(), before);
+        assert.match(warning, /changed before it could be written/);
+      } finally {
+        opened.resolve(document);
+        vscode.workspace.openTextDocument = open;
+        vscode.window.showWarningMessage = warn;
+        panel.dispose();
+      }
+    });
+  }
+
   test("changing diagram language drops the previous document binding", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
