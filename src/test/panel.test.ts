@@ -1,4 +1,7 @@
 import * as assert from "node:assert";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { linkText, linkTexts, type NodeLink } from "../links";
 import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
@@ -271,36 +274,32 @@ suite("panel", function () {
         editedByUser: false,
       };
       const panel = newPanel(new Map([["diagram.state", state]]));
-      const target = vscode.Uri.file("/saved-chart.html");
+      const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-save-test-"));
+      const target = vscode.Uri.file(path.join(directory, "chart.html"));
       const saveDialog = vscode.window.showSaveDialog;
       const information = vscode.window.showInformationMessage;
       const error = vscode.window.showErrorMessage;
       const open = vscode.env.openExternal;
-      const write = vscode.workspace.fs.writeFile;
       const reported = Promise.withResolvers<string>();
-      let written = false;
-      vscode.window.showSaveDialog = async () => target;
-      vscode.window.showInformationMessage = async () => "Open" as never;
-      vscode.window.showErrorMessage = async (message: string) => {
-        reported.resolve(message);
-        return undefined;
-      };
-      vscode.workspace.fs.writeFile = async () => {
-        written = true;
-      };
-      vscode.env.openExternal = async (uri) => {
-        assert.strictEqual(uri.toString(), target.toString());
-        if (rejected) {
-          throw new Error("Browser unavailable");
-        }
-        return false;
-      };
       try {
+        vscode.window.showSaveDialog = async () => target;
+        vscode.window.showInformationMessage = async () => "Open" as never;
+        vscode.window.showErrorMessage = async (message: string) => {
+          reported.resolve(message);
+          return undefined;
+        };
+        vscode.env.openExternal = async (uri) => {
+          assert.strictEqual(uri.toString(), target.toString());
+          if (rejected) {
+            throw new Error("Browser unavailable");
+          }
+          return false;
+        };
         await (
           panel as unknown as { saveChart(colors: typeof testColors): Promise<void> }
         ).saveChart(testColors);
         const message = await reported.promise;
-        assert.ok(written);
+        assert.ok(fs.statSync(target.fsPath).size > 500_000);
         assert.match(message, /Could not open the saved chart/);
         assert.ok(message.includes(target.fsPath));
         assert.match(message, rejected ? /Browser unavailable/ : /No application accepted/);
@@ -309,8 +308,8 @@ suite("panel", function () {
         vscode.window.showInformationMessage = information;
         vscode.window.showErrorMessage = error;
         vscode.env.openExternal = open;
-        vscode.workspace.fs.writeFile = write;
         panel.dispose();
+        fs.rmSync(directory, { recursive: true, force: true });
       }
     });
   }
