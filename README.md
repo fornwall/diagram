@@ -91,3 +91,8 @@ npm run vsix         # package a .vsix
 Press <kbd>F5</kbd> to launch an Extension Development Host, then type `@diagram` in the chat view.
 
 To install the packaged extension, run **Extensions: Install from VSIX…** from the Command Palette and choose the generated `.vsix` file.
+
+CI tests and packages every branch push and pull request. Download `diagram-<commit SHA>.vsix`
+from the artifacts of the commit's **CI** run in GitHub Actions to install it.
+Packages use the production build (minified bundles, without source maps or development files)
+and are retained for 90 days. A push containing multiple commits builds the latest commit in that push.
