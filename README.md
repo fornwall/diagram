@@ -1,6 +1,8 @@
 # @diagram
 
-Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts beside VS Code chat. Ask an agent to draw, then select parts, edit source or send a follow-up from the panel.
+Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat.
+
+Ask an agent to draw, then select parts, edit source or send a follow-up from the panel.
 
 You can also open `mermaid` and `echarts` blocks from Markdown files and apply edits back to the file.
 
