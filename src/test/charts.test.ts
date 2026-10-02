@@ -796,12 +796,14 @@ suite("charts", () => {
   test("a time axis counts, sorts and leaves out rows without a date", () => {
     // Counting the rows per day needs no value column at all.
     const log = "2026-01-02\n2026-01-02\n2026-01-03";
-    const perDay = build(chart("bar", { aggregate: "count" }), log);
-    assert.strictEqual(perDay.xAxis.type, "time");
-    assert.deepStrictEqual(perDay.series[0].data, [
-      ["2026-01-02", 2],
-      ["2026-01-03", 1],
-    ]);
+    for (const type of ["bar", "scatter"] as const) {
+      const perDay = build(chart(type, { aggregate: "count" }), log);
+      assert.strictEqual(perDay.xAxis.type, "time");
+      assert.deepStrictEqual(perDay.series[0].data, [
+        ["2026-01-02", 2],
+        ["2026-01-03", 1],
+      ]);
+    }
     const sorted = chart("line", { sort: "descending" });
     assert.match(
       summary(sorted, "date,n\n2026-01-02,3\n2026-01-05,5"),
@@ -821,6 +823,7 @@ suite("charts", () => {
         ["bar", chart("bar", { aggregate: "count" })],
         ["line", chart("line", { aggregate: "sum" })],
         ["scatter", chart("scatter")],
+        ["scatter", chart("scatter", { aggregate: "count" })],
         ["horizontalBar", chart("horizontalBar")],
       ];
       for (const [type, spec] of charts) {

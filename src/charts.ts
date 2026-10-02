@@ -399,12 +399,14 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
   }
 
   const given = spec.valueColumns?.map((column) => findColumn(table, column, "value"));
+  // On a time axis the labels supply x, so scatter needs only one numeric value.
+  const needed = family === "xy" && times !== undefined ? 1 : role.needed;
   let values: number[] = [];
   if (spec.aggregate === "count") {
     // Counting rows gives one number per group, which a chart of two values cannot use.
-    if (role.needed > 1) {
+    if (needed > 1) {
       throw new Error(
-        `A ${spec.type} chart needs ${columnCount(role.needed, "value")}, but "aggregate": ` +
+        `A ${spec.type} chart needs ${columnCount(needed, "value")}, but "aggregate": ` +
           '"count" gives one count per group. Combine the values another way, e.g. with "sum".',
       );
     }
@@ -412,8 +414,6 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
       notes.push(`left out ${quoteAll(given.map(name))}, as "count" counts the rows of a group`);
     }
   } else {
-    // A scatter chart whose x is a time needs one column of numbers rather than two.
-    const needed = family === "xy" && times !== undefined ? 1 : role.needed;
     const columns = given ?? defaultValueColumns(table, labels, needed);
     const most = shownValues(family, labels.length, separator !== undefined, times !== undefined);
     values = columns.slice(0, most);
