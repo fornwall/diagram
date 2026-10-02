@@ -3,6 +3,7 @@
 
 import type { DataFormat } from "./chartSpec";
 import type { Records } from "./data";
+import { checkTableSize, TableSizeError } from "./dataLimits";
 import { parseNumber } from "./dataNumber";
 
 function isBlank(line: string): boolean {
@@ -43,6 +44,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let line = 1;
   let quoteLine = 0;
   let underlined = false;
+  let width = 0;
   const finishRecord = (): void => {
     record.push(field);
     // Spreadsheets save empty rows as ",,,".
@@ -50,6 +52,8 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       if (RULE.test(record.join(delimiter))) {
         underlined ||= records.length === 1;
       } else {
+        width = Math.max(width, record.length);
+        checkTableSize(records.length + 1, width);
         records.push(record);
       }
     }
@@ -143,6 +147,7 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
 function splitCsv(text: string, firstLine: string, strict: boolean): Records | undefined {
   let best: { table: Records; uniform: number; width: number } | undefined;
   let quoteError: unknown;
+  let sizeError: TableSizeError | undefined;
   for (const delimiter of [",", ";"]) {
     if (
       !text.includes(delimiter) ||
@@ -155,13 +160,24 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     let table: Records;
     let candidateError: unknown;
     try {
-      table = splitDelimited(text, delimiter);
-    } catch (error) {
-      if (strict) {
-        quoteError ??= error;
+      try {
+        table = splitDelimited(text, delimiter);
+      } catch (error) {
+        if (error instanceof TableSizeError) {
+          throw error;
+        }
+        if (strict) {
+          quoteError ??= error;
+        }
+        candidateError = error;
+        table = splitDelimited(text, delimiter, false);
       }
-      candidateError = error;
-      table = splitDelimited(text, delimiter, false);
+    } catch (error) {
+      if (!(error instanceof TableSizeError)) {
+        throw error;
+      }
+      sizeError ??= error;
+      continue;
     }
     const { records } = table;
     const width = mode(records.map((record) => record.length));
@@ -195,6 +211,9 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
   }
   if (best === undefined && quoteError !== undefined) {
     throw quoteError;
+  }
+  if (best === undefined && sizeError !== undefined) {
+    throw sizeError;
   }
   return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
@@ -362,7 +381,10 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
     try {
       return splitDelimited(text, "\t");
-    } catch {
+    } catch (error) {
+      if (error instanceof TableSizeError) {
+        throw error;
+      }
       // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
       return splitDelimited(text, "\t", false);
     }

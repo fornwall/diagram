@@ -42,9 +42,14 @@ function recordsFromJsonArray(array: unknown[]): Records {
     };
   }
   if (array.every(Array.isArray)) {
+    checkTableSize(
+      array.length,
+      array.reduce((width, row) => Math.max(width, row.length), 0),
+    );
     return { records: array.map((row) => row.map(jsonCell)) };
   }
   if (array.every(isScalar)) {
+    checkTableSize(array.length + 1, 1);
     return { records: [["value"], ...array.map((item) => [jsonCell(item)])], header: true };
   }
   throw new Error("The JSON array mixes objects, arrays and plain values.");
@@ -88,6 +93,7 @@ function recordsFromJson(value: unknown): Records {
     return recordsFromJsonArray(rows);
   }
   if (columns.every(isScalar)) {
+    checkTableSize(names.length + 1, 2);
     return {
       records: [["name", "value"], ...names.map((name, i) => [name, jsonCell(columns[i])])],
       header: true,
@@ -95,6 +101,7 @@ function recordsFromJson(value: unknown): Records {
   }
   if (columns.every(isPlainObject)) {
     const [keys = [], ...rows] = recordsFromJsonArray(columns).records;
+    checkTableSize(rows.length + 1, keys.length + 1);
     return {
       records: [
         [keys.includes("name") ? "key" : "name", ...keys],

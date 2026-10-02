@@ -1,7 +1,9 @@
 import * as assert from "node:assert";
 import type { DataFormat } from "../chartSpec";
 import { parseTable } from "../data";
+import { parseJson } from "../dataJson";
 import { parseNumber } from "../dataNumber";
+import { splitText } from "../dataText";
 
 /** Parses a table, with its columns by name. */
 function parse(text: string, format?: DataFormat) {
@@ -10,6 +12,36 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("rejects oversized records during parsing before converting cells", () => {
+    const wide = Array.from({ length: 1100 }, () => 1);
+    const rows = [wide, ...Array.from({ length: 1100 }, () => [1])];
+    assert.throws(() => parseJson(JSON.stringify(rows)), /exceeding the 1,000,000 cell limit/);
+    for (const format of ["csv", "tsv"] as const) {
+      const delimiter = format === "csv" ? "," : "\t";
+      assert.throws(
+        () => splitText(rows.map((row) => row.join(delimiter)).join("\n"), format),
+        /exceeding the 1,000,000 cell limit/,
+      );
+    }
+  });
+
+  test("an oversized CSV delimiter candidate does not reject a valid alternative", () => {
+    const label = `${"a,".repeat(1100)}z`;
+    for (const quoted of [false, true]) {
+      const field = quoted ? `"${label}"` : label;
+      const text = `name,meta;value\n${`${field};1\n`.repeat(1100)}`;
+      for (const format of ["auto", "csv"] as const) {
+        const table = parseTable(text, format);
+        assert.deepStrictEqual(
+          table.columns.map(({ name }) => name),
+          ["name,meta", "value"],
+        );
+        assert.strictEqual(table.rows.length, 1100);
+        assert.deepStrictEqual(table.rows[0], [label, 1]);
+      }
+    }
+  });
+
   test("rejects sparse data before expanding it into an oversized table", () => {
     const json = JSON.stringify(Array.from({ length: 1100 }, (_, i) => ({ [`field${i}`]: i })));
     const csv = `${Array.from({ length: 1100 }, (_, i) => `field${i}`).join(",")}\n${"1\n".repeat(1100)}`;
