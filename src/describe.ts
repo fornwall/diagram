@@ -2,7 +2,6 @@
 // did with it.
 
 import { codeFence } from "./blocks";
-import { dataOrigin } from "./chartSpec";
 import { documentName } from "./documentDiagram";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
@@ -24,38 +23,32 @@ export function describeDiagram(
   selection: readonly DiagramNode[],
   annotation?: Annotation,
 ): string {
-  const what =
-    state.language === "echarts" ? "chart, as an Apache ECharts option," : "Mermaid diagram";
-  const lines = [
-    `The ${what} currently shown in the diagram panel ("${state.title}"):`,
-    "",
-    describeSource(state),
-    "",
-  ];
+  const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
+  const lines = [`Current ${what}: ${JSON.stringify(state.title)}`, "", describeSource(state), ""];
   if (state.chart) {
     lines.push(
-      `It was drawn with ${CHART_TOOL} from ${dataOrigin(state.chart)}, with these parameters: ${JSON.stringify(state.chart)}. The user can reload the data with Refresh. To change the chart, call ${CHART_TOOL} again rather than editing the generated option.`,
+      `${CHART_TOOL} parameters: ${JSON.stringify(state.chart)}. Refresh reloads the data.`,
     );
+    if (!state.editedByUser) {
+      lines.push(`To change this generated chart, call ${CHART_TOOL} with updated parameters.`);
+    }
   }
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
   if (links.length > 0) {
     lines.push(
-      `These nodes link to code, which a click in the panel opens: ${links.join(", ")}. ` +
-        `Pass the same links to ${RENDER_TOOL} to keep them when changing the diagram.`,
+      `Code links: ${links.join(", ")}. Pass them to ${RENDER_TOOL} when changing the diagram.`,
     );
   }
   if (state.document) {
     lines.push(
-      `It was opened from a code block in ${documentName(state.document)} and belongs to that file, which the user's Apply in the panel writes it back to. What you render replaces the diagram in the panel only, never the file.`,
+      `Opened from a code block in ${documentName(state.document)}. Only the user's Apply or Write action writes to that file; rendering changes the panel.`,
     );
   }
   if (state.error) {
     lines.push(`It currently fails to render with this error: ${state.error}`);
   }
   if (state.editedByUser) {
-    lines.push(
-      "The user has edited this source by hand since it was last generated. Keep their edits unless asked otherwise.",
-    );
+    lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   const parts = `${nodeNoun(state.language)}s`;
   const marked = describeMarks(annotation, parts);
@@ -78,16 +71,16 @@ function describeMarks(annotation: Annotation | undefined, parts: string): strin
   const { marks, caption, dim } = annotation;
   const lines: string[] = [];
   if (caption !== undefined) {
-    lines.push(`The caption above the diagram, which you wrote, reads: ${caption}`);
+    lines.push(`Annotation caption: ${caption}`);
   }
   if (marks.length > 0) {
     const listed = marks.map(
       ({ id, kind, note }) => `${id} (${kind}${note === undefined ? "" : `: ${note}`})`,
     );
     lines.push(
-      `You have marked these ${parts} in the panel: ${listed.join(", ")}.` +
+      `Marked ${parts}: ${listed.join(", ")}.` +
         (dim ? " Everything else is faded." : "") +
-        ` Call ${ANNOTATE_TOOL} to move the marks on, or without marks to clear them.`,
+        ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`,
     );
   }
   return lines.join("\n");

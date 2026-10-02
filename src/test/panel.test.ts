@@ -608,11 +608,8 @@ suite("panel", function () {
         ["annotate"],
       );
       const described = panel.describeForModel() ?? "";
-      assert.match(
-        described,
-        /You have marked these nodes in the panel: A \(problem: fails here\)\./,
-      );
-      assert.match(described, /caption above the diagram, which you wrote, reads: Step 1 of 2/);
+      assert.match(described, /Marked nodes: A \(problem: fails here\)\./);
+      assert.match(described, /Annotation caption: Step 1 of 2/);
       assert.match(described, /Everything else is faded\./);
 
       sent.length = 0;

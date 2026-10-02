@@ -1,8 +1,8 @@
 # @diagram
 
-Interactive diagrams and charts for VS Code chat. Agents draw [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts in a panel beside the chat, and you answer by selecting, clicking and editing what they drew.
+Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) 6 charts beside VS Code chat. Ask an agent to draw, then select parts, edit the source or send a follow-up request from the panel.
 
-The `mermaid` and `echarts` code blocks already written in your Markdown files open in the same panel, and the edits you apply there go back into the file.
+You can also open `mermaid` and `echarts` blocks from Markdown files and apply edits back to the file.
 
 Requires VS Code 1.140 or later, and chat set up with a language model, such as GitHub Copilot.
 
@@ -33,19 +33,26 @@ Chat can also route diagram and chart requests to `@diagram` without you mention
 
 ## Use the panel
 
-- **Select** nodes or chart items, such as pie slices and bars, by clicking (Ctrl/Cmd+click or Shift+click for several). The agent sees the selection.
-- **Send to chat**: type a request at the bottom of the panel. It mentions the selected nodes and goes to whoever drew the diagram: `@diagram`, or the agent that called a tool.
-- **Edit source**: the icons at the top right switch between the diagram, the diagram beside its source, and the source alone. Change the Mermaid source or the ECharts option by hand and press Apply (Ctrl/Cmd+Enter). The agent sees your edits and is told to keep them.
-- **Open a diagram from a Markdown file**: the *Open in Diagram* action above every `mermaid` and `echarts` code block, or the **Diagram: Open Diagram at Cursor** command, shows it in the panel, whose title then names the file. Apply writes your edits back into that code block, keeping its fence, its indentation and the rest of the file, as an edit you can undo in the editor. Nothing else writes to the file: a diagram an agent draws into it is written only when you press **Write to** the file in the panel, and you are asked first. Turn the action off with the `diagram.codeLens.enabled` setting.
-- **Refresh** a chart of a file or a command's output to load the data again.
-- **Save** a chart as a self-contained HTML file: the chart, the colors it is drawn in and the chart library in one file, which opens in any browser and loads nothing.
-- **Drag out as an image**: drag the picture handle at the top right into another application, such as a chat message or a document, to drop the drawing there as a PNG, or as an SVG while you hold Shift. The image is drawn in the colors you see, and leaves out the tooltips that say where a node links to, so that it carries no paths from your machine.
-- **Open the code** a node stands for by clicking it, when the agent linked the node to a file. Such nodes are underlined.
-- **Answer** an agent's question by clicking nodes, when it asks you to pick.
-- **Follow a walkthrough**: an agent can mark nodes of the diagram it already drew — the step you are on, something wrong, a path that works — each with a short note and a line above the diagram, and fade the rest. The diagram itself stays where it is; a new one clears the marks.
-- Zoom diagrams with the toolbar or Ctrl/Cmd+scroll, and drag a diagram that is larger than the panel to move around in it. Charts fit the panel.
+- **Select** nodes or chart items by clicking; use Ctrl/Cmd+click or Shift+click for several. The agent sees your selection.
+- **Send to chat**: type a request at the bottom. It includes your selection and goes to `@diagram` or the agent that drew the diagram.
+- **Edit source**: use the top-right icons to show the source beside the diagram or alone. Press **Apply** (Ctrl/Cmd+Enter) to render your edits. Switching views or receiving a new diagram preserves unapplied edits; **Revert** loads the current diagram. The agent is told to preserve applied edits.
+- **Refresh** reloads a chart's file or command output, replacing manual source edits.
+- **Save** exports a chart as an HTML file containing its data, theme and chart library. It works offline in a browser.
+- **Drag out as an image**: drag the top-right picture handle into another application for a PNG; hold Shift for SVG. If PNG conversion fails, export falls back to SVG. Images use the current theme and omit code-link tooltips and their file paths.
+- **Open code** by clicking an underlined node linked to a file.
+- **Answer a question** by clicking nodes when an agent asks you to pick.
+- **Follow a walkthrough**: agents can mark nodes with notes, add a caption and fade the rest without moving the diagram. A new diagram clears the marks.
+- **Zoom and pan** diagrams with the toolbar, Ctrl/Cmd+scroll and dragging. Charts fit the panel.
 
 Diagrams follow your VS Code color theme.
+
+### Edit a diagram in a Markdown file
+
+Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. The panel title names the file.
+
+**Apply** writes your edits back into that block, preserving its fence, indentation and surrounding text. You can undo the edit in VS Code. If an agent replaces the diagram, **Write to** applies its version after confirmation; rendering alone never changes the file. Changing between Mermaid and ECharts detaches the diagram from the original block.
+
+Hide the **Open in Diagram** actions with `diagram.codeLens.enabled`.
 
 ## Tools for other agents
 

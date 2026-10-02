@@ -335,7 +335,7 @@ suite("documentDiagram", function () {
       assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
       assert.strictEqual(panel.current?.document?.uri, read.uri);
       assert.ok(panel.current?.document?.replaced);
-      assert.match(panel.describeForModel() ?? "", /opened from a code block in notes-\d+\.md/);
+      assert.match(panel.describeForModel() ?? "", /Opened from a code block in notes-\d+\.md/);
     } finally {
       panel.dispose();
     }

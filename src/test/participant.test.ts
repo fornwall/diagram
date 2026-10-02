@@ -261,7 +261,7 @@ suite("participant", function () {
       );
       assert.match(
         messageText(sent[1]?.messages.at(-1)),
-        /currently shown in the diagram panel|No diagram has been rendered/,
+        /Current Mermaid diagram|No diagram has been rendered/,
       );
     } finally {
       panel.dispose();

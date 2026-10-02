@@ -165,10 +165,7 @@ suite("Extension", () => {
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.
     const state = await invoke("diagram_getState", {});
-    assert.match(
-      state,
-      /You have marked these nodes in the panel: parse \(current: we are here\)\./,
-    );
+    assert.match(state, /Marked nodes: parse \(current: we are here\)\./);
     assert.match(state, /flowchart LR/);
 
     assert.match(await invoke("diagram_annotate", {}), /^Cleared the marks on the diagram/);
