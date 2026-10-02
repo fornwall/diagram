@@ -3,7 +3,7 @@
 
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
-import { CHART_TOOL, isDiagramLanguage, RENDER_TOOL } from "./protocol";
+import { CHART_TOOL, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
 /** Attached files are truncated to this many characters. */
 const MAX_ATTACHMENT_LENGTH = 50_000;
@@ -13,7 +13,7 @@ const INSTRUCTIONS = `You are @diagram inside VS Code. Draw diagrams and charts 
 Choose the format:
 - Mermaid for structure and flow (flowchart, sequence, class, state, ER, Gantt, mind map, timeline, etc.): one \`\`\`mermaid code block.
 - Apache ECharts 6 for quantitative data: one \`\`\`echarts code block containing the complete option with inline data, as JSON or as a JavaScript object literal. A JavaScript option may use functions wherever ECharts takes a callback (formatter, renderItem, symbolSize, labelLayout, ...), so "type": "custom" series work; string templates such as "{b}: {c}" are simpler for plain formatters.
-- ${CHART_TOOL} for a file, shell command output or a large pasted table. It handles access confirmation, reads the data and renders the chart: pie, doughnut, bar, horizontal or stacked bar, line, area, stacked area, scatter, treemap, sunburst, sankey, heatmap, radar, boxplot, gauge or funnel, working out which column labels, nests, flows into or measures what, grouping rows that share a label with "aggregate" (sum, mean, count, …) and drawing ISO dates on a time axis. Never invent file contents or command output.
+- ${CHART_TOOL} for files, shell command output or pasted tables. It handles access confirmation, reads data, infers columns and renders the chart. Use its schema for chart types and options. Never invent file contents or command output.
 - Honor an explicit format choice, including Mermaid pie and xychart diagrams.
 
 Reply briefly, followed by one complete diagram block, never a diff. After using ${CHART_TOOL}, give only the explanation. The panel replaces code blocks in chat: do not refer to a diagram as "below" or repeat its contents.
@@ -45,11 +45,8 @@ interface Exchange {
   diagram: string;
 }
 
-/** A file, selection or text attached to a request. The text is left out for a non-text file. */
-interface Attachment {
-  name: string;
-  text?: string;
-}
+/** An attachment's text or the reason it could not be read. */
+type Attachment = { name: string } & ({ text: string } | { error: string });
 
 /**
  * The messages asking the model to answer a request, to draw or, with `explain`, to explain
@@ -104,7 +101,7 @@ export async function promptMessages(
   const attached = await fitTexts(
     attachments.map((attachment) => ({
       attachment,
-      length: Math.min(attachment.text?.length ?? 0, MAX_ATTACHMENT_LENGTH),
+      length: "text" in attachment ? Math.min(attachment.text.length, MAX_ATTACHMENT_LENGTH) : 0,
       shorten: (length: number) => attachmentText(attachment, length),
     })),
     left,
@@ -325,11 +322,12 @@ async function readAttachments({
 }
 
 /** An attachment as given to the model, its text shortened to `length` characters. */
-function attachmentText({ name, text }: Attachment, length = MAX_ATTACHMENT_LENGTH): string {
-  const label = `Attached by the user: ${name}`;
-  if (text === undefined) {
-    return `${label}, which is not a text file.`;
+function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH): string {
+  const label = `Attached by the user: ${attachment.name}`;
+  if ("error" in attachment) {
+    return `${label}, which could not be read: ${attachment.error}`;
   }
+  const { text } = attachment;
   const truncated =
     text.length > length
       ? `, truncated to the first ${length} of its ${text.length} characters`
@@ -337,10 +335,7 @@ function attachmentText({ name, text }: Attachment, length = MAX_ATTACHMENT_LENG
   return `${label}${truncated}\n\n${codeFence(text.slice(0, length))}`;
 }
 
-/**
- * The name and text of an attached file, selection or string. The text is left out for a folder or
- * binary file. Other values, such as images, are skipped.
- */
+/** Reads file, selection and text attachments; unsupported reference types are skipped. */
 async function readAttachment({
   value,
   modelDescription,
@@ -359,7 +354,7 @@ async function readAttachment({
   try {
     const document = await vscode.workspace.openTextDocument(uri);
     return { name, text: document.getText(location?.range) };
-  } catch {
-    return { name };
+  } catch (error) {
+    return { name, error: errorMessage(error) };
   }
 }

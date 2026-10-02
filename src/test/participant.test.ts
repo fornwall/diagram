@@ -369,15 +369,46 @@ suite("participant", function () {
       ].reverse();
       const { sent } = await ask(panel, [[text("Hm.")]], { references });
       const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      assert.ok(
+        attached?.[0]?.startsWith(
+          `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which could not be read: `,
+        ),
+      );
       assert.deepStrictEqual(
-        attached?.map((message) => message.split("\n")[0]),
+        attached?.slice(1).map((message) => message.split("\n")[0]),
         [
-          `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which is not a text file.`,
           "Attached by the user: sizes.tsv:2",
           "Attached by the user: text (The terminal selection)",
         ],
       );
     } finally {
+      panel.dispose();
+    }
+  });
+
+  test("reports attachment read failures without losing the rest of the request", async () => {
+    const panel = newPanel();
+    const open = vscode.workspace.openTextDocument;
+    vscode.workspace.openTextDocument = async () => {
+      throw new Error("Permission denied");
+    };
+    try {
+      const { result, sent } = await ask(panel, [[text("Cannot read that file.")]], {
+        references: [
+          { id: "file", value: vscode.Uri.file("/unreadable.csv") },
+          { id: "text", value: "Chart the file when available" },
+        ],
+      });
+      assert.strictEqual(result?.errorDetails, undefined);
+      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      assert.strictEqual(attached?.length, 2);
+      assert.match(
+        attached?.[1] ?? "",
+        /unreadable\.csv, which could not be read: Permission denied/,
+      );
+      assert.match(attached?.[0] ?? "", /Chart the file when available/);
+    } finally {
+      vscode.workspace.openTextDocument = open;
       panel.dispose();
     }
   });
