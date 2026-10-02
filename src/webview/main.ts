@@ -24,6 +24,7 @@ type ViewMode = "visual" | "split" | "source";
 interface State {
   draft: string;
   view?: ViewMode;
+  editor?: { source: string; base: string };
 }
 
 declare function acquireVsCodeApi(): {
@@ -458,13 +459,25 @@ clearSelectionButton.addEventListener("click", () => {
   }
 });
 
-// Keep an unsent message and the chosen view when the webview reloads, e.g. moved to another window.
+// Keep drafts when the webview reloads, e.g. when moved to another window.
 function saveState(): void {
-  vscode.setState({ draft: askInput.value, view: viewMode });
+  vscode.setState({
+    draft: askInput.value,
+    view: viewMode,
+    editor:
+      sourceInput.value === editedFrom
+        ? undefined
+        : { source: sourceInput.value, base: editedFrom },
+  });
 }
 const restored = vscode.getState();
 askInput.value = restored?.draft ?? "";
 viewMode = restored?.view ?? "visual";
+if (restored?.editor) {
+  sourceInput.value = restored.editor.source;
+  editedFrom = restored.editor.base;
+  updateEditorActions();
+}
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };
@@ -598,10 +611,10 @@ dragOutHandle.addEventListener("dragstart", (event) => {
   );
   // For a target that takes rich text instead of a file, and one that prefers vector over pixels.
   if (ready.png) {
-    dataTransfer.setData(
-      "text/html",
-      `<img src="${ready.png}" alt="${escapeHtml(title || name)}">`,
-    );
+    const image = document.createElement("img");
+    image.src = ready.png;
+    image.alt = title || name;
+    dataTransfer.setData("text/html", image.outerHTML);
   }
   dataTransfer.setData("image/svg+xml", ready.image.svg);
   try {
@@ -612,14 +625,6 @@ dragOutHandle.addEventListener("dragstart", (event) => {
     // Not every build accepts an image that is not in the page; the default outline will do.
   }
 });
-
-const HTML_ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-};
-const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => HTML_ESCAPES[char] ?? char);
 
 /** Says something in place of the selection for a moment, then puts the selection back. */
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
@@ -645,12 +650,10 @@ function updateEditorActions(): void {
   const edited = sourceInput.value !== editedFrom;
   applyButton.disabled = !edited;
   revertButton.disabled = !edited;
+  saveState();
 }
 
-/**
- * Shows the rendering, the source, or both. Showing the source loads it as rendered, while hiding
- * it keeps unapplied edits for when it is shown again.
- */
+/** Changes views without discarding unapplied edits. */
 function setViewMode(mode: ViewMode): void {
   viewMode = mode;
   // Before the first diagram there is no source to show.
@@ -677,13 +680,13 @@ for (const [mode, button] of Object.entries(viewButtons)) {
   });
 }
 
-/** Keeps the editor from silently replacing a diagram that changed while editing. */
+/** Keeps drafts when the diagram changes, and warns before they replace newer source. */
 function sourceChanged(source: string): void {
   if (!sourceShown && sourceInput.value === editedFrom) {
     return;
   }
   if (source === appliedSource) {
-    // The applied edit came back: show it as rendered, unless it has been edited again since.
+    // Keep edits made while waiting for Apply to render.
     if (sourceInput.value === appliedSource) {
       loadSource();
     } else {
@@ -691,10 +694,10 @@ function sourceChanged(source: string): void {
       updateEditorActions();
     }
     appliedSource = undefined;
-  } else if (sourceInput.value === editedFrom) {
+  } else if (sourceInput.value === editedFrom || sourceInput.value === source) {
     loadSource();
   } else {
-    staleNote.hidden = false;
+    staleNote.hidden = current?.renderer.formatForEditing(source) === editedFrom;
   }
 }
 

@@ -36,6 +36,7 @@ suite("webview", function () {
         const acquire = acquireVsCodeApi;
         acquireVsCodeApi = () => {
           const api = acquire();
+          window.readTestState = () => api.getState();
           window.addEventListener("message", async ({data}) => {
             if (data.type !== "testExpression") return;
             try {
@@ -71,6 +72,30 @@ suite("webview", function () {
 
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
+
+  function nextRender(action: () => unknown): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        listener.dispose();
+        reject(new Error("The webview did not render its diagram."));
+      }, 10_000);
+      const listener = webview.onDidReceiveMessage((message) => {
+        if (message.type === "rendered" || message.type === "renderError") {
+          clearTimeout(timer);
+          listener.dispose();
+          if (message.type === "renderError") reject(new Error(message.message));
+          else resolve();
+        }
+      });
+      Promise.resolve()
+        .then(action)
+        .catch((error: unknown) => {
+          clearTimeout(timer);
+          listener.dispose();
+          reject(error);
+        });
+    });
+  }
 
   test("renders Mermaid diagrams of the common types", async () => {
     for (const [diagramType, source] of Object.entries(MERMAID)) {
@@ -262,6 +287,54 @@ suite("webview", function () {
       await evaluate('document.getElementById("source").value'),
       "flowchart LR\n A --> New",
     );
+    await evaluate('document.getElementById("view-visual").click()');
+  });
+
+  test("restores unapplied source edits after a webview reload", async () => {
+    const original = "flowchart LR\n A --> Original";
+    const draft = "flowchart LR\n A --> Draft";
+    assert.ok((await render({ source: original })).ok);
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const input = document.getElementById("source");
+      input.value = ${JSON.stringify(draft)};
+      input.dispatchEvent(new Event("input"));
+    })()`);
+    assert.deepStrictEqual(await evaluate("window.readTestState().editor"), {
+      source: draft,
+      base: original,
+    });
+    await nextRender(() => {
+      webview.html += "\n<!-- Reload to verify draft restoration. -->";
+    });
+    assert.deepStrictEqual(
+      await evaluate(`({
+        source: document.getElementById("source").value,
+        stale: !document.getElementById("stale-note").hidden,
+        applyDisabled: document.getElementById("apply").disabled
+      })`),
+      { source: draft, stale: false, applyDisabled: false },
+    );
+    const incoming = "flowchart LR\n A --> Incoming";
+    assert.ok((await render({ source: incoming })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`({
+        source: document.getElementById("source").value,
+        stale: !document.getElementById("stale-note").hidden
+      })`),
+      { source: draft, stale: true },
+    );
+    await evaluate('document.getElementById("revert").click()');
+    assert.strictEqual(await evaluate('document.getElementById("source").value'), incoming);
+    assert.strictEqual(await evaluate("window.readTestState().editor ?? null"), null);
+    await evaluate(`(() => {
+      const input = document.getElementById("source");
+      input.value = ${JSON.stringify(draft)};
+      input.dispatchEvent(new Event("input"));
+    })()`);
+    await nextRender(() => evaluate('document.getElementById("apply").click()'));
+    assert.strictEqual(panel.current?.source, draft);
+    assert.strictEqual(await evaluate("window.readTestState().editor ?? null"), null);
     await evaluate('document.getElementById("view-visual").click()');
   });
 
