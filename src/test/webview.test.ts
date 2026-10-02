@@ -185,27 +185,36 @@ suite("webview", function () {
     );
   });
 
-  test("restores focus after completing or cancelling a node pick", async () => {
+  test("reveals node picks without losing source edits and restores focus when finished", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
       await evaluate(`(() => {
         try {
+          const source = document.getElementById("source");
           return ["visual", "source"].flatMap(view => {
-            document.getElementById("view-" + view).click();
             return ["pick-done", "pick-cancel"].map(id => {
+              document.getElementById("view-" + view).click();
+              const draft = source.value + "\\n%% Unapplied edit";
+              source.value = draft;
+              source.dispatchEvent(new Event("input"));
               window.dispatchEvent(new MessageEvent("message", {data: {
                 type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true
               }}));
+              const canvas = document.getElementById("canvas");
+              const visible = canvas.getBoundingClientRect().height > 0;
+              const focused = document.activeElement === canvas;
+              const preserved = source.value === draft;
               document.querySelector("#diagram .diagram-node[tabindex]")
                 .dispatchEvent(new MouseEvent("click", {bubbles: true}));
               const button = document.getElementById(id);
               button.focus();
               button.click();
-              return document.getElementById("pick").hidden &&
-                document.activeElement === document.getElementById(view === "source" ? "source" : "canvas");
+              return visible && focused && preserved && document.getElementById("pick").hidden &&
+                document.activeElement === canvas;
             });
           });
         } finally {
+          document.getElementById("revert").click();
           document.getElementById("view-visual").click();
           document.getElementById("clear-selection").click();
         }
@@ -650,6 +659,31 @@ suite("webview", function () {
     });
     assert.ok(!outcome.ok && outcome.kind === "invalid");
     assert.match(outcome.error, /unsupported type "map"/);
+  });
+
+  test("keeps recovery controls visible when a render error is long", async () => {
+    const outcome = await render({
+      language: "echarts",
+      source: '(() => { throw new Error("Invalid chart value. ".repeat(2000)); })()',
+    });
+    assert.ok(!outcome.ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        document.getElementById("view-source").click();
+        const error = document.getElementById("error");
+        const apply = document.getElementById("apply").getBoundingClientRect();
+        const footer = document.querySelector("footer").getBoundingClientRect();
+        const result = {
+          scrolls: error.scrollHeight > error.clientHeight,
+          editorVisible: document.getElementById("source").getBoundingClientRect().height > 0,
+          applyVisible: apply.top >= 0 && apply.bottom <= innerHeight,
+          footerVisible: footer.bottom <= innerHeight
+        };
+        document.getElementById("view-visual").click();
+        return result;
+      })()`),
+      { scrolls: true, editorVisible: true, applyVisible: true, footerVisible: true },
+    );
   });
 
   test("highlights the right unnamed or slash-named chart series", async () => {

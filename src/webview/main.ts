@@ -402,6 +402,10 @@ function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
 // Picking nodes on request of an agent.
 
 function startPick(id: number, prompt: string, multiple: boolean): void {
+  // Reveal the nodes without discarding an unfinished source edit.
+  if (viewMode === "source") {
+    setViewMode("split");
+  }
   pick = { id, multiple };
   clearSelection();
   pickPrompt.textContent = prompt;
@@ -409,6 +413,7 @@ function startPick(id: number, prompt: string, multiple: boolean): void {
   pickBanner.hidden = false;
   canvas.classList.add("picking");
   updateSelectionUi();
+  canvas.focus();
 }
 
 function endPick(): void {

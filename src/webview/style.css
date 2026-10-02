@@ -230,6 +230,10 @@ button.link:hover {
 }
 
 #error {
+  box-sizing: border-box;
+  max-height: 35vh;
+  flex-shrink: 0;
+  overflow: auto;
   padding: 6px 12px;
   background: var(--vscode-inputValidation-errorBackground);
   border-bottom: 1px solid var(--vscode-inputValidation-errorBorder);
@@ -239,8 +243,6 @@ button.link:hover {
 
 #error pre {
   margin: 4px 0 0;
-  max-height: 12em;
-  overflow: auto;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: var(--vscode-editor-font-size, 12px);
 }
