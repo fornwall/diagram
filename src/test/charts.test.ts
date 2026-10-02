@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { time as echartsTime } from "echarts";
 import * as vscode from "vscode";
 import {
   CHART_TYPES,
@@ -776,6 +777,49 @@ suite("charts", () => {
     const years = build(chart("line"), "year,sales\n2023,5\n2024,7");
     assert.strictEqual(years.xAxis.type, "category");
     assert.deepStrictEqual(years.xAxis.data, ["2023", "2024"]);
+  });
+
+  test("time axes preserve offset minutes and fractional seconds", () => {
+    const timestamps = [
+      "2026-01-02T14:30:00+05:30",
+      "2026-01-02T14:30:00-03:30",
+      "2026-01-02 14:30:00+0545",
+      "2026-01-02T14:30:00.5Z",
+      "2026-01-02T14:30:00.05Z",
+      "2026-01-02T14:30:00.123456789Z",
+      "0099-01-02T14:30:00Z",
+    ];
+    const expected = [
+      Date.UTC(2026, 0, 2, 9),
+      Date.UTC(2026, 0, 2, 18),
+      Date.UTC(2026, 0, 2, 8, 45),
+      Date.UTC(2026, 0, 2, 14, 30, 0, 500),
+      Date.UTC(2026, 0, 2, 14, 30, 0, 50),
+      Date.UTC(2026, 0, 2, 14, 30, 0, 123),
+      -59042856600000,
+    ];
+    const data = `date,n\n${timestamps.map((date) => `${date},3`).join("\n")}`;
+    for (const type of ["line", "bar", "horizontalBar", "scatter"] as const) {
+      const points: (string | number)[][] = build(chart(type), data).series[0].data;
+      assert.deepStrictEqual(
+        points.map((point) => +echartsTime.parse(point[type === "horizontalBar" ? 1 : 0])),
+        expected,
+        type,
+      );
+    }
+  });
+
+  test("unzoned times stay local and pad fractional seconds for ECharts", () => {
+    const data = "date,n\n2026-01-02 14:30:00.5,3\n2026-01-02T14:30:00.05,5";
+    const points: (string | number)[][] = build(chart("line"), data).series[0].data;
+    assert.deepStrictEqual(points, [
+      ["2026-01-02 14:30:00.500", 3],
+      ["2026-01-02T14:30:00.050", 5],
+    ]);
+    assert.deepStrictEqual(
+      points.map((point) => +echartsTime.parse(point[0])),
+      [+new Date(2026, 0, 2, 14, 30, 0, 500), +new Date(2026, 0, 2, 14, 30, 0, 50)],
+    );
   });
 
   test("times are read only where the label column is an axis", () => {

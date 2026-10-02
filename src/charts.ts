@@ -1,6 +1,6 @@
 // Turning a table and a chart request into an Apache ECharts option.
 
-import { dateFormat } from "./chartDates";
+import { dateFormat, timeValue } from "./chartDates";
 import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
@@ -909,7 +909,7 @@ function scatterOption(
         {
           type: "scatter",
           name: xName,
-          data: rows.map((row) => [label(row), row.values[0] ?? null]),
+          data: rows.map((row) => [timeValue(label(row)), row.values[0] ?? null]),
         },
       ],
     };
@@ -978,8 +978,8 @@ function cartesianOption(
         times === undefined
           ? (row.values[column] ?? null)
           : horizontal
-            ? [row.values[column] ?? null, label(row)]
-            : [label(row), row.values[column] ?? null],
+            ? [row.values[column] ?? null, timeValue(label(row))]
+            : [timeValue(label(row)), row.values[column] ?? null],
       ),
     })),
   };

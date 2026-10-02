@@ -46,3 +46,12 @@ export function dateFormat(labels: string[]): string | undefined {
     }),
   )?.name;
 }
+
+/** ECharts ignores offset minutes and reads short fractions as milliseconds, so normalize them. */
+export function timeValue(date: string): string | number {
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(date)) {
+    return Date.parse(date.replace(" ", "T"));
+  }
+  // Keep unzoned times local to the chart viewer, which may differ from the extension host.
+  return date.replace(/\.(\d{1,2})$/, (_, fraction: string) => `.${fraction.padEnd(3, "0")}`);
+}
