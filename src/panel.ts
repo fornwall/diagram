@@ -135,6 +135,7 @@ export class DiagramPanel implements vscode.Disposable {
   private annotation: Annotation | undefined;
   private nextRequestId = 1;
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
+  private unavailable: string | undefined;
   private renderVersion = 0;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private refreshing = false;
@@ -204,7 +205,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Shows the panel, opening it with the current diagram if it was closed. */
   show(): void {
-    if (this.reveal() && this.state) {
+    if ((this.reveal() || this.unavailable) && this.state) {
       void this.renderCurrent();
     }
   }
@@ -473,6 +474,7 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.pendingRender) {
       this.finishRender(this.pendingRender.message.requestId, replaced);
     }
+    this.unavailable = undefined;
     // The title names the document a diagram was opened from, as an Apply then writes to that file.
     this.panel.title = state.document
       ? `${state.title} — ${documentName(state.document)}`
@@ -542,6 +544,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     const { resolve } = this.pendingRender;
     this.pendingRender = undefined;
+    this.unavailable = !outcome.ok && outcome.kind === "unavailable" ? outcome.error : undefined;
     resolve(outcome);
   }
 
@@ -595,6 +598,12 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.pendingRender) {
       void vscode.window.showWarningMessage(
         "Wait for the diagram to finish rendering before writing it.",
+      );
+      return;
+    }
+    if (this.unavailable) {
+      void vscode.window.showWarningMessage(
+        `The diagram was not written: ${this.unavailable} Reopen the panel and try again.`,
       );
       return;
     }

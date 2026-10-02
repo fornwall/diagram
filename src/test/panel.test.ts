@@ -4,7 +4,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { linkText, linkTexts, type NodeLink } from "../links";
-import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
+import {
+  clickToAskQuery,
+  type Diagram,
+  DiagramPanel,
+  type DiagramState,
+  type RenderOutcome,
+} from "../panel";
 import { type FromWebview, isFromWebview, type ToWebview } from "../protocol";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { newPanel } from "./newPanel";
@@ -259,6 +265,35 @@ suite("panel", function () {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.strictEqual(panel.current?.source, flowchart.source);
       assert.strictEqual(panel.current?.error, undefined);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("picking after an unavailable render retries it instead of waiting on an empty panel", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      post(): void;
+      pendingRender?: { message: { requestId: number } };
+      finishRender(id: number, outcome: RenderOutcome): void;
+    };
+    internals.post = () => {};
+    const unavailable = {
+      ok: false,
+      kind: "unavailable",
+      error: "The diagram panel did not respond.",
+    } as const;
+    try {
+      const rendering = panel.render(flowchart, "tool");
+      assert.ok(internals.pendingRender);
+      internals.finishRender(internals.pendingRender.message.requestId, unavailable);
+      assert.deepStrictEqual(await rendering, unavailable);
+      assert.strictEqual(panel.current?.error, undefined);
+
+      const picking = pick(panel);
+      assert.ok(internals.pendingRender, "Picking must restart the failed render");
+      internals.finishRender(internals.pendingRender.message.requestId, unavailable);
+      assert.deepStrictEqual(await picking, { picked: false, reason: unavailable.error });
     } finally {
       panel.dispose();
     }

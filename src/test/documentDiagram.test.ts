@@ -338,6 +338,43 @@ suite("documentDiagram", function () {
     }
   });
 
+  test("an unavailable render cannot be written to the document", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const before = document.getText();
+    const read = binding(document);
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      post(): void;
+      pendingRender: { message: { requestId: number } };
+      finishRender(id: number, outcome: RenderOutcome): void;
+    };
+    internals.post = () => {};
+    const warn = vscode.window.showWarningMessage;
+    let warning = "";
+    vscode.window.showWarningMessage = async (message: string) => {
+      warning = message;
+      return undefined;
+    };
+    try {
+      const rendering = panel.render(
+        { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
+        "document",
+      );
+      internals.finishRender(internals.pendingRender.message.requestId, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram panel did not respond.",
+      });
+      await rendering;
+      await writeShown(panel);
+      assert.strictEqual(document.getText(), before);
+      assert.match(warning, /not written.*did not respond.*Reopen/);
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+    }
+  });
+
   test("applying an edit leaves a document that changed to the user", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
