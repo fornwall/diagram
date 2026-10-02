@@ -485,8 +485,27 @@ const AGGREGATED: Record<Aggregation, string> = {
 interface GroupColumn {
   value: number | null;
   count: number;
+  /** A power-of-two scale used only when a mean's running sum would overflow. */
+  scale?: number;
   /** Only a median needs to retain all observations. */
   samples?: number[];
+}
+
+function addValues(left: number, right: number): number {
+  const sum = left + right;
+  if (!Number.isFinite(sum)) {
+    throw new Error(
+      "The chart's total exceeds the numeric range. Rescale the values before charting them.",
+    );
+  }
+  return sum;
+}
+
+function interpolate(left: number, right: number, share: number): number {
+  const difference = right - left;
+  return Number.isFinite(difference)
+    ? left + difference * share
+    : left * (1 - share) + right * share;
 }
 
 /**
@@ -522,12 +541,20 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
         column.samples.push(value);
         return;
       }
+      if (how === "mean") {
+        value *= column.scale ?? 1;
+        if (!Number.isFinite((column.value ?? 0) + value)) {
+          column.scale = (column.scale ?? 1) / 2;
+          column.value = (column.value ?? 0) / 2;
+          value /= 2;
+        }
+      }
       column.value =
         how === "min"
           ? Math.min(column.value ?? value, value)
           : how === "max"
             ? Math.max(column.value ?? value, value)
-            : (column.value ?? 0) + value;
+            : addValues(column.value ?? 0, value);
     });
   }
   return [...groups.values()].map(({ labels, columns, rows: count }) => ({
@@ -535,7 +562,7 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
     values:
       how === "count"
         ? [count]
-        : columns.map(({ value, count, samples }) => {
+        : columns.map(({ value, count, scale, samples }) => {
             if (count === 0) {
               return null;
             }
@@ -545,7 +572,7 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
                 0.5,
               );
             }
-            return how === "mean" ? (value ?? 0) / count : value;
+            return how === "mean" ? (value ?? 0) / count / (scale ?? 1) : value;
           }),
   }));
 }
@@ -677,7 +704,7 @@ function readRows(
         if (kept.length < spec.limit && label(row) !== "Other") {
           kept.push(row);
         } else {
-          other += row.values[0] ?? 0;
+          other = addValues(other, row.values[0] ?? 0);
           summed++;
         }
       }
@@ -1093,7 +1120,7 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
       siblings = level.children;
     }
     if (node !== undefined) {
-      node.own += values[0] ?? 0;
+      node.own = addValues(node.own, values[0] ?? 0);
     }
   }
   let depth = 0;
@@ -1105,7 +1132,7 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
     const children = [...level.children.values()].map((child) => total(child, deep + 1));
     return {
       name: level.name,
-      value: children.reduce((sum, child) => sum + child.value, 0),
+      value: children.reduce((sum, child) => addValues(sum, child.value), 0),
       children,
     };
   };
@@ -1160,7 +1187,7 @@ function sumFlows(flows: Flow[]): Flow[] {
     if (found === undefined) {
       summed.set(key, { ...flow });
     } else {
-      found.value += flow.value;
+      found.value = addValues(found.value, flow.value);
     }
   }
   return [...summed.values()];
@@ -1354,7 +1381,7 @@ function heatmapOption(
       if (cell === undefined) {
         cells.set(`${y} ${x}`, [x, y, value]);
       } else {
-        cell[2] += value;
+        cell[2] = addValues(cell[2], value);
         summed++;
       }
       continue;
@@ -1407,7 +1434,7 @@ function quantile(sorted: number[], share: number): number {
   const at = (sorted.length - 1) * share;
   const below = Math.floor(at);
   const value = sorted[below] ?? 0;
-  return value + ((sorted[below + 1] ?? value) - value) * (at - below);
+  return interpolate(value, sorted[below + 1] ?? value, at - below);
 }
 
 /**
@@ -1495,7 +1522,10 @@ function niceMax(value: number): number {
     return 1;
   }
   const power = 10 ** Math.floor(Math.log10(value));
-  return [1, 2, 5].map((step) => step * power).find((top) => top > value) ?? 10 * power;
+  return Math.min(
+    [1, 2, 5].map((step) => step * power).find((top) => top > value) ?? 10 * power,
+    Number.MAX_VALUE,
+  );
 }
 
 /**
@@ -1518,7 +1548,10 @@ function gaugeOption(
       `showed the first of ${rows.length} rows, ${JSON.stringify(shown ? label(shown) : "")}`,
     );
   }
-  const total = rows.reduce((sum, { values }) => sum + (values[0] ?? 0), 0);
+  const total =
+    max === undefined && !percent
+      ? rows.reduce((sum, { values }) => addValues(sum, values[0] ?? 0), 0)
+      : value;
   const [top, reason] =
     max !== undefined
       ? [max, "as given"]

@@ -616,6 +616,46 @@ suite("charts", () => {
     );
   });
 
+  test("means and quantiles stay finite when their intermediate arithmetic overflows", () => {
+    const maximum = Number.MAX_VALUE;
+    const grouped = (values: number[], aggregate: "mean" | "median") =>
+      build(
+        chart("bar", { aggregate }),
+        JSON.stringify(values.map((value) => ({ group: "a", value }))),
+      ).series[0].data;
+    for (const aggregate of ["mean", "median"] as const) {
+      assert.deepStrictEqual(grouped([maximum, maximum], aggregate), [maximum]);
+      assert.deepStrictEqual(grouped([-maximum, maximum], aggregate), [0]);
+      assert.deepStrictEqual(grouped([maximum, maximum, -maximum, -maximum], aggregate), [0]);
+    }
+    const boxplot = build(chart("boxplot"), "group,value\na,-1e308\na,1e308");
+    assert.deepStrictEqual(boxplot.series[0].data, [[-1e308, -5e307, 0, 5e307, 1e308]]);
+  });
+
+  test("unrepresentable chart totals report how to fix the data", () => {
+    for (const [spec, data] of [
+      [chart("bar", { aggregate: "sum" }), "group,value\na,1e308\na,1e308"],
+      [chart("pie", { limit: 1 }), "group,value\na,1e308\nb,1e308\nc,1e308"],
+      [chart("treemap"), "path,value\nroot/a,1e308\nroot/b,1e308"],
+      [chart("sankey"), "from,to,value\na,b,1e308\na,b,1e308"],
+      [chart("heatmap"), "row,column,value\na,b,1e308\na,b,1e308"],
+      [chart("gauge"), "group,value\na,1e308\nb,1e308"],
+    ] as const) {
+      assert.throws(
+        () => build(spec, data),
+        /The chart's total exceeds the numeric range\. Rescale the values/,
+        spec.type,
+      );
+    }
+  });
+
+  test("gauge scales stay finite and skip totals when a scale is supplied", () => {
+    const data = "group,value\na,1e308\nb,1e308";
+    assert.strictEqual(build(chart("gauge"), "[1e308]").series[0].max, Number.MAX_VALUE);
+    assert.strictEqual(build(chart("gauge", { max: 1e308 }), data).series[0].max, 1e308);
+    assert.strictEqual(build(chart("gauge"), "group,value\na,1e308%\nb,1e308%").series[0].max, 100);
+  });
+
   test("grouped columns skip missing observations but count every row", () => {
     const data = "group,x,y\na,-3,\na,,8\na,9,4\nb,,\nc,0,-2";
     const expected = {
