@@ -437,6 +437,44 @@ suite("documentDiagram", function () {
     }
   });
 
+  for (const change of ["replacement", "edit and revert"] as const) {
+    test(`a confirmed write does not overwrite the document after ${change}`, async () => {
+      const document = await markdown("```mermaid\nflowchart TD\n```\n");
+      const before = document.getText();
+      const read = { ...binding(document), replaced: true };
+      const state = { ...openedState(read), source: "flowchart LR" };
+      const panel = newPanel(new Map<string, unknown>([["diagram.state", state]]));
+      const warn = vscode.window.showWarningMessage;
+      const confirmation = Promise.withResolvers<string | undefined>();
+      const warnings: string[] = [];
+      vscode.window.showWarningMessage = ((message: string) => {
+        warnings.push(message);
+        return warnings.length === 1 ? confirmation.promise : Promise.resolve(undefined);
+      }) as typeof warn;
+      try {
+        assert.ok((await panel.render(state, "document")).ok);
+        const writing = writeShown(panel);
+        assert.strictEqual(warnings.length, 1);
+        if (change === "replacement") {
+          // Even identical source belongs to a different document binding after replacement.
+          assert.ok((await panel.render({ ...state, document: { ...read } }, "document")).ok);
+        } else {
+          // Editing and restoring the same text still invalidates the original confirmation.
+          await applyEdit(panel, "flowchart RL");
+          await applyEdit(panel, state.source);
+        }
+        confirmation.resolve("Write");
+        await writing;
+        assert.strictEqual(document.getText(), before);
+        assert.match(warnings.at(-1) ?? "", /changed while you were confirming/);
+      } finally {
+        confirmation.resolve(undefined);
+        vscode.window.showWarningMessage = warn;
+        panel.dispose();
+      }
+    });
+  }
+
   test("an agent that replaces the diagram keeps the binding without writing", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);

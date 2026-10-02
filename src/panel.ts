@@ -624,7 +624,18 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Confirms agent replacements and follows the document block after a successful write. */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
+    const version = this.renderVersion;
     if (binding.replaced && !(await confirmReplacedWrite(binding))) {
+      return;
+    }
+    if (
+      this.renderVersion !== version ||
+      this.state?.document !== binding ||
+      this.state.source !== source
+    ) {
+      void vscode.window.showWarningMessage(
+        "The diagram changed while you were confirming the write. Review it and write it again.",
+      );
       return;
     }
     const outcome = await writeFence(binding, source);
