@@ -596,6 +596,67 @@ suite("participant", function () {
     }
   });
 
+  test("shares attachment reads across selections and history, rereading on each request", async () => {
+    const panel = newPanel();
+    const open = vscode.workspace.openTextDocument;
+    const document = await open({ content: "first\nsecond" });
+    let reads = 0;
+    vscode.workspace.openTextDocument = async () => {
+      reads++;
+      return document;
+    };
+    try {
+      const references = [
+        { id: "file", value: document.uri },
+        { id: "line", value: new vscode.Location(document.uri, new vscode.Range(1, 0, 1, 6)) },
+      ];
+      const history = [
+        new RequestTurn("Read it", undefined, references, "diagram.participant", []),
+      ];
+      for (let request = 1; request <= 2; request++) {
+        const { sent } = await ask(panel, [[text("Read.")]], { references, history });
+        assert.strictEqual(reads, request);
+        const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+        assert.strictEqual(attached?.length, 2);
+        assert.ok(attached?.some((text) => text.endsWith("```\nsecond\n```")));
+        assert.ok(attached?.some((text) => text.endsWith("```\nfirst\nsecond\n```")));
+      }
+    } finally {
+      vscode.workspace.openTextDocument = open;
+      panel.dispose();
+    }
+  });
+
+  test("shares failed attachment reads without caching them across requests", async () => {
+    const panel = newPanel();
+    const open = vscode.workspace.openTextDocument;
+    let reads = 0;
+    vscode.workspace.openTextDocument = async () => {
+      reads++;
+      throw new Error("File unavailable");
+    };
+    try {
+      const references = [{ id: "file", value: vscode.Uri.file("/unavailable.csv") }];
+      const history = [
+        new RequestTurn("Read it", undefined, references, "diagram.participant", []),
+      ];
+      for (let request = 1; request <= 2; request++) {
+        const { result, sent } = await ask(panel, [[text("Unavailable.")]], {
+          references,
+          history,
+        });
+        assert.strictEqual(reads, request);
+        assert.strictEqual(result?.errorDetails, undefined);
+        const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+        assert.strictEqual(attached?.length, 1);
+        assert.match(attached?.[0] ?? "", /File unavailable/);
+      }
+    } finally {
+      vscode.workspace.openTextDocument = open;
+      panel.dispose();
+    }
+  });
+
   test("reports attachment read failures without losing the rest of the request", async () => {
     const panel = newPanel();
     const open = vscode.workspace.openTextDocument;
@@ -763,7 +824,7 @@ suite("participant", function () {
       assert.strictEqual(sent.length, 0);
       assert.strictEqual(
         result?.errorDetails?.message,
-        "This request is too large for Fake, which takes 3000 tokens here (4000 less room for its reply): your message takes 5004 tokens. Shorten your message or pick a model that takes more.",
+        "This request exceeds Fake's 3000-token input budget: your message takes 5004 tokens. Shorten your message or choose a model with a larger context.",
       );
     } finally {
       panel.dispose();

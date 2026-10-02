@@ -89,6 +89,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       fieldStart = false;
     } else if (char === delimiter) {
       record.push(field);
+      checkTableSize(1, record.length + 1);
       field = "";
       fieldStart = true;
       closedQuote = false;
@@ -379,7 +380,9 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
 
 /** Splits text in the given format, or else in the one that fits it best, into records. */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
-  const { lines, underlined } = withoutRules(text.split(/\r?\n/).filter((line) => !isBlank(line)));
+  const { lines, underlined } = withoutRules(
+    text.split(/\r\n?|\n/).filter((line) => !isBlank(line)),
+  );
   const tabs = lines.filter((line) => line.includes("\t")).length;
   let tabular: Records | undefined;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {

@@ -240,6 +240,48 @@ suite("panel", function () {
     }
   });
 
+  test("failed deliveries from before a reload cannot cancel replayed requests", async () => {
+    const panel = newPanel();
+    const delivery = Promise.withResolvers<boolean>();
+    const internals = panel as unknown as {
+      panel: vscode.WebviewPanel;
+      webviewReady: boolean;
+      pendingRender?: { message: { requestId: number } };
+      pendingPick?: { message: { pickId: number } };
+      onMessage(message: FromWebview): void;
+    };
+    try {
+      panel.show();
+      internals.webviewReady = true;
+      internals.panel.webview.postMessage = () => delivery.promise;
+      const rendering = panel.render(flowchart, "tool");
+      const picking = pick(panel);
+      const render = internals.pendingRender;
+      const pendingPick = internals.pendingPick;
+      assert.ok(render && pendingPick);
+
+      internals.panel.webview.postMessage = async () => true;
+      internals.onMessage({ type: "ready" });
+      delivery.resolve(false);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.strictEqual(internals.pendingRender, render);
+      assert.strictEqual(internals.pendingPick, pendingPick);
+
+      internals.onMessage({
+        type: "rendered",
+        requestId: render.message.requestId,
+        diagramType: "flowchart",
+      });
+      const nodes = [{ id: "A", label: "Parser" }];
+      internals.onMessage({ type: "picked", pickId: pendingPick.message.pickId, nodes });
+      assert.ok((await rendering).ok);
+      assert.deepStrictEqual(await picking, { picked: true, nodes });
+    } finally {
+      delivery.resolve(false);
+      panel.dispose();
+    }
+  });
+
   test("source is saved before the webview responds, without saving successful renders twice", async () => {
     const values = new Map<string, unknown>();
     const panel = newPanel(values);

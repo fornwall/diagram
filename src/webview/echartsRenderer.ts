@@ -351,13 +351,17 @@ export class EChartsRenderer implements Renderer {
         }
       }
     }
-    for (const item of stale) {
-      chart.dispatchAction({ type: "unselect", ...item });
+    if (stale.length > 0) {
+      chart.dispatchAction({ type: "unselect", batch: stale });
     }
+    const added: ItemRef[] = [];
     for (const key of this.selectedKeys) {
       if (!shown.has(key)) {
-        chart.dispatchAction({ type: "select", ...parseItemKey(key) });
+        added.push(parseItemKey(key));
       }
+    }
+    if (added.length > 0) {
+      chart.dispatchAction({ type: "select", batch: added });
     }
   }
 }

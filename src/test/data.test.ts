@@ -12,6 +12,41 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("parses spaces between numbers and units in tabular exports", () => {
+    const table = parseTable("name;size;share\na;1,5 MiB;12,5 %\nb;2\u00a0MiB;25\u202f%");
+    assert.deepStrictEqual(table.rows, [
+      ["a", 1.5 * 1024 ** 2, 12.5],
+      ["b", 2 * 1024 ** 2, 25],
+    ]);
+    assert.deepStrictEqual(table.columns, [
+      { name: "name", numeric: false },
+      { name: "size", numeric: true, unit: "bytes" },
+      { name: "share", numeric: true, unit: "%" },
+    ]);
+    assert.strictEqual(parseNumber("1\nMiB"), undefined);
+  });
+
+  test("parses tables with carriage-return line endings", () => {
+    for (const newline of ["\r", "\r\n", "\n"]) {
+      for (const delimiter of [",", ";", "\t", " "]) {
+        const text = [
+          ["name", "value"],
+          ["a", "1"],
+          ["b", "2"],
+        ]
+          .map((row) => row.join(delimiter))
+          .join(newline);
+        assert.deepStrictEqual(parse(text), {
+          columns: ["name", "value"],
+          rows: [
+            ["a", 1],
+            ["b", 2],
+          ],
+        });
+      }
+    }
+  });
+
   test("rejects oversized records during parsing before converting cells", () => {
     const wide = Array.from({ length: 1100 }, () => 1);
     const rows = [wide, ...Array.from({ length: 1100 }, () => [1])];

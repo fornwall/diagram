@@ -254,7 +254,27 @@ suite("webview", function () {
           const lostCapture = !canvas.classList.contains("panning");
           const click = new MouseEvent("click", {bubbles: true, cancelable: true});
           canvas.dispatchEvent(click);
-          return {released, restarted, unrelated, lostCapture, clickAllowed: !click.defaultPrevented};
+          send(canvas, "pointerdown", 4);
+          send(canvas, "pointermove", 4, 90);
+          send(canvas, "pointerup", 4);
+          const keyboardClick = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 0});
+          canvas.dispatchEvent(keyboardClick);
+          const panClick = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1});
+          canvas.dispatchEvent(panClick);
+          // A release outside the canvas may have no click here. The next gesture still works,
+          // including when a new diagram fits and no longer needs panning.
+          send(canvas, "pointerdown", 5);
+          send(canvas, "pointermove", 5, 90);
+          send(document.body, "pointerup", 5);
+          Object.defineProperty(canvas, "scrollWidth", {value: canvas.clientWidth, configurable: true});
+          Object.defineProperty(canvas, "scrollHeight", {value: canvas.clientHeight, configurable: true});
+          send(canvas, "pointerdown", 6);
+          send(canvas, "pointerup", 6);
+          const nextClick = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1});
+          canvas.dispatchEvent(nextClick);
+          return {released, restarted, unrelated, lostCapture, clickAllowed: !click.defaultPrevented,
+            keyboardAllowed: !keyboardClick.defaultPrevented, panSuppressed: panClick.defaultPrevented,
+            nextAllowed: !nextClick.defaultPrevented};
         } finally {
           send(canvas, "pointercancel", 1);
           send(canvas, "pointercancel", 2);
@@ -262,9 +282,19 @@ suite("webview", function () {
           delete canvas.hasPointerCapture;
           delete canvas.releasePointerCapture;
           delete canvas.scrollWidth;
+          delete canvas.scrollHeight;
         }
       })()`),
-      { released: true, restarted: true, unrelated: true, lostCapture: true, clickAllowed: true },
+      {
+        released: true,
+        restarted: true,
+        unrelated: true,
+        lostCapture: true,
+        clickAllowed: true,
+        keyboardAllowed: true,
+        panSuppressed: true,
+        nextAllowed: true,
+      },
     );
   });
 
@@ -820,6 +850,52 @@ suite("webview", function () {
         `Did not highlight the second series (${names[1] ?? "unnamed"}).`,
       );
     }
+  });
+
+  test("clears every selected chart item together", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: JSON.stringify({
+            animation: false,
+            series: [
+              {
+                type: "pie",
+                data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
+                itemStyle: { color: "#0000ff" },
+                select: { itemStyle: { color: "#ff0000" } },
+                emphasis: { disabled: true },
+              },
+            ],
+          }),
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        for (const slice of document.querySelectorAll('#chart svg path[fill="#0000ff"]')) {
+          const box = slice.getBoundingClientRect();
+          const mouse = {bubbles: true, ctrlKey: true,
+            clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
+          for (const type of ["mousedown", "mouseup", "click"]) {
+            slice.dispatchEvent(new MouseEvent(type, mouse));
+          }
+        }
+        const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+        const waitFor = async expected => {
+          for (let attempt = 0; attempt < 100 && count() !== expected; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
+          return count();
+        };
+        const selected = await waitFor(3);
+        document.getElementById("clear-selection").click();
+        const cleared = await waitFor(0);
+        return {selected, cleared, clearHidden: document.getElementById("clear-selection").hidden};
+      })()`),
+      { selected: 3, cleared: 0, clearHidden: true },
+    );
   });
 
   test("renders custom shapes without a coordinate system", async () => {

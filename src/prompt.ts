@@ -25,11 +25,7 @@ If the request is too ambiguous, ask one clarifying question without a diagram b
 const EXPLAIN_INSTRUCTIONS = `You are @diagram inside VS Code. Explain the current diagram or chart and answer the user's question, focusing on selected nodes or items.
 Do not output a mermaid or echarts code block or change the diagram.`;
 
-/**
- * The share of the model's input tokens kept for what a request adds to its prompt in later rounds:
- * replies, tool results and requests to fix a diagram. Tool results may take half of it, and what
- * the prompt leaves.
- */
+/** Reserve room for replies, tool results and render repairs. */
 const RESERVED_SHARE = 1 / 4;
 /** About the most tokens a message takes besides its text. */
 const MESSAGE_TOKENS = 4;
@@ -48,13 +44,8 @@ interface Exchange {
 type Attachment = { name: string } & ({ text: string } | { error: string });
 
 /**
- * The messages asking the model to answer a request, to draw or, with `explain`, to explain
- * `current`: the description of the current diagram, if any.
- *
- * They are made to fit the model's input, leaving room for later rounds. The instructions, the
- * request and the current diagram are always given, then as much of the request's attachments as
- * fits, then the most recent earlier exchanges that fit, the older ones without their diagrams if
- * that helps. Returns why the request is too large if even the first don't fit.
+ * Fit instructions, the request and current diagram first, then attachments and recent history.
+ * Shorten attachments and omit older diagrams as needed. Return an error if essentials don't fit.
  */
 export async function promptMessages(
   request: vscode.ChatRequest,
@@ -65,11 +56,12 @@ export async function promptMessages(
 ): Promise<vscode.LanguageModelChatMessage[] | string> {
   const { model } = request;
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
-  const attachments = await readAttachments(request);
+  const documents = new Map<string, Thenable<vscode.TextDocument>>();
+  const attachments = await readAttachments(request, documents);
   if (token.isCancellationRequested) {
     throw new vscode.CancellationError();
   }
-  const exchanges = await pastExchanges(context.history);
+  const exchanges = await pastExchanges(context.history, documents);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -85,7 +77,7 @@ export async function promptMessages(
   ];
   const tokens = tokenCounter(model, everything, budget, token);
   const tooLarge = (what: string) =>
-    `This request is too large for ${model.name}, which takes ${budget} tokens here (${model.maxInputTokens} less room for its reply): ${what}. Shorten your message${current ? ", start over without the current diagram with /new" : ""} or pick a model that takes more.`;
+    `This request exceeds ${model.name}'s ${budget}-token input budget: ${what}. Shorten your message${current ? ", use /new to omit the current diagram" : ""} or choose a model with a larger context.`;
 
   const [instructionTokens, promptTokens, currentTokens] = await Promise.all([
     tokens(instructions),
@@ -160,8 +152,7 @@ export async function promptMessages(
 }
 
 /**
- * Shortens the text of tool results so that, added to `messages`, they leave half the reserved share
- * of the model's input for later rounds, saying so in them.
+ * Truncate tool results as needed, leaving half the reserve for later rounds.
  */
 export async function fitToolResults(
   model: vscode.LanguageModelChat,
@@ -219,9 +210,8 @@ function partTexts(parts: readonly unknown[]): string[] {
 }
 
 /**
- * Counts the tokens that a text takes in the model's input, where all of `texts` should fit in
- * `budget`. A tokenizer makes at most one token of each UTF-8 byte. So if their bytes fit, the tokens
- * do and need not be counted, which takes a call to the model's provider per text.
+ * Cache token counts. When UTF-8 byte counts fit the budget, use them as conservative estimates
+ * to avoid calls to the model's tokenizer.
  */
 function tokenCounter(
   model: vscode.LanguageModelChat,
@@ -247,10 +237,8 @@ function tokenCounter(
 }
 
 /**
- * Shortens texts so that together they take at most `room` tokens, sharing it among them, the
- * smallest first, so that what a small one leaves goes to the larger ones. Each has `length`
- * characters of its own, and `shorten` gives it with fewer. Returns the texts, the tokens left and
- * the first one that does not fit even with none of its own.
+ * Share the budget, shortest text first, truncating larger texts to fit.
+ * Report the first entry whose label alone exceeds its share.
  */
 async function fitTexts<T extends { length: number; shorten: (length: number) => string }>(
   entries: T[],
@@ -286,7 +274,10 @@ function sum(numbers: number[]): number {
   return numbers.reduce((total, n) => total + n, 0);
 }
 
-async function pastExchanges(history: vscode.ChatContext["history"]): Promise<Exchange[]> {
+async function pastExchanges(
+  history: vscode.ChatContext["history"],
+  documents: Map<string, Thenable<vscode.TextDocument>>,
+): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
   for (const turn of history) {
@@ -295,7 +286,7 @@ async function pastExchanges(history: vscode.ChatContext["history"]): Promise<Ex
       exchanges.push(exchange);
       // Later requests often refer to the files, selections and text attached to earlier ones.
       reads.push(
-        readAttachments(turn).then((attachments) => {
+        readAttachments(turn, documents).then((attachments) => {
           exchange.attachments = attachments.map((attachment) => attachmentText(attachment));
         }),
       );
@@ -322,12 +313,15 @@ async function pastExchanges(history: vscode.ChatContext["history"]): Promise<Ex
   return exchanges;
 }
 
-/** The files, selections and text attached to a request, in prompt order, each read again. */
-async function readAttachments({
-  references,
-}: vscode.ChatRequest | vscode.ChatRequestTurn): Promise<Attachment[]> {
+/** Deduplicate attachments in prompt order. */
+async function readAttachments(
+  { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
+  documents: Map<string, Thenable<vscode.TextDocument>>,
+): Promise<Attachment[]> {
   // The references come in reverse order of their position in the prompt.
-  const attachments = await Promise.all(references.toReversed().map(readAttachment));
+  const attachments = await Promise.all(
+    references.toReversed().map((reference) => readAttachment(reference, documents)),
+  );
   const unique = new Map<string, Attachment>();
   for (const attachment of attachments) {
     if (attachment) {
@@ -352,10 +346,10 @@ function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH):
 }
 
 /** Reads file, selection and text attachments; unsupported reference types are skipped. */
-async function readAttachment({
-  value,
-  modelDescription,
-}: vscode.ChatPromptReference): Promise<Attachment | undefined> {
+async function readAttachment(
+  { value, modelDescription }: vscode.ChatPromptReference,
+  documents: Map<string, Thenable<vscode.TextDocument>>,
+): Promise<Attachment | undefined> {
   const description = modelDescription ? ` (${modelDescription})` : "";
   if (typeof value === "string") {
     return { name: `text${description}`, text: value };
@@ -368,8 +362,14 @@ async function readAttachment({
   const path = vscode.workspace.asRelativePath(uri);
   const name = `${location ? `${path}:${location.range.start.line + 1}` : path}${description}`;
   try {
-    const document = await vscode.workspace.openTextDocument(uri);
-    return { name, text: document.getText(location?.range) };
+    const key = uri.toString();
+    let document = documents.get(key);
+    if (!document) {
+      // Share reads across selections and earlier turns, but reread on the next request.
+      document = vscode.workspace.openTextDocument(uri);
+      documents.set(key, document);
+    }
+    return { name, text: (await document).getText(location?.range) };
   } catch (error) {
     return { name, error: errorMessage(error) };
   }

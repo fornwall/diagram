@@ -97,6 +97,7 @@ export class DiagramPanel implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   /** Messages wait for "ready"; pending renders and picks are replayed after reloads. */
   private webviewReady = false;
+  private webviewGeneration = 0;
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
   /** Rendered node ids, or undefined when unavailable. */
@@ -349,6 +350,7 @@ export class DiagramPanel implements vscode.Disposable {
         // The webview loaded, or lost its content and loaded again (e.g. when moved to another
         // window). Keep the pending request id so its caller is answered.
         this.webviewReady = true;
+        this.webviewGeneration++;
         this.selection = [];
         if (this.pendingRender) {
           this.post(this.pendingRender.message);
@@ -822,14 +824,20 @@ export class DiagramPanel implements vscode.Disposable {
     if (!this.webviewReady || !this.panel) {
       return;
     }
+    const panel = this.panel;
+    const generation = this.webviewGeneration;
     let error: string;
     try {
-      if (await this.panel.webview.postMessage(message)) {
+      if (await panel.webview.postMessage(message)) {
         return;
       }
       error = "The diagram panel is unavailable. Reopen it and try again.";
     } catch (cause) {
       error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
+    }
+    // Reloads replay pending requests with the same ids. An older delivery must not cancel them.
+    if (panel !== this.panel || generation !== this.webviewGeneration) {
+      return;
     }
     if (message.type === "render") {
       this.finishRender(message.requestId, { ok: false, kind: "unavailable", error });

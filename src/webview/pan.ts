@@ -53,6 +53,10 @@ export function enablePanning(canvas: HTMLElement): void {
 
   canvas.addEventListener("pointerdown", (event) => {
     showCursor();
+    if (!drag) {
+      // A new gesture must not inherit a pan whose click landed outside the canvas.
+      panned = false;
+    }
     // Touch and pen contacts scroll the canvas by themselves, and only a primary button drags.
     if (
       drag ||
@@ -64,7 +68,6 @@ export function enablePanning(canvas: HTMLElement): void {
     ) {
       return;
     }
-    panned = false;
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panning: false };
     // A drag pans the rendering, so it must not select the text it passes over. That also leaves
     // the focus where it was, so move it to the node under the pointer as a click would.
@@ -114,7 +117,7 @@ export function enablePanning(canvas: HTMLElement): void {
   canvas.addEventListener(
     "click",
     (event) => {
-      if (panned) {
+      if (panned && event.detail !== 0) {
         panned = false;
         event.stopImmediatePropagation();
         event.preventDefault();

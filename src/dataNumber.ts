@@ -14,7 +14,7 @@ const PREFIX = "([-+\u2212]?)[$€£¥]?";
 
 /** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
-  String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(${SUFFIX})?$`,
+  String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:[^\S\r\n]*(${SUFFIX}))?$`,
 );
 
 /**
@@ -22,7 +22,7 @@ const NUMBER = new RegExp(
  * "1,234", which may have a thousands separator instead).
  */
 const COMMA_NUMBER = new RegExp(
-  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:[eE][-+]?\d+)?(?:${SUFFIX})?$`,
+  String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:[eE][-+]?\d+)?(?:[^\S\r\n]*(?:${SUFFIX}))?$`,
 );
 
 /**
