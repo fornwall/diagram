@@ -210,6 +210,7 @@ suite("documentDiagram", function () {
     const read = binding(document);
     const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
     try {
+      panel.show();
       await applyEdit(panel, "flowchart LR\n  A --> B");
       assert.strictEqual(
         document.getText(),
@@ -245,6 +246,70 @@ suite("documentDiagram", function () {
     }
   });
 
+  test("an invalid Apply keeps the edits in the panel without overwriting the document", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const before = document.getText();
+    const read = binding(document);
+    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const warn = vscode.window.showWarningMessage;
+    let warning = "";
+    vscode.window.showWarningMessage = async (message: string) => {
+      warning = message;
+      return undefined;
+    };
+    try {
+      panel.show();
+      await applyEdit(panel, "flowchart ??");
+      assert.strictEqual(document.getText(), before);
+      assert.strictEqual(panel.current?.source, "flowchart ??");
+      assert.strictEqual(panel.current?.editedByUser, true);
+      assert.ok(panel.current?.error);
+      assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
+      assert.match(warning, /not written.*Your edits are kept in the panel/s);
+
+      await applyEdit(panel, "flowchart LR\n  A --> B");
+      assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n  A --> B\n```\n");
+      assert.strictEqual(panel.current?.error, undefined);
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+    }
+  });
+
+  test("an unfinished render cannot be written to the document", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const before = document.getText();
+    const read = binding(document);
+    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const internals = panel as unknown as { post(): void };
+    internals.post = () => {};
+    const warn = vscode.window.showWarningMessage;
+    let warning = "";
+    vscode.window.showWarningMessage = async (message: string) => {
+      warning = message;
+      return undefined;
+    };
+    try {
+      const rendering = panel.render(
+        {
+          language: "mermaid",
+          source: "flowchart ??",
+          title: "Flow",
+          document: read,
+        },
+        "document",
+      );
+      await writeShown(panel);
+      assert.strictEqual(document.getText(), before);
+      assert.match(warning, /Wait.*rendering/);
+      panel.dispose();
+      await rendering;
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+    }
+  });
+
   test("writing the diagram as shown writes nothing when it does not render", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
@@ -266,6 +331,7 @@ suite("documentDiagram", function () {
     const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
     try {
       await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
+      panel.show();
       await applyEdit(panel, "flowchart RL");
       assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n```\n");
       // The diagram is still the document's, with the block as it was read.

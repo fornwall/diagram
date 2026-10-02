@@ -571,11 +571,17 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The user edited the diagram source instead of picking.");
-    await this.renderCurrent();
+    const outcome = await this.renderCurrent();
     const binding = state.document;
     // An intervening render must not redirect this Apply to another document, even if the source
     // happens to match.
     if (binding && this.state?.document === binding && this.state.source === source) {
+      if (!outcome.ok) {
+        void vscode.window.showWarningMessage(
+          `The ${diagramNoun(state.language)} was not written to ${documentName(binding)}: ${outcome.error} Your edits are kept in the panel.`,
+        );
+        return;
+      }
       await this.writeToDocument(binding, source);
     }
   }
@@ -584,6 +590,12 @@ export class DiagramPanel implements vscode.Disposable {
   private async writeShownToDocument(): Promise<void> {
     const state = this.state;
     if (!state?.document) {
+      return;
+    }
+    if (this.pendingRender) {
+      void vscode.window.showWarningMessage(
+        "Wait for the diagram to finish rendering before writing it.",
+      );
       return;
     }
     if (state.source === undefined || !state.source.trim()) {
