@@ -5,7 +5,7 @@ import { type Annotation, type DiagramNode, MARK_KINDS } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { shortestPath } from "./relationships";
-import { type Renderer, type RendererHost, UNMARKED, withModifier } from "./renderer";
+import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -228,7 +228,7 @@ export class MermaidRenderer implements Renderer {
   private fitFrame = 0;
 
   constructor(
-    host: RendererHost,
+    itemClicked: ItemClickHandler,
     private readonly canvas: HTMLElement,
     private readonly diagram: HTMLElement,
     private readonly zoomButton: HTMLElement,
@@ -236,7 +236,7 @@ export class MermaidRenderer implements Renderer {
     const activate = (event: MouseEvent | KeyboardEvent) => {
       const element = event.target instanceof Element && event.target.closest(".diagram-node");
       const node = element ? this.nodes.get(element) : undefined;
-      host.itemClicked(node && { key: node.id, node }, withModifier(event));
+      itemClicked(node && { key: node.id, node }, withModifier(event));
     };
     diagram.addEventListener("click", activate);
     // Nodes are buttons for the keyboard.

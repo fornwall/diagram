@@ -1,4 +1,4 @@
-// Shared by the extension host and the diagram webview, mainly the messages exchanged between them.
+// Messages and types shared by the extension host and webview.
 
 import type { ChartOptionsState } from "./chartOptions";
 import type { ThemeColors } from "./webview/colors";
@@ -14,10 +14,7 @@ export const READ_FILE_TOOL = "diagram_readFile";
 export const INSPECT_DATA_TOOL = "diagram_inspectData";
 export const UPDATE_CHART_TOOL = "diagram_updateChart";
 
-/**
- * How a diagram's source is written: Mermaid syntax, or an Apache ECharts option object, which
- * may be written as JSON or as a JavaScript object literal.
- */
+/** Mermaid source or an ECharts option written as JSON or JavaScript. */
 export const DIAGRAM_LANGUAGES = ["mermaid", "echarts"] as const;
 
 export type DiagramLanguage = (typeof DIAGRAM_LANGUAGES)[number];
@@ -26,12 +23,10 @@ export function isDiagramLanguage(value: unknown): value is DiagramLanguage {
   return DIAGRAM_LANGUAGES.includes(value as DiagramLanguage);
 }
 
-/** What to call a diagram in the given language when talking to the user or the model. */
 export function diagramNoun(language: DiagramLanguage): "diagram" | "chart" {
   return language === "echarts" ? "chart" : "diagram";
 }
 
-/** What to call the parts of such a diagram: the things that are selected, picked and marked. */
 export function nodeNoun(language: DiagramLanguage): "node" | "chart item" {
   return language === "echarts" ? "chart item" : "node";
 }
@@ -46,10 +41,7 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface DiagramNode {
-  /**
-   * The node id as written in the Mermaid source, when it can be determined. For charts, the data
-   * item's name, prefixed by its series name when the chart has several series ("Series/Name").
-   */
+  /** Mermaid node id, or chart item name ("Series/Name" for multiple series). */
   id: string;
   /** The visible label of the node, or the name of the chart data item. */
   label: string;
@@ -62,10 +54,7 @@ export interface DiagramNode {
   };
 }
 
-/**
- * How a mark reads, which decides the theme color it is drawn in: the step being walked through
- * (the focus color), something wrong (red), something that works (green), or a plain pointer (blue).
- */
+/** Mark colors: focus, red, green and blue, respectively. */
 export const MARK_KINDS = ["current", "problem", "good", "info"] as const;
 
 export type MarkKind = (typeof MARK_KINDS)[number];
@@ -82,11 +71,7 @@ export interface DiagramMark {
   note?: string;
 }
 
-/**
- * An agent's markup of the diagram shown, which leaves the drawing itself as it is: the nodes that
- * stand out and how, a line above the drawing, and whether what is not marked recedes. Each
- * annotation replaces the one before it, and a new diagram clears it.
- */
+/** Replaces the previous marks without redrawing. Cleared when the diagram is replaced. */
 export interface Annotation {
   marks: DiagramMark[];
   /** One line shown above the drawing, e.g. "Step 2 of 3: the request is retried here". */
@@ -95,10 +80,7 @@ export interface Annotation {
   dim: boolean;
 }
 
-/**
- * A chart saved as a self-contained HTML file, as the page's script finds it in the global named
- * by {@link SAVED_CHART}. Built by src/savedChart.ts and read by src/webview/standalone.ts.
- */
+/** Embedded by savedChart.ts and read from {@link SAVED_CHART} by webview/standalone.ts. */
 export interface SavedChart {
   /** The title of the chart, shown above it as the page has no panel header. */
   title: string;
@@ -108,14 +90,9 @@ export interface SavedChart {
   colors: ThemeColors;
 }
 
-/** The global that a saved chart's page holds its {@link SavedChart} in. */
 export const SAVED_CHART = "__diagramSavedChart";
 
-/**
- * The name to offer a file of the diagram titled `title` under, without an extension and without
- * the characters that file systems and shells dislike, e.g. "Commits per author". Falls back to
- * `fallback` for a title that is empty or made of nothing else.
- */
+/** Filename without an extension; use the fallback if sanitizing leaves it empty. */
 export function safeFileName(title: string, fallback: string): string {
   let name = title
     // Control and format characters, and what Windows does not allow in a name.
@@ -149,29 +126,17 @@ export type ToWebview =
       title: string;
       /** When set, a plain click on a node asks this in chat instead of selecting the node. */
       clickPrompt?: string;
-      /**
-       * The location each linked node opens, e.g. "src/panel.ts#L120", by node id. Only the
-       * location's text, for the node's tooltip: opening it is up to the extension host.
-       */
+      /** Tooltip text by node id. The host holds the actual locations and opens them. */
       links?: Record<string, string>;
       /** Where the chart's data can be reloaded from, e.g. "file sales.csv" or "command `du -s *`". */
       refreshFrom?: string;
-      /**
-       * The name of the document this diagram was opened from, when it came from a code block in
-       * one, so that the panel can offer to write it back there.
-       */
+      /** Bound document's display name, shown on the write-back action. */
       writeTo?: string;
     }
-  /**
-   * Sent instead of render to a webview that just loaded, for a chart that was too large to keep
-   * when VS Code closed: shows its title and asks the user to press Refresh.
-   */
+  /** The saved chart omitted its large source; ask the user to refresh its data. */
   | { type: "needsRefresh"; title: string; refreshFrom?: string }
   | { type: "clearSelection" }
-  /**
-   * Marks nodes of the diagram already shown, without rendering it again, replacing the marks from
-   * before; an annotation without marks or caption clears them.
-   */
+  /** Replace marks without redrawing; empty marks and no caption clears them. */
   | ({ type: "annotate" } & Annotation)
   /** Asks the user to click nodes until the pick is answered or ended. */
   | { type: "startPick"; pickId: number; prompt: string; multiple: boolean }
@@ -187,19 +152,12 @@ export type FromWebview =
       replaceSource: boolean;
     }
   | { type: "ready" }
-  /**
-   * For Mermaid, diagramType is Mermaid's diagram type, e.g. "flowchart-v2". For ECharts, it is
-   * the series types of the chart, e.g. "pie" or "bar, line".
-   */
+  /** diagramType is a Mermaid type ("flowchart-v2") or ECharts series types ("bar, line"). */
   | {
       type: "rendered";
       requestId: number;
       diagramType: string;
-      /**
-       * The ids of the nodes drawn, so that the extension host can tell a model when it names one
-       * the diagram does not have. Left out by a rendering whose parts the panel does not name,
-       * such as a chart, whose items are its data; see drawnNodes in src/webview/renderer.ts.
-       */
+      /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
       nodeIds?: string[];
       /** Selectable flowchart edges or sequence messages, with authoritative endpoints. */
       relationships?: DiagramNode[];
@@ -209,10 +167,7 @@ export type FromWebview =
   | { type: "sourceEdited"; source: string }
   | { type: "ask"; text: string; nodes: DiagramNode[] }
   | { type: "clickToAsk"; node: DiagramNode }
-  /**
-   * A plain click on a node that links to a place in the code. It names the node, not a path: the
-   * extension host holds the links and decides what to open.
-   */
+  /** The host resolves this node's link; the webview cannot choose a path. */
   | { type: "clickToOpen"; node: DiagramNode }
   | { type: "picked"; pickId: number; nodes: DiagramNode[] }
   | { type: "pickCancelled"; pickId: number }
@@ -221,10 +176,7 @@ export type FromWebview =
   | { type: "exportImage"; requestId: number; format: "png" | "svg"; data: string }
   | { type: "exportTheme"; requestId: number; colors: ThemeColors }
   | { type: "exportError"; requestId: number; message: string }
-  /**
-   * The user asked to write the diagram as shown into the code block it was opened from, without
-   * editing it first, which is how an agent's version reaches the document.
-   */
+  /** Write the shown diagram to its bound code block without requiring a source edit. */
   | { type: "writeToDocument" };
 
 type Check = (value: unknown) => boolean;
@@ -244,7 +196,6 @@ const isNode: Check = (value) =>
       ["forward", "both", "undirected"].includes(value.relationship.direction as string)));
 const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
 const isStrings: Check = (value) => Array.isArray(value) && value.every(isString);
-/** For a field a message may leave out, such as the ids of a rendering that names no parts. */
 const optional =
   (check: Check): Check =>
   (value) =>
@@ -252,7 +203,6 @@ const optional =
 const isRgba: Check = (value) =>
   isPlainObject(value) && [value.r, value.g, value.b, value.a].every(isNumber);
 
-/** How to check each color of a theme, so that a saved chart never draws in missing colors. */
 const THEME_COLOR_FIELDS: { [K in keyof ThemeColors]-?: Check } = {
   dark: isBoolean,
   background: isRgba,
@@ -275,7 +225,6 @@ const isThemeColors: Check = (value) =>
   isPlainObject(value) &&
   Object.entries(THEME_COLOR_FIELDS).every(([key, check]) => check(value[key]));
 
-/** How to check each field of each message from the webview. */
 const FROM_WEBVIEW_FIELDS: {
   [M in FromWebview as M["type"]]: { [K in Exclude<keyof M, "type">]-?: Check };
 } = {
@@ -308,7 +257,7 @@ const FROM_WEBVIEW_FIELDS: {
   writeToDocument: {},
 };
 
-/** Whether a message from the webview, whose content is not to be trusted, is well-formed. */
+/** Validate untrusted messages before the host handles them. */
 export function isFromWebview(message: unknown): message is FromWebview {
   if (
     !isPlainObject(message) ||

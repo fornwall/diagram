@@ -9,7 +9,7 @@ import type * as EChartsLibrary from "./echartsLibrary";
 import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
-import { type Hit, type Renderer, type RendererHost, UNMARKED, withModifier } from "./renderer";
+import { type Hit, type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 /** A data item, or a node or edge of a graph, as ECharts' select actions refer to it. */
@@ -89,7 +89,7 @@ export class EChartsRenderer implements Renderer {
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   constructor(
-    private readonly host: RendererHost,
+    private readonly itemClicked: ItemClickHandler,
     private readonly canvas: HTMLElement,
     /** The colors to draw in: the VS Code theme in the panel, the saved ones in a saved chart. */
     private readonly readColors: () => ThemeColors = readThemeColors,
@@ -194,12 +194,12 @@ export class EChartsRenderer implements Renderer {
       if (params.componentType !== "series") {
         return;
       }
-      this.host.itemClicked(this.hitFor(params), withModifier(params.event?.event));
+      this.itemClicked(this.hitFor(params), withModifier(params.event?.event));
       queueMicrotask(() => this.syncSelection());
     });
     chart.getZr().on("click", (event) => {
       if (!event.target) {
-        this.host.itemClicked(undefined, withModifier(event.event));
+        this.itemClicked(undefined, withModifier(event.event));
       }
     });
     chart.on("selectchanged", (event) => {

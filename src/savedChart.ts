@@ -1,11 +1,8 @@
 // Offline HTML export with the chart, theme and renderer inlined.
 
 import * as vscode from "vscode";
-import { SAVED_CHART, type SavedChart, safeFileName } from "./protocol";
+import { SAVED_CHART, type SavedChart } from "./protocol";
 import { type ThemeColors, toCss } from "./webview/colors";
-
-/** The built script that draws a saved chart, bundled into one file by esbuild.mjs. */
-const SCRIPT = "standalone.js";
 
 const HTML_ESCAPES: Record<string, string> = {
   "&": "&amp;",
@@ -30,21 +27,13 @@ function fontStack(colors: ThemeColors): string {
   );
 }
 
-/** The name to save a chart titled `title` under, e.g. "Commits per author.html". */
-export function savedChartFileName(title: string): string {
-  return `${safeFileName(title, "chart")}.html`;
-}
-
 /**
- * The complete HTML of a saved chart: a page in the colors the chart was shown in, which draws it
- * with the inlined script. Its content security policy lets the page load nothing and submit
- * nothing, so that a chart written by a model does not reach the network when the file is opened.
- * An option written as JavaScript is still compiled and run, and a page can navigate itself
- * whatever its policy says, so the file is only as trusted as the chart that was saved.
+ * Offline chart page with the renderer and theme inlined. CSP blocks resource loads and form
+ * submissions, but JavaScript options still execute and can navigate the page.
  */
 export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri): Promise<string> {
   const script = await vscode.workspace.fs.readFile(
-    vscode.Uri.joinPath(extensionUri, "dist", SCRIPT),
+    vscode.Uri.joinPath(extensionUri, "dist", "standalone.js"),
   );
   const { colors } = chart;
   const title = chart.title.trim();

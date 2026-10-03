@@ -8,10 +8,8 @@ export interface Hit {
   node: DiagramNode;
 }
 
-export interface RendererHost {
-  /** The user clicked a part of the diagram, or empty space (`hit` undefined). */
-  itemClicked(hit: Hit | undefined, modifier: boolean): void;
-}
+/** A click on a diagram item, or empty space when `hit` is undefined. */
+export type ItemClickHandler = (hit: Hit | undefined, modifier: boolean) => void;
 
 /** Renders one diagram language in the canvas area. */
 export interface Renderer {

@@ -538,8 +538,6 @@ export class DiagramPanel implements vscode.Disposable {
         this.chartOptionsVisible = false;
         break;
       case "resetChartStyling":
-        void this.applyChartOptions(message);
-        break;
       case "applyChartOptions":
         void this.applyChartOptions(message);
         break;
@@ -836,12 +834,11 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     let unavailable: string | undefined;
-    if (!this.chartTable && chart.data !== undefined) {
-      try {
-        this.chartTable = parseTable(chart.data, chart.format);
-      } catch (error) {
-        unavailable = errorMessage(error);
-      }
+    let table: DataTable | undefined;
+    try {
+      table = this.loadedChartData;
+    } catch (error) {
+      unavailable = errorMessage(error);
     }
     let edited = false;
     try {
@@ -855,14 +852,12 @@ export class DiagramPanel implements vscode.Disposable {
       state: {
         revision: this.renderVersion,
         controls: chartControls(chart),
-        columns: this.chartTable?.columns ?? [],
-        rowCount: this.chartTable?.rows.length ?? 0,
+        columns: table?.columns ?? [],
+        rowCount: table?.rows.length ?? 0,
         edited,
         unavailable:
           unavailable ??
-          (this.chartTable
-            ? undefined
-            : "Press Refresh to load the data before changing chart options."),
+          (table ? undefined : "Press Refresh to load the data before changing chart options."),
       },
     });
   }
@@ -1259,18 +1254,11 @@ export class DiagramPanel implements vscode.Disposable {
   }
 }
 
-/** The last segment of a path, as the file the user picked is named in the panel's messages. */
-function basename(uri: vscode.Uri): string {
-  return uri.path.split("/").pop() || uri.path;
-}
-
 /** Says where a chart was saved, and opens it in the user's browser if they ask. */
 async function offerToOpen(target: vscode.Uri): Promise<void> {
   try {
-    const open = await vscode.window.showInformationMessage(
-      `Saved the chart to ${basename(target)}.`,
-      "Open",
-    );
+    const name = target.path.split("/").pop() || target.path;
+    const open = await vscode.window.showInformationMessage(`Saved the chart to ${name}.`, "Open");
     if (open && !(await vscode.env.openExternal(target))) {
       throw new Error("No application accepted the file");
     }

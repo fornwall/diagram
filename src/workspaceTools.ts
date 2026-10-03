@@ -213,7 +213,7 @@ async function readText(
   uri: vscode.Uri,
   token: vscode.CancellationToken,
   budget?: ReadBudget,
-): Promise<{ text: string; bytes: number; unsaved: boolean }> {
+): Promise<{ text: string; unsaved: boolean }> {
   await ensureContained(uri, token);
   const open = vscode.workspace.textDocuments.find(
     (document) => document.uri.toString() === uri.toString() && !document.isClosed,
@@ -224,7 +224,7 @@ async function readText(
     if (bytes > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MiB text limit.");
     reserveBytes(budget, bytes);
     if (text.includes("\0")) throw new Error("Binary files are not supported.");
-    return { text, bytes, unsaved: true };
+    return { text, unsaved: true };
   }
   const stat = await unlessCancelled(async () => vscode.workspace.fs.stat(uri), token);
   if (stat.type & vscode.FileType.Directory)
@@ -248,7 +248,7 @@ async function readText(
     throw new Error("File is not valid UTF-8 or UTF-16 text.");
   }
   if (text.includes("\0")) throw new Error("Binary files are not supported.");
-  return { text, bytes: bytes.byteLength, unsaved: false };
+  return { text, unsaved: false };
 }
 
 async function result(operation: () => Promise<unknown>): Promise<vscode.LanguageModelToolResult> {
@@ -267,14 +267,12 @@ async function result(operation: () => Promise<unknown>): Promise<vscode.Languag
 function prepare(message: string): vscode.PreparedToolInvocation {
   return {
     invocationMessage: message,
-    ...(!vscode.workspace.isTrusted
-      ? {
-          confirmationMessages: {
-            title: "Read workspace files?",
-            message: "Allow the diagram agent to read files in this untrusted workspace?",
-          },
-        }
-      : {}),
+    confirmationMessages: vscode.workspace.isTrusted
+      ? undefined
+      : {
+          title: "Read workspace files?",
+          message: "Allow the diagram agent to read files in this untrusted workspace?",
+        },
   };
 }
 

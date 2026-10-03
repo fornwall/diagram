@@ -19,7 +19,6 @@ import { enableSplitter } from "./splitter";
 import "./style.css";
 import { readThemeColors } from "./vscodeTheme";
 
-/** What the panel shows: the rendering, both it and its source, or the source alone. */
 type ViewMode = "visual" | "split" | "source";
 
 interface State {
@@ -82,38 +81,34 @@ const pickDoneButton = element<HTMLButtonElement>("pick-done");
 
 const chartOptions = new ChartOptionsForm(element("chart-options"), post, focusContent);
 
-// Before the click handlers it takes the clicks of a drag away from; see enablePanning.
+// Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
 enableSplitter(splitter, panes);
 
-/** The last diagram the extension asked to render, whether or not it rendered. */
+/** Last requested diagram, including failed renders. */
 let current: { renderer: Renderer; source: string } | undefined;
-/** The source the editor last loaded, which its content is compared against for edits. */
+/** Source baseline for detecting unapplied edits. */
 let editedFrom = "";
-/** The edit the editor last applied, which comes back as a diagram to render. */
+/** Pending edit, recognized when the extension sends it back to render. */
 let appliedSource: string | undefined;
-/** Which view the user chose, which the panel shows once there is a diagram. */
+/** Preferred view, restored once a diagram is available. */
 let viewMode: ViewMode = "visual";
-/** Whether the source editor is part of the view shown, so that it follows the diagram. */
 let sourceShown = false;
 /** Selected nodes or chart items, by renderer key. */
 const selection = new Map<string, DiagramNode>();
 /** When set, a plain click on a node asks about it in chat. */
 let clickPrompt: string | undefined;
-/** Where the nodes link to in the code, by node id: a plain click on one of them opens it. */
+/** Code links by node id. */
 let links = new Map<string, string>();
-/** The pick the user is asked to answer by clicking nodes, if any. */
 let pick: { id: number; multiple: boolean } | undefined;
-/** The labels of the nodes drawn, by node id, for renderings that name their parts. */
 let labels = new Map<string, string>();
 
 // Rendering.
 
 const renderers: Record<DiagramLanguage, Renderer> = {
-  mermaid: new MermaidRenderer({ itemClicked }, canvas, diagram, zoomResetButton),
-  echarts: new EChartsRenderer({ itemClicked }, canvas),
+  mermaid: new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton),
+  echarts: new EChartsRenderer(itemClicked, canvas),
 };
-/** The renderer whose rendering is shown, if any. */
 let active: Renderer | undefined;
 let renderedRequestId: number | undefined;
 
@@ -138,7 +133,11 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   links = new Map(Object.entries(message.links ?? {}));
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(message.refreshFrom);
-  showWriteTo(message.writeTo);
+  writeToButton.hidden = message.writeTo === undefined;
+  if (message.writeTo !== undefined) {
+    writeToButton.textContent = `Write to ${message.writeTo}`;
+    writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
+  }
   const renderer = renderers[language];
   current = { renderer, source };
   // The first diagram makes the source available, and with it the view chosen before a reload.
@@ -183,16 +182,19 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.
   clearSelection();
   showAnnotation(UNMARKED);
-  describeViews(renderer);
+  for (const [button, description] of [
+    [viewButtons.visual, `Show the ${renderer.noun}`],
+    [viewButtons.split, `Show the ${renderer.noun} and its source`],
+    [viewButtons.source, `Edit the ${renderer.sourceName}`],
+  ] as const) {
+    button.title = description;
+    button.setAttribute("aria-label", description);
+  }
   sourceInput.setAttribute("aria-label", renderer.sourceName);
   updateToolbar();
   updateSelectionUi();
 }
 
-/**
- * Offers zooming when the rendering shown zooms, dragging images, and the views
- * once there is a source.
- */
 function updateToolbar(): void {
   for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
     button.hidden = !active?.zoomBy;
@@ -202,32 +204,9 @@ function updateToolbar(): void {
 }
 updateToolbar();
 
-/** Names the views after what the renderer draws and what its source is, e.g. "the chart". */
-function describeViews({ noun, sourceName }: Renderer): void {
-  const describe = (mode: ViewMode, text: string) => {
-    viewButtons[mode].title = text;
-    viewButtons[mode].setAttribute("aria-label", text);
-  };
-  describe("visual", `Show the ${noun}`);
-  describe("split", `Show the ${noun} and its source`);
-  describe("source", `Edit the ${sourceName}`);
-}
-
 function showRefresh(from: string | undefined): void {
   refreshButton.hidden = from === undefined;
   refreshButton.title = `Load the data again from ${from}`;
-}
-
-/**
- * Offers writing the diagram as shown back into the document it was opened from. Apply writes an
- * edit of the user's own, so this is for a diagram they have not edited, such as one an agent drew.
- */
-function showWriteTo(file: string | undefined): void {
-  writeToButton.hidden = file === undefined;
-  if (file !== undefined) {
-    writeToButton.textContent = `Write to ${file}`;
-    writeToButton.title = `Write the diagram as shown into the code block in ${file}`;
-  }
 }
 
 /** Shows the title of a chart that was not kept, and asks to draw it again. */
@@ -413,13 +392,8 @@ canvas.addEventListener("click", (event) => {
   }
 });
 
-// The marks an agent put on the drawing, to walk the user through it.
+// Annotations.
 
-/**
- * Puts an agent's marks on the rendering as it is, leaving the drawing itself alone, and shows the
- * caption and the notes that came with them above it. An annotation with nothing in it clears all
- * of that.
- */
 function showAnnotation(next: Annotation): void {
   active?.showMarks(next);
   // An image prepared for a drag was made without these marks; a chart draws them into its SVG.
@@ -433,7 +407,6 @@ function showAnnotation(next: Annotation): void {
   annotationBanner.hidden = next.caption === undefined && notes.length === 0;
 }
 
-/** One note, after a dot in the color its mark reads in and the label of the node it is about. */
 function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
   const row = document.createElement("li");
   row.className = `diagram-mark-${kind}`;
@@ -588,22 +561,18 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
 
 // Dragging the drawing out of the panel as an image, e.g. into a chat or a document.
 
-/**
- * The image of what is drawn, made ready before a drag begins: `dragstart` has to describe what is
- * being dragged there and then, and cannot wait for a diagram to be rendered again and rasterized.
- */
+// dragstart is synchronous, so prepare the image before the drag begins.
 let dragImage: { image: DiagramImage; png?: string; preview?: HTMLImageElement } | undefined;
-/** The image being made ready, if any, so that hovering the handle repeatedly makes one copy. */
+/** Version currently being prepared; repeated hover events share the work. */
 let preparingDragImage: number | undefined;
 let imageVersion = 0;
 let dragError: string | undefined;
-/** Whether the file offered should be the SVG, as asked for with Shift as the drag starts. */
+/** Shift-drag requests SVG. */
 let dragSvg = false;
 
 /** The background an image is drawn on: an image dropped elsewhere has no theme behind it. */
 const imageBackground = () => toCss(readThemeColors().background);
 
-/** Drops the prepared image, which the next hover or press over the handle makes again. */
 function forgetDragImage(): void {
   imageVersion++;
   dragImage = undefined;
@@ -611,7 +580,6 @@ function forgetDragImage(): void {
   dragError = undefined;
 }
 
-/** Makes the image of what is drawn ready, if it is not already, for a drag that may follow. */
 function prepareDragImage(): void {
   const key = imageVersion;
   const toImage = active?.toImage?.bind(active);
@@ -707,7 +675,6 @@ dragOutHandle.addEventListener("dragstart", (event) => {
   }
 });
 
-/** Says something in place of the selection for a moment, then puts the selection back. */
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 function transientHint(text: string): void {
   selectionLabel.textContent = text;

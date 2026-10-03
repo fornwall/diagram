@@ -42,10 +42,7 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
-/**
- * Returns the diagram to render, with the problems of any links that were left out, or what is
- * wrong with the input. A bad link is reported but does not keep the diagram from being drawn.
- */
+/** Invalid links are reported and omitted; invalid source prevents rendering. */
 function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: string[] } | string {
   if (!isPlainObject(input) || typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
@@ -81,7 +78,6 @@ function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: str
   };
 }
 
-/** Lets any agent show a Mermaid diagram or an ECharts chart in the interactive diagram panel. */
 export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -135,7 +131,6 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
 
-/** Lets any agent render data, given inline, in a file or as a command's output, as a chart. */
 export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -220,7 +215,6 @@ function chartTitle({ type, title, file, command }: ChartSpec): string {
   return nonBlank(title) ?? (of ? `${name} of ${of}` : name);
 }
 
-/** Lets any agent see the current diagram, including the user's edits and selection. */
 export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<string, never>> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -236,7 +230,6 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
   }
 }
 
-/** Lets any agent ask the user to answer by clicking nodes in the diagram. */
 export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -268,10 +261,6 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
   }
 }
 
-/**
- * Lets any agent mark up the diagram already shown, to walk the user through it without drawing it
- * again. The drawing stays exactly where it is; only the marks on it change.
- */
 export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -357,10 +346,7 @@ function markingMessage({ marks, caption }: Annotation, language: DiagramLanguag
   return caption === undefined ? where : `${where}: ${caption}`;
 }
 
-/**
- * Tells the model which of its links name a node the diagram does not have, which only the diagram
- * as drawn can say: such a link is kept, but a click never finds it.
- */
+/** Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. */
 function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | undefined): string {
   if (!drawn) {
     return "";
@@ -375,7 +361,6 @@ function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | un
   );
 }
 
-/** As many ids as a model needs to correct one it got wrong, and no more. */
 const MAX_LISTED_IDS = 40;
 
 function idList(ids: readonly string[]): string {
@@ -384,7 +369,6 @@ function idList(ids: readonly string[]): string {
   return left > 0 ? `${listed} and ${left} more` : listed;
 }
 
-/** Tells the model which of its links were left out and why, as the diagram is drawn without them. */
 function leftOutLinks(problems: readonly string[]): string {
   if (problems.length === 0) {
     return "";
@@ -396,7 +380,6 @@ function leftOutLinks(problems: readonly string[]): string {
   );
 }
 
-/** Explains to the model why a diagram was not shown, and what to do next. */
 function renderFailure(
   outcome: Extract<RenderOutcome, { ok: false }>,
   noun: string,
@@ -408,7 +391,6 @@ function renderFailure(
     : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call ${tool} again to reopen the panel.`;
 }
 
-/** The value, if it is a string with more than whitespace: a model may pass anything. */
 function nonBlank(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }

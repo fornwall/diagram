@@ -20,7 +20,11 @@ if (!saved || !canvas) {
   fail("This file is missing its chart.");
 } else {
   // A saved chart has nowhere to send clicks; ECharts still highlights what the reader clicks.
-  const renderer = new EChartsRenderer({ itemClicked: () => {} }, canvas, () => saved.colors);
+  const renderer = new EChartsRenderer(
+    () => {},
+    canvas,
+    () => saved.colors,
+  );
   // The title is shown above the chart, so a chart title repeating it is left out, as in the panel.
   renderer.render(saved.source, saved.title).catch((error: unknown) => {
     fail(`This chart failed to render: ${errorMessage(error)}`);

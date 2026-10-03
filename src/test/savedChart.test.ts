@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { SAVED_CHART, type SavedChart } from "../protocol";
-import { savedChartFileName, savedChartHtml } from "../savedChart";
+import { SAVED_CHART, type SavedChart, safeFileName } from "../protocol";
+import { savedChartHtml } from "../savedChart";
 import { testColors } from "./themeColors";
 
 const pie = '{"series":[{"type":"pie","data":[{"name":"Dogs","value":386}]}]}';
@@ -18,22 +18,19 @@ function build(overrides: Partial<SavedChart> = {}): Promise<string> {
 
 suite("savedChart", () => {
   test("names the file after the title, without what file names cannot hold", () => {
-    assert.strictEqual(savedChartFileName("Commits per author"), "Commits per author.html");
-    assert.strictEqual(
-      savedChartFileName(' Disk usage of /tmp/*? "x" '),
-      "Disk usage of tmp x.html",
-    );
-    assert.strictEqual(savedChartFileName("Sales 2026."), "Sales 2026.html");
-    assert.strictEqual(savedChartFileName("  "), "chart.html");
-    assert.ok(savedChartFileName("Long ".repeat(100)).length <= 85);
+    assert.strictEqual(safeFileName("Commits per author", "chart"), "Commits per author");
+    assert.strictEqual(safeFileName(' Disk usage of /tmp/*? "x" ', "chart"), "Disk usage of tmp x");
+    assert.strictEqual(safeFileName("Sales 2026.", "chart"), "Sales 2026");
+    assert.strictEqual(safeFileName("  ", "chart"), "chart");
+    assert.ok(safeFileName("Long ".repeat(100), "chart").length <= 80);
   });
 
   test("truncating a title preserves valid Unicode file names", () => {
     const prefix = "a".repeat(79);
-    const name = savedChartFileName(`${prefix}📊 Results`);
-    assert.strictEqual(name, `${prefix}.html`);
+    const name = safeFileName(`${prefix}📊 Results`, "chart");
+    assert.strictEqual(name, prefix);
     assert.doesNotThrow(() => encodeURIComponent(name));
-    assert.strictEqual(savedChartFileName("📊".repeat(50)), `${"📊".repeat(40)}.html`);
+    assert.strictEqual(safeFileName("📊".repeat(50), "chart"), "📊".repeat(40));
   });
 
   test("writes a page that draws the chart with everything it needs inlined", async () => {

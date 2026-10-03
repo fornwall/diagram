@@ -25,10 +25,7 @@ function numbersRows(table: DataTable, column: number): boolean {
   );
 }
 
-/**
- * Whether a column names each row: its values are distinct, and not times or dates (which start
- * with a digit), unlike the permissions and times in ls -l output.
- */
+/** Distinct labels, excluding digit-prefixed dates and times such as those in ls -l. */
 function namesRows(table: DataTable, column: number): boolean {
   const seen = new Set<Cell | undefined>();
   for (const row of table.rows) {
@@ -48,11 +45,7 @@ function textColumns(table: DataTable): number[] {
   );
 }
 
-/**
- * The default label column: the first text column that names each row, else the first text
- * column. Without text, a first column of identifiers or years labels the others (except in
- * scatter charts), and otherwise none does: rows are labeled by their numbers.
- */
+/** Prefer distinct text labels, then any text, then a leading identifier or year column. */
 function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefined {
   const text = textColumns(table);
   if (text.length > 0) {
@@ -70,12 +63,7 @@ const MOST_LEVELS = 3;
 /** Bounds prefix construction and recursive hierarchy traversal in both the host and renderer. */
 const MAX_LEVELS = 100;
 
-/**
- * The default label columns of a chart that reads several, outermost first: the text columns of a
- * table that has a few of them, as "region,country,sales" has two. Output with many text columns
- * (ls -l, ps aux) is no nesting, so one column labels it as in any other chart, and a hierarchy or
- * a flow then takes its levels from the paths in it (see {@link pathSeparator}).
- */
+/** Use a few text columns as levels; many text columns (ls -l, ps aux) suggest flat records. */
 function defaultLabelColumns(table: DataTable, most: number): number[] {
   const text = textColumns(table);
   if (text.length >= 2 && text.length <= MOST_LEVELS) {
@@ -88,10 +76,7 @@ function defaultLabelColumns(table: DataTable, most: number): number[] {
 /** The separators of a path, as the labels of du -a and find output hold. */
 const PATH_SEPARATORS = ["/", "\\"];
 
-/**
- * The separator that splits labels into levels: "/" or "\", whichever at least half of them hold,
- * as the paths of `du -a` output do. A single "yes/no" among categories is no path.
- */
+/** Require a path separator in at least half the labels to avoid splitting isolated "yes/no". */
 function pathSeparator(labels: string[]): string | undefined {
   const least = Math.max(1, labels.length / 2);
   let found: string | undefined;
@@ -116,29 +101,22 @@ function preferring(
   return kept.length >= needed ? kept : columns;
 }
 
-/**
- * The default value columns, of which the chart needs at least `needed`: the numeric columns other
- * than the label ones, preferably not ones that identify or number the rows, and only those with
- * the unit of the first (leaving out the Use% next to the sizes of df -h).
- */
+/** Prefer numeric columns with matching units, excluding labels, identifiers and row numbers. */
 function defaultValueColumns(table: DataTable, labelIndices: number[], needed: number): number[] {
   const numeric = table.columns.flatMap((column, i) =>
     column.numeric && !labelIndices.includes(i) ? [i] : [],
   );
-  const values = preferring(
-    preferring(numeric, needed, (i) => !isIdName(table.columns[i]?.name ?? "")),
+  const nonIdentifiers = preferring(
+    numeric,
     needed,
-    (i) => !numbersRows(table, i),
+    (i) => !isIdName(table.columns[i]?.name ?? ""),
   );
+  const values = preferring(nonIdentifiers, needed, (i) => !numbersRows(table, i));
   const unit = table.columns[values[0] ?? 0]?.unit;
   return preferring(values, needed, (i) => table.columns[i]?.unit === unit);
 }
 
-/**
- * Whether the last row sums up at least two others, as the "total" row of wc -l or du -c and the
- * "SUM:" row of cloc do: it is labeled so, and where it has numbers, they are within 1% of the
- * sums of the others.
- */
+/** Recognize a named totals row only when its values match the preceding sums within 1%. */
 function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: number[]): boolean {
   const last = table.rows.at(-1);
   const label = last?.[labelColumn];
@@ -271,17 +249,7 @@ function shownValues(type: ChartType, labels: number, separator: boolean, times:
   }
 }
 
-/**
- * Which columns the chart reads, as given in the spec or inferred (see {@link defaultLabelColumn},
- * {@link defaultLabelColumns} and {@link defaultValueColumns}), noting every column that the chart
- * has no room for, the levels it split out of a path and the dates it will draw as times.
- *
- * `"aggregate": "count"` reads no value columns at all: {@link readRows} counts the rows of each
- * group instead.
- *
- * @throws Error when a column does not exist, or the table holds fewer numbers or labels than the
- *   chart needs, saying which columns it has.
- */
+/** Resolve explicit or inferred columns, recording omissions and inferred paths or dates. */
 function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Columns {
   const { type } = spec;
   const role = COLUMN_COUNTS[type];
@@ -329,8 +297,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
     notes.push(`split ${JSON.stringify(name(only))} on ${JSON.stringify(separator)} into levels`);
   }
 
-  // A chart with an axis of its own reads a label column of dates as times (see {@link
-  // dateFormat}), which spaces its points by when they happened.
+  // Date labels use a time axis with proportional spacing.
   const dated = Object.hasOwn(CARTESIAN_SERIES, type) || type === "scatter";
   const dates = dated && labels.length === 1 ? labels[0] : undefined;
   const times =
@@ -397,25 +364,17 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
   };
 }
 
-/**
- * The rows without those that other rows nest under: `du -a src` prints the size of a directory as
- * well as the sizes of the files in it, so counting the "src" row itself would count its files
- * twice. The values of its children total such a row instead, and the sort and the limit then
- * apply to the rows that have a value of their own.
- */
+/** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
 function withoutNests(rows: Row[]): Row[] {
   const prefixes = new Set<string>();
   for (const { labels } of rows) {
     for (let level = 1; level < labels.length; level++) {
-      prefixes.add(levelKey(labels.slice(0, level)));
+      prefixes.add(JSON.stringify(labels.slice(0, level)));
     }
   }
-  return prefixes.size === 0 ? rows : rows.filter(({ labels }) => !prefixes.has(levelKey(labels)));
-}
-
-/** An unambiguous key, including when labels contain separator or control characters. */
-function levelKey(labels: string[]): string {
-  return JSON.stringify(labels);
+  return prefixes.size === 0
+    ? rows
+    : rows.filter(({ labels }) => !prefixes.has(JSON.stringify(labels)));
 }
 
 /** What grouping did with the values of each group, for the note about it. */
@@ -454,15 +413,11 @@ function interpolate(left: number, right: number, share: number): number {
     : left * (1 - share) + right * share;
 }
 
-/**
- * The rows with those that share their labels collapsed into one, in the order the first of each
- * group appears: the values of a group are combined as `how` says, or, for "count", replaced by how
- * many rows the group holds, which is the chart's only value then (see {@link readColumns}).
- */
+/** Aggregate rows by their labels, preserving the order of each group's first appearance. */
 function groupRows(rows: Row[], how: Aggregation): Row[] {
   const groups = new Map<string, { labels: string[]; columns: GroupColumn[]; rows: number }>();
   for (const { labels, values } of rows) {
-    const key = levelKey(labels);
+    const key = JSON.stringify(labels);
     let group = groups.get(key);
     if (group === undefined) {
       group = {
@@ -549,16 +504,8 @@ function categoryAxisOverride(spec: ChartSpec): boolean {
 }
 
 /**
- * The rows to draw, in this order: the totals row (see {@link hasTotalsRow}) and the rows that
- * other rows nest under are left out, rows that share their labels are grouped (see
- * {@link groupRows}), the rows the chart cannot show go, and what is left is sorted and limited as
- * the spec asks. Sizes in bytes end up in the one unit that suits the largest, which the value
- * columns' names then carry; counting names its one column "rows".
- *
- * Grouping comes before the sort and the limit, so that "the 10 largest" counts the groups rather
- * than the rows.
- *
- * @throws Error when no row is left to draw.
+ * Remove totals and parent rows, aggregate, then discard unusable rows, sort and limit.
+ * Group before limiting so "the 10 largest" selects groups. Scale byte values and axis names together.
  */
 function readRows(
   spec: ChartSpec,
@@ -731,14 +678,7 @@ export interface Chart {
   summary: string;
 }
 
-/**
- * Builds an ECharts option showing the table as the requested chart, with `spec.options`
- * deep-merged into it. Which columns a chart reads, and what it makes of them, is described at
- * {@link readColumns} and {@link readRows}; the summary says it in words, so that a model whose
- * data was read differently than it meant can ask again with the columns it wants.
- *
- * @throws Error when a column does not exist, or the data holds nothing the chart can show.
- */
+/** Build a chart, apply option overrides, and summarize how the data was interpreted. */
 export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   if (spec.bins !== undefined && spec.type !== "histogram") {
     throw new Error(
@@ -1110,12 +1050,7 @@ interface Node {
   children?: Node[];
 }
 
-/**
- * The rows as a hierarchy of their levels, where the value of a node is the total of the rows under
- * it; the rows that other rows nest under are already left out (see {@link withoutNests}).
- *
- * @returns the top-level nodes and how deep they nest.
- */
+/** Sum leaf values into their ancestors. Parent rows have already been removed. */
 function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
   const roots = new Map<string, Level>();
   for (const { labels, values } of rows) {
@@ -1150,11 +1085,7 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
   return { nodes: [...roots.values()].map((root) => total(root, 1)), depth };
 }
 
-/**
- * A treemap or sunburst of the hierarchy that the rows' levels build. A single top-level node
- * would be one rectangle holding every other, which would all carry its one color, so the levels
- * that hold every row are left out, as the root directory in `du -a src` output is.
- */
+/** Omit shared root levels so children receive distinct colors in a treemap or sunburst. */
 function hierarchyOption(
   type: "treemap" | "sunburst",
   name: string,
@@ -1189,10 +1120,7 @@ interface Flow {
   value: number;
 }
 
-/**
- * A cycle in the flows, as the nodes it runs through, or undefined when they form the directed
- * acyclic graph that a sankey needs. ECharts throws on a cycle without saying where it is.
- */
+/** Locate cycles before ECharts rejects them without identifying the offending nodes. */
 function findCycle(flows: Flow[]): string[] | undefined {
   const outgoing = new Map<string, string[]>();
   for (const { source, target } of flows) {
@@ -1238,13 +1166,7 @@ function findCycle(flows: Flow[]): string[] | undefined {
   return undefined;
 }
 
-/**
- * A sankey of the flows between the nodes that each row's levels name — its label columns, or the
- * levels of the path in one of them — or, with `targets`, from each row's label to one node per
- * value column, as a table of what a budget comes from and goes to.
- *
- * @throws Error when nothing flows between two nodes, or the flows run in a circle.
- */
+/** Build flows along each row's label path, or from its label to one target per value column. */
 function sankeyOption(
   targets: string[] | undefined,
   name: string,
@@ -1258,7 +1180,7 @@ function sankeyOption(
       empty++;
       return;
     }
-    const key = levelKey([source, target]);
+    const key = JSON.stringify([source, target]);
     const existing = flows.get(key);
     if (existing === undefined) {
       flows.set(key, { source, target, value });
@@ -1326,13 +1248,7 @@ function sankeyOption(
   };
 }
 
-/**
- * A heatmap of one value per row and column: a pivot of two label columns, which `labelNames`
- * names, or one column per value column. Rows and columns come in the order they appear in, and
- * the visual map covers the range of the values, in the colors of the panel's theme.
- *
- * @throws Error when no cell holds a number.
- */
+/** Pivot two label columns, or use one heatmap column per value column. Preserve input order. */
 function heatmapOption(
   header: boolean,
   labelNames: string[],
@@ -1426,14 +1342,7 @@ function quantile(sorted: number[], share: number): number {
   return interpolate(value, sorted[below + 1] ?? value, at - below);
 }
 
-/**
- * A box plot of the spread of raw numbers: one box per group of rows with the same label, or one
- * per value column when no column labels the rows. ECharts draws the five numbers of a box and
- * only works them out from values through its boxplot transform, which needs a dataset, so they
- * are computed here, the quartiles by interpolating between the sorted values.
- *
- * @throws Error when no group holds a number.
- */
+/** Compute box statistics per label group, or per value column when rows are unlabeled. */
 function boxplotOption(
   header: boolean,
   labelName: string | undefined,

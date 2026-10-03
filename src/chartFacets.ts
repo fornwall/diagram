@@ -2,7 +2,7 @@
 import type { ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import { type Cell, type DataTable, findColumn } from "./data";
-import { isPlainObject } from "./protocol";
+import { errorMessage, isPlainObject } from "./protocol";
 
 type Option = Record<string, unknown>;
 const FACET_TYPES = new Set([
@@ -83,9 +83,7 @@ export function buildFacetedChart(
         allFacets,
       );
     } catch (error) {
-      throw new Error(
-        `Facet ${JSON.stringify(name)}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Facet ${JSON.stringify(name)}: ${errorMessage(error)}`);
     }
     return { key: JSON.stringify(value), name, ...chart };
   });
@@ -158,10 +156,6 @@ export function buildFacetedChart(
   };
 }
 
-function values(series: Option): unknown[] {
-  return Array.isArray(series.data) ? series.data : [];
-}
-
 function valueAt(item: unknown, dimension: number): unknown {
   const value = isPlainObject(item) ? item.value : item;
   return Array.isArray(value) ? value[dimension] : value;
@@ -189,7 +183,7 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
       axis.data = [...domain.values()];
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
       for (const series of objects(panel.option.series)) {
-        const data = values(series);
+        const data = Array.isArray(series.data) ? series.data : [];
         series.data = [...domain.keys()].map((key) => {
           const index = indices.get(key);
           return index === undefined ? null : (data[index] ?? null);
@@ -228,7 +222,8 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
   for (const panel of panels) {
     const stacks = new Map<string, [number, number]>();
     for (const series of objects(panel.option.series)) {
-      values(series).forEach((item, index) => {
+      if (!Array.isArray(series.data)) continue;
+      series.data.forEach((item, index) => {
         const value = valueAt(item, dimension);
         include(value);
         if (series.stack !== undefined && axes[0]?.type !== "time" && typeof value === "number") {
