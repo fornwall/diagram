@@ -3,6 +3,7 @@ import {
   type DiagramFence,
   fenceAt,
   findDiagramFences,
+  findDocumentDiagramFences,
   isDiagramFence,
   relocateFence,
 } from "../fences";
@@ -18,6 +19,37 @@ function sources(markdown: string): string[] {
 }
 
 suite("fences", () => {
+  test("document scans are shared until an edit, and never shared across documents", () => {
+    let reads = 0;
+    let text = "```mermaid\nA --> B\n```\n";
+    const document = {
+      version: 1,
+      getText: () => {
+        reads++;
+        return text;
+      },
+    };
+    const original = findDocumentDiagramFences(document);
+    assert.strictEqual(original[0]?.source, "A --> B");
+    assert.strictEqual(findDocumentDiagramFences(document), original);
+    assert.strictEqual(reads, 1);
+
+    text = "# Moved and edited\n```mermaid\nA --> C\n```\n";
+    document.version++;
+    const edited = findDocumentDiagramFences(document);
+    assert.strictEqual(edited[0]?.source, "A --> C");
+    assert.strictEqual(edited[0]?.openingLine, 1);
+    assert.strictEqual(original[0]?.source, "A --> B");
+    assert.strictEqual(reads, 2);
+    assert.strictEqual(findDocumentDiagramFences(document), edited);
+
+    const reopened = { version: 1, getText: () => "No diagrams remain." };
+    assert.deepStrictEqual(findDocumentDiagramFences(reopened), []);
+    text = "";
+    document.version++;
+    assert.deepStrictEqual(findDocumentDiagramFences(document), []);
+  });
+
   test("findDiagramFences finds mermaid and echarts blocks with their content lines", () => {
     const markdown = [
       "# Notes",

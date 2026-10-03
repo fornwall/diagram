@@ -3,7 +3,7 @@ import { guessTitle } from "./blocks";
 import {
   type DiagramFence,
   fenceAt,
-  findDiagramFences,
+  findDocumentDiagramFences,
   isDiagramFence,
   relocateFence,
 } from "./fences";
@@ -49,7 +49,7 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
     if (!settings.get<boolean>(CODE_LENS_SETTING, true)) {
       return [];
     }
-    return findDiagramFences(document.getText()).map((fence) => {
+    return findDocumentDiagramFences(document).map((fence) => {
       const line = new vscode.Position(fence.openingLine, 0);
       return new vscode.CodeLens(new vscode.Range(line, line), {
         title: "Open in Diagram",
@@ -77,7 +77,7 @@ async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFen
     return;
   }
   // Follow a moved block by its content, or an edited block at the same opening line.
-  const fences = findDiagramFences(document.getText());
+  const fences = findDocumentDiagramFences(document);
   const current =
     relocateFence(fences, fence) ??
     fences.find((candidate) => candidate.openingLine === fence.openingLine);
@@ -98,7 +98,7 @@ async function openAtCursor(panel: DiagramPanel): Promise<void> {
     );
     return;
   }
-  const fences = findDiagramFences(editor.document.getText());
+  const fences = findDocumentDiagramFences(editor.document);
   const fence = fenceAt(fences, editor.selection.active.line);
   if (!fence) {
     void vscode.window.showInformationMessage(

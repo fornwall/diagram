@@ -370,6 +370,8 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
           continue;
         }
         scannedFiles++;
+        // Most candidate files do not match. Search once before allocating every line.
+        if (!needle.test(content.text)) continue;
         const lines = content.text.split(/\r\n|\r|\n/);
         for (let i = 0; i < lines.length; i++) {
           checkCancelled(token);

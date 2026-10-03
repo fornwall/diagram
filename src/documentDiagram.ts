@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { isClosingFence, openingFence } from "./blocks";
-import { type DiagramFence, fenceSource, findDiagramFences, relocateFence } from "./fences";
+import { type DiagramFence, fenceSource, findDocumentDiagramFences, relocateFence } from "./fences";
 import { diagramNoun, errorMessage } from "./protocol";
 
 /** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
@@ -55,7 +55,7 @@ export async function writeFence(
     written: false,
     reason: `The ${binding.fence.language} block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
   } as const;
-  const fence = relocateFence(findDiagramFences(document.getText()), binding.fence);
+  const fence = relocateFence(findDocumentDiagramFences(document), binding.fence);
   if (!fence) {
     return changed;
   }

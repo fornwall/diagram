@@ -216,7 +216,11 @@ export class MermaidRenderer implements Renderer {
   supportsPaths = false;
   /** The selectable nodes of the shown diagram, by the elements that show them. */
   private nodes = new Map<Element, DiagramNode>();
+  /** One node can have several visual parts, such as a bar and its label. */
+  private elementsById = new Map<string, Element[]>();
+  private drawn: DiagramNode[] = [];
   private selectedKeys: ReadonlySet<string> = new Set();
+  private shownSelectedKeys: ReadonlySet<string> = new Set();
   /** Where the nodes link to in the code, by node id, for as long as the diagram is shown. */
   private links: ReadonlyMap<string, string> = new Map();
   /** The marks an agent put on the diagram, which a re-render for a new theme puts back. */
@@ -342,16 +346,29 @@ export class MermaidRenderer implements Renderer {
     this.diagram.hidden = true;
     this.diagram.innerHTML = "";
     this.nodes.clear();
+    this.elementsById.clear();
+    this.drawn = [];
+    this.shownSelectedKeys = new Set();
     this.displayedSource = undefined;
   }
 
   showSelection(keys: ReadonlySet<string>): void {
     this.selectedKeys = keys;
-    for (const [element, node] of this.nodes) {
-      const selected = keys.has(node.id);
-      element.classList.toggle("diagram-selected", selected);
-      element.setAttribute("aria-pressed", String(selected));
+    const update = (id: string, selected: boolean) => {
+      for (const element of this.elementsById.get(id) ?? []) {
+        element.classList.toggle("diagram-selected", selected);
+        element.setAttribute("aria-pressed", String(selected));
+      }
+    };
+    // A click changes just its old and new selection, even in a large diagram. Avoid writing
+    // attributes on every node (and invalidating browser accessibility/style state) each time.
+    for (const id of this.shownSelectedKeys) {
+      if (!keys.has(id)) update(id, false);
     }
+    for (const id of keys) {
+      if (!this.shownSelectedKeys.has(id)) update(id, true);
+    }
+    this.shownSelectedKeys = keys;
   }
 
   showMarks(annotation: Annotation): void {
@@ -374,7 +391,7 @@ export class MermaidRenderer implements Renderer {
 
   drawnNodes(): DiagramNode[] {
     // Several elements can show one node, e.g. a Gantt task's bar and its label.
-    return [...new Map(Array.from(this.nodes.values(), (node) => [node.id, node])).values()];
+    return this.drawn;
   }
 
   showLinks(locations: ReadonlyMap<string, string>): void {
@@ -443,11 +460,23 @@ export class MermaidRenderer implements Renderer {
   /** Finds the selectable nodes, and gives the SVG its natural size for zooming as a whole. */
   private prepareSvg(svgId: string, db?: DiagramDb): void {
     this.nodes.clear();
+    this.elementsById.clear();
+    this.drawn = [];
+    this.shownSelectedKeys = new Set();
     const svg = this.diagram.querySelector("svg");
     if (!svg) {
       return;
     }
     this.findNodes(svg, `${svgId}-`, db);
+    const uniqueNodes = new Map<string, DiagramNode>();
+    for (const [element, node] of this.nodes) {
+      uniqueNodes.set(node.id, node);
+      const elements = this.elementsById.get(node.id) ?? [];
+      elements.push(element);
+      this.elementsById.set(node.id, elements);
+      element.setAttribute("aria-pressed", "false");
+    }
+    this.drawn = [...uniqueNodes.values()];
     this.showSelection(this.selectedKeys);
     this.showLinks(this.links);
     this.showMarks(this.annotation);

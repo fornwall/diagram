@@ -82,6 +82,7 @@ export class EChartsRenderer implements Renderer {
   private selectedKeys: ReadonlySet<string> = new Set();
   /** The marks an agent put on the chart, which a new layout dispatches again. */
   private annotation: Annotation = UNMARKED;
+  private hasHighlights = false;
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
   private resizeFrame = 0;
@@ -214,6 +215,7 @@ export class EChartsRenderer implements Renderer {
     this.chart?.dispose();
     this.chart = undefined;
     this.shownSelected = [];
+    this.hasHighlights = false;
     this.laidOut = "";
   }
 
@@ -282,14 +284,16 @@ export class EChartsRenderer implements Renderer {
     if (!chart) {
       return;
     }
-    // Drops the marks from before, and any blur with them.
-    chart.dispatchAction({ type: "downplay" });
+    // Downplay visits every graphic in every series. Only do that when earlier marks need
+    // clearing, rather than on every initial render, resize and empty annotation update.
+    if (this.hasHighlights) chart.dispatchAction({ type: "downplay" });
     const series = asArray(baseOption(this.option ?? {}).series);
     const batch = this.annotation.marks.map(({ id }) => itemQuery(id, series));
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
       chart.dispatchAction({ type: "highlight", batch });
     }
+    this.hasHighlights = batch.length > 0;
   }
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */

@@ -1,5 +1,11 @@
 import * as assert from "node:assert";
-import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "../blocks";
+import {
+  codeFence,
+  type DiagramBlock,
+  DiagramBlockFilter,
+  guessTitle,
+  isClosingFence,
+} from "../blocks";
 
 function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
   const filter = new DiagramBlockFilter();
@@ -9,6 +15,14 @@ function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
 }
 
 suite("blocks", () => {
+  test("closing fences require only matching markers, allowing surrounding whitespace", () => {
+    assert.ok(isClosingFence("\t ````` \r\n", "````"));
+    assert.ok(isClosingFence("\u00a0~~~~\u00a0", "~~~"));
+    for (const line of ["``", "~~~", "``` text", "```~", "` ` `", "x".repeat(1_000_000)]) {
+      assert.ok(!isClosingFence(line, "```"));
+    }
+  });
+
   test("lastDiagramBlock finds the last mermaid or echarts block", () => {
     const mermaid =
       "Here you go:\n```mermaid\nflowchart TD\n  A --> B\n```\n```ts\nconst x = 1;\n```\n";

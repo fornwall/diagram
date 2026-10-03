@@ -846,6 +846,16 @@ suite("data", () => {
     assert.deepStrictEqual(parse("apples,1500\npears,300").columns, ["Column 1", "Column 2"]);
   });
 
+  test("preserves original inferred header spelling while normalizing ragged rows", () => {
+    assert.deepStrictEqual(parse("region,02024,2025.0\nNorth,10\nSouth,20,18"), {
+      columns: ["region", "02024", "2025.0"],
+      rows: [
+        ["North", 10, null],
+        ["South", 20, 18],
+      ],
+    });
+  });
+
   test("treats a first row without a numeric column below it as data", () => {
     const table = parseTable("a,b\nc,d");
     assert.strictEqual(table.header, false);

@@ -43,7 +43,9 @@ export function parseNumber(
   if (digits === undefined) {
     return undefined;
   }
-  const value = (sign === "" || sign === "+" ? 1 : -1) * Number(digits.replaceAll(",", ""));
+  const value =
+    (sign === "" || sign === "+" ? 1 : -1) *
+    Number(digits.includes(",") ? digits.replaceAll(",", "") : digits);
   if (!Number.isFinite(value)) {
     return undefined;
   }

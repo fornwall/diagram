@@ -675,12 +675,14 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   }
   const filtered = filterTable(table, spec.filters);
   let histogram: HistogramPlan | undefined;
+  let facetPlan: ChartPlan | undefined;
   const single = (request: ChartSpec, data: DataTable, reference?: DataTable): Chart => {
     if (request.type === "histogram") {
       histogram ??= planHistogram(request, reference ?? data);
       return buildHistogram(data, histogram);
     }
-    return buildSingleChart(request, data, reference);
+    if (reference !== undefined) facetPlan ??= planChart(request, reference, true);
+    return buildSingleChart(request, data, facetPlan);
   };
   const chart =
     spec.facetColumn === undefined
@@ -696,23 +698,39 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   };
 }
 
-/** A facet reads columns and byte units consistently with every other facet. */
-function buildSingleChart(spec: ChartSpec, table: DataTable, reference?: DataTable): Chart {
+interface ChartPlan {
+  columns: Columns;
+  notes: string[];
+  sharedBytePower?: number;
+}
+
+/** Infer the shared columns and units once, rather than rescanning all rows for every facet. */
+function planChart(spec: ChartSpec, table: DataTable, faceted = false): ChartPlan {
   const notes: string[] = [];
-  const columns = readColumns(spec, reference ?? table, notes);
+  const columns = readColumns(spec, table, notes);
   let sharedBytePower: number | undefined;
-  if (reference !== undefined) {
+  if (faceted) {
     let largest = 0;
-    for (const row of reference.rows) {
-      for (const column of columns.values) {
+    const byteColumns = columns.values.filter((column) => table.columns[column]?.unit === "bytes");
+    for (const column of byteColumns) {
+      for (const row of table.rows) {
         const value = row[column];
-        if (reference.columns[column]?.unit === "bytes" && typeof value === "number") {
+        if (typeof value === "number") {
           largest = Math.max(largest, Math.abs(value));
         }
       }
     }
     sharedBytePower = bytePower(largest);
   }
+  return { columns, notes, sharedBytePower };
+}
+
+/** A facet reads columns and byte units consistently with every other facet. */
+function buildSingleChart(spec: ChartSpec, table: DataTable, sharedPlan?: ChartPlan): Chart {
+  const plan = sharedPlan ?? planChart(spec, table);
+  const { columns, sharedBytePower } = plan;
+  // Each panel adds its own omissions and aggregation notes.
+  const notes = [...plan.notes];
   const reading: Reading = {
     spec,
     table,
@@ -723,7 +741,7 @@ function buildSingleChart(spec: ChartSpec, table: DataTable, reference?: DataTab
   // Facet domains are calculated before the final options merge. Resolve an explicit date-as-
   // category override now, so the compositor does not put epoch bounds on a category axis.
   const categoricalDates =
-    reference !== undefined && columns.times !== undefined && categoryAxisOverride(spec);
+    sharedPlan !== undefined && columns.times !== undefined && categoryAxisOverride(spec);
   const option = drawChart(
     categoricalDates && spec.type !== "scatter"
       ? { ...reading, columns: { ...columns, times: undefined } }
@@ -1253,6 +1271,7 @@ function heatmapOption(
     return categories.length - 1;
   };
   const cells = new Map<string, [number, number, number]>();
+  const data: [number, number, number][] = [];
   let empty = 0;
   let summed = 0;
   for (const [index, row] of rows.entries()) {
@@ -1266,7 +1285,9 @@ function heatmapOption(
       const x = category(xCategories, xIndices, row.labels[1] ?? "");
       const cell = cells.get(`${y} ${x}`);
       if (cell === undefined) {
-        cells.set(`${y} ${x}`, [x, y, value]);
+        const cell: [number, number, number] = [x, y, value];
+        cells.set(`${y} ${x}`, cell);
+        data.push(cell);
       } else {
         cell[2] = addValues(cell[2], value);
         summed++;
@@ -1279,11 +1300,10 @@ function heatmapOption(
       if (value === null) {
         empty++;
       } else {
-        cells.set(`${index} ${x}`, [x, index, value]);
+        data.push([x, index, value]);
       }
     });
   }
-  const data = [...cells.values()];
   if (data.length === 0) {
     throw new Error(`A heatmap needs numbers, but ${quoteAll(names)} holds none.`);
   }

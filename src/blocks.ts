@@ -99,7 +99,13 @@ export function openingFence(
 /** Whether the line closes a block opened by the given fence: the same character, at least as many. */
 export function isClosingFence(line: string, fence: string): boolean {
   const trimmed = line.trim();
-  return trimmed.length >= fence.length && trimmed === fence.charAt(0).repeat(trimmed.length);
+  if (trimmed.length < fence.length) return false;
+  // Most lines are source, sometimes megabytes of chart data. Reject at the first differing
+  // character instead of allocating a fence as large as the line just to compare it.
+  for (let index = 0; index < trimmed.length; index++) {
+    if (trimmed[index] !== fence[0]) return false;
+  }
+  return true;
 }
 
 /** Whether an unfinished line may still turn out to open a diagram block. */

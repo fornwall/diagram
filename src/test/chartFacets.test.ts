@@ -204,6 +204,42 @@ suite("chart facets", () => {
     );
   });
 
+  test("keeps shared inference notes separate from each facet's row notes", () => {
+    const data = "service,date,size\napi,2026-01-01,1 KiB\napi,,2 KiB\nworker,2026-01-02,4 MiB";
+    const chart = buildChart({ type: "line", data, facetColumn: "service" }, parseTable(data));
+    const [api, worker] = chart.summary.split('"worker":');
+    assert.match(api ?? "", /left out 1 row without a date/);
+    assert.doesNotMatch(worker ?? "", /without a date/);
+    for (const panel of [api, worker]) {
+      assert.match(panel ?? "", /read "date" as ISO dates/);
+      assert.match(panel ?? "", /showed sizes in MiB/);
+    }
+  });
+
+  test("recomputes shared inference and byte units for each chart request", () => {
+    const data = "service,date,size\napi,2026-01-01,1 KiB\nworker,2026-01-02,4 MiB";
+    const table = parseTable(data);
+    const spec: ChartSpec = { type: "line", data, facetColumn: "service" };
+    buildChart(spec, table);
+    table.rows[1] = ["worker", "not a date", 2 * 1024];
+    const option: Option = buildChart(spec, table).option;
+    assert.deepStrictEqual(
+      option.xAxis.map((axis: Option) => axis.type),
+      ["category", "category"],
+    );
+    assert.deepStrictEqual(
+      option.series.map((series: Option) => series.name),
+      ["api · size (KiB)", "worker · size (KiB)"],
+    );
+    assert.deepStrictEqual(
+      option.series.map((series: Option) => series.data),
+      [
+        [1, null],
+        [null, 2],
+      ],
+    );
+  });
+
   test("excludes numeric facet fields from inferred measurements", () => {
     const option = build("service,operation,ms\n1,read,2\n2,read,30");
     assert.deepStrictEqual(

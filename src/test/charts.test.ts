@@ -465,6 +465,19 @@ suite("charts", () => {
     );
   });
 
+  test("matrix heatmaps keep repeated row labels and sparse cell coordinates", () => {
+    const option = build(chart("heatmap"), "label,x,y\nsame,1,\nsame,,2\nlast,3,4");
+    assert.deepStrictEqual(option.yAxis.data, ["same", "same", "last"]);
+    assert.deepStrictEqual(option.series[0].data, [
+      [0, 0, 1],
+      [1, 1, 2],
+      [0, 2, 3],
+      [1, 2, 4],
+    ]);
+    assert.strictEqual(option.visualMap.min, 1);
+    assert.strictEqual(option.visualMap.max, 4);
+  });
+
   test("radar draws an axis per value column and a shape per row", () => {
     const option = build(chart("radar"));
     assert.deepStrictEqual(option.radar.indicator, [

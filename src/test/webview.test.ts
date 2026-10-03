@@ -502,6 +502,33 @@ suite("webview", function () {
     );
   });
 
+  test("selection updates only the changed Mermaid nodes", async () => {
+    const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
+    assert.ok((await render({ source })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const diagram = document.getElementById("diagram");
+        const observer = new MutationObserver(() => {});
+        observer.observe(diagram, {subtree: true, attributes: true, attributeFilter: ["aria-pressed"]});
+        const changes = () => [...new Set(observer.takeRecords().map(record => record.target.getAttribute("data-diagram-id")))].sort();
+        const click = (id, shiftKey = false) => diagram.querySelector('[data-diagram-id="' + id + '"]').dispatchEvent(new MouseEvent("click", {bubbles: true, shiftKey}));
+        try {
+          click("A0");
+          const first = changes();
+          click("A1", true);
+          const second = changes();
+          click("A1");
+          const third = changes();
+          document.getElementById("clear-selection").click();
+          return [first, second, third, changes()];
+        } finally {
+          observer.disconnect();
+        }
+      })()`),
+      [["A0"], ["A1"], ["A0"], ["A1"]],
+    );
+  });
+
   test("returns keyboard focus to visible content after clearing the selection", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
@@ -1049,18 +1076,23 @@ suite("webview", function () {
     );
   });
 
-  test("keeps keyboard focus on a Mermaid node when the theme redraws it", async () => {
+  test("keeps keyboard focus and selection on a Mermaid node when the theme redraws it", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
-    assert.strictEqual(
+    assert.deepStrictEqual(
       await evaluate(`(async () => {
         const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
+        node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
         node.focus();
         const original = document.body.dataset.vscodeThemeId;
         document.body.dataset.vscodeThemeId = "test-theme-redraw";
         try {
           for (let attempt = 0; attempt < 100; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 20));
-            if (!node.isConnected) return document.activeElement?.getAttribute("data-diagram-id");
+            if (!node.isConnected) return {
+              id: document.activeElement?.getAttribute("data-diagram-id"),
+              selected: document.activeElement?.classList.contains("diagram-selected"),
+              pressed: document.activeElement?.getAttribute("aria-pressed")
+            };
           }
           throw new Error("The theme change did not redraw the diagram.");
         } finally {
@@ -1068,7 +1100,7 @@ suite("webview", function () {
           else document.body.dataset.vscodeThemeId = original;
         }
       })()`),
-      "A",
+      { id: "A", selected: true, pressed: "true" },
     );
   });
 

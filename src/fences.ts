@@ -1,5 +1,6 @@
 // Locate Markdown diagrams for opening and write-back, using the same fence rules as chat.
 
+import type { TextDocument } from "vscode";
 import { type DiagramBlock, isClosingFence, openingFence } from "./blocks";
 import { isDiagramLanguage, isPlainObject } from "./protocol";
 
@@ -20,6 +21,23 @@ interface OpenFence {
   language: string;
   indent: string;
   openingLine: number;
+}
+
+const documentFences = new WeakMap<
+  Pick<TextDocument, "version" | "getText">,
+  { version: number; fences: readonly DiagramFence[] }
+>();
+
+/** Share a scan between CodeLens, opening and write-back; edits invalidate it immediately. */
+export function findDocumentDiagramFences(
+  document: Pick<TextDocument, "version" | "getText">,
+): readonly DiagramFence[] {
+  const cached = documentFences.get(document);
+  if (cached?.version === document.version) return cached.fences;
+  const fences = findDiagramFences(document.getText());
+  // Weak keys let closed documents and their potentially large diagram sources be collected.
+  documentFences.set(document, { version: document.version, fences });
+  return fences;
 }
 
 /** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */

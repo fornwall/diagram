@@ -126,22 +126,29 @@ function tableFromRecords({ records, header }: Records): DataTable {
     hasDecimalCommas(values, column),
   );
   const units = Array.from({ length: width }, () => new Set<Unit>());
-  const cells = records.map((record, row) =>
-    Array.from({ length: width }, (_, column): Cell => {
+  // Parsers give us fresh records: normalize those rows in place instead of retaining a
+  // second rectangular table and allocating a callback for every row.
+  const first = records[0]?.slice() ?? [];
+  for (let row = 0; row < records.length; row++) {
+    const record = records[row];
+    if (!record) continue;
+    for (let column = 0; column < width; column++) {
       const field = record[column] ?? null;
       if (typeof field !== "string" || (header && row === 0)) {
-        return field;
+        record[column] = field;
+        continue;
       }
       const number = parseNumber(field, decimalComma[column]);
       if (number?.unit !== undefined) {
         units[column]?.add(number.unit);
       }
-      return number?.value ?? (field.trim() || null);
-    }),
-  );
+      record[column] = number?.value ?? (field.trim() || null);
+    }
+  }
+  const cells = records;
   const named = header ?? hasHeader(cells);
   const rows = named ? cells.slice(1) : cells;
-  const columns = columnNames(named ? (records[0] ?? []) : [], width).map((name, column) => {
+  const columns = columnNames(named ? first : [], width).map((name, column) => {
     const numeric = isNumeric(rows, column);
     if (numeric) {
       for (const row of rows) {
