@@ -1,5 +1,5 @@
 import type { ChartOptionsState } from "../chartOptions";
-import { AGGREGATIONS, CHART_TYPES } from "../chartSpec";
+import { AGGREGATIONS, CHART_TYPES, type ChartFilter } from "../chartSpec";
 import type { FromWebview } from "../protocol";
 
 /** A compact form inside the diagram view, opened by the native editor action. */
@@ -13,6 +13,12 @@ export class ChartOptionsForm {
   private readonly aggregate = document.createElement("select");
   private readonly sort = document.createElement("select");
   private readonly limit = document.createElement("input");
+  private readonly bins = document.createElement("input");
+  private readonly facet = document.createElement("select");
+  private readonly facetColumns = document.createElement("select");
+  private readonly facetScales = document.createElement("select");
+  private readonly filters = document.createElement("div");
+  private filterRows: Array<{ row: HTMLElement; read: () => ChartFilter }> = [];
   private readonly status = document.createElement("p");
   private readonly error = document.createElement("p");
   private readonly replace = document.createElement("input");
@@ -53,6 +59,18 @@ export class ChartOptionsForm {
     this.limit.min = "1";
     this.limit.step = "1";
     this.limit.placeholder = "All rows";
+    this.bins.type = "number";
+    this.bins.min = "1";
+    this.bins.max = "200";
+    this.bins.step = "1";
+    this.bins.placeholder = "Automatic";
+    this.facetColumns.add(new Option("Automatic", ""));
+    for (let count = 1; count <= 4; count++) {
+      this.facetColumns.add(new Option(String(count), String(count)));
+    }
+    this.facetScales.add(new Option("Shared (default)", ""));
+    this.facetScales.add(new Option("Shared", "shared"));
+    this.facetScales.add(new Option("Independent", "independent"));
     this.fields.className = "chart-options-fields";
     for (const [name, control] of [
       ["Chart type", this.type],
@@ -61,6 +79,11 @@ export class ChartOptionsForm {
       ["Aggregation", this.aggregate],
       ["Sort by first value", this.sort],
       ["Row limit", this.limit],
+      ["Bins", this.bins],
+      ["Facet column", this.facet],
+      ["Panels per row", this.facetColumns],
+      ["Axis scales", this.facetScales],
+      ["Filters (all must match)", this.filters],
     ] as const) {
       const field = document.createElement("div");
       const label = document.createElement("label");
@@ -75,6 +98,30 @@ export class ChartOptionsForm {
       field.append(label, control);
       this.fields.append(field);
     }
+    this.filters.parentElement?.classList.add("chart-filter-field");
+    this.type.addEventListener("change", () => {
+      if (this.type.value === "histogram") {
+        this.fillColumns(this.labels, []);
+        this.aggregate.value = "";
+        this.sort.value = "";
+        this.limit.value = "";
+      } else {
+        this.bins.value = "";
+      }
+      if (!this.canFacet()) {
+        this.facet.value = "";
+        this.facetColumns.value = "";
+        this.facetScales.value = "";
+      }
+      this.updateAvailability();
+    });
+    this.facet.addEventListener("change", () => {
+      if (!this.facet.value) {
+        this.facetColumns.value = "";
+        this.facetScales.value = "";
+      }
+      this.updateAvailability();
+    });
     this.replace.type = "checkbox";
     this.replaceLabel.append(this.replace, " Replace manual source edits with the generated chart");
     this.replaceLabel.hidden = true;
@@ -115,6 +162,12 @@ export class ChartOptionsForm {
           aggregate: this.aggregate.value || undefined,
           sort: this.sort.value || undefined,
           limit: this.limit.value === "" ? undefined : Number(this.limit.value),
+          bins: this.bins.value === "" ? undefined : Number(this.bins.value),
+          facetColumn: this.facet.value || undefined,
+          facetColumns:
+            this.facetColumns.value === "" ? undefined : Number(this.facetColumns.value),
+          facetScales: this.facetScales.value || undefined,
+          filters: this.filterRows.length ? this.filterRows.map(({ read }) => read()) : undefined,
         },
         replaceSource: this.replace.checked,
       });
@@ -154,6 +207,12 @@ export class ChartOptionsForm {
     this.aggregate.value = controls.aggregate ?? "";
     this.sort.value = controls.sort ?? "";
     this.limit.value = controls.limit?.toString() ?? "";
+    this.bins.value = controls.bins?.toString() ?? "";
+    this.fillColumnSelect(this.facet, controls.facetColumn, "None");
+    this.facetColumns.value = controls.facetColumns?.toString() ?? "";
+    this.facetScales.value = controls.facetScales ?? "";
+    this.fillFilters(controls.filters ?? []);
+    this.updateAvailability();
     this.fields.disabled = state.unavailable !== undefined;
     this.apply.disabled = state.unavailable !== undefined;
     this.reset.textContent = state.unavailable ? "Reset styling and reload data" : "Reset styling";
@@ -180,6 +239,144 @@ export class ChartOptionsForm {
 
   private selected(container: HTMLElement): string[] {
     return Array.from(container.querySelectorAll("select"), (select) => select.value);
+  }
+
+  private canFacet(): boolean {
+    return [
+      "bar",
+      "horizontalBar",
+      "stackedBar",
+      "line",
+      "area",
+      "stackedArea",
+      "scatter",
+      "histogram",
+    ].includes(this.type.value);
+  }
+
+  private updateAvailability(): void {
+    const histogram = this.type.value === "histogram";
+    for (const control of [this.labels, this.aggregate, this.sort, this.limit]) {
+      if (control.parentElement) control.parentElement.hidden = histogram;
+    }
+    if (this.bins.parentElement) this.bins.parentElement.hidden = !histogram;
+    this.facet.disabled = !this.canFacet();
+    this.facetColumns.disabled = this.facetScales.disabled = !this.canFacet() || !this.facet.value;
+  }
+
+  /** Preserve stored spelling and missing columns so opening the form never rewrites predicates. */
+  private fillColumnSelect(select: HTMLSelectElement, selected?: string, empty?: string): void {
+    select.replaceChildren();
+    if (empty !== undefined) select.add(new Option(empty, ""));
+    for (const column of this.state?.columns ?? []) {
+      select.add(new Option(`${column.name}${column.numeric ? " (numeric)" : ""}`, column.name));
+    }
+    if (selected !== undefined) {
+      if (!Array.from(select.options).some((option) => option.value === selected)) {
+        select.add(new Option(selected, selected));
+      }
+      select.value = selected;
+    }
+  }
+
+  private fillFilters(filters: ChartFilter[]): void {
+    this.filters.replaceChildren();
+    this.filterRows = [];
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "secondary";
+    add.textContent = "Add filter";
+    const append = (filter?: ChartFilter): void => {
+      const row = document.createElement("div");
+      row.className = "chart-filter-row";
+      const column = document.createElement("select");
+      column.setAttribute("aria-label", "Filter column");
+      this.fillColumnSelect(column, filter?.column);
+      const operator = document.createElement("select");
+      operator.setAttribute("aria-label", "Filter operator");
+      for (const [value, label] of [
+        ["eq", "Equals"],
+        ["neq", "Does not equal"],
+        ["lt", "Less than"],
+        ["lte", "At most"],
+        ["gt", "Greater than"],
+        ["gte", "At least"],
+        ["contains", "Contains"],
+      ]) {
+        operator.add(new Option(label, value));
+      }
+      operator.value = filter?.op ?? "eq";
+      const valueType = document.createElement("select");
+      valueType.setAttribute("aria-label", "Filter value type");
+      valueType.add(new Option("Text", "string"));
+      valueType.add(new Option("Number", "number"));
+      valueType.add(new Option("Missing value", "null"));
+      const columnValueType = (): string =>
+        this.state?.columns.find((entry) => entry.name === column.value)?.numeric
+          ? "number"
+          : "string";
+      valueType.value = filter
+        ? filter.value === null
+          ? "null"
+          : typeof filter.value
+        : columnValueType();
+      const value = document.createElement("input");
+      value.setAttribute("aria-label", "Filter value");
+      value.value = filter?.value === null ? "" : String(filter?.value ?? "");
+      const updateValue = (): void => {
+        value.type = valueType.value === "number" ? "number" : "text";
+        value.step = "any";
+        value.required = valueType.value === "number";
+        value.disabled = valueType.value === "null";
+        value.hidden = value.disabled;
+      };
+      const updateOperator = (): void => {
+        const numeric = ["lt", "lte", "gt", "gte"].includes(operator.value);
+        if (numeric) valueType.value = "number";
+        if (operator.value === "contains") valueType.value = "string";
+        valueType.disabled = numeric || operator.value === "contains";
+        updateValue();
+      };
+      operator.addEventListener("change", updateOperator);
+      valueType.addEventListener("change", updateValue);
+      column.addEventListener("change", () => {
+        if (operator.value === "eq" || operator.value === "neq") {
+          valueType.value = columnValueType();
+          updateValue();
+        }
+      });
+      updateOperator();
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "secondary";
+      remove.textContent = "−";
+      remove.setAttribute("aria-label", "Remove filter");
+      remove.addEventListener("click", () => {
+        row.remove();
+        this.filterRows = this.filterRows.filter((entry) => entry.row !== row);
+        add.disabled = false;
+        add.focus();
+      });
+      row.append(column, operator, valueType, value, remove);
+      this.filters.insertBefore(row, add);
+      this.filterRows.push({
+        row,
+        read: () => ({
+          column: column.value,
+          op: operator.value as ChartFilter["op"],
+          value:
+            valueType.value === "null"
+              ? null
+              : valueType.value === "number"
+                ? Number(value.value)
+                : value.value,
+        }),
+      });
+      add.disabled = this.filterRows.length >= 50;
+    };
+    add.addEventListener("click", () => append());
+    this.filters.append(add);
+    for (const filter of filters) append(filter);
   }
 
   private fillColumns(container: HTMLElement, selected: string[]): void {

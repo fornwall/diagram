@@ -154,6 +154,135 @@ suite("webview", function () {
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
   });
 
+  test("chart options preserve typed filters and switch faceted charts to histograms", async () => {
+    const data = "name,service,amount,missing\na,api-a,1,\nb,api-b,3,\nc,api-a,4,";
+    const table = parseTable(data);
+    const chart: ChartSpec = {
+      type: "bar",
+      data,
+      labelColumn: "name",
+      valueColumns: ["amount"],
+      aggregate: "sum",
+      sort: "ascending",
+      limit: 10,
+      facetColumn: "service",
+      facetColumns: 2,
+      facetScales: "independent",
+      filters: [
+        { column: " AMOUNT ", op: "gte", value: 1 },
+        { column: "name", op: "neq", value: "1" },
+        { column: "missing", op: "eq", value: null },
+        { column: "service", op: "contains", value: "api" },
+      ],
+    };
+    assert.ok(
+      (
+        await panel.render(
+          {
+            language: "echarts",
+            chart,
+            title: "Faceted",
+            source: JSON.stringify(buildChart(chart, table).option),
+          },
+          "tool",
+          undefined,
+          table,
+        )
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+      const rows = [...document.querySelectorAll('.chart-filter-row')];
+      return rows.map(row => ({
+        column: row.querySelector('[aria-label="Filter column"]').value,
+        type: row.querySelector('[aria-label="Filter value type"]').value,
+        value: row.querySelector('[aria-label="Filter value"]').value,
+      }));
+    })()`),
+      [
+        { column: " AMOUNT ", type: "number", value: "1" },
+        { column: "name", type: "string", value: "1" },
+        { column: "missing", type: "null", value: "" },
+        { column: "service", type: "string", value: "api" },
+      ],
+    );
+    await nextRender(() =>
+      evaluate(`document.querySelector('#chart-options .actions button').click()`),
+    );
+    assert.deepStrictEqual(panel.current?.chart?.filters, chart.filters);
+    assert.strictEqual(panel.current?.chart?.facetColumns, 2);
+    assert.strictEqual(panel.current?.chart?.facetScales, "independent");
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+      document.querySelector('#chart-option-filters > button').click();
+      const row = [...document.querySelectorAll('.chart-filter-row')].at(-1);
+      const column = row.querySelector('[aria-label="Filter column"]');
+      column.value = 'amount';
+      column.dispatchEvent(new Event('change'));
+      return {
+        valueType: row.querySelector('[aria-label="Filter value type"]').value,
+        valid: document.querySelector('#chart-options form').checkValidity(),
+      };
+    })()`),
+      { valueType: "number", valid: false },
+    );
+    await nextRender(() =>
+      evaluate(`(() => {
+      const row = [...document.querySelectorAll('.chart-filter-row')].at(-1);
+      const operator = row.querySelector('[aria-label="Filter operator"]');
+      operator.value = 'gte';
+      operator.dispatchEvent(new Event('change'));
+      row.querySelector('[aria-label="Filter value"]').value = '1';
+      document.querySelector('#chart-options .actions button').click();
+    })()`),
+    );
+    assert.deepStrictEqual(panel.current?.chart?.filters?.at(-1), {
+      column: "amount",
+      op: "gte",
+      value: 1,
+    });
+    await nextRender(() =>
+      evaluate(`(() => {
+      [...document.querySelectorAll('[aria-label="Remove filter"]')].at(-1).click();
+      document.querySelector('#chart-options .actions button').click();
+    })()`),
+    );
+    await nextRender(() =>
+      evaluate(`(() => {
+      const type = document.getElementById('chart-option-chart');
+      type.value = 'histogram';
+      type.dispatchEvent(new Event('change'));
+      document.getElementById('chart-option-bins').value = '3';
+      document.getElementById('chart-option-axis').value = 'shared';
+      document.querySelector('#chart-options .actions button').click();
+    })()`),
+    );
+    assert.strictEqual(panel.current?.chart?.type, "histogram");
+    assert.strictEqual(panel.current?.chart?.bins, 3);
+    assert.strictEqual(panel.current?.chart?.facetColumn, "service");
+    assert.strictEqual(panel.current?.chart?.facetScales, "shared");
+    assert.deepStrictEqual(panel.current?.chart?.filters, chart.filters);
+    for (const key of ["labelColumn", "aggregate", "sort", "limit"] as const) {
+      assert.strictEqual(panel.current?.chart?.[key], undefined);
+    }
+    await nextRender(() =>
+      evaluate(`(() => {
+      const type = document.getElementById('chart-option-chart');
+      type.value = 'pie';
+      type.dispatchEvent(new Event('change'));
+      document.querySelectorAll('[aria-label="Remove filter"]').forEach(button => button.click());
+      document.querySelector('#chart-options .actions button').click();
+    })()`),
+    );
+    for (const key of ["bins", "facetColumn", "facetColumns", "facetScales", "filters"] as const) {
+      assert.strictEqual(panel.current?.chart?.[key], undefined);
+    }
+    await evaluate(
+      `document.querySelector('#chart-options .chart-options-heading button').click()`,
+    );
+  });
+
   test("chart options recover inline data and close on arbitrary ECharts replacement", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
     assert.ok(

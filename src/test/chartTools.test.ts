@@ -72,6 +72,71 @@ async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }
 suite("chart agent tools", function () {
   this.timeout(10_000);
 
+  test("analysis updates reuse the full cached table and retain the prior chart on invalid filters", async () => {
+    const { panel, internals, values } = harness();
+    const samples = "service,latency\na,1\na,2\nb,10\nb,20";
+    const table = parseTable(samples);
+    const chart: ChartSpec = { type: "bar", command: "must-not-run", valueColumns: ["latency"] };
+    try {
+      assert.ok(
+        (
+          await panel.render(
+            {
+              language: "echarts",
+              title: "Samples",
+              chart,
+              source: JSON.stringify(buildChart(chart, table).option),
+            },
+            "tool",
+            undefined,
+            table,
+          )
+        ).ok,
+      );
+      assert.ok(
+        (
+          await panel.updateChart(
+            {
+              type: "histogram",
+              bins: 2,
+              facetColumn: "service",
+              filters: [{ column: "latency", op: "gte", value: 2 }],
+            },
+            token,
+          )
+        ).ok,
+      );
+      assert.strictEqual(internals.chartTable, table);
+      assert.strictEqual(panel.current?.chart?.facetColumn, "service");
+      assert.deepStrictEqual((values.get("diagram.state") as DiagramState).chart?.filters, [
+        { column: "latency", op: "gte", value: 2 },
+      ]);
+      const filtered = panel.current;
+      await assert.rejects(
+        panel.updateChart(
+          {
+            filters: [{ column: "latency", op: "gt", value: 1000 }],
+          },
+          token,
+        ),
+        /No rows match/,
+      );
+      assert.strictEqual(panel.current, filtered);
+      assert.ok((await panel.updateChart({ filters: null, facetColumn: null }, token)).ok);
+      const option = JSON.parse(panel.current?.source ?? "");
+      assert.strictEqual(
+        option.series[0].data.reduce(
+          (total: number, bin: { value: number }) => total + bin.value,
+          0,
+        ),
+        4,
+      );
+      assert.strictEqual(internals.chartTable, table);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("partial settings preserve source and styling, and null clears settings", () => {
     const spec: ChartSpec = {
       type: "bar",

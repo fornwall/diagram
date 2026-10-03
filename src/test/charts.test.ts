@@ -1440,7 +1440,7 @@ suite("charts", () => {
     assert.throws(
       () =>
         validateChartSpec({
-          type: "histogram",
+          type: "not-a-chart",
           data: "a,1",
           file: "x.csv",
           limit: 2.5,
@@ -1453,7 +1453,7 @@ suite("charts", () => {
         for (const expected of [
           'Unknown property "colour"; the properties are "type", "title",',
           '"options", "clickPrompt".',
-          '"type" is "histogram"; it must be one of "pie"',
+          '"type" is "not-a-chart"; it must be one of "pie"',
           'Give only one of "data", "file"',
           '"limit" is 2.5; it must be a positive integer',
           '"sort" is "up"; it must be one of "ascending", "descending"',

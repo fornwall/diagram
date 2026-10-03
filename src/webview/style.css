@@ -503,6 +503,7 @@ input:focus {
   margin-bottom: 4px;
 }
 #chart-options select,
+#chart-options input[type="text"],
 #chart-options input[type="number"] {
   width: 100%;
   min-width: 0;
@@ -521,6 +522,20 @@ input:focus {
   display: flex;
   gap: 4px;
   margin-bottom: 4px;
+}
+.chart-filter-field {
+  grid-column: 1 / -1;
+}
+.chart-filter-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(70px, 1fr)) auto;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+@media (max-width: 450px) {
+  .chart-filter-row {
+    grid-template-columns: repeat(2, minmax(70px, 1fr));
+  }
 }
 .chart-options-error {
   color: var(--vscode-errorForeground);

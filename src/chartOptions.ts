@@ -5,7 +5,17 @@ import { isPlainObject } from "./protocol";
 
 export type ChartControls = Pick<
   ChartSpec,
-  "type" | "labelColumn" | "valueColumns" | "aggregate" | "sort" | "limit"
+  | "type"
+  | "labelColumn"
+  | "valueColumns"
+  | "aggregate"
+  | "sort"
+  | "limit"
+  | "bins"
+  | "facetColumn"
+  | "facetColumns"
+  | "facetScales"
+  | "filters"
 >;
 
 export interface ChartOptionsState {
@@ -18,8 +28,32 @@ export interface ChartOptionsState {
 }
 
 export function chartControls(spec: ChartSpec): ChartControls {
-  const { type, labelColumn, valueColumns, aggregate, sort, limit } = spec;
-  return { type, labelColumn, valueColumns, aggregate, sort, limit };
+  const {
+    type,
+    labelColumn,
+    valueColumns,
+    aggregate,
+    sort,
+    limit,
+    bins,
+    facetColumn,
+    facetColumns,
+    facetScales,
+    filters,
+  } = spec;
+  return {
+    type,
+    labelColumn,
+    valueColumns,
+    aggregate,
+    sort,
+    limit,
+    bins,
+    facetColumn,
+    facetColumns,
+    facetScales,
+    filters,
+  };
 }
 
 /** Replace all form fields together, never accepting a data source or code from the webview. */
@@ -29,7 +63,7 @@ export function withChartControls(spec: ChartSpec, input: unknown): ChartSpec {
   }
   const keys = Object.keys(chartControls(spec));
   if (Object.keys(input).some((key) => !keys.includes(key))) {
-    throw new Error("Only chart type, columns, aggregation, sort and limit can be changed here.");
+    throw new Error("Only chart controls, facets and filters can be changed here.");
   }
   const result = { ...spec };
   for (const key of keys) {

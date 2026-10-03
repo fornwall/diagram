@@ -15,6 +15,9 @@ Ask `@diagram` to draw, optionally attaching files with `#file`:
 - `@diagram line chart of #file:benchmarks.csv`
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 - `@diagram treemap of du -ah src`
+- `@diagram histogram of request latency in #file:requests.csv, one panel per service`
+- `@diagram line chart of #file:benchmarks.csv, one panel per implementation with shared scales`
+- `@diagram show only successful requests taking at least 100 ms`
 
 Follow-ups change the current diagram. The agent can find and read workspace code, inspect tabular data, ask you to select diagram items, and annotate a walkthrough. Use `/new` to start another, `/explain` to discuss the diagram or selection without changing it, and `/show` to reopen the panel. Failed renders are sent back to the model for repair.
 
@@ -27,7 +30,7 @@ Follow-ups change the current diagram. The agent can find and read workspace cod
 | Ask | Type in **Send to chat**. The request includes your selection and goes to `@diagram` or the agent that drew the diagram. |
 | Edit | Use the top-right view buttons to show source. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. |
 | Resize | Drag the divider in split view, or focus it and use arrow keys. Home/End set the limits; Enter or double-click resets it. |
-| Chart Options | Use the gear in the editor toolbar or **Diagram: Chart Options…** to change chart type, ordered label/value columns, aggregation, sorting and row limit together. Applies to charts generated from data. |
+| Chart Options | Use the gear in the editor toolbar or **Diagram: Chart Options…** to change chart type, columns, filters, facets, histogram bins, aggregation, sorting and row limit. Applies to charts generated from data. |
 | Refresh | Reload a chart's file or command output, keeping JSON source styling such as axis labels, formatting, and series colors. Changes to data, structure, or JavaScript source are kept and must be reverted or explicitly reset before refreshing. |
 | Export | Use **Export…** in the diagram tab’s toolbar, right-click the drawing, or run **Diagram: Export…** from the Command Palette. Choose PNG, SVG, or (for ECharts) interactive HTML, then a save location. HTML files work offline. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift for SVG. PNG failures fall back to SVG. Images keep the theme and omit code-link tooltips and paths. |
@@ -73,7 +76,13 @@ For follow-ups such as “show the top 10 as horizontal bars”, `diagram_update
 
 For relationship annotations, use the exact `edge:` or `message:` IDs listed by `diagram_getState`. IDs remain stable across rerendering, but generated IDs can change after editing the source.
 
-`diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. Supported charts: pie, doughnut, bar (vertical, horizontal or stacked), line, area (plain or stacked), scatter, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel. Group by sum, mean, count, min, max or median; ISO dates become a time axis.
+`diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. Supported charts: pie, doughnut, bar (vertical, horizontal or stacked), line, area (plain or stacked), scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel. Group by sum, mean, count, min, max or median; ISO dates become a time axis.
+
+Use `facetColumn` to draw one panel per distinct column value for bar, line, area, scatter or histogram charts, including horizontal and stacked variants. Up to 12 panels are supported; filter the data to narrow larger sets. Axis scales are shared by default; set `facetScales` to `"independent"` to fit each panel separately. `facetColumns` sets 1–4 panels per row. The facet column is excluded from automatic label/value selection. Grouping, sorting and row limits apply separately inside each panel.
+
+Histograms count raw samples from one numeric column. Set `valueColumns` to select it and `bins` for 1–200 equal-width bins, or omit bins for an automatic count (square root of the sample count, rounded up and capped at 50). Constant data uses one bin. Intervals include their lower bound; only the final interval includes its upper bound. Faceted histograms share bin boundaries even with independent scales. Omit `labelColumn`, `aggregate`, `sort` and `limit` for histograms; use filters to choose samples and facets to compare groups.
+
+`filters` keeps rows matching every predicate before faceting or other transformations. Each filter contains `column`, `op` and `value`, for example `{"column":"latency","op":"gte","value":100}`. Operators are `eq`, `neq`, `lt`, `lte`, `gt`, `gte` and `contains`. Equality compares parsed values and types exactly; `null` matches missing cells. Ordered comparisons require numbers; `contains` matches case-sensitive text. Numeric filter values use input units, such as bytes for sizes. Filters and all facet/bin settings can be changed through `diagram_updateChart` without rereading files or rerunning commands; use `null` to clear an optional setting, or `[]` to clear filters.
 
 `diagram_render` and `diagram_chart` accept `clickPrompt`, such as `"Explain {label} in more detail"`. Clicking sends that request immediately with the item's label substituted.
 

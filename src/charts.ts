@@ -1,7 +1,9 @@
 // Turning a table and a chart request into an Apache ECharts option.
 
 import { dateFormat, timeValue } from "./chartDates";
+import { buildFacetedChart } from "./chartFacets";
 import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
+import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
 
@@ -222,6 +224,7 @@ function sortRows(rows: Row[], sort: ChartSpec["sort"]): Row[] {
 
 /** Maximum label/value columns and minimum value columns for each chart type. */
 const COLUMN_COUNTS: Record<ChartType, { labels: number; values: number; needed: number }> = {
+  histogram: { labels: 0, values: 1, needed: 1 },
   pie: { labels: 1, values: 1, needed: 1 },
   doughnut: { labels: 1, values: 1, needed: 1 },
   funnel: { labels: 1, values: 1, needed: 1 },
@@ -578,6 +581,7 @@ function readRows(
   table: DataTable,
   columns: Columns,
   notes: string[],
+  sharedBytePower?: number,
 ): { rows: Row[]; names: string[]; maxima: number[] } {
   const { type } = spec;
   const valueIndices = columns.values;
@@ -702,7 +706,7 @@ function readRows(
       }
     });
   }
-  const power = bytePower(largest);
+  const power = sharedBytePower ?? bytePower(largest);
   if (power > 0) {
     notes.push(`showed sizes in ${BYTE_UNITS[power]}`);
     rows = rows.map(({ labels, values }) => ({
@@ -752,18 +756,72 @@ export interface Chart {
  * @throws Error when a column does not exist, or the data holds nothing the chart can show.
  */
 export function buildChart(spec: ChartSpec, table: DataTable): Chart {
+  if (spec.bins !== undefined && spec.type !== "histogram") {
+    throw new Error(
+      '"bins" is only supported for histograms. Remove it or set "type" to "histogram".',
+    );
+  }
+  const filtered = filterTable(table, spec.filters);
+  let histogram: HistogramPlan | undefined;
+  const single = (request: ChartSpec, data: DataTable, reference?: DataTable): Chart => {
+    if (request.type === "histogram") {
+      histogram ??= planHistogram(request, reference ?? data);
+      return buildHistogram(data, histogram);
+    }
+    return buildSingleChart(request, data, reference);
+  };
+  const chart =
+    spec.facetColumn === undefined
+      ? single(spec, filtered)
+      : buildFacetedChart(spec, filtered, single);
+  const removed = table.rows.length - filtered.rows.length;
+  return {
+    option: spec.options === undefined ? chart.option : deepMerge(chart.option, spec.options),
+    summary:
+      removed === 0
+        ? chart.summary
+        : `${chart.summary.slice(0, -1)}; filters kept ${filtered.rows.length} of ${table.rows.length} rows.`,
+  };
+}
+
+/** A facet reads columns and byte units consistently with every other facet. */
+function buildSingleChart(spec: ChartSpec, table: DataTable, reference?: DataTable): Chart {
   const notes: string[] = [];
-  const columns = readColumns(spec, table, notes);
+  const columns = readColumns(spec, reference ?? table, notes);
+  let sharedBytePower: number | undefined;
+  if (reference !== undefined) {
+    let largest = 0;
+    for (const row of reference.rows) {
+      for (const column of columns.values) {
+        const value = row[column];
+        if (reference.columns[column]?.unit === "bytes" && typeof value === "number") {
+          largest = Math.max(largest, Math.abs(value));
+        }
+      }
+    }
+    sharedBytePower = bytePower(largest);
+  }
   const reading: Reading = {
     spec,
     table,
     columns,
     notes,
-    ...readRows(spec, table, columns, notes),
+    ...readRows(spec, table, columns, notes, sharedBytePower),
   };
-  const option = drawChart(reading);
+  // Facet domains are calculated before the final options merge. Resolve an explicit date-as-
+  // category override now, so the compositor does not put epoch bounds on a category axis.
+  const categoricalDates =
+    reference !== undefined && columns.times !== undefined && categoryAxisOverride(spec);
+  const option = drawChart(
+    categoricalDates && spec.type !== "scatter"
+      ? { ...reading, columns: { ...columns, times: undefined } }
+      : reading,
+  );
+  if (categoricalDates && spec.type === "scatter") {
+    option.xAxis = { type: "category", data: reading.rows.map(label) };
+  }
   return {
-    option: spec.options === undefined ? option : deepMerge(option, spec.options),
+    option,
     summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
   };
 }
@@ -776,6 +834,8 @@ function drawChart(reading: Reading): Record<string, unknown> {
   const valueName = names[0] ?? "";
   const categoryTime = categoryAxisOverride(spec);
   switch (spec.type) {
+    case "histogram":
+      throw new Error("Histograms must be built from raw observations before row aggregation.");
     case "bar":
     case "horizontalBar":
     case "stackedBar":

@@ -12,6 +12,7 @@ export const CHART_TYPES = [
   "area",
   "stackedArea",
   "scatter",
+  "histogram",
   "treemap",
   "sunburst",
   "sankey",
@@ -34,6 +35,15 @@ const SORT_ORDERS = ["ascending", "descending"] as const;
 export const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
 
 export type Aggregation = (typeof AGGREGATIONS)[number];
+
+export const FILTER_OPERATORS = ["eq", "neq", "lt", "lte", "gt", "gte", "contains"] as const;
+
+/** A predicate on parsed cells; all predicates must match before other chart transforms. */
+export interface ChartFilter {
+  column: string;
+  op: (typeof FILTER_OPERATORS)[number];
+  value: string | number | null;
+}
 
 /**
  * Where a chart's data comes from: inline, a file (absolute or relative to the first workspace
@@ -69,6 +79,16 @@ export type ChartSpec = ChartData & {
   sort?: (typeof SORT_ORDERS)[number];
   /** Keeps only the first rows (after sorting); a pie chart sums the rest up as "Other". */
   limit?: number;
+  /** Equal-width histogram bins; inferred when omitted. */
+  bins?: number;
+  /** Partition a Cartesian chart into one panel per distinct value of this column. */
+  facetColumn?: string;
+  /** Number of panels per row; inferred when omitted. */
+  facetColumns?: number;
+  /** Share axis domains across panels by default. */
+  facetScales?: "shared" | "independent";
+  /** Keep rows matching every predicate before grouping, binning, sorting or limiting. */
+  filters?: ChartFilter[];
   /** An ECharts option object that is deep-merged into the generated option, for fine-tuning. */
   options?: Record<string, unknown>;
 };
@@ -86,6 +106,11 @@ const SPEC_KEYS = [
   "aggregate",
   "sort",
   "limit",
+  "bins",
+  "facetColumn",
+  "facetColumns",
+  "facetScales",
+  "filters",
   "options",
 ] as const satisfies readonly (keyof ChartSpec)[];
 
@@ -197,6 +222,62 @@ export function validateChartSpec(value: unknown): ChartSpec {
     isPlainObject(input.options),
     "an object (an ECharts option to merge into the chart)",
   );
+  for (const [key, upper] of [
+    ["bins", 200],
+    ["facetColumns", 4],
+  ] as const) {
+    const count = input[key];
+    expect(
+      key,
+      typeof count === "number" && Number.isInteger(count) && count >= 1 && count <= upper,
+      `an integer from 1 to ${upper}`,
+    );
+  }
+  expect(
+    "facetColumn",
+    typeof input.facetColumn === "string" && input.facetColumn.trim() !== "",
+    "a non-empty column name",
+  );
+  expect(
+    "facetScales",
+    isOneOf(["shared", "independent"], input.facetScales),
+    '"shared" or "independent"',
+  );
+  expect(
+    "filters",
+    Array.isArray(input.filters) && input.filters.length <= 50,
+    "an array of at most 50 filters",
+  );
+  if (Array.isArray(input.filters) && input.filters.length <= 50) {
+    for (const [index, filter] of input.filters.entries()) {
+      if (
+        !isPlainObject(filter) ||
+        Object.keys(filter).some((key) => !["column", "op", "value"].includes(key)) ||
+        typeof filter.column !== "string" ||
+        !filter.column.trim() ||
+        !isOneOf(FILTER_OPERATORS, filter.op) ||
+        !(
+          filter.value === null ||
+          typeof filter.value === "string" ||
+          (typeof filter.value === "number" && Number.isFinite(filter.value))
+        )
+      ) {
+        problems.push(
+          `filters[${index}] must contain column, op (${FILTER_OPERATORS.join(", ")}) and a string, finite number or null value.`,
+        );
+        continue;
+      }
+      if (
+        ["lt", "lte", "gt", "gte"].includes(String(filter.op)) &&
+        typeof filter.value !== "number"
+      ) {
+        problems.push(`filters[${index}]: numeric comparisons require a number value.`);
+      }
+      if (filter.op === "contains" && typeof filter.value !== "string") {
+        problems.push(`filters[${index}]: contains requires a string value.`);
+      }
+    }
+  }
   if (problems.length > 0) {
     throw new Error(`Invalid chart spec:\n- ${problems.join("\n- ")}`);
   }

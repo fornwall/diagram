@@ -350,6 +350,20 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
 
   // Rotate category labels when they would overlap, and truncate very long ones.
   const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
+  // Multi-grid charts need label decisions based on their own panel, not the entire canvas.
+  const panelWidth = (axis: JsonObject): number => {
+    if (grids.length <= 1) return plotWidth;
+    const grid = grids[typeof axis.gridIndex === "number" ? axis.gridIndex : 0];
+    const pixels = (value: unknown): number | undefined =>
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && /^\d+(?:\.\d+)?%$/.test(value)
+          ? (Number.parseFloat(value) * width) / 100
+          : undefined;
+    const available =
+      pixels(grid?.width) ?? width - (pixels(grid?.left) ?? 0) - (pixels(grid?.right) ?? 0);
+    return Math.max(40, available - 50);
+  };
   for (const axis of asArray(base.xAxis)) {
     const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
     const count = Array.isArray(axis.data) ? axis.data.length : 0;
@@ -357,7 +371,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       continue;
     }
     const labelWidth = longestText(axis.data) * charWidth;
-    const slot = plotWidth / count;
+    const slot = panelWidth(axis) / count;
     if (labelWidth > slot - 8) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
       const maxWidth = Math.max(60, Math.round(height * 0.22));
@@ -371,7 +385,9 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   }
   for (const axis of asArray(base.yAxis)) {
     const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
-    const maxWidth = Math.round(width * (compact ? 0.3 : 0.22));
+    const maxWidth = Math.round(
+      (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
+    );
     if (label.width === undefined && longestText(axis.data) * charWidth > maxWidth) {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }

@@ -64,7 +64,10 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
         const location = [...path, key];
         const component = path[0];
         const structural =
-          (key === "type" || key === "coordinateSystem" || /AxisIndex$/.test(key)) &&
+          (key === "type" ||
+            key === "coordinateSystem" ||
+            key === "gridIndex" ||
+            /AxisIndex$/.test(key)) &&
           (component === "series" || /Axis$/.test(String(component))) &&
           path.length <= 2;
         if (DATA_KEYS.has(key) || structural) {
@@ -139,27 +142,33 @@ export function assertChartPresentation(presentation: ChartPresentation | undefi
   if (presentation?.blocked) throw new Error(presentation.blocked);
 }
 
-function seriesItems(option: ObjectOption): ObjectOption[] {
-  return Array.isArray(option.series) ? option.series.filter(isPlainObject) : [];
+function componentItems(option: ObjectOption, component: string): ObjectOption[] {
+  const items = option[component];
+  return Array.isArray(items) ? items.filter(isPlainObject) : [];
 }
 
 function applyEdits(option: ObjectOption, presentation: ChartPresentation): ObjectOption {
   const result = structuredClone(option);
-  const oldSeries = seriesItems(presentation.baseline);
-  const newSeries = seriesItems(option);
   for (const edit of presentation.edits) {
     const path = [...edit.path];
-    if (path[0] === "series" && typeof path[1] === "number") {
-      const old = oldSeries[path[1]];
-      const key = old?.id !== undefined ? "id" : "name";
-      if (old?.[key] !== undefined) {
-        const matches = newSeries.flatMap((series, index) =>
-          same(series[key], old[key]) ? [index] : [],
+    if (
+      typeof path[0] === "string" &&
+      ["series", "xAxis", "yAxis", "grid", "title"].includes(path[0]) &&
+      typeof path[1] === "number"
+    ) {
+      const component = path[0];
+      const oldItems = componentItems(presentation.baseline, component);
+      const newItems = componentItems(option, component);
+      const old = oldItems[path[1]];
+      const key = old?.id !== undefined ? "id" : component === "series" ? "name" : undefined;
+      if (key !== undefined && old?.[key] !== undefined) {
+        const matches = newItems.flatMap((item, index) =>
+          same(item[key], old[key]) ? [index] : [],
         );
         // A removed/renamed column must not transfer its styling to another series.
         if (matches.length !== 1) continue;
         path[1] = matches[0] as number;
-      } else if (oldSeries.length !== newSeries.length) {
+      } else if (oldItems.length !== newItems.length) {
         continue;
       }
     }

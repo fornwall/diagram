@@ -21,6 +21,11 @@ export type ChartUpdateInput = Partial<Pick<ChartSpec, "type" | "title">> & {
   aggregate?: ChartSpec["aggregate"] | null;
   sort?: ChartSpec["sort"] | null;
   limit?: number | null;
+  bins?: number | null;
+  facetColumn?: string | null;
+  facetColumns?: number | null;
+  facetScales?: ChartSpec["facetScales"] | null;
+  filters?: ChartSpec["filters"] | null;
 };
 
 /** A partial update; source and advanced options cannot be replaced through this tool. */
@@ -35,6 +40,11 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
     "aggregate",
     "sort",
     "limit",
+    "bins",
+    "facetColumn",
+    "facetColumns",
+    "facetScales",
+    "filters",
   ];
   if (Object.keys(input).some((key) => key !== "revision" && !keys.includes(key))) {
     throw new Error(

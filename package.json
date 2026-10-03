@@ -140,7 +140,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Chart data with Apache ECharts, replacing the diagram beside chat. Supply exactly one of \"data\" (inline), \"file\" or \"command\" (shell output), e.g. a pie chart, plot of sales.csv, bar chart of lines per folder, or treemap of du -ah src. Returns how the data was interpreted. For full option control or callbacks such as custom-series renderItem, use diagram_render.",
+        "modelDescription": "Chart data with Apache ECharts, replacing the diagram beside chat. Supply exactly one of \"data\" (inline), \"file\" or \"command\" (shell output), e.g. a pie chart, plot of sales.csv, bar chart of lines per folder, or treemap of du -ah src. Returns how the data was interpreted. For full option control or callbacks such as custom-series renderItem, use diagram_render. Supports row filters, histogram binning and faceted Cartesian charts with shared or independent scales.",
         "tags": [
           "chart",
           "echarts",
@@ -162,6 +162,7 @@
                 "area",
                 "stackedArea",
                 "scatter",
+                "histogram",
                 "treemap",
                 "sunburst",
                 "sankey",
@@ -171,7 +172,7 @@
                 "gauge",
                 "funnel"
               ],
-              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value."
+              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in equal-width bins; select one value column and omit labelColumn, aggregate, sort and limit."
             },
             "title": {
               "type": "string",
@@ -259,6 +260,70 @@
             "clickPrompt": {
               "type": "string",
               "description": "A single click on a chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the item's name, e.g. \"Which files make {label} so large?\"."
+            },
+            "bins": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Number of equal-width histogram bins. Omit for automatic binning (square root of sample count, at most 50). Constant data uses one bin. Histogram only; use one value column and omit labelColumn, aggregate, sort and limit."
+            },
+            "facetColumn": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Split a Cartesian chart or histogram into one panel per distinct value of this column (at most 12 panels). Filtering happens first; aggregation, sorting and limits apply inside each panel. The facet column is excluded from automatic label/value inference."
+            },
+            "facetColumns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4,
+              "description": "Number of facet panels per row (1\u20134). Omit for automatic arrangement. Use with facetColumn."
+            },
+            "facetScales": {
+              "type": "string",
+              "enum": [
+                "shared",
+                "independent"
+              ],
+              "description": "Axis domains across facet panels; defaults to shared for comparable values. Independent scales fit each panel separately. Histogram bin boundaries are shared across panels in either mode."
+            },
+            "filters": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "column": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "op": {
+                    "type": "string",
+                    "enum": [
+                      "eq",
+                      "neq",
+                      "lt",
+                      "lte",
+                      "gt",
+                      "gte",
+                      "contains"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "column",
+                  "op",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units, e.g. bytes for sizes. An empty array clears filters."
             }
           },
           "required": [
@@ -544,7 +609,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update.",
-        "modelDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update.",
+        "modelDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update. Supports row filters, histogram binning and faceted Cartesian charts with shared or independent scales.",
         "tags": [
           "diagram"
         ],
@@ -563,6 +628,7 @@
                 "area",
                 "stackedArea",
                 "scatter",
+                "histogram",
                 "treemap",
                 "sunburst",
                 "sankey",
@@ -572,7 +638,7 @@
                 "gauge",
                 "funnel"
               ],
-              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value."
+              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in equal-width bins; select one value column and omit labelColumn, aggregate, sort and limit."
             },
             "title": {
               "type": "string",
@@ -676,6 +742,105 @@
               "type": "integer",
               "minimum": 0,
               "description": "Revision from diagram_getState; rejects stale updates when provided."
+            },
+            "bins": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of equal-width histogram bins. Omit for automatic binning (square root of sample count, at most 50). Constant data uses one bin. Histogram only; use one value column and omit labelColumn, aggregate, sort and limit. Pass null to clear this setting; omit to keep it."
+            },
+            "facetColumn": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Split a Cartesian chart or histogram into one panel per distinct value of this column (at most 12 panels). Filtering happens first; aggregation, sorting and limits apply inside each panel. The facet column is excluded from automatic label/value inference. Pass null to clear this setting; omit to keep it."
+            },
+            "facetColumns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Number of facet panels per row (1\u20134). Omit for automatic arrangement. Use with facetColumn. Pass null to clear this setting; omit to keep it."
+            },
+            "facetScales": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "shared",
+                    "independent"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Axis domains across facet panels; defaults to shared for comparable values. Independent scales fit each panel separately. Histogram bin boundaries are shared across panels in either mode. Pass null to clear this setting; omit to keep it."
+            },
+            "filters": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "column": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "op": {
+                        "type": "string",
+                        "enum": [
+                          "eq",
+                          "neq",
+                          "lt",
+                          "lte",
+                          "gt",
+                          "gte",
+                          "contains"
+                        ]
+                      },
+                      "value": {
+                        "type": [
+                          "string",
+                          "number",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "column",
+                      "op",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units, e.g. bytes for sizes. An empty array clears filters. Pass null to clear this setting; omit to keep it."
             }
           },
           "additionalProperties": false
