@@ -11,7 +11,7 @@ import {
 } from "./chartSpec";
 import { buildChart, describeTable } from "./charts";
 import type { DataTable } from "./data";
-import { loadTable, resolveFile } from "./dataSource";
+import { loadTable, prepareDataInvocation } from "./dataSource";
 import { nodeList } from "./describe";
 import { LINK_SYNTAX, validateLinks } from "./links";
 import { type Diagram, type DiagramPanel, type RenderOutcome, unknownNodeIds } from "./panel";
@@ -150,34 +150,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       // Reported when the tool is invoked.
       return { invocationMessage: "Rendering a chart" };
     }
-    const { command, file } = spec;
-    const prepared: vscode.PreparedToolInvocation = {
-      invocationMessage: `Rendering chart "${chartTitle(spec)}"`,
-    };
-    // In an untrusted workspace, the command is not run and invoke says so.
-    if (command && vscode.workspace.isTrusted) {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      const message = new vscode.MarkdownString(
-        `Run this command${folder ? ` in \`${folder.name}\`` : ""} and chart its output?`,
-      );
-      message.appendCodeblock(command, "shell");
-      prepared.confirmationMessages = { title: "Run a command for a chart?", message };
-    } else if (file) {
-      // Like VS Code's own tools, ask before reading files outside a trusted workspace, as the
-      // data is shown to the model.
-      let uri: vscode.Uri | undefined;
-      try {
-        uri = resolveFile(file);
-      } catch {
-        // Reported when the tool is invoked.
-      }
-      if (uri && (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri))) {
-        const message = new vscode.MarkdownString("Read this file and chart its data?");
-        message.appendCodeblock(uri.fsPath, "text");
-        prepared.confirmationMessages = { title: "Read a file for a chart?", message };
-      }
-    }
-    return prepared;
+    return prepareDataInvocation(spec, `Rendering chart "${chartTitle(spec)}"`);
   }
 
   async invoke(

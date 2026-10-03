@@ -109,7 +109,7 @@ suite("chart facets", () => {
     const time = build("service,date,ms\napi,2026-01-01,2\nworker,2026-02-01,30", { type: "line" });
     assert.deepStrictEqual(
       time.xAxis.map((axis: Option) => [axis.type, axis.min, axis.max]),
-      Array(2).fill(["time", Date.parse("2026-01-01"), Date.parse("2026-02-01")]),
+      Array(2).fill(["time", "2026-01-01", "2026-02-01"]),
     );
     const scatter = build("service,x,y\napi,10,100\nworker,30,200", { type: "scatter" });
     assert.deepStrictEqual(
@@ -125,6 +125,52 @@ suite("chart facets", () => {
         [100, 200],
         [100, 200],
       ],
+    );
+  });
+
+  test("shared time bounds use the viewer's timezone for unzoned dates", () => {
+    const previousTimezone = process.env.TZ;
+    try {
+      for (const [start, end, hour] of [
+        ["2026-01", "2026-02", 0],
+        ["2026-01-01", "2026-02-01", 0],
+        ["2026-01-01T14:00:00", "2026-02-01T14:00:00", 14],
+      ] as const) {
+        process.env.TZ = "Europe/Stockholm";
+        const option = build(`service,date,ms\napi,${start},2\nworker,${end},30`, {
+          type: "line",
+        });
+        // Simulate a viewer in another timezone than the extension host.
+        process.env.TZ = "America/Los_Angeles";
+        const chart = initECharts(null, undefined, {
+          renderer: "svg",
+          ssr: true,
+          width: 800,
+          height: 600,
+        });
+        try {
+          chart.setOption({ ...option, animation: false });
+          const localEnd = new Date(2026, 1, 1, hour).getTime();
+          const endPixel = chart.convertToPixel({ xAxisIndex: 1 }, localEnd);
+          const boundPixel = chart.convertToPixel({ xAxisIndex: 1 }, option.xAxis[1].max);
+          assert.strictEqual(endPixel, boundPixel, end);
+        } finally {
+          chart.dispose();
+        }
+      }
+    } finally {
+      if (previousTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTimezone;
+    }
+  });
+
+  test("shared zoned bounds follow instants rather than timestamp text order", () => {
+    const earlier = "2026-01-01T02:00:00+05:30";
+    const later = "2026-01-01T00:00:00Z";
+    const option = build(`service,date,ms\napi,${earlier},2\nworker,${later},30`, { type: "line" });
+    assert.deepStrictEqual(
+      option.xAxis.map((axis: Option) => [axis.min, axis.max]),
+      Array(2).fill([Date.parse(earlier), Date.parse(later)]),
     );
   });
 

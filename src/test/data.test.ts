@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import type { DataFormat } from "../chartSpec";
-import { parseTable } from "../data";
+import { findColumn, parseTable } from "../data";
 import { parseJson } from "../dataJson";
 import { parseNumber } from "../dataNumber";
 import { splitText } from "../dataText";
@@ -12,6 +12,16 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("column lookup prefers exact names and otherwise ignores case and spaces", () => {
+    const table = parseTable('[{"Value": 1, "value": 2}]');
+    assert.strictEqual(findColumn(table, "value", "value"), 1);
+    assert.strictEqual(findColumn(table, " VALUE ", "filter"), 0);
+    assert.throws(
+      () => findColumn(table, "missing", "facet"),
+      /Unknown facet column.*Value.*value/,
+    );
+  });
+
   test("parses spaces between numbers and units in tabular exports", () => {
     const table = parseTable("name;size;share\na;1,5 MiB;12,5 %\nb;2\u00a0MiB;25\u202f%");
     assert.deepStrictEqual(table.rows, [
@@ -721,6 +731,19 @@ suite("data", () => {
         ["b", 2],
       ],
     });
+  });
+
+  test("JSON Lines accepts all text line endings and reports the original error line", () => {
+    for (const newline of ["\n", "\r\n", "\r"]) {
+      assert.deepStrictEqual(parse(['{"n": 1}', "", '{"n": 2}'].join(newline)), {
+        columns: ["n"],
+        rows: [[1], [2]],
+      });
+      assert.throws(
+        () => parse(['{"n": 1}', "", '{"n": }'].join(newline)),
+        /Line 3 of the JSON Lines/,
+      );
+    }
   });
 
   test("JSON Lines errors report the original line after blank lines", () => {

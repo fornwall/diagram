@@ -249,7 +249,8 @@ export class EChartsRenderer implements Renderer {
       focusHighlighted(option);
     }
     if (relayout && this.chart) {
-      keepUserState(option, this.chart.getOption() as JsonObject);
+      const chart = this.chart;
+      keepUserState(option, () => chart.getOption() as JsonObject);
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
     this.chart.setOption(option, { notMerge: true });
@@ -299,10 +300,17 @@ export class EChartsRenderer implements Renderer {
     cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
       // The panel can become hidden between the resize observation and this frame.
-      if (!this.chart || this.container.clientWidth === 0 || this.container.clientHeight === 0) {
+      const width = this.container.clientWidth;
+      const height = this.container.clientHeight;
+      if (
+        !this.chart ||
+        width === 0 ||
+        height === 0 ||
+        (this.chart.getWidth() === width && this.chart.getHeight() === height)
+      ) {
         return;
       }
-      this.chart.resize({ width: "auto", height: "auto" });
+      this.chart.resize({ width, height });
       // Layout decisions (legend position, label rotation, …) follow once resizing settles.
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.relayout(), 150);

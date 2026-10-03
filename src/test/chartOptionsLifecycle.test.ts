@@ -18,6 +18,7 @@ interface Internals {
   finishRender(id: number, outcome: RenderOutcome): void;
   applyEdit(source: string): Promise<void>;
   renderCurrent(): Promise<RenderOutcome>;
+  refreshChart(): Promise<void>;
   applyChartOptions(
     message: Extract<FromWebview, { type: "applyChartOptions" | "resetChartStyling" }>,
   ): Promise<void>;
@@ -171,6 +172,26 @@ suite("chart options lifecycle", function () {
     } finally {
       first.panel.dispose();
       second?.panel.dispose();
+    }
+  });
+
+  test("closing during refresh restores persisted source and the previous table", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-refresh-rollback-"));
+    const file = path.join(directory, "data.csv");
+    fs.writeFileSync(file, "name,amount\na,900\nb,800");
+    const { panel, internals, values, closeNextRender } = harness();
+    try {
+      const table = parseTable(data);
+      const source = await draw(panel, { type: "bar", file }, table);
+      const previous = panel.current;
+      closeNextRender();
+      await internals.refreshChart();
+      assert.strictEqual(panel.current, previous);
+      assert.strictEqual(internals.chartTable, table);
+      assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
+    } finally {
+      panel.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
     }
   });
 

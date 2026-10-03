@@ -1,7 +1,7 @@
 // Compose generated Cartesian charts into independently selectable small multiples.
-import { type ChartSpec, quoteAll } from "./chartSpec";
+import type { ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
-import type { Cell, DataTable } from "./data";
+import { type Cell, type DataTable, findColumn } from "./data";
 import { isPlainObject } from "./protocol";
 
 type Option = Record<string, unknown>;
@@ -17,45 +17,20 @@ const FACET_TYPES = new Set([
 ]);
 const MAX_FACETS = 12;
 
-function columnIndex(table: DataTable, name: string): number {
-  const exact = table.columns.findIndex((column) => column.name === name);
-  const index =
-    exact >= 0
-      ? exact
-      : table.columns.findIndex(
-          (column) => column.name.trim().toLowerCase() === name.trim().toLowerCase(),
-        );
-  if (index < 0) {
-    throw new Error(
-      `Unknown facet column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
-    );
-  }
-  return index;
-}
-
 const objects = (value: unknown): Option[] =>
   Array.isArray(value) ? value.filter(isPlainObject) : isPlainObject(value) ? [value] : [];
 
 /** Exclude the grouping field from inference, unless explicitly requested as a chart field. */
 export function facetTable(spec: ChartSpec, table: DataTable): DataTable {
-  const index = columnIndex(table, spec.facetColumn ?? "");
+  const index = findColumn(table, spec.facetColumn ?? "", "facet");
   const explicit = [spec.labelColumn ?? []].flat().concat(spec.valueColumns ?? []);
-  const keep = explicit.some((name) => columnIndexIfPresent(table, name) === index);
+  const keep = explicit.some((name) => findColumn(table, name, "chart") === index);
   if (keep) return table;
   return {
     ...table,
     columns: table.columns.filter((_, i) => i !== index),
     rows: table.rows.map((row) => row.filter((_, i) => i !== index)),
   };
-}
-
-function columnIndexIfPresent(table: DataTable, name: string): number {
-  const exact = table.columns.findIndex((column) => column.name === name);
-  return exact >= 0
-    ? exact
-    : table.columns.findIndex(
-        (column) => column.name.trim().toLowerCase() === name.trim().toLowerCase(),
-      );
 }
 
 interface Panel {
@@ -76,7 +51,7 @@ export function buildFacetedChart(
       `Faceting is not supported for ${spec.type}. Use bar, horizontalBar, stackedBar, line, area, stackedArea, scatter or histogram, or clear facetColumn.`,
     );
   }
-  const index = columnIndex(table, spec.facetColumn ?? "");
+  const index = findColumn(table, spec.facetColumn ?? "", "facet");
   const groups = new Map<Cell, number[]>();
   table.rows.forEach((row, rowIndex) => {
     const value = row[index] ?? null;
@@ -230,6 +205,8 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
   }
   let minimum = Infinity;
   let maximum = -Infinity;
+  let minimumTime: unknown;
+  let maximumTime: unknown;
   const include = (value: unknown) => {
     const number =
       typeof value === "number"
@@ -238,8 +215,14 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
           ? Date.parse(value)
           : NaN;
     if (Number.isFinite(number)) {
-      minimum = Math.min(minimum, number);
-      maximum = Math.max(maximum, number);
+      if (number < minimum) {
+        minimum = number;
+        minimumTime = value;
+      }
+      if (number > maximum) {
+        maximum = number;
+        maximumTime = value;
+      }
     }
   };
   for (const panel of panels) {
@@ -271,7 +254,9 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     maximum = Math.max(0, maximum);
   }
   for (const axis of axes) {
-    axis.min = minimum;
-    axis.max = maximum;
+    // Unzoned dates belong to the viewer's timezone, which may differ from the extension host's.
+    // Keep their text so ECharts interprets bounds and observations in the same timezone.
+    axis.min = axis.type === "time" ? minimumTime : minimum;
+    axis.max = axis.type === "time" ? maximumTime : maximum;
   }
 }

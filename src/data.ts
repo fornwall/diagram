@@ -1,7 +1,7 @@
 // Parsing tabular data (JSON, CSV, TSV, Markdown tables or whitespace-separated command output)
 // for charts: telling the format, whether the first row is a header, and which cells are numbers.
 
-import type { DataFormat } from "./chartSpec";
+import { type DataFormat, quoteAll } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
 import { hasDecimalCommas, parseNumber, type Unit } from "./dataNumber";
@@ -23,6 +23,21 @@ export interface DataTable {
   rows: Cell[][];
   /** Whether the column names come from the data, rather than being generated ("Column 1"). */
   header: boolean;
+}
+
+/** Finds a column by its exact name, then ignoring case and surrounding spaces. */
+export function findColumn(table: DataTable, name: string, role: string): number {
+  let index = table.columns.findIndex((column) => column.name === name);
+  if (index < 0) {
+    const wanted = name.trim().toLowerCase();
+    index = table.columns.findIndex((column) => column.name.trim().toLowerCase() === wanted);
+  }
+  if (index < 0) {
+    throw new Error(
+      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
+    );
+  }
+  return index;
 }
 
 /** Records of fields, the first of which is the header if `header`, or may be if undefined. */

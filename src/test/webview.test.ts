@@ -1121,6 +1121,44 @@ suite("webview", function () {
     assert.ok(await evaluate('document.querySelector("#chart svg path") !== null'));
   });
 
+  test("does not redraw a chart when a resize observation leaves its dimensions unchanged", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: `(() => {
+            window.chartDraws = 0;
+            return {animation: false, series: [{type: "custom", coordinateSystem: null,
+              data: [1], renderItem: () => {
+                window.chartDraws++;
+                return {type: "circle", shape: {cx: 20, cy: 20, r: 10}};
+              }}]};
+          })()`,
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+        await settle();
+        const chart = document.getElementById("chart");
+        const before = window.chartDraws;
+        const width = chart.clientWidth;
+        const height = chart.clientHeight;
+        try {
+          // Content-box changes trigger ResizeObserver, but the chart uses client dimensions.
+          chart.style.padding = "1px";
+          await settle();
+          return {sameSize: chart.clientWidth === width && chart.clientHeight === height,
+            redraws: window.chartDraws - before};
+        } finally {
+          chart.style.padding = "";
+        }
+      })()`),
+      { sameSize: true, redraws: 0 },
+    );
+  });
+
   test("recovers from invalid chart components and renders an explicit graph view", async () => {
     const invalid = await render({
       language: "echarts",

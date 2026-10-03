@@ -1,5 +1,6 @@
 // Capture source styling separately from generated data. Only JSON is inspected on the host.
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { ChartSpec } from "./chartSpec";
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
@@ -46,10 +47,6 @@ function sorted(value: unknown): unknown {
   );
 }
 
-function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
-}
-
 function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: string } {
   const data: Record<string, unknown> = {};
   function visit(value: unknown, path: Path): unknown {
@@ -88,7 +85,7 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
 }
 
 function differences(before: unknown, after: unknown, path: Path = []): Edit[] {
-  if (same(before, after)) return [];
+  if (isDeepStrictEqual(before, after)) return [];
   if (isPlainObject(before) && isPlainObject(after)) {
     return [...new Set([...Object.keys(before), ...Object.keys(after)])].flatMap((key) => {
       const next = [...path, key];
@@ -163,7 +160,7 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
       const key = old?.id !== undefined ? "id" : component === "series" ? "name" : undefined;
       if (key !== undefined && old?.[key] !== undefined) {
         const matches = newItems.flatMap((item, index) =>
-          same(item[key], old[key]) ? [index] : [],
+          isDeepStrictEqual(item[key], old[key]) ? [index] : [],
         );
         // A removed/renamed column must not transfer its styling to another series.
         if (matches.length !== 1) continue;

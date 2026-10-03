@@ -280,10 +280,10 @@ suite("echartsLayout", () => {
     const option: Option = layout(
       bars({ legend: {}, dataZoom: [{ type: "inside", startValue: 2, endValue: 5 }] }),
     );
-    keepUserState(option, {
+    keepUserState(option, () => ({
       legend: [{ selected: { One: false }, scrollDataIndex: 3 }],
       dataZoom: [{ start: 10, end: 40, startValue: 1, endValue: 4 }],
-    });
+    }));
     assert.deepStrictEqual(option.legend.selected, { One: false });
     assert.strictEqual(option.legend.scrollDataIndex, 3);
     assert.deepStrictEqual(option.dataZoom, [{ type: "inside", start: 10, end: 40 }]);
@@ -294,9 +294,21 @@ suite("echartsLayout", () => {
       baseOption: { ...bars(), timeline: { data: ["2025", "2026"] }, visualMap: {} },
       options: [{}, {}],
     });
-    keepUserState(option, { timeline: [{ currentIndex: 1 }], visualMap: [{ range: [2, 5] }] });
+    keepUserState(option, () => ({
+      timeline: [{ currentIndex: 1 }],
+      visualMap: [{ range: [2, 5] }],
+    }));
     assert.strictEqual(option.baseOption.timeline.currentIndex, 1);
     assert.deepStrictEqual(option.baseOption.visualMap.range, [2, 5]);
     assert.strictEqual(option.baseOption.visualMap.selected, undefined);
+  });
+
+  test("does not copy displayed chart data when there is no control state to preserve", () => {
+    for (const controls of [{}, { legend: [], dataZoom: [], visualMap: [], timeline: [] }]) {
+      const option = layout(bars(controls));
+      keepUserState(option, () => {
+        assert.fail("A chart without controls does not need getOption().");
+      });
+    }
   });
 });

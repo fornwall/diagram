@@ -1,24 +1,8 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
-import { type ChartFilter, type ChartSpec, quoteAll } from "./chartSpec";
+import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
-import type { Cell, DataTable } from "./data";
-
-function columnIndex(table: DataTable, name: string, role: string): number {
-  const exact = table.columns.findIndex((column) => column.name === name);
-  const index =
-    exact >= 0
-      ? exact
-      : table.columns.findIndex(
-          (column) => column.name.toLowerCase() === name.trim().toLowerCase(),
-        );
-  if (index < 0) {
-    throw new Error(
-      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
-    );
-  }
-  return index;
-}
+import { type Cell, type DataTable, findColumn } from "./data";
 
 function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
   switch (op) {
@@ -49,7 +33,7 @@ export function filterTable(table: DataTable, filters: ChartFilter[] | undefined
   if (filters === undefined || filters.length === 0) return table;
   const predicates = filters.map((filter) => ({
     filter,
-    index: columnIndex(table, filter.column, "filter"),
+    index: findColumn(table, filter.column, "filter"),
   }));
   const rows = table.rows.filter((row) =>
     predicates.every(({ filter, index }) => matches(row[index], filter)),
@@ -87,7 +71,7 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   const column =
     explicit === undefined
       ? table.columns.findIndex((column) => column.numeric && column.name !== spec.facetColumn)
-      : columnIndex(table, explicit, "value");
+      : findColumn(table, explicit, "value");
   if (column < 0)
     throw new Error('No column holds numbers to bin. Set "valueColumns" to a numeric column.');
   let minimum = Infinity;

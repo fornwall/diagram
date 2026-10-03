@@ -966,7 +966,7 @@ export class DiagramPanel implements vscode.Disposable {
         void vscode.window.showWarningMessage(warning);
       }
       const outcome = await this.renderCurrent();
-      if (!outcome.ok && this.renderVersion === version + 1 && this.panel === panel) {
+      if (!outcome.ok && this.renderVersion === version + 1) {
         this.state = previousState;
         this.chartTable = previousTable;
         await this.save();

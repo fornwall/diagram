@@ -19,39 +19,22 @@ export interface Renderer {
   readonly noun: string;
   readonly itemNoun: string;
   readonly sourceName: string;
-  /**
-   * Renders the source and shows it, returning the diagram type. Throws an error with an
-   * actionable message when the source cannot be rendered.
-   */
+  /** Shows the source and returns its diagram type, or throws an actionable render error. */
   render(source: string, title: string): Promise<string>;
   /** Hides the rendering and releases its resources (another renderer took over). */
   hide(): void;
   /** Highlights the parts with the given keys as selected. */
   showSelection(keys: ReadonlySet<string>): void;
-  /**
-   * Makes an agent's marks stand out on the rendering as it is, replacing the marks shown before,
-   * and fades the rest while the annotation dims. Called again after a re-render, as a theme change
-   * draws the rendering anew.
-   */
+  /** Replaces annotations, including whether to dim unmarked items. */
   showMarks(annotation: Annotation): void;
-  /**
-   * The nodes drawn, by the ids the extension host knows them under, for renderings whose parts
-   * the panel can name: a Mermaid diagram's nodes come from its source, while a chart's items are
-   * its data, which the panel does not enumerate.
-   */
+  /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
   /** Whether the current drawing supports path selection between its nodes. */
   readonly supportsPaths?: boolean;
   findPath?(from: string, to: string): DiagramNode[] | undefined;
-  /**
-   * Marks the nodes that link to a place in the code, given by node id, as clickable and shows the
-   * location as their tooltip. Only Mermaid nodes can link; chart items are data points.
-   */
+  /** Adds code links and location tooltips to Mermaid nodes, keyed by node id. */
   showLinks?(locations: ReadonlyMap<string, string>): void;
-  /**
-   * The rendering as a standalone image, to drag out of the panel or save. Drawn on `background`,
-   * as an image dropped into another application has no theme behind it.
-   */
+  /** Exports a self-contained image on the given background. */
   toImage?(background: string): Promise<DiagramImage>;
   /** Renders the current diagram again with the current VS Code theme. */
   themeChanged(): Promise<void>;
@@ -62,7 +45,7 @@ export interface Renderer {
   zoomReset?(): void;
 }
 
-/** An annotation with nothing in it: how a rendering starts out, and what clearing the marks leaves. */
+/** Initial or cleared annotations. */
 export const UNMARKED: Annotation = { marks: [], dim: false };
 
 /** Whether a click, or a key press on a node, adds to the selection instead of replacing it. */

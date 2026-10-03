@@ -549,13 +549,14 @@ const USER_STATE: Record<string, string[]> = {
   visualMap: ["range", "selected"],
 };
 
-/**
- * Carries what the user changed in the shown chart over to a new layout of its option: the
- * legend selection and scroll position, the timeline position, the visual map ranges and the zoom
- * ranges.
- */
-export function keepUserState(option: JsonObject, shown: JsonObject): void {
+/** Preserves controls across layouts without copying chart data when there are no controls. */
+export function keepUserState(option: JsonObject, readShown: () => JsonObject): void {
   const base = baseOption(option);
+  // ECharts' getOption deep-copies every data point, even when only control state is needed.
+  if (![...Object.keys(USER_STATE), "dataZoom"].some((key) => asArray(base[key]).length > 0)) {
+    return;
+  }
+  const shown = readShown();
   for (const [component, keys] of Object.entries(USER_STATE)) {
     const shownComponents = asArray(shown[component]);
     asArray(base[component]).forEach((each, index) => {

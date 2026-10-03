@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
-import { loadTable, resolveFile } from "./dataSource";
+import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
 import { errorMessage, isPlainObject } from "./protocol";
 
@@ -125,33 +125,13 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<InspectDataInput>,
   ): vscode.PreparedToolInvocation {
-    const prepared: vscode.PreparedToolInvocation = { invocationMessage: "Inspecting chart data" };
     let spec: ChartSpec | undefined;
     try {
       ({ spec } = inspection(options.input));
     } catch {
-      return prepared;
+      // Invalid input is reported when the tool is invoked.
     }
-    if (spec?.command && vscode.workspace.isTrusted) {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      const message = new vscode.MarkdownString(
-        `Run this command${folder ? ` in \`${folder.name}\`` : ""} and inspect its output?`,
-      );
-      message.appendCodeblock(spec.command, "shell");
-      prepared.confirmationMessages = { title: "Run a command to inspect data?", message };
-    } else if (spec?.file) {
-      try {
-        const uri = resolveFile(spec.file);
-        if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
-          const message = new vscode.MarkdownString("Read this file and inspect its data?");
-          message.appendCodeblock(uri.fsPath, "text");
-          prepared.confirmationMessages = { title: "Read a file to inspect data?", message };
-        }
-      } catch {
-        /* Reported by invoke. */
-      }
-    }
-    return prepared;
+    return prepareDataInvocation(spec, "Inspecting chart data");
   }
 
   async invoke(

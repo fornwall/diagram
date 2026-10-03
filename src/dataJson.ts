@@ -121,7 +121,7 @@ function recordsFromJson(value: unknown): Records {
  * undefined unless the first of several lines is a JSON value.
  */
 function parseJsonLines(text: string): unknown[] | undefined {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r\n?|\n/);
   if (lines.length < 2) {
     return undefined;
   }

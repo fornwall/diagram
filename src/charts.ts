@@ -4,24 +4,8 @@ import { dateFormat, timeValue } from "./chartDates";
 import { buildFacetedChart } from "./chartFacets";
 import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
-import { type Cell, type DataTable, isYear } from "./data";
+import { type Cell, type DataTable, findColumn, isYear } from "./data";
 import { isPlainObject } from "./protocol";
-
-/** Finds a column by name, exactly or else ignoring case and surrounding spaces. */
-function findColumn(table: DataTable, name: string, role: string): number {
-  const names = table.columns.map((column) => column.name);
-  let index = names.indexOf(name);
-  if (index === -1) {
-    const wanted = name.trim().toLowerCase();
-    index = names.findIndex((column) => column.toLowerCase() === wanted);
-  }
-  if (index === -1) {
-    throw new Error(
-      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(names)}.`,
-    );
-  }
-  return index;
-}
 
 /** Whether a column name is like "id", "#", "index", "rank", "pid", "user_id" or "userId". */
 function isIdName(name: string): boolean {

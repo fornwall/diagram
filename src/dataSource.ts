@@ -76,6 +76,33 @@ export function resolveFile(file: string): vscode.Uri {
   return vscode.Uri.joinPath(folder.uri, file);
 }
 
+/** Shared consent for tools that expose file contents or command output to the model. */
+export function prepareDataInvocation(
+  spec: ChartSpec | undefined,
+  invocationMessage: string,
+): vscode.PreparedToolInvocation {
+  const prepared: vscode.PreparedToolInvocation = { invocationMessage };
+  if (spec?.command && vscode.workspace.isTrusted) {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const message = new vscode.MarkdownString("Run this command and read its output?");
+    if (folder) message.appendText(` Working folder: ${folder.name}.`);
+    message.appendCodeblock(spec.command, "shell");
+    prepared.confirmationMessages = { title: "Run a command to read data?", message };
+  } else if (spec?.file) {
+    try {
+      const uri = resolveFile(spec.file);
+      if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
+        const message = new vscode.MarkdownString("Read this file's data?");
+        message.appendCodeblock(uri.scheme === "file" ? uri.fsPath : uri.toString(), "text");
+        prepared.confirmationMessages = { title: "Read a data file?", message };
+      }
+    } catch {
+      // Invalid paths are reported when the tool is invoked.
+    }
+  }
+  return prepared;
+}
+
 export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
   let stat: vscode.FileStat;
