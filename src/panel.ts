@@ -504,15 +504,12 @@ export class DiagramPanel implements vscode.Disposable {
         if (this.pendingRender) {
           this.sendChartOptions();
           this.post(this.pendingRender.message);
+          if (this.annotation) this.post({ type: "annotate", ...this.annotation });
         } else if (this.state) {
           void this.renderCurrent();
         }
         if (this.pendingPick) {
           this.post(this.pendingPick.message);
-        }
-        if (this.annotation) {
-          // The webview lost the marks with its content; they go back on the rendering it draws again.
-          this.post({ type: "annotate", ...this.annotation });
         }
         break;
       case "rendered":
@@ -663,6 +660,8 @@ export class DiagramPanel implements vscode.Disposable {
         },
       };
       this.post(message);
+      // Reloads and failed chart updates keep marks; replay them after the drawing they belong to.
+      if (this.annotation) this.post({ type: "annotate", ...this.annotation });
     });
 
     // An unavailable panel says nothing about the source, and the diagram may have been replaced
@@ -900,6 +899,7 @@ export class DiagramPanel implements vscode.Disposable {
         table,
         reset || message.replaceSource ? undefined : state.chartPresentation,
       );
+      const annotation = this.annotation;
       this.chartTable = table;
       this.state = {
         ...state,
@@ -916,6 +916,7 @@ export class DiagramPanel implements vscode.Disposable {
       if (!outcome.ok && this.renderVersion === revision) {
         this.state = state;
         this.chartTable = previousTable;
+        this.annotation = annotation;
         await this.save();
         if (this.renderVersion !== revision || this.panel !== panel) return;
         if (outcome.kind === "invalid") await this.renderCurrent();
@@ -949,6 +950,7 @@ export class DiagramPanel implements vscode.Disposable {
         return;
       }
       const previousState = this.state;
+      const annotation = this.annotation;
       const rebuilt = rebuildChart(chart, table, presentation);
       const source = JSON.stringify(rebuilt.option, null, 2);
       const previousTable = this.chartTable;
@@ -969,6 +971,7 @@ export class DiagramPanel implements vscode.Disposable {
       if (!outcome.ok && this.renderVersion === version + 1) {
         this.state = previousState;
         this.chartTable = previousTable;
+        this.annotation = annotation;
         await this.save();
         if (this.renderVersion !== version + 1 || this.panel !== panel) {
           return;

@@ -148,12 +148,23 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
   const result = structuredClone(option);
   for (const edit of presentation.edits) {
     const path = [...edit.path];
+    const component = path[0];
+    // Type/facet changes can remove a component or switch between a single object and panels.
+    // Recreating an old axis can invalidate the chart; object properties on arrays are lost.
     if (
-      typeof path[0] === "string" &&
-      ["series", "xAxis", "yAxis", "grid", "title"].includes(path[0]) &&
+      typeof component === "string" &&
+      ["series", "xAxis", "yAxis", "grid", "title", "radar", "visualMap"].includes(component) &&
+      Object.hasOwn(presentation.baseline, component) &&
+      (!Object.hasOwn(option, component) ||
+        Array.isArray(presentation.baseline[component]) !== Array.isArray(option[component]))
+    ) {
+      continue;
+    }
+    if (
+      typeof component === "string" &&
+      ["series", "xAxis", "yAxis", "grid", "title"].includes(component) &&
       typeof path[1] === "number"
     ) {
-      const component = path[0];
       const oldItems = componentItems(presentation.baseline, component);
       const newItems = componentItems(option, component);
       const old = oldItems[path[1]];

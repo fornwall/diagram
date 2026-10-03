@@ -152,8 +152,14 @@ export class EChartsRenderer implements Renderer {
 
   /** Complete pending animations before exporting, so an early export includes every item. */
   async toImage(background: string): Promise<DiagramImage> {
+    if (!this.chart) throw new Error("There is no chart to make an image of.");
+    // Export can precede the resize observer or its debounced layout after changing views.
+    // Finish both now; hidden charts keep the dimensions of their last visible rendering.
+    this.resizeChart();
+    this.apply(false, true);
+    clearTimeout(this.relayoutTimer);
     const svg = this.container.querySelector("svg");
-    if (!this.chart || !svg) {
+    if (!svg) {
       throw new Error("There is no chart to make an image of.");
     }
     // Match ECharts' export preparation, keeping the DOM serializer for XML-safe attributes.
@@ -300,22 +306,26 @@ export class EChartsRenderer implements Renderer {
   private scheduleRelayout(): void {
     cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
-      // The panel can become hidden between the resize observation and this frame.
-      const width = this.container.clientWidth;
-      const height = this.container.clientHeight;
-      if (
-        !this.chart ||
-        width === 0 ||
-        height === 0 ||
-        (this.chart.getWidth() === width && this.chart.getHeight() === height)
-      ) {
-        return;
-      }
-      this.chart.resize({ width, height });
+      if (!this.resizeChart()) return;
       // Layout decisions (legend position, label rotation, …) follow once resizing settles.
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.relayout(), 150);
     });
+  }
+
+  private resizeChart(): boolean {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    if (
+      !this.chart ||
+      width === 0 ||
+      height === 0 ||
+      (this.chart.getWidth() === width && this.chart.getHeight() === height)
+    ) {
+      return false;
+    }
+    this.chart.resize({ width, height });
+    return true;
   }
 
   private hitFor(params: ECharts.ECElementEvent): Hit {

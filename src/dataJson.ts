@@ -102,11 +102,13 @@ function recordsFromJson(value: unknown): Records {
   if (columns.every(isPlainObject)) {
     const [keys = [], ...rows] = recordsFromJsonArray(columns).records;
     checkTableSize(rows.length + 1, keys.length + 1);
+    const existing = new Set(keys.map((key) => String(key).trim()));
+    let keyName = "name";
+    for (let suffix = 1; existing.has(keyName); suffix++) {
+      keyName = suffix === 1 ? "key" : `key (${suffix})`;
+    }
     return {
-      records: [
-        [keys.includes("name") ? "key" : "name", ...keys],
-        ...rows.map((row, i) => [names[i] ?? null, ...row]),
-      ],
+      records: [[keyName, ...keys], ...rows.map((row, i) => [names[i] ?? null, ...row])],
       header: true,
     };
   }

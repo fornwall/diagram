@@ -1065,6 +1065,7 @@ suite("panel", function () {
         },
         "tool",
       );
+      assert.ok(panel.annotate({ marks: [{ id: "A", kind: "good" }], dim: false }).ok);
       const before = panel.current;
       const internals = panel as unknown as {
         renderCurrent(): Promise<RenderOutcome>;
@@ -1088,6 +1089,7 @@ suite("panel", function () {
       assert.strictEqual(panel.current?.source, before?.source);
       assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
       assert.match(error, /test refresh failure.*previous source and styling are kept/);
+      assert.match(panel.describeForModel() ?? "", /A \(good\)/);
     } finally {
       vscode.window.showErrorMessage = showError;
       panel.dispose();

@@ -799,6 +799,26 @@ suite("data", () => {
     assert.deepStrictEqual(parse(",x,x\na,1,2").columns, ["Column 1", "x", "x (2)"]);
   });
 
+  test("generated column names preserve explicit headers appearing later", () => {
+    const table = parseTable(",x,x,x (2),Column 1\na,1,2,3,4");
+    assert.deepStrictEqual(
+      table.columns.map(({ name }) => name),
+      ["Column 1 (2)", "x", "x (3)", "x (2)", "Column 1"],
+    );
+    assert.strictEqual(table.rows[0]?.[findColumn(table, "x (2)", "value")], 3);
+    assert.strictEqual(table.rows[0]?.[findColumn(table, "Column 1", "value")], 4);
+  });
+
+  test("generated JSON row keys do not rename existing value columns", () => {
+    const table = parseTable(JSON.stringify({ row: { " name ": "A", key: 42, "key (2)": 99 } }));
+    assert.deepStrictEqual(
+      table.columns.map(({ name }) => name),
+      ["key (3)", "name", "key", "key (2)"],
+    );
+    assert.strictEqual(table.rows[0]?.[findColumn(table, "key", "value")], 42);
+    assert.strictEqual(table.rows[0]?.[findColumn(table, "key (2)", "value")], 99);
+  });
+
   test("detects a header with years as column names", () => {
     assert.deepStrictEqual(parse("region,2024,2025\nNorth,10,14\nSouth,20,18"), {
       columns: ["region", "2024", "2025"],

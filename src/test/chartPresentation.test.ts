@@ -155,6 +155,40 @@ suite("chart presentation", () => {
     assert.deepStrictEqual(option.visualMap.inRange.color, ["white", "red"]);
   });
 
+  test("changing chart type drops styling for components the new chart does not use", () => {
+    for (const type of ["bar", "radar", "heatmap"] as const) {
+      const presentation = edited(
+        (option) => {
+          const component = option.yAxis ?? option.radar;
+          component.name = "Custom axis";
+          if (option.visualMap) option.visualMap.inRange = { color: ["white", "red"] };
+          option.series[0].itemStyle = { color: "blue" };
+        },
+        { ...spec, type },
+      );
+      const option: Option = rebuildChart({ ...spec, type: "pie" }, newTable, presentation).option;
+      for (const key of ["xAxis", "yAxis", "radar", "visualMap"]) {
+        assert.ok(!Object.hasOwn(option, key), `${type} left an unused ${key} in the pie chart`);
+      }
+      if (type === "bar") assert.deepStrictEqual(option.series[0].itemStyle, { color: "blue" });
+    }
+  });
+
+  test("removing facets does not turn a single axis into a partial array", () => {
+    const chart: ChartSpec = { type: "bar", data: "unused", facetColumn: "service" };
+    const table = parseTable("service,day,latency\na,Mon,1\nb,Tue,2");
+    const option = buildChart(chart, table).option as Option;
+    const baseline = captureChartPresentation(JSON.stringify(option));
+    option.yAxis[0].axisLabel = { formatter: "{value} ms" };
+    const presentation = captureChartPresentation(JSON.stringify(option), baseline);
+    const single = rebuildChart({ ...chart, facetColumn: undefined }, table, presentation);
+    assert.deepStrictEqual(
+      single.option.yAxis,
+      buildChart({ ...chart, facetColumn: undefined }, table).option.yAxis,
+    );
+    assert.strictEqual(single.presentation.blocked, undefined);
+  });
+
   test("data and structural edits block refresh until reverted or explicitly reset", () => {
     for (const change of [
       (option: Option) => {

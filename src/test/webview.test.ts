@@ -707,6 +707,7 @@ suite("webview", function () {
         await evaluate(`(async () => {
         const handle = document.getElementById("drag-out");
         handle.dispatchEvent(new PointerEvent("pointerenter"));
+        handle.dispatchEvent(new PointerEvent("pointerdown", {shiftKey: true}));
         for (let attempt = 0; attempt < 100; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 20));
           const dataTransfer = new DataTransfer();
@@ -723,6 +724,45 @@ suite("webview", function () {
     }
     assert.ok(Array.isArray(paths[1]) && paths[1].length === 2);
     assert.deepStrictEqual(paths[0], paths[1]);
+  });
+
+  test("exports the current chart size before the resize observer runs", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const chart = document.getElementById("chart");
+        try {
+          chart.style.width = "321px";
+          chart.style.height = "234px";
+          const expected = [chart.clientWidth, chart.clientHeight];
+          const handle = document.getElementById("drag-out");
+          handle.dispatchEvent(new PointerEvent("pointerenter"));
+          handle.dispatchEvent(new PointerEvent("pointerdown", {shiftKey: true}));
+          for (let attempt = 0; attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            const dataTransfer = new DataTransfer();
+            handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+            const svg = dataTransfer.getData("image/svg+xml");
+            if (svg) {
+              const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+              return {expected, actual: [Number(image.getAttribute("width")), Number(image.getAttribute("height"))]};
+            }
+          }
+          throw new Error("The chart image was not prepared.");
+        } finally {
+          chart.style.width = "";
+          chart.style.height = "";
+        }
+      })()`),
+      { expected: [321, 234], actual: [321, 234] },
+    );
   });
 
   test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {

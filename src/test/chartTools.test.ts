@@ -32,8 +32,10 @@ function harness() {
   const values = new Map<string, unknown>();
   const panel = newPanel(values);
   const internals = panel as unknown as Internals;
+  const sent: ToWebview[] = [];
   let next: ((message: Extract<ToWebview, { type: "render" }>) => void) | undefined;
   internals.post = (message) => {
+    sent.push(message);
     if (message.type !== "render") return;
     const handler = next;
     next = undefined;
@@ -47,6 +49,7 @@ function harness() {
     panel,
     internals,
     values,
+    sent,
     nextRender: (handler: NonNullable<typeof next>) => {
       next = handler;
     },
@@ -289,9 +292,12 @@ suite("chart agent tools", function () {
   });
 
   test("render failure restores the prior chart and persisted state", async () => {
-    const { panel, internals, nextRender, values } = harness();
+    const { panel, internals, nextRender, values, sent } = harness();
     try {
       await draw(panel);
+      const annotation = { marks: [{ id: "a", kind: "good" as const }], dim: true };
+      assert.ok(panel.annotate(annotation).ok);
+      sent.length = 0;
       const before = panel.current;
       nextRender((message) =>
         internals.finishRender(message.requestId, {
@@ -305,6 +311,10 @@ suite("chart agent tools", function () {
       assert.match(result.error, /previous chart is kept/);
       assert.deepStrictEqual(panel.current, before);
       assert.deepStrictEqual(values.get("diagram.state"), before);
+      const renders = sent.filter((message) => message.type === "render");
+      assert.strictEqual(renders.length, 2);
+      assert.deepStrictEqual(sent.at(-1), { type: "annotate", ...annotation });
+      assert.strictEqual(sent.at(-2), renders[1]);
     } finally {
       panel.dispose();
     }

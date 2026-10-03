@@ -99,13 +99,15 @@ function hasHeader(rows: Cell[][]): boolean {
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
 function columnNames(header: Cell[], width: number): string[] {
   const seen = new Set<string>();
+  const reserved = new Set(header.map((cell) => String(cell ?? "").trim()).filter(Boolean));
   // The next number to try for each name, so that many equal names take linear time.
   const next = new Map<string, number>();
   return Array.from({ length: width }, (_, column) => {
-    const name = String(header[column] ?? "").trim() || `Column ${column + 1}`;
+    const given = String(header[column] ?? "").trim();
+    const name = given || `Column ${column + 1}`;
     let unique = name;
     let n = next.get(name) ?? 2;
-    while (seen.has(unique)) {
+    while (seen.has(unique) || ((unique !== name || !given) && reserved.has(unique))) {
       unique = `${name} (${n++})`;
     }
     next.set(name, n);
