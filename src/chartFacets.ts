@@ -156,11 +156,6 @@ export function buildFacetedChart(
   };
 }
 
-function valueAt(item: unknown, dimension: number): unknown {
-  const value = isPlainObject(item) ? item.value : item;
-  return Array.isArray(value) ? value[dimension] : value;
-}
-
 /** Align category occurrences as well as numeric ranges; equal labels need not be aggregated. */
 function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): void {
   const axes = panels.map((panel) => objects(panel.option[key])[0] ?? {});
@@ -177,6 +172,7 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
         return key;
       });
     });
+    const keys = [...domain.keys()];
     panels.forEach((panel, i) => {
       const axis = axes[i];
       if (!axis) return;
@@ -184,7 +180,7 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
       for (const series of objects(panel.option.series)) {
         const data = Array.isArray(series.data) ? series.data : [];
-        series.data = [...domain.keys()].map((key) => {
+        series.data = keys.map((key) => {
           const index = indices.get(key);
           return index === undefined ? null : (data[index] ?? null);
         });
@@ -192,7 +188,8 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     });
     return;
   }
-  if (!axes.every((axis) => axis.type === axes[0]?.type)) {
+  const type = axes[0]?.type;
+  if (!axes.every((axis) => axis.type === type)) {
     throw new Error(
       "Facets inferred different axis types. Specify consistent labelColumn and valueColumns, or use independent facetScales.",
     );
@@ -205,7 +202,7 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     const number =
       typeof value === "number"
         ? value
-        : axes[0]?.type === "time" && typeof value === "string"
+        : type === "time" && typeof value === "string"
           ? Date.parse(value)
           : NaN;
     if (Number.isFinite(number)) {
@@ -224,9 +221,10 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     for (const series of objects(panel.option.series)) {
       if (!Array.isArray(series.data)) continue;
       series.data.forEach((item, index) => {
-        const value = valueAt(item, dimension);
+        const point = isPlainObject(item) ? item.value : item;
+        const value = Array.isArray(point) ? point[dimension] : point;
         include(value);
-        if (series.stack !== undefined && axes[0]?.type !== "time" && typeof value === "number") {
+        if (series.stack !== undefined && type !== "time" && typeof value === "number") {
           // Generated series share row order, including separate observations at the same time.
           const key = JSON.stringify([series.stack, index]);
           const totals = stacks.get(key) ?? [0, 0];
@@ -243,7 +241,7 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     for (const totals of stacks.values()) totals.forEach(include);
   }
   if (!Number.isFinite(minimum)) return;
-  if (axes[0]?.type !== "time" && axes.some((axis) => axis.scale !== true)) {
+  if (type !== "time" && axes.some((axis) => axis.scale !== true)) {
     minimum = Math.min(0, minimum);
     maximum = Math.max(0, maximum);
   }

@@ -356,12 +356,7 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
       );
     }
   }
-  return {
-    labels,
-    values,
-    ...(separator === undefined ? {} : { separator }),
-    ...(times === undefined ? {} : { times }),
-  };
+  return { labels, values, separator, times };
 }
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
@@ -404,13 +399,6 @@ function addValues(left: number, right: number): number {
     );
   }
   return sum;
-}
-
-function interpolate(left: number, right: number, share: number): number {
-  const difference = right - left;
-  return Number.isFinite(difference)
-    ? left + difference * share
-    : left * (1 - share) + right * share;
 }
 
 /** Aggregate rows by their labels, preserving the order of each group's first appearance. */
@@ -953,23 +941,18 @@ function cartesianOption(
 ): Record<string, unknown> {
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
-  // The first row at the top.
-  const inverse = horizontal ? { inverse: true } : {};
-  // At the edge rather than at zero, where its labels would cover the negative values.
-  const edge = rows.some(({ values }) => values.some((value) => value !== null && value < 0))
-    ? { axisLine: { onZero: false } }
-    : {};
-  const categoryAxis =
-    times === undefined
-      ? {
-          type: "category",
-          data: rows.map(label),
-          ...(line ? { boundaryGap: false } : {}),
-          ...inverse,
-          ...edge,
-        }
-      : // ECharts reads the dates itself and spaces the points by when they happened.
-        { type: "time", ...inverse, ...edge };
+  const categoryAxis = {
+    type: times === undefined ? "category" : "time",
+    ...(times === undefined
+      ? { data: rows.map(label), ...(line ? { boundaryGap: false } : {}) }
+      : {}),
+    // Put the first row at the top of a horizontal chart.
+    ...(horizontal ? { inverse: true } : {}),
+    // Keep labels at the edge when an axis through zero would cover negative values.
+    ...(rows.some(({ values }) => values.some((value) => value !== null && value < 0))
+      ? { axisLine: { onZero: false } }
+      : {}),
+  };
   const valueAxis = {
     type: "value",
     // With several series, the legend names them.
@@ -986,13 +969,12 @@ function cartesianOption(
       name,
       ...(line && rows.length > FEW_POINTS ? { showSymbol: false } : {}),
       ...(names.length > 1 ? { emphasis: { focus: "series" } } : {}),
-      data: rows.map((row) =>
-        times === undefined
-          ? (row.values[column] ?? null)
-          : horizontal
-            ? [row.values[column] ?? null, timeValue(label(row), categoryTime)]
-            : [timeValue(label(row), categoryTime), row.values[column] ?? null],
-      ),
+      data: rows.map((row) => {
+        const value = row.values[column] ?? null;
+        if (times === undefined) return value;
+        const time = timeValue(label(row), categoryTime);
+        return horizontal ? [value, time] : [time, value];
+      }),
     })),
   };
 }
@@ -1338,8 +1320,14 @@ function heatmapOption(
 function quantile(sorted: number[], share: number): number {
   const at = (sorted.length - 1) * share;
   const below = Math.floor(at);
-  const value = sorted[below] ?? 0;
-  return interpolate(value, sorted[below + 1] ?? value, at - below);
+  const left = sorted[below] ?? 0;
+  const right = sorted[below + 1] ?? left;
+  const fraction = at - below;
+  // Weighted interpolation avoids overflow when opposite signs make the difference infinite.
+  const difference = right - left;
+  return Number.isFinite(difference)
+    ? left + difference * fraction
+    : left * (1 - fraction) + right * fraction;
 }
 
 /** Compute box statistics per label group, or per value column when rows are unlabeled. */

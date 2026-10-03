@@ -220,12 +220,15 @@ suite("webview", function () {
       const column = row.querySelector('[aria-label="Filter column"]');
       column.value = 'amount';
       column.dispatchEvent(new Event('change'));
+      const apply = document.querySelector('#chart-options .actions button');
+      apply.click();
       return {
         valueType: row.querySelector('[aria-label="Filter value type"]').value,
         valid: document.querySelector('#chart-options form').checkValidity(),
+        applying: apply.disabled,
       };
     })()`),
-      { valueType: "number", valid: false },
+      { valueType: "number", valid: false, applying: false },
     );
     await nextRender(() =>
       evaluate(`(() => {

@@ -5,7 +5,6 @@ import type { FromWebview } from "../protocol";
 /** A compact form inside the diagram view, opened by the native editor action. */
 export class ChartOptionsForm {
   private state: ChartOptionsState | undefined;
-  private readonly form = document.createElement("form");
   private readonly fields = document.createElement("fieldset");
   private readonly type = document.createElement("select");
   private readonly labels = document.createElement("div");
@@ -18,7 +17,7 @@ export class ChartOptionsForm {
   private readonly facetColumns = document.createElement("select");
   private readonly facetScales = document.createElement("select");
   private readonly filters = document.createElement("div");
-  private filterRows: Array<{ row: HTMLElement; read: () => ChartFilter }> = [];
+  private readonly filterRows = new Map<HTMLElement, () => ChartFilter>();
   private readonly status = document.createElement("p");
   private readonly error = document.createElement("p");
   private readonly replace = document.createElement("input");
@@ -144,10 +143,12 @@ export class ChartOptionsForm {
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.append(this.apply, reset);
-    this.form.append(this.fields, this.replaceLabel, this.error, actions);
+    const form = document.createElement("form");
+    form.append(this.fields, this.replaceLabel, this.error, actions);
+    // Native submission is blocked because the webview disables forms.
     const apply = (event: Event): void => {
       event.preventDefault();
-      if (!this.state || !this.form.reportValidity()) return;
+      if (!this.state || !form.reportValidity()) return;
       const labels = this.selected(this.labels);
       const values = this.selected(this.values);
       this.error.hidden = true;
@@ -167,14 +168,16 @@ export class ChartOptionsForm {
           facetColumns:
             this.facetColumns.value === "" ? undefined : Number(this.facetColumns.value),
           facetScales: this.facetScales.value || undefined,
-          filters: this.filterRows.length ? this.filterRows.map(({ read }) => read()) : undefined,
+          filters: this.filterRows.size
+            ? Array.from(this.filterRows.values(), (read) => read())
+            : undefined,
         },
         replaceSource: this.replace.checked,
       });
     };
     this.apply.addEventListener("click", apply);
-    this.form.addEventListener("submit", apply);
-    container.append(header, this.status, this.form);
+    form.addEventListener("submit", apply);
+    container.append(header, this.status, form);
     container.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         event.stopPropagation();
@@ -218,7 +221,7 @@ export class ChartOptionsForm {
     this.reset.textContent = state.unavailable ? "Reset styling and reload data" : "Reset styling";
     this.status.textContent =
       state.unavailable ??
-      `${state.rowCount.toLocaleString()} rows · ${state.columns.length} columns. Leave columns automatic to infer them for the chart type. Changes use the loaded data; Refresh reloads the source.`;
+      `${state.rowCount.toLocaleString()} rows · ${state.columns.length} columns. Columns are inferred unless selected. Refresh reloads the data.`;
     this.replace.checked = false;
     this.replaceLabel.hidden = !state.edited;
     this.error.hidden = true;
@@ -261,7 +264,8 @@ export class ChartOptionsForm {
     }
     if (this.bins.parentElement) this.bins.parentElement.hidden = !histogram;
     this.facet.disabled = !this.canFacet();
-    this.facetColumns.disabled = this.facetScales.disabled = !this.canFacet() || !this.facet.value;
+    this.facetColumns.disabled = this.facetScales.disabled =
+      this.facet.disabled || !this.facet.value;
   }
 
   /** Preserve stored spelling and missing columns so opening the form never rewrites predicates. */
@@ -281,7 +285,7 @@ export class ChartOptionsForm {
 
   private fillFilters(filters: ChartFilter[]): void {
     this.filters.replaceChildren();
-    this.filterRows = [];
+    this.filterRows.clear();
     const add = document.createElement("button");
     add.type = "button";
     add.className = "secondary";
@@ -353,26 +357,23 @@ export class ChartOptionsForm {
       remove.setAttribute("aria-label", "Remove filter");
       remove.addEventListener("click", () => {
         row.remove();
-        this.filterRows = this.filterRows.filter((entry) => entry.row !== row);
+        this.filterRows.delete(row);
         add.disabled = false;
         add.focus();
       });
       row.append(column, operator, valueType, value, remove);
       this.filters.insertBefore(row, add);
-      this.filterRows.push({
-        row,
-        read: () => ({
-          column: column.value,
-          op: operator.value as ChartFilter["op"],
-          value:
-            valueType.value === "null"
-              ? null
-              : valueType.value === "number"
-                ? Number(value.value)
-                : value.value,
-        }),
-      });
-      add.disabled = this.filterRows.length >= 50;
+      this.filterRows.set(row, () => ({
+        column: column.value,
+        op: operator.value as ChartFilter["op"],
+        value:
+          valueType.value === "null"
+            ? null
+            : valueType.value === "number"
+              ? Number(value.value)
+              : value.value,
+      }));
+      add.disabled = this.filterRows.size >= 50;
     };
     add.addEventListener("click", () => append());
     this.filters.append(add);
