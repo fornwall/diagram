@@ -94,6 +94,30 @@ suite("chart facets", () => {
     );
   });
 
+  test("shared stacked bounds skip missing observations in disjoint categories", () => {
+    const option = build("service,operation,a,b\napi,empty,,\napi,read,10,5\nworker,write,-3,-5", {
+      type: "stackedBar",
+      valueColumns: ["a", "b"],
+    });
+    assert.deepStrictEqual(option.xAxis[0].data, ["empty", "read", "write"]);
+    assert.deepStrictEqual(
+      option.series.map((series: Option) => series.data),
+      [
+        [null, 10, null],
+        [null, 5, null],
+        [null, null, -3],
+        [null, null, -5],
+      ],
+    );
+    assert.deepStrictEqual(
+      option.yAxis.map((axis: Option) => [axis.min, axis.max]),
+      [
+        [-8, 15],
+        [-8, 15],
+      ],
+    );
+  });
+
   test("shared stacked bounds keep repeated timestamps as separate observations", () => {
     for (const type of ["stackedBar", "stackedArea"] as const) {
       const option = build(

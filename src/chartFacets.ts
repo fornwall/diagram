@@ -217,28 +217,38 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     }
   };
   for (const panel of panels) {
-    const stacks = new Map<string, [number, number]>();
+    const stacks = new Map<unknown, [number, number][]>();
     for (const series of objects(panel.option.series)) {
       if (!Array.isArray(series.data)) continue;
+      let stack: [number, number][] | undefined;
+      if (series.stack !== undefined && type !== "time") {
+        stack = stacks.get(series.stack);
+        if (stack === undefined) {
+          stack = [];
+          stacks.set(series.stack, stack);
+        }
+      }
       series.data.forEach((item, index) => {
         const point = isPlainObject(item) ? item.value : item;
         const value = Array.isArray(point) ? point[dimension] : point;
         include(value);
-        if (series.stack !== undefined && type !== "time" && typeof value === "number") {
+        if (stack !== undefined && typeof value === "number") {
           // Generated series share row order, including separate observations at the same time.
-          const key = JSON.stringify([series.stack, index]);
-          const totals = stacks.get(key) ?? [0, 0];
+          const totals = stack[index] ?? [0, 0];
+          stack[index] = totals;
           const sign = value < 0 ? 0 : 1;
           totals[sign] += value;
           if (!Number.isFinite(totals[sign]))
             throw new Error(
               "The stacked facet total exceeds the numeric range. Rescale the values before charting them.",
             );
-          stacks.set(key, totals);
         }
       });
     }
-    for (const totals of stacks.values()) totals.forEach(include);
+    for (const stack of stacks.values()) {
+      // Missing observations leave holes in the stack's array.
+      for (const totals of stack) totals?.forEach(include);
+    }
   }
   if (!Number.isFinite(minimum)) return;
   if (type !== "time" && axes.some((axis) => axis.scale !== true)) {

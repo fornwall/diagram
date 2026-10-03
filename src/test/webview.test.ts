@@ -41,6 +41,7 @@ suite("webview", function () {
         acquireVsCodeApi = () => {
           const api = acquire();
           window.readTestState = () => api.getState();
+          window.testStateWrites = 0;
           window.testRenderResults = [];
           const postMessage = (message) => {
             if (message.type === "rendered" || message.type === "renderError") {
@@ -56,7 +57,10 @@ suite("webview", function () {
               api.postMessage({type: "testResult", error: String(error)});
             }
           });
-          return {...api, postMessage};
+          return {...api, postMessage, setState: (state) => {
+            window.testStateWrites++;
+            return api.setState(state);
+          }};
         };
       </script><script type="module"`,
     );
@@ -788,6 +792,50 @@ suite("webview", function () {
     assert.strictEqual(
       await evaluate('document.getElementById("source").value'),
       "flowchart LR\n A --> New",
+    );
+    await evaluate('document.getElementById("view-visual").click()');
+  });
+
+  test("reuses formatted source and only persists changed editor state", async () => {
+    await evaluate('document.getElementById("view-visual").click()');
+    const source = '{"series":[{"type":"pie","data":[3,7]}]}';
+    assert.ok((await render({ language: "echarts", source })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const parse = JSON.parse;
+        let parses = 0;
+        JSON.parse = function (text, ...args) {
+          if (text === ${JSON.stringify(source)}) parses++;
+          return parse.call(this, text, ...args);
+        };
+        window.testStateWrites = 0;
+        try {
+          for (const view of ["source", "source", "visual", "split", "split"]) {
+            document.getElementById("view-" + view).click();
+          }
+          const viewWrites = window.testStateWrites;
+          const input = document.getElementById("source");
+          input.value += " ";
+          input.dispatchEvent(new Event("input"));
+          input.dispatchEvent(new Event("input"));
+          return {parses, viewWrites, editWrites: window.testStateWrites - viewWrites,
+            saved: window.readTestState().editor.source === input.value};
+        } finally {
+          JSON.parse = parse;
+        }
+      })()`),
+      { parses: 1, viewWrites: 3, editWrites: 1, saved: true },
+    );
+    const incoming = '{"series":[{"type":"pie","data":[9,1]}]}';
+    assert.ok((await render({ language: "echarts", source: incoming })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const stale = !document.getElementById("stale-note").hidden;
+        document.getElementById("revert").click();
+        return {stale, source: document.getElementById("source").value,
+          draft: window.readTestState().editor ?? null};
+      })()`),
+      { stale: true, source: JSON.stringify(JSON.parse(incoming), null, 2), draft: null },
     );
     await evaluate('document.getElementById("view-visual").click()');
   });

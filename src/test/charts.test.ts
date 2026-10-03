@@ -940,6 +940,37 @@ suite("charts", () => {
     }
   });
 
+  test("multiple time series preserve coordinates after sorting and limiting", () => {
+    const data =
+      "date,a,b\n2026-01-01T10:00:00.12+05:30,3,30\n2026-01-02T10:00:00.1-03:30,9,\n2026-01-03T10:00:00Z,1,10";
+    for (const type of ["line", "horizontalBar", "stackedArea"] as const) {
+      const option = build(
+        chart(type, { valueColumns: ["a", "b"], sort: "descending", limit: 2 }),
+        data,
+      );
+      const times = [
+        Date.parse("2026-01-02T10:00:00.1-03:30"),
+        Date.parse("2026-01-01T10:00:00.12+05:30"),
+      ];
+      const expected = [
+        [
+          [times[0], 9],
+          [times[1], 3],
+        ],
+        [
+          [times[0], null],
+          [times[1], 30],
+        ],
+      ];
+      assert.deepStrictEqual(
+        option.series.map((series: Option) => series.data),
+        type === "horizontalBar"
+          ? expected.map((series) => series.map(([time, value]) => [value, time]))
+          : expected,
+      );
+    }
+  });
+
   test("a label column of dates becomes a time axis", () => {
     const daily = "date,sales\n2026-01-02,3\n2026-01-05,5";
     const option = build(chart("line"), daily);

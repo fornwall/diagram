@@ -1015,6 +1015,9 @@ function cartesianOption(
 ): Record<string, unknown> {
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
+  // Every value series uses the same time coordinate; parse offsets and fractions once per row.
+  const timesByRow =
+    times === undefined ? undefined : rows.map((row) => timeValue(label(row), categoryTime));
   const categoryAxis = {
     type: times === undefined ? "category" : "time",
     ...(times === undefined
@@ -1043,10 +1046,10 @@ function cartesianOption(
       name,
       ...(line && rows.length > FEW_POINTS ? { showSymbol: false } : {}),
       ...(names.length > 1 ? { emphasis: { focus: "series" } } : {}),
-      data: rows.map((row) => {
+      data: rows.map((row, index) => {
         const value = row.values[column] ?? null;
-        if (times === undefined) return value;
-        const time = timeValue(label(row), categoryTime);
+        if (timesByRow === undefined) return value;
+        const time = timesByRow[index];
         return horizontal ? [value, time] : [time, value];
       }),
     })),

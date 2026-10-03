@@ -87,7 +87,9 @@ enablePanning(canvas);
 enableSplitter(splitter, panes);
 
 /** Last requested diagram, including failed renders. */
-let current: { renderer: Renderer; source: string; requestId: number } | undefined;
+let current:
+  | { renderer: Renderer; source: string; requestId: number; editorSource?: string }
+  | undefined;
 /** Source baseline for detecting unapplied edits. */
 let editedFrom = "";
 /** Pending edit, recognized when the extension sends it back to render. */
@@ -510,17 +512,29 @@ clearSelectionButton.addEventListener("click", () => {
 });
 
 // Keep drafts when the webview reloads, e.g. when moved to another window.
+let savedState: State | undefined;
 function saveState(): void {
-  vscode.setState({
+  const source = sourceInput.value;
+  const next: State = {
     draft: askInput.value,
     view: viewMode,
-    editor:
-      sourceInput.value === editedFrom
-        ? undefined
-        : { source: sourceInput.value, base: editedFrom },
-  });
+    editor: source === editedFrom ? undefined : { source, base: editedFrom },
+  };
+  // setState serializes the whole draft and sends it to the host. View and render updates can
+  // reach here several times with the same state, including multi-megabyte source edits.
+  if (
+    savedState?.draft === next.draft &&
+    savedState.view === next.view &&
+    savedState.editor?.source === next.editor?.source &&
+    savedState.editor?.base === next.editor?.base
+  ) {
+    return;
+  }
+  vscode.setState(next);
+  savedState = next;
 }
 const restored = vscode.getState();
+savedState = restored;
 askInput.value = restored?.draft ?? "";
 viewMode = restored?.view ?? "visual";
 if (restored?.editor) {
@@ -711,10 +725,17 @@ function transientHint(text: string): void {
 
 const staleNote = element("stale-note");
 
+/** Format only when needed, once per incoming diagram, even when switching views repeatedly. */
+function editorSource(): string {
+  if (!current) return "";
+  current.editorSource ??= current.renderer.formatForEditing(current.source);
+  return current.editorSource;
+}
+
 /** Shows the source of the diagram as rendered, as the editor's starting point. */
 function loadSource(): void {
-  editedFrom = current ? current.renderer.formatForEditing(current.source) : "";
-  sourceInput.value = editedFrom;
+  editedFrom = editorSource();
+  if (sourceInput.value !== editedFrom) sourceInput.value = editedFrom;
   staleNote.hidden = true;
   updateEditorActions();
 }
@@ -763,14 +784,14 @@ function sourceChanged(source: string): void {
     if (sourceInput.value === appliedSource) {
       loadSource();
     } else {
-      editedFrom = current?.renderer.formatForEditing(source) ?? source;
+      editedFrom = editorSource();
       updateEditorActions();
     }
     appliedSource = undefined;
   } else if (sourceInput.value === editedFrom || sourceInput.value === source) {
     loadSource();
   } else {
-    staleNote.hidden = current?.renderer.formatForEditing(source) === editedFrom;
+    staleNote.hidden = editorSource() === editedFrom;
   }
 }
 

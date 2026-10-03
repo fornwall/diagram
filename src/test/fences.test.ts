@@ -143,6 +143,29 @@ suite("fences", () => {
     ]);
   });
 
+  test("findDiagramFences skips long prose and code while preserving diagram positions", () => {
+    const prose = "A paragraph with an inline ```mermaid marker.\n".repeat(10_000);
+    const code = "````text\n```mermaid\nNot a diagram\n```\n````\n";
+    assert.deepStrictEqual(findDiagramFences(`${prose}${code}  ~~~echarts\r\n  {}\r\n\r\n  ~~~`), [
+      {
+        language: "echarts",
+        source: "{}",
+        openingLine: 10_005,
+        lastLine: 10_007,
+        indent: "  ",
+      },
+    ]);
+  });
+
+  test("findDiagramFences does not mistake in-line separators for new document lines", () => {
+    for (const separator of ["\r", "\u2028", "\u2029"]) {
+      assert.deepStrictEqual(sources(`prose${separator}\`\`\`mermaid\nA\n\`\`\``), []);
+      assert.deepStrictEqual(sources(`\`\`\`mermaid\nA${separator}\`\`\`\nB\n\`\`\``), [
+        `0-2 mermaid "": ${JSON.stringify(`A${separator}\`\`\`\nB`)}`,
+      ]);
+    }
+  });
+
   test("fenceAt finds the fence at, below and above the cursor", () => {
     //         0     1            2   3     4            5   6
     const text = "a\n```mermaid\nA\n```\n```mermaid\nB\n```\nz\n";

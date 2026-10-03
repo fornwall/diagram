@@ -21,6 +21,8 @@ interface OpenFence {
   language: string;
   indent: string;
   openingLine: number;
+  /** Offset immediately after the opening line's newline. */
+  contentStart: number;
 }
 
 const documentFences = new WeakMap<
@@ -42,36 +44,54 @@ export function findDocumentDiagramFences(
 
 /** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
-  const lines = text.split(/\r?\n/);
-  // A trailing newline ends the last line rather than starting a line of content of its own.
-  const lineCount = text.endsWith("\n") ? lines.length - 1 : lines.length;
   const fences: DiagramFence[] = [];
-  const add = (open: OpenFence, lastLine: number): void => {
+  const add = (open: OpenFence, end: number, lastLine: number): void => {
     const { language, indent, openingLine } = open;
     if (!isDiagramLanguage(language)) {
       return;
     }
-    const source = fenceSource(lines.slice(openingLine + 1, lastLine + 1), indent);
+    const source = fenceSource(text.slice(open.contentStart, end).split(/\r?\n/), indent);
     if (source) {
       fences.push({ language, source, openingLine, lastLine, indent });
     }
   };
 
+  // Most Markdown lines cannot be fences. Scan those without allocating a string per line;
+  // only split the contents of diagram blocks that will actually be returned to the caller.
+  // Match LF explicitly: multiline ^ also treats CR and Unicode separators as new lines.
+  const candidates = /(?:^|\n)([^\S\n]*(?:`{3,}|~{3,})[^\n]*)/g;
+  let line = 0;
+  let nextNewline = text.indexOf("\n");
+  const lineAt = (offset: number): number => {
+    while (nextNewline !== -1 && nextNewline < offset) {
+      line++;
+      nextNewline = text.indexOf("\n", nextNewline + 1);
+    }
+    return line;
+  };
   let open: OpenFence | undefined;
-  for (const [index, line] of lines.entries()) {
+  for (const candidate of text.matchAll(candidates)) {
+    const candidateLine = candidate[1] ?? "";
+    const offset = candidate.index + candidate[0].length - candidateLine.length;
+    const index = lineAt(offset);
     if (!open) {
-      const opening = openingFence(line);
+      const opening = openingFence(candidateLine);
       if (opening) {
-        open = { ...opening, openingLine: index };
+        open = {
+          ...opening,
+          openingLine: index,
+          contentStart: Math.min(text.length, offset + candidateLine.length + 1),
+        };
       }
-    } else if (isClosingFence(line, open.fence)) {
-      add(open, index - 1);
+    } else if (isClosingFence(candidateLine, open.fence)) {
+      add(open, offset, index - 1);
       open = undefined;
     }
   }
   // Like CommonMark, a block that is never closed holds the rest of the document.
   if (open) {
-    add(open, lineCount - 1);
+    // A trailing newline ends the last content line rather than adding another one.
+    add(open, text.length, lineAt(text.length) - (text.endsWith("\n") ? 1 : 0));
   }
   return fences;
 }

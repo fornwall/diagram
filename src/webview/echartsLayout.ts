@@ -61,27 +61,29 @@ export interface LayoutContext {
 }
 
 const needsCopy = (value: unknown) => Array.isArray(value) || isPlainObject(value);
+/** Layout reads these payloads without changing them; sankey styling copies its nodes below. */
+const DATA_KEYS = new Set(["data", "nodes", "links", "edges", "source"]);
 
 /**
- * A deep copy of an option, so that the layout can fill in what it needs while leaving the option
+ * Copies option settings, so that the layout can fill in what it needs while leaving the option
  * it was given untouched: the renderer keeps that one and lays it out again on a resize. Not
  * structuredClone, which throws on an option written as JavaScript, as that holds functions (a
  * custom series' renderItem, a formatter, …).
  *
- * Everything isPlainObject accepts is copied, as that is what every writer here reaches its
+ * Settings accepted by isPlainObject are copied, as that is what every writer here reaches its
  * targets through, so that no object a layout writes to is still one of the caller's. A copy is a
  * plain object of every enumerable property, inherited ones included, as a series written with a
  * prototype of its own keeps its type and its styles that way; a date is copied as a date and a
  * typed array is left as it is, both keeping their value where properties cannot carry it.
- * Functions are carried over by reference and primitives returned as they are. An array is only
- * copied when it holds an object or an array, which keeps the data of a large chart out of the
- * copy and is safe because nothing here writes to an array in place.
+ * Functions and data payloads are carried over by reference. Copying every object-valued point,
+ * dataset row or hierarchy node would make even a resize allocate the entire dataset again.
+ * Other arrays are only copied when they hold objects or arrays; no array is written in place.
  */
 function cloneOption(option: JsonObject): JsonObject {
   const copy: JsonObject = {};
   // for...in rather than Object.entries, to copy what the option inherits as well.
   for (const key in option) {
-    const value = cloneValue(option[key]);
+    const value = DATA_KEYS.has(key) ? option[key] : cloneValue(option[key]);
     if (key === "__proto__") {
       // An own "__proto__" key, which JSON.parse does produce, has to be defined rather than
       // assigned: assigning it would reach the prototype setter and change the copy instead.
@@ -493,14 +495,18 @@ function styleSeries(series: JsonObject[], yAxes: JsonObject[], colors: ThemeCol
     if (each.type === "sankey" && each.color === undefined) {
       // ECharts colors sankey nodes by value along the palette, mixing hues; give each node its
       // own categorical color instead.
-      const nodes: unknown = each.data ?? each.nodes;
-      (Array.isArray(nodes) ? nodes : []).forEach((node: unknown, index) => {
-        if (isPlainObject(node)) {
-          const itemStyle = isPlainObject(node.itemStyle) ? node.itemStyle : {};
+      const key = each.data != null ? "data" : "nodes";
+      const nodes: unknown = each[key];
+      if (Array.isArray(nodes)) {
+        each[key] = nodes.map((node: unknown, index) => {
+          if (!isPlainObject(node)) return node;
+          const copy = cloneValue(node) as JsonObject;
+          const itemStyle = isPlainObject(copy.itemStyle) ? copy.itemStyle : {};
           itemStyle.color ??= toCss(colors.palette[index % colors.palette.length] ?? colors.blue);
-          node.itemStyle = itemStyle;
-        }
-      });
+          copy.itemStyle = itemStyle;
+          return copy;
+        });
+      }
     }
     if (each.type === "line" && isPlainObject(each.areaStyle)) {
       const area = each.areaStyle;

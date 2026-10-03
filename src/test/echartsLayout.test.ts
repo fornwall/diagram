@@ -108,6 +108,57 @@ suite("echartsLayout", () => {
     assert.strictEqual(layout(bars({ series: [{ type: "bar", data }] })).series[0].data, data);
   });
 
+  test("shares read-only points, hierarchy nodes and dataset rows across layouts", () => {
+    const points = Object.freeze([Object.freeze({ value: [1, 2], name: "A" })]);
+    const nodes = Object.freeze([
+      Object.freeze({ name: "parent", children: Object.freeze([{ name: "child", value: 2 }]) }),
+    ]);
+    const rows = Object.freeze([Object.freeze({ category: "A", value: 2 })]);
+    const links = Object.freeze([Object.freeze({ source: "A", target: "B" })]);
+    const source = {
+      dataset: { source: rows },
+      baseOption: {
+        series: [
+          { type: "line", data: points },
+          { type: "treemap", data: nodes },
+          { type: "graph", nodes, links },
+        ],
+      },
+      options: [{ series: [{ data: points }] }],
+      media: [{ option: { series: [{ data: points }] } }],
+    };
+    for (const width of [300, 800]) {
+      const option = layout(source, { width, reducedMotion: true });
+      assert.strictEqual(option.dataset.source, rows);
+      assert.strictEqual(option.baseOption.series[0].data, points);
+      assert.strictEqual(option.baseOption.series[1].data, nodes);
+      assert.strictEqual(option.baseOption.series[2].nodes, nodes);
+      assert.strictEqual(option.baseOption.series[2].links, links);
+      assert.strictEqual(option.options[0].series[0].data, points);
+      assert.strictEqual(option.media[0].option.series[0].data, points);
+      assert.strictEqual(option.options[0].series[0].animation, false);
+    }
+    assert.deepStrictEqual(source.options, [{ series: [{ data: points }] }]);
+  });
+
+  test("copies sankey nodes before styling, preserving source styles across themes", () => {
+    const nodes = Object.freeze([
+      Object.freeze({ name: "A", itemStyle: Object.freeze({ borderWidth: 2 }) }),
+      Object.freeze({ name: "B", itemStyle: Object.freeze({ color: "red" }) }),
+    ]);
+    for (const key of ["data", "nodes"]) {
+      const source = { series: [{ type: "sankey", [key]: nodes }] };
+      const first = layout(source).series[0][key];
+      const second = layout(source, { colors: { ...colors, palette: [colors.focus] } }).series[0][
+        key
+      ];
+      assert.deepStrictEqual(first[0].itemStyle, { borderWidth: 2, color: "#000000" });
+      assert.deepStrictEqual(second[0].itemStyle, { borderWidth: 2, color: "#0078d4" });
+      assert.deepStrictEqual(first[1].itemStyle, { color: "red" });
+      assert.deepStrictEqual(nodes[0]?.itemStyle, { borderWidth: 2 });
+    }
+  });
+
   test("respects reduced motion in timeline, media, and series overrides", () => {
     const animated = bars({ animation: true, series: [{ type: "bar", animation: true }] });
     const source = {
