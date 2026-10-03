@@ -283,6 +283,43 @@ suite("webview", function () {
     );
   });
 
+  test("chart options preserve column spelling when applying unrelated changes", async () => {
+    const table = parseTable("name,amount\na,1\nb,2");
+    const chart: ChartSpec = {
+      type: "bar",
+      data: "name,amount\na,1\nb,2",
+      labelColumn: " NAME ",
+      valueColumns: ["AMOUNT"],
+    };
+    assert.ok(
+      (
+        await panel.render(
+          {
+            language: "echarts",
+            title: "Columns",
+            chart,
+            source: JSON.stringify(buildChart(chart, table).option),
+          },
+          "tool",
+          undefined,
+          table,
+        )
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    await nextRender(() =>
+      evaluate(`(() => {
+      document.getElementById("chart-option-sort").value = "descending";
+      document.querySelector("#chart-options .actions button").click();
+    })()`),
+    );
+    assert.deepStrictEqual(panel.current?.chart?.labelColumn, [" NAME "]);
+    assert.deepStrictEqual(panel.current?.chart?.valueColumns, ["AMOUNT"]);
+    await evaluate(
+      'document.querySelector("#chart-options .chart-options-heading button").click()',
+    );
+  });
+
   test("chart options recover inline data and close on arbitrary ECharts replacement", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
     assert.ok(
@@ -650,6 +687,42 @@ suite("webview", function () {
       })()`),
       { hidden: true, sized: true, viewBox: true },
     );
+  });
+
+  test("exports complete chart items while their entrance animations are pending", async () => {
+    const option = {
+      animation: true,
+      animationDelay: 60_000,
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: [{ type: "bar", data: [10, 20], itemStyle: { color: "#123456" } }],
+    };
+    const paths: unknown[] = [];
+    for (const animation of [true, false]) {
+      assert.ok(
+        (await render({ language: "echarts", source: JSON.stringify({ ...option, animation }) }))
+          .ok,
+      );
+      paths.push(
+        await evaluate(`(async () => {
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const svg = dataTransfer.getData("image/svg+xml");
+          if (svg) {
+            const image = new DOMParser().parseFromString(svg, "image/svg+xml");
+            return [...image.querySelectorAll('path[fill="#123456"]')].map(path => path.getAttribute("d"));
+          }
+        }
+        throw new Error("The chart image was not prepared.");
+      })()`),
+      );
+    }
+    assert.ok(Array.isArray(paths[1]) && paths[1].length === 2);
+    assert.deepStrictEqual(paths[0], paths[1]);
   });
 
   test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {

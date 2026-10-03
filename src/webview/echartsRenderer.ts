@@ -150,15 +150,16 @@ export class EChartsRenderer implements Renderer {
     this.relayout();
   }
 
-  /**
-   * The chart as it is drawn. ECharts' SVG renderer writes real `text` elements and keeps its
-   * tooltips in separate HTML outside the SVG, so what is on screen is already the whole image.
-   */
+  /** Complete pending animations before exporting, so an early export includes every item. */
   async toImage(background: string): Promise<DiagramImage> {
     const svg = this.container.querySelector("svg");
-    if (!svg) {
+    if (!this.chart || !svg) {
       throw new Error("There is no chart to make an image of.");
     }
+    // Match ECharts' export preparation, keeping the DOM serializer for XML-safe attributes.
+    const drawing = this.chart.getZr();
+    for (const item of drawing.storage.getDisplayList()) item.stopAnimation(undefined, true);
+    drawing.refreshImmediately();
     return standaloneSvg(svg, background);
   }
 

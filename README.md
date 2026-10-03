@@ -9,14 +9,12 @@ Requires VS Code 1.140 or later. Chat features need a configured chat provider, 
 Ask `@diagram` to draw, optionally attaching files with `#file`:
 
 - `@diagram sequence diagram of the OAuth login flow in #file:src/panel.ts`
-- `@diagram find the authentication code and draw its request flow with links to the files`
 - `@diagram add a retry path after the payment step`
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 - `@diagram treemap of du -ah src`
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
-- `@diagram line chart of #file:benchmarks.csv, one panel per implementation with shared scales`
 
-Follow-ups change the current diagram. Use `/new` to start another, `/explain` to discuss it without changing it, and `/show` to reopen the panel. The agent can read workspace code, inspect data, and repair failed renders.
+Follow-ups change the current diagram. Use `/new` to start another, `/explain` to discuss it without changing it, and `/show` to reopen the panel.
 
 ## Use the panel
 
@@ -28,7 +26,7 @@ Follow-ups change the current diagram. Use `/new` to start another, `/explain` t
 | Edit | Use the top-right view buttons to show source. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. |
 | Resize | Drag the divider in split view, or focus it and use arrow keys. Home/End set the limits; Enter or double-click resets it. |
 | Chart Options | Use the gear in the editor toolbar or **Diagram: Chart Options…** to change chart type, columns, filters, facets, histogram bins, aggregation, sorting and row limit. Applies to charts generated from data. |
-| Refresh | Reload a chart's file or command output, keeping JSON source styling such as axis labels, formatting, and series colors. Changes to data, structure, or JavaScript source are kept and must be reverted or explicitly reset before refreshing. |
+| Refresh | Reload file or command data, preserving JSON source styling. Manual changes to data, structure or JavaScript source must be reverted or reset first. |
 | Export | Use **Export…** in the diagram tab’s toolbar, right-click the drawing, or run **Diagram: Export…** from the Command Palette. Choose PNG, SVG, or (for ECharts) interactive HTML, then a save location. HTML files work offline. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift for SVG. PNG failures fall back to SVG. Images keep the theme and omit code-link tooltips and paths. |
 | Open code | Click an underlined node linked to a file. |
@@ -36,7 +34,7 @@ Follow-ups change the current diagram. Use `/new` to start another, `/explain` t
 
 Chart Options uses loaded data without rerunning commands. After reopening VS Code, **Refresh** reloads file and command data; inline charts remain configurable. **Reset styling** removes manual presentation changes. For source edits that cannot be preserved, select **Replace manual source edits** first. Without loaded data, resetting also reloads it.
 
-Flowchart edges and sequence messages have distinct selectable IDs, including parallel edges and repeated messages. **Highlight Path** follows arrows, treats plain lines and double arrows as bidirectional, excludes invisible links, and breaks ties in source order. It reports when no path exists.
+**Highlight Path** follows arrows, treats plain lines and double arrows as bidirectional, excludes invisible links, and breaks ties in source order.
 
 Diagrams follow your VS Code theme. Agents can ask you to pick items and annotate them with notes during a walkthrough.
 
@@ -50,7 +48,7 @@ If an agent replaces the diagram, **Write to** applies its version after confirm
 
 ## Tools for agents
 
-Any chat agent can use these tools. `@diagram` has them available by default; attaching a reference with `#` requests that it be called first. `/explain` makes only diagram-state and workspace-reading tools available, even if a tool that changes the diagram is attached.
+Any chat agent can use these tools; `@diagram` includes them by default. Attach a `#` reference to request a tool first. `/explain` allows only state and workspace reading tools.
 
 | Tool | Reference | Purpose |
 | --- | --- | --- |
@@ -63,21 +61,21 @@ Any chat agent can use these tools. `@diagram` has them available by default; at
 | `diagram_searchText` | `#diagramSearch` | Search literal text in workspace files; return matching lines and locations. |
 | `diagram_readFile` | `#diagramRead` | Read a numbered line range from a workspace file, including unsaved edits. |
 | `diagram_inspectData` | `#diagramData` | Inspect a table's columns, inferred types and sample rows without rendering. |
-| `diagram_updateChart` | `#diagramUpdate` | Change a generated chart's type, columns, grouping, sort or limit using loaded data, preserving supported styling. |
+| `diagram_updateChart` | `#diagramUpdate` | Change chart settings using loaded data, preserving supported styling. |
 
 Workspace tools access files inside open workspace folders and report truncated results. Narrow the glob or read another line range to continue.
 
-`diagram_updateChart` reuses loaded data and preserves supported styling. Omitted settings are kept; `null` clears optional settings. Pass the revision from `diagram_getState` to reject stale edits. Unsupported manual source changes block updates and keep the chart intact. After reopening VS Code, **Refresh** reloads file or command data first.
+For `diagram_updateChart`, omitted settings are kept; `null` clears optional settings. Pass the revision from `diagram_getState` to reject stale edits. Unsupported manual source changes block updates and keep the chart intact.
 
-`diagram_inspectData` accepts the same sources and formats as `diagram_chart`, with up to 20 sample rows. Omit the source to inspect the current chart's loaded data. An explicit source is loaded separately on each inspection or chart request; command output is not cached between them.
+`diagram_inspectData` returns columns and up to 20 sample rows. Omit the source to inspect loaded data; an explicit source is read anew, including rerunning commands.
 
-Use exact `edge:` or `message:` IDs from `diagram_getState` for relationship annotations. IDs survive rerendering but can change after source edits.
+Use exact `edge:` or `message:` IDs from `diagram_getState` for relationship annotations. They distinguish parallel edges and repeated messages, survive rerendering, and may change after source edits.
 
 Both rendering tools accept `clickPrompt`, such as `"Explain {label} in more detail"`, to send a chat request immediately on click. For Mermaid, `diagram_render` also accepts code links, e.g. `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30"}`. Links take priority over `clickPrompt`; picking and Ctrl/Cmd/Shift+click take priority over both.
 
 ## Chart data
 
-`diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. It supports pie, doughnut, bar (vertical, horizontal or stacked), line, area (plain or stacked), scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. ISO dates become a time axis.
+`diagram_chart` reads CSV, TSV, JSON, JSON Lines, Markdown tables and whitespace-separated output such as `du` or `wc -l`. Choose pie, doughnut, bar, line, area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge or funnel. Bar and area charts support stacking; bar charts also support horizontal layout. ISO dates become a time axis.
 
 | Setting | Behavior |
 | --- | --- |
@@ -93,7 +91,7 @@ Filters compare parsed cells. `eq`/`neq` compare exact values and types (`null` 
 
 Histograms use one numeric value column; omit `labelColumn`, `aggregate`, `sort` and `limit`. Bins include their lower bound; only the last includes its upper bound. Faceted histograms share bin boundaries even with independent scales. The facet column is excluded from automatic label/value inference.
 
-All these settings can be changed with `diagram_updateChart` without rereading files or rerunning commands. The tool schemas describe the full options.
+The tool schemas describe the full options.
 
 ## Data access and limits
 

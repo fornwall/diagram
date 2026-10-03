@@ -35,7 +35,7 @@ export async function writeFence(
   const noun = diagramNoun(binding.fence.language);
   // Written as a fence is read: no blank lines around the diagram, and every line indented like the
   // opening fence, which may sit in a list item.
-  const diagram = fenceSource(source.split(/\r?\n/), "");
+  const diagram = fenceSource(source.split(/\r\n|\r|\n/), "");
   if (!diagram) {
     return { written: false, reason: `There is no ${noun} to write to ${name}.` };
   }

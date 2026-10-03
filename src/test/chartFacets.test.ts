@@ -94,6 +94,24 @@ suite("chart facets", () => {
     );
   });
 
+  test("shared stacked bounds keep repeated timestamps as separate observations", () => {
+    for (const type of ["stackedBar", "stackedArea"] as const) {
+      const option = build(
+        "service,date,a,b\napi,2026-01-01,10,20\napi,2026-01-01,40,50\nworker,2026-01-02,3,4",
+        { type, valueColumns: ["a", "b"] },
+      );
+      assert.deepStrictEqual(
+        option.yAxis.map((axis: Option) => [axis.min, axis.max]),
+        [
+          [0, 90],
+          [0, 90],
+        ],
+        type,
+      );
+      assert.strictEqual(option.series[0].data.length, 2);
+    }
+  });
+
   test("independent scales keep different category domains and automatic numeric ranges", () => {
     const option = build("service,operation,ms\napi,read,2\nworker,write,30", {
       facetScales: "independent",

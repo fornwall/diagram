@@ -977,6 +977,44 @@ suite("participant", function () {
     }
   });
 
+  test("keeps historical chart settings without repeating large inline data", async () => {
+    const panel = newPanel();
+    try {
+      const chart = {
+        type: "bar",
+        title: "Regional sales",
+        labelColumn: "region",
+        valueColumns: ["sales"],
+        data: `region,sales\n${"Private sample row,42\n".repeat(20_000)}`,
+      };
+      const history = [
+        new RequestTurn("Chart regional sales", undefined, [], "diagram.participant", []),
+        new ResponseTurn(
+          [new vscode.ChatResponseMarkdownPart("Here are the regional totals.")],
+          { metadata: { chart } },
+          "diagram.participant",
+        ),
+      ];
+      const { result, sent } = await ask(panel, [[text("The settings are retained.")]], {
+        history,
+        maxInputTokens: 4_000,
+      });
+      assert.strictEqual(result?.errorDetails, undefined);
+      const messages = sent[0]?.messages.map(messageText) ?? [];
+      assert.ok(messages.includes("Chart regional sales"));
+      const reply = messages.find((message) => message.startsWith("Here are the regional totals."));
+      assert.ok(reply);
+      assert.match(reply, /"type":"bar"/);
+      assert.match(reply, /"title":"Regional sales"/);
+      assert.match(reply, /"labelColumn":"region","valueColumns":\["sales"\]/);
+      assert.ok(reply.includes(`inline data: ${chart.data.length} characters`));
+      assert.doesNotMatch(messages.join("\n"), /Private sample row/);
+      assert.ok(messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0) <= 3_000);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("leaves out the oldest turns, and older diagrams first, to fit the model's input", async () => {
     const panel = newPanel();
     try {

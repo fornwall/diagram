@@ -353,7 +353,7 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
       // A Unicode regexp keeps source offsets correct when case folding changes string length.
       const needle = new RegExp(
         query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        caseSensitive ? "gu" : "giu",
+        caseSensitive ? "u" : "iu",
       );
       search: for (const uri of found.files) {
         checkCancelled(token);
@@ -374,7 +374,6 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
         for (let i = 0; i < lines.length; i++) {
           checkCancelled(token);
           const line = lines[i] ?? "";
-          needle.lastIndex = 0;
           const match = needle.exec(line);
           if (match) {
             if (matches.length >= max) {

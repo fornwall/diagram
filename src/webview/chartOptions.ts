@@ -393,16 +393,7 @@ export class ChartOptionsForm {
         "aria-label",
         `${container === this.labels ? "Label" : "Value"} column ${container.querySelectorAll("select").length + 1}`,
       );
-      for (const column of this.state?.columns ?? []) {
-        select.add(new Option(`${column.name}${column.numeric ? " (numeric)" : ""}`, column.name));
-      }
-      if (name !== undefined) {
-        // Column lookup on the host accepts case differences; preserve the original spelling.
-        const match = Array.from(select.options).find(
-          (option) => option.value.trim().toLowerCase() === name.trim().toLowerCase(),
-        );
-        select.value = match?.value ?? name;
-      }
+      this.fillColumnSelect(select, name);
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "secondary";

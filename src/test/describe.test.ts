@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { describeDiagram } from "../describe";
+import { describeChartParameters, describeDiagram } from "../describe";
 import type { DiagramState } from "../panel";
 
 suite("describeDiagram", () => {
@@ -25,5 +25,27 @@ suite("describeDiagram", () => {
     assert.ok(description.includes(chart.source ?? ""));
     assert.match(description, /Preserve their edits/);
     assert.doesNotMatch(description, /call diagram_chart/);
+  });
+
+  test("large inline data does not bypass the source limit or hide chart settings", () => {
+    const data = "name,value\nPrivate row,42\n".repeat(10_000);
+    const description = describeDiagram(
+      { ...chart, source: data, chart: { type: "bar", data, aggregate: "sum" } },
+      [],
+    );
+    assert.ok(description.length < 1_000);
+    assert.doesNotMatch(description, /Private row/);
+    assert.match(description, /"aggregate":"sum"/);
+    assert.ok(description.includes(`inline data: ${data.length} characters`));
+    assert.match(description, /diagram_inspectData/);
+  });
+
+  test("oversized chart options are omitted from model context", () => {
+    const description = describeChartParameters({
+      type: "bar",
+      options: { series: { data: Array(50_000).fill(42) } },
+    });
+    assert.ok(description.length < 100);
+    assert.match(description, /parameters omitted/);
   });
 });

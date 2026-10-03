@@ -190,7 +190,8 @@ export function rebuildChart(chart: ChartSpec, table: DataTable, presentation?: 
   assertChartPresentation(presentation);
   const built = buildChart(chart, table);
   const baseline = captureChartPresentation(JSON.stringify(built.option));
-  const option = presentation ? applyEdits(built.option, presentation) : built.option;
+  if (!presentation?.edits.length) return { ...built, presentation: baseline };
+  const option = applyEdits(built.option, presentation);
   return {
     ...built,
     option,

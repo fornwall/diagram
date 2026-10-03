@@ -10,6 +10,8 @@ import {
   type Annotation,
   CHART_TOOL,
   type DiagramNode,
+  INSPECT_DATA_TOOL,
+  isPlainObject,
   nodeNoun,
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
@@ -30,7 +32,7 @@ export function describeDiagram(
   if (state.chart) {
     const refresh = state.chart.file !== undefined || state.chart.command !== undefined;
     lines.push(
-      `${CHART_TOOL} parameters: ${JSON.stringify(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
+      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
     );
     if (state.chartPresentation?.blocked) {
       lines.push(state.chartPresentation.blocked);
@@ -78,6 +80,18 @@ export function describeDiagram(
       : `The user has no ${parts} selected in the panel.`,
   );
   return lines.join("\n");
+}
+
+/** Inline data is already represented by the chart; don't repeat it in every chat turn. */
+export function describeChartParameters(chart: unknown): string {
+  if (!isPlainObject(chart)) return "(unavailable)";
+  const { data, ...parameters } = chart;
+  const json = JSON.stringify(parameters);
+  const description =
+    json.length <= MAX_SOURCE_LENGTH ? json : `(parameters omitted: ${json.length} characters)`;
+  return typeof data === "string"
+    ? `${description} (inline data: ${data.length} characters; ${INSPECT_DATA_TOOL} can inspect the current chart's columns and samples)`
+    : description;
 }
 
 /** What the user is looking at on the diagram, as the last call to the annotate tool left it. */

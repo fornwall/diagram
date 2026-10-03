@@ -106,6 +106,23 @@ suite("documentDiagram", function () {
     assert.strictEqual(unclosed.getText(), "```mermaid\nflowchart LR\n  A --> B");
   });
 
+  test("writeFence normalizes lone carriage returns before checking fence boundaries", async () => {
+    const before = "```echarts\n{}\n```\nAfter.\n";
+    const document = await markdown(before);
+    const read = binding(document);
+    const rejected = await writeFence(read, "{ title: { text: `\r```\r` } }");
+    assert.ok(!rejected.written);
+    assert.match(rejected.reason, /closing Markdown fence/);
+    assert.strictEqual(document.getText(), before);
+
+    const source = '{\r  "series": []\r}';
+    const written = await writeFence(read, source);
+    assert.ok(written.written);
+    assert.strictEqual(document.getText(), '```echarts\n{\n  "series": []\n}\n```\nAfter.\n');
+    assert.strictEqual(written.fence.source, '{\n  "series": []\n}');
+    assert.strictEqual(written.fence.lastLine, 3);
+  });
+
   test("writeFence writes an ECharts option back", async () => {
     const document = await markdown('Sales:\n\n```echarts\n{"series": []}\n```\n');
     assert.ok((await writeFence(binding(document), '{"series": [{"type": "pie"}]}')).written);

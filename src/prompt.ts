@@ -3,6 +3,7 @@
 
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
+import { describeChartParameters } from "./describe";
 import { CHART_TOOL, errorMessage, isDiagramLanguage, RENDER_TOOL } from "./protocol";
 
 /** Attached files are truncated to this many characters. */
@@ -309,7 +310,7 @@ async function pastExchanges(
     if (typeof source === "string" && isDiagramLanguage(language)) {
       exchange.diagram = `\n\n${codeFence(source, language)}`;
     } else if (chart) {
-      exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${JSON.stringify(chart)})`;
+      exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${describeChartParameters(chart)})`;
     }
   }
   await Promise.all(reads);

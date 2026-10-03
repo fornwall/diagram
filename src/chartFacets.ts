@@ -232,9 +232,8 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
         const value = valueAt(item, dimension);
         include(value);
         if (series.stack !== undefined && axes[0]?.type !== "time" && typeof value === "number") {
-          const data = isPlainObject(item) ? item.value : item;
-          const position = Array.isArray(data) ? data[1 - dimension] : index;
-          const key = JSON.stringify([series.stack, position]);
+          // Generated series share row order, including separate observations at the same time.
+          const key = JSON.stringify([series.stack, index]);
           const totals = stacks.get(key) ?? [0, 0];
           const sign = value < 0 ? 0 : 1;
           totals[sign] += value;
