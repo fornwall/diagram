@@ -277,6 +277,39 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
   });
 
+  test("stops measuring dense axes after rotation and truncation are decided", () => {
+    let reads = 0;
+    const label = {
+      get value() {
+        reads++;
+        return "A very long category label ".repeat(10);
+      },
+    };
+    const axis = { type: "category", data: Array(200_000).fill(label) };
+    const option = layout(bars({ xAxis: axis, yAxis: axis }));
+    assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
+    assert.strictEqual(option.xAxis.axisLabel.overflow, "truncate");
+    assert.strictEqual(option.yAxis.axisLabel.overflow, "truncate");
+    assert.strictEqual(reads, 2);
+  });
+
+  test("caps a pie legend without flattening or measuring every slice", () => {
+    let reads = 0;
+    const slice = {
+      get name() {
+        reads++;
+        return "A very long slice name ".repeat(10);
+      },
+      value: 1,
+    };
+    const option = layout({
+      legend: {},
+      series: [{ type: "pie", data: Array(200_000).fill(slice) }],
+    });
+    assert.strictEqual(option.series[0].right, 280);
+    assert.strictEqual(reads, 1);
+  });
+
   test("keeps series laid out in a box clear of the title, with room for their labels", () => {
     const box = (type: string) => {
       const { top, left, right } = layout({ title: { text: "T" }, series: [{ type }] }).series[0];

@@ -53,17 +53,22 @@ export interface Records {
  */
 const MISSING = /^(?:-+|[\u2013\u2014]|#?n\/a|na|<na>|nan|null|none)$/i;
 
-function isNumeric(rows: Cell[][], column: number): boolean {
-  let numbers = 0;
-  let others = 0;
-  for (const row of rows) {
-    const cell = row[column];
-    if (typeof cell === "number") {
-      numbers++;
-    } else if (typeof cell === "string" && !MISSING.test(cell)) {
-      others++;
-    }
+interface ColumnCounts {
+  numbers: number;
+  others: number;
+  missing: boolean;
+}
+
+function countCell(counts: ColumnCounts, cell: Cell): void {
+  if (typeof cell === "number") {
+    counts.numbers++;
+  } else if (typeof cell === "string") {
+    if (MISSING.test(cell)) counts.missing = true;
+    else counts.others++;
   }
+}
+
+function isNumeric({ numbers, others }: ColumnCounts): boolean {
   return numbers > 0 && numbers >= others;
 }
 
@@ -75,9 +80,9 @@ export function isYear(cell: Cell | undefined): boolean {
  * Whether the first row names the columns: it has text, and no numbers other than a run of years
  * (as in "region,2024,2025"), but some column below it holds numbers.
  */
-function hasHeader(rows: Cell[][]): boolean {
-  const [first, ...rest] = rows;
-  if (first === undefined || rest.length === 0 || !first.some((c) => typeof c === "string")) {
+function hasHeader(rows: Cell[][], counts: ColumnCounts[]): boolean {
+  const first = rows[0];
+  if (first === undefined || rows.length < 2 || !first.some((c) => typeof c === "string")) {
     return false;
   }
   const numbers = first.filter((cell) => typeof cell === "number");
@@ -89,11 +94,16 @@ function hasHeader(rows: Cell[][]): boolean {
       return false;
     }
     // A year above more years is data.
-    if (first.some((cell, i) => typeof cell === "number" && rest.every((row) => isYear(row[i])))) {
+    if (
+      first.some(
+        (cell, i) =>
+          typeof cell === "number" && rows.every((row, index) => index === 0 || isYear(row[i])),
+      )
+    ) {
       return false;
     }
   }
-  return first.some((_, i) => isNumeric(rest, i));
+  return counts.some(isNumeric);
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
@@ -121,11 +131,17 @@ function tableFromRecords({ records, header }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
-  const values = header ? records.slice(1) : records;
   const decimalComma = Array.from({ length: width }, (_, column) =>
-    hasDecimalCommas(values, column),
+    hasDecimalCommas(records, column, header ? 1 : 0),
   );
   const units = Array.from({ length: width }, () => new Set<Unit>());
+  // Count while normalizing, in row order, instead of revisiting every cell for each column.
+  // Keep the first row out until header inference has decided whether it is data.
+  const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
+    numbers: 0,
+    others: 0,
+    missing: false,
+  }));
   // Parsers give us fresh records: normalize those rows in place instead of retaining a
   // second rectangular table and allocating a callback for every row.
   const first = records[0]?.slice() ?? [];
@@ -134,23 +150,25 @@ function tableFromRecords({ records, header }: Records): DataTable {
     if (!record) continue;
     for (let column = 0; column < width; column++) {
       const field = record[column] ?? null;
-      if (typeof field !== "string" || (header && row === 0)) {
-        record[column] = field;
-        continue;
+      let cell = field;
+      if (typeof field === "string" && !(header && row === 0)) {
+        const number = parseNumber(field, decimalComma[column]);
+        if (number?.unit !== undefined) units[column]?.add(number.unit);
+        cell = number?.value ?? (field.trim() || null);
       }
-      const number = parseNumber(field, decimalComma[column]);
-      if (number?.unit !== undefined) {
-        units[column]?.add(number.unit);
-      }
-      record[column] = number?.value ?? (field.trim() || null);
+      record[column] = cell;
+      const count = counts[column];
+      if (row > 0 && count !== undefined) countCell(count, cell);
     }
   }
   const cells = records;
-  const named = header ?? hasHeader(cells);
+  const named = header ?? hasHeader(cells, counts);
   const rows = named ? cells.slice(1) : cells;
   const columns = columnNames(named ? first : [], width).map((name, column) => {
-    const numeric = isNumeric(rows, column);
-    if (numeric) {
+    const count = counts[column] ?? { numbers: 0, others: 0, missing: false };
+    if (!named) countCell(count, cells[0]?.[column] ?? null);
+    const numeric = isNumeric(count);
+    if (numeric && count.missing) {
       for (const row of rows) {
         const cell = row[column];
         if (typeof cell === "string" && MISSING.test(cell)) {

@@ -64,10 +64,10 @@ export function parseNumber(
  * Whether a column writes numbers with a decimal comma: some field can only be read that way
  * ("1,5", "1234,5"), and none only with thousands separators ("1,234.5", "1,234,567").
  */
-export function hasDecimalCommas(records: Cell[][], column: number): boolean {
+export function hasDecimalCommas(records: Cell[][], column: number, start = 0): boolean {
   let decimal = false;
-  for (const record of records) {
-    const text = record[column];
+  for (let row = start; row < records.length; row++) {
+    const text = records[row]?.[column];
     if (typeof text === "string" && text.includes(",")) {
       const comma = COMMA_NUMBER.test(text.trim());
       const point = NUMBER.test(text.trim());

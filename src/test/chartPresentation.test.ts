@@ -17,6 +17,25 @@ function edited(change: (option: Option) => void, chart = spec) {
 }
 
 suite("chart presentation", () => {
+  test("captures generated options without retaining their data or mutable styling", () => {
+    const option = buildChart(spec, oldTable).option as Option;
+    option.series[0].label = { show: true };
+    const expected = captureChartPresentation(JSON.stringify(option));
+    const direct = captureChartPresentation(option);
+    assert.deepStrictEqual(direct, expected);
+    option.series[0].label.show = false;
+    option.series[0].data[0] = 999;
+    assert.deepStrictEqual(direct, expected);
+    assert.doesNotMatch(JSON.stringify(direct.baseline), /"data"/);
+
+    const styled = buildChart(spec, oldTable).option as Option;
+    styled.series[0].label = { show: false };
+    assert.deepStrictEqual(
+      captureChartPresentation(styled, direct),
+      captureChartPresentation(JSON.stringify(styled), expected),
+    );
+  });
+
   test("canonical data hashes retain compatibility with saved nested and numeric keys", () => {
     const option = {
       series: [

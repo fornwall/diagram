@@ -897,6 +897,54 @@ suite("data", () => {
     ]);
   });
 
+  test("column inference includes the first data row and excludes inferred headers", () => {
+    const cases = [
+      { records: [[1], ["text"]], header: false, numeric: true, rows: [[1], ["text"]] },
+      { records: [["text"], [1]], header: true, numeric: true, rows: [[1]] },
+      {
+        records: [
+          [1, "N/A"],
+          [2, 3],
+        ],
+        header: false,
+        numeric: true,
+        rows: [
+          [1, null],
+          [2, 3],
+        ],
+      },
+      {
+        records: [
+          ["label", "N/A"],
+          ["a", 3],
+        ],
+        header: true,
+        numeric: true,
+        rows: [["a", 3]],
+      },
+      { records: [["N/A"]], header: false, numeric: false, rows: [["N/A"]] },
+      { records: [[7]], header: false, numeric: true, rows: [[7]] },
+      {
+        records: [
+          ["person", 2024, 2025],
+          ["Alice", 2023, 2024],
+        ],
+        header: false,
+        numeric: true,
+        rows: [
+          ["person", 2024, 2025],
+          ["Alice", 2023, 2024],
+        ],
+      },
+    ];
+    for (const { records, header, numeric, rows } of cases) {
+      const table = parseTable(JSON.stringify(records));
+      assert.strictEqual(table.header, header);
+      assert.strictEqual(table.columns.at(-1)?.numeric, numeric);
+      assert.deepStrictEqual(table.rows, rows);
+    }
+  });
+
   test("reads markers of missing values in numeric columns as empty", () => {
     const table = parseTable(
       [

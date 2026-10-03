@@ -360,6 +360,7 @@ suite("panel", function () {
       post(): void;
       applyEdit(source: string): Promise<void>;
       onMessage(message: FromWebview): void;
+      renderCurrent(): Promise<RenderOutcome>;
       pendingRender: { message: { requestId: number } };
       context: vscode.ExtensionContext;
     };
@@ -383,6 +384,11 @@ suite("panel", function () {
       assert.ok((await rendering).ok);
       assert.strictEqual(writes, 1);
 
+      const reopening = internals.renderCurrent();
+      finish();
+      assert.ok((await reopening).ok);
+      assert.strictEqual(writes, 1, "reopening unchanged source must not serialize it again");
+
       const source = "flowchart LR\n  C --> D";
       const editing = internals.applyEdit(source);
       const saved = values.get("diagram.state") as DiagramState;
@@ -391,6 +397,64 @@ suite("panel", function () {
       finish();
       await editing;
       assert.strictEqual(writes, 2);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("unchanged saves share pending writes, retry failures and persist rollbacks", async () => {
+    const panel = newPanel();
+    const internals = panel as unknown as {
+      state: DiagramState;
+      save(): Promise<void>;
+      context: vscode.ExtensionContext;
+    };
+    const warning = vscode.window.showWarningMessage;
+    vscode.window.showWarningMessage = async () => undefined;
+    const pending = Promise.withResolvers<void>();
+    let writes = 0;
+    internals.context.workspaceState.update = () => {
+      writes++;
+      return writes === 1 ? pending.promise : Promise.resolve();
+    };
+    try {
+      const first: DiagramState = { ...flowchart, origin: "tool", editedByUser: false };
+      internals.state = first;
+      const saving = internals.save();
+      assert.strictEqual(internals.save(), saving);
+      assert.strictEqual(writes, 1);
+      pending.reject(new Error("Storage is unavailable"));
+      await saving;
+      await internals.save();
+      assert.strictEqual(writes, 2, "retry unchanged state after failed persistence");
+      await internals.save();
+      assert.strictEqual(writes, 2);
+      internals.state = { ...first, title: "Replacement" };
+      await internals.save();
+      internals.state = first;
+      await internals.save();
+      assert.strictEqual(writes, 4, "rolling back a previously saved state must write it again");
+    } finally {
+      pending.resolve();
+      vscode.window.showWarningMessage = warning;
+      panel.dispose();
+    }
+  });
+
+  test("restored state needs no save until changed", async () => {
+    const state: DiagramState = { ...flowchart, origin: "tool", editedByUser: false };
+    const panel = newPanel(new Map([["diagram.state", state]]));
+    const internals = panel as unknown as {
+      save(): Promise<void>;
+      context: vscode.ExtensionContext;
+    };
+    let writes = 0;
+    internals.context.workspaceState.update = async () => {
+      writes++;
+    };
+    try {
+      await internals.save();
+      assert.strictEqual(writes, 0);
     } finally {
       panel.dispose();
     }

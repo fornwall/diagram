@@ -25,14 +25,20 @@ interface Size {
  * The length of the longest category or legend entry: a value, a category `{value}`, or a legend
  * entry or data item named by `{name}` (whose value is a number).
  */
-function longestText(entries: unknown): number {
+function longestText(entries: unknown, enough = Infinity): number {
   if (!Array.isArray(entries)) {
     return 0;
   }
   const text = (entry: unknown) =>
     String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
-  // Not Math.max(...entries), which overflows the stack with very many entries.
-  return entries.reduce((longest: number, entry) => Math.max(longest, text(entry).length), 0);
+  // Once the label exceeds every layout threshold, further entries cannot change the result.
+  // Dense axes and long legends often reach that point with their very first entry.
+  let longest = 0;
+  for (const entry of entries) {
+    longest = Math.max(longest, text(entry).length);
+    if (longest > enough) break;
+  }
+  return longest;
 }
 
 function seriesName(series: JsonObject): string | undefined {
@@ -262,14 +268,22 @@ function placeLegend(
     reserved[side] += side === "top" ? 30 : 32;
     return;
   }
-  const names = Array.isArray(legend.data)
-    ? legend.data
-    : pies.length > 0 || series.some((s) => s.type === "funnel")
-      ? series.flatMap((s) => (Array.isArray(s.data) ? s.data : []))
-      : series.map(seriesName);
   // The icon, the gap after it and the padding around the legend.
   const extra = 12 + 5 + 24;
-  const legendWidth = Math.min(width * 0.32, Math.max(4, longestText(names)) * charWidth + extra);
+  const enough = (width * 0.32 - extra) / charWidth;
+  let longest = 0;
+  if (Array.isArray(legend.data)) {
+    longest = longestText(legend.data, enough);
+  } else if (pies.length > 0 || series.some((s) => s.type === "funnel")) {
+    // Read each series in place rather than allocating an array of every slice on each resize.
+    for (const each of series) {
+      longest = Math.max(longest, longestText(each.data, enough));
+      if (longest > enough) break;
+    }
+  } else {
+    longest = longestText(series.map(seriesName), enough);
+  }
+  const legendWidth = Math.min(width * 0.32, Math.max(4, longest) * charWidth + extra);
   reserved[side] += Math.round(legendWidth) + 16;
 }
 
@@ -372,11 +386,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     if (count === 0 || label.rotate !== undefined || label.interval !== undefined) {
       continue;
     }
-    const labelWidth = longestText(axis.data) * charWidth;
     const slot = panelWidth(axis) / count;
+    const maxWidth = Math.max(60, Math.round(height * 0.22));
+    const labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
     if (labelWidth > slot - 8) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
-      const maxWidth = Math.max(60, Math.round(height * 0.22));
       axis.axisLabel = {
         rotate,
         hideOverlap: true,
@@ -390,7 +404,10 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     const maxWidth = Math.round(
       (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
     );
-    if (label.width === undefined && longestText(axis.data) * charWidth > maxWidth) {
+    if (
+      label.width === undefined &&
+      longestText(axis.data, maxWidth / charWidth) * charWidth > maxWidth
+    ) {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }
   }

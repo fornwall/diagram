@@ -149,7 +149,7 @@ export class EChartsRenderer implements Renderer {
     ) {
       // Notes, mark kinds and order live outside the chart. Re-highlighting unchanged items
       // would downplay every graphic, which is expensive with large series.
-      this.highlightMarks();
+      this.highlightMarks(previousIds);
     }
   }
 
@@ -286,21 +286,34 @@ export class EChartsRenderer implements Renderer {
    * while the annotation dims the chart. The color a mark reads in cannot come along, as emphasis is
    * styled per series rather than per item; the notes above the chart carry it instead.
    */
-  private highlightMarks(): void {
+  private highlightMarks(previousIds?: ReadonlySet<string>): void {
     const chart = this.chart;
     if (!chart) {
       return;
     }
-    // Downplay visits every graphic in every series. Only do that when earlier marks need
-    // clearing, rather than on every initial render, resize and empty annotation update.
-    if (this.hasHighlights) chart.dispatchAction({ type: "downplay" });
     const series = asArray(baseOption(this.option ?? {}).series);
+    if (this.hasHighlights) {
+      if (previousIds) {
+        const current = new Set(this.annotation.marks.map(({ id }) => id));
+        const removed = [...previousIds].filter((id) => !current.has(id));
+        if (removed.length > 0) {
+          chart.dispatchAction({
+            type: "downplay",
+            batch: removed.map((id) => itemQuery(id, series)),
+          });
+        }
+      } else {
+        chart.dispatchAction({ type: "downplay" });
+      }
+    }
+    // Downplay clears ECharts' blur state, including any focus set by the source option itself.
+    // Restore the remaining marks together, while only downplaying the removed items' graphics.
     const batch = this.annotation.marks.map(({ id }) => itemQuery(id, series));
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
       chart.dispatchAction({ type: "highlight", batch });
     }
-    this.hasHighlights = batch.length > 0;
+    this.hasHighlights = this.annotation.marks.length > 0;
   }
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */

@@ -41,12 +41,53 @@ suite("echartsRenderer interactions", () => {
     assert.deepStrictEqual(actions, []);
     renderer.showMarks({ marks: [{ id: "C", kind: "info" }], dim: false });
     assert.deepStrictEqual(actions, [
-      { type: "downplay" },
+      { type: "downplay", batch: [{ name: "B" }, { name: "A" }] },
       { type: "highlight", batch: [{ name: "C" }] },
     ]);
     actions.length = 0;
     renderer.showMarks({ marks: [], dim: false });
-    assert.deepStrictEqual(actions, [{ type: "downplay" }]);
+    assert.deepStrictEqual(actions, [{ type: "downplay", batch: [{ name: "C" }] }]);
+  });
+
+  test("changing marks only downplays removed items while restoring retained emphasis", () => {
+    const { renderer, actions } = interactionRenderer();
+    const mark = (id: string) => ({ id, kind: "info" as const });
+    renderer.showMarks({ marks: [mark("A"), mark("B")], dim: false });
+    actions.length = 0;
+    renderer.showMarks({ marks: [mark("B"), mark("C")], dim: false });
+    assert.deepStrictEqual(actions, [
+      { type: "downplay", batch: [{ name: "A" }] },
+      { type: "highlight", batch: [{ name: "B" }, { name: "C" }] },
+    ]);
+    actions.length = 0;
+    renderer.showMarks({ marks: [mark("B"), mark("C"), mark("D")], dim: false });
+    assert.deepStrictEqual(actions, [
+      { type: "highlight", batch: [{ name: "B" }, { name: "C" }, { name: "D" }] },
+    ]);
+    actions.length = 0;
+    renderer.showMarks({ marks: [], dim: false });
+    assert.deepStrictEqual(actions, [
+      { type: "downplay", batch: [{ name: "B" }, { name: "C" }, { name: "D" }] },
+    ]);
+  });
+
+  test("restores every remaining highlight after downplay clears a dimmed chart's blur", () => {
+    const { renderer, actions } = interactionRenderer();
+    Object.assign(renderer, {
+      annotation: {
+        marks: [
+          { id: "A", kind: "info" },
+          { id: "B", kind: "info" },
+        ],
+        dim: true,
+      },
+      hasHighlights: true,
+    });
+    renderer.showMarks({ marks: [{ id: "B", kind: "info" }], dim: true });
+    assert.deepStrictEqual(actions, [
+      { type: "downplay", batch: [{ name: "A" }] },
+      { type: "highlight", batch: [{ name: "B" }] },
+    ]);
   });
 
   test("changing dimming still relayouts unchanged marks", () => {

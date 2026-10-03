@@ -132,9 +132,14 @@ export class DiagramPanel implements vscode.Disposable {
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
   private saveFailed = false;
+  /** State is replaced on every edit; weak identity avoids retaining an old large chart. */
+  private lastSave: { state: WeakRef<DiagramState>; promise: Promise<void> } | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
+    if (this.state) {
+      this.lastSave = { state: new WeakRef(this.state), promise: Promise.resolve() };
+    }
     // Older saved states have no baseline against which manual changes can be distinguished.
     if (this.state?.chart && !this.state.chartPresentation && this.state.source !== undefined) {
       const chartPresentation: ChartPresentation = this.state.editedByUser
@@ -1146,8 +1151,12 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  private async save(): Promise<void> {
+  private save(): Promise<void> {
     const state = this.state;
+    if (!state) return Promise.resolve();
+    // Reloads and reopening the panel render the same state. Share an in-flight save too,
+    // so callers still wait for durability without serializing large chart sources again.
+    if (this.lastSave?.state.deref() === state) return this.lastSave.promise;
     const saved =
       state?.chart &&
       (state.chart.file !== undefined || state.chart.command !== undefined) &&
@@ -1156,17 +1165,24 @@ export class DiagramPanel implements vscode.Disposable {
       state.source.length > MAX_SAVED_CHART_SOURCE
         ? { ...state, source: undefined, editedByUser: false, error: undefined }
         : state;
-    try {
-      await this.context.workspaceState.update(STATE_KEY, saved);
-      this.saveFailed = false;
-    } catch (error) {
-      if (!this.saveFailed) {
-        void vscode.window.showWarningMessage(
-          `Could not save the diagram: ${errorMessage(error)}. Changes may be lost when VS Code closes.`,
-        );
+    const saving = { state: new WeakRef(state), promise: Promise.resolve() };
+    this.lastSave = saving;
+    saving.promise = (async () => {
+      try {
+        await this.context.workspaceState.update(STATE_KEY, saved);
+        this.saveFailed = false;
+      } catch (error) {
+        // Failed writes must remain retryable, including when the source has not changed.
+        if (this.lastSave === saving) this.lastSave = undefined;
+        if (!this.saveFailed) {
+          void vscode.window.showWarningMessage(
+            `Could not save the diagram: ${errorMessage(error)}. Changes may be lost when VS Code closes.`,
+          );
+        }
+        this.saveFailed = true;
       }
-      this.saveFailed = true;
-    }
+    })();
+    return saving.promise;
   }
 
   /** Where a node of the diagram shown links to in the code, if anywhere. */

@@ -113,13 +113,15 @@ function differences(before: unknown, after: unknown, path: Path = []): Edit[] {
   return [{ path, value: after }];
 }
 
-/** Recompute changes against the generated baseline so reverting an edit restores automatic defaults. */
+/** Capture JSON source or a generated JSON option, keeping only its data-free styling baseline. */
 export function captureChartPresentation(
-  source: string,
+  source: string | ObjectOption,
   previous?: ChartPresentation,
 ): ChartPresentation {
   try {
-    const option: unknown = JSON.parse(source);
+    // Generated options are already JSON objects. Serializing and reparsing them here would
+    // duplicate every data point just to discard the data from the styling baseline.
+    const option: unknown = typeof source === "string" ? JSON.parse(source) : source;
     if (!isPlainObject(option)) throw new Error("The chart source must be a JSON option object.");
     const current = snapshot(option);
     if (!previous) return { ...current, edits: [] };
@@ -213,12 +215,12 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
 export function rebuildChart(chart: ChartSpec, table: DataTable, presentation?: ChartPresentation) {
   assertChartPresentation(presentation);
   const built = buildChart(chart, table);
-  const baseline = captureChartPresentation(JSON.stringify(built.option));
+  const baseline = captureChartPresentation(built.option);
   if (!presentation?.edits.length) return { ...built, presentation: baseline };
   const option = applyEdits(built.option, presentation);
   return {
     ...built,
     option,
-    presentation: captureChartPresentation(JSON.stringify(option), baseline),
+    presentation: captureChartPresentation(option, baseline),
   };
 }

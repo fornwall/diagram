@@ -218,7 +218,8 @@ function sortRows(rows: Row[], sort: ChartSpec["sort"], limit?: number): Row[] {
     });
     return heap.sort(order).map(({ row }) => row);
   }
-  return rows.toSorted(compare);
+  // readRows owns these rows; sorting them cannot reorder the source table.
+  return rows.sort(compare);
 }
 
 /** Maximum label/value columns and minimum value columns for each chart type. */
@@ -667,29 +668,32 @@ function readRows(
       notes.push(`kept the first ${spec.limit} rows and summed up the other ${summed} as "Other"`);
     } else {
       notes.push(`kept the first ${spec.limit} of ${beforeLimit} rows`);
-      rows = rows.slice(0, spec.limit);
+      rows.length = Math.min(rows.length, spec.limit);
     }
   }
 
   // Sizes in bytes are shown in the unit that suits the largest.
   const bytes = valueIndices.map((index) => table.columns[index]?.unit === "bytes");
+  const byteIndices = bytes.flatMap((byte, index) => (byte ? [index] : []));
   let largest = 0;
-  for (const { values } of rows) {
-    values.forEach((value, i) => {
-      if (bytes[i] && value !== null) {
-        largest = Math.max(largest, Math.abs(value));
+  if (sharedBytePower === undefined && byteIndices.length > 0) {
+    for (const { values } of rows) {
+      for (const index of byteIndices) {
+        largest = Math.max(largest, Math.abs(values[index] ?? 0));
       }
-    });
+    }
   }
   const power = sharedBytePower ?? bytePower(largest);
   if (power > 0) {
     notes.push(`showed sizes in ${BYTE_UNITS[power]}`);
-    rows = rows.map(({ labels, values }) => ({
-      labels,
-      values: values.map((value, i) =>
-        bytes[i] && value !== null ? value / 1024 ** power : value,
-      ),
-    }));
+    const divisor = 1024 ** power;
+    // These value arrays were created above, so scale them without allocating another table.
+    for (const { values } of rows) {
+      for (const index of byteIndices) {
+        const value = values[index];
+        if (value !== null && value !== undefined) values[index] = value / divisor;
+      }
+    }
   }
   const unit = power > 0 ? ` (${BYTE_UNITS[power]})` : "";
   const names =

@@ -9,18 +9,25 @@ suite("PNG export", () => {
     const originalReader = Object.getOwnPropertyDescriptor(globalThis, "FileReader");
     let encoded: Blob | null = new Blob(["png"], { type: "image/png" });
     let readError = false;
+    let contextAvailable = true;
+    let imageSource = "";
+    let encodedSize = [0, 0];
     const canvas = {
       width: 0,
       height: 0,
-      getContext: () => ({ drawImage: () => {} }),
+      getContext: () => (contextAvailable ? { drawImage: () => {} } : null),
       toBlob: (callback: BlobCallback, type: string) => {
         assert.strictEqual(type, "image/png");
+        encodedSize = [canvas.width, canvas.height];
         setImmediate(() => callback(encoded));
       },
     };
     Object.defineProperty(globalThis, "Image", {
       configurable: true,
       value: class {
+        set src(value: string) {
+          imageSource = value;
+        }
         decode() {
           return Promise.resolve();
         }
@@ -39,6 +46,8 @@ suite("PNG export", () => {
         onerror?: () => void;
         readAsDataURL(blob: Blob) {
           assert.strictEqual(blob, encoded);
+          assert.deepStrictEqual([canvas.width, canvas.height], [0, 0]);
+          assert.strictEqual(imageSource, "");
           queueMicrotask(() => (readError ? this.onerror?.() : this.onload?.()));
         }
       },
@@ -55,15 +64,21 @@ suite("PNG export", () => {
           await pngDataUrl({ svg: "<svg/>", width, height }),
           "data:image/png;base64,test",
         );
-        assert.deepStrictEqual([canvas.width, canvas.height], [expectedWidth, expectedHeight]);
-        assert.ok(canvas.width * canvas.height <= 16_000_000);
+        assert.deepStrictEqual(encodedSize, [expectedWidth, expectedHeight]);
+        assert.ok(expectedWidth * expectedHeight <= 16_000_000);
       }
       const image = { svg: "<svg/>", width: 100, height: 100 };
       readError = true;
       await assert.rejects(pngDataUrl(image), /PNG read failed/);
       for (encoded of [null, new Blob(["invalid"], { type: "image/jpeg" })]) {
         await assert.rejects(pngDataUrl(image), /could not create a PNG/);
+        assert.deepStrictEqual([canvas.width, canvas.height], [0, 0]);
+        assert.strictEqual(imageSource, "");
       }
+      contextAvailable = false;
+      await assert.rejects(pngDataUrl(image), /did not provide a canvas/);
+      assert.deepStrictEqual([canvas.width, canvas.height], [0, 0]);
+      assert.strictEqual(imageSource, "");
     } finally {
       for (const [key, descriptor] of [
         ["Image", originalImage],

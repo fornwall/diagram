@@ -78,19 +78,31 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
     Math.sqrt(MAX_PNG_PIXELS / width) / Math.sqrt(height),
   );
   const image = new Image();
-  image.src = svgDataUrl(svg);
-  await image.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(width * scale));
-  canvas.height = Math.max(1, Math.floor(height * scale));
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("This browser did not provide a canvas to draw the image on.");
+  let canvas: HTMLCanvasElement | undefined;
+  let blob: Blob | null;
+  try {
+    image.src = svgDataUrl(svg);
+    await image.decode();
+    canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.floor(width * scale));
+    canvas.height = Math.max(1, Math.floor(height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("This browser did not provide a canvas to draw the image on.");
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    // Encoding a large PNG synchronously stalls clicks, typing and later renders.
+    const drawing = canvas;
+    blob = await new Promise<Blob | null>((resolve) => drawing.toBlob(resolve, "image/png"));
+  } finally {
+    // Release the decoded SVG and up to 64 MB of canvas pixels before reading the PNG.
+    // Detached canvases otherwise keep their backing stores until browser GC catches up.
+    image.src = "";
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   }
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  // Encoding a large PNG synchronously stalls clicks, typing and later renders. Let the
-  // browser encode it asynchronously, then convert the result for the webview message.
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (blob?.type !== "image/png") {
     throw new Error("The browser could not create a PNG at this image size.");
   }

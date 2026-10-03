@@ -1283,6 +1283,22 @@ suite("charts", () => {
     assert.strictEqual(du.series[0].data[0], 1.5);
   });
 
+  test("sorting, limiting and byte scaling preserve reusable source tables", () => {
+    const table = parseTable("name,size,count\nsmall,512B,1\nlarge,2KiB,3\nmedium,1KiB,2");
+    const original = structuredClone(table);
+    for (const row of table.rows) Object.freeze(row);
+    Object.freeze(table.rows);
+    const option = build(
+      chart("bar", { valueColumns: ["size", "count"], sort: "descending", limit: 2 }),
+      table,
+    );
+    assert.deepStrictEqual(option.xAxis.data, ["large", "medium"]);
+    assert.deepStrictEqual(option.series[0].data, [2, 1]);
+    assert.deepStrictEqual(option.series[1].data, [3, 2]);
+    assert.deepStrictEqual(table, original);
+    assert.deepStrictEqual(build(chart("bar"), table).xAxis.data, ["small", "large", "medium"]);
+  });
+
   test("byte scaling preserves small values and differences between large values", () => {
     const data = "file,size\nlarge,1GiB\nsmall,1B\nnearby,1073741825B";
     const expected = [1, 1 / 1024 ** 3, 1073741825 / 1024 ** 3];
