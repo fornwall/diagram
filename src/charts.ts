@@ -171,17 +171,54 @@ function label({ labels }: Row): string {
 }
 
 /** Sorts rows by their first value, empty values last. */
-function sortRows(rows: Row[], sort: ChartSpec["sort"]): Row[] {
+function sortRows(rows: Row[], sort: ChartSpec["sort"], limit?: number): Row[] {
   if (sort === undefined) {
     return rows;
   }
   const direction = sort === "ascending" ? 1 : -1;
-  return rows.toSorted(({ values: [x = null] }, { values: [y = null] }) => {
+  const compare = ({ values: [x = null] }: Row, { values: [y = null] }: Row): number => {
     if (x === null || y === null) {
       return x === y ? 0 : x === null ? 1 : -1;
     }
     return (x - y) * direction;
-  });
+  };
+  // Small limits need only the best rows. Keep the worst retained row at the heap root,
+  // including its original index so ties keep the same order as a stable full sort.
+  if (limit !== undefined && limit > 0 && limit < rows.length / 4) {
+    const heap: { row: Row; index: number }[] = [];
+    const order = (left: (typeof heap)[number], right: (typeof heap)[number]): number =>
+      compare(left.row, right.row) || left.index - right.index;
+    rows.forEach((row, index) => {
+      const candidate = { row, index };
+      if (heap.length < limit) {
+        let at = heap.length;
+        heap.push(candidate);
+        while (at > 0) {
+          const parent = Math.floor((at - 1) / 2);
+          const previous = heap[parent];
+          if (!previous || order(candidate, previous) <= 0) break;
+          heap[at] = previous;
+          at = parent;
+        }
+        heap[at] = candidate;
+      } else if (heap[0] && order(candidate, heap[0]) < 0) {
+        let at = 0;
+        while (at * 2 + 1 < heap.length) {
+          let child = at * 2 + 1;
+          const left = heap[child];
+          const right = heap[child + 1];
+          if (left && right && order(right, left) > 0) child++;
+          const next = heap[child];
+          if (!next || order(candidate, next) >= 0) break;
+          heap[at] = next;
+          at = child;
+        }
+        heap[at] = candidate;
+      }
+    });
+    return heap.sort(order).map(({ row }) => row);
+  }
+  return rows.toSorted(compare);
 }
 
 /** Maximum label/value columns and minimum value columns for each chart type. */
@@ -361,15 +398,32 @@ function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Column
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
 function withoutNests(rows: Row[]): Row[] {
-  const prefixes = new Set<string>();
+  interface Path extends Map<string, Path> {}
+  const roots: Path = new Map();
   for (const { labels } of rows) {
-    for (let level = 1; level < labels.length; level++) {
-      prefixes.add(JSON.stringify(labels.slice(0, level)));
+    let path = roots;
+    for (let level = 0; level < labels.length - 1; level++) {
+      const label = labels[level] ?? "";
+      let child = path.get(label);
+      if (!child) {
+        child = new Map();
+        path.set(label, child);
+      }
+      path = child;
     }
   }
-  return prefixes.size === 0
-    ? rows
-    : rows.filter(({ labels }) => !prefixes.has(JSON.stringify(labels)));
+  if (roots.size === 0) return rows;
+  // Store only parent paths, without copying and serializing every prefix or retaining leaves.
+  return rows.filter(({ labels }) => {
+    if (labels.length === 0) return true;
+    let path = roots;
+    for (const label of labels) {
+      const child = path.get(label);
+      if (!child) return true;
+      path = child;
+    }
+    return false;
+  });
 }
 
 /** What grouping did with the values of each group, for the note about it. */
@@ -589,12 +643,14 @@ function readRows(
     }
     rows = charted;
   }
-  rows = sortRows(rows, spec.sort);
+  const beforeLimit = rows.length;
+  const combineOther = spec.type === "pie" || spec.type === "doughnut";
+  rows = sortRows(rows, spec.sort, combineOther ? undefined : spec.limit);
   if (spec.sort !== undefined && columns.times !== undefined) {
     notes.push("sorted the rows by value rather than in time order, which a line runs back over");
   }
-  if (spec.limit !== undefined && rows.length > spec.limit) {
-    if (spec.type === "pie" || spec.type === "doughnut") {
+  if (spec.limit !== undefined && beforeLimit > spec.limit) {
+    if (combineOther) {
       // A row named "Other" in the data is summed up too, rather than becoming a second slice.
       const kept: Row[] = [];
       let other = 0;
@@ -610,7 +666,7 @@ function readRows(
       rows = [...kept, { labels: ["Other"], values: [other] }];
       notes.push(`kept the first ${spec.limit} rows and summed up the other ${summed} as "Other"`);
     } else {
-      notes.push(`kept the first ${spec.limit} of ${rows.length} rows`);
+      notes.push(`kept the first ${spec.limit} of ${beforeLimit} rows`);
       rows = rows.slice(0, spec.limit);
     }
   }

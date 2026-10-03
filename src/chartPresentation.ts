@@ -38,7 +38,14 @@ const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 /** Stable key order makes formatting and reordered JSON properties equivalent. */
 function sorted(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sorted);
+  if (Array.isArray(value)) {
+    // Numeric series and category arrays already have canonical order. Keep them intact;
+    // only allocate a copy when normalizing a nested object.
+    for (const item of value) {
+      if (item !== null && typeof item === "object") return value.map(sorted);
+    }
+    return value;
+  }
   if (!isPlainObject(value)) return value;
   return Object.fromEntries(
     Object.keys(value)
@@ -145,7 +152,8 @@ function componentItems(option: ObjectOption, component: string): ObjectOption[]
 }
 
 function applyEdits(option: ObjectOption, presentation: ChartPresentation): ObjectOption {
-  const result = structuredClone(option);
+  // Copy only edited branches. The bulk of an option is data, which styling never changes.
+  const result = { ...option };
   for (const edit of presentation.edits) {
     const path = [...edit.path];
     const component = path[0];
@@ -184,9 +192,14 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
     for (let i = 0; i < path.length - 1; i++) {
       const key = path[i] as string;
       const record = target as ObjectOption;
-      if (!isPlainObject(record[key]) && !Array.isArray(record[key])) {
-        record[key] = typeof path[i + 1] === "number" ? [] : {};
-      }
+      const child = record[key];
+      record[key] = Array.isArray(child)
+        ? [...child]
+        : isPlainObject(child)
+          ? { ...child }
+          : typeof path[i + 1] === "number"
+            ? []
+            : {};
       target = record[key] as ObjectOption;
     }
     const key = path.at(-1) as string;

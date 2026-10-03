@@ -211,7 +211,17 @@ suite("chart options lifecycle", function () {
       const rendered = second.sent.find((message) => message.type === "render");
       assert.ok(rendered?.type === "render");
       assert.strictEqual(rendered.refreshFrom, undefined);
-      assert.strictEqual(second.internals.chartTable?.rows.length, 1);
+      assert.strictEqual(second.internals.chartTable, undefined);
+      assert.ok(
+        second.sent
+          .filter((message) => message.type === "chartOptions")
+          .every((message) => message.state === undefined),
+      );
+      second.panel.toggleChartOptions();
+      assert.strictEqual((second.internals.chartTable as DataTable | undefined)?.rows.length, 1);
+      const options = second.sent.at(-1);
+      assert.ok(options?.type === "chartOptions" && options.visible);
+      assert.strictEqual(options.state?.rowCount, 1);
     } finally {
       first.panel.dispose();
       second?.panel.dispose();

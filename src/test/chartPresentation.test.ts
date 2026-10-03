@@ -17,6 +17,66 @@ function edited(change: (option: Option) => void, chart = spec) {
 }
 
 suite("chart presentation", () => {
+  test("canonical data hashes retain compatibility with saved nested and numeric keys", () => {
+    const option = {
+      series: [
+        {
+          type: "scatter",
+          data: [
+            { value: [1, 2], name: "A", extra: { z: 3, a: 4 } },
+            { name: "B", value: [3, 4], "10": "ten", "2": "two" },
+          ],
+        },
+      ],
+    };
+    const source = JSON.stringify(option);
+    const baseline = captureChartPresentation(source);
+    assert.strictEqual(
+      baseline.dataHash,
+      "697174acbd23323f7971eef63f4d47210fef2982ccb513539c3bd654ecffe236",
+    );
+    const reorder = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reorder);
+      if (value && typeof value === "object") {
+        return Object.fromEntries(
+          Object.entries(value)
+            .reverse()
+            .map(([key, item]) => [key, reorder(item)]),
+        );
+      }
+      return value;
+    };
+    assert.deepStrictEqual(captureChartPresentation(JSON.stringify(reorder(option))), baseline);
+    assert.strictEqual(JSON.stringify(option), source);
+    const first = option.series[0]?.data[0];
+    assert.ok(first);
+    first.value[0] = 99;
+    assert.match(captureChartPresentation(JSON.stringify(option), baseline).blocked ?? "", /data/);
+  });
+
+  test("applying multiple styling edits leaves reusable inputs and earlier results unchanged", () => {
+    const chart: ChartSpec = {
+      ...spec,
+      options: { series: { label: { show: true, position: "top" } } },
+    };
+    const presentation = edited((option) => {
+      option.series[0].label.show = false;
+      option.series[0].label.position = "inside";
+      option.series[0].itemStyle = { color: "red" };
+    }, chart);
+    const before = structuredClone({ chart, presentation, table: newTable });
+    const first = rebuildChart(chart, newTable, presentation);
+    const second = rebuildChart(chart, newTable, presentation);
+    const option = second.option as Option;
+    assert.deepStrictEqual(option.series[0].label, { show: false, position: "inside" });
+    assert.deepStrictEqual(option.series[1].label, { show: true, position: "top" });
+    option.series[0].label.show = true;
+    option.series[0].itemStyle.color = "blue";
+    assert.strictEqual((first.option as Option).series[0].label.show, false);
+    assert.strictEqual((first.option as Option).series[0].itemStyle.color, "red");
+    assert.deepStrictEqual({ chart, presentation, table: newTable }, before);
+  });
+
   test("facet styling follows component identities when groups reorder or disappear", () => {
     const chart: ChartSpec = { type: "bar", data: "unused", facetColumn: "service" };
     const original = parseTable("service,day,latency\na,Mon,1\nb,Tue,2");

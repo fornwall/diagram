@@ -135,6 +135,45 @@ suite("charts", () => {
     assert.match(summary(spec), /; kept the first 2 of 4 rows\.$/);
   });
 
+  test("small sorted limits preserve stable ties, missing values and the original row count", () => {
+    const table: DataTable = {
+      header: true,
+      columns: [
+        { name: "label", numeric: false },
+        { name: "value", numeric: true },
+      ],
+      rows: Array.from({ length: 257 }, (_, i) => [
+        `item ${i}`,
+        i % 5 === 0 ? null : ((i * 17) % 13) - 6,
+      ]),
+    };
+    const original = structuredClone(table);
+    for (const sort of ["ascending", "descending"] as const) {
+      for (const limit of [1, 7, 33, 230]) {
+        const complete = build(chart("bar", { sort }), table);
+        const limited = build(chart("bar", { sort, limit }), table);
+        assert.deepStrictEqual(limited.xAxis.data, complete.xAxis.data.slice(0, limit));
+        assert.deepStrictEqual(limited.series[0].data, complete.series[0].data.slice(0, limit));
+        assert.match(
+          summary(chart("bar", { sort, limit }), table),
+          new RegExp(`kept the first ${limit} of 257 rows`),
+        );
+      }
+    }
+    assert.deepStrictEqual(table, original);
+  });
+
+  test("small sorted limits retain missing values in input order after all numeric rows", () => {
+    const table = parseTable(
+      `label,value\n${Array.from({ length: 100 }, (_, i) => `item ${i},${i === 80 ? 2 : ""}`).join("\n")}`,
+    );
+    for (const sort of ["ascending", "descending"] as const) {
+      const option = build(chart("bar", { sort, limit: 3 }), table);
+      assert.deepStrictEqual(option.xAxis.data, ["item 80", "item 0", "item 1"]);
+      assert.deepStrictEqual(option.series[0].data, [2, null, null]);
+    }
+  });
+
   test("axes are not named after generated column names", () => {
     assert.strictEqual(build(chart("bar"), "src,120\ntest,30").yAxis.name, undefined);
     assert.strictEqual(build(chart("scatter"), "1,2\n3,4").xAxis.name, undefined);
@@ -301,6 +340,35 @@ suite("charts", () => {
       'Charted "n" by "k"; left out 1 row without a positive value.',
     );
     assert.throws(() => build(chart("treemap"), "k,n\na,0\nb,-1"), /treemap chart needs positive/);
+  });
+
+  test("hierarchies remove parent observations in either order and retain duplicate leaves", () => {
+    const table: DataTable = {
+      header: true,
+      columns: [
+        { name: "outer", numeric: false },
+        { name: "inner", numeric: false },
+        { name: "value", numeric: true },
+      ],
+      rows: [
+        ["__proto__", null, 99],
+        ["__proto__", 'a","b', 2],
+        ["__proto__", 'a","b', 3],
+        ['["__proto__","a"]', null, 7],
+        ["constructor", "leaf", 11],
+        ["constructor", null, 100],
+      ],
+    };
+    const option = build(chart("treemap", { labelColumn: ["outer", "inner"] }), table);
+    assert.deepStrictEqual(option.series[0].data, [
+      { name: "__proto__", value: 5, children: [{ name: 'a","b', value: 5 }] },
+      { name: '["__proto__","a"]', value: 7 },
+      { name: "constructor", value: 11, children: [{ name: "leaf", value: 11 }] },
+    ]);
+    assert.match(
+      summary(chart("treemap", { labelColumn: ["outer", "inner"] }), table),
+      /left out 2 rows that other rows nest under/,
+    );
   });
 
   test("hierarchies accept 100 levels and reject deeper paths or label columns", () => {

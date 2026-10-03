@@ -26,7 +26,6 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
     panes.style.setProperty("--source-size", `${(fraction * 100).toFixed(2)}%`);
     splitter.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
     splitter.setAttribute("aria-valuetext", `Source editor ${Math.round(fraction * 100)}%`);
-    updateOrientation();
   };
 
   splitter.addEventListener("pointerdown", (event) => {
@@ -78,6 +77,7 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
   // Double-clicking the handle puts it back where it started, as it does with a VS Code sash.
   splitter.addEventListener("dblclick", () => setFraction(DEFAULT_FRACTION));
 
+  updateOrientation();
   setFraction(fraction);
   // Crossing the responsive breakpoint changes the separator's orientation without a drag.
   new ResizeObserver(updateOrientation).observe(panes);

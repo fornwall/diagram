@@ -1,7 +1,7 @@
 // Renders Mermaid diagrams as SVG, scaled to fit the panel.
 
 import type { Mermaid } from "mermaid";
-import { type Annotation, type DiagramNode, MARK_KINDS } from "../protocol";
+import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { shortestPath } from "./relationships";
@@ -221,6 +221,8 @@ export class MermaidRenderer implements Renderer {
   private drawn: DiagramNode[] = [];
   private selectedKeys: ReadonlySet<string> = new Set();
   private shownSelectedKeys: ReadonlySet<string> = new Set();
+  private shownMarks = new Map<string, DiagramMark["kind"]>();
+  private shownLinks: ReadonlyMap<string, string> = new Map();
   /** Where the nodes link to in the code, by node id, for as long as the diagram is shown. */
   private links: ReadonlyMap<string, string> = new Map();
   /** The marks an agent put on the diagram, which a re-render for a new theme puts back. */
@@ -349,6 +351,8 @@ export class MermaidRenderer implements Renderer {
     this.elementsById.clear();
     this.drawn = [];
     this.shownSelectedKeys = new Set();
+    this.shownMarks.clear();
+    this.shownLinks = new Map();
     this.displayedSource = undefined;
   }
 
@@ -374,13 +378,20 @@ export class MermaidRenderer implements Renderer {
   showMarks(annotation: Annotation): void {
     this.annotation = annotation;
     const kinds = new Map(annotation.marks.map((mark) => [mark.id, mark.kind]));
-    for (const [element, node] of this.nodes) {
-      const kind = kinds.get(node.id);
-      element.classList.toggle("diagram-marked", kind !== undefined);
-      for (const each of MARK_KINDS) {
-        element.classList.toggle(`diagram-mark-${each}`, each === kind);
+    // Notes and captions can change without touching the drawing. Only visit the visual parts
+    // whose mark changed, rather than every node and relationship in a large diagram.
+    const changed = new Set([...this.shownMarks.keys(), ...kinds.keys()]);
+    for (const id of changed) {
+      const before = this.shownMarks.get(id);
+      const after = kinds.get(id);
+      if (before === after) continue;
+      for (const element of this.elementsById.get(id) ?? []) {
+        if (before !== undefined) element.classList.remove(`diagram-mark-${before}`);
+        if (after !== undefined) element.classList.add(`diagram-mark-${after}`);
+        element.classList.toggle("diagram-marked", after !== undefined);
       }
     }
+    this.shownMarks = kinds;
     // Nothing is faded while nothing is marked, however the annotation asks for it.
     this.diagram.classList.toggle("dim-unmarked", annotation.dim && kinds.size > 0);
   }
@@ -396,19 +407,23 @@ export class MermaidRenderer implements Renderer {
 
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
-    for (const [element, node] of this.nodes) {
-      const location = node.relationship ? undefined : locations.get(node.id);
-      element.classList.toggle("diagram-linked", location !== undefined);
-      // SVG takes a tooltip as a <title> child, and shows the first one, so replace our own and
-      // leave any that Mermaid wrote where it is.
-      element.querySelector(":scope > title.diagram-link")?.remove();
-      if (location !== undefined) {
-        const title = document.createElementNS(SVG_NAMESPACE, "title");
-        title.classList.add("diagram-link");
-        title.textContent = `Open ${location}`;
-        element.prepend(title);
+    for (const id of new Set([...this.shownLinks.keys(), ...locations.keys()])) {
+      const location = locations.get(id);
+      if (this.shownLinks.get(id) === location) continue;
+      for (const element of this.elementsById.get(id) ?? []) {
+        if (this.nodes.get(element)?.relationship) continue;
+        element.classList.toggle("diagram-linked", location !== undefined);
+        // SVG shows the first title child. Replace only our tooltip, keeping Mermaid's own.
+        element.querySelector(":scope > title.diagram-link")?.remove();
+        if (location !== undefined) {
+          const title = document.createElementNS(SVG_NAMESPACE, "title");
+          title.classList.add("diagram-link");
+          title.textContent = `Open ${location}`;
+          element.prepend(title);
+        }
       }
     }
+    this.shownLinks = locations;
   }
 
   async themeChanged(): Promise<void> {
@@ -463,6 +478,8 @@ export class MermaidRenderer implements Renderer {
     this.elementsById.clear();
     this.drawn = [];
     this.shownSelectedKeys = new Set();
+    this.shownMarks.clear();
+    this.shownLinks = new Map();
     const svg = this.diagram.querySelector("svg");
     if (!svg) {
       return;

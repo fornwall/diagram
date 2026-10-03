@@ -529,6 +529,60 @@ suite("webview", function () {
     );
   });
 
+  test("annotation updates touch only changed Mermaid marks", async () => {
+    const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
+    assert.ok((await render({ source })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const diagram = document.getElementById("diagram");
+        const changed = new Set();
+        const toggle = DOMTokenList.prototype.toggle;
+        const markVisits = [];
+        let visits = 0;
+        DOMTokenList.prototype.toggle = function (token, ...args) {
+          if (token.startsWith("diagram-mark")) visits++;
+          return toggle.call(this, token, ...args);
+        };
+        const observer = new MutationObserver(records => {
+          for (const record of records) {
+            const id = record.target.getAttribute("data-diagram-id");
+            if (id) changed.add(id);
+          }
+        });
+        observer.observe(diagram, {subtree: true, attributes: true, attributeFilter: ["class"]});
+        const mark = async (marks, dim = false) => {
+          changed.clear();
+          visits = 0;
+          window.dispatchEvent(new MessageEvent("message", {data: {type: "annotate", marks, dim}}));
+          await new Promise(resolve => setTimeout(resolve, 0));
+          markVisits.push(visits);
+          return [...changed].sort();
+        };
+        try {
+          const first = await mark([{id: "A0", kind: "problem"}]);
+          const notesOnly = await mark([{id: "A0", kind: "problem", note: "More detail"}], true);
+          const replacement = await mark([{id: "A0", kind: "good"}, {id: "A1", kind: "info"}]);
+          const node = diagram.querySelector('[data-diagram-id="A0"]');
+          const replaced = node.classList.contains("diagram-mark-good") && !node.classList.contains("diagram-mark-problem");
+          const cleared = await mark([]);
+          return {first, notesOnly, replacement, replaced, cleared, markVisits, remaining: diagram.querySelectorAll(".diagram-marked").length};
+        } finally {
+          DOMTokenList.prototype.toggle = toggle;
+          observer.disconnect();
+        }
+      })()`),
+      {
+        first: ["A0"],
+        notesOnly: [],
+        replacement: ["A0", "A1"],
+        replaced: true,
+        cleared: ["A0", "A1"],
+        markVisits: [1, 0, 2, 2],
+        remaining: 0,
+      },
+    );
+  });
+
   test("returns keyboard focus to visible content after clearing the selection", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
@@ -1077,11 +1131,19 @@ suite("webview", function () {
   });
 
   test("keeps keyboard focus and selection on a Mermaid node when the theme redraws it", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.ok(
+      (
+        await render({
+          source: MERMAID["flowchart-v2"],
+          links: { A: { file: "src/parser.ts", line: 42 } },
+        })
+      ).ok,
+    );
+    panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: true });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
-        node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        node.dispatchEvent(new MouseEvent("click", {bubbles: true, shiftKey: true}));
         node.focus();
         const original = document.body.dataset.vscodeThemeId;
         document.body.dataset.vscodeThemeId = "test-theme-redraw";
@@ -1091,7 +1153,10 @@ suite("webview", function () {
             if (!node.isConnected) return {
               id: document.activeElement?.getAttribute("data-diagram-id"),
               selected: document.activeElement?.classList.contains("diagram-selected"),
-              pressed: document.activeElement?.getAttribute("aria-pressed")
+              pressed: document.activeElement?.getAttribute("aria-pressed"),
+              marked: document.activeElement?.classList.contains("diagram-mark-info"),
+              link: document.activeElement?.querySelector("title.diagram-link")?.textContent,
+              tooltips: document.activeElement?.querySelectorAll("title.diagram-link").length
             };
           }
           throw new Error("The theme change did not redraw the diagram.");
@@ -1100,7 +1165,14 @@ suite("webview", function () {
           else document.body.dataset.vscodeThemeId = original;
         }
       })()`),
-      { id: "A", selected: true, pressed: "true" },
+      {
+        id: "A",
+        selected: true,
+        pressed: "true",
+        marked: true,
+        link: "Open src/parser.ts#L42",
+        tooltips: 1,
+      },
     );
   });
 
