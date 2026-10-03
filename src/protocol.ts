@@ -132,6 +132,8 @@ export type ToWebview =
       refreshFrom?: string;
       /** Bound document's display name, shown on the write-back action. */
       writeTo?: string;
+      /** Set when this replaces a different diagram, not a revision of it: fit it to the panel. */
+      newDiagram?: boolean;
     }
   /** The saved chart omitted its large source; ask the user to refresh its data. */
   | { type: "needsRefresh"; title: string; refreshFrom?: string }

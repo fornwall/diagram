@@ -489,6 +489,38 @@ suite("webview", function () {
     }
   });
 
+  test("zooms with the keyboard, and fits a new diagram but not a revision", async () => {
+    const zoom = () => evaluate(`document.getElementById("zoom-reset").textContent`);
+    const press = (key: string, modifier = true) =>
+      evaluate(`(() => {
+        const mac = navigator.userAgent.includes("Mac");
+        const event = new KeyboardEvent("keydown", {key: ${JSON.stringify(key)},
+          metaKey: ${modifier} && mac, ctrlKey: ${modifier} && !mac, bubbles: true, cancelable: true});
+        let forwarded = false;
+        const listener = () => { forwarded = true; };
+        window.addEventListener("keydown", listener);
+        document.getElementById("canvas").dispatchEvent(event);
+        window.removeEventListener("keydown", listener);
+        return {prevented: event.defaultPrevented, forwarded};
+      })()`);
+    const source = MERMAID["flowchart-v2"] ?? "";
+    assert.ok((await render({ source, title: "Zoom" })).ok);
+    assert.strictEqual(await zoom(), "100%");
+    assert.deepStrictEqual(await press("="), { prevented: true, forwarded: false });
+    assert.strictEqual(await zoom(), "125%");
+    assert.deepStrictEqual(await press("-", false), { prevented: false, forwarded: true });
+    assert.strictEqual(await zoom(), "125%");
+    await press("0");
+    assert.strictEqual(await zoom(), "100%");
+
+    await press("+");
+    assert.strictEqual(await zoom(), "125%");
+    assert.ok((await render({ source: `${source}\n  B --> C`, title: "Zoom" })).ok);
+    assert.strictEqual(await zoom(), "125%", "A revision keeps the zoom.");
+    assert.ok((await render({ source, title: "Another" })).ok);
+    assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(

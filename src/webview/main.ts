@@ -113,6 +113,8 @@ const renderers: Record<DiagramLanguage, Renderer> = {
 };
 let active: Renderer | undefined;
 let renderedRequestId: number | undefined;
+/** Set by a new diagram, until a render fits it: a newer render may supersede that render. */
+let refit = false;
 
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
@@ -151,6 +153,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
   renderStatus.textContent = `Rendering ${renderer.noun}…`;
+  if (refit) {
+    refit = false;
+    for (const each of Object.values(renderers)) each.fitToPanel?.();
+  }
   try {
     const diagramType = await renderer.render(source, message.title);
     if (active !== renderer) {
@@ -246,6 +252,7 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       enqueue(() => chartOptions.showError(message.message));
       break;
     case "render": {
+      if (message.newDiagram) refit = true;
       const revision = ++renderRevision;
       enqueue(() => {
         if (revision === renderRevision) return render(message);
@@ -825,9 +832,36 @@ revertButton.addEventListener("click", () => {
 
 // Zoom (Mermaid only; charts fit the panel).
 
-zoomInButton.addEventListener("click", () => active?.zoomBy?.(1.25));
-zoomOutButton.addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
-zoomResetButton.addEventListener("click", () => active?.zoomReset?.());
+const zoomIn = () => active?.zoomBy?.(1.25);
+const zoomOut = () => active?.zoomBy?.(1 / 1.25);
+const zoomReset = () => active?.zoomReset?.();
+zoomInButton.addEventListener("click", zoomIn);
+zoomOutButton.addEventListener("click", zoomOut);
+zoomResetButton.addEventListener("click", zoomReset);
+
+// Cmd (macOS) or Ctrl with +, - and 0, as in browsers, while the panel has focus. VS Code gets
+// every key the page sees, so the event stops in the capture phase, before VS Code's listener on
+// the window passes it on to zoom the window or focus the side bar as well.
+const ZOOM_KEYS: Record<string, () => void> = {
+  "=": zoomIn,
+  "+": zoomIn,
+  "-": zoomOut,
+  "0": zoomReset,
+};
+const isMac = navigator.userAgent.includes("Mac");
+window.addEventListener(
+  "keydown",
+  (event) => {
+    const zoom = ZOOM_KEYS[event.key];
+    const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (zoom && primary && !event.altKey && active?.zoomBy) {
+      event.preventDefault();
+      event.stopPropagation();
+      zoom();
+    }
+  },
+  { capture: true },
+);
 canvas.addEventListener(
   "wheel",
   (event) => {

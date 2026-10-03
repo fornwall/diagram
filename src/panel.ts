@@ -122,6 +122,8 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private unavailable: string | undefined;
   private renderVersion = 0;
+  /** Whether the next render shows a different diagram, which the webview fits to the panel. */
+  private newDiagram = false;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private refreshing = false;
   private saving = false;
@@ -282,6 +284,7 @@ export class DiagramPanel implements vscode.Disposable {
     chartTable?: DataTable,
   ): Promise<RenderOutcome> {
     this.toolRequestId = requestId(toolInvocationToken);
+    this.newDiagram ||= !this.state || isDifferentDiagram(this.state, diagram);
     // Keep document bindings across agent replacements; a later Apply requires confirmation.
     const previousBinding = this.state?.document;
     const document =
@@ -662,7 +665,9 @@ export class DiagramPanel implements vscode.Disposable {
       links: state.links && linkTexts(state.links),
       refreshFrom,
       writeTo: state.document && documentName(state.document),
+      newDiagram: this.newDiagram || undefined,
     } as const;
+    this.newDiagram = false;
     this.sourceRequestId = message.requestId;
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.save();
@@ -1291,6 +1296,23 @@ export class DiagramPanel implements vscode.Disposable {
       this.finishPick(message.pickId, { picked: false, reason: error });
     }
   }
+}
+
+/**
+ * Whether a diagram replaces a different one rather than revising it: another language, another
+ * Markdown block, or for an agent's diagram, another title.
+ */
+function isDifferentDiagram(previous: DiagramState, next: Diagram): boolean {
+  if (previous.language !== next.language) {
+    return true;
+  }
+  if (next.document) {
+    return (
+      previous.document?.uri !== next.document.uri ||
+      previous.document.fence.openingLine !== next.document.fence.openingLine
+    );
+  }
+  return previous.title !== next.title;
 }
 
 /** Says where a chart was saved, and opens it in the user's browser if they ask. */

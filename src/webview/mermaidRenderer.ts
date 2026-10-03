@@ -256,7 +256,8 @@ export class MermaidRenderer implements Renderer {
     new ResizeObserver(() => {
       if (this.fitting && this.displayedSource !== undefined) {
         cancelAnimationFrame(this.fitFrame);
-        this.fitFrame = requestAnimationFrame(() => this.fit());
+        // A zoom by hand before the frame keeps its zoom.
+        this.fitFrame = requestAnimationFrame(() => this.fitting && this.fit());
       }
     }).observe(canvas);
   }
@@ -459,6 +460,10 @@ export class MermaidRenderer implements Renderer {
   zoomBy(factor: number): void {
     this.fitting = false;
     this.setZoom(this.zoom * factor);
+  }
+
+  fitToPanel(): void {
+    this.fitting = true;
   }
 
   /** Toggles between fitting the panel and the actual size. */
