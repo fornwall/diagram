@@ -46,6 +46,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 const titleElement = element("title");
 const errorElement = element("error");
+const renderStatus = element("render-status");
 const emptyElement = element("empty");
 const panes = element("panes");
 const splitter = element("splitter");
@@ -146,6 +147,9 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   emptyElement.hidden = true;
   // The previous drawing may remain visible while rendering, but its actions are now stale.
   canvas.inert = true;
+  canvas.setAttribute("aria-busy", "true");
+  errorElement.hidden = true;
+  renderStatus.textContent = `Rendering ${renderer.noun}…`;
   try {
     const diagramType = await renderer.render(source, message.title);
     if (active !== renderer) {
@@ -177,6 +181,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     post({ type: "renderError", requestId, message: text });
   } finally {
     canvas.inert = false;
+    canvas.setAttribute("aria-busy", "false");
+    renderStatus.textContent = "";
   }
   // The extension forgets the selection and the marks when it sends a diagram, whether or not it
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.

@@ -154,6 +154,102 @@ suite("webview", function () {
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
   });
 
+  test("chart options keep keyboard focus and column names predictable as rows change", async () => {
+    const chart: ChartSpec = {
+      type: "bar",
+      data: "name,value,other\na,1,2\nb,2,3",
+      valueColumns: ["value", "other"],
+    };
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          chart,
+          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
+        })
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const columns = document.getElementById("chart-option-value");
+        const addColumn = columns.querySelector(":scope > button");
+        const selects = () => [...columns.querySelectorAll("select")];
+        const names = () => selects().map(select => select.getAttribute("aria-label"));
+        columns.querySelector(".chart-column-row button").click();
+        const afterRemove = {
+          names: names(), focused: document.activeElement === selects()[0],
+          removeName: columns.querySelector(".chart-column-row button").getAttribute("aria-label")
+        };
+        addColumn.click();
+        const afterAdd = {names: names(), focused: document.activeElement === selects()[1]};
+        for (const row of [...columns.querySelectorAll(".chart-column-row")]) {
+          row.querySelector("button").click();
+        }
+        const emptyFocus = document.activeElement === addColumn;
+        const filters = document.getElementById("chart-option-filters");
+        const addFilter = filters.querySelector(":scope > button");
+        addFilter.click();
+        const first = filters.querySelector("select");
+        const addedFilterFocus = document.activeElement === first;
+        addFilter.click();
+        filters.querySelector(".chart-filter-row:last-of-type button").click();
+        const removedFilterFocus = document.activeElement === first;
+        filters.querySelector(".chart-filter-row button").click();
+        const emptyFilterFocus = document.activeElement === addFilter;
+        document.querySelector("#chart-options .chart-options-heading button").click();
+        return {afterRemove, afterAdd, emptyFocus, addedFilterFocus, removedFilterFocus, emptyFilterFocus};
+      })()`),
+      {
+        afterRemove: {
+          names: ["Value column 1"],
+          focused: true,
+          removeName: "Remove value column 1",
+        },
+        afterAdd: { names: ["Value column 1", "Value column 2"], focused: true },
+        emptyFocus: true,
+        addedFilterFocus: true,
+        removedFilterFocus: true,
+        emptyFilterFocus: true,
+      },
+    );
+  });
+
+  test("chat and chart option fields fit a narrow panel", async () => {
+    const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          chart,
+          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
+        })
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const form = document.getElementById("ask-form");
+        const options = document.getElementById("chart-options");
+        try {
+          form.style.width = "180px";
+          options.style.width = "150px";
+          const input = document.getElementById("ask-input").getBoundingClientRect();
+          const send = document.getElementById("ask-submit").getBoundingClientRect();
+          const fields = options.querySelector("fieldset");
+          return {chatFits: form.scrollWidth <= form.clientWidth,
+            sendWraps: send.top >= input.bottom,
+            fieldsFit: fields.scrollWidth <= fields.clientWidth};
+        } finally {
+          form.style.width = "";
+          options.style.width = "";
+          options.querySelector(".chart-options-heading button").click();
+        }
+      })()`),
+      { chatFits: true, sendWraps: true, fieldsFit: true },
+    );
+  });
+
   test("chart options preserve typed filters and switch faceted charts to histograms", async () => {
     const data = "name,service,amount,missing\na,api-a,1,\nb,api-b,3,\nc,api-a,4,";
     const table = parseTable(data);
@@ -1120,6 +1216,8 @@ suite("webview", function () {
         language: "echarts",
         source: `(() => {
           window.testRenderingInert = document.getElementById("canvas").inert;
+          window.testRenderingBusy = document.getElementById("canvas").getAttribute("aria-busy");
+          window.testRenderingStatus = document.getElementById("render-status").textContent;
           return {series: ${series}};
         })()`,
       });
@@ -1127,9 +1225,22 @@ suite("webview", function () {
       assert.deepStrictEqual(
         await evaluate(`({
           during: window.testRenderingInert,
-          after: document.getElementById("canvas").inert
+          duringBusy: window.testRenderingBusy,
+          duringStatus: window.testRenderingStatus,
+          after: document.getElementById("canvas").inert,
+          afterBusy: document.getElementById("canvas").getAttribute("aria-busy"),
+          afterStatus: document.getElementById("render-status").textContent,
+          idleStatusHeight: document.getElementById("render-status").getBoundingClientRect().height
         })`),
-        { during: true, after: false },
+        {
+          during: true,
+          duringBusy: "true",
+          duringStatus: "Rendering chart…",
+          after: false,
+          afterBusy: "false",
+          afterStatus: "",
+          idleStatusHeight: 0,
+        },
       );
     }
   });

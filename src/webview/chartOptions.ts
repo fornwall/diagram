@@ -290,7 +290,7 @@ export class ChartOptionsForm {
     add.type = "button";
     add.className = "secondary";
     add.textContent = "Add filter";
-    const append = (filter?: ChartFilter): void => {
+    const append = (filter?: ChartFilter): HTMLSelectElement => {
       const row = document.createElement("div");
       row.className = "chart-filter-row";
       const column = document.createElement("select");
@@ -356,10 +356,12 @@ export class ChartOptionsForm {
       remove.textContent = "−";
       remove.setAttribute("aria-label", "Remove filter");
       remove.addEventListener("click", () => {
+        const next = row.nextElementSibling?.querySelector("select");
+        const previous = row.previousElementSibling?.querySelector("select");
         row.remove();
         this.filterRows.delete(row);
         add.disabled = false;
-        add.focus();
+        (next ?? previous ?? add).focus();
       });
       row.append(column, operator, valueType, value, remove);
       this.filters.insertBefore(row, add);
@@ -374,8 +376,9 @@ export class ChartOptionsForm {
               : value.value,
       }));
       add.disabled = this.filterRows.size >= 50;
+      return column;
     };
-    add.addEventListener("click", () => append());
+    add.addEventListener("click", () => append().focus());
     this.filters.append(add);
     for (const filter of filters) append(filter);
   }
@@ -386,32 +389,41 @@ export class ChartOptionsForm {
     add.type = "button";
     add.className = "secondary";
     add.textContent = selected.length ? "Add column" : "Automatic · choose column";
-    const append = (name?: string): void => {
+    const updateLabels = (): void => {
+      for (const [index, row] of Array.from(
+        container.querySelectorAll(".chart-column-row"),
+      ).entries()) {
+        const name = `${container === this.labels ? "Label" : "Value"} column ${index + 1}`;
+        row.querySelector("select")?.setAttribute("aria-label", name);
+        row.querySelector("button")?.setAttribute("aria-label", `Remove ${name.toLowerCase()}`);
+      }
+    };
+    const append = (name?: string): HTMLSelectElement => {
       const row = document.createElement("div");
       row.className = "chart-column-row";
       const select = document.createElement("select");
-      select.setAttribute(
-        "aria-label",
-        `${container === this.labels ? "Label" : "Value"} column ${container.querySelectorAll("select").length + 1}`,
-      );
       this.fillColumnSelect(select, name);
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "secondary";
       remove.textContent = "−";
-      remove.setAttribute("aria-label", "Remove column");
       remove.addEventListener("click", () => {
+        const next = row.nextElementSibling?.querySelector("select");
+        const previous = row.previousElementSibling?.querySelector("select");
         row.remove();
+        updateLabels();
         add.textContent = container.querySelector("select")
           ? "Add column"
           : "Automatic · choose column";
-        add.focus();
+        (next ?? previous ?? add).focus();
       });
       row.append(select, remove);
       container.insertBefore(row, add);
       add.textContent = "Add column";
+      updateLabels();
+      return select;
     };
-    add.addEventListener("click", () => append());
+    add.addEventListener("click", () => append().focus());
     container.append(add);
     for (const name of selected) append(name);
   }

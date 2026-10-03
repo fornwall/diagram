@@ -5,6 +5,17 @@ body {
   padding: 0;
 }
 
+/* Native select menus and number steppers follow the workbench's light/dark theme. */
+body[data-vscode-theme-kind="vscode-dark"],
+body[data-vscode-theme-kind="vscode-high-contrast"] {
+  color-scheme: dark;
+}
+
+body[data-vscode-theme-kind="vscode-light"],
+body[data-vscode-theme-kind="vscode-high-contrast-light"] {
+  color-scheme: light;
+}
+
 body {
   display: flex;
   flex-direction: column;
@@ -85,14 +96,12 @@ button:disabled {
   pointer-events: none;
 }
 
-button.secondary,
-header button {
+button.secondary {
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
 }
 
-button.secondary:hover,
-header button:hover {
+button.secondary:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
@@ -113,13 +122,34 @@ button.link {
   padding: 3px 8px;
   border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 2px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
   cursor: grab;
 }
 
+/* Editor actions use the workbench toolbar tokens, leaving primary emphasis to Apply/Send. */
+header button,
+.drag-out {
+  min-height: 26px;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  border-color: var(--vscode-contrastBorder, transparent);
+}
+
+header button:hover,
 .drag-out:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: 1px solid var(--vscode-toolbar-hoverOutline, transparent);
+  outline-offset: -1px;
+}
+
+header button:active,
+.drag-out:active {
+  background: var(--vscode-toolbar-activeBackground);
+}
+
+header button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .drag-out:active {
@@ -148,6 +178,19 @@ button.link:hover {
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   background: var(--vscode-inputOption-activeBackground);
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+
+#render-status {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* Keep the live region exposed when idle, without reserving space above the drawing. */
+#render-status:empty {
+  padding: 0;
+  border: 0;
 }
 
 #pick:not([hidden]) {
@@ -470,10 +513,11 @@ input:focus {
 #ask-form {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 #ask-form input {
-  flex: 1;
+  flex: 1 1 160px;
   min-width: 0;
 }
 
@@ -491,7 +535,7 @@ input:focus {
 }
 .chart-options-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 10px;
   border: 0;
   padding: 0;
@@ -510,6 +554,8 @@ input:focus {
   box-sizing: border-box;
   font: inherit;
   padding: 3px 5px;
+}
+#chart-options select {
   color: var(--vscode-dropdown-foreground);
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border, transparent);
@@ -534,7 +580,7 @@ input:focus {
 }
 @media (max-width: 450px) {
   .chart-filter-row {
-    grid-template-columns: repeat(2, minmax(70px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .chart-options-error {
