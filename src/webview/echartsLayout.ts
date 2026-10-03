@@ -553,10 +553,23 @@ const USER_STATE: Record<string, string[]> = {
 export function keepUserState(option: JsonObject, readShown: () => JsonObject): void {
   const base = baseOption(option);
   // ECharts' getOption deep-copies every data point, even when only control state is needed.
-  if (![...Object.keys(USER_STATE), "dataZoom"].some((key) => asArray(base[key]).length > 0)) {
+  const graphs = asArray(base.series)
+    .map((series, index) => ({ series, index }))
+    .filter(({ series }) => series.type === "graph" && series.roam);
+  if (
+    graphs.length === 0 &&
+    ![...Object.keys(USER_STATE), "dataZoom"].some((key) => asArray(base[key]).length > 0)
+  ) {
     return;
   }
   const shown = readShown();
+  const shownSeries = asArray(shown.series);
+  for (const { series: graph, index } of graphs) {
+    const current = shownSeries[index];
+    for (const key of ["center", "zoom"]) {
+      if (current?.[key] !== undefined) graph[key] = current[key];
+    }
+  }
   for (const [component, keys] of Object.entries(USER_STATE)) {
     const shownComponents = asArray(shown[component]);
     asArray(base[component]).forEach((each, index) => {

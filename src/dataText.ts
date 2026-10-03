@@ -146,18 +146,21 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
  * Splits comma- or semicolon-separated values with the delimiter that splits the lines more
  * consistently. Unless `strict`, returns undefined when neither splits every line, or 80% of them
  * into as many fields, or when the first line has no delimiter (as in docker ps output, with
- * commas in a column) or commas only separate thousands (as in "apples 1,234").
+ * commas in a column) or commas only separate thousands (as in "apples 1,234"). A quoted first
+ * field also permits single-column CSV.
  */
 function splitCsv(text: string, firstLine: string, strict: boolean): Records | undefined {
   let best: { table: Records; uniform: number; width: number } | undefined;
   let quoteError: unknown;
   let sizeError: TableSizeError | undefined;
+  const quotedColumn = firstLine.trimStart().startsWith('"');
   for (const delimiter of [",", ";"]) {
     if (
-      !text.includes(delimiter) ||
-      (!strict &&
-        (!firstLine.includes(delimiter) ||
-          (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(","))))
+      !quotedColumn &&
+      (!text.includes(delimiter) ||
+        (!strict &&
+          (!firstLine.includes(delimiter) ||
+            (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(",")))))
     ) {
       continue;
     }
@@ -187,7 +190,12 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     const width = mode(records.map((record) => record.length));
     const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
     // Lines may have fewer or more fields than the header, as with cloc --csv.
-    if (width < 2 || (matching < records.length * 0.8 && records.some((r) => r.length < 2))) {
+    const singleColumn =
+      quotedColumn && candidateError === undefined && width === 1 && matching === records.length;
+    if (
+      (width < 2 && !singleColumn) ||
+      (matching < records.length * 0.8 && records.some((r) => r.length < 2))
+    ) {
       continue;
     }
     if (candidateError !== undefined) {

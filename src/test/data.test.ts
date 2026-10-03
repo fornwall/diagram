@@ -174,6 +174,21 @@ suite("data", () => {
     });
   });
 
+  test("detects quoted single-column CSV, preserving records and reading numeric values", () => {
+    assert.deepStrictEqual(parse('"value"\n"1"\n"2"'), {
+      columns: ["value"],
+      rows: [[1], [2]],
+    });
+    assert.deepStrictEqual(parse('"value"\n"1,5"\n"2,5"'), {
+      columns: ["value"],
+      rows: [[1.5], [2.5]],
+    });
+    assert.deepStrictEqual(parse('"first\nrecord"\n"second ""quoted"" record"'), {
+      columns: ["Column 1"],
+      rows: [["first\nrecord"], ['second "quoted" record']],
+    });
+  });
+
   test("parses prices", () => {
     assert.deepStrictEqual(parse('item,price\nsoup,$4.50\nbread,"$1,200"'), {
       columns: ["item", "price"],

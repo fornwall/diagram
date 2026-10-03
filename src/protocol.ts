@@ -163,8 +163,8 @@ export type FromWebview =
       relationships?: DiagramNode[];
     }
   | { type: "renderError"; requestId: number; message: string }
-  | { type: "selectionChanged"; nodes: DiagramNode[] }
-  | { type: "sourceEdited"; source: string }
+  | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
+  | { type: "sourceEdited"; requestId: number; source: string }
   | { type: "ask"; text: string; nodes: DiagramNode[] }
   | { type: "clickToAsk"; node: DiagramNode }
   /** The host resolves this node's link; the webview cannot choose a path. */
@@ -177,7 +177,7 @@ export type FromWebview =
   | { type: "exportTheme"; requestId: number; colors: ThemeColors }
   | { type: "exportError"; requestId: number; message: string }
   /** Write the shown diagram to its bound code block without requiring a source edit. */
-  | { type: "writeToDocument" };
+  | { type: "writeToDocument"; requestId: number };
 
 type Check = (value: unknown) => boolean;
 const isString: Check = (value) => typeof value === "string";
@@ -239,8 +239,8 @@ const FROM_WEBVIEW_FIELDS: {
     relationships: optional(isNodes),
   },
   renderError: { requestId: isId, message: isString },
-  selectionChanged: { nodes: isNodes },
-  sourceEdited: { source: isString },
+  selectionChanged: { requestId: isId, nodes: isNodes },
+  sourceEdited: { requestId: isId, source: isString },
   ask: { text: isString, nodes: isNodes },
   clickToAsk: { node: isNode },
   clickToOpen: { node: isNode },
@@ -254,7 +254,7 @@ const FROM_WEBVIEW_FIELDS: {
   },
   exportTheme: { requestId: isId, colors: isThemeColors },
   exportError: { requestId: isId, message: isString },
-  writeToDocument: {},
+  writeToDocument: { requestId: isId },
 };
 
 /** Validate untrusted messages before the host handles them. */

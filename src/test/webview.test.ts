@@ -953,6 +953,29 @@ suite("webview", function () {
     );
   });
 
+  test("keeps keyboard focus on a Mermaid node when the theme redraws it", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
+        node.focus();
+        const original = document.body.dataset.vscodeThemeId;
+        document.body.dataset.vscodeThemeId = "test-theme-redraw";
+        try {
+          for (let attempt = 0; attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            if (!node.isConnected) return document.activeElement?.getAttribute("data-diagram-id");
+          }
+          throw new Error("The theme change did not redraw the diagram.");
+        } finally {
+          if (original === undefined) delete document.body.dataset.vscodeThemeId;
+          else document.body.dataset.vscodeThemeId = original;
+        }
+      })()`),
+      "A",
+    );
+  });
+
   test("names an unknown Mermaid diagram type instead of repeating the source", async () => {
     const outcome = await render({ source: "flowchar TD\n  A --> B" });
     assert.ok(!outcome.ok);

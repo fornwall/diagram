@@ -41,6 +41,12 @@ function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().
   return panel.pickNodes("Which part?", false, token);
 }
 
+function sourceRequestId(panel: DiagramPanel): number {
+  const id = (panel as unknown as { sourceRequestId?: number }).sourceRequestId;
+  assert.ok(id !== undefined);
+  return id;
+}
+
 suite("panel", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
@@ -52,6 +58,68 @@ suite("panel", function () {
     );
     // Not taken as a replacement pattern.
     assert.strictEqual(clickToAskQuery("Explain {label}", "$& $$"), "Explain $& $$");
+  });
+
+  test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
+    const panel = newPanel();
+    const warning = vscode.window.showWarningMessage;
+    const warnings: string[] = [];
+    const internals = panel as unknown as {
+      post(message: ToWebview): void;
+      onMessage(message: FromWebview): void;
+      finishRender(id: number, outcome: RenderOutcome): void;
+      writeShownToDocument(): Promise<void>;
+      selection: { id: string; label: string }[];
+    };
+    internals.post = () => {};
+    let writes = 0;
+    internals.writeShownToDocument = async () => {
+      writes++;
+    };
+    vscode.window.showWarningMessage = async (message: string) => {
+      warnings.push(message);
+      return undefined;
+    };
+    try {
+      const first = panel.render(flowchart, "tool");
+      const oldId = sourceRequestId(panel);
+      internals.finishRender(oldId, { ok: true, diagramType: "flowchart" });
+      await first;
+      const replacement = { ...flowchart, source: "flowchart ??", title: "Replacement" };
+      const rendering = panel.render(replacement, "tool");
+      const currentId = sourceRequestId(panel);
+      for (const completed of [false, true]) {
+        if (completed) {
+          internals.finishRender(currentId, { ok: false, kind: "invalid", error: "Parse error" });
+          await rendering;
+        }
+        internals.onMessage({ type: "sourceEdited", requestId: oldId, source: "flowchart TD" });
+        internals.onMessage({ type: "writeToDocument", requestId: oldId });
+        internals.onMessage({
+          type: "selectionChanged",
+          requestId: oldId,
+          nodes: [{ id: "A", label: "Old" }],
+        });
+        assert.strictEqual(panel.current?.source, replacement.source);
+        assert.strictEqual(panel.current?.editedByUser, false);
+        assert.deepStrictEqual(internals.selection, []);
+        assert.strictEqual(writes, 0);
+      }
+      assert.strictEqual(warnings.length, 4);
+      internals.onMessage({ type: "sourceEdited", requestId: currentId, source: flowchart.source });
+      assert.strictEqual(
+        panel.current?.source,
+        flowchart.source,
+        "failed diagrams remain editable",
+      );
+      const repairedId = sourceRequestId(panel);
+      internals.finishRender(repairedId, { ok: true, diagramType: "flowchart" });
+      internals.onMessage({ type: "writeToDocument", requestId: repairedId });
+      assert.strictEqual(writes, 1);
+    } finally {
+      vscode.window.showWarningMessage = warning;
+      panel.dispose();
+    }
   });
 
   test("clickToAskQuery appends the label when there is no placeholder", () => {
@@ -679,16 +747,26 @@ suite("panel", function () {
       askInChat(text: string): Promise<void>;
       post(message: ToWebview): void;
       selection: { id: string; label: string }[];
+      sourceRequestId: number;
     };
+    internals.sourceRequestId = 1;
     internals.post = (message) => sent.push(message);
     try {
       for (const changed of [true, false]) {
         const opened = Promise.withResolvers<void>();
         vscode.commands.executeCommand = (() => opened.promise) as typeof execute;
-        internals.onMessage({ type: "selectionChanged", nodes: [{ id: "A", label: "Parser" }] });
+        internals.onMessage({
+          type: "selectionChanged",
+          requestId: 1,
+          nodes: [{ id: "A", label: "Parser" }],
+        });
         const asking = internals.askInChat("Explain the selection");
         if (changed) {
-          internals.onMessage({ type: "selectionChanged", nodes: [{ id: "B", label: "Checker" }] });
+          internals.onMessage({
+            type: "selectionChanged",
+            requestId: 1,
+            nodes: [{ id: "B", label: "Checker" }],
+          });
         }
         opened.resolve();
         await asking;
@@ -761,7 +839,11 @@ suite("panel", function () {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       const receive = (message: FromWebview) =>
         (panel as unknown as { onMessage(message: FromWebview): void }).onMessage(message);
-      receive({ type: "selectionChanged", nodes: [{ id: "A", label: "Parser" }] });
+      receive({
+        type: "selectionChanged",
+        requestId: sourceRequestId(panel),
+        nodes: [{ id: "A", label: "Parser" }],
+      });
       assert.match(panel.describeForModel() ?? "", /selected these nodes/);
       receive({ type: "ready" });
       assert.match(panel.describeForModel() ?? "", /no nodes selected/);
@@ -914,7 +996,11 @@ suite("panel", function () {
         onMessage(message: FromWebview): void;
         save(): Promise<void>;
       };
-      internals.onMessage({ type: "sourceEdited", source: edited });
+      internals.onMessage({
+        type: "sourceEdited",
+        requestId: sourceRequestId(panel),
+        source: edited,
+      });
       await internals.save();
       const restored = newPanel(values);
       try {
@@ -1136,7 +1222,11 @@ suite("panel", function () {
         refreshChart(): Promise<void>;
       };
       const refreshing = internals.refreshChart();
-      internals.onMessage({ type: "sourceEdited", source: pie("B") });
+      internals.onMessage({
+        type: "sourceEdited",
+        requestId: sourceRequestId(panel),
+        source: pie("B"),
+      });
       await refreshing;
       assert.strictEqual(panel.current?.source, pie("B"));
       assert.ok(panel.current?.editedByUser);

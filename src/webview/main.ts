@@ -86,7 +86,7 @@ enablePanning(canvas);
 enableSplitter(splitter, panes);
 
 /** Last requested diagram, including failed renders. */
-let current: { renderer: Renderer; source: string } | undefined;
+let current: { renderer: Renderer; source: string; requestId: number } | undefined;
 /** Source baseline for detecting unapplied edits. */
 let editedFrom = "";
 /** Pending edit, recognized when the extension sends it back to render. */
@@ -139,7 +139,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
   }
   const renderer = renderers[language];
-  current = { renderer, source };
+  current = { renderer, source, requestId };
   // The first diagram makes the source available, and with it the view chosen before a reload.
   setViewMode(viewMode);
   sourceChanged(source);
@@ -341,7 +341,13 @@ function hint(noun: string): string {
 function selectionChanged(): void {
   forgetDragImage();
   updateSelectionUi();
-  post({ type: "selectionChanged", nodes: Array.from(selection.values()) });
+  if (current) {
+    post({
+      type: "selectionChanged",
+      requestId: current.requestId,
+      nodes: [...selection.values()],
+    });
+  }
 }
 
 function clearSelection(): void {
@@ -527,7 +533,9 @@ askForm.addEventListener("submit", (event) => {
 });
 
 refreshButton.addEventListener("click", () => post({ type: "refresh" }));
-writeToButton.addEventListener("click", () => post({ type: "writeToDocument" }));
+writeToButton.addEventListener("click", () => {
+  if (current) post({ type: "writeToDocument", requestId: current.requestId });
+});
 
 /** Capture an image in the render queue; rasterization must not hold up later renders. */
 async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
@@ -750,13 +758,13 @@ function sourceChanged(source: string): void {
 }
 
 function applySource(): void {
-  if (sourceInput.value === editedFrom) {
+  if (!current || sourceInput.value === editedFrom) {
     return;
   }
   // The diagram that comes back is this edit, and not a change to warn about.
   appliedSource = sourceInput.value;
   staleNote.hidden = true;
-  post({ type: "sourceEdited", source: appliedSource });
+  post({ type: "sourceEdited", requestId: current.requestId, source: appliedSource });
 }
 
 sourceInput.addEventListener("input", updateEditorActions);

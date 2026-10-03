@@ -303,6 +303,28 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.baseOption.visualMap.selected, undefined);
   });
 
+  test("keeps graph pan and zoom without preserving other series' responsive positions", () => {
+    const option: Option = layout({
+      series: [
+        { type: "pie", center: ["25%", "50%"], data: [1] },
+        { type: "graph", roam: true, layout: "circular", data: [{ name: "A" }] },
+        { type: "graph", roam: false, layout: "circular", data: [{ name: "B" }] },
+      ],
+    });
+    keepUserState(option, () => ({
+      series: [
+        { center: [100, 100] },
+        { center: [40, 60], zoom: 2.5 },
+        { center: [20, 30], zoom: 3 },
+      ],
+    }));
+    assert.deepStrictEqual(option.series[0].center, ["25%", "50%"]);
+    assert.deepStrictEqual(option.series[1].center, [40, 60]);
+    assert.strictEqual(option.series[1].zoom, 2.5);
+    assert.strictEqual(option.series[2].center, undefined);
+    assert.strictEqual(option.series[2].zoom, undefined);
+  });
+
   test("does not copy displayed chart data when there is no control state to preserve", () => {
     for (const controls of [{}, { legend: [], dataZoom: [], visualMap: [], timeline: [] }]) {
       const option = layout(bars(controls));

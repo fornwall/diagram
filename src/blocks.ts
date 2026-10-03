@@ -55,7 +55,7 @@ function guessMermaidTitle(source: string): string {
     if (inFrontmatter) {
       const title = /^title:\s*(.+)$/.exec(trimmed)?.[1];
       if (title) {
-        return title.replace(/^["']|["']$/g, "");
+        return title.replace(/^(["'])(.*)\1$/, "$2");
       }
       continue;
     }

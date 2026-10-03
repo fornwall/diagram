@@ -126,6 +126,8 @@ export class DiagramPanel implements vscode.Disposable {
   private refreshing = false;
   private saving = false;
   private renderedRequestId: number | undefined;
+  /** Identifies the editable source even when its render fails. */
+  private sourceRequestId: number | undefined;
   private pendingExport: Pending<"export", ExportResult> | undefined;
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -529,10 +531,16 @@ export class DiagramPanel implements vscode.Disposable {
         });
         break;
       case "selectionChanged":
-        this.selection = message.nodes;
+        if (message.requestId === this.sourceRequestId) this.selection = message.nodes;
         break;
       case "sourceEdited":
-        void this.applyEdit(message.source);
+        if (message.requestId === this.sourceRequestId) {
+          void this.applyEdit(message.source);
+        } else {
+          void vscode.window.showWarningMessage(
+            "The diagram changed before your edit arrived. Your draft is kept in Edit source; review it and apply again.",
+          );
+        }
         break;
       case "closeChartOptions":
         this.chartOptionsVisible = false;
@@ -550,7 +558,13 @@ export class DiagramPanel implements vscode.Disposable {
         this.finishExport(message);
         break;
       case "writeToDocument":
-        void this.writeShownToDocument();
+        if (message.requestId === this.sourceRequestId) {
+          void this.writeShownToDocument();
+        } else {
+          void vscode.window.showWarningMessage(
+            "The diagram changed before it could be written. Review it and write it again.",
+          );
+        }
         break;
       case "ask":
         void this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
@@ -595,6 +609,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
     this.renderedRequestId = undefined;
+    this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
     this.sendChartOptions();
     // What was drawn before says nothing about the rendering being drawn now.
@@ -638,6 +653,7 @@ export class DiagramPanel implements vscode.Disposable {
       refreshFrom,
       writeTo: state.document && documentName(state.document),
     } as const;
+    this.sourceRequestId = message.requestId;
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.save();
     const result = await new Promise<RenderOutcome>((resolve) => {

@@ -396,8 +396,24 @@ export class MermaidRenderer implements Renderer {
 
   async themeChanged(): Promise<void> {
     if (this.displayedSource !== undefined) {
+      const focused = document.activeElement;
+      const node = focused ? this.nodes.get(focused) : undefined;
       try {
         await this.render(this.displayedSource);
+        // Replacing the SVG removes its focused node. Keep keyboard navigation on that node,
+        // unless the user moved focus elsewhere while Mermaid was rendering.
+        if (node && !focused?.isConnected && document.activeElement === document.body) {
+          for (const [element, candidate] of this.nodes) {
+            if (
+              candidate.id === node.id &&
+              element instanceof SVGElement &&
+              element.hasAttribute("tabindex")
+            ) {
+              element.focus({ preventScroll: true });
+              break;
+            }
+          }
+        }
       } catch {
         // It rendered before with another theme; keep what is shown.
       }

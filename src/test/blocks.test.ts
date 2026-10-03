@@ -46,6 +46,15 @@ suite("blocks", () => {
       mermaidTitle('---\ntitle: "Login flow"\n---\nsequenceDiagram'),
       "Login flow",
     );
+    assert.strictEqual(
+      mermaidTitle("---\ntitle: 'Login flow'\n---\nsequenceDiagram"),
+      "Login flow",
+    );
+    assert.strictEqual(
+      mermaidTitle("---\ntitle: Users' requests\n---\nflowchart LR"),
+      "Users' requests",
+    );
+    assert.strictEqual(mermaidTitle("---\ntitle: James'\n---\nflowchart LR"), "James'");
   });
 
   test("guessTitle uses a title statement", () => {
