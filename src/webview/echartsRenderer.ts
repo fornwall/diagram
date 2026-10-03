@@ -80,6 +80,7 @@ export class EChartsRenderer implements Renderer {
   /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
   private laidOut = "";
   private selectedKeys: ReadonlySet<string> = new Set();
+  private selectionScheduled = false;
   /** The marks an agent put on the chart, which a new layout dispatches again. */
   private annotation: Annotation = UNMARKED;
   private hasHighlights = false;
@@ -105,7 +106,7 @@ export class EChartsRenderer implements Renderer {
 
   async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
-    this.echarts ??= await import("./echartsLibrary");
+    this.echarts ??= await import("./echartsLibrary.js");
     this.canvas.classList.add("chart-mode");
     this.container.hidden = false;
     this.option = option;
@@ -132,16 +133,22 @@ export class EChartsRenderer implements Renderer {
   showSelection(keys: ReadonlySet<string>): void {
     this.selectedKeys = keys;
     // ECharts toggles the selection of clicked items itself, after our click handlers ran.
-    queueMicrotask(() => this.syncSelection());
+    this.scheduleSelection();
   }
 
   showMarks(annotation: Annotation): void {
     const wasBlurring = this.blurring();
+    const previousIds = new Set(this.annotation.marks.map(({ id }) => id));
     this.annotation = annotation;
     // Only dimming changes the option; relayout applies the highlights itself.
     if (this.blurring() !== wasBlurring) {
       this.relayout();
-    } else {
+    } else if (
+      previousIds.size !== annotation.marks.length ||
+      annotation.marks.some(({ id }) => !previousIds.has(id))
+    ) {
+      // Notes, mark kinds and order live outside the chart. Re-highlighting unchanged items
+      // would downplay every graphic, which is expensive with large series.
       this.highlightMarks();
     }
   }
@@ -196,7 +203,7 @@ export class EChartsRenderer implements Renderer {
         return;
       }
       this.itemClicked(this.hitFor(params), withModifier(params.event?.event));
-      queueMicrotask(() => this.syncSelection());
+      this.scheduleSelection();
     });
     chart.getZr().on("click", (event) => {
       if (!event.target) {
@@ -354,6 +361,16 @@ export class EChartsRenderer implements Renderer {
       key: itemKey({ seriesIndex, dataType, dataIndex }),
       node: { id: seriesCount > 1 ? `${name}/${label}` : label, label },
     };
+  }
+
+  /** Coalesces the panel and ECharts click handlers into one selection update. */
+  private scheduleSelection(): void {
+    if (this.selectionScheduled) return;
+    this.selectionScheduled = true;
+    queueMicrotask(() => {
+      this.selectionScheduled = false;
+      this.syncSelection();
+    });
   }
 
   /** Makes the items ECharts shows as selected match the selection. */

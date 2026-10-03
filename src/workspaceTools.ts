@@ -353,7 +353,7 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
       // A Unicode regexp keeps source offsets correct when case folding changes string length.
       const needle = new RegExp(
         query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        caseSensitive ? "u" : "iu",
+        caseSensitive ? "gu" : "giu",
       );
       search: for (const uri of found.files) {
         checkCancelled(token);
@@ -370,35 +370,48 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
           continue;
         }
         scannedFiles++;
-        // Most candidate files do not match. Search once before allocating every line.
-        if (!needle.test(content.text)) continue;
-        const lines = content.text.split(/\r\n|\r|\n/);
-        for (let i = 0; i < lines.length; i++) {
+        // Search the whole file and skip the remainder of each matching line. This avoids
+        // splitting and searching every line, and stops as soon as the output limit is reached.
+        needle.lastIndex = 0;
+        const lineBreaks = /\r\n|\r|\n/g;
+        let line = 1;
+        let lineStart = 0;
+        let fileLocation: ReturnType<typeof location> | undefined;
+        for (let match = needle.exec(content.text); match; match = needle.exec(content.text)) {
           checkCancelled(token);
-          const line = lines[i] ?? "";
-          const match = needle.exec(line);
-          if (match) {
-            if (matches.length >= max) {
-              truncated = true;
-              break search;
-            }
-            const start = Math.max(0, match.index - 200);
-            const entry = {
-              ...location(uri),
-              line: i + 1,
-              column: match.index + 1,
-              text: line.slice(start, start + MAX_LINE_CHARS),
-              previewStartColumn: start + 1,
-              previewTruncated: start > 0 || line.length > start + MAX_LINE_CHARS,
-              unsaved: content.unsaved,
-            };
-            outputChars += JSON.stringify(entry).length;
-            if (outputChars > MAX_OUTPUT_CHARS) {
-              truncated = true;
-              break search;
-            }
-            matches.push(entry);
+          if (matches.length >= max) {
+            truncated = true;
+            break search;
           }
+          let newline = lineBreaks.exec(content.text);
+          while (newline && newline.index < match.index) {
+            line++;
+            lineStart = newline.index + newline[0].length;
+            newline = lineBreaks.exec(content.text);
+          }
+          const lineEnd = newline?.index ?? content.text.length;
+          const start = Math.max(lineStart, match.index - 200);
+          const previewEnd = Math.min(lineEnd, start + MAX_LINE_CHARS);
+          fileLocation ??= location(uri);
+          const entry = {
+            ...fileLocation,
+            line,
+            column: match.index - lineStart + 1,
+            text: content.text.slice(start, previewEnd),
+            previewStartColumn: start - lineStart + 1,
+            previewTruncated: start > lineStart || previewEnd < lineEnd,
+            unsaved: content.unsaved,
+          };
+          outputChars += JSON.stringify(entry).length;
+          if (outputChars > MAX_OUTPUT_CHARS) {
+            truncated = true;
+            break search;
+          }
+          matches.push(entry);
+          if (!newline) break;
+          line++;
+          lineStart = newline.index + newline[0].length;
+          needle.lastIndex = lineStart;
         }
       }
       return {
@@ -434,37 +447,54 @@ export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput
         throw new Error("Request an inclusive range of 1 to 500 lines, with endLine >= startLine.");
       const uri = resolveWorkspaceFile(options.input.file);
       const content = await readText(uri, token);
-      const allLines = content.text.split(/\r\n|\r|\n/);
-      if (start > allLines.length)
-        throw new Error(`startLine exceeds the file's ${allLines.length} lines.`);
       const lines = [];
       let outputChars = 0;
       let shortenedLines = 0;
-      for (let i = start - 1; i < Math.min(end, allLines.length); i++) {
-        checkCancelled(token);
-        const full = allLines[i] ?? "";
-        const truncated = full.length > MAX_LINE_CHARS;
-        const entry = {
-          line: i + 1,
-          text: full.slice(0, MAX_LINE_CHARS),
-          ...(truncated ? { truncated: true } : {}),
-        };
-        outputChars += JSON.stringify(entry).length;
-        if (outputChars > MAX_OUTPUT_CHARS) break;
-        if (truncated) shortenedLines++;
-        lines.push(entry);
+      let totalLines = 0;
+      let lineStart = 0;
+      const nextBreak = (character: string, from: number): number => {
+        const index = content.text.indexOf(character, from);
+        return index < 0 ? content.text.length : index;
+      };
+      let lf = nextBreak("\n", 0);
+      let cr = nextBreak("\r", 0);
+      // Count every line, but allocate text only for the requested page. A large file may
+      // contain hundreds of thousands of short lines while a read returns at most 500.
+      for (;;) {
+        const lineEnd = lf < cr ? lf : cr;
+        totalLines++;
+        if (totalLines >= start && totalLines <= end && outputChars <= MAX_OUTPUT_CHARS) {
+          checkCancelled(token);
+          const truncated = lineEnd - lineStart > MAX_LINE_CHARS;
+          const entry = {
+            line: totalLines,
+            text: content.text.slice(lineStart, Math.min(lineEnd, lineStart + MAX_LINE_CHARS)),
+            ...(truncated ? { truncated: true } : {}),
+          };
+          outputChars += JSON.stringify(entry).length;
+          if (outputChars <= MAX_OUTPUT_CHARS) {
+            if (truncated) shortenedLines++;
+            lines.push(entry);
+          }
+        }
+        if (lineEnd === content.text.length) break;
+        lineStart = lineEnd + (cr === lineEnd && lf === cr + 1 ? 2 : 1);
+        // Each cursor advances only when consumed, so mixed endings remain a linear scan.
+        if (lf < lineStart) lf = nextBreak("\n", lineStart);
+        if (cr < lineStart) cr = nextBreak("\r", lineStart);
       }
+      if (start > totalLines) throw new Error(`startLine exceeds the file's ${totalLines} lines.`);
       const last = lines.at(-1)?.line ?? start - 1;
       return {
         ...location(uri),
-        totalLines: allLines.length,
+        totalLines,
         startLine: start,
         endLine: last,
         unsaved: content.unsaved,
         lines,
-        truncated: shortenedLines > 0 || last < Math.min(end, allLines.length),
+        truncated: shortenedLines > 0 || last < Math.min(end, totalLines),
         shortenedLines,
-        ...(last < allLines.length ? { nextStartLine: last + 1 } : {}),
+        ...(last < totalLines ? { nextStartLine: last + 1 } : {}),
       };
     });
   }

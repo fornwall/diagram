@@ -3,7 +3,7 @@
 
 import type { DataFormat } from "./chartSpec";
 import type { Records } from "./data";
-import { checkTableSize, TableSizeError } from "./dataLimits";
+import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
 import { parseNumber } from "./dataNumber";
 
 function isBlank(line: string): boolean {
@@ -35,6 +35,27 @@ function withoutRules(lines: string[]): { lines: string[]; underlined: boolean }
  * newlines and "" escapes.
  */
 function splitDelimited(text: string, delimiter: string, quoting = true): Records {
+  // Most exports have no quoted fields. Native splitting avoids visiting every character
+  // in JavaScript and constructing field strings one character at a time.
+  if (!quoting || !text.includes('"')) {
+    const records: string[][] = [];
+    let width = 0;
+    let underlined = false;
+    for (const line of text.split(/\r\n?|\n/)) {
+      // Stop at the first excess cell, matching the general parser's early size rejection.
+      const record = line.split(delimiter, MAX_CELLS + 1);
+      checkTableSize(1, record.length);
+      if (record.every(isBlank)) continue;
+      if (RULE.test(line)) {
+        underlined ||= records.length === 1;
+        continue;
+      }
+      width = Math.max(width, record.length);
+      checkTableSize(records.length + 1, width);
+      records.push(record);
+    }
+    return { records, header: underlined || undefined };
+  }
   const records: string[][] = [];
   let record: string[] = [];
   let field = "";

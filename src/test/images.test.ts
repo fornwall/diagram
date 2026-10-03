@@ -6,11 +6,17 @@ suite("PNG export", () => {
   test("bounds both canvas dimensions and total pixel memory", async () => {
     const originalImage = Object.getOwnPropertyDescriptor(globalThis, "Image");
     const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+    const originalReader = Object.getOwnPropertyDescriptor(globalThis, "FileReader");
+    let encoded: Blob | null = new Blob(["png"], { type: "image/png" });
+    let readError = false;
     const canvas = {
       width: 0,
       height: 0,
       getContext: () => ({ drawImage: () => {} }),
-      toDataURL: () => "data:image/png;base64,test",
+      toBlob: (callback: BlobCallback, type: string) => {
+        assert.strictEqual(type, "image/png");
+        setImmediate(() => callback(encoded));
+      },
     };
     Object.defineProperty(globalThis, "Image", {
       configurable: true,
@@ -24,6 +30,19 @@ suite("PNG export", () => {
       configurable: true,
       value: { createElement: () => canvas },
     });
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      value: class {
+        result = "data:image/png;base64,test";
+        error = new Error("PNG read failed");
+        onload?: () => void;
+        onerror?: () => void;
+        readAsDataURL(blob: Blob) {
+          assert.strictEqual(blob, encoded);
+          queueMicrotask(() => (readError ? this.onerror?.() : this.onload?.()));
+        }
+      },
+    });
     try {
       for (const [width, height, expectedWidth, expectedHeight] of [
         [320, 200, 640, 400],
@@ -32,14 +51,24 @@ suite("PNG export", () => {
         [7001, 7501, 3864, 4140],
         [1e160, 1e160, 4000, 4000],
       ] as const) {
-        await pngDataUrl({ svg: "<svg/>", width, height });
+        assert.strictEqual(
+          await pngDataUrl({ svg: "<svg/>", width, height }),
+          "data:image/png;base64,test",
+        );
         assert.deepStrictEqual([canvas.width, canvas.height], [expectedWidth, expectedHeight]);
         assert.ok(canvas.width * canvas.height <= 16_000_000);
+      }
+      const image = { svg: "<svg/>", width: 100, height: 100 };
+      readError = true;
+      await assert.rejects(pngDataUrl(image), /PNG read failed/);
+      for (encoded of [null, new Blob(["invalid"], { type: "image/jpeg" })]) {
+        await assert.rejects(pngDataUrl(image), /could not create a PNG/);
       }
     } finally {
       for (const [key, descriptor] of [
         ["Image", originalImage],
         ["document", originalDocument],
+        ["FileReader", originalReader],
       ] as const) {
         if (descriptor) Object.defineProperty(globalThis, key, descriptor);
         else Reflect.deleteProperty(globalThis, key);

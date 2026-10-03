@@ -520,6 +520,9 @@ export class MermaidRenderer implements Renderer {
       return id;
     };
     const plainText = (text: string) => {
+      // Most messages are plain text and most edges have no label. Avoid constructing a
+      // complete HTML document for each of them; entities and markup still use the parser.
+      if (!/[<&]/.test(text)) return text.replace(/\s+/g, " ").trim();
       const doc = new DOMParser().parseFromString(
         text.replace(/<br\s*\/?\s*>/gi, " "),
         "text/html",
@@ -558,8 +561,8 @@ export class MermaidRenderer implements Renderer {
     };
     if (this.supportsPaths && db?.getData) {
       const edges = db.getData().edges;
-      const byId = new Map<string, typeof edges>();
-      for (const edge of edges) byId.set(edge.id, [...(byId.get(edge.id) ?? []), edge]);
+      const counts = new Map<string, number>();
+      for (const edge of edges) counts.set(edge.id, (counts.get(edge.id) ?? 0) + 1);
       const labels = new Map(
         Array.from(svg.querySelectorAll(".edgeLabel .label[data-id]"), (element) => [
           element.getAttribute("data-id"),
@@ -575,7 +578,7 @@ export class MermaidRenderer implements Renderer {
       for (const edge of edges) {
         const line = lines.get(edge.id);
         // Ambiguous duplicate renderer IDs cannot safely identify a relationship.
-        if (!line || byId.get(edge.id)?.length !== 1 || edge.thickness === "invisible") continue;
+        if (!line || counts.get(edge.id) !== 1 || edge.thickness === "invisible") continue;
         const label = labels.get(edge.id);
         const node = relation(
           "edge",
@@ -748,7 +751,9 @@ export class MermaidRenderer implements Renderer {
     for (const bullet of svg.querySelectorAll(".commit-bullets > *")) {
       const classes = bullet.getAttribute("class")?.split(" ") ?? [];
       const id = classes.filter((name) => !/^commit(?:\d+|-[a-z-]+\d*)?$/.test(name)).join(" ");
-      bullets.set(id, [...(bullets.get(id) ?? []), bullet]);
+      const elements = bullets.get(id) ?? [];
+      elements.push(bullet);
+      bullets.set(id, elements);
     }
     const tagLabels = Array.from(svg.querySelectorAll("text.tag-label"));
     const tagCount = commits.reduce((count, { tags }) => count + tags.length, 0);
@@ -756,6 +761,7 @@ export class MermaidRenderer implements Renderer {
       Array.from(svg.querySelectorAll("text.commit-label"), (label) => [textOf(label), label]),
     );
     if (bullets.size === commits.length && tagLabels.length === tagCount) {
+      let tagIndex = 0;
       for (const [i, [drawnId, elements]] of [...bullets].entries()) {
         const { id, message, seq, tags } = commits[i] as (typeof commits)[number];
         const generated = /^\d+-[0-9a-f]{7}$/.test(id);
@@ -772,7 +778,9 @@ export class MermaidRenderer implements Renderer {
         if (commitLabel) {
           add(commitLabel, node);
         }
-        for (const tag of tagLabels.splice(0, tags.length)) {
+        const tagEnd = tagIndex + tags.length;
+        for (; tagIndex < tagEnd; tagIndex++) {
+          const tag = tagLabels[tagIndex] as Element;
           const hole = tag.previousElementSibling;
           const background = hole?.previousElementSibling;
           add(tag, node);

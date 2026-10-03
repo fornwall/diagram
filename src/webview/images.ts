@@ -88,9 +88,16 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
     throw new Error("This browser did not provide a canvas to draw the image on.");
   }
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const png = canvas.toDataURL("image/png");
-  if (!png.startsWith("data:image/png")) {
+  // Encoding a large PNG synchronously stalls clicks, typing and later renders. Let the
+  // browser encode it asynchronously, then convert the result for the webview message.
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (blob?.type !== "image/png") {
     throw new Error("The browser could not create a PNG at this image size.");
   }
-  return png;
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the PNG image."));
+    reader.readAsDataURL(blob);
+  });
 }

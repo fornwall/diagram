@@ -148,6 +148,53 @@ suite("workspace tools", () => {
     assert.strictEqual(unicode.matches[0].column, 9);
   });
 
+  test("keeps line and preview boundaries across mixed line endings and repeated matches", async () => {
+    const file = path.join(dir, "mixed-lines.txt");
+    await fs.writeFile(file, "first\r\nNeedle Needle\rskip\n\nNeedle end\r\nNeedle");
+    const result = await invoke(searcher, { query: "Needle", glob: `${relative}/mixed-lines.txt` });
+    assert.deepStrictEqual(
+      result.matches.map((match: { line: number; column: number; text: string }) => [
+        match.line,
+        match.column,
+        match.text,
+      ]),
+      [
+        [2, 1, "Needle Needle"],
+        [5, 1, "Needle end"],
+        [6, 1, "Needle"],
+      ],
+    );
+    const page = await invoke(reader, { file, startLine: 3, endLine: 5 });
+    assert.strictEqual(page.totalLines, 6);
+    assert.deepStrictEqual(page.lines, [
+      { line: 3, text: "skip" },
+      { line: 4, text: "" },
+      { line: 5, text: "Needle end" },
+    ]);
+    assert.strictEqual(page.nextStartLine, 6);
+  });
+
+  test("bounds results in files with many short lines and preserves trailing empty lines", async () => {
+    const file = path.join(dir, "many-lines.txt");
+    await fs.writeFile(file, `${"x\n".repeat(100_000)}Needle\n`);
+    const search = await invoke(searcher, { query: "Needle", glob: `${relative}/many-lines.txt` });
+    assert.strictEqual(search.matches[0].line, 100_001);
+    const page = await invoke(reader, { file, startLine: 100_001, endLine: 100_002 });
+    assert.strictEqual(page.totalLines, 100_002);
+    assert.deepStrictEqual(page.lines, [
+      { line: 100_001, text: "Needle" },
+      { line: 100_002, text: "" },
+    ]);
+    assert.strictEqual(page.nextStartLine, undefined);
+    const bounded = await invoke(searcher, {
+      query: "x",
+      glob: `${relative}/many-lines.txt`,
+      maxResults: 1,
+    });
+    assert.strictEqual(bounded.matches.length, 1);
+    assert.strictEqual(bounded.truncated, true);
+  });
+
   test("reports result limits and skipped binary or oversized files", async () => {
     const limited = await invoke(searcher, {
       query: "needle",

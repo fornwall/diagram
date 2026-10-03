@@ -12,6 +12,34 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("unquoted delimiters preserve the quoted parser's rows, rules and empty fields", () => {
+    for (const [format, delimiter] of [
+      ["csv", ","],
+      ["csv", ";"],
+      ["tsv", "\t"],
+    ] as const) {
+      for (const newline of ["\n", "\r", "\r\n"]) {
+        const lines = [
+          ["name", "value", "other"].join(delimiter),
+          "----", // An unquoted rule below the header marks it as a header.
+          ["  first ", "1", ""].join(delimiter),
+          ["", "", ""].join(delimiter),
+          ["second", "", "2"].join(delimiter),
+          " \t ",
+          ["third", "3", "4", "extra"].join(delimiter),
+          "",
+        ];
+        const plain = lines.join(newline);
+        // A quoted header selects the general parser without changing its fields.
+        const quoted = plain.replace("name", '"name"');
+        const expected = splitText(quoted, format);
+        assert.deepStrictEqual(splitText(plain, format), expected);
+        assert.strictEqual(expected.header, true);
+        assert.strictEqual(expected.records.length, 4);
+      }
+    }
+  });
+
   test("column lookup prefers exact names and otherwise ignores case and spaces", () => {
     const table = parseTable('[{"Value": 1, "value": 2}]');
     assert.strictEqual(findColumn(table, "value", "value"), 1);
@@ -58,6 +86,10 @@ suite("data", () => {
   });
 
   test("rejects oversized records during parsing before converting cells", () => {
+    assert.throws(
+      () => splitText("\t".repeat(1_000_005), "tsv"),
+      /1 rows × 1000001 columns, exceeding the 1,000,000 cell limit/,
+    );
     const wide = Array.from({ length: 1100 }, () => 1);
     const rows = [wide, ...Array.from({ length: 1100 }, () => [1])];
     assert.throws(() => parseJson(JSON.stringify(rows)), /exceeding the 1,000,000 cell limit/);

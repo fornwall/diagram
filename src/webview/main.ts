@@ -225,6 +225,9 @@ function showNeedsRefresh({ title, refreshFrom }: { title: string; refreshFrom?:
 
 // Renders one at a time, in order, so that a slow render cannot overtake a later one.
 let queue = Promise.resolve();
+// The host has already cancelled superseded requests. Do not spend time drawing them while
+// the newest request waits behind library loading, rendering or image preparation.
+let renderRevision = 0;
 function enqueue(task: () => void | Promise<void>): void {
   queue = queue.then(task).catch((error: unknown) => console.error(error));
 }
@@ -241,19 +244,27 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "chartOptionsError":
       enqueue(() => chartOptions.showError(message.message));
       break;
-    case "render":
-      enqueue(() => render(message));
+    case "render": {
+      const revision = ++renderRevision;
+      enqueue(() => {
+        if (revision === renderRevision) return render(message);
+      });
       break;
+    }
     case "needsRefresh":
       enqueue(() => showNeedsRefresh(message));
       break;
     case "clearSelection":
       clearSelection();
       break;
-    case "annotate":
+    case "annotate": {
       // In the render queue, so that marks sent right after a diagram land on that diagram.
-      enqueue(() => showAnnotation(message));
+      const revision = renderRevision;
+      enqueue(() => {
+        if (revision === renderRevision) showAnnotation(message);
+      });
       break;
+    }
     case "startPick":
       startPick(message.pickId, message.prompt, message.multiple);
       break;

@@ -1,5 +1,5 @@
 // Bound the rectangular table, including empty cells introduced by ragged input.
-const MAX_CELLS = 1_000_000;
+export const MAX_CELLS = 1_000_000;
 
 export class TableSizeError extends Error {}
 

@@ -41,6 +41,13 @@ suite("webview", function () {
         acquireVsCodeApi = () => {
           const api = acquire();
           window.readTestState = () => api.getState();
+          window.testRenderResults = [];
+          const postMessage = (message) => {
+            if (message.type === "rendered" || message.type === "renderError") {
+              window.testRenderResults.push(message.requestId);
+            }
+            return api.postMessage(message);
+          };
           window.addEventListener("message", async ({data}) => {
             if (data.type !== "testExpression") return;
             try {
@@ -49,7 +56,7 @@ suite("webview", function () {
               api.postMessage({type: "testResult", error: String(error)});
             }
           });
-          return api;
+          return {...api, postMessage};
         };
       </script><script type="module"`,
     );
@@ -100,6 +107,34 @@ suite("webview", function () {
         });
     });
   }
+
+  test("skips superseded queued renders and their annotations", async () => {
+    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        window.testRenderResults = [];
+        const send = data => window.dispatchEvent(new MessageEvent("message", {data}));
+        send({type: "render", requestId: 900001, language: "mermaid",
+          source: "invalid obsolete diagram", title: "Obsolete"});
+        send({type: "annotate", marks: [], dim: false, caption: "Obsolete annotation"});
+        send({type: "render", requestId: 900002, language: "mermaid",
+          source: "flowchart LR\\n C --> D", title: "Intermediate"});
+        send({type: "render", requestId: 900003, language: "mermaid",
+          source: "flowchart LR\\n E --> F", title: "Latest"});
+        send({type: "annotate", marks: [], dim: false, caption: "Latest annotation"});
+        for (let i = 0; i < 200; i++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+          if (document.getElementById("annotation-caption").textContent === "Latest annotation") {
+            return {results: window.testRenderResults,
+              title: document.getElementById("title").textContent,
+              errorHidden: document.getElementById("error").hidden};
+          }
+        }
+        throw new Error("The latest diagram did not finish rendering.");
+      })()`),
+      { results: [900003], title: "Latest", errorHidden: true },
+    );
+  });
 
   test("chart options apply several controls using cached command data and preserve the source", async () => {
     const table = parseTable("name,amount,other\na,1,3\nb,4,7");
