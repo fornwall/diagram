@@ -119,6 +119,49 @@ suite("chart options lifecycle", function () {
     }
   });
 
+  test("editing a legacy manual chart cannot authorize discarding its data changes", async () => {
+    const chart: ChartSpec = { type: "bar", data };
+    const option = buildChart(chart, parseTable(data)).option;
+    const manual = JSON.parse(JSON.stringify(option));
+    manual.series[0].data = [900, 800];
+    const source = JSON.stringify(manual);
+    const initial: DiagramState = {
+      language: "echarts",
+      title: "Legacy chart",
+      chart,
+      source,
+      origin: "tool",
+      editedByUser: true,
+    };
+    const { panel, internals, sent } = harness(new Map([["diagram.state", initial]]));
+    try {
+      panel.show();
+      await internals.renderCurrent();
+      assert.match(panel.current?.chartPresentation?.blocked ?? "", /without a generated baseline/);
+      const styled = JSON.stringify({ ...JSON.parse(source), backgroundColor: "red" });
+      await internals.applyEdit(styled);
+      assert.ok(panel.current?.chartPresentation?.blocked);
+      await internals.applyChartOptions({
+        type: "applyChartOptions",
+        revision: internals.renderVersion,
+        controls: { type: "line" },
+        replaceSource: false,
+      });
+      assert.strictEqual(panel.current?.source, styled);
+      assert.ok(sent.some((message) => message.type === "chartOptionsError"));
+
+      await internals.applyChartOptions({
+        type: "resetChartStyling",
+        revision: internals.renderVersion,
+        replaceSource: true,
+      });
+      assert.strictEqual(panel.current?.chartPresentation?.blocked, undefined);
+      assert.deepStrictEqual(JSON.parse(panel.current?.source ?? ""), option);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("closing during reset rendering restores persisted source and the previous table cache", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-options-rollback-"));
     const file = path.join(directory, "data.csv");

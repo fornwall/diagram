@@ -137,12 +137,17 @@ export class DiagramPanel implements vscode.Disposable {
     this.state = context.workspaceState.get<DiagramState>(STATE_KEY);
     // Older saved states have no baseline against which manual changes can be distinguished.
     if (this.state?.chart && !this.state.chartPresentation && this.state.source !== undefined) {
-      const chartPresentation = captureChartPresentation(this.state.source);
-      if (this.state.editedByUser) {
-        chartPresentation.blocked =
-          "This saved chart has manual edits without a generated baseline. " +
-          "Your source is kept. Use Reset Styling in Chart Options to return to the generated chart.";
-      }
+      const chartPresentation: ChartPresentation = this.state.editedByUser
+        ? {
+            baseline: {},
+            // No source edit can establish which data was originally generated.
+            dataHash: "",
+            edits: [],
+            blocked:
+              "This saved chart has manual edits without a generated baseline. " +
+              "Your source is kept. Use Reset Styling in Chart Options to return to the generated chart.",
+          }
+        : captureChartPresentation(this.state.source);
       this.state = { ...this.state, chartPresentation };
     }
     this.updateChartOptionsContext();

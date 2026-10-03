@@ -171,7 +171,9 @@ async function candidates(
       }
     }
     const exclude = `{${[...patterns].join(",")}}`;
-    const remaining = max + 1 - files.length;
+    // Nested workspace roots may return files already found in an earlier root.
+    const overlapping = files.filter((uri) => contains(root.uri, uri)).length;
+    const remaining = max + 1 - files.length + overlapping;
     const found = await unlessCancelled(
       async () =>
         vscode.workspace.findFiles(

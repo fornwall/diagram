@@ -90,6 +90,43 @@ suite("workspace tools", () => {
     assert.strictEqual(uri.nextStartLine, undefined);
   });
 
+  test("fills result limits across overlapping workspace roots", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
+    assert.ok(descriptor);
+    const findFiles = vscode.workspace.findFiles;
+    const nested = path.join(dir, "nested");
+    await fs.mkdir(nested);
+    const files = ["nested/a.ts", "nested/b.ts", "c.ts"].map((name) =>
+      vscode.Uri.file(path.join(dir, name)),
+    );
+    for (const uri of files) await fs.writeFile(uri.fsPath, "text");
+    const roots = [nested, dir].map((file, index) => ({
+      uri: vscode.Uri.file(file),
+      name: path.basename(file),
+      index,
+    }));
+    Object.defineProperty(vscode.workspace, "workspaceFolders", { get: () => roots });
+    vscode.workspace.findFiles = async (include, _exclude, maxResults) => {
+      assert.ok(include instanceof vscode.RelativePattern);
+      const matches = include.baseUri.fsPath === nested ? files.slice(0, 2) : files;
+      return matches.slice(0, maxResults);
+    };
+    try {
+      const complete = await invoke(finder, { maxResults: 3 });
+      assert.deepStrictEqual(
+        complete.files.map((entry: { uri: string }) => entry.uri),
+        files.map((uri) => uri.toString()),
+      );
+      assert.strictEqual(complete.truncated, false);
+      const limited = await invoke(finder, { maxResults: 2 });
+      assert.strictEqual(limited.files.length, 2);
+      assert.strictEqual(limited.truncated, true);
+    } finally {
+      vscode.workspace.findFiles = findFiles;
+      Object.defineProperty(vscode.workspace, "workspaceFolders", descriptor);
+    }
+  });
+
   test("searches literal text with accurate lines, columns and case control", async () => {
     const result = await invoke(searcher, { query: "needle", glob: `${relative}/code.ts` });
     assert.deepStrictEqual(

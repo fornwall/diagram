@@ -1026,6 +1026,32 @@ suite("webview", function () {
     assert.ok((await render(chart)).ok);
   });
 
+  test("selects sequence footer participants by identity when their labels match", async () => {
+    assert.ok(
+      (
+        await render({
+          source: "sequenceDiagram\n participant A as Service\n actor B as Service\n A->>B: Hello",
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        return [...document.querySelectorAll('#diagram .actor-bottom')].map(footer => {
+          footer.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+          return {
+            name: footer.getAttribute('name'),
+            selected: [...document.querySelectorAll('#diagram [data-et="participant"].diagram-selected')]
+              .map(node => node.getAttribute('data-id'))
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+      })()`),
+      [
+        { name: "A", selected: ["A"] },
+        { name: "B", selected: ["B"] },
+      ],
+    );
+  });
+
   test("reports the node ids it drew, and marks them on the diagram it already shows", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual([...(panel.drawnIds ?? [])].sort(), ["A", "B"]);

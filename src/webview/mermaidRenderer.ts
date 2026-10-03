@@ -635,19 +635,18 @@ export class MermaidRenderer implements Renderer {
       add(element, { id, label });
     }
 
-    // Sequence diagram participants. Their copies below the diagram lack the participant
-    // attributes, but have the same label.
+    // Footer copies retain the participant's name, even when several share a display label.
     const participants = new Map<string, DiagramNode>();
     for (const element of svg.querySelectorAll('[data-et="participant"]')) {
       const label = textOf(element);
       const node = { id: element.getAttribute("data-id") || label, label };
-      participants.set(label, node);
+      participants.set(node.id, node);
       add(element, node);
     }
     for (const element of svg.querySelectorAll(".actor-bottom")) {
-      const group = element.querySelector("text") ? element : element.parentElement;
-      const node = group && participants.get(textOf(group));
-      if (node) {
+      const group = element.tagName === "g" ? element : element.parentElement;
+      const node = participants.get(element.getAttribute("name") ?? "");
+      if (group && node) {
         add(group, node);
       }
     }
