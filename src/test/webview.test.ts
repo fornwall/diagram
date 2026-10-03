@@ -524,7 +524,7 @@ suite("webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const input = document.getElementById("ask-input");
-        const submit = document.querySelector('#ask-form button[type="submit"]');
+        const submit = document.getElementById("ask-submit");
         const original = input.value;
         try {
           return ["", "   ", "Explain this node", ""].map(value => {

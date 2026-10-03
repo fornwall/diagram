@@ -210,7 +210,8 @@ suite("relationships", function () {
     try {
       await evaluate(`(() => {
         document.querySelector('#ask-input').value = 'Add a timeout here';
-        document.querySelector('#ask-form').dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}));
+        document.querySelector('#ask-input').dispatchEvent(new Event('input'));
+        document.querySelector('#ask-submit').click();
       })()`);
       const query = await asked.promise;
       assert.match(query, /Client → Server: Retry/);

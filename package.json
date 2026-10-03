@@ -437,7 +437,7 @@
             },
             "caption": {
               "type": "string",
-              "description": "One short line shown above the diagram, at most 120 characters, e.g. \"Step 2 of 3: the request is retried here\"."
+              "description": "Optional. One short line shown above the diagram, at most 120 characters, for context the marks and labels do not show, such as which step of a walkthrough this is or why something is marked, e.g. \"Step 2 of 3: the request is retried here\". Omit it when it would only restate the marked labels."
             },
             "dim": {
               "type": "boolean",

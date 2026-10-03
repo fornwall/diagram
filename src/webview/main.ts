@@ -58,7 +58,6 @@ const revertButton = element<HTMLButtonElement>("revert");
 const selectionLabel = element("selection-label");
 const highlightPathButton = element<HTMLButtonElement>("highlight-path");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
-const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
 const askSubmit = element<HTMLButtonElement>("ask-submit");
 const zoomOutButton = element("zoom-out");
@@ -551,7 +550,9 @@ askInput.addEventListener("input", () => {
   saveState();
 });
 
-askForm.addEventListener("submit", (event) => {
+// Native submission is blocked because the webview disables forms: the browser drops it without
+// firing a submit event, so the button and Enter send the message themselves.
+const ask = (event: Event) => {
   event.preventDefault();
   const text = askInput.value.trim();
   if (text) {
@@ -561,6 +562,10 @@ askForm.addEventListener("submit", (event) => {
     askInput.focus();
     saveState();
   }
+};
+askSubmit.addEventListener("click", ask);
+askInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.isComposing) ask(event);
 });
 
 refreshButton.addEventListener("click", () => post({ type: "refresh" }));

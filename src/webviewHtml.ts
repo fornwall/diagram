@@ -24,8 +24,9 @@ const IMAGE_ICON = icon(
 /** Loads the page into the webview, which may run scripts and load only the built files in dist. */
 export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
   const dist = vscode.Uri.joinPath(extensionUri, "dist");
-  // Forms stay off: the only form here is handled in script and never submitted, while a
-  // submission is one of the few ways code in the webview could still send data anywhere.
+  // Forms stay off, as a submission is one of the few ways code in the webview could still send
+  // data anywhere. The browser then drops submissions without a submit event, so the forms here
+  // act on button clicks and keys instead.
   webview.options = { enableScripts: true, enableForms: false, localResourceRoots: [dist] };
   const asset = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(dist, name));
   const nonce = crypto.randomUUID();
@@ -105,7 +106,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
     </div>
     <form id="ask-form">
       <input id="ask-input" type="text" placeholder="Ask about or change the diagram…" aria-label="Message">
-      <button id="ask-submit" type="submit" disabled>Send to chat</button>
+      <button id="ask-submit" type="button" disabled>Send to chat</button>
     </form>
   </footer>
   <script type="module" nonce="${nonce}" src="${asset("webview.js")}"></script>
