@@ -6,7 +6,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { decodeText, fileError } from "./files";
-import { errorMessage, isPlainObject } from "./protocol";
+import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { givenProperties, plural, unknownProperties } from "./text";
 import { textResult } from "./tools";
 
@@ -242,7 +242,7 @@ async function readText(
   }
   const stat = await unlessCancelled(async () => vscode.workspace.fs.stat(uri), token);
   if (stat.type & vscode.FileType.Directory) {
-    return { bytes: 0, error: "The path is a directory; give a text file." };
+    throw vscode.FileSystemError.FileIsADirectory(uri);
   }
   if (stat.size > MAX_FILE_BYTES) return { bytes: 0, error: tooLarge };
   const content = await unlessCancelled(async () => vscode.workspace.fs.readFile(uri), token);
@@ -491,7 +491,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const roots = folders();
     const uri = resolveWorkspaceFile(input.file, roots);
     const content = await readText(uri, boundary(roots, token), token).catch((error: unknown) => {
-      throw fileError(error, uri);
+      throw fileError(error, uri, { FileIsADirectory: `List its files with ${FIND_FILES_TOOL}.` });
     });
     if ("error" in content) throw new Error(content.error);
     const { text } = content;

@@ -398,7 +398,7 @@ suite("workspace tools", function () {
     );
     assert.strictEqual(
       await invoke(reader, { file: relative }),
-      "Error: The path is a directory; give a text file.",
+      `Error: ${relative} is a folder, not a file. List its files with diagram_findFiles.`,
     );
     assert.strictEqual(
       await invoke(reader, { file: `${relative}/missing.ts` }),
