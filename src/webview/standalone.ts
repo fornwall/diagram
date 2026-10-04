@@ -4,6 +4,7 @@
 
 import { errorMessage, SAVED_CHART, type SavedChart } from "../protocol";
 import { EChartsRenderer } from "./echartsRenderer";
+import "./chart.css";
 
 const saved = (window as unknown as Record<string, SavedChart | undefined>)[SAVED_CHART];
 const canvas = document.getElementById("canvas");

@@ -32,8 +32,8 @@ function fontStack(colors: ThemeColors): string {
  * submissions, but JavaScript options still execute and can navigate the page.
  */
 export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri): Promise<string> {
-  const [echarts, script] = await Promise.all(
-    ["echarts.js", "standalone.js"].map(async (name) =>
+  const [echarts, script, style] = await Promise.all(
+    ["echarts.js", "standalone.js", "standalone.css"].map(async (name) =>
       new TextDecoder().decode(
         await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
       ),
@@ -76,7 +76,7 @@ h1 { margin: 0; padding: 12px 14px 0; font-size: 1.2em; font-weight: 600; }
 /* The chart fills the page below the title, as it fills the panel below its header. */
 #canvas { position: relative; flex: 1; min-height: 0; }
 #chart { position: absolute; inset: 8px 12px 12px; }
-</style>
+${style}</style>
 </head>
 <body>
 ${title ? `<h1>${escapeHtml(title)}</h1>\n` : ""}<p id="error" role="alert" hidden></p>

@@ -3,6 +3,7 @@
 !dist/webview.js
 !dist/echarts.js
 !dist/standalone.js
+!dist/standalone.css
 !dist/chunks/*.js
 !dist/webview.css
 !dist/THIRD_PARTY_NOTICES.txt

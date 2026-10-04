@@ -283,25 +283,11 @@ export class ChartFocus {
     element.tabIndex = 0;
     element.setAttribute("role", "application");
     element.setAttribute("aria-roledescription", "chart");
+    // The ids that chart.css styles them by.
     this.ring.id = "chart-focus";
     this.status.id = "chart-status";
-    // Drawn over the chart, out of the way of the pointer, and not part of an exported image.
-    Object.assign(this.ring.style, {
-      position: "absolute",
-      pointerEvents: "none",
-      boxSizing: "border-box",
-      borderRadius: "3px",
-    });
     this.ring.hidden = true;
     this.status.setAttribute("role", "status");
-    Object.assign(this.status.style, {
-      position: "absolute",
-      width: "1px",
-      height: "1px",
-      overflow: "hidden",
-      clipPath: "inset(50%)",
-      whiteSpace: "nowrap",
-    });
     element.append(this.ring, this.status);
     element.addEventListener("keydown", (event) => {
       if (event.target !== element) return;

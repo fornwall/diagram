@@ -27,6 +27,8 @@ suite("savedChart", () => {
     assert.ok(html.includes('"fontFamily":"sans-serif"'));
     // The page background, in the theme the chart was saved in.
     assert.ok(html.includes("background: #1f1f1f;"));
+    // The styles of the chart's focus ring, as in the panel.
+    assert.ok(html.includes("#chart-focus{position:absolute;"));
     // Nothing is loaded from outside: the chart, ECharts and the page's script are inline, the
     // markup links nothing, and the content security policy allows no source anyway.
     const scripts = html.match(/<script[^>]*>/g) ?? [];

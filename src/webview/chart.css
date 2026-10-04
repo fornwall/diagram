@@ -1,0 +1,20 @@
+/* What the chart renderer adds to the page, in the panel and in a saved chart. */
+
+/* The keyboard focus ring, drawn over the chart, out of the way of the pointer, and not part of
+   an exported image. Its place and colors follow the focused item. */
+#chart-focus {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: 3px;
+}
+
+/* Announces the focused item to screen readers without showing it. */
+#chart-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
