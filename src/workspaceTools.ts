@@ -131,7 +131,7 @@ function displayPath(uri: vscode.Uri, roots: readonly vscode.WorkspaceFolder[]):
  * A check, for the duration of one tool call, that files are inside a workspace folder, also when
  * resolving symbolic links. It caches what it resolves.
  */
-function boundary(
+export function boundary(
   roots: readonly vscode.WorkspaceFolder[],
   token: vscode.CancellationToken,
 ): (uri: vscode.Uri) => Promise<void> {

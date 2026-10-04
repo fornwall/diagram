@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+  boundary,
   FindWorkspaceFilesTool,
   ReadWorkspaceFileTool,
   resolveWorkspaceFile,
@@ -316,6 +317,58 @@ suite("workspace tools", function () {
     assert.strictEqual(resolveWorkspaceFile("src/code.ts", root).path, "/src/code.ts");
   });
 
+  test("refuses symbolic links that a filesystem provider reports, also of parent directories", async () => {
+    const types = new Map<string, vscode.FileType>([
+      ["/root/plain.txt", vscode.FileType.File],
+      ["/root/sub", vscode.FileType.Directory],
+      ["/root/sub/plain.txt", vscode.FileType.File],
+      ["/root/link.txt", vscode.FileType.File | vscode.FileType.SymbolicLink],
+      ["/root/linked", vscode.FileType.Directory | vscode.FileType.SymbolicLink],
+      ["/root/linked/plain.txt", vscode.FileType.File],
+    ]);
+    const stats: string[] = [];
+    const unsupported = () => {
+      throw vscode.FileSystemError.NoPermissions();
+    };
+    const provider = vscode.workspace.registerFileSystemProvider("diagram-links", {
+      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+      stat: (uri) => {
+        stats.push(uri.path);
+        const type = types.get(uri.path);
+        if (type === undefined) throw vscode.FileSystemError.FileNotFound(uri);
+        return { type, ctime: 0, mtime: 0, size: 0 };
+      },
+      watch: () => new vscode.Disposable(() => {}),
+      readDirectory: unsupported,
+      createDirectory: unsupported,
+      readFile: unsupported,
+      writeFile: unsupported,
+      delete: unsupported,
+      rename: unsupported,
+    });
+    try {
+      const root = vscode.Uri.parse("diagram-links:/root");
+      const check = boundary([{ uri: root, name: "links", index: 0 }], source.token);
+      const at = (file: string) => check(vscode.Uri.joinPath(root, file));
+      await at("plain.txt");
+      await at("sub/plain.txt");
+      // Each directory is checked once per call.
+      assert.deepStrictEqual(stats, ["/root/plain.txt", "/root/sub/plain.txt", "/root/sub"]);
+      await at("sub/plain.txt");
+      assert.strictEqual(stats.length, 3);
+      for (const file of ["link.txt", "linked/plain.txt"]) {
+        await assert.rejects(at(file), /^Error: Symbolic links cannot be read safely/, file);
+      }
+      await assert.rejects(at("missing.txt"), vscode.FileSystemError);
+      await assert.rejects(
+        check(vscode.Uri.parse("diagram-links:/elsewhere/plain.txt")),
+        /outside the workspace folders/,
+      );
+    } finally {
+      provider.dispose();
+    }
+  });
+
   test("validates malformed input and invalid line ranges", async () => {
     for (const input of [
       null,
@@ -342,6 +395,10 @@ suite("workspace tools", function () {
     assert.strictEqual(
       await invoke(finder, { pattern: "*.ts" } as never),
       'Error: Unknown property "pattern"; the properties are "glob", "maxResults".',
+    );
+    assert.strictEqual(
+      await invoke(reader, { file: relative }),
+      "Error: The path is a directory; give a text file.",
     );
     for (const range of [
       { startLine: 0 },
