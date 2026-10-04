@@ -333,8 +333,21 @@ export class MermaidRenderer implements Renderer {
     const container = layoutContainer();
     // Gantt charts take the width of the element they are drawn in: give them the width they are
     // shown at, rather than shrinking their text to fit. In the Source view the canvas has no
-    // width; keep the last one.
-    const { width } = this.contentSize();
+    // width: keep the last one, or before any, take the one it has in the Visual view.
+    let { width } = this.contentSize();
+    if (width <= 0 && !container.style.width && this.canvas.parentElement) {
+      const style = getComputedStyle(this.canvas);
+      // The canvas keeps room for a scrollbar.
+      const scroller = document.createElement("div");
+      scroller.style.overflow = "scroll";
+      container.append(scroller);
+      width =
+        this.canvas.parentElement.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight) -
+        (scroller.offsetWidth - scroller.clientWidth);
+      scroller.remove();
+    }
     if (width > 0) {
       container.style.width = `${width}px`;
     }

@@ -522,9 +522,20 @@ suite("webview", function () {
   });
 
   test("draws Gantt charts at the width of the canvas they are shown in", async () => {
-    for (const view of ["split", "visual"]) {
-      await evaluate(`document.getElementById("view-${view}").click()`);
-      assert.ok((await render({ source: MERMAID.gantt })).ok);
+    for (const view of ["split", "visual", "source"]) {
+      if (view === "source") {
+        // The first chart drawn in the Source view takes the width of the Visual view.
+        await evaluate(`(() => {
+          document.querySelector(".mermaid-layout").style.width = "";
+          document.getElementById("view-source").click();
+        })()`);
+        assert.ok((await render({ source: MERMAID.gantt })).ok);
+        await evaluate(`document.getElementById("view-visual").click()`);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } else {
+        await evaluate(`document.getElementById("view-${view}").click()`);
+        assert.ok((await render({ source: MERMAID.gantt })).ok);
+      }
       const { drawn, room, zoom } = (await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
         const style = getComputedStyle(canvas);
@@ -601,9 +612,11 @@ suite("webview", function () {
 
   test("widens the drawing for text that Mermaid draws beyond it, also in images", async () => {
     // Mermaid places long radar axis labels and quadrant point labels partly outside its view box.
+    // It draws a line for today far beyond a Gantt chart of other dates, which the view box leaves out.
     for (const source of [
       'radar-beta\n  axis m["Math"], e["English literature and composition"]\n  curve a["Alice"]{85, 80}',
       "quadrantChart\n  A point with a long label near the edge: [0.98, 0.5]",
+      "gantt\n  dateFormat YYYY-MM-DD\n  Task :2000-01-01, 7d",
     ]) {
       assert.ok((await render({ source })).ok, source);
       const result = (await evaluate(`(async () => {
@@ -627,6 +640,13 @@ suite("webview", function () {
         throw new Error("The diagram image was not prepared.");
       })()`)) as { clipped: number; viewBox: boolean };
       assert.deepStrictEqual(result, { clipped: 0, viewBox: true }, source);
+      assert.ok(
+        await evaluate(`(() => {
+          const canvas = document.getElementById("canvas");
+          return canvas.scrollWidth <= canvas.clientWidth;
+        })()`),
+        source,
+      );
     }
   });
 
