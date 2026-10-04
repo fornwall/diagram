@@ -574,6 +574,11 @@ export class MermaidRenderer implements Renderer {
     return this.drawn;
   }
 
+  labelOf(id: string): string | undefined {
+    const [element] = this.elementsById.get(id) ?? [];
+    return element && this.nodes.get(element)?.label;
+  }
+
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
     for (const id of new Set([...this.shownLinks.keys(), ...locations.keys()])) {

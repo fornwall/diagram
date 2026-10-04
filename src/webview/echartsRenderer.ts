@@ -96,6 +96,10 @@ export class EChartsRenderer implements Renderer {
     this.scheduleSelection();
   }
 
+  labelOf(id: string): string | undefined {
+    return this.items()?.labelOf(id);
+  }
+
   repeatedNames(): RepeatedName[] {
     return this.items()?.repeatedNames() ?? [];
   }

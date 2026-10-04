@@ -110,7 +110,6 @@ let clickPrompt: string | undefined;
 /** Code links by node id. */
 let links = new Map<string, string>();
 let pick: { id: number; multiple: boolean } | undefined;
-let labels = new Map<string, string>();
 
 // Rendering.
 
@@ -173,7 +172,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     renderedRequestId = requestId;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
-    labels = new Map(drawn?.map((node) => [node.id, node.label]));
     // The ids go along so that the extension host can tell a model when it names a node that is
     // not in the diagram, e.g. in a link or a mark.
     post({
@@ -448,8 +446,7 @@ function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
   const dot = document.createElement("span");
   dot.className = "mark-dot";
   const name = document.createElement("b");
-  // A chart item goes by the name a click gives it, which is the id itself.
-  name.textContent = labels.get(id) ?? id;
+  name.textContent = active?.labelOf(id) ?? id;
   const text = document.createElement("span");
   text.append(name, document.createTextNode(` ${note}`));
   row.append(dot, text);
