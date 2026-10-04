@@ -1046,7 +1046,7 @@ suite("panel", function () {
       await rendering;
       await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
-      assert.match(warning, /unavailable.*did not respond.*Show Panel/);
+      assert.match(warning, /^The diagram panel did not respond\. Use Diagram: Show Panel/);
     } finally {
       vscode.window.showWarningMessage = warn;
       vscode.window.showSaveDialog = save;

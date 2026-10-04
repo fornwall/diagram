@@ -859,6 +859,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "diagram.openAtCursor",
+          "when": "editorLangId == markdown"
+        }
+      ],
       "editor/context": [
         {
           "command": "diagram.openAtCursor",

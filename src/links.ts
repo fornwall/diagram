@@ -69,7 +69,7 @@ function parseLink(location: unknown): NodeLink | string {
   const text = location.trim();
   // The line follows the last "#", so that a path may contain one.
   const hash = text.lastIndexOf("#");
-  const file = (hash === -1 ? text : text.slice(0, hash)).trim();
+  let file = (hash === -1 ? text : text.slice(0, hash)).trim();
   const fragment = hash === -1 ? undefined : text.slice(hash + 1).trim();
   if (!file) {
     return `${quote(text)} has no file path before its line.`;
@@ -78,6 +78,13 @@ function parseLink(location: unknown): NodeLink | string {
   // name of a file that does not exist.
   if (/:\d+(?::\d+)?$/.test(file)) {
     return `${quote(text)} gives its line after a colon; write it as "#L42" or "#L42-L80".`;
+  }
+  // A model may copy a file URI, whose path is percent-encoded, e.g. from a Markdown link.
+  if (/^[a-z][a-z\d+.-]+:\/\//i.test(file)) {
+    if (!/^file:/i.test(file)) {
+      return `${quote(text)} is a URL; give a path in the workspace instead.`;
+    }
+    file = vscode.Uri.parse(file).fsPath;
   }
   let line: number | undefined;
   let endLine: number | undefined;

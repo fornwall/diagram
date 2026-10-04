@@ -988,7 +988,7 @@ export class DiagramPanel implements vscode.Disposable {
     } else if (state.error) {
       warning = `There is nothing to export, as the diagram fails to render: ${state.error}`;
     } else if (this.unavailable || !this.webviewReady || this.renderedRequestId === undefined) {
-      warning = `The diagram is unavailable. ${this.unavailable ?? ""} Use Diagram: Show Panel and try again.`;
+      warning = `${this.unavailable ?? "The diagram panel is not showing the diagram."} Use Diagram: Show Panel and try again.`;
     }
     if (warning || state?.source === undefined) {
       void vscode.window.showWarningMessage(warning ?? "There is no diagram to export.");

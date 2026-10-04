@@ -15,6 +15,7 @@ suite("links", () => {
         absolute: `${path.join(path.sep, "tmp", "out.log")}#L0007`,
         // A path may contain a "#"; the line follows the last one.
         hash: "src/a#b.ts#L3",
+        uri: `${vscode.Uri.file(path.join(path.sep, "tmp", "a b#c.ts")).toString()}#L5`,
       },
       "mermaid",
     );
@@ -26,6 +27,7 @@ suite("links", () => {
       home: { file: "~/notes.md", line: 1 },
       absolute: { file: path.join(path.sep, "tmp", "out.log"), line: 7 },
       hash: { file: "src/a#b.ts", line: 3 },
+      uri: { file: path.join(path.sep, "tmp", "a b#c.ts"), line: 5 },
     });
   });
 
@@ -43,6 +45,7 @@ suite("links", () => {
         zero: "src/parser.ts#L0",
         backwards: "src/parser.ts#L30-L10",
         fragmentOnly: "#L12",
+        url: "https://example.com/src/parser.ts#L1",
       },
       "mermaid",
     );
@@ -60,6 +63,7 @@ suite("links", () => {
       '"zero": "src/parser.ts#L0" starts at line 0, but lines are counted from 1.',
       '"backwards": "src/parser.ts#L30-L10" ends before it starts.',
       '"fragmentOnly": "#L12" has no file path before its line.',
+      '"url": "https://example.com/src/parser.ts#L1" is a URL; give a path in the workspace',
     ];
     for (const problem of expected) {
       assert.ok(report.includes(problem), `${problem} in ${report}`);
