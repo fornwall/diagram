@@ -68,6 +68,38 @@ suite("chart options lifecycle", function () {
     }
   });
 
+  test("chart options report a stale form, and keep the chart when the new one fails", async () => {
+    const { panel, webview } = await newFakePanel();
+    const errors = () =>
+      webview.sent.flatMap((message) =>
+        message.type === "chartOptionsError" ? [message.message] : [],
+      );
+    try {
+      const source = await draw(panel, { type: "bar", data });
+      const shown = panel.current;
+      await webview.receive({
+        type: "applyChartOptions",
+        revision: panel.revision - 1,
+        controls: { type: "line" },
+        replaceSource: false,
+      });
+      assert.deepStrictEqual(errors(), ["The chart changed. Reopen Chart Options and try again."]);
+      assert.strictEqual(panel.current, shown);
+
+      webview.nextRender((render) =>
+        webview.receive({ type: "renderError", requestId: render.requestId, message: "Bad." }),
+      );
+      await applyOptions(panel, webview, { type: "applyChartOptions", controls: { type: "line" } });
+      assert.deepStrictEqual(errors().slice(1), [
+        "Could not apply the chart options: Bad. The previous chart is kept.",
+      ]);
+      assert.strictEqual(panel.current?.chart?.type, "bar");
+      assert.strictEqual(webview.render.source, source);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("retained presentation edits remain manual after changing chart options", async () => {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
