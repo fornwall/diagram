@@ -148,23 +148,23 @@ suite("chart code in the panel", function () {
       );
     const write = (source: string) =>
       webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
-    const declined = answerWarnings();
+    const confirmed = answerWarnings("Write");
     try {
       assert.ok((await renderChart(panel, codeChart)).ok);
       assert.ok((await open()).ok);
       await write(flowchart);
-      assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
-      assert.deepStrictEqual(declined.warnings, ["Write this diagram to notes.md?"]);
-    } finally {
-      declined.restore();
-    }
-    const confirmed = answerWarnings("Write");
-    try {
-      await webview.receive({ type: "writeToDocument", requestId: webview.render.requestId });
       assert.strictEqual(document.getText(), `\`\`\`mermaid\n${flowchart}\n\`\`\`\n`);
       assert.deepStrictEqual(confirmed.warnings, ["Write this diagram to notes.md?"]);
     } finally {
       confirmed.restore();
+    }
+    const declined = answerWarnings();
+    try {
+      await write("flowchart TD");
+      assert.strictEqual(document.getText(), `\`\`\`mermaid\n${flowchart}\n\`\`\`\n`);
+      assert.deepStrictEqual(declined.warnings, ["Write this diagram to notes.md?"]);
+    } finally {
+      declined.restore();
       panel.dispose();
     }
   });
@@ -182,7 +182,7 @@ suite("chart code in the panel", function () {
       await webview.receive({ type: "refresh" });
       return fs.existsSync(marker);
     };
-    const declined = answerWarnings();
+    const confirmed = answerWarnings("Run");
     try {
       assert.ok((await renderChart(panel, codeChart)).ok);
       const drawn = await panel.render(
@@ -192,18 +192,59 @@ suite("chart code in the panel", function () {
         table,
       );
       assert.ok(drawn.ok);
-      assert.ok(!(await refresh(webview)), "the command ran");
-      assert.deepStrictEqual(declined.warnings, [
+      assert.ok(await refresh(webview), "the confirmed command did not run");
+      assert.deepStrictEqual(confirmed.warnings, [
         "Run the chart's command again to reload its data?",
       ]);
     } finally {
-      declined.restore();
-    }
-    const confirmed = answerWarnings("Run");
-    try {
-      assert.ok(await refresh(webview), "the confirmed command did not run");
-    } finally {
       confirmed.restore();
+    }
+    fs.rmSync(marker);
+    const declined = answerWarnings();
+    try {
+      assert.ok(!(await refresh(webview)), "the declined command ran");
+      assert.strictEqual(declined.warnings.length, 1);
+    } finally {
+      declined.restore();
+      panel.dispose();
+    }
+  });
+
+  test("asks one question at a time, and no more once the user declines one", async () => {
+    const file = path.join(dir, "spammed.md");
+    fs.writeFileSync(file, "```mermaid\nflowchart TD\n```\n");
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+    const [fence] = findDiagramFences(document.getText());
+    assert.ok(fence);
+    const { panel, webview } = await newFakePanel();
+    const warn = vscode.window.showWarningMessage;
+    let questions = 0;
+    vscode.window.showWarningMessage = (async () => {
+      questions++;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return undefined;
+    }) as typeof warn;
+    const write = () =>
+      webview.receive({ type: "writeToDocument", requestId: webview.render.requestId });
+    try {
+      assert.ok((await renderChart(panel, codeChart)).ok);
+      const opened = await panel.render(
+        {
+          language: "mermaid",
+          source: flowchart,
+          title: "Flow",
+          document: { uri: document.uri.toString(), fence },
+        },
+        "document",
+      );
+      assert.ok(opened.ok);
+      await Promise.all([write(), write(), write()]);
+      assert.strictEqual(questions, 1);
+      await write();
+      assert.strictEqual(questions, 1);
+      assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
+    } finally {
+      vscode.window.showWarningMessage = warn;
       panel.dispose();
     }
   });

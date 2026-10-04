@@ -128,6 +128,10 @@ export class DiagramPanel implements vscode.Disposable {
    * old page sent before a reload may still arrive after it.
    */
   private pageRanCode = false;
+  /** Whether a confirmation that the page asked for is open; see {@link confirmForPage}. */
+  private confirming = false;
+  /** Whether the user declined what the page asked for while it held chart code. */
+  private pageRefused = false;
   /** The request that drew the current diagram, which is what an export captures. */
   private renderedRequestId: number | undefined;
   /** Identifies the editable source even when its render fails. */
@@ -255,6 +259,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   private closed(): void {
     this.pageRanCode = false;
+    this.pageRefused = false;
     this.cancelExport("The diagram panel was closed before export finished.");
     this.selection = [];
     this.cancelPick("The user closed the diagram panel.");
@@ -366,7 +371,12 @@ export class DiagramPanel implements vscode.Disposable {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
         const link = this.linkOf(message.node);
-        return link && openLink(link, message.node.label, this.webview.tab?.viewColumn);
+        return (
+          link &&
+          openLink(link, message.node.label, this.webview.tab?.viewColumn, (ask) =>
+            this.confirmForPage(ask),
+          )
+        );
       }
       case "picked":
         this.finishPick(message.pickId, { picked: true, nodes: message.nodes });
@@ -672,7 +682,9 @@ export class DiagramPanel implements vscode.Disposable {
       this.state.source === source;
     if (
       (binding.replaced || this.pageRanCode) &&
-      !(await confirmWrite(binding, binding.replaced ? "replaced" : "code"))
+      !(await this.confirmForPage(() =>
+        confirmWrite(binding, binding.replaced ? "replaced" : "code"),
+      ))
     ) {
       return;
     }
@@ -938,15 +950,34 @@ export class DiagramPanel implements vscode.Disposable {
    */
   private async confirmReload(chart: ChartSpec): Promise<boolean> {
     if (!chart.command || !this.pageRanCode) return true;
-    const run = await vscode.window.showWarningMessage(
-      "Run the chart's command again to reload its data?",
-      {
-        modal: true,
-        detail: `${chart.command}\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had.`,
-      },
-      "Run",
-    );
-    return run !== undefined;
+    return this.confirmForPage(async () => {
+      const run = await vscode.window.showWarningMessage(
+        "Run the chart's command again to reload its data?",
+        {
+          modal: true,
+          detail: `${chart.command}\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had.`,
+        },
+        "Run",
+      );
+      return run !== undefined;
+    });
+  }
+
+  /**
+   * Asks the user to confirm what a message from the page requests, one question at a time. Once
+   * the user declines one while the page holds chart code, the rest are declined unasked, as the
+   * code could otherwise post messages that open modal dialogs without end.
+   */
+  private async confirmForPage(ask: () => Thenable<boolean>): Promise<boolean> {
+    if (this.confirming || this.pageRefused) return false;
+    this.confirming = true;
+    try {
+      const confirmed = await ask();
+      if (!confirmed && this.pageRanCode) this.pageRefused = true;
+      return confirmed;
+    } finally {
+      this.confirming = false;
+    }
   }
 
   /**

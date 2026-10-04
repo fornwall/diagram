@@ -148,24 +148,28 @@ export function linkSelection(
  * Opens the code a node links to, selecting the lines it points at, beside the diagram in its
  * column. The link was written by a language model, so a file outside the workspace, or any file
  * in an untrusted workspace, is confirmed first; inside a trusted workspace the click is the
- * user's own action.
+ * user's own action. confirm asks the question, so that the panel can ask one at a time.
  */
 export async function openLink(
   link: NodeLink,
   label: string,
   diagramColumn: vscode.ViewColumn | undefined,
+  confirm: (ask: () => Thenable<boolean>) => Promise<boolean>,
 ): Promise<void> {
   try {
     const uri = resolveFile(link.file);
-    if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
-      const open = await vscode.window.showWarningMessage(
-        `Open the file that "${label}" links to?`,
-        { modal: true, detail: `${uri.fsPath}\n\nThe diagram's links were written by a model.` },
-        "Open",
-      );
-      if (open === undefined) {
-        return;
-      }
+    if (
+      (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) &&
+      !(await confirm(async () => {
+        const open = await vscode.window.showWarningMessage(
+          `Open the file that "${label}" links to?`,
+          { modal: true, detail: `${uri.fsPath}\n\nThe diagram's links were written by a model.` },
+          "Open",
+        );
+        return open !== undefined;
+      }))
+    ) {
+      return;
     }
     const document = await vscode.workspace.openTextDocument(uri);
     // The click made the diagram's tab group active, so show the code in another one, leaving the
