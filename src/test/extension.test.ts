@@ -25,8 +25,8 @@ suite("Extension", function () {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 
-  test("registers the language model tools", () => {
-    const declared: { name: string }[] =
+  test("registers the language model tools, described on one line each", () => {
+    const declared: { name: string; modelDescription: string; userDescription: string }[] =
       vscode.extensions.getExtension("fornwall.diagram")?.packageJSON.contributes
         .languageModelTools;
     const registered = vscode.lm.tools.filter((tool) => tool.name.startsWith("diagram_"));
@@ -34,6 +34,11 @@ suite("Extension", function () {
       registered.map((tool) => tool.name).sort(),
       declared.map((tool) => tool.name).sort(),
     );
+    for (const { name, modelDescription, userDescription } of declared) {
+      for (const description of [modelDescription, userDescription]) {
+        assert.match(description, /^\S.*\S$/, name);
+      }
+    }
   });
 
   test("registers the contributed commands, which are the ones its menus name", async () => {

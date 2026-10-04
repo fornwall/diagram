@@ -1,7 +1,7 @@
 {
   "name": "diagram",
   "displayName": "@diagram",
-  "description": "Draw, select and edit Mermaid diagrams and Apache ECharts charts beside VS Code chat.",
+  "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: ask @diagram to draw, chart CSV, JSON or command output, and edit diagrams in Markdown.",
   "version": "0.0.1",
   "publisher": "fornwall",
   "icon": "images/icon.png",
@@ -16,7 +16,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Charts of a shell command's output, and chart options with JavaScript code such as callbacks, are only available in trusted workspaces."
+      "description": "Charts of a shell command's output and chart options with JavaScript code need a trusted workspace. Reading workspace and data files, and opening a diagram's file links, ask for confirmation first."
     },
     "virtualWorkspaces": {
       "supported": "limited",
@@ -188,7 +188,7 @@
             },
             "command": {
               "type": "string",
-              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder once the user confirms it."
+              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder, or the home directory without one, once the user confirms it."
             },
             "format": {
               "type": "string",
@@ -199,7 +199,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "\"auto\" (default) also detects Markdown tables; \"json\" also reads JSON Lines."
+              "description": "\"auto\" (default) detects the format, including Markdown tables and JSON Lines; \"json\" reads JSON or JSON Lines."
             },
             "labelColumn": {
               "anyOf": [
@@ -222,11 +222,11 @@
                 "type": "string"
               },
               "minItems": 1,
-              "description": "Value columns, one series each. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, treemap, sunburst, gauge and funnel use only the first; boxplot uses its raw numbers."
+              "description": "Value columns, one series each. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use only the first, scatter the first two (x, y); boxplot uses its raw numbers."
             },
             "max": {
               "type": "number",
-              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value."
+              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred when left out: a gauge goes to 100 for percentages, to the column's total, or to a round number above its value; a radar axis to its largest value."
             },
             "aggregate": {
               "type": "string",
@@ -582,7 +582,7 @@
             },
             "command": {
               "type": "string",
-              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder once the user confirms it."
+              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder, or the home directory without one, once the user confirms it."
             },
             "format": {
               "type": "string",
@@ -593,7 +593,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "\"auto\" (default) also detects Markdown tables; \"json\" also reads JSON Lines."
+              "description": "\"auto\" (default) detects the format, including Markdown tables and JSON Lines; \"json\" reads JSON or JSON Lines."
             },
             "sampleRows": {
               "type": "integer",
@@ -944,9 +944,19 @@
   "keywords": [
     "mermaid",
     "echarts",
-    "chart",
     "diagram",
+    "chart",
+    "flowchart",
+    "sequence diagram",
+    "visualization",
+    "data visualization",
+    "plot",
+    "csv",
+    "json",
+    "markdown",
+    "chat",
     "copilot",
-    "chat"
+    "ai",
+    "language model tools"
   ]
 }
