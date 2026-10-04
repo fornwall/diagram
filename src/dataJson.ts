@@ -18,23 +18,50 @@ function isScalar(value: unknown): boolean {
   return !isPlainObject(value) && !Array.isArray(value);
 }
 
+/**
+ * The fields of an object, with those of nested objects under dotted names as pandas'
+ * json_normalize gives them: {"cpu": {"user": 1}} has the field "cpu.user".
+ */
+function flatten(
+  object: Record<string, unknown>,
+  prefix = "",
+  // Without a prototype, so that a "__proto__" field is set like any other.
+  fields: Record<string, unknown> = Object.create(null),
+): Record<string, unknown> {
+  for (const [key, value] of Object.entries(object)) {
+    if (isPlainObject(value) && Object.keys(value).length > 0) {
+      flatten(value, `${prefix}${key}.`, fields);
+    } else {
+      fields[`${prefix}${key}`] ??= value;
+    }
+  }
+  return fields;
+}
+
+function kind(value: unknown): string {
+  return Array.isArray(value) ? "an array" : isPlainObject(value) ? "an object" : "a plain value";
+}
+
 function recordsFromJsonArray(array: unknown[]): Records {
   if (array.length === 0) {
     throw new Error("The JSON array is empty.");
   }
   if (array.every(isPlainObject)) {
+    const objects = array.map((item) =>
+      Object.values(item).some(isPlainObject) ? flatten(item) : item,
+    );
     const names = new Set<string>();
-    for (const item of array) {
+    for (const item of objects) {
       for (const key of Object.keys(item)) {
         names.add(key);
       }
-      checkTableSize(array.length + 1, names.size);
+      checkTableSize(objects.length + 1, names.size);
     }
     const keys = [...names];
     return {
       records: [
         keys,
-        ...array.map((item) =>
+        ...objects.map((item) =>
           keys.map((key) => (Object.hasOwn(item, key) ? jsonCell(item[key]) : null)),
         ),
       ],
@@ -52,7 +79,12 @@ function recordsFromJsonArray(array: unknown[]): Records {
     checkTableSize(array.length + 1, 1);
     return { records: [["value"], ...array.map((item) => [jsonCell(item)])], header: true };
   }
-  throw new Error("The JSON array mixes objects, arrays and plain values.");
+  const first = kind(array[0]);
+  const other = array.findIndex((item) => kind(item) !== first);
+  throw new Error(
+    `The JSON array mixes kinds of items: item 1 is ${first}, but item ${other + 1} is ` +
+      `${kind(array[other])}. Make every item an object, or every item an array.`,
+  );
 }
 
 function recordsFromJson(value: unknown): Records {
@@ -60,12 +92,16 @@ function recordsFromJson(value: unknown): Records {
     return recordsFromJsonArray(value);
   }
   if (!isPlainObject(value)) {
-    throw new Error("The JSON is neither an array nor an object.");
+    throw new Error(`The JSON is ${kind(value)}, not an array or object of rows.`);
   }
   const names = Object.keys(value);
   const columns = Object.values(value);
   if (names.length === 0) {
     throw new Error("The JSON object is empty.");
+  }
+  // A wrapper, as in {"data": {"items": [...]}}.
+  if (columns.length === 1 && isPlainObject(columns[0])) {
+    return recordsFromJson(columns[0]);
   }
   const length = Array.isArray(columns[0]) ? columns[0].length : 0;
   if (
@@ -113,7 +149,7 @@ function recordsFromJson(value: unknown): Records {
     };
   }
   throw new Error(
-    "The JSON object must map names to numbers, map names to objects, map column names to " +
+    "The JSON object must map names to plain values, map names to objects, map column names to " +
       "equally long arrays, or hold one array of rows.",
   );
 }

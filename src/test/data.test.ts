@@ -842,6 +842,33 @@ suite("data", () => {
     });
   });
 
+  test("flattens nested JSON objects into dotted column names", () => {
+    assert.deepStrictEqual(
+      parse('[{"name": "a", "cpu": {"user": 1, "io": {"wait": 2}}}, {"name": "b", "cpu": {}}]'),
+      {
+        columns: ["name", "cpu.user", "cpu.io.wait", "cpu"],
+        rows: [
+          ["a", 1, 2, null],
+          ["b", null, null, "{}"],
+        ],
+      },
+    );
+  });
+
+  test("looks into JSON objects that wrap a single object", () => {
+    assert.deepStrictEqual(
+      parse('{"data": {"repo": {"issues": [{"title": "x", "author": {"login": "a"}}]}}}'),
+      { columns: ["title", "author.login"], rows: [["x", "a"]] },
+    );
+    assert.deepStrictEqual(parse('{"stats": {"ts": 120, "css": 30}}'), {
+      columns: ["name", "value"],
+      rows: [
+        ["ts", 120],
+        ["css", 30],
+      ],
+    });
+  });
+
   test("parses a JSON object mapping names to objects", () => {
     assert.deepStrictEqual(parse('{"2023": {"a": 1, "b": 2}, "2024": {"a": 3, "b": 4}}'), {
       columns: ["name", "a", "b"],
@@ -867,7 +894,8 @@ suite("data", () => {
   });
 
   test("generated JSON row keys do not rename existing value columns", () => {
-    const table = parseTable(JSON.stringify({ row: { " name ": "A", key: 42, "key (2)": 99 } }));
+    const row = { " name ": "A", key: 42, "key (2)": 99 };
+    const table = parseTable(JSON.stringify({ first: row, second: row }));
     assert.deepStrictEqual(
       table.columns.map(({ name }) => name),
       ["key (3)", "name", "key", "key (2)"],
@@ -1011,6 +1039,11 @@ suite("data", () => {
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
     assert.throws(() => parseTable("[{}]"), /holds no values/);
+    assert.throws(
+      () => parseTable('[{"a": 1}, {"a": 2}, [3]]'),
+      /^Error: The JSON array mixes kinds of items: item 1 is an object, but item 3 is an array\./,
+    );
+    assert.throws(() => parseTable("1", "json"), /^Error: The JSON is a plain value, not an array/);
     assert.throws(
       () => parseTable('a,b\nc,"d\ne,f', "csv"),
       /^Error: The quoted field that starts on line 2 is not closed\. A quote in a quoted field is written twice, as in "say ""hi"""\.$/,
