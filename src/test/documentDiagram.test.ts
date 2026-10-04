@@ -166,6 +166,18 @@ suite("documentDiagram", function () {
     );
   });
 
+  test("writeFence keeps whitespace-only lines as written", async () => {
+    // Editors leave indentation on otherwise empty lines, which must not become changes.
+    const document = await markdown("- Sales:\n\n  ```echarts\n  {\n    \n  }\n  ```\n");
+    const read = binding(document);
+    assert.strictEqual(read.fence.source, "{\n  \n}");
+    assert.ok((await writeFence(read, '{\n  "series": [],\n  \n}')).written);
+    assert.strictEqual(
+      document.getText(),
+      '- Sales:\n\n  ```echarts\n  {\n    "series": [],\n    \n  }\n  ```\n',
+    );
+  });
+
   test("writeFence finds a block that moved in the document", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);

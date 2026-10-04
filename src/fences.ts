@@ -153,7 +153,7 @@ function continues(cursor: Cursor, container: Container): boolean {
   }
   if (cursor.nonspace() === cursor.line.length) {
     // A blank line ends a list item that started with a blank line and holds nothing yet.
-    cursor.skip(indent);
+    cursor.skip(Math.min(indent, container.width));
     return !container.empty;
   }
   if (indent < container.width) {
@@ -510,10 +510,10 @@ export function rewriteFence(
   source: string,
   eol: string,
 ): FenceRewrite | { endingLine: number } | undefined {
-  // Blank lines carry the prefix up to its last marker: a quoted blank line still needs its ">".
-  const blank = fence.prefix.trimEnd();
-  const lines = source.split("\n").map((line) => (line.trim() ? line : ""));
-  const replacement = lines.map((line) => (line ? fence.prefix + line : blank)).join(eol);
+  // Empty lines carry the prefix up to its last marker: a quoted empty line still needs its ">".
+  const empty = fence.prefix.trimEnd();
+  const lines = source.split("\n");
+  const replacement = lines.map((line) => (line ? fence.prefix + line : empty)).join(eol);
   let start = 0;
   let end: number | undefined;
   let newlines = 0;

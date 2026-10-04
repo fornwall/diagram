@@ -33,7 +33,7 @@ function rewritten(markdown: string, source: string, eol = "\n"): string | numbe
     findDiagramFences(written).find((found) => found.openingLine === fence.openingLine),
     rewrite.fence,
   );
-  assert.strictEqual(rewrite.fence.source, source.replace(/^[^\S\n]+$/gm, ""));
+  assert.strictEqual(rewrite.fence.source, source);
   return written;
 }
 
@@ -178,9 +178,9 @@ suite("fences", () => {
     ]);
     // A line indented less than the item's content ends the item, and the block in it.
     assert.deepStrictEqual(sources("1. ```mermaid\n   A\nB\n```\n"), ['0-1 mermaid "   ": "A"']);
-    // Blank lines continue the item.
-    assert.deepStrictEqual(sources("* ```mermaid\n  A\n\n  B\n  ```\n"), [
-      '0-3 mermaid "  ": "A\\n\\nB"',
+    // Blank lines continue the item, and keep the whitespace beyond its indentation.
+    assert.deepStrictEqual(sources("* ```mermaid\n  A\n\n \n     \n  B\n  ```\n"), [
+      '0-5 mermaid "  ": "A\\n\\n\\n   \\nB"',
     ]);
     // In a nested item, under a paragraph that continued lazily.
     assert.deepStrictEqual(sources("- a\n  - b\nc\n\n    ```mermaid\n    A\n    ```\n"), [
@@ -285,18 +285,23 @@ suite("fences", () => {
       rewritten("Before\n```mermaid\nA\n```\nAfter\n", "B\n  C"),
       "Before\n```mermaid\nB\n  C\n```\nAfter\n",
     );
-    // Blank lines keep only the block quote markers, which hold the block quote together.
+    // Empty lines keep only the block quote markers, which hold the block quote together.
+    // Whitespace-only lines are written like any other line.
     assert.strictEqual(
       rewritten("> Note:\n> ```mermaid\n> A\n> ```\n> End.\n", "B\n\n  C\n \t\nD"),
-      "> Note:\n> ```mermaid\n> B\n>\n>   C\n>\n> D\n> ```\n> End.\n",
+      "> Note:\n> ```mermaid\n> B\n>\n>   C\n>  \t\n> D\n> ```\n> End.\n",
+    );
+    assert.strictEqual(
+      rewritten("  ```mermaid\n  A\n  ```\n", "B\n\n  \nC"),
+      "  ```mermaid\n  B\n\n    \n  C\n  ```\n",
     );
     assert.strictEqual(
       rewritten("> - ```mermaid\n>   A\n>   ```\n", "B\n\nC"),
       "> - ```mermaid\n>   B\n>\n>   C\n>   ```\n",
     );
     assert.strictEqual(
-      rewritten("1. Flow:\n\n   ```mermaid\n   A\n   ```\n2. Done\n", "B\n\n C"),
-      "1. Flow:\n\n   ```mermaid\n   B\n\n    C\n   ```\n2. Done\n",
+      rewritten("1. Flow:\n\n   ```mermaid\n   A\n   ```\n2. Done\n", "B\n\n C\n  \nD"),
+      "1. Flow:\n\n   ```mermaid\n   B\n\n    C\n     \n   D\n   ```\n2. Done\n",
     );
     // The marker's optional space is added, so that a line starting with a space keeps it.
     assert.strictEqual(
