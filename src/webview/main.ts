@@ -5,13 +5,13 @@ import {
   type DiagramNode,
   errorMessage,
   type FromWebview,
-  safeFileName,
   type ToWebview,
 } from "../protocol";
 import { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
+import { enableDragOut } from "./dragOut";
 import { EChartsRenderer } from "./echartsRenderer";
-import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
+import { pngDataUrl } from "./images";
 import { MermaidRenderer } from "./mermaidRenderer";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
@@ -85,6 +85,15 @@ const chartOptions = new ChartOptionsForm(element("chart-options"), post, focusC
 // Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
 enableSplitter(splitter, panes);
+const forgetDragImage = enableDragOut(dragOutHandle, {
+  imageMaker: () => {
+    const toImage = active?.toImage?.bind(active);
+    return toImage && (() => toImage(imageBackground()));
+  },
+  enqueue,
+  title: () => titleElement.textContent?.trim() ?? "",
+  hint: transientHint,
+});
 
 /** Last requested diagram, including failed renders. */
 let current:
@@ -598,121 +607,10 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
   }
 }
 
-// Dragging the drawing out of the panel as an image, e.g. into a chat or a document.
-
-// dragstart is synchronous, so prepare the image before the drag begins.
-let dragImage: { image: DiagramImage; png?: string; preview?: HTMLImageElement } | undefined;
-/** Version currently being prepared; repeated hover events share the work. */
-let preparingDragImage: number | undefined;
-let imageVersion = 0;
-let dragError: string | undefined;
-/** Shift-drag requests SVG. */
-let dragSvg = false;
-
 /** The background an image is drawn on: an image dropped elsewhere has no theme behind it. */
-const imageBackground = () => toCss(readThemeColors().background);
-
-function forgetDragImage(): void {
-  imageVersion++;
-  dragImage = undefined;
-  preparingDragImage = undefined;
-  dragError = undefined;
+function imageBackground(): string {
+  return toCss(readThemeColors().background);
 }
-
-function prepareDragImage(): void {
-  const key = imageVersion;
-  const toImage = active?.toImage?.bind(active);
-  if (!toImage || dragImage || preparingDragImage === key) {
-    return;
-  }
-  preparingDragImage = key;
-  // Mermaid rendering and export both change its global configuration (notably HTML labels).
-  enqueue(async () => {
-    if (preparingDragImage !== key) {
-      return;
-    }
-    try {
-      const image = await toImage(imageBackground());
-      if (preparingDragImage === key) {
-        dragImage = { image };
-        // Rasterization does not touch Mermaid's configuration or need to hold up rendering.
-        void preparePng(dragImage);
-      }
-    } catch (error) {
-      if (preparingDragImage === key) {
-        dragError = `Could not prepare the image: ${errorMessage(error)}`;
-      }
-    } finally {
-      if (preparingDragImage === key) {
-        preparingDragImage = undefined;
-      }
-    }
-  });
-}
-
-async function preparePng(ready: NonNullable<typeof dragImage>): Promise<void> {
-  try {
-    ready.png = await pngDataUrl(ready.image);
-    const preview = new Image();
-    preview.src = ready.png;
-    await preview.decode();
-    ready.preview = preview;
-  } catch {
-    // SVG is immediately usable, including while PNG decoding is pending or fails.
-  }
-}
-
-// Hovering the handle is the earliest sign that a drag may be coming; pressing is the last.
-dragOutHandle.addEventListener("pointerenter", () => {
-  // Chart interactions and resizing can change its SVG without changing its source.
-  forgetDragImage();
-  prepareDragImage();
-});
-dragOutHandle.addEventListener("pointerdown", (event) => {
-  dragSvg = event.shiftKey;
-  prepareDragImage();
-});
-
-dragOutHandle.addEventListener("dragstart", (event) => {
-  const ready = dragImage;
-  if (!ready || !event.dataTransfer) {
-    // Nothing can be dragged without an image, and the drag cannot wait for one.
-    event.preventDefault();
-    prepareDragImage();
-    transientHint(dragError ?? "Preparing the image — start the drag again in a moment.");
-    return;
-  }
-  const { dataTransfer } = event;
-  const title = titleElement.textContent?.trim() ?? "";
-  const name = safeFileName(title, "diagram");
-  const useSvg = dragSvg || !ready.png;
-  const url = useSvg ? svgDataUrl(ready.image.svg) : ready.png;
-  if (!dragSvg && !ready.png) {
-    transientHint("PNG is not ready. Dragging the drawing as SVG instead.");
-  }
-  dataTransfer.effectAllowed = "copy";
-  // A file the drop target downloads from the data URL. This is what an application that takes
-  // dropped files, such as a chat window, reads; the type it asks for decides the rest.
-  dataTransfer.setData(
-    "DownloadURL",
-    `${useSvg ? "image/svg+xml" : "image/png"}:${name}.${useSvg ? "svg" : "png"}:${url}`,
-  );
-  // For a target that takes rich text instead of a file, and one that prefers vector over pixels.
-  if (ready.png) {
-    const image = document.createElement("img");
-    image.src = ready.png;
-    image.alt = title || name;
-    dataTransfer.setData("text/html", image.outerHTML);
-  }
-  dataTransfer.setData("image/svg+xml", ready.image.svg);
-  try {
-    if (ready.preview) {
-      dataTransfer.setDragImage(ready.preview, 12, 12);
-    }
-  } catch {
-    // Not every build accepts an image that is not in the page; the default outline will do.
-  }
-});
 
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 function transientHint(text: string): void {
