@@ -110,8 +110,28 @@ suite("dataSource", () => {
   });
 
   test("reads files, explaining why one cannot be read", async () => {
-    await assert.rejects(readDataFile(path.join(dir, "missing.csv")), /does not exist/);
+    await assert.rejects(
+      readDataFile(path.join(dir, "missing.csv")),
+      /^Error: The file \S+missing\.csv does not exist\. Check the path\.$/,
+    );
+    await assert.rejects(
+      readDataFile("missing.csv"),
+      /does not exist\. Relative paths are read from the workspace folder workspace\. Check/,
+    );
     await assert.rejects(readDataFile(dir), /is a directory/);
+    const csv = path.join(dir, "data.csv");
+    fs.writeFileSync(csv, "a,1");
+    await assert.rejects(
+      readDataFile(path.join(csv, "more.csv")),
+      /^Error: The path \S+more\.csv goes through a file as if it were a folder\. Check the path\.$/,
+    );
+    if (process.platform !== "win32" && process.getuid?.() !== 0) {
+      fs.chmodSync(csv, 0);
+      await assert.rejects(
+        readDataFile(csv),
+        /^Error: You do not have permission to read \S+data\.csv\. Change its permissions/,
+      );
+    }
     const large = path.join(dir, "large.csv");
     fs.writeFileSync(large, Buffer.alloc(10 * 1024 * 1024 + 1));
     await assert.rejects(readDataFile(large), /is larger than the 10 MB limit/);

@@ -103,23 +103,44 @@ export function prepareDataInvocation(
   return prepared;
 }
 
+/** Explains why the data file `file`, at `uri`, cannot be read, if `error` is a file system error. */
+function fileError(error: unknown, file: string, uri: vscode.Uri): unknown {
+  if (!(error instanceof vscode.FileSystemError)) {
+    return error;
+  }
+  const shown = uri.fsPath;
+  switch (error.code) {
+    case "FileNotFound": {
+      const folder = vscode.workspace.getWorkspaceFolder(uri);
+      const relative =
+        folder !== undefined && !path.isAbsolute(file) && !file.startsWith("~")
+          ? ` Relative paths are read from the workspace folder ${folder.name}.`
+          : "";
+      return new Error(`The file ${shown} does not exist.${relative} Check the path.`);
+    }
+    case "FileIsADirectory":
+      return new Error(
+        `${shown} is a directory, not a data file. To chart the files in it, use a command ` +
+          "such as du.",
+      );
+    case "FileNotADirectory":
+      return new Error(
+        `The path ${shown} goes through a file as if it were a folder. Check the path.`,
+      );
+    case "NoPermissions":
+      return new Error(
+        `You do not have permission to read ${shown}. Change its permissions, or give the data ` +
+          "another way.",
+      );
+    case "Unavailable":
+      return new Error(`${shown} cannot be reached right now. Try again once it is available.`);
+    default:
+      return new Error(`The file ${shown} could not be read: ${error.message}`);
+  }
+}
+
 export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
-  let stat: vscode.FileStat;
-  try {
-    stat = await vscode.workspace.fs.stat(uri);
-  } catch (error) {
-    if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") {
-      throw new Error(`The file ${uri.fsPath} does not exist.`);
-    }
-    throw error;
-  }
-  if (stat.type & vscode.FileType.Directory) {
-    throw new Error(
-      `${uri.fsPath} is a directory, not a data file. To chart the files in it, use a command ` +
-        "such as du.",
-    );
-  }
   const checkSize = (size: number): void => {
     if (size > MAX_BYTES) {
       throw new Error(
@@ -128,8 +149,17 @@ export async function readDataFile(file: string): Promise<string> {
       );
     }
   };
-  checkSize(stat.size);
-  const bytes = await vscode.workspace.fs.readFile(uri);
+  let bytes: Uint8Array;
+  try {
+    const stat = await vscode.workspace.fs.stat(uri);
+    if (stat.type & vscode.FileType.Directory) {
+      throw vscode.FileSystemError.FileIsADirectory(uri);
+    }
+    checkSize(stat.size);
+    bytes = await vscode.workspace.fs.readFile(uri);
+  } catch (error) {
+    throw fileError(error, file, uri);
+  }
   checkSize(bytes.byteLength);
   // UTF-16 files, as PowerShell writes with >, start with a byte order mark.
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
