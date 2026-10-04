@@ -14,7 +14,7 @@ import {
 } from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { loadTable, resolveFile } from "./dataSource";
+import { loadTable } from "./dataSource";
 import { describeDiagram, nodeList } from "./describe";
 import {
   confirmWrite,
@@ -24,7 +24,7 @@ import {
   writeFence,
 } from "./documentDiagram";
 import { exportDrawing } from "./export";
-import { linkSelection, linkTexts, type NodeLink, type NodeLinks } from "./links";
+import { linkTexts, type NodeLink, type NodeLinks, openLink } from "./links";
 import { StateStore } from "./panelState";
 import {
   type Annotation,
@@ -366,7 +366,7 @@ export class DiagramPanel implements vscode.Disposable {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
         const link = this.linkOf(message.node);
-        return link && this.openLink(link, message.node.label);
+        return link && openLink(link, message.node.label, this.webview.tab?.viewColumn);
       }
       case "picked":
         this.finishPick(message.pickId, { picked: true, nodes: message.nodes });
@@ -1102,40 +1102,6 @@ export class DiagramPanel implements vscode.Disposable {
       return undefined;
     }
     return links[node.id];
-  }
-
-  /**
-   * Opens the code a node links to, selecting the lines it points at. The link was written by a
-   * language model, so a file outside the workspace, or any file in an untrusted workspace, is
-   * confirmed first; inside a trusted workspace the click is the user's own action.
-   */
-  private async openLink(link: NodeLink, label: string): Promise<void> {
-    try {
-      const uri = resolveFile(link.file);
-      if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
-        const open = await vscode.window.showWarningMessage(
-          `Open the file that "${label}" links to?`,
-          { modal: true, detail: `${uri.fsPath}\n\nThe diagram's links were written by a model.` },
-          "Open",
-        );
-        if (open === undefined) {
-          return;
-        }
-      }
-      const document = await vscode.workspace.openTextDocument(uri);
-      // The click made the panel's tab group active, so show the code in another one, leaving the
-      // diagram visible beside it.
-      const column = this.webview.tab?.viewColumn;
-      const elsewhere = vscode.window.tabGroups.all.find((group) => group.viewColumn !== column);
-      await vscode.window.showTextDocument(document, {
-        selection: linkSelection(link, document),
-        viewColumn: elsewhere?.viewColumn ?? vscode.ViewColumn.Beside,
-      });
-    } catch (error) {
-      void vscode.window.showErrorMessage(
-        `Could not open the code that "${label}" links to: ${errorMessage(error)}`,
-      );
-    }
   }
 
   /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */

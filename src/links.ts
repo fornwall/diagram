@@ -1,4 +1,4 @@
-// Validate and resolve Mermaid node links.
+// Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
 import { resolveFile } from "./dataSource";
@@ -142,4 +142,44 @@ export function linkSelection(
   const from = Math.min(line - 1, last);
   const to = Math.min((endLine ?? line) - 1, last);
   return new vscode.Range(from, 0, to, document.lineAt(to).text.length);
+}
+
+/**
+ * Opens the code a node links to, selecting the lines it points at, beside the diagram in its
+ * column. The link was written by a language model, so a file outside the workspace, or any file
+ * in an untrusted workspace, is confirmed first; inside a trusted workspace the click is the
+ * user's own action.
+ */
+export async function openLink(
+  link: NodeLink,
+  label: string,
+  diagramColumn: vscode.ViewColumn | undefined,
+): Promise<void> {
+  try {
+    const uri = resolveFile(link.file);
+    if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
+      const open = await vscode.window.showWarningMessage(
+        `Open the file that "${label}" links to?`,
+        { modal: true, detail: `${uri.fsPath}\n\nThe diagram's links were written by a model.` },
+        "Open",
+      );
+      if (open === undefined) {
+        return;
+      }
+    }
+    const document = await vscode.workspace.openTextDocument(uri);
+    // The click made the diagram's tab group active, so show the code in another one, leaving the
+    // diagram visible beside it.
+    const elsewhere = vscode.window.tabGroups.all.find(
+      (group) => group.viewColumn !== diagramColumn,
+    );
+    await vscode.window.showTextDocument(document, {
+      selection: linkSelection(link, document),
+      viewColumn: elsewhere?.viewColumn ?? vscode.ViewColumn.Beside,
+    });
+  } catch (error) {
+    void vscode.window.showErrorMessage(
+      `Could not open the code that "${label}" links to: ${errorMessage(error)}`,
+    );
+  }
 }
