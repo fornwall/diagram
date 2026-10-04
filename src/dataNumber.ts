@@ -28,8 +28,9 @@ const COMMA_NUMBER = new RegExp(
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
  * "$9.99", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h
- * prints them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB" (in units of 1000, as docker prints
- * them). With `decimalComma`, "1,5" and "1.234,5" are read with a decimal comma.
+ * prints them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k" (in units of 1000, as
+ * docker and du --si print them). With `decimalComma`, "1,5" and "1.234,5" are read with a decimal
+ * comma.
  */
 export function parseNumber(
   text: string,
@@ -55,7 +56,8 @@ export function parseNumber(
   if (suffix === "%") {
     return { value, unit: "%" };
   }
-  const base = suffix.length === 2 && suffix.endsWith("B") ? 1000 : 1024;
+  // SI units, as printed by docker ("1.2kB") and coreutils' --si option ("150k").
+  const base = suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) ? 1000 : 1024;
   const bytes = value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase());
   return Number.isFinite(bytes) ? { value: bytes, unit: "bytes" } : undefined;
 }
