@@ -19,7 +19,7 @@ function fail(message: string): void {
 if (!saved || !canvas) {
   fail("This file is missing its chart.");
 } else {
-  // A saved chart has nowhere to send clicks; ECharts still highlights what the reader clicks.
+  // A saved chart has nowhere to send clicks, nor a selection for them, or Enter, to change.
   const renderer = new EChartsRenderer(
     () => {},
     canvas,

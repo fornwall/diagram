@@ -381,7 +381,8 @@ textarea {
 }
 
 textarea:focus,
-input:focus {
+input:focus,
+select:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
@@ -583,11 +584,13 @@ input:focus {
   overflow: auto;
   flex-shrink: 0;
 }
+
 .chart-options-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
+
 .chart-options-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
@@ -597,10 +600,12 @@ input:focus {
   margin: 8px 0;
   min-width: 0;
 }
+
 .chart-options-fields label {
   display: block;
   margin-bottom: 4px;
 }
+
 #chart-options select,
 #chart-options input[type="text"],
 #chart-options input[type="number"] {
@@ -610,38 +615,41 @@ input:focus {
   font: inherit;
   padding: 3px 5px;
 }
+
 #chart-options select {
   color: var(--vscode-dropdown-foreground);
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border, transparent);
 }
-.chart-options-fields select:focus,
-.chart-options-fields input:focus {
-  outline: 1px solid var(--vscode-focusBorder);
-}
+
 .chart-column-row {
   display: flex;
   gap: 4px;
   margin-bottom: 4px;
 }
+
 .chart-filter-field {
   grid-column: 1 / -1;
 }
+
 .chart-filter-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(70px, 1fr)) auto;
   gap: 4px;
   margin-bottom: 4px;
 }
+
 @media (max-width: 450px) {
   .chart-filter-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
 .chart-options-error {
   color: var(--vscode-errorForeground);
   white-space: pre-wrap;
 }
+
 #chart-options form > label:not([hidden]) {
   display: block;
   margin: 8px 0;
@@ -655,10 +663,12 @@ input:focus {
   pointer-events: stroke;
   filter: none;
 }
+
 #diagram .diagram-relationship.diagram-selected:is(path, line):not(.diagram-relationship-hit) {
   /* biome-ignore lint/complexity/noImportantStyles: Overrides Mermaid inline edge colors. */
   stroke: var(--vscode-focusBorder) !important;
 }
+
 #diagram .diagram-relationship.diagram-marked:is(path, line):not(.diagram-relationship-hit) {
   /* biome-ignore lint/complexity/noImportantStyles: Overrides Mermaid inline edge colors. */
   stroke: var(--mark-color) !important;
@@ -683,4 +693,20 @@ input:focus {
   background: var(--vscode-editorHoverWidget-background) !important;
   border-color: var(--vscode-editorHoverWidget-border) !important;
   /* biome-ignore-end lint/complexity/noImportantStyles: Overrides Mermaid's inline style. */
+}
+
+/* Forced colors replace the backgrounds that show which view, menu entry and splitter position is
+   current: outline them in the system's highlight instead. A mark's dot keeps the color that tells
+   its kind, as the drawing does. */
+@media (forced-colors: active) {
+  .views button[aria-pressed="true"],
+  .link-menu button:is(:hover, :focus),
+  #splitter:is(:hover, .dragging) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .mark-dot {
+    forced-color-adjust: none;
+  }
 }
