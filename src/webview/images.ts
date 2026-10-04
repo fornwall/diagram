@@ -25,6 +25,8 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   // The panel sizes the rendering with CSS, which the image is read without.
   svg.removeAttribute("style");
   svg.removeAttribute("class");
+  // Mermaid leaves the color of some HTML labels, such as sequence diagram formulas, to the panel.
+  svg.style.color = getComputedStyle(source).color;
 
   const box = source.viewBox.baseVal;
   // ECharts sets width and height without a viewBox. Its DOM bounds disappear in Source view,
@@ -47,8 +49,10 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
     }
   }
   // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
-  // application that reads SVG draws.
-  for (const element of svg.querySelectorAll("switch > foreignObject")) element.remove();
+  // application that reads SVG draws, unless the label is a formula, of which the text is TeX.
+  for (const element of svg.querySelectorAll("switch > foreignObject:not(:has(math))")) {
+    element.remove();
+  }
   // Formulas draw beyond the boxes that Mermaid sizes to their line boxes, as in the panel.
   for (const element of svg.querySelectorAll("foreignObject")) {
     element.setAttribute("overflow", "visible");
@@ -78,7 +82,7 @@ export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/** Rasterizes self-contained SVG. The renderers must omit HTML foreignObject labels. */
+/** Rasterizes self-contained SVG. */
 export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<string> {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error("The drawing has no valid dimensions for a PNG. Try exporting it as SVG.");

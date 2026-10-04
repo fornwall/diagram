@@ -928,6 +928,7 @@
     "@vscode/vsce": "^4.0.0",
     "echarts": "^6.1.0",
     "esbuild": "^0.28.2",
+    "katex": "^0.16.47",
     "mermaid": "^12.1.0",
     "typescript": "^7.0.2"
   },

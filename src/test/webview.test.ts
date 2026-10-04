@@ -1588,6 +1588,47 @@ suite("webview", function () {
     assert.deepStrictEqual(overflow, { shown: "visible", exported: ["visible"] });
   });
 
+  test("draws formulas as in the panel, also in images and in participant boxes", async () => {
+    const sources = [
+      'flowchart LR\n  A["$$x^2$$"] -->|"$$\\alpha$$"| B[Plain]',
+      "stateDiagram-v2\n  s1 : $$\\sqrt{x}$$\n  s1 --> s2 : $$\\beta$$",
+      'classDiagram\n  class C["$$\\gamma$$"]\n  C <|-- D : $$\\delta$$',
+      // Mermaid leaves the labels of both boxes of the participant empty.
+      "sequenceDiagram\n  participant A as $$\\alpha_1$$\n  A->>B: $$\\int x$$",
+    ];
+    for (const source of sources) {
+      assert.ok((await render({ source })).ok, source);
+      const formulas = await evaluate(`(async () => {
+        const formulas = root => Array.from(root.querySelectorAll("math"), math => math.textContent).sort();
+        const shown = formulas(document.querySelector("#diagram svg"));
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const image = dataTransfer.getData("image/svg+xml");
+          if (!image) continue;
+          const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
+          // A formula's text fallback in a switch is its TeX.
+          const tex = Array.from(parsed.querySelectorAll("text"))
+            .some(text => !text.closest("switch") && text.textContent.includes("$$"));
+          return {shown, exported: formulas(parsed), tex};
+        }
+        throw new Error("The diagram image was not prepared.");
+      })()`);
+      const expected = (
+        {
+          "flowchart LR": ["x2", "α"],
+          "stateDiagram-v2": ["β", "x"],
+          classDiagram: ["δ", "γ"],
+          sequenceDiagram: ["α1", "α1", "∫x"],
+        }[source.split("\n")[0] as string] as string[]
+      ).sort();
+      assert.deepStrictEqual(formulas, { shown: expected, exported: expected, tex: false }, source);
+    }
+  });
+
   test("keeps Mermaid image export separate from an incoming render", async () => {
     assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
     assert.deepStrictEqual(

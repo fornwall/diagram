@@ -34,6 +34,9 @@ const RELAYOUT_DELAY = 200;
 /** Mermaid's default limit: it draws a longer source as an error message instead. */
 const MAX_TEXT_SIZE = 50_000;
 
+/** A formula in a label, which Mermaid draws with KaTeX as MathML. */
+const FORMULA = /\$\$(.*?)\$\$/;
+
 /** The namespace of the <title> elements that show where a linked node leads. */
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 /** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
@@ -88,8 +91,8 @@ interface DiagramDb {
   getDirection?(): string;
   /** A Gantt chart's task links, by task id. */
   getLinks?(): Map<string, unknown>;
-  /** A sequence diagram's actors, by id, with their links by name. */
-  getActors?(): Map<string, { links?: Record<string, unknown> | null }>;
+  /** A sequence diagram's actors, by id, with their labels and links by name. */
+  getActors?(): Map<string, { description?: string; links?: Record<string, unknown> | null }>;
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
@@ -197,6 +200,55 @@ function centerTextLabels(svg: SVGSVGElement): void {
     }
   }
 }
+
+/**
+ * Draws the formulas that name sequence diagram participants in boxes. Mermaid draws them without
+ * waiting for KaTeX, so the drawing it returns has their labels empty, or not even there. (It
+ * draws participants of other shapes likewise, and there is no telling where their labels go.)
+ */
+async function drawParticipantFormulas(
+  svg: SVGSVGElement,
+  db: () => Promise<DiagramDb | undefined>,
+): Promise<void> {
+  const actors = (await db())?.getActors?.();
+  const { default: katex } = await import("katex");
+  // The top and the bottom box of each participant, named after it, in a group with its label.
+  for (const box of svg.querySelectorAll("rect.actor[name]")) {
+    const description = actors?.get(box.getAttribute("name") ?? "")?.description;
+    const group = box.parentElement;
+    const drawn = group?.querySelector(":scope > switch > foreignObject > div > div");
+    if (!group || !description || !FORMULA.test(description) || drawn?.hasChildNodes()) continue;
+    let label = drawn;
+    if (!label) {
+      const object = document.createElementNS(SVG_NAMESPACE, "foreignObject");
+      for (const name of ["x", "y", "width", "height"]) {
+        object.setAttribute(name, box.getAttribute(name) ?? "0");
+      }
+      label = document.createElement("div");
+      label.setAttribute(
+        "style",
+        "display: flex; flex-direction: column; justify-content: center; height: 100%",
+      );
+      object.append(label);
+      group.append(object);
+    }
+    // As Mermaid draws the formulas of messages and notes: one line per <br>, text as it is.
+    for (const line of description.split(/<br\s*\/?>/i)) {
+      const div = document.createElement("div");
+      div.style.cssText =
+        "display: flex; align-items: center; justify-content: center; white-space: nowrap";
+      for (const [i, part] of line.split(FORMULA).entries()) {
+        if (i % 2 === 0) div.append(part);
+        else div.insertAdjacentHTML("beforeend", katex.renderToString(part, MATHML));
+      }
+      for (const source of div.querySelectorAll("annotation")) source.remove();
+      label.append(div);
+    }
+  }
+}
+
+/** How Mermaid has KaTeX draw a formula. */
+const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
 
 export class MermaidRenderer implements Renderer {
   readonly noun = "diagram";
@@ -387,6 +439,9 @@ export class MermaidRenderer implements Renderer {
     container.append(drawing);
     const svg = drawing.querySelector("svg");
     if (svg) {
+      if (result.diagramType === "sequence" && FORMULA.test(text)) {
+        await drawParticipantFormulas(svg, async () => db);
+      }
       showAllText(svg);
     }
     this.diagram.replaceChildren(...drawing.childNodes);
@@ -422,9 +477,13 @@ export class MermaidRenderer implements Renderer {
    * The diagram as an image, rendered a second time with its labels as SVG text.
    *
    * Mermaid draws a label as HTML in a `foreignObject` unless told otherwise. Most applications
-   * that read SVG leave that out, so the labels would go missing where the image is dropped, and an
-   * SVG holding one cannot be rasterized to a PNG at all. The copy on screen keeps its HTML labels,
-   * which wrap better, and is left untouched: this render goes to a string, not into the panel.
+   * that read SVG leave that out, so the labels would go missing where the image is dropped. The
+   * copy on screen keeps its HTML labels, which wrap better, and is left untouched: this render
+   * goes to a string, not into the panel.
+   *
+   * Formulas are MathML, which only HTML labels hold: a diagram with any is drawn as in the panel.
+   * (Class and sequence diagrams draw formulas as HTML either way, but other diagrams would show
+   * their TeX.)
    */
   async toImage(background: string): Promise<DiagramImage> {
     const source = this.displayedSource;
@@ -432,19 +491,24 @@ export class MermaidRenderer implements Renderer {
       throw new Error("There is no diagram to make an image of.");
     }
     const mermaid = await loadMermaid();
-    mermaid.initialize({
-      ...this.config(),
-      htmlLabels: false,
-      // SVG text would show the tags of HTML in labels, such as <b> and <a>: keep only their text,
-      // the line breaks that Mermaid splits SVG text at, and formulas, which are MathML.
-      dompurifyConfig: { USE_PROFILES: { mathMl: true }, ADD_TAGS: ["br"] },
-      // Front matter and init directives must not put HTML labels back into an image.
-      secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
-    });
+    const text = parsableSource(source);
+    mermaid.initialize(
+      FORMULA.test(text)
+        ? this.config()
+        : {
+            ...this.config(),
+            htmlLabels: false,
+            // SVG text would show the tags of HTML in labels, such as <b> and <a>: keep only their
+            // text and the line breaks that Mermaid splits SVG text at.
+            dompurifyConfig: { ALLOWED_TAGS: ["br"] },
+            // Front matter and init directives must not put HTML labels back into an image.
+            secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
+          },
+    );
     try {
-      const { svg } = await mermaid.render(
+      const { svg, diagramType } = await mermaid.render(
         `diagram-image-${++this.renderCounter}`,
-        parsableSource(source),
+        text,
         layoutContainer(),
       );
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
@@ -452,6 +516,11 @@ export class MermaidRenderer implements Renderer {
         throw new Error("Mermaid did not produce an SVG to make an image of.");
       }
       layoutContainer().append(parsed);
+      if (diagramType === "sequence" && FORMULA.test(text)) {
+        await drawParticipantFormulas(parsed, () =>
+          mermaid.mermaidAPI.getDiagramFromText(text).then((diagram) => diagram.db as DiagramDb),
+        );
+      }
       centerTextLabels(parsed);
       showAllText(parsed);
       const image = standaloneSvg(parsed, background);
