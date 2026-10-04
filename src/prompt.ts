@@ -385,6 +385,21 @@ async function readAttachment(
     }
     return { name, text: (await document).getText(location?.range) };
   } catch (error) {
-    return { name, error: errorMessage(error) };
+    const folder = location ? undefined : await folderHint(uri);
+    return { name, error: folder ?? errorMessage(error) };
   }
+}
+
+/** A folder, as attached with #folder, has no text, but the workspace tools can explore it. */
+async function folderHint(uri: vscode.Uri): Promise<string | undefined> {
+  const stat = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch(() => undefined);
+  if (!stat || !(stat.type & vscode.FileType.Directory)) {
+    return undefined;
+  }
+  const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.path.replace(/\/$/, "");
+  if (root === undefined) {
+    return "it is a folder outside the workspace";
+  }
+  const relative = uri.path.slice(root.length + 1);
+  return `it is a folder; list its files with ${FIND_FILES_TOOL} and the glob "${relative ? `${relative}/**` : "**"}"`;
 }

@@ -922,6 +922,27 @@ suite("participant", function () {
     }
   });
 
+  test("points the model to the workspace tools for an attached folder", async () => {
+    const panel = newPanel();
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(root);
+    const folder = vscode.Uri.joinPath(root, "attached-folder");
+    await vscode.workspace.fs.createDirectory(folder);
+    try {
+      const { sent } = await ask(panel, [[text("Exploring.")]], {
+        references: [{ id: "folder", value: folder }],
+      });
+      const attached = sent[0]?.messages.map(messageText).find((m) => m.startsWith("Attached"));
+      assert.match(
+        attached ?? "",
+        /attached-folder, which could not be read: it is a folder; list its files with diagram_findFiles and the glob "attached-folder\/\*\*"$/,
+      );
+    } finally {
+      await vscode.workspace.fs.delete(folder, { recursive: true });
+      panel.dispose();
+    }
+  });
+
   test("reports attachment read failures without losing the rest of the request", async () => {
     const panel = newPanel();
     const open = vscode.workspace.openTextDocument;
