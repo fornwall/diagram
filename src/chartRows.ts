@@ -45,13 +45,7 @@ export function noteRepeatedLabels(
   if (spec.aggregate !== undefined) {
     return;
   }
-  const seen = new Set<string>();
-  let repeats = 0;
-  for (const row of rows) {
-    const name = label(row);
-    if (seen.has(name)) repeats++;
-    else seen.add(name);
-  }
+  const repeats = rows.length - new Set(rows.map(label)).size;
   if (repeats > 0) {
     notes.push(
       `${repeats} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
@@ -127,11 +121,9 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
     const total = last[column];
     if (typeof total === "number") {
       let sum = 0;
-      for (let i = 0; i < table.rows.length - 1; i++) {
-        const value = table.rows[i]?.[column];
-        if (typeof value === "number") {
-          sum += value;
-        }
+      for (const row of table.rows.slice(0, -1)) {
+        const value = row[column];
+        if (typeof value === "number") sum += value;
       }
       if (Math.abs(total - sum) > Math.abs(total) * 0.01) {
         return false;
@@ -407,11 +399,7 @@ export function readRows(
   // A share of a total has no size without a positive value, and a point needs both an x and a y.
   // A flow with one node per value column leaves out single flows instead of whole rows.
   const positive =
-    type === "pie" ||
-    type === "doughnut" ||
-    type === "funnel" ||
-    type === "treemap" ||
-    type === "sunburst" ||
+    ["pie", "doughnut", "funnel", "treemap", "sunburst"].includes(type) ||
     (type === "sankey" && chained(columns));
   if (positive || type === "scatter") {
     const charted = rows.filter(({ values }) =>
