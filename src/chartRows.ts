@@ -89,6 +89,8 @@ export function quantile(sorted: number[], share: number): number {
 }
 
 const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+/** A unit of bytes that a header states, as kubectl's "MEMORY(bytes)" or "Size (KB)". */
+const STATED_BYTE_UNIT = /\s*\((?:[Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i)\)$/;
 
 /** The power of 1024 to show sizes up to `max` bytes in. */
 function bytePower(max: number): number {
@@ -491,7 +493,9 @@ export function readRows(
   const names =
     spec.aggregate === "count"
       ? ["rows"]
-      : valueIndices.map((index, i) => name(index) + (bytes[i] ? unit : ""));
+      : valueIndices.map((index, i) =>
+          bytes[i] && unit ? name(index).replace(STATED_BYTE_UNIT, "") + unit : name(index),
+        );
   const max = spec.max;
   const maxima = max === undefined ? [] : names.map((_, i) => (bytes[i] ? max / divisor : max));
   return { rows, names, maxima };

@@ -1439,6 +1439,16 @@ suite("charts", () => {
       summary(chart("bar"), df),
       'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; showed sizes in GiB.',
     );
+    const top = build(
+      chart("bar", { valueColumns: ["CPU(cores)", "MEMORY(bytes)"] }),
+      "NAME   CPU(cores)   MEMORY(bytes)\napi    250m         1200Mi\nweb    100m         300Mi",
+    );
+    assert.deepStrictEqual(seriesNames(top), ["CPU(cores)", "MEMORY (GiB)"]);
+    const stated = build(
+      chart("bar", { valueColumns: ["Size (KB)", "Total (of all)"] }),
+      "name,Size (KB),Total (of all)\na,2048K,3M\nb,1M,1M",
+    );
+    assert.deepStrictEqual(seriesNames(stated), ["Size (MiB)", "Total (of all) (MiB)"]);
     const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");
     assert.strictEqual(du.series[0].data[0], 1.5);
   });
