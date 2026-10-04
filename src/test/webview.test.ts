@@ -1495,11 +1495,13 @@ suite("webview", function () {
   });
 
   test("centers exported Mermaid labels that Mermaid leaves to CSS", async () => {
-    // Mermaid starts these labels at the middle of the node, for CSS that only flowcharts have.
+    // Mermaid starts these labels at the middle of the node, or at the left of a state's least
+    // width, for CSS that only flowcharts have.
     for (const source of [
       "mindmap\n  root((Central idea with long text))\n    sq[Square node text]\n    hx{{Hexagon node text}}\n    Default node text",
       'usecase-beta\n  actor Customer\n  Customer --> "Place an order with a long name"',
       "flowchart LR\n  A((Circle label)) --> B[Rectangle label]",
+      'stateDiagram-v2\n  [*] --> Idle\n  state "A state with a long name" as Long\n  Idle --> Long',
     ]) {
       assert.ok((await render({ source })).ok, source);
       const offCenter = await evaluate(`(async () => {
@@ -1515,7 +1517,7 @@ suite("webview", function () {
           host.innerHTML = image;
           document.body.append(host);
           const center = (box) => (box.left + box.right) / 2;
-          const problems = Array.from(host.querySelectorAll("g.node"), node => {
+          const problems = Array.from(host.querySelectorAll("g.node:has(text)"), node => {
             const text = node.querySelector("text").getBoundingClientRect();
             const shape = node.querySelector(":scope > :is(circle, ellipse, path, polygon, rect)").getBoundingClientRect();
             // Mermaid itself places some labels, like those under use case actors, a few pixels off.

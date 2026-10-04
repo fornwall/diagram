@@ -186,19 +186,21 @@ function showAllText(svg: SVGSVGElement): void {
 }
 
 /**
- * Centers the SVG text labels of nodes that Mermaid leaves starting at the middle of the node.
+ * Centers the SVG text labels of nodes that Mermaid leaves starting at the left of their room.
  * Its label helper draws a text label from x = 0, for the diagram's CSS to center it, which only
- * flowchart CSS does: mind map circles, squares and hexagons, and use case ellipses, would show
- * their labels from the middle to the right. The shapes that place a label themselves move it
- * from x = 0.
+ * flowchart CSS does. It places the label for text centered there: mind map circles, squares and
+ * hexagons, and use case ellipses, would show their labels from the middle to the right. It
+ * places a state's label for text that fills the state's least width, wider than short names.
+ * The shapes that place a label themselves move it from x = 0.
  */
 function centerTextLabels(svg: SVGSVGElement): void {
   for (const text of svg.querySelectorAll<SVGTextElement>(
-    'g.node > g.label[transform^="translate(0,"] text',
+    'g.node > g.label[transform^="translate(0,"] text, g.statediagram-state > g.label > g > text:not([transform])',
   )) {
-    if (getComputedStyle(text).textAnchor === "start") {
-      text.style.textAnchor = "middle";
-    }
+    if (getComputedStyle(text).textAnchor !== "start") continue;
+    text.style.textAnchor = "middle";
+    const left = (text.closest("g.label") as SVGGElement).transform.baseVal.consolidate();
+    if (left?.matrix.e) text.setAttribute("transform", `translate(${-left.matrix.e})`);
   }
 }
 
