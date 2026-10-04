@@ -36,10 +36,12 @@ import {
   type ExportResult,
   errorMessage,
   type FromWebview,
+  GET_STATE_TOOL,
   isFromWebview,
   isPlainObject,
   RENDER_TOOL,
   type ToWebview,
+  UPDATE_CHART_TOOL,
 } from "./protocol";
 import { loadWebview } from "./webviewHtml";
 
@@ -785,22 +787,26 @@ export class DiagramPanel implements vscode.Disposable {
     const state = this.state;
     if (!state?.chart)
       throw new Error(
-        "The current diagram is not a generated chart. Create one with diagram_chart first.",
+        `The current diagram is not a generated chart. Create one with ${CHART_TOOL} first.`,
       );
     const chart = updatedChartSpec(state.chart, input);
     if (input.revision !== undefined && input.revision !== this.renderVersion) {
       throw new Error(
-        "The chart changed. Read diagram_getState and retry with its current revision.",
+        `The chart changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
       );
     }
     if (this.pendingRender)
       throw new Error("Wait for the current diagram to finish rendering before updating it.");
     assertChartPresentation(state.chartPresentation);
     const table = this.loadedChartData;
-    if (!table)
+    if (!table) {
+      // The table of a file or command is not kept when VS Code restarts.
       throw new Error(
-        "The chart data is not loaded. Refresh it first; updating never rereads files or reruns commands.",
+        `The chart's data is not loaded, and ${UPDATE_CHART_TOOL} never rereads files or reruns ` +
+          `commands. Call ${CHART_TOOL} again with the same ${state.chart.command ? "command" : "file"} ` +
+          "and the new settings, or ask the user to press Refresh in the diagram panel.",
       );
+    }
     const rebuilt = rebuildChart(chart, table, state.chartPresentation);
     this.reveal(true);
     const outcome = await this.showChart(

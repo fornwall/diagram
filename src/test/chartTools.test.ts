@@ -283,7 +283,10 @@ suite("chart agent tools", function () {
       );
       assert.strictEqual(panel.current, before);
       internals.chartTable = undefined;
-      await assert.rejects(panel.updateChart({ limit: 2 }, token), /not loaded/);
+      await assert.rejects(
+        panel.updateChart({ limit: 2 }, token),
+        /not loaded.*Call diagram_chart again with the same command and the new settings/,
+      );
       internals.chartTable = parseTable(data);
       const edited = JSON.parse(source);
       edited.series[0].data[0] = 999;
