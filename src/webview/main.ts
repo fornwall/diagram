@@ -12,7 +12,7 @@ import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
 import { EChartsRenderer } from "./echartsRenderer";
 import { pngDataUrl } from "./images";
-import { showLinkMenu } from "./linkMenu";
+import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { MermaidRenderer } from "./mermaidRenderer";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
@@ -151,6 +151,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   current = { renderer, requestId };
   editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
+  closeLinkMenu();
   // The previous drawing may remain visible while rendering, but its actions are now stale.
   // That takes the focus from it, so give it back afterwards, to the same node if there is one.
   const focusedNode = canvas.contains(document.activeElement)
@@ -295,6 +296,7 @@ const themeObserver = new MutationObserver(() => {
   themeFrame = requestAnimationFrame(() => {
     // The image prepared for a drag was drawn in the colors that are now gone.
     forgetDragImage();
+    closeLinkMenu();
     for (const renderer of Object.values(renderers)) {
       enqueue(() => renderer.themeChanged());
     }

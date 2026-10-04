@@ -2,7 +2,16 @@
 
 import type { WebLink } from "./renderer";
 
-let shown: HTMLElement | undefined;
+/** Closes the menu shown, if any, moving the focus back to where it was if asked to. */
+let closeShown: ((refocus: boolean) => void) | undefined;
+
+/**
+ * Closes the menu shown, if any, as the diagram is about to be drawn again: the focus goes back to
+ * the node, which the drawing keeps it on.
+ */
+export function closeLinkMenu(): void {
+  closeShown?.(true);
+}
 
 /**
  * Shows a menu of the links below the anchor, in the scrolling container so that it scrolls along,
@@ -16,15 +25,15 @@ export function showLinkMenu(
   links: readonly WebLink[],
   open: (url: string) => void,
 ): void {
-  shown?.remove();
+  closeShown?.(false);
   const returnFocus = document.activeElement;
   const menu = document.createElement("div");
   menu.className = "link-menu";
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", label);
   const close = (refocus: boolean) => {
-    if (shown !== menu) return;
-    shown = undefined;
+    if (closeShown !== close) return;
+    closeShown = undefined;
     // Before removing the menu: removing its focused entry first leaves the focus on the body.
     if (refocus && (returnFocus instanceof HTMLElement || returnFocus instanceof SVGElement)) {
       returnFocus.focus({ preventScroll: true });
@@ -70,7 +79,7 @@ export function showLinkMenu(
   menu.style.left = `${box.left - outer.left + container.scrollLeft}px`;
   menu.style.top = `${box.bottom - outer.top + container.scrollTop + 2}px`;
   container.append(menu);
-  shown = menu;
+  closeShown = close;
   menu.scrollIntoView({ block: "nearest", inline: "nearest" });
   (menu.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
 }

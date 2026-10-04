@@ -2668,6 +2668,45 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.deepStrictEqual(opened, ["https://example.com/dash", "https://example.com/repo"]);
   });
 
+  test("closes an actor's menu when the diagram is drawn again, keeping the focus on the actor", async () => {
+    /** Opens Bob's menu, runs the code that draws the diagram again, and tells how it ends up. */
+    const redraw = (redraw: string, restore = "") =>
+      evaluate(`(async () => {
+        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        bob.focus();
+        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        const opened = document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
+        ${redraw}
+        for (let attempt = 0; attempt < 100 && bob.isConnected; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        ${restore}
+        return {
+          opened,
+          redrawn: !bob.isConnected,
+          menu: document.querySelector("#canvas .link-menu") !== null,
+          focused: document.activeElement.getAttribute("data-diagram-id"),
+        };
+      })()`);
+    const render = () =>
+      panel.render({ language: "mermaid", source: actorLinks, title: "Seq" }, "tool");
+    assert.ok((await render()).ok);
+    const shown = { opened: true, redrawn: true, menu: false, focused: "Bob" };
+    assert.deepStrictEqual(
+      await redraw(
+        `const theme = document.body.dataset.vscodeThemeId;
+        document.body.dataset.vscodeThemeId = "test-theme-link-menu";`,
+        `if (theme === undefined) delete document.body.dataset.vscodeThemeId;
+        else document.body.dataset.vscodeThemeId = theme;`,
+      ),
+      shown,
+    );
+    // The render arrives once the menu is open.
+    const rendered = redraw("");
+    assert.ok((await render()).ok);
+    assert.deepStrictEqual(await rendered, shown);
+  });
+
   test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
     const source = `%%{init: {"sequence": {"forceMenus": true}}}%%\n${actorLinks}`;
     assert.ok((await panel.render({ language: "mermaid", source, title: "Seq" }, "tool")).ok);
