@@ -624,3 +624,13 @@ input:focus {
   overflow: hidden;
   visibility: hidden;
 }
+
+/* Mermaid shows the tooltips of click directives in an element of its own, styled inline in light
+   colors that ignore the theme, and the panel's light text on them in a dark theme. */
+.mermaidTooltip {
+  /* biome-ignore-start lint/complexity/noImportantStyles: Overrides Mermaid's inline style. */
+  color: var(--vscode-editorHoverWidget-foreground) !important;
+  background: var(--vscode-editorHoverWidget-background) !important;
+  border-color: var(--vscode-editorHoverWidget-border) !important;
+  /* biome-ignore-end lint/complexity/noImportantStyles: Overrides Mermaid's inline style. */
+}

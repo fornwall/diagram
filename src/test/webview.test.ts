@@ -552,6 +552,26 @@ suite("webview", function () {
     }
   });
 
+  test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {
+    assert.ok(
+      (await render({ source: 'flowchart LR\n  A --> B\n  click A callback "A tooltip"' })).ok,
+    );
+    const colors = await evaluate(`(async () => {
+      document.querySelector("#diagram g.node[title]").dispatchEvent(new MouseEvent("mouseover"));
+      const tooltip = document.querySelector(".mermaidTooltip");
+      const hover = document.createElement("div");
+      hover.style.cssText = "color: var(--vscode-editorHoverWidget-foreground); background: var(--vscode-editorHoverWidget-background)";
+      document.body.append(hover);
+      const [shown, expected] = [tooltip, hover].map(element => {
+        const style = getComputedStyle(element);
+        return [style.color, style.backgroundColor];
+      });
+      hover.remove();
+      return {text: tooltip.textContent, same: JSON.stringify(shown) === JSON.stringify(expected)};
+    })()`);
+    assert.deepStrictEqual(colors, { text: "A tooltip", same: true });
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
