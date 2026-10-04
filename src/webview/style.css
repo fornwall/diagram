@@ -608,3 +608,14 @@ input:focus {
   /* biome-ignore lint/complexity/noImportantStyles: Overrides Mermaid inline edge colors. */
   stroke: var(--mark-color) !important;
 }
+
+/* Out of the flow of the panel, but laid out so that Mermaid can measure text. */
+.mermaid-layout {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}

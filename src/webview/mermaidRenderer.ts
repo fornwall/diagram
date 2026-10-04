@@ -207,6 +207,21 @@ function nameOf(element: Element): string {
   return textOf(element);
 }
 
+/**
+ * Where Mermaid lays out a drawing before returning it as markup. By default it does so in the body,
+ * where the drawing would take room from the panel until Mermaid finishes, reflowing it meanwhile.
+ */
+let container: HTMLElement | undefined;
+function layoutContainer(): HTMLElement {
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "mermaid-layout";
+    container.setAttribute("aria-hidden", "true");
+    document.body.append(container);
+  }
+  return container;
+}
+
 export class MermaidRenderer implements Renderer {
   readonly noun = "diagram";
   readonly itemNoun = "node";
@@ -285,7 +300,7 @@ export class MermaidRenderer implements Renderer {
     const mermaid = await loadMermaid();
     mermaid.initialize(this.config());
     const id = `diagram-svg-${++this.renderCounter}`;
-    const result = await mermaid.render(id, source).catch((error: unknown) => {
+    const result = await mermaid.render(id, source, layoutContainer()).catch((error: unknown) => {
       throw describeError(error, source);
     });
     // mermaid.render keeps the diagram's database to itself: parse again for it. Should that
@@ -331,7 +346,11 @@ export class MermaidRenderer implements Renderer {
       secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
     });
     try {
-      const { svg } = await mermaid.render(`diagram-image-${++this.renderCounter}`, source);
+      const { svg } = await mermaid.render(
+        `diagram-image-${++this.renderCounter}`,
+        source,
+        layoutContainer(),
+      );
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
       if (!(parsed instanceof SVGSVGElement)) {
         throw new Error("Mermaid did not produce an SVG to make an image of.");

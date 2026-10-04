@@ -416,6 +416,33 @@ suite("webview", function () {
     }
   });
 
+  test("lays out Mermaid drawings outside the flow of the panel", async () => {
+    // Mermaid draws in an element of its own, by default at the end of the body, where it would
+    // take room from the panel while rendering. (Text it measures synchronously is not drawn.)
+    await evaluate(`(() => {
+      window.testBodyDrawings = 0;
+      window.testBodyObserver = new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node.id?.startsWith("ddiagram-")) window.testBodyDrawings++;
+          }
+        }
+      });
+      window.testBodyObserver.observe(document.body, {childList: true});
+    })()`);
+    for (const source of Object.values(MERMAID)) {
+      assert.ok((await render({ source })).ok);
+    }
+    assert.ok(!(await render({ source: "flowchart TD\n  A@{ shape: nosuch }" })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        window.testBodyObserver.disconnect();
+        return {drawings: window.testBodyDrawings, left: document.querySelectorAll('[id^="ddiagram-"]').length};
+      })()`),
+      { drawings: 0, left: 0 },
+    );
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
