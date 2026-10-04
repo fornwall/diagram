@@ -100,6 +100,16 @@ suite("chart transforms", () => {
     }
   });
 
+  test("histograms round bin names and skip identifier columns by default", () => {
+    const option = build("id,ms\n1,0\n2,0.5\n3,1\n4,0.2", { bins: 3 });
+    assert.strictEqual(option.xAxis.name, "ms");
+    assert.deepStrictEqual(
+      option.series[0].data.map((bin: Option) => bin.name),
+      ["[0, 0.33)", "[0.33, 0.67)", "[0.67, 1]"],
+    );
+    assert.strictEqual(option.series[0].data[1].upper, 2 / 3);
+  });
+
   test("filters precede histogram edge selection and missing values are excluded", () => {
     const option = build("name,value\na,0\nb,1\nc,2\nd,100\ne,", {
       bins: 2,

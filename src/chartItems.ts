@@ -2,7 +2,29 @@
 
 import { addValues, label, type Reading } from "./chartRows";
 
-export function pieOption(doughnut: boolean, { names, rows }: Reading): Record<string, unknown> {
+/** Items of the same name share a legend entry, which shows and hides them together. */
+function noteRepeatedLabels({ spec, rows, notes }: Reading, item: string, items: string): void {
+  if (spec.aggregate !== undefined) {
+    return;
+  }
+  const seen = new Set<string>();
+  let repeats = 0;
+  for (const row of rows) {
+    const name = label(row);
+    if (seen.has(name)) repeats++;
+    else seen.add(name);
+  }
+  if (repeats > 0) {
+    notes.push(
+      `${repeats} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
+        'earlier one; "aggregate" combines the rows of each label',
+    );
+  }
+}
+
+export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
+  const { names, rows } = reading;
+  noteRepeatedLabels(reading, "slice", "slices");
   return {
     // The series name says what the values are, e.g. "size (MiB)".
     tooltip: { formatter: "{a}<br/>{b}: {c} ({d}%)" },
@@ -22,7 +44,9 @@ export function pieOption(doughnut: boolean, { names, rows }: Reading): Record<s
 }
 
 /** A funnel of stages, which ECharts orders by value itself, so that any table reads the same. */
-export function funnelOption({ spec, names, rows, notes }: Reading): Record<string, unknown> {
+export function funnelOption(reading: Reading): Record<string, unknown> {
+  const { spec, names, rows, notes } = reading;
+  noteRepeatedLabels(reading, "stage", "stages");
   if (spec.sort === undefined) {
     notes.push("ordered the stages by value, the largest first");
   }
@@ -43,7 +67,9 @@ export function funnelOption({ spec, names, rows, notes }: Reading): Record<stri
  * A radar chart with one axis per value column and one shape per row. Explicit maxima take
  * precedence over each column's range.
  */
-export function radarOption({ maxima, names, rows }: Reading): Record<string, unknown> {
+export function radarOption(reading: Reading): Record<string, unknown> {
+  const { maxima, names, rows } = reading;
+  noteRepeatedLabels(reading, "shape", "shapes");
   const indicator = names.map((name, column) => {
     let low = 0;
     let high = 0;

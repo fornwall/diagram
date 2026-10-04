@@ -83,6 +83,21 @@ suite("charts", () => {
     );
   });
 
+  test("items that repeat a label say how to combine them", () => {
+    const data = "name,n\na,1\nb,2\na,3\na,4";
+    for (const [type, items] of [
+      ["pie", "slices"],
+      ["funnel", "stages"],
+    ] as const) {
+      assert.match(
+        summary(chart(type), data),
+        new RegExp(`; 2 ${items} repeat the label of an earlier one; "aggregate" combines`),
+      );
+      assert.doesNotMatch(summary(chart(type, { aggregate: "sum" }), data), /repeat/);
+    }
+    assert.match(summary(chart("radar"), "name,x,y\na,1,2\na,3,4"), /; 1 shape repeats the label/);
+  });
+
   test("pie sums up a row named Other with the rest", () => {
     const spec = chart("pie", { limit: 2 });
     assert.deepStrictEqual(build(spec, "k,n\nOther,4\na,3\nb,2\nc,1").series[0].data, [
@@ -219,6 +234,38 @@ suite("charts", () => {
     const lines = Array.from({ length: 100 }, (_, i) => `d${i},${i}`);
     const [series] = build(chart("line"), ["day,n", ...lines].join("\n")).series;
     assert.strictEqual(series.showSymbol, false);
+    assert.strictEqual(series.sampling, "lttb");
+    const stacked = build(chart("stackedArea"), ["day,n", ...lines].join("\n")).series[0];
+    assert.strictEqual(stacked.sampling, undefined);
+  });
+
+  test("large series are drawn as one shape, except stacked bars", () => {
+    const rows = (count: number) =>
+      ["x,y", ...Array.from({ length: count }, (_, i) => `${i},${i % 7}`)].join("\n");
+    const large = (spec: ChartSpec, count: number) => build(spec, rows(count)).series[0].large;
+    const bar = chart("bar", { labelColumn: "x", valueColumns: ["y"] });
+    assert.strictEqual(large(bar, 399), undefined);
+    assert.strictEqual(large(bar, 400), true);
+    assert.strictEqual(large({ ...bar, type: "horizontalBar" }, 400), true);
+    assert.strictEqual(large({ ...bar, type: "stackedBar" }, 400), undefined);
+    assert.strictEqual(large(chart("scatter"), 1999), undefined);
+    assert.strictEqual(large(chart("scatter"), 2000), true);
+    // The SVG renderer draws them, as one path each rather than an element per item.
+    for (const spec of [bar, chart("scatter")]) {
+      const rendered = initECharts(null, undefined, {
+        renderer: "svg",
+        ssr: true,
+        width: 800,
+        height: 600,
+      });
+      try {
+        rendered.setOption(build(spec, rows(3000)));
+        const svg = rendered.renderToSVGString();
+        assert.ok(svg.split("<path").length < 300, spec.type);
+      } finally {
+        rendered.dispose();
+      }
+    }
   });
 
   test("scatter plots the first value column against the second", () => {
@@ -584,16 +631,28 @@ suite("charts", () => {
     assert.strictEqual(option.yAxis.scale, true);
     assert.strictEqual(option.series[0].type, "boxplot");
     assert.strictEqual(option.series[0].name, "ms");
-    // Min, lower quartile, median, upper quartile and max, interpolated between the values.
+    // Whiskers, quartiles interpolated between the values, and the median. 40 lies beyond
+    // 20.5 + 1.5 × 9, so it is an outlier, and the whisker of "a" stops at its box.
     assert.deepStrictEqual(option.series[0].data, [
-      [10, 11.5, 13, 20.5, 40],
+      [10, 11.5, 13, 20.5, 20.5],
       [5, 5.5, 6, 6.5, 7],
     ]);
+    assert.deepStrictEqual(option.series[1], {
+      type: "scatter",
+      name: "outliers",
+      data: [["a", 40]],
+    });
     assert.strictEqual(
       summary(chart("boxplot"), times),
-      'Charted the spread of "ms" by "test"; computed the min, lower quartile, median, upper ' +
-        "quartile and max of 2 boxes from 7 values.",
+      'Charted the spread of "ms" by "test"; computed the quartiles of 2 boxes from 7 values, ' +
+        "with whiskers to the furthest values within 1.5 interquartile ranges of the box and " +
+        "1 outlier beyond them.",
     );
+    // Low outliers too, with the whisker at the furthest value inside the fence.
+    const low = build(chart("boxplot"), "g,v\nx,-100\nx,1\nx,2\nx,3\nx,4\nx,5");
+    assert.deepStrictEqual(low.series[0].data, [[1, 1.25, 2.5, 3.75, 5]]);
+    assert.deepStrictEqual(low.series[1].data, [["x", -100]]);
+    assert.throws(() => build(chart("boxplot", { limit: 3 }), times), /"limit" would leave out/);
   });
 
   test("boxplot without a label column draws a box per value column", () => {
@@ -605,10 +664,11 @@ suite("charts", () => {
       [3, 4, 5, 7, 9],
       [10, 15, 20, 25, 30],
     ]);
+    assert.strictEqual(option.series.length, 1);
     assert.strictEqual(
       summary(chart("boxplot"), measurements),
-      'Charted the spread of "before", "after"; computed the min, lower quartile, median, upper ' +
-        "quartile and max of 2 boxes from 6 values.",
+      'Charted the spread of "before", "after"; computed the quartiles of 2 boxes from 6 values, ' +
+        "with whiskers to the furthest values within 1.5 interquartile ranges of the box.",
     );
   });
 

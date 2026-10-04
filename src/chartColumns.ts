@@ -106,7 +106,11 @@ function preferring(
 }
 
 /** Prefer numeric columns with matching units, excluding labels, identifiers and row numbers. */
-function defaultValueColumns(table: DataTable, labelIndices: number[], needed: number): number[] {
+export function defaultValueColumns(
+  table: DataTable,
+  labelIndices: number[],
+  needed: number,
+): number[] {
   const numeric = table.columns.flatMap((column, i) =>
     column.numeric && !labelIndices.includes(i) ? [i] : [],
   );
@@ -231,6 +235,12 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     throw new Error(
       'A box plot summarizes the raw rows of each group itself, and "aggregate" would leave it ' +
         'one number per group. Leave "aggregate" out, or chart the groups as a bar chart.',
+    );
+  }
+  if (type === "boxplot" && spec.limit !== undefined) {
+    throw new Error(
+      'A box plot summarizes every row of each group, and "limit" would leave out some of ' +
+        'them. Leave "limit" out, and select rows with "filters" instead.',
     );
   }
   const only = labels.length === 1 ? labels[0] : undefined;

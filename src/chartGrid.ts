@@ -14,8 +14,15 @@ const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
   stackedArea: { type: "line", areaStyle: {}, stack: "total" },
 };
 
-/** Lines with more points than this are drawn without symbols. */
+/** Lines with more points than this are drawn without symbols, and thinned out where dense. */
 const FEW_POINTS = 30;
+
+/**
+ * Series with this many bars or points are drawn as one shape each, ECharts' default
+ * `largeThreshold`. The SVG renderer would otherwise create an element per bar or point.
+ */
+const LARGE_BARS = 400;
+const LARGE_POINTS = 2000;
 
 /**
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
@@ -56,6 +63,12 @@ export function cartesianOption(
       ...CARTESIAN_SERIES[type],
       name,
       ...(line && rows.length > FEW_POINTS ? { showSymbol: false } : {}),
+      // ECharts samples where points outnumber pixels. Sampling each series of a stack on its own
+      // would misalign them, and it does not stack large bars.
+      ...(line && rows.length > FEW_POINTS && type !== "stackedArea" ? { sampling: "lttb" } : {}),
+      ...(rows.length >= LARGE_BARS && (type === "bar" || type === "horizontalBar")
+        ? { large: true }
+        : {}),
       ...(names.length > 1 ? { emphasis: { focus: "series" } } : {}),
       data: rows.map((row, index) => {
         const value = row.values[column] ?? null;
@@ -88,6 +101,7 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
         {
           type: "scatter",
           name: xName,
+          ...(rows.length >= LARGE_POINTS ? { large: true } : {}),
           data: rows.map((row) => [
             timeAxis ? timeValue(label(row)) : label(row),
             row.values[0] ?? null,
@@ -105,6 +119,7 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
       {
         type: "scatter",
         name: yName,
+        ...(rows.length >= LARGE_POINTS ? { large: true } : {}),
         data: rows.map((row) => (labeled ? { name: label(row), value: row.values } : row.values)),
       },
     ],
@@ -235,6 +250,7 @@ export function boxplotOption({
   }
   const categories: string[] = [];
   const boxes: number[][] = [];
+  const outliers: [string, number][] = [];
   let counted = 0;
   for (const [group, numbers] of grouped) {
     if (numbers.length === 0) {
@@ -243,25 +259,44 @@ export function boxplotOption({
     const sorted = numbers.sort((x, y) => x - y);
     counted += sorted.length;
     categories.push(group);
+    const q1 = quantile(sorted, 0.25);
+    const q3 = quantile(sorted, 0.75);
+    // Tukey's fences, 1.5 interquartile ranges beyond the box, as most plotting tools draw them.
+    // A range that overflows leaves every value inside them.
+    const reach = 1.5 * (q3 - q1);
+    let first = 0;
+    while ((sorted[first] ?? q1) < q1 - reach) first++;
+    let last = sorted.length - 1;
+    while ((sorted[last] ?? q3) > q3 + reach) last--;
+    for (const value of sorted.slice(0, first).concat(sorted.slice(last + 1))) {
+      outliers.push([group, value]);
+    }
+    // With few values the furthest one inside a fence can lie within the interpolated box.
     boxes.push([
-      sorted[0] ?? 0,
-      quantile(sorted, 0.25),
+      Math.min(sorted[first] ?? q1, q1),
+      q1,
       quantile(sorted, 0.5),
-      quantile(sorted, 0.75),
-      sorted.at(-1) ?? 0,
+      q3,
+      Math.max(sorted[last] ?? q3, q3),
     ]);
   }
   if (boxes.length === 0) {
     throw new Error(`A box plot needs numbers to summarize, but ${quoteAll(names)} holds none.`);
   }
   notes.push(
-    `computed the min, lower quartile, median, upper quartile and max of ` +
-      `${plural(boxes.length, "box", "boxes")} from ${plural(counted, "value")}`,
+    `computed the quartiles of ${plural(boxes.length, "box", "boxes")} from ` +
+      `${plural(counted, "value")}, with whiskers to the furthest values within 1.5 ` +
+      "interquartile ranges of the box" +
+      (outliers.length > 0 ? ` and ${plural(outliers.length, "outlier")} beyond them` : ""),
   );
   return {
     xAxis: { type: "category", data: categories },
     // A spread reads against itself rather than against zero.
     yAxis: { type: "value", ...(table.header && labeled ? { name: names[0] } : {}), scale: true },
-    series: [{ type: "boxplot", ...(labeled ? { name: names[0] } : {}), data: boxes }],
+    series: [
+      { type: "boxplot", ...(labeled ? { name: names[0] } : {}), data: boxes },
+      // The x of an outlier names its box's category, which the tooltip shows.
+      ...(outliers.length > 0 ? [{ type: "scatter", name: "outliers", data: outliers }] : []),
+    ],
   };
 }

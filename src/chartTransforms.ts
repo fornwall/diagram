@@ -1,6 +1,7 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
-import type { ChartFilter, ChartSpec } from "./chartSpec";
+import { defaultValueColumns } from "./chartColumns";
+import { type ChartFilter, type ChartSpec, quoteAll } from "./chartSpec";
 import type { Chart } from "./charts";
 import { type Cell, type DataTable, findColumn } from "./data";
 
@@ -70,10 +71,13 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   const explicit = spec.valueColumns?.[0];
   const column =
     explicit === undefined
-      ? table.columns.findIndex((column) => column.numeric && column.name !== spec.facetColumn)
+      ? defaultValueColumns(table, [], 1)[0]
       : findColumn(table, explicit, "value");
-  if (column < 0)
-    throw new Error('No column holds numbers to bin. Set "valueColumns" to a numeric column.');
+  if (column === undefined)
+    throw new Error(
+      `No column holds numbers to bin. Columns: ${quoteAll(table.columns.map((c) => c.name))}. ` +
+        'Set "valueColumns" to a numeric column, or "format" if the data was not split as intended.',
+    );
   let minimum = Infinity;
   let maximum = -Infinity;
   let count = 0;
@@ -104,6 +108,17 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   return { column, name, edges };
 }
 
+/**
+ * Edges rounded to a tenth of the bin width, e.g. 0.3 for 0.30000000000000004, which tells
+ * adjacent edges apart. Widths too small or too large for that keep every digit.
+ */
+function edgeFormat(edges: number[]): (edge: number) => string {
+  const width = (edges[1] ?? 0) - (edges[0] ?? 0);
+  const decimals = 1 - Math.floor(Math.log10(width));
+  if (!(decimals >= 0 && decimals <= 100)) return String;
+  return (edge) => String(Number(edge.toFixed(decimals)));
+}
+
 export function buildHistogram(table: DataTable, { column, name, edges }: HistogramPlan): Chart {
   const counts = Array<number>(Math.max(1, edges.length - 1)).fill(0);
   let count = 0;
@@ -122,11 +137,12 @@ export function buildHistogram(table: DataTable, { column, name, edges }: Histog
     counts[index] = (counts[index] ?? 0) + 1;
     count++;
   }
+  const format = edgeFormat(edges);
   const data = counts.map((value, index) => {
     const lower = edges[index] ?? 0;
     const upper = edges[index + 1] ?? lower;
     const last = index === counts.length - 1;
-    return { name: `[${lower}, ${upper}${last ? "]" : ")"}`, value, lower, upper };
+    return { name: `[${format(lower)}, ${format(upper)}${last ? "]" : ")"}`, value, lower, upper };
   });
   const skipped = table.rows.length - count;
   return {
