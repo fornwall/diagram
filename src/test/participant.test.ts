@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
-import { newPanel } from "./newPanel";
+import { type FakeWebview, newFakePanel } from "./newPanel";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
 /** A model's reply, or a function giving it, e.g. after doing what a tool call would. */
@@ -10,6 +10,10 @@ type Reply = Part[] | (() => Promise<Part[]>);
 
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
+const flowchart = {
+  language: "mermaid",
+  source: "flowchart LR\n  A[Parser] --> B[Checker]",
+} as const;
 const defaultTools = [
   "diagram_annotate",
   "diagram_chart",
@@ -34,6 +38,17 @@ const availableDefaults = () =>
     .filter((name) => defaultTools.includes(name))
     .sort();
 const invalid = "```mermaid\nflowchart TD\n  A --> --> B[\n```";
+const brokenChart = '{"title": {"text": "*a* <b>"}, "series": [1 2]}';
+/** The errors that the page reports for the sources that fail to render. */
+const renderErrors = new Map([
+  ["flowchart TD\n  A --> --> B[", 'Parse error on line 2, column 9: unexpected "-->".'],
+  [
+    brokenChart,
+    'The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n' +
+      `1 | ${brokenChart}\n` +
+      `  | ${" ".repeat(44)}^`,
+  ],
+]);
 
 // The constructors are hidden from the API, but not at runtime.
 type Constructor<T> = new (...args: unknown[]) => T;
@@ -43,12 +58,14 @@ const ResponseTurn = vscode.ChatResponseTurn as unknown as Constructor<vscode.Ch
 /** The fake model's token count: about one token per four characters. */
 const tokenCount = (text: string) => Math.ceil(text.length / 4);
 
+/** The panel the participant draws in, shown in a page that draws all but {@link renderErrors}. */
+let panel: DiagramPanel;
+
 /**
  * Sends a request to the participant, with a model that gives the replies in turn and takes
  * `maxInputTokens`.
  */
 async function ask(
-  panel: DiagramPanel,
   replies: Reply[],
   {
     history = [],
@@ -121,16 +138,26 @@ function messageText(message: vscode.LanguageModelChatMessage | undefined): stri
     .join("");
 }
 
-suite("participant", function () {
-  // The first render loads the webview, which can take a while.
-  this.timeout(10_000);
+suite("participant", () => {
+  let webview: FakeWebview;
+  setup(async () => {
+    ({ panel, webview } = await newFakePanel());
+    webview.answer = (message) => {
+      if (message.type !== "render") return undefined;
+      const { requestId } = message;
+      const error = renderErrors.get(message.source);
+      return error === undefined
+        ? { type: "rendered", requestId, diagramType: "test" }
+        : { type: "renderError", requestId, message: error };
+    };
+  });
+  teardown(() => panel.dispose());
 
   test("a cancelled request does not contact the model", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     cancellation.cancel();
     try {
-      const { result, shown, sent } = await ask(panel, [[text(valid)]], {
+      const { result, shown, sent } = await ask([[text(valid)]], {
         token: cancellation.token,
       });
       assert.strictEqual(result, undefined);
@@ -139,16 +166,13 @@ suite("participant", function () {
       assert.strictEqual(panel.current, undefined);
     } finally {
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
   test("ignores model output arriving after cancellation", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     try {
       const { result, shown, sent } = await ask(
-        panel,
         [
           async () => {
             cancellation.cancel();
@@ -166,19 +190,17 @@ suite("participant", function () {
       assert.strictEqual(panel.current, undefined);
     } finally {
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
   test("cancellation during rendering does not start a repair request", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     panel.render = async () => {
       cancellation.cancel();
       return { ok: false, kind: "invalid", error: "Invalid diagram" };
     };
     try {
-      const { result, shown, sent } = await ask(panel, [[text(invalid)], [text(valid)]], {
+      const { result, shown, sent } = await ask([[text(invalid)], [text(valid)]], {
         token: cancellation.token,
       });
       assert.strictEqual(result, undefined);
@@ -186,12 +208,10 @@ suite("participant", function () {
       assert.strictEqual(sent.length, 1);
     } finally {
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
   test("cancellation stops waiting for an unresponsive diagram panel", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     const rendering = Promise.withResolvers<void>();
     const outcome = Promise.withResolvers<Awaited<ReturnType<DiagramPanel["render"]>>>();
@@ -200,7 +220,7 @@ suite("participant", function () {
       return outcome.promise;
     };
     try {
-      const response = ask(panel, [[text(valid)]], { token: cancellation.token });
+      const response = ask([[text(valid)]], { token: cancellation.token });
       await rendering.promise;
       cancellation.cancel();
       const { result, sent } = await response;
@@ -209,13 +229,11 @@ suite("participant", function () {
     } finally {
       outcome.resolve({ ok: true, diagramType: "flowchart" });
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
   for (const phase of ["token counting", "model request", "response stream"] as const) {
     test(`cancellation stops waiting for unresponsive ${phase}`, async () => {
-      const panel = newPanel();
       const cancellation = new vscode.CancellationTokenSource();
       const started = Promise.withResolvers<void>();
       const resume = Promise.withResolvers<void>();
@@ -243,7 +261,7 @@ suite("participant", function () {
         },
       } as unknown as vscode.LanguageModelChat;
       try {
-        const response = ask(panel, [], { model, token: cancellation.token });
+        const response = ask([], { model, token: cancellation.token });
         await started.promise;
         cancellation.cancel();
         const { result, shown } = await response;
@@ -255,13 +273,11 @@ suite("participant", function () {
       } finally {
         resume.resolve();
         cancellation.dispose();
-        panel.dispose();
       }
     });
   }
 
   test("cancellation stops waiting for an unresponsive tool", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<vscode.LanguageModelToolResult>();
@@ -272,7 +288,6 @@ suite("participant", function () {
     };
     try {
       const response = ask(
-        panel,
         [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
         { toolReferences: [{ name: "diagram_getState" }], token: cancellation.token },
       );
@@ -288,12 +303,10 @@ suite("participant", function () {
       resume.resolve(new vscode.LanguageModelToolResult([]));
       vscode.lm.invokeTool = invokeTool;
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
   test("cancellation stops waiting for an attachment and skips subsequent history reads", async () => {
-    const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<string>();
@@ -310,7 +323,7 @@ suite("participant", function () {
       value: vscode.Uri.parse(`diagram-cancel-test:${path}`),
     });
     try {
-      const response = ask(panel, [[text(valid)]], {
+      const response = ask([[text(valid)]], {
         token: cancellation.token,
         references: [reference("/current")],
         history: [
@@ -329,35 +342,72 @@ suite("participant", function () {
       resume.resolve("Late attachment");
       provider.dispose();
       cancellation.dispose();
-      panel.dispose();
     }
   });
 
-  test("renders a diagram written next to a tool call, without showing its source", async () => {
-    const panel = newPanel();
-    try {
-      const { result, shown, sent } = await ask(panel, [
-        [
-          text(`Here it is:\n${valid}\n`),
-          new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
-        ],
-        [text("It has two nodes.")],
-      ]);
-      assert.deepStrictEqual(result?.metadata, {
-        language: "mermaid",
-        source: "flowchart TD\n  A --> B",
-      });
-      assert.strictEqual(panel.current?.source, "flowchart TD\n  A --> B");
-      assert.strictEqual(shown, "Here it is:\nIt has two nodes.");
-      assert.strictEqual(sent.length, 2);
-    } finally {
-      panel.dispose();
+  test("/show and /explain need a diagram, and say so without asking the model", async () => {
+    let shown = 0;
+    panel.show = () => void shown++;
+    for (const [command, reply] of [
+      ["show", "There is no diagram yet. Describe what you want me to draw."],
+      ["explain", "There is no diagram to explain yet. Describe what you want me to draw."],
+    ]) {
+      const asked = await ask([[text("Unexpected")]], { command });
+      assert.deepStrictEqual([asked.shown, asked.sent, asked.result], [reply, [], undefined]);
     }
+    assert.strictEqual(shown, 0);
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
+    const asked = await ask([[text("Unexpected")]], { command: "show" });
+    assert.deepStrictEqual([asked.shown, asked.sent, shown], ["Opened the diagram panel.", [], 1]);
+  });
+
+  test("/new leaves the current diagram out of the request", async () => {
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
+    const prompt = (command?: string) =>
+      ask([[text("Hm.")]], { command }).then(({ sent }) =>
+        (sent[0]?.messages ?? []).map(messageText).join("\n"),
+      );
+    assert.ok((await prompt()).includes(flowchart.source));
+    assert.ok(!(await prompt("new")).includes(flowchart.source));
+  });
+
+  test("keeps a diagram the panel could not show, and says why", async () => {
+    webview.deliver = (message) => message.type !== "render";
+    const { result, shown, sent } = await ask([[text(`Here it is:\n${valid}`)]]);
+    assert.strictEqual(sent.length, 1);
+    assert.match(shown, /\n\nThe diagram panel is unavailable\.$/);
+    assert.deepStrictEqual(result?.metadata, {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> B",
+    });
+  });
+
+  test("says when a reply ends inside a diagram, and draws nothing", async () => {
+    const { result, shown } = await ask([[text("Here:\n```mermaid\nflowchart TD\n  A --> B")]]);
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(panel.current, undefined);
+    assert.match(shown, /The reply ended before the diagram was complete\./);
+  });
+
+  test("renders a diagram written next to a tool call, without showing its source", async () => {
+    const { result, shown, sent } = await ask([
+      [
+        text(`Here it is:\n${valid}\n`),
+        new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
+      ],
+      [text("It has two nodes.")],
+    ]);
+    assert.deepStrictEqual(result?.metadata, {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> B",
+    });
+    assert.strictEqual(panel.current?.source, "flowchart TD\n  A --> B");
+    assert.strictEqual(shown, "Here it is:\nIt has two nodes.");
+    assert.strictEqual(sent.length, 2);
   });
 
   for (const finalBlock of [false, true]) {
     test(`preserves a tool render ${finalBlock ? "despite a later diagram fence" : "in history"}`, async () => {
-      const panel = newPanel();
       const invokeTool = vscode.lm.invokeTool;
       const toolInvocationToken = { requestId: "latest-diagram" } as never;
       const toolDiagram = {
@@ -372,7 +422,6 @@ suite("participant", function () {
       };
       try {
         const { result, shown } = await ask(
-          panel,
           [
             [
               text(valid),
@@ -393,131 +442,98 @@ suite("participant", function () {
         assert.doesNotMatch(shown, /flowchart/);
       } finally {
         vscode.lm.invokeTool = invokeTool;
-        panel.dispose();
       }
     });
   }
 
   test("asks the model to fix a diagram that fails to render", async () => {
-    const panel = newPanel();
-    try {
-      const { result, sent } = await ask(panel, [[text(invalid)], [text(`Fixed it.\n${valid}`)]]);
-      assert.match(messageText(sent[1]?.messages.at(-1)), /failed to render with this error/);
-      assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
-      assert.strictEqual(panel.current?.error, undefined);
-    } finally {
-      panel.dispose();
-    }
+    const { result, sent } = await ask([[text(invalid)], [text(`Fixed it.\n${valid}`)]]);
+    assert.match(messageText(sent[1]?.messages.at(-1)), /failed to render with this error/);
+    assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
+    assert.strictEqual(panel.current?.error, undefined);
   });
 
   test("gives up on a diagram that still fails to render, and says so", async () => {
-    const panel = newPanel();
-    try {
-      const gaveUp = await ask(panel, [[text(invalid)], [text("I can't fix it.")]]);
-      assert.match(
-        gaveUp.shown,
-        /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*source view/,
-      );
-      assert.strictEqual(gaveUp.result?.metadata?.source, "flowchart TD\n  A --> --> B[");
+    const gaveUp = await ask([[text(invalid)], [text("I can't fix it.")]]);
+    assert.match(
+      gaveUp.shown,
+      /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*source view/,
+    );
+    assert.strictEqual(gaveUp.result?.metadata?.source, "flowchart TD\n  A --> --> B[");
 
-      const keepsFailing = await ask(panel, [
-        [text(invalid)],
-        [text(invalid)],
-        [text(invalid)],
-        [text(valid)],
-      ]);
-      assert.strictEqual(keepsFailing.sent.length, 3);
-      assert.match(keepsFailing.shown, /failed to render: .*source view/s);
-    } finally {
-      panel.dispose();
-    }
+    const keepsFailing = await ask([
+      [text(invalid)],
+      [text(invalid)],
+      [text(invalid)],
+      [text(valid)],
+    ]);
+    assert.strictEqual(keepsFailing.sent.length, 3);
+    assert.match(keepsFailing.shown, /failed to render: .*source view/s);
   });
 
   test("shows a render error as Markdown, with its source excerpt in a code block", async () => {
-    const panel = newPanel();
-    try {
-      const broken = text('```echarts\n{"title": {"text": "*a* <b>"}, "series": [1 2]}\n```');
-      const { shown } = await ask(panel, [[broken], [broken], [broken]]);
-      assert.ok(
-        shown.endsWith(
-          'The chart failed to render: The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n\n' +
-            '```\n1 | {"title": {"text": "*a* <b>"}, "series": [1 2]}\n' +
-            "  |                                             ^\n```\n\n" +
-            "You can fix it in the source view of the diagram panel, which the `</>` button at its top right opens.",
-        ),
-        shown,
-      );
-    } finally {
-      panel.dispose();
-    }
+    const broken = text(`\`\`\`echarts\n${brokenChart}\n\`\`\``);
+    const { shown } = await ask([[broken], [broken], [broken]]);
+    assert.ok(
+      shown.endsWith(
+        'The chart failed to render: The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n\n' +
+          '```\n1 | {"title": {"text": "*a* <b>"}, "series": [1 2]}\n' +
+          "  |                                             ^\n```\n\n" +
+          "You can fix it in the source view of the diagram panel, which the `</>` button at its top right opens.",
+      ),
+      shown,
+    );
   });
 
   test("adopts a diagram that a tool drew for the request, but not one drawn for another", async () => {
-    const panel = newPanel();
-    try {
-      const diagram = {
-        language: "mermaid",
-        source: "flowchart TD\n  A --> B",
-        title: "A",
-      } as const;
-      const drawFor = (requestId: string) => async () => {
-        assert.ok((await panel.render(diagram, "tool", { requestId })).ok);
-        return [text("Done.")];
-      };
-      const toolInvocationToken = { requestId: "this" } as never;
-      const other = await ask(panel, [drawFor("other")], { toolInvocationToken });
-      assert.strictEqual(other.result, undefined);
-      assert.strictEqual(panel.current?.origin, "tool");
-      const own = await ask(panel, [drawFor("this")], { toolInvocationToken });
-      assert.deepStrictEqual(own.result?.metadata, {
-        language: "mermaid",
-        source: diagram.source,
-      });
-      assert.strictEqual(panel.current?.origin, "participant");
-    } finally {
-      panel.dispose();
-    }
+    const diagram = {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> B",
+      title: "A",
+    } as const;
+    const drawFor = (requestId: string) => async () => {
+      assert.ok((await panel.render(diagram, "tool", { requestId })).ok);
+      return [text("Done.")];
+    };
+    const toolInvocationToken = { requestId: "this" } as never;
+    const other = await ask([drawFor("other")], { toolInvocationToken });
+    assert.strictEqual(other.result, undefined);
+    assert.strictEqual(panel.current?.origin, "tool");
+    const own = await ask([drawFor("this")], { toolInvocationToken });
+    assert.deepStrictEqual(own.result?.metadata, {
+      language: "mermaid",
+      source: diagram.source,
+    });
+    assert.strictEqual(panel.current?.origin, "participant");
   });
 
   test("makes the model call the tools that the user attached first", async () => {
-    const panel = newPanel();
-    try {
-      const { sent } = await ask(
-        panel,
-        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
-        { toolReferences: [{ name: "diagram_getState" }] },
-      );
-      const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
-      assert.deepStrictEqual(toolNames, [["diagram_getState"], availableDefaults()]);
-      assert.deepStrictEqual(
-        sent.map(({ options }) => options.toolMode),
-        [vscode.LanguageModelChatToolMode.Required, undefined],
-      );
-      assert.match(
-        messageText(sent[1]?.messages.at(-1)),
-        /Current Mermaid diagram|No diagram has been rendered/,
-      );
-    } finally {
-      panel.dispose();
-    }
+    const { sent } = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
+      { toolReferences: [{ name: "diagram_getState" }] },
+    );
+    const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
+    assert.deepStrictEqual(toolNames, [["diagram_getState"], availableDefaults()]);
+    assert.deepStrictEqual(
+      sent.map(({ options }) => options.toolMode),
+      [vscode.LanguageModelChatToolMode.Required, undefined],
+    );
+    assert.match(
+      messageText(sent[1]?.messages.at(-1)),
+      /Current Mermaid diagram|No diagram has been rendered/,
+    );
   });
 
   test("does not run tools that the model was not given", async () => {
-    const panel = newPanel();
-    try {
-      const call = new vscode.LanguageModelToolCallPart("1", "unknown_external_tool", {});
-      const { sent } = await ask(panel, [[call], [text("Sorry.")]]);
-      assert.strictEqual(
-        messageText(sent[1]?.messages.at(-1)),
-        "The tool unknown_external_tool is not available in this round. Use only the tools you were given.",
-      );
-    } finally {
-      panel.dispose();
-    }
+    const call = new vscode.LanguageModelToolCallPart("1", "unknown_external_tool", {});
+    const { sent } = await ask([[call], [text("Sorry.")]]);
+    assert.strictEqual(
+      messageText(sent[1]?.messages.at(-1)),
+      "The tool unknown_external_tool is not available in this round. Use only the tools you were given.",
+    );
   });
 
   test("keeps attached tools available when the registry returns fresh descriptors", async () => {
-    const panel = newPanel();
     const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
     assert.ok(descriptor);
     const available = vscode.lm.tools;
@@ -527,7 +543,7 @@ suite("participant", function () {
     });
     try {
       const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
-      const { sent } = await ask(panel, [[call], [text("Done.")]], {
+      const { sent } = await ask([[call], [text("Done.")]], {
         toolReferences: [{ name: "diagram_getState" }],
       });
       assert.deepStrictEqual(
@@ -536,12 +552,10 @@ suite("participant", function () {
       );
     } finally {
       Object.defineProperty(vscode.lm, "tools", descriptor);
-      panel.dispose();
     }
   });
 
   test("offers all built-in tools by default and only explicitly attached external tools", async () => {
-    const panel = newPanel();
     const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
     assert.ok(descriptor);
     const names = [...defaultTools, "external_attached", "external_unattached", "diagram_unknown"];
@@ -552,13 +566,12 @@ suite("participant", function () {
     const invoke = vscode.lm.invokeTool;
     vscode.lm.invokeTool = async () => new vscode.LanguageModelToolResult([text("Done")]);
     try {
-      const regular = await ask(panel, [[text("Ready.")]]);
+      const regular = await ask([[text("Ready.")]]);
       assert.deepStrictEqual(
         regular.sent[0]?.options.tools?.map((tool) => tool.name).sort(),
         defaultTools,
       );
       const attached = await ask(
-        panel,
         [[new vscode.LanguageModelToolCallPart("1", "external_attached", {})], [text("Done.")]],
         { toolReferences: [{ name: "external_attached" }] },
       );
@@ -573,12 +586,10 @@ suite("participant", function () {
     } finally {
       vscode.lm.invokeTool = invoke;
       Object.defineProperty(vscode.lm, "tools", descriptor);
-      panel.dispose();
     }
   });
 
   test("/explain rejects mutating and unknown tools even when explicitly attached", async () => {
-    const panel = newPanel();
     await panel.render(
       { language: "mermaid", source: "flowchart TD\n A --> B", title: "Original" },
       "participant",
@@ -592,7 +603,6 @@ suite("participant", function () {
     };
     try {
       const { sent, result } = await ask(
-        panel,
         [
           [
             "diagram_render",
@@ -622,12 +632,10 @@ suite("participant", function () {
       assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   test("supports extended exploration and stops after twelve tool rounds", async () => {
-    const panel = newPanel();
     const invoke = vscode.lm.invokeTool;
     let invoked = 0;
     vscode.lm.invokeTool = async () => {
@@ -638,19 +646,17 @@ suite("participant", function () {
       const replies = Array.from({ length: 20 }, (_, i) => [
         new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
       ]);
-      const { sent, shown } = await ask(panel, replies);
+      const { sent, shown } = await ask(replies);
       assert.strictEqual(invoked, 12);
       assert.strictEqual(sent.length, 14);
       assert.match(messageText(sent[13]?.messages.at(-1)), /tool round limit/);
       assert.match(shown, /Stopped tool use.*tool round limit/);
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   test("bounds batched tool calls and permits a final explanation", async () => {
-    const panel = newPanel();
     const invoke = vscode.lm.invokeTool;
     let invoked = 0;
     vscode.lm.invokeTool = async () => {
@@ -662,20 +668,18 @@ suite("participant", function () {
         { length: 40 },
         (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
       );
-      const { sent, shown } = await ask(panel, [calls, [text("Exploration stopped.")]]);
+      const { sent, shown } = await ask([calls, [text("Exploration stopped.")]]);
       assert.strictEqual(invoked, 32);
       assert.strictEqual(sent.length, 2);
       assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
       assert.strictEqual(shown, "Exploration stopped.");
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   for (const name of ["Canceled", "CancellationError", "AbortError"]) {
     test(`does not repeat a declined tool (${name}) in the batch or subsequent rounds`, async () => {
-      const panel = newPanel();
       const invoke = vscode.lm.invokeTool;
       let invoked = 0;
       vscode.lm.invokeTool = async () => {
@@ -687,7 +691,7 @@ suite("participant", function () {
       try {
         const call = (id: string) =>
           new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-        const { sent, shown } = await ask(panel, [
+        const { sent, shown } = await ask([
           [call("1"), call("2")],
           [call("3")],
           [text("Unreachable")],
@@ -698,13 +702,11 @@ suite("participant", function () {
         assert.match(shown, /Stopped tool use.*user declined/);
       } finally {
         vscode.lm.invokeTool = invoke;
-        panel.dispose();
       }
     });
   }
 
   test("shares the tool budget with rendering repairs", async () => {
-    const panel = newPanel();
     const invoke = vscode.lm.invokeTool;
     let invoked = 0;
     vscode.lm.invokeTool = async () => {
@@ -716,7 +718,7 @@ suite("participant", function () {
         { length: 32 },
         (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
       );
-      const { result, sent } = await ask(panel, [
+      const { result, sent } = await ask([
         calls,
         [text(invalid)],
         [new vscode.LanguageModelToolCallPart("repair", "diagram_getState", {})],
@@ -728,12 +730,10 @@ suite("participant", function () {
       assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   test("ordinary tool failures can be corrected in a later round", async () => {
-    const panel = newPanel();
     const invoke = vscode.lm.invokeTool;
     let invoked = 0;
     vscode.lm.invokeTool = async () => {
@@ -742,18 +742,16 @@ suite("participant", function () {
     };
     try {
       const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-      const { result, sent } = await ask(panel, [[call("1")], [call("2")], [text("Done.")]]);
+      const { result, sent } = await ask([[call("1")], [call("2")], [text("Done.")]]);
       assert.strictEqual(invoked, 2);
       assert.match(messageText(sent[1]?.messages.at(-1)), /tool call failed: Invalid input/);
       assert.strictEqual(result?.errorDetails, undefined);
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   test("adopts chart provenance instead of copying its rendered data into history", async () => {
-    const panel = newPanel();
     const invoke = vscode.lm.invokeTool;
     const toolInvocationToken = { requestId: "chart-history" } as never;
     const chart = { data: "name,value\na,1\nb,2", type: "bar" } as const;
@@ -773,7 +771,6 @@ suite("participant", function () {
     };
     try {
       const { result } = await ask(
-        panel,
         [[new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)], [text(valid)]],
         { toolInvocationToken },
       );
@@ -781,116 +778,81 @@ suite("participant", function () {
       assert.strictEqual(panel.current?.source, source);
     } finally {
       vscode.lm.invokeTool = invoke;
-      panel.dispose();
     }
   });
 
   test("required tool rounds run only the tool exposed in that round", async () => {
-    const panel = newPanel();
-    try {
-      const call = new vscode.LanguageModelToolCallPart("1", "diagram_chart", {});
-      const { sent } = await ask(panel, [[call], [text("Sorry.")]], {
-        toolReferences: [{ name: "diagram_getState" }],
-      });
-      assert.deepStrictEqual(
-        sent[0]?.options.tools?.map((tool) => tool.name),
-        ["diagram_getState"],
-      );
-      assert.strictEqual(
-        messageText(sent[1]?.messages.at(-1)),
-        "The tool diagram_chart is not available in this round. Use only the tools you were given.",
-      );
-    } finally {
-      panel.dispose();
-    }
+    const call = new vscode.LanguageModelToolCallPart("1", "diagram_chart", {});
+    const { sent } = await ask([[call], [text("Sorry.")]], {
+      toolReferences: [{ name: "diagram_getState" }],
+    });
+    assert.deepStrictEqual(
+      sent[0]?.options.tools?.map((tool) => tool.name),
+      ["diagram_getState"],
+    );
+    assert.strictEqual(
+      messageText(sent[1]?.messages.at(-1)),
+      "The tool diagram_chart is not available in this round. Use only the tools you were given.",
+    );
   });
 
   test("shortens tool results that don't fit the model's input, and says so", async () => {
-    const panel = newPanel();
-    try {
-      // The tools show the extension's own panel.
-      const source = `flowchart TD\n  A --> B\n%% ${"y".repeat(20_000)}`;
-      const input = { input: { source }, toolInvocationToken: undefined };
-      await vscode.lm.invokeTool("diagram_render", input);
-      const maxInputTokens = 4_000;
-      const { sent } = await ask(
-        panel,
-        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
-        { toolReferences: [{ name: "diagram_getState" }], maxInputTokens },
-      );
-      const messages = sent[1]?.messages.map(messageText) ?? [];
-      assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first \d+ of \d+ characters\]$/);
-      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
-      assert.ok(
-        tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8,
-        `${tokens}`,
-      );
-    } finally {
-      panel.dispose();
-    }
+    // The tools show the extension's own panel.
+    const source = `flowchart TD\n  A --> B\n%% ${"y".repeat(20_000)}`;
+    const input = { input: { source }, toolInvocationToken: undefined };
+    await vscode.lm.invokeTool("diagram_render", input);
+    const maxInputTokens = 4_000;
+    const { sent } = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
+      { toolReferences: [{ name: "diagram_getState" }], maxInputTokens },
+    );
+    const messages = sent[1]?.messages.map(messageText) ?? [];
+    assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first \d+ of \d+ characters\]$/);
+    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    assert.ok(tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8, `${tokens}`);
   });
 
   test("stops with a clear error when tool rounds exhaust the model's context", async () => {
-    const panel = newPanel();
-    try {
-      const { sent, result } = await ask(
-        panel,
-        [[text("x".repeat(20_000)), new vscode.LanguageModelToolCallPart("1", "unknown", {})]],
-        { maxInputTokens: 4_000 },
-      );
-      assert.strictEqual(sent.length, 1);
-      assert.match(result?.errorDetails?.message ?? "", /too large for Fake.*Start a new chat/);
-    } finally {
-      panel.dispose();
-    }
+    const { sent, result } = await ask(
+      [[text("x".repeat(20_000)), new vscode.LanguageModelToolCallPart("1", "unknown", {})]],
+      { maxInputTokens: 4_000 },
+    );
+    assert.strictEqual(sent.length, 1);
+    assert.match(result?.errorDetails?.message ?? "", /too large for Fake.*Start a new chat/);
   });
 
   test("reports model connection failures as chat errors", async () => {
-    const panel = newPanel();
-    try {
-      const { result } = await ask(panel, [
-        async () => {
-          throw new Error("Connection lost. Try again.");
-        },
-      ]);
-      assert.strictEqual(result?.errorDetails?.message, "Connection lost. Try again.");
-    } finally {
-      panel.dispose();
-    }
+    const { result } = await ask([
+      async () => {
+        throw new Error("Connection lost. Try again.");
+      },
+    ]);
+    assert.strictEqual(result?.errorDetails?.message, "Connection lost. Try again.");
   });
 
   test("attaches referenced files, selections and text in prompt order", async () => {
-    const panel = newPanel();
-    try {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-      assert.ok(folder);
-      const file = vscode.Uri.joinPath(folder, "sizes.tsv");
-      const references = [
-        { id: "folder", value: folder },
-        { id: "selection", value: new vscode.Location(file, new vscode.Range(1, 0, 2, 0)) },
-        { id: "text", value: "some text", modelDescription: "The terminal selection" },
-      ].reverse();
-      const { sent } = await ask(panel, [[text("Hm.")]], { references });
-      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
-      assert.ok(
-        attached?.[0]?.startsWith(
-          `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which could not be read: `,
-        ),
-      );
-      assert.deepStrictEqual(
-        attached?.slice(1).map((message) => message.split("\n")[0]),
-        [
-          "Attached by the user: sizes.tsv:2",
-          "Attached by the user: text (The terminal selection)",
-        ],
-      );
-    } finally {
-      panel.dispose();
-    }
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(folder);
+    const file = vscode.Uri.joinPath(folder, "sizes.tsv");
+    const references = [
+      { id: "folder", value: folder },
+      { id: "selection", value: new vscode.Location(file, new vscode.Range(1, 0, 2, 0)) },
+      { id: "text", value: "some text", modelDescription: "The terminal selection" },
+    ].reverse();
+    const { sent } = await ask([[text("Hm.")]], { references });
+    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    assert.ok(
+      attached?.[0]?.startsWith(
+        `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which could not be read: `,
+      ),
+    );
+    assert.deepStrictEqual(
+      attached?.slice(1).map((message) => message.split("\n")[0]),
+      ["Attached by the user: sizes.tsv:2", "Attached by the user: text (The terminal selection)"],
+    );
   });
 
   test("shares attachment reads across selections and history, rereading on each request", async () => {
-    const panel = newPanel();
     const open = vscode.workspace.openTextDocument;
     const document = await open({ content: "first\nsecond" });
     let reads = 0;
@@ -907,7 +869,7 @@ suite("participant", function () {
         new RequestTurn("Read it", undefined, references, "diagram.participant", []),
       ];
       for (let request = 1; request <= 2; request++) {
-        const { sent } = await ask(panel, [[text("Read.")]], { references, history });
+        const { sent } = await ask([[text("Read.")]], { references, history });
         assert.strictEqual(reads, request);
         const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
         assert.strictEqual(attached?.length, 2);
@@ -916,12 +878,10 @@ suite("participant", function () {
       }
     } finally {
       vscode.workspace.openTextDocument = open;
-      panel.dispose();
     }
   });
 
   test("shares failed attachment reads without caching them across requests", async () => {
-    const panel = newPanel();
     const open = vscode.workspace.openTextDocument;
     let reads = 0;
     vscode.workspace.openTextDocument = async () => {
@@ -934,7 +894,7 @@ suite("participant", function () {
         new RequestTurn("Read it", undefined, references, "diagram.participant", []),
       ];
       for (let request = 1; request <= 2; request++) {
-        const { result, sent } = await ask(panel, [[text("Unavailable.")]], {
+        const { result, sent } = await ask([[text("Unavailable.")]], {
           references,
           history,
         });
@@ -946,18 +906,16 @@ suite("participant", function () {
       }
     } finally {
       vscode.workspace.openTextDocument = open;
-      panel.dispose();
     }
   });
 
   test("points the model to the workspace tools for an attached folder", async () => {
-    const panel = newPanel();
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(root);
     const folder = vscode.Uri.joinPath(root, "attached-folder");
     await vscode.workspace.fs.createDirectory(folder);
     try {
-      const { sent, shown } = await ask(panel, [[text("Exploring.")]], {
+      const { sent, shown } = await ask([[text("Exploring.")]], {
         references: [{ id: "folder", value: folder }],
       });
       assert.strictEqual(shown, "Exploring.");
@@ -968,18 +926,16 @@ suite("participant", function () {
       );
     } finally {
       await vscode.workspace.fs.delete(folder, { recursive: true });
-      panel.dispose();
     }
   });
 
   test("reports attachment read failures without losing the rest of the request", async () => {
-    const panel = newPanel();
     const open = vscode.workspace.openTextDocument;
     vscode.workspace.openTextDocument = async () => {
       throw new Error("Permission denied");
     };
     try {
-      const { result, sent, shown } = await ask(panel, [[text("Cannot read that file.")]], {
+      const { result, sent, shown } = await ask([[text("Cannot read that file.")]], {
         references: [
           { id: "file", value: vscode.Uri.file("/un*read_able <x> [1].csv") },
           { id: "text", value: "Chart the file when available" },
@@ -1000,12 +956,10 @@ suite("participant", function () {
       );
     } finally {
       vscode.workspace.openTextDocument = open;
-      panel.dispose();
     }
   });
 
   test("gives the model attached images once, and says why others are left out", async () => {
-    const panel = newPanel();
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(root);
     const file = vscode.Uri.joinPath(root, "whiteboard.PNG");
@@ -1027,7 +981,7 @@ suite("participant", function () {
         pasted("image/jpeg", new Uint8Array([1, 2, 3])),
         { id: "symbol", value: 42 },
       ].reverse();
-      const { sent, shown } = await ask(panel, [[text("Drawing.")]], { references });
+      const { sent, shown } = await ask([[text("Drawing.")]], { references });
       const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
       assert.deepStrictEqual(messages?.map(messageText), [
         "Attached by the user: whiteboard.PNG",
@@ -1056,12 +1010,10 @@ suite("participant", function () {
       assert.ok(images?.slice(2).every((part) => part === undefined));
     } finally {
       await vscode.workspace.fs.delete(file);
-      panel.dispose();
     }
   });
 
   test("leaves out images for models without image input and from earlier requests", async () => {
-    const panel = newPanel();
     let reads = 0;
     const references = [
       {
@@ -1075,33 +1027,28 @@ suite("participant", function () {
         },
       },
     ];
-    try {
-      const history = [
-        new RequestTurn("Draw this", undefined, references, "diagram.participant", []),
-      ];
-      const { sent, shown } = await ask(panel, [[text("Hm.")]], {
-        history,
-        references,
-        capabilities: { supportsImageToText: false },
-      });
-      assert.strictEqual(reads, 0);
-      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
-      assert.deepStrictEqual(attached, [
-        "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
-        "Attached by the user: image, which could not be read: Fake does not accept images. Choose a model that does, or describe the image in words.",
-      ]);
-      // Only about this request's attachments.
-      assert.strictEqual(
-        shown,
-        "Left out image: Fake does not accept images. Choose a model that does, or describe the image in words.\n\nHm.",
-      );
-    } finally {
-      panel.dispose();
-    }
+    const history = [
+      new RequestTurn("Draw this", undefined, references, "diagram.participant", []),
+    ];
+    const { sent, shown } = await ask([[text("Hm.")]], {
+      history,
+      references,
+      capabilities: { supportsImageToText: false },
+    });
+    assert.strictEqual(reads, 0);
+    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    assert.deepStrictEqual(attached, [
+      "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
+      "Attached by the user: image, which could not be read: Fake does not accept images. Choose a model that does, or describe the image in words.",
+    ]);
+    // Only about this request's attachments.
+    assert.strictEqual(
+      shown,
+      "Left out image: Fake does not accept images. Choose a model that does, or describe the image in words.\n\nHm.",
+    );
   });
 
   test("does not note an earlier request's image that is attached again", async () => {
-    const panel = newPanel();
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(root);
     const file = vscode.Uri.joinPath(root, "again.png");
@@ -1120,7 +1067,7 @@ suite("participant", function () {
           [],
         ),
       ];
-      const { sent } = await ask(panel, [[text("Drawn.")]], {
+      const { sent } = await ask([[text("Drawn.")]], {
         history,
         references: [pasted([1, 2]), { id: "file", value: file }],
       });
@@ -1132,192 +1079,153 @@ suite("participant", function () {
       ]);
     } finally {
       await vscode.workspace.fs.delete(file);
-      panel.dispose();
     }
   });
 
   test("gives the model earlier turns, with their diagrams and attachments", async () => {
-    const panel = newPanel();
-    try {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-      assert.ok(folder);
-      const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
-      const history = [
-        new RequestTurn("Draw #file:sizes.tsv", undefined, references, "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart("Here it is.")],
-          { metadata: { language: "mermaid", source: "flowchart TD\n  A --> B" } },
-          "diagram.participant",
-        ),
-      ];
-      const { sent, counted } = await ask(panel, [[text("Hm.")]], { history, references });
-      // A small prompt fits without counting its tokens.
-      assert.strictEqual(counted, 0);
-      const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
-      assert.deepStrictEqual(
-        messages.map((message) => message.split("\n")[0]),
-        ["Draw #file:sizes.tsv", "Here it is.", "Attached by the user: sizes.tsv", "Draw it"],
-      );
-      assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
-    } finally {
-      panel.dispose();
-    }
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(folder);
+    const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
+    const history = [
+      new RequestTurn("Draw #file:sizes.tsv", undefined, references, "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Here it is.")],
+        { metadata: { language: "mermaid", source: "flowchart TD\n  A --> B" } },
+        "diagram.participant",
+      ),
+    ];
+    const { sent, counted } = await ask([[text("Hm.")]], { history, references });
+    // A small prompt fits without counting its tokens.
+    assert.strictEqual(counted, 0);
+    const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
+    assert.deepStrictEqual(
+      messages.map((message) => message.split("\n")[0]),
+      ["Draw #file:sizes.tsv", "Here it is.", "Attached by the user: sizes.tsv", "Draw it"],
+    );
+    assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
   });
 
   test("keeps historical chart settings without repeating large inline data", async () => {
-    const panel = newPanel();
-    try {
-      const chart = {
-        type: "bar",
-        title: "Regional sales",
-        labelColumn: "region",
-        valueColumns: ["sales"],
-        data: `region,sales\n${"Private sample row,42\n".repeat(20_000)}`,
-      };
-      const history = [
-        new RequestTurn("Chart regional sales", undefined, [], "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart("Here are the regional totals.")],
-          { metadata: { chart } },
-          "diagram.participant",
-        ),
-      ];
-      const { result, sent } = await ask(panel, [[text("The settings are retained.")]], {
-        history,
-        maxInputTokens: 4_000,
-      });
-      assert.strictEqual(result?.errorDetails, undefined);
-      const messages = sent[0]?.messages.map(messageText) ?? [];
-      assert.ok(messages.includes("Chart regional sales"));
-      const reply = messages.find((message) => message.startsWith("Here are the regional totals."));
-      assert.ok(reply);
-      assert.match(reply, /"type":"bar"/);
-      assert.match(reply, /"title":"Regional sales"/);
-      assert.match(reply, /"labelColumn":"region","valueColumns":\["sales"\]/);
-      assert.ok(reply.includes(`inline data: ${chart.data.length} characters`));
-      assert.doesNotMatch(messages.join("\n"), /Private sample row/);
-      assert.ok(messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0) <= 3_000);
-    } finally {
-      panel.dispose();
-    }
+    const chart = {
+      type: "bar",
+      title: "Regional sales",
+      labelColumn: "region",
+      valueColumns: ["sales"],
+      data: `region,sales\n${"Private sample row,42\n".repeat(20_000)}`,
+    };
+    const history = [
+      new RequestTurn("Chart regional sales", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Here are the regional totals.")],
+        { metadata: { chart } },
+        "diagram.participant",
+      ),
+    ];
+    const { result, sent } = await ask([[text("The settings are retained.")]], {
+      history,
+      maxInputTokens: 4_000,
+    });
+    assert.strictEqual(result?.errorDetails, undefined);
+    const messages = sent[0]?.messages.map(messageText) ?? [];
+    assert.ok(messages.includes("Chart regional sales"));
+    const reply = messages.find((message) => message.startsWith("Here are the regional totals."));
+    assert.ok(reply);
+    assert.match(reply, /"type":"bar"/);
+    assert.match(reply, /"title":"Regional sales"/);
+    assert.match(reply, /"labelColumn":"region","valueColumns":\["sales"\]/);
+    assert.ok(reply.includes(`inline data: ${chart.data.length} characters`));
+    assert.doesNotMatch(messages.join("\n"), /Private sample row/);
+    assert.ok(messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0) <= 3_000);
   });
 
   test("leaves out the oldest turns, and older diagrams first, to fit the model's input", async () => {
-    const panel = newPanel();
-    try {
-      // Each turn takes about 3000 tokens of text and 10000 of diagram, and the prompt may take
-      // 3/4 of 41640 tokens: the last two turns fit with their diagrams, and one more without.
-      const history = [1, 2, 3, 4].flatMap((n) => [
-        new RequestTurn(`Draw ${n}`, undefined, [], "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart(`Reply ${n}: ${"x".repeat(12_000)}`)],
-          { metadata: { language: "mermaid", source: `flowchart TD\n%% ${"y".repeat(40_000)}` } },
-          "diagram.participant",
-        ),
-      ]);
-      const { sent } = await ask(panel, [[text("Hm.")]], { history, maxInputTokens: 41_640 });
-      const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
-      assert.deepStrictEqual(
-        messages.map((message) => message.slice(0, 7)),
-        ["Draw 2", "Reply 2", "Draw 3", "Reply 3", "Draw 4", "Reply 4", "Draw it"],
-      );
-      assert.match(messages[1] ?? "", /x\n\n\(I drew a diagram, left out here\.\)$/);
-      assert.match(messages[3] ?? "", /y\n```$/);
-      assert.match(messages[5] ?? "", /y\n```$/);
-    } finally {
-      panel.dispose();
-    }
+    // Each turn takes about 3000 tokens of text and 10000 of diagram, and the prompt may take
+    // 3/4 of 41640 tokens: the last two turns fit with their diagrams, and one more without.
+    const history = [1, 2, 3, 4].flatMap((n) => [
+      new RequestTurn(`Draw ${n}`, undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart(`Reply ${n}: ${"x".repeat(12_000)}`)],
+        { metadata: { language: "mermaid", source: `flowchart TD\n%% ${"y".repeat(40_000)}` } },
+        "diagram.participant",
+      ),
+    ]);
+    const { sent } = await ask([[text("Hm.")]], { history, maxInputTokens: 41_640 });
+    const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
+    assert.deepStrictEqual(
+      messages.map((message) => message.slice(0, 7)),
+      ["Draw 2", "Reply 2", "Draw 3", "Reply 3", "Draw 4", "Reply 4", "Draw it"],
+    );
+    assert.match(messages[1] ?? "", /x\n\n\(I drew a diagram, left out here\.\)$/);
+    assert.match(messages[3] ?? "", /y\n```$/);
+    assert.match(messages[5] ?? "", /y\n```$/);
   });
 
   test("counts prose-only history after leaving out a diagram", async () => {
-    const panel = newPanel();
-    try {
-      const history = [
-        new RequestTurn("Earlier question", undefined, [], "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart("x".repeat(12_000))],
-          {},
-          "diagram.participant",
-        ),
-        new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart("Here it is.")],
-          { metadata: { language: "mermaid", source: "y".repeat(20_000) } },
-          "diagram.participant",
-        ),
-      ];
-      const maxInputTokens = 4_000;
-      const { sent } = await ask(panel, [[text("Hm.")]], { history, maxInputTokens });
-      const messages = sent[0]?.messages.map(messageText) ?? [];
-      assert.ok(messages.some((message) => message.includes("I drew a diagram, left out here")));
-      assert.ok(!messages.includes("Earlier question"));
-      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
-      assert.ok(tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
-    } finally {
-      panel.dispose();
-    }
+    const history = [
+      new RequestTurn("Earlier question", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("x".repeat(12_000))],
+        {},
+        "diagram.participant",
+      ),
+      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Here it is.")],
+        { metadata: { language: "mermaid", source: "y".repeat(20_000) } },
+        "diagram.participant",
+      ),
+    ];
+    const maxInputTokens = 4_000;
+    const { sent } = await ask([[text("Hm.")]], { history, maxInputTokens });
+    const messages = sent[0]?.messages.map(messageText) ?? [];
+    assert.ok(messages.some((message) => message.includes("I drew a diagram, left out here")));
+    assert.ok(!messages.includes("Earlier question"));
+    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    assert.ok(tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
   });
 
   test("counts repeated history once and skips unused shortened replies", async () => {
-    const panel = newPanel();
-    try {
-      const history = [1, 2].flatMap(() => [
-        new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
-        new ResponseTurn(
-          [new vscode.ChatResponseMarkdownPart("Here it is.")],
-          { metadata: { language: "mermaid", source: "x".repeat(2_800) } },
-          "diagram.participant",
-        ),
-      ]);
-      const { sent, counted } = await ask(panel, [[text("Hm.")]], {
-        history,
-        maxInputTokens: 4_000,
-      });
-      const messages = sent[0]?.messages.map(messageText) ?? [];
-      assert.strictEqual(
-        messages.filter((message) => message.includes("x".repeat(2_800))).length,
-        2,
-      );
-      // Instructions, the shared prompt and the shared complete reply.
-      assert.strictEqual(counted, 3);
-    } finally {
-      panel.dispose();
-    }
+    const history = [1, 2].flatMap(() => [
+      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Here it is.")],
+        { metadata: { language: "mermaid", source: "x".repeat(2_800) } },
+        "diagram.participant",
+      ),
+    ]);
+    const { sent, counted } = await ask([[text("Hm.")]], {
+      history,
+      maxInputTokens: 4_000,
+    });
+    const messages = sent[0]?.messages.map(messageText) ?? [];
+    assert.strictEqual(messages.filter((message) => message.includes("x".repeat(2_800))).length, 2);
+    // Instructions, the shared prompt and the shared complete reply.
+    assert.strictEqual(counted, 3);
   });
 
   test("shortens the attachments that don't fit the model's input, and says so", async () => {
-    const panel = newPanel();
-    try {
-      const references = [
-        { id: "long", value: "a".repeat(20_000) },
-        { id: "short", value: "short text" },
-      ];
-      const maxInputTokens = 4_000;
-      const { sent } = await ask(panel, [[text("Hm.")]], { references, maxInputTokens });
-      const messages = sent[0]?.messages.map(messageText) ?? [];
-      assert.ok(messages.includes("Attached by the user: text\n\n```\nshort text\n```"));
-      const truncated =
-        /^Attached by the user: text, truncated to the first \d+ of its 20000 characters\n\n```\na+\n```$/;
-      assert.ok(messages.some((message) => truncated.test(message)));
-      const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
-      assert.ok(tokens > maxInputTokens / 2 && tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
-    } finally {
-      panel.dispose();
-    }
+    const references = [
+      { id: "long", value: "a".repeat(20_000) },
+      { id: "short", value: "short text" },
+    ];
+    const maxInputTokens = 4_000;
+    const { sent } = await ask([[text("Hm.")]], { references, maxInputTokens });
+    const messages = sent[0]?.messages.map(messageText) ?? [];
+    assert.ok(messages.includes("Attached by the user: text\n\n```\nshort text\n```"));
+    const truncated =
+      /^Attached by the user: text, truncated to the first \d+ of its 20000 characters\n\n```\na+\n```$/;
+    assert.ok(messages.some((message) => truncated.test(message)));
+    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    assert.ok(tokens > maxInputTokens / 2 && tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
   });
 
   test("says what is too large when the request does not fit the model's input", async () => {
-    const panel = newPanel();
-    try {
-      const prompt = "Draw ".repeat(4_000);
-      const { result, sent } = await ask(panel, [], { prompt, maxInputTokens: 4_000 });
-      assert.strictEqual(sent.length, 0);
-      assert.strictEqual(
-        result?.errorDetails?.message,
-        "This request exceeds Fake's 3000-token input budget: your message takes 5004 tokens. Shorten your message or choose a model with a larger context.",
-      );
-    } finally {
-      panel.dispose();
-    }
+    const prompt = "Draw ".repeat(4_000);
+    const { result, sent } = await ask([], { prompt, maxInputTokens: 4_000 });
+    assert.strictEqual(sent.length, 0);
+    assert.strictEqual(
+      result?.errorDetails?.message,
+      "This request exceeds Fake's 3000-token input budget: your message takes 5004 tokens. Shorten your message or choose a model with a larger context.",
+    );
   });
 });
