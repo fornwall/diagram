@@ -43,13 +43,21 @@ suite("savedChart", () => {
     assert.ok(html.includes('"fontFamily":"sans-serif"'));
     // The page background, in the theme the chart was saved in.
     assert.ok(html.includes("background: #1f1f1f;"));
-    // Nothing is loaded from outside: both scripts are inline, the markup links nothing, and the
-    // content security policy allows no source anyway.
+    // Nothing is loaded from outside: the chart, ECharts and the page's script are inline, the
+    // markup links nothing, and the content security policy allows no source anyway.
     const scripts = html.match(/<script[^>]*>/g) ?? [];
     assert.deepStrictEqual(
       scripts.map((tag) => tag.replace(/nonce="[^"]+"/, "nonce")),
-      ["<script nonce>", "<script nonce>"],
+      ["<script nonce>", "<script nonce>", "<script nonce>"],
     );
+    // ECharts defines the global the page's script draws with before that script runs.
+    assert.ok(
+      html.indexOf("var DiagramECharts=") < html.indexOf("This file is missing its chart."),
+    );
+    // Neither inlined script can end its element early or put the parser in an escaped state.
+    const body = html.slice(html.indexOf("<script"));
+    assert.strictEqual(body.match(/<\/script/gi)?.length, 3);
+    assert.ok(!body.includes("<!--"));
     assert.ok(!/\s(?:src|href)=/.test(html.slice(0, html.indexOf("<script"))));
     assert.ok(html.includes("default-src 'none'"));
     assert.ok(html.length > 500_000, `only ${html.length} bytes, without the chart script?`);

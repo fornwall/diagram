@@ -6,6 +6,7 @@ import { type Annotation, errorMessage, isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
+import { loadECharts } from "./echartsLoader";
 import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
@@ -106,7 +107,7 @@ export class EChartsRenderer implements Renderer {
 
   async render(source: string, title: string): Promise<string> {
     const option = parseOption(source);
-    this.echarts ??= await import("./echartsLibrary.js");
+    this.echarts ??= await loadECharts();
     this.canvas.classList.add("chart-mode");
     this.container.hidden = false;
     this.option = option;

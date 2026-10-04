@@ -1,6 +1,7 @@
 **
 !dist/extension.js
 !dist/webview.js
+!dist/echarts.js
 !dist/standalone.js
 !dist/chunks/*.js
 !dist/webview.css

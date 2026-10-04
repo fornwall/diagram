@@ -32,8 +32,12 @@ function fontStack(colors: ThemeColors): string {
  * submissions, but JavaScript options still execute and can navigate the page.
  */
 export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri): Promise<string> {
-  const script = await vscode.workspace.fs.readFile(
-    vscode.Uri.joinPath(extensionUri, "dist", "standalone.js"),
+  const [echarts, script] = await Promise.all(
+    ["echarts.js", "standalone.js"].map(async (name) =>
+      new TextDecoder().decode(
+        await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
+      ),
+    ),
   );
   const { colors } = chart;
   const title = chart.title.trim();
@@ -78,7 +82,8 @@ h1 { margin: 0; padding: 12px 14px 0; font-size: 1.2em; font-weight: 600; }
 ${title ? `<h1>${escapeHtml(title)}</h1>\n` : ""}<p id="error" role="alert" hidden></p>
 <div id="canvas"></div>
 <script nonce="${nonce}">window.${SAVED_CHART} = ${embedJson(chart)};</script>
-<script nonce="${nonce}">${new TextDecoder().decode(script)}</script>
+<script nonce="${nonce}">${echarts}</script>
+<script nonce="${nonce}">${script}</script>
 </body>
 </html>
 `;
