@@ -244,14 +244,13 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     );
   }
   const only = labels.length === 1 ? labels[0] : undefined;
+  const quotedOnly = JSON.stringify(name(only ?? 0));
 
   // A hierarchy and a flow read levels of their own from the paths in a single label column.
   const separator =
     only !== undefined && readsLevels(type) ? pathSeparator(table, only) : undefined;
   if (separator !== undefined) {
-    notes.push(
-      `split ${JSON.stringify(name(only ?? 0))} on ${JSON.stringify(separator)} into levels`,
-    );
+    notes.push(`split ${quotedOnly} on ${JSON.stringify(separator)} into levels`);
   }
 
   // Dates place points along an axis, with proportional spacing on a time axis.
@@ -263,7 +262,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   const timeAxis = times !== undefined && !categoryAxisOverride(spec);
   if (timeAxis) {
     notes.push(
-      `read ${JSON.stringify(name(only ?? 0))} as ${times} on a time axis; ` +
+      `read ${quotedOnly} as ${times} on a time axis; ` +
         `{"${labelAxis(type)}": {"type": "category"}} in "options" reads them as labels instead`,
     );
   }

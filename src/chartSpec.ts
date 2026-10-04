@@ -261,34 +261,9 @@ export function validateChartSpec(value: unknown): ChartSpec {
     "an array of at most 50 filters",
   );
   if (Array.isArray(input.filters) && input.filters.length <= 50) {
-    for (const [index, filter] of input.filters.entries()) {
-      if (
-        !isPlainObject(filter) ||
-        Object.keys(filter).some((key) => !["column", "op", "value"].includes(key)) ||
-        typeof filter.column !== "string" ||
-        !filter.column.trim() ||
-        !isOneOf(FILTER_OPERATORS, filter.op) ||
-        !(
-          filter.value === null ||
-          typeof filter.value === "string" ||
-          (typeof filter.value === "number" && Number.isFinite(filter.value))
-        )
-      ) {
-        problems.push(
-          `filters[${index}] must contain column, op (${FILTER_OPERATORS.join(", ")}) and a string, finite number or null value.`,
-        );
-        continue;
-      }
-      if (
-        ["lt", "lte", "gt", "gte"].includes(String(filter.op)) &&
-        typeof filter.value !== "number"
-      ) {
-        problems.push(`filters[${index}]: numeric comparisons require a number value.`);
-      }
-      if (filter.op === "contains" && typeof filter.value !== "string") {
-        problems.push(`filters[${index}]: contains requires a string value.`);
-      }
-    }
+    input.filters.forEach((filter, index) => {
+      problems.push(...filterProblems(filter, `filters[${index}]`));
+    });
   }
   if (problems.length > 0) {
     throw new Error(`Invalid chart spec:\n- ${problems.join("\n- ")}`);
@@ -296,8 +271,56 @@ export function validateChartSpec(value: unknown): ChartSpec {
   return input as ChartSpec;
 }
 
+const FILTER_KEYS = ["column", "op", "value"];
+const NUMERIC_OPERATORS = ["lt", "lte", "gt", "gte"];
+
+function filterProblems(filter: unknown, at: string): string[] {
+  if (!isPlainObject(filter)) {
+    return [
+      `${at} is ${brief(filter)}; it must be an object, e.g. ` +
+        '{"column": "latency", "op": "gte", "value": 100}.',
+    ];
+  }
+  const problems: string[] = [];
+  const unknown = Object.keys(filter).filter((key) => !FILTER_KEYS.includes(key));
+  if (unknown.length > 0) {
+    problems.push(
+      `${at} has unknown ${unknown.length === 1 ? "property" : "properties"} ` +
+        `${quoteAll(unknown)}; a filter has ${quoteAll(FILTER_KEYS)}.`,
+    );
+  }
+  const { column, op, value } = filter;
+  if (typeof column !== "string" || column.trim() === "") {
+    problems.push(`${at}.column is ${brief(column)}; it must be a column name.`);
+  }
+  const given = (what: string) => `${at}.value is ${brief(value)}; it must be ${what}.`;
+  if (!isOneOf(FILTER_OPERATORS, op)) {
+    problems.push(`${at}.op is ${brief(op)}; it must be one of ${quoteAll(FILTER_OPERATORS)}.`);
+  } else if (NUMERIC_OPERATORS.includes(String(op))) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      problems.push(given(`a finite number to compare with "${op}"`));
+    }
+  } else if (op === "contains") {
+    if (typeof value !== "string") {
+      problems.push(given('a string to look for with "contains"'));
+    }
+  } else if (
+    !(
+      value === null ||
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isFinite(value))
+    )
+  ) {
+    problems.push(given("a string, a finite number, or null for a missing cell"));
+  }
+  return problems;
+}
+
 /** A value as quoted in an error message: JSON, shortened. */
 function brief(value: unknown): string {
+  if (value === undefined) {
+    return "missing";
+  }
   if (Array.isArray(value)) {
     return "an array";
   }

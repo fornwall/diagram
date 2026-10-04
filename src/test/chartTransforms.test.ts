@@ -63,7 +63,28 @@ suite("chart transforms", () => {
     );
     assert.throws(
       () => filterTable(table, [{ column: "value", op: "gt", value: 9 }]),
-      /No rows match.*Change or remove/,
+      /^Error: No rows match the chart filters: "value" gt 9 matches none of the 2 rows\. Change or remove/,
+    );
+    // A value of the wrong type is pointed out, after earlier filters.
+    assert.throws(
+      () =>
+        filterTable(table, [
+          { column: "name", op: "neq", value: "a" },
+          { column: "value", op: "eq", value: "2" },
+        ]),
+      /"value" eq "2" matches none of the remaining 1 rows; the column holds numbers, so compare with 2 rather than "2"\./,
+    );
+    assert.throws(
+      () => filterTable(table, [{ column: "name", op: "eq", value: 1 }]),
+      /the column holds text, so compare with "1"\./,
+    );
+    assert.throws(
+      () =>
+        filterTable(table, [
+          { column: "name", op: "eq", value: "a" },
+          { column: "name", op: "eq", value: "b" },
+        ]),
+      /"name" eq "b" matches none of the remaining 1 rows\./,
     );
   });
 

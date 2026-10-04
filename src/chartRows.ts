@@ -391,8 +391,10 @@ export function readRows(
       const quoted = quoteAll(valueIndices.map(name));
       throw new Error(
         positive
-          ? `A ${type} chart needs positive numbers, but ${quoted} has none.`
-          : `No row has numbers in both ${quoted}.`,
+          ? `A ${type} chart needs positive numbers, as it sizes each item by its value, but ` +
+              `${quoted} has none. Chart negative values as a bar chart instead.`
+          : `A scatter chart needs rows with numbers in both ${quoted}, but none has. Choose ` +
+              '"valueColumns" that are filled in the same rows.',
       );
     }
     if (left > 0) {

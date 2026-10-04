@@ -284,7 +284,10 @@ suite("charts", () => {
       summary(chart("scatter"), table),
       'Charted "y" against "x"; left out 1 row without both an x and a y value.',
     );
-    assert.throws(() => build(chart("scatter"), "x,y\n1,\n,2"), /No row has numbers in both/);
+    assert.throws(
+      () => build(chart("scatter"), "x,y\n1,\n,2"),
+      /scatter chart needs rows with numbers in both "x", "y", but none has/,
+    );
   });
 
   test("scatter plots columns that bar charts leave out by default against each other", () => {

@@ -41,10 +41,42 @@ export function filterTable(table: DataTable, filters: ChartFilter[] | undefined
   );
   if (rows.length === 0) {
     throw new Error(
-      "No rows match the chart filters. Change or remove the filters to include data.",
+      `No rows match the chart filters: ${emptyingFilter(table, predicates)}. Change or remove ` +
+        "the filters to include data.",
     );
   }
   return { ...table, rows };
+}
+
+/** Which filter left no rows, and why it might have, when its value has the wrong type. */
+function emptyingFilter(
+  table: DataTable,
+  predicates: { filter: ChartFilter; index: number }[],
+): string {
+  let rows = table.rows;
+  for (const { filter, index } of predicates) {
+    const { column, op, value } = filter;
+    const before = rows.length;
+    rows = rows.filter((row) => matches(row[index], filter));
+    if (rows.length > 0) continue;
+    const kept = `${JSON.stringify(column)} ${op} ${JSON.stringify(value)} matches none of ${
+      before === table.rows.length ? "the" : "the remaining"
+    } ${before} rows`;
+    const numeric = table.columns[index]?.numeric === true;
+    if (numeric && typeof value === "string") {
+      const number = Number(value);
+      return `${kept}; the column holds numbers${
+        op !== "contains" && value.trim() !== "" && Number.isFinite(number)
+          ? `, so compare with ${number} rather than ${JSON.stringify(value)}`
+          : ""
+      }`;
+    }
+    if (!numeric && typeof value === "number") {
+      return `${kept}; the column holds text, so compare with ${JSON.stringify(String(value))}`;
+    }
+    return kept;
+  }
+  return "together they match no row";
 }
 
 export interface HistogramPlan {

@@ -51,7 +51,7 @@ export function buildFacetedChart(
     groups.set(value, indices);
     if (groups.size > MAX_FACETS) {
       throw new Error(
-        `The facet column has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
+        `The facet column ${JSON.stringify(table.columns[index]?.name)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
       );
     }
   });

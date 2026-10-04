@@ -39,6 +39,29 @@ suite("chart analysis settings", () => {
     ]) {
       assert.throws(() => validateChartSpec({ ...source, ...invalid }), /Invalid chart spec/);
     }
+    assert.throws(
+      () =>
+        validateChartSpec({
+          ...source,
+          filters: [
+            { column: "latency", op: "eq" },
+            { column: "latency", op: "gt", value: "5" },
+            { column: "", op: "like", value: 1, code: "x" },
+          ],
+        }),
+      (error: Error) => {
+        assert.strictEqual(
+          error.message,
+          "Invalid chart spec:\n" +
+            "- filters[0].value is missing; it must be a string, a finite number, or null for a missing cell.\n" +
+            '- filters[1].value is "5"; it must be a finite number to compare with "gt".\n' +
+            '- filters[2] has unknown property "code"; a filter has "column", "op", "value".\n' +
+            '- filters[2].column is ""; it must be a column name.\n' +
+            '- filters[2].op is "like"; it must be one of "eq", "neq", "lt", "lte", "gt", "gte", "contains".',
+        );
+        return true;
+      },
+    );
   });
 
   test("updates retain or explicitly clear analysis settings without replacing the source", () => {
