@@ -195,6 +195,10 @@ suite("documentDiagram", function () {
       assert.ok(!outcome.written);
       assert.match(outcome.reason, /Could not write the diagram.*The document is read-only/);
       assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
+      vscode.workspace.applyEdit = async () => false;
+      const refused = await writeFence(binding(document), "flowchart LR");
+      assert.ok(!refused.written);
+      assert.match(refused.reason, /refused the edit\. Check that the file is not read-only\./);
     } finally {
       vscode.workspace.applyEdit = original;
     }

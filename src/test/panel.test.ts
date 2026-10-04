@@ -51,13 +51,17 @@ suite("panel", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
 
-  test("clickToAskQuery replaces {label}", () => {
+  test("clickToAskQuery replaces {label}, or appends the label", () => {
     assert.strictEqual(
       clickToAskQuery("Explain {label}, and how {label} is tested", "Parser"),
       "Explain Parser, and how Parser is tested",
     );
     // Not taken as a replacement pattern.
     assert.strictEqual(clickToAskQuery("Explain {label}", "$& $$"), "Explain $& $$");
+    assert.strictEqual(
+      clickToAskQuery("Tell me more about", "Parser"),
+      'Tell me more about "Parser"',
+    );
   });
 
   test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
@@ -120,13 +124,6 @@ suite("panel", function () {
       vscode.window.showWarningMessage = warning;
       panel.dispose();
     }
-  });
-
-  test("clickToAskQuery appends the label when there is no placeholder", () => {
-    assert.strictEqual(
-      clickToAskQuery("Tell me more about", "Parser"),
-      'Tell me more about "Parser"',
-    );
   });
 
   test("explicitly showing the panel focuses it", async () => {

@@ -94,7 +94,10 @@ export async function writeFence(
   edit.replace(document.uri, range, end.character === 0 ? `${text}${eol}` : text);
   try {
     if (!(await vscode.workspace.applyEdit(edit))) {
-      return { written: false, reason: `Could not write the ${noun} to ${name}.` };
+      return {
+        written: false,
+        reason: `Could not write the ${noun} to ${name}: VS Code refused the edit. Check that the file is not read-only.`,
+      };
     }
   } catch (error) {
     return {

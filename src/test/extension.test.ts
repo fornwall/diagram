@@ -34,6 +34,23 @@ suite("Extension", () => {
     );
   });
 
+  test("registers the contributed commands, which are the ones its menus name", async () => {
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const { commands, menus } = extension.packageJSON.contributes as {
+      commands: { command: string }[];
+      menus: Record<string, { command: string }[]>;
+    };
+    const registered = new Set(await vscode.commands.getCommands(true));
+    const declared = commands.map(({ command }) => command);
+    for (const command of declared) {
+      assert.ok(registered.has(command), command);
+    }
+    for (const { command } of Object.values(menus).flat()) {
+      assert.ok(declared.includes(command), command);
+    }
+  });
+
   test("renders a valid diagram", async () => {
     const text = await invoke("diagram_render", {
       source: "flowchart TD\n  A[Start] --> B{Valid?}\n  B -->|yes| C[Done]",
