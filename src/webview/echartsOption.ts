@@ -1,9 +1,8 @@
-// Parses and checks ECharts options written as JSON, or as a JavaScript object literal when a
-// callback needs a function, with actionable errors for mistakes that ECharts would silently
-// render as nothing.
+// Checks ECharts options for mistakes that ECharts would silently render as nothing, with
+// actionable errors.
 
 import { isPlainObject } from "../protocol";
-import { describeSourceError, isFunctionAt } from "./jsonErrors";
+import { evaluateSource, isFunctionAt } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -157,45 +156,6 @@ export function parseOption(source: string): JsonObject {
   validateSeries(baseOption(option));
   findJavaScript(option, "option", new WeakSet());
   return option;
-}
-
-/**
- * The source as a value: JSON when it parses, otherwise evaluated as a JavaScript expression, as a
- * custom series' renderItem and other callbacks need. The brackets make a leading "{" an object
- * literal rather than a block, and a top-level "," a list of values rather than a sequence
- * expression that would throw all but the last of them away; the line breaks keep a trailing "//"
- * comment from swallowing the closing bracket.
- */
-function evaluateSource(source: string): unknown {
-  try {
-    return JSON.parse(source);
-  } catch (jsonError) {
-    const values = evaluateExpressions(source, jsonError);
-    if (values.length === 1) {
-      return values[0];
-    }
-    throw new Error(
-      values.length === 0
-        ? 'The ECharts option is empty. Write the option object, e.g. {"series": [{"type": ' +
-            '"bar", "data": [5, 20, 36]}], "xAxis": {"type": "category", "data": ["A", "B", "C"]}, ' +
-            '"yAxis": {"type": "value"}}.'
-        : `The ECharts option source holds ${values.length} top-level values separated by ",": ` +
-            'only one top-level object is allowed, so check for a "}" that closes it too early.',
-    );
-  }
-}
-
-/**
- * The values the source evaluates to as a JavaScript expression, which a top-level "," makes more
- * than one. Only the webview evaluates a source, inside its sandboxed iframe.
- */
-function evaluateExpressions(source: string, jsonError: unknown): unknown[] {
-  try {
-    const evaluate = new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[];
-    return evaluate();
-  } catch (scriptError) {
-    throw new Error(describeSourceError(source, jsonError, scriptError));
-  }
 }
 
 /** Checks the series of the base option; timeline options only patch them. */
