@@ -324,7 +324,7 @@ suite("data", () => {
       for (const delimiter of [",", ";"]) {
         assert.throws(
           () => parseTable(`name${delimiter}value\na${delimiter}"12"3\nb${delimiter}4`, format),
-          /Unexpected text after a closing quote on line 2/,
+          /Unexpected text after the quoted field "12" on line 2\./,
         );
         assert.deepStrictEqual(
           parse(`name${delimiter}value\n"a"  ${delimiter}"12" \n"b"${delimiter}4`, format).rows,
@@ -1056,6 +1056,17 @@ suite("data", () => {
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
     assert.throws(() => parseTable("[{}]"), /holds no values/);
+    assert.throws(
+      () => parseTable("| a | b |\n|---|---|"),
+      /^Error: The data has a header \("a", "b"\) but no rows below it\.$/,
+    );
+    // Quoted line breaks count as lines, however they are written.
+    for (const newline of ["\n", "\r", "\r\n"]) {
+      assert.throws(
+        () => parseTable(["a,b", '"x', 'y",1', '"z"q,2'].join(newline), "csv"),
+        /on line 4\./,
+      );
+    }
     assert.throws(
       () => parseTable('[{"a": 1}, {"a": 2}, [3]]'),
       /^Error: The JSON array mixes kinds of items: item 1 is an object, but item 3 is an array\./,

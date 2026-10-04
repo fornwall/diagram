@@ -98,7 +98,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
         }
       } else {
         field += char;
-        if (char === "\n") {
+        if (char === "\n" || (char === "\r" && text[i + 1] !== "\n")) {
           line++;
         }
       }
@@ -122,9 +122,10 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       finishRecord();
     } else {
       if (closedQuote && char !== " " && char !== "\t") {
+        const quoted = JSON.stringify(field.length > 40 ? `${field.slice(0, 40)}…` : field);
         throw new Error(
-          `Unexpected text after a closing quote on line ${line}. Separate fields with ` +
-            `the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
+          `Unexpected text after the quoted field ${quoted} on line ${line}. Separate fields ` +
+            `with the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
         );
       }
       field += char;

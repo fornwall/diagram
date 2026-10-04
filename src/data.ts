@@ -218,7 +218,7 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
 export function parseTable(text: string, format: DataFormat = "auto"): DataTable {
-  const content = text.replace(/^﻿/, "");
+  const content = text.replace(/^\uFEFF/, "");
   const trimmed = content.trim();
   if (trimmed === "") {
     throw new Error(
@@ -232,8 +232,13 @@ export function parseTable(text: string, format: DataFormat = "auto"): DataTable
       (trimmed.startsWith("{") || (trimmed.startsWith("[") && trimmed.endsWith("]"))));
   // Not trimmed, as leading spaces align the columns of command output.
   const table = tableFromRecords(json ? parseJson(content) : splitText(content, format));
-  if (table.rows.length === 0 || table.columns.length === 0) {
+  if (table.columns.length === 0) {
     throw new Error("The data holds no values.");
+  }
+  if (table.rows.length === 0) {
+    throw new Error(
+      `The data has a header (${quoteAll(table.columns.map((column) => column.name))}) but no rows below it.`,
+    );
   }
   return table;
 }
