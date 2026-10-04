@@ -650,15 +650,25 @@ suite("data", () => {
     for (const table of [
       "| lang | lines |\n|:-----|------:|\n| ts | 1,200 |\n| css | 300 |",
       " lang | lines\n------+-------\n ts   |  1200\n css  |   300\n(2 rows)",
-      "+------+-------+\n| lang | lines |\n+------+-------+\n| ts   |  1200 |\n| css  |   300 |\n+------+-------+",
+      "+------+-------+\n| lang | lines |\n+------+-------+\n| ts   |  1200 |\n| css  |   300 |\n+------+-------+\n2 rows in set (0.00 sec)",
+      // sqlite3 and psql -A, without a rule.
+      "lang|lines\nts|1200\ncss|300\n(2 rows)",
     ]) {
       assert.deepStrictEqual(parse(table), expected, table);
     }
     assert.deepStrictEqual(parse("a | b\n--|--\nx\\|y | 1").rows, [["x|y", 1]]);
     assert.deepStrictEqual(parse("a | b\n--|--\n1 | x\\|").rows, [[1, "x|"]]);
-    assert.deepStrictEqual(parse("| a | b |\n|---|---|\n| x | 1 |\n| y |").rows, [
+    // An escaped backslash does not escape the pipe after it.
+    assert.deepStrictEqual(parse("| a | b |\n|---|---|\n| x\\\\| 1 |").rows, [["x\\\\", 1]]);
+    // Rows have the header's width, as in GFM: missing cells are empty, and extra ones left out.
+    assert.deepStrictEqual(parse("| a | b |\n|---|---|\n| x | 1 | 9 |\n| y |").rows, [
       ["x", 1],
       ["y", null],
+    ]);
+    assert.deepStrictEqual(parse("|a|b|\n|-|-|\n||1|").rows, [[null, 1]]);
+    assert.deepStrictEqual(parse("ts|1200\ncss|300").rows, [
+      ["ts", 1200],
+      ["css", 300],
     ]);
   });
 

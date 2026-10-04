@@ -251,18 +251,25 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
   return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
 
-/** Splits a table with "|" between cells, as in Markdown or printed by psql and mysql. */
+/** The lines that psql and mysql print below a table. */
+const TABLE_FOOTER = /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*)$/;
+
+/** A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM. */
+const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\|/;
+
+/**
+ * Splits a table with "|" between cells, as in Markdown, printed by psql and mysql, or by sqlite3
+ * and psql -A without spaces. A leading and trailing pipe are optional.
+ */
 function splitPipes(lines: string[]): string[][] {
-  // psql prints the number of rows below the table.
-  const rows = lines.filter((line) => !/^\(\d+ rows?\)$/.test(line.trim()));
-  return rows.map((line) =>
-    line
-      .trim()
-      .replace(/^\|/, "")
-      .replace(/(?<!\\)\|$/, "")
-      .split(/(?<!\\)\|/)
-      .map((cell) => cell.replaceAll("\\|", "|")),
-  );
+  return lines
+    .filter((line) => !TABLE_FOOTER.test(line))
+    .map((line) => {
+      const cells = line.trim().split(PIPE);
+      if (cells.length > 1 && cells[0] === "") cells.shift();
+      if (cells.length > 1 && cells.at(-1) === "") cells.pop();
+      return cells.map((cell) => cell.replaceAll("\\|", "|"));
+    });
 }
 
 interface Token {
@@ -432,9 +439,17 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       }
     }
   }
-  // Rows of a Markdown table may have fewer or more cells than its header.
-  if (format === "auto" && underlined && lines[0]?.includes("|")) {
-    return { records: splitPipes(lines), header: true };
+  if (format === "auto" && lines[0]?.includes("|")) {
+    const records = splitPipes(lines);
+    const width = records[0]?.length ?? 0;
+    // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
+    // cells beyond it are left out.
+    if (underlined) {
+      return { records: records.map((record) => record.slice(0, width)), header: true };
+    }
+    if (width > 1 && records.every((record) => record.length === width)) {
+      return { records };
+    }
   }
   if (format === "auto" || format === "csv") {
     const table = splitCsv(text, lines[0] ?? "", format === "csv");
