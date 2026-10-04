@@ -330,6 +330,9 @@ export class DiagramPanel implements vscode.Disposable {
           error: message.message,
         });
         break;
+      case "renderUnavailable":
+        this.finishRender(message.requestId, notShown(message.message));
+        break;
       case "selectionChanged":
         if (message.requestId === this.sourceRequestId) this.selection = message.nodes;
         break;

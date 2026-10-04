@@ -133,7 +133,15 @@ const renderers = new Map<DiagramLanguage, Promise<Renderer>>();
 function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
   let renderer = renderers.get(language);
   if (!renderer) {
-    renderer = createRenderer[language]();
+    renderer = createRenderer[language]().catch((error: unknown) => {
+      // Let a later render try again.
+      renderers.delete(language);
+      const name = language === "echarts" ? "ECharts" : "Mermaid";
+      throw new Error(
+        `Could not load the ${name} renderer: ${errorMessage(error).replace(/\.$/, "")}. ` +
+          "Reload the window (Developer: Reload Window).",
+      );
+    });
     renderers.set(language, renderer);
   }
   return renderer;
@@ -156,7 +164,22 @@ function showError(renderer: Renderer, message: string): void {
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
   forgetDragImage();
   const { language, source, requestId } = message;
-  const renderer = await loadRenderer(language);
+  let renderer: Renderer;
+  try {
+    renderer = await loadRenderer(language);
+  } catch (error) {
+    // Nothing is drawn, and there is no source to fix: the extension reports the panel unavailable.
+    active?.hide();
+    active = undefined;
+    const text = errorMessage(error);
+    titleElement.textContent = message.title;
+    emptyElement.hidden = true;
+    errorElement.textContent = text;
+    errorElement.hidden = false;
+    post({ type: "renderUnavailable", requestId, message: text });
+    diagramReplaced();
+    return;
+  }
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
   links = new Map(Object.entries(message.links ?? {}));
@@ -227,6 +250,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     node?.focus({ preventScroll: true });
     if (document.activeElement === document.body) canvas.focus({ preventScroll: true });
   }
+  diagramReplaced();
+}
+
+function diagramReplaced(): void {
   // The extension forgets the selection and the marks when it sends a diagram, whether or not it
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.
   clearSelection();
@@ -291,7 +318,9 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "render": {
       const revision = ++renderRevision;
       // Load the renderer meanwhile if the queue is busy.
-      void loadRenderer(message.language);
+      loadRenderer(message.language).catch(() => {
+        // The render reports it.
+      });
       enqueue(async () => {
         if (revision === renderRevision) await render(message);
       });

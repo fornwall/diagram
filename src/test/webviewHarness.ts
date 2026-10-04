@@ -30,7 +30,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         window.testStateWrites = 0;
         window.testRenderResults = [];
         const postMessage = (message) => {
-          if (message.type === "rendered" || message.type === "renderError") {
+          if (/^render(ed|Error|Unavailable)$/.test(message.type)) {
             window.testRenderResults.push(message.requestId);
           }
           return api.postMessage(message);
@@ -76,10 +76,10 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         reject(new Error("The webview did not render its diagram."));
       }, 10_000);
       const listener = webview.onDidReceiveMessage((message) => {
-        if (message.type === "rendered" || message.type === "renderError") {
+        if (/^render(ed|Error|Unavailable)$/.test(message.type)) {
           clearTimeout(timer);
           listener.dispose();
-          if (message.type === "renderError") reject(new Error(message.message));
+          if (message.type !== "rendered") reject(new Error(message.message));
           else resolve();
         }
       });

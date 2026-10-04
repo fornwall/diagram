@@ -179,6 +179,8 @@ export type FromWebview =
       warnings?: string[] | undefined;
     }
   | { type: "renderError"; requestId: number; message: string }
+  /** The page could not render at all, e.g. as the code of its renderer did not load. */
+  | { type: "renderUnavailable"; requestId: number; message: string }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
   | { type: "sourceEdited"; requestId: number; source: string }
   | { type: "ask"; text: string; nodes: DiagramNode[] }
@@ -264,6 +266,7 @@ const FROM_WEBVIEW_FIELDS: {
     warnings: optional(isStrings),
   },
   renderError: { requestId: isId, message: isString },
+  renderUnavailable: { requestId: isId, message: isString },
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },
   ask: { text: isString, nodes: isNodes },
