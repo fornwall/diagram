@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
 import type { DiagramPanel } from "../panel";
+import { openWebviewPanel } from "./newPanel";
 
 /** Access to the DOM of a panel's webview, for tests that drive the actual page. */
 export interface WebviewHarness {
@@ -16,8 +17,7 @@ export interface WebviewHarness {
  * `readTestState()`, `testStateWrites` and `testRenderResults` (render request ids) become globals.
  */
 export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
-  panel.show();
-  const { webview } = (panel as unknown as { panel: vscode.WebviewPanel }).panel;
+  const { webview } = openWebviewPanel(panel);
   const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
   assert.ok(nonce);
   webview.html = webview.html.replace(

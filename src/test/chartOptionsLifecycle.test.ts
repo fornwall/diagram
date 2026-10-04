@@ -6,49 +6,8 @@ import { captureChartPresentation } from "../chartPresentation";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
-import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import type { FromWebview, ToWebview } from "../protocol";
-import { newPanel } from "./newPanel";
-
-interface Internals {
-  renderVersion: number;
-  chartTable: DataTable | undefined;
-  post(message: ToWebview): void;
-  onMessage(message: FromWebview): void;
-  finishRender(id: number, outcome: RenderOutcome): void;
-  applyEdit(source: string): Promise<void>;
-  renderCurrent(): Promise<RenderOutcome>;
-  refreshChart(): Promise<void>;
-  applyChartOptions(
-    message: Extract<FromWebview, { type: "applyChartOptions" | "resetChartStyling" }>,
-  ): Promise<void>;
-}
-
-/** Exercise panel persistence and races without depending on the renderer's timing. */
-function harness(values = new Map<string, unknown>()) {
-  const panel = newPanel(values);
-  const internals = panel as unknown as Internals;
-  const sent: ToWebview[] = [];
-  let closeOnRender = false;
-  internals.post = (message) => {
-    sent.push(message);
-    if (message.type === "render") {
-      queueMicrotask(() => {
-        if (closeOnRender) panel.dispose();
-        else internals.finishRender(message.requestId, { ok: true, diagramType: "bar" });
-      });
-    }
-  };
-  return {
-    panel,
-    internals,
-    sent,
-    values,
-    closeNextRender: () => {
-      closeOnRender = true;
-    },
-  };
-}
+import type { DiagramPanel, DiagramState } from "../panel";
+import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2";
 
@@ -67,11 +26,29 @@ async function draw(panel: DiagramPanel, spec: ChartSpec, table = parseTable(dat
   return source;
 }
 
+/** Changes the chart options in the panel, as the webview's Chart Options form does. */
+function applyOptions(
+  panel: DiagramPanel,
+  webview: FakeWebview,
+  change:
+    | { type: "applyChartOptions"; controls: Record<string, unknown>; replaceSource?: boolean }
+    | { type: "resetChartStyling"; replaceSource?: boolean },
+): Promise<void> {
+  return webview.receive({ replaceSource: false, ...change, revision: panel.revision });
+}
+
+/** Applies an edit of the source in the panel, as the webview's Apply does. */
+function edit(webview: FakeWebview, source: string): Promise<void> {
+  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
+}
+
 suite("chart options lifecycle", function () {
   this.timeout(10_000);
 
   test("a ready webview receives open options before replaying a pending render", async () => {
-    const { panel, internals, sent } = harness();
+    const { panel, webview } = await newFakePanel();
+    const { sent } = webview;
+    webview.answer = undefined;
     try {
       const chart: ChartSpec = { type: "bar", data };
       const source = JSON.stringify(buildChart(chart, parseTable(data)).option);
@@ -80,15 +57,16 @@ suite("chart options lifecycle", function () {
         "tool",
       );
       panel.toggleChartOptions();
-      // Initial messages were sent before the webview was ready; only its replay matters.
+      // The webview reloads before it answers; only its replay matters.
       sent.length = 0;
-      internals.onMessage({ type: "ready" });
+      await webview.receive({ type: "ready" });
       const options = sent[0];
       assert.ok(options?.type === "chartOptions");
       assert.strictEqual(options.visible, true);
       assert.strictEqual(options.state?.controls.type, "bar");
-      assert.strictEqual(options.state?.revision, internals.renderVersion);
+      assert.strictEqual(options.state?.revision, panel.revision);
       assert.strictEqual(sent[1]?.type, "render");
+      await webview.finishRender();
       assert.ok((await rendering).ok);
     } finally {
       panel.dispose();
@@ -96,18 +74,17 @@ suite("chart options lifecycle", function () {
   });
 
   test("retained presentation edits remain manual after changing chart options", async () => {
-    const { panel, internals, values } = harness();
+    const values = new Map<string, unknown>();
+    const { panel, webview } = await newFakePanel(values);
     try {
       const source = await draw(panel, { type: "bar", data });
       const styled = JSON.parse(source);
       styled.backgroundColor = "#123456";
-      await internals.applyEdit(JSON.stringify(styled));
+      await edit(webview, JSON.stringify(styled));
       assert.strictEqual(panel.current?.editedByUser, true);
-      await internals.applyChartOptions({
+      await applyOptions(panel, webview, {
         type: "applyChartOptions",
-        revision: internals.renderVersion,
         controls: { type: "horizontalBar", sort: "descending" },
-        replaceSource: false,
       });
       assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
       assert.strictEqual(JSON.parse(panel.current?.source ?? "").backgroundColor, "#123456");
@@ -123,20 +100,18 @@ suite("chart options lifecycle", function () {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-options-rollback-"));
     const file = path.join(directory, "data.csv");
     fs.writeFileSync(file, "name,amount\na,900\nb,800");
-    const { panel, internals, values, closeNextRender } = harness();
+    const values = new Map<string, unknown>();
+    const first = await newFakePanel(values);
+    const source = await draw(first.panel, { type: "bar", file });
+    first.panel.dispose();
+    // A restored chart of a file: Reset must load a new transient table before rendering.
+    const { panel, webview } = await newFakePanel(values);
     try {
-      const source = await draw(panel, { type: "bar", file });
       const previous = panel.current;
-      // Simulate a restored external chart: Reset must load a new transient table before rendering.
-      internals.chartTable = undefined;
-      closeNextRender();
-      await internals.applyChartOptions({
-        type: "resetChartStyling",
-        revision: internals.renderVersion,
-        replaceSource: false,
-      });
+      webview.nextRender(() => panel.dispose());
+      await applyOptions(panel, webview, { type: "resetChartStyling" });
       assert.strictEqual(panel.current, previous);
-      assert.strictEqual(internals.chartTable, undefined);
+      assert.strictEqual(panel.loadedChartData, undefined);
       assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
       const restored = newPanel(values);
       try {
@@ -153,30 +128,28 @@ suite("chart options lifecycle", function () {
   test("large inline chart source survives reload and renders without a hidden Refresh action", async () => {
     const inline = `name,amount\n${"x".repeat(1_000_001)},1`;
     const chart: ChartSpec = { type: "bar", data: inline };
-    const first = harness();
-    let second: ReturnType<typeof harness> | undefined;
+    const values = new Map<string, unknown>();
+    const first = await newFakePanel(values);
+    let second: Awaited<ReturnType<typeof newFakePanel>> | undefined;
     try {
       const source = await draw(first.panel, chart, parseTable(inline));
       assert.ok(source.length > 1_000_000);
-      assert.strictEqual((first.values.get("diagram.state") as DiagramState).source, source);
+      assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
       first.panel.dispose();
-      second = harness(first.values);
-      second.panel.show();
-      assert.ok((await second.internals.renderCurrent()).ok);
+      second = await newFakePanel(values);
+      const { sent } = second.webview;
       assert.strictEqual(second.panel.current?.source, source);
-      assert.ok(!second.sent.some((message) => message.type === "needsRefresh"));
-      const rendered = second.sent.find((message) => message.type === "render");
-      assert.ok(rendered?.type === "render");
-      assert.strictEqual(rendered.refreshFrom, undefined);
-      assert.strictEqual(second.internals.chartTable, undefined);
+      assert.ok(!sent.some((message) => message.type === "needsRefresh"));
+      assert.strictEqual(second.webview.render.source, source);
+      assert.strictEqual(second.webview.render.refreshFrom, undefined);
+      // Hidden controls need no table, so the source is drawn without parsing the data.
       assert.ok(
-        second.sent
+        sent
           .filter((message) => message.type === "chartOptions")
           .every((message) => message.state === undefined),
       );
       second.panel.toggleChartOptions();
-      assert.strictEqual((second.internals.chartTable as DataTable | undefined)?.rows.length, 1);
-      const options = second.sent.at(-1);
+      const options = sent.at(-1);
       assert.ok(options?.type === "chartOptions" && options.visible);
       assert.strictEqual(options.state?.rowCount, 1);
     } finally {
@@ -189,15 +162,16 @@ suite("chart options lifecycle", function () {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-refresh-rollback-"));
     const file = path.join(directory, "data.csv");
     fs.writeFileSync(file, "name,amount\na,900\nb,800");
-    const { panel, internals, values, closeNextRender } = harness();
+    const values = new Map<string, unknown>();
+    const { panel, webview } = await newFakePanel(values);
     try {
       const table = parseTable(data);
       const source = await draw(panel, { type: "bar", file }, table);
       const previous = panel.current;
-      closeNextRender();
-      await internals.refreshChart();
+      webview.nextRender(() => panel.dispose());
+      await webview.receive({ type: "refresh" });
       assert.strictEqual(panel.current, previous);
-      assert.strictEqual(internals.chartTable, table);
+      assert.strictEqual(panel.loadedChartData, table);
       assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
     } finally {
       panel.dispose();
@@ -222,16 +196,12 @@ suite("chart options lifecycle", function () {
         blocked: "Manual data edits cannot be regenerated without explicit replacement.",
       },
     };
-    const { panel, internals, sent, values } = harness(new Map([["diagram.state", initial]]));
+    const values = new Map<string, unknown>([["diagram.state", initial]]);
+    const { panel, webview } = await newFakePanel(values);
+    const { sent } = webview;
     try {
-      panel.show();
-      assert.ok((await internals.renderCurrent()).ok);
-      assert.strictEqual(internals.chartTable, undefined);
-      await internals.applyChartOptions({
-        type: "resetChartStyling",
-        revision: internals.renderVersion,
-        replaceSource: false,
-      });
+      assert.strictEqual(panel.loadedChartData, undefined);
+      await applyOptions(panel, webview, { type: "resetChartStyling" });
       assert.strictEqual(panel.current?.source, source);
       assert.ok(
         sent.some(
@@ -241,11 +211,7 @@ suite("chart options lifecycle", function () {
       );
       // The first reset was rejected before trying to read this still-missing file.
       fs.writeFileSync(file, "name,amount\na,41\nb,42");
-      await internals.applyChartOptions({
-        type: "resetChartStyling",
-        revision: internals.renderVersion,
-        replaceSource: true,
-      });
+      await applyOptions(panel, webview, { type: "resetChartStyling", replaceSource: true });
       const expected = JSON.stringify(
         buildChart(chart, parseTable("name,amount\na,41\nb,42")).option,
         null,
@@ -254,7 +220,8 @@ suite("chart options lifecycle", function () {
       assert.strictEqual(panel.current?.source, expected);
       assert.strictEqual(panel.current?.chartPresentation?.blocked, undefined);
       assert.strictEqual(panel.current?.editedByUser, false);
-      assert.strictEqual((internals.chartTable as DataTable | undefined)?.rows[0]?.[1], 41);
+      // Narrowed to undefined by the assertion above, which the reset changed.
+      assert.strictEqual((panel.loadedChartData as DataTable | undefined)?.rows[0]?.[1], 41);
       assert.strictEqual((values.get("diagram.state") as DiagramState).source, expected);
     } finally {
       panel.dispose();

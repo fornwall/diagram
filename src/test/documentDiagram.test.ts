@@ -5,8 +5,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type DocumentBinding, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
-import type { DiagramState, RenderOutcome } from "../panel";
-import { newPanel } from "./newPanel";
+import type { DiagramState } from "../panel";
+import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 suite("documentDiagram", function () {
   // A panel that an agent renders in loads the webview, which can take a while.
@@ -49,7 +49,7 @@ suite("documentDiagram", function () {
   }
 
   /** A diagram shown in the panel that was opened from a document. */
-  function openedState(read: DocumentBinding): DiagramState {
+  function openedState(read: DocumentBinding): DiagramState & { source: string } {
     return {
       language: read.fence.language,
       source: read.fence.source,
@@ -60,13 +60,29 @@ suite("documentDiagram", function () {
     };
   }
 
-  function applyEdit(panel: ReturnType<typeof newPanel>, source: string): Promise<void> {
-    return (panel as unknown as { applyEdit(source: string): Promise<void> }).applyEdit(source);
+  /** A panel showing the diagram, saved as it was when VS Code closed. */
+  function restored(state: DiagramState) {
+    return newFakePanel(new Map<string, unknown>([["diagram.state", state]]));
+  }
+
+  /** What the panel's Apply posts. */
+  function applyEdit(webview: FakeWebview, source: string): Promise<void> {
+    return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
   }
 
   /** What the panel's Write button posts, for a diagram the user has not edited. */
-  function writeShown(panel: ReturnType<typeof newPanel>): Promise<void> {
-    return (panel as unknown as { writeShownToDocument(): Promise<void> }).writeShownToDocument();
+  function writeShown(webview: FakeWebview): Promise<void> {
+    return webview.receive({ type: "writeToDocument", requestId: webview.render.requestId });
+  }
+
+  /** Answers renders of "flowchart ??" with a parse error, as Mermaid does. */
+  function failingUnknown(webview: FakeWebview): void {
+    webview.answer = (message) =>
+      message.type !== "render"
+        ? undefined
+        : message.source === "flowchart ??"
+          ? { type: "renderError", requestId: message.requestId, message: "Parse error" }
+          : { type: "rendered", requestId: message.requestId, diagramType: "flowchart" };
   }
 
   test("writeFence keeps the fence markers and their indentation", async () => {
@@ -250,17 +266,16 @@ suite("documentDiagram", function () {
   test("applying an edit in the panel writes it back to the document", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel, webview } = await restored(openedState(read));
     try {
-      panel.show();
-      await applyEdit(panel, "flowchart LR\n  A --> B");
+      await applyEdit(webview, "flowchart LR\n  A --> B");
       assert.strictEqual(
         document.getText(),
         "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
       );
       // The binding follows the block it wrote, so that the next Apply recognizes it.
       assert.strictEqual(panel.current?.document?.fence.lastLine, 4);
-      await applyEdit(panel, "flowchart TD");
+      await applyEdit(webview, "flowchart TD");
       assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n```\n");
     } finally {
       panel.dispose();
@@ -270,13 +285,14 @@ suite("documentDiagram", function () {
   test("writing the diagram as shown needs no edit of the user's own", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    // What an agent drew into the block's diagram, which the user has not touched: Apply has
+    // nothing to apply, so the Write button is the way it reaches the document.
+    const { panel, webview } = await restored({
+      ...openedState(read),
+      source: "flowchart LR\n  A --> B",
+    });
     try {
-      // What an agent drew into the block's diagram, which the user has not touched: Apply has
-      // nothing to apply, so the Write button is the way it reaches the document.
-      const drawn = { ...openedState(read), source: "flowchart LR\n  A --> B" };
-      (panel as unknown as { state: DiagramState }).state = drawn;
-      await writeShown(panel);
+      await writeShown(webview);
       assert.strictEqual(
         document.getText(),
         "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
@@ -291,16 +307,17 @@ suite("documentDiagram", function () {
   test("a second write finds the block where the first one left it", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel, webview } = await restored({
+      ...openedState(read),
+      source: "flowchart LR\n  A --> B",
+    });
     const warn = vscode.window.showWarningMessage;
     const warnings: string[] = [];
     vscode.window.showWarningMessage = (async (message: string) => {
       warnings.push(message);
     }) as typeof warn;
     try {
-      const internals = panel as unknown as { state: DiagramState };
-      internals.state = { ...openedState(read), source: "flowchart LR\n  A --> B" };
-      await Promise.all([writeShown(panel), writeShown(panel)]);
+      await Promise.all([writeShown(webview), writeShown(webview)]);
       assert.deepStrictEqual(warnings, []);
       assert.strictEqual(
         document.getText(),
@@ -317,7 +334,8 @@ suite("documentDiagram", function () {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel, webview } = await restored(openedState(read));
+    failingUnknown(webview);
     const warn = vscode.window.showWarningMessage;
     let warning = "";
     vscode.window.showWarningMessage = async (message: string) => {
@@ -325,8 +343,7 @@ suite("documentDiagram", function () {
       return undefined;
     };
     try {
-      panel.show();
-      await applyEdit(panel, "flowchart ??");
+      await applyEdit(webview, "flowchart ??");
       assert.strictEqual(document.getText(), before);
       assert.strictEqual(panel.current?.source, "flowchart ??");
       assert.strictEqual(panel.current?.editedByUser, true);
@@ -334,7 +351,7 @@ suite("documentDiagram", function () {
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
       assert.match(warning, /not written.*Your edits are kept in the panel/s);
 
-      await applyEdit(panel, "flowchart LR\n  A --> B");
+      await applyEdit(webview, "flowchart LR\n  A --> B");
       assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n  A --> B\n```\n");
       assert.strictEqual(panel.current?.error, undefined);
     } finally {
@@ -347,9 +364,8 @@ suite("documentDiagram", function () {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
-    const internals = panel as unknown as { post(): void };
-    internals.post = () => {};
+    const { panel, webview } = await restored(openedState(read));
+    webview.answer = undefined;
     const warn = vscode.window.showWarningMessage;
     let warning = "";
     vscode.window.showWarningMessage = async (message: string) => {
@@ -366,7 +382,7 @@ suite("documentDiagram", function () {
         },
         "document",
       );
-      await writeShown(panel);
+      await writeShown(webview);
       assert.strictEqual(document.getText(), before);
       assert.match(warning, /Wait.*rendering/);
       panel.dispose();
@@ -381,11 +397,15 @@ suite("documentDiagram", function () {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel, webview } = await newFakePanel();
+    failingUnknown(webview);
     try {
-      const failing = { ...openedState(read), source: "flowchart ??", error: "Parse error" };
-      (panel as unknown as { state: DiagramState }).state = failing;
-      await writeShown(panel);
+      const failing = await panel.render(
+        { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
+        "document",
+      );
+      assert.ok(!failing.ok);
+      await writeShown(webview);
       assert.strictEqual(document.getText(), before);
     } finally {
       panel.dispose();
@@ -396,13 +416,8 @@ suite("documentDiagram", function () {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
     const read = binding(document);
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      post(): void;
-      pendingRender: { message: { requestId: number } };
-      finishRender(id: number, outcome: RenderOutcome): void;
-    };
-    internals.post = () => {};
+    const { panel, webview } = await newFakePanel();
+    webview.deliver = (message) => message.type !== "render";
     const warn = vscode.window.showWarningMessage;
     let warning = "";
     vscode.window.showWarningMessage = async (message: string) => {
@@ -414,15 +429,10 @@ suite("documentDiagram", function () {
         { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
         "document",
       );
-      internals.finishRender(internals.pendingRender.message.requestId, {
-        ok: false,
-        kind: "unavailable",
-        error: "The diagram panel did not respond.",
-      });
       await rendering;
-      await writeShown(panel);
+      await writeShown(webview);
       assert.strictEqual(document.getText(), before);
-      assert.match(warning, /not written.*did not respond.*Reopen/);
+      assert.match(warning, /not written.*unavailable.*Reopen/);
     } finally {
       vscode.window.showWarningMessage = warn;
       panel.dispose();
@@ -432,11 +442,10 @@ suite("documentDiagram", function () {
   test("applying an edit leaves a document that changed to the user", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel, webview } = await restored(openedState(read));
     try {
       await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
-      panel.show();
-      await applyEdit(panel, "flowchart RL");
+      await applyEdit(webview, "flowchart RL");
       assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n```\n");
       // The diagram is still the document's, with the block as it was read.
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
@@ -449,37 +458,33 @@ suite("documentDiagram", function () {
   test("an Apply cannot write to a document opened while the edit renders", async () => {
     const first = await markdown("```mermaid\nflowchart TD\n```\n");
     const second = await markdown("```mermaid\nflowchart LR\n```\n");
-    const panel = newPanel(
-      new Map<string, unknown>([["diagram.state", openedState(binding(first))]]),
-    );
-    const internals = panel as unknown as {
-      state: DiagramState;
-      renderCurrent(): Promise<RenderOutcome>;
-      writeToDocument(): Promise<void>;
-    };
-    let written = false;
-    internals.renderCurrent = async () => {
-      internals.state = openedState(binding(second));
-      return { ok: true, diagramType: "flowchart" };
-    };
-    internals.writeToDocument = async () => {
-      written = true;
-    };
+    const { panel, webview } = await restored(openedState(binding(first)));
+    webview.answer = undefined;
+    const warn = vscode.window.showWarningMessage;
+    const warnings: string[] = [];
+    vscode.window.showWarningMessage = (async (message: string) => {
+      warnings.push(message);
+    }) as typeof warn;
     try {
-      await applyEdit(panel, "flowchart LR");
-      assert.strictEqual(written, false);
+      const applying = applyEdit(webview, "flowchart RL");
+      const opening = panel.render(openedState(binding(second)), "document");
+      await webview.finishRender();
+      await Promise.all([applying, opening]);
+      assert.strictEqual(first.getText(), "```mermaid\nflowchart TD\n```\n");
+      assert.strictEqual(second.getText(), "```mermaid\nflowchart LR\n```\n");
+      assert.deepStrictEqual(warnings, []);
     } finally {
+      vscode.window.showWarningMessage = warn;
       panel.dispose();
     }
   });
 
-  for (const change of ["replacement", "edit and revert"] as const) {
+  for (const change of ["replacement", "reload"] as const) {
     test(`a pending document open does not write after ${change}`, async () => {
       const document = await markdown("```mermaid\nflowchart TD\n```\n");
       const before = document.getText();
       const state = { ...openedState(binding(document)), source: "flowchart LR" };
-      const panel = newPanel(new Map<string, unknown>([["diagram.state", state]]));
-      const internals = panel as unknown as { state: DiagramState; renderVersion: number };
+      const { panel, webview } = await restored(state);
       const open = vscode.workspace.openTextDocument;
       const warn = vscode.window.showWarningMessage;
       const opened = Promise.withResolvers<vscode.TextDocument>();
@@ -490,12 +495,12 @@ suite("documentDiagram", function () {
         return undefined;
       };
       try {
-        const writing = writeShown(panel);
+        const writing = writeShown(webview);
         if (change === "replacement") {
-          internals.state = { ...state, document: { ...binding(document) } };
+          void panel.render({ ...state, document: { ...binding(document) } }, "document");
         } else {
-          // Even restoring the same source invalidates the write that was already pending.
-          internals.renderVersion += 2;
+          // Even drawing the same source again invalidates the write that was already pending.
+          await webview.receive({ type: "ready" });
         }
         opened.resolve(document);
         await writing;
@@ -534,7 +539,7 @@ suite("documentDiagram", function () {
       const before = document.getText();
       const read = { ...binding(document), replaced: true };
       const state = { ...openedState(read), source: "flowchart LR" };
-      const panel = newPanel(new Map<string, unknown>([["diagram.state", state]]));
+      const { panel, webview } = await restored(state);
       const warn = vscode.window.showWarningMessage;
       const confirmation = Promise.withResolvers<string | undefined>();
       const warnings: string[] = [];
@@ -544,15 +549,15 @@ suite("documentDiagram", function () {
       }) as typeof warn;
       try {
         assert.ok((await panel.render(state, "document")).ok);
-        const writing = writeShown(panel);
+        const writing = writeShown(webview);
         assert.strictEqual(warnings.length, 1);
         if (change === "replacement") {
           // Even identical source belongs to a different document binding after replacement.
           assert.ok((await panel.render({ ...state, document: { ...read } }, "document")).ok);
         } else {
           // Editing and restoring the same text still invalidates the original confirmation.
-          await applyEdit(panel, "flowchart RL");
-          await applyEdit(panel, state.source);
+          await applyEdit(webview, "flowchart RL");
+          await applyEdit(webview, state.source);
         }
         confirmation.resolve("Write");
         await writing;

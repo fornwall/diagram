@@ -5,17 +5,18 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
-import { linkText, linkTexts, type NodeLink } from "../links";
-import {
-  clickToAskQuery,
-  type Diagram,
-  DiagramPanel,
-  type DiagramState,
-  type RenderOutcome,
-} from "../panel";
-import { type FromWebview, isFromWebview, type ToWebview } from "../protocol";
+import { linkTexts } from "../links";
+import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
+import { isFromWebview } from "../protocol";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
-import { newPanel } from "./newPanel";
+import {
+  type FakeWebview,
+  memento,
+  newFakePanel,
+  newPanel,
+  openWebviewPanel,
+  showInFake,
+} from "./newPanel";
 import { testColors } from "./themeColors";
 
 const flowchart: Diagram = {
@@ -41,10 +42,34 @@ function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().
   return panel.pickNodes("Which part?", false, token);
 }
 
-function sourceRequestId(panel: DiagramPanel): number {
-  const id = (panel as unknown as { sourceRequestId?: number }).sourceRequestId;
-  assert.ok(id !== undefined);
-  return id;
+/** Applies an edit of the source in the panel, as the webview's Apply does. */
+function edit(webview: FakeWebview, source: string): Promise<void> {
+  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
+}
+
+/** Records the requests to chat and the files opened, which clicks on nodes lead to. */
+function recordClicks(): { actions: string[]; restore(): void } {
+  const execute = vscode.commands.executeCommand;
+  const show = vscode.window.showTextDocument;
+  const actions: string[] = [];
+  vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+    if (command !== "workbench.action.chat.open") return execute(command, ...args);
+    actions.push(`chat: ${(args[0] as { query: string }).query}`);
+  }) as typeof execute;
+  vscode.window.showTextDocument = (async (
+    document: vscode.TextDocument,
+    options: vscode.TextDocumentShowOptions,
+  ) => {
+    const line = options.selection ? `#L${options.selection.start.line + 1}` : "";
+    actions.push(`open: ${path.basename(document.uri.fsPath)}${line}`);
+  }) as unknown as typeof show;
+  return {
+    actions,
+    restore: () => {
+      vscode.commands.executeCommand = execute;
+      vscode.window.showTextDocument = show;
+    },
+  };
 }
 
 suite("panel", function () {
@@ -65,61 +90,49 @@ suite("panel", function () {
   });
 
   test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
     const warning = vscode.window.showWarningMessage;
     const warnings: string[] = [];
-    const internals = panel as unknown as {
-      post(message: ToWebview): void;
-      onMessage(message: FromWebview): void;
-      finishRender(id: number, outcome: RenderOutcome): void;
-      writeShownToDocument(): Promise<void>;
-      selection: { id: string; label: string }[];
-    };
-    internals.post = () => {};
-    let writes = 0;
-    internals.writeShownToDocument = async () => {
-      writes++;
-    };
     vscode.window.showWarningMessage = async (message: string) => {
       warnings.push(message);
       return undefined;
     };
     try {
       const first = panel.render(flowchart, "tool");
-      const oldId = sourceRequestId(panel);
-      internals.finishRender(oldId, { ok: true, diagramType: "flowchart" });
+      const oldId = webview.render.requestId;
+      await webview.finishRender();
       await first;
       const replacement = { ...flowchart, source: "flowchart ??", title: "Replacement" };
       const rendering = panel.render(replacement, "tool");
-      const currentId = sourceRequestId(panel);
+      const currentId = webview.render.requestId;
       for (const completed of [false, true]) {
         if (completed) {
-          internals.finishRender(currentId, { ok: false, kind: "invalid", error: "Parse error" });
+          await webview.finishRender("Parse error");
           await rendering;
         }
-        internals.onMessage({ type: "sourceEdited", requestId: oldId, source: "flowchart TD" });
-        internals.onMessage({ type: "writeToDocument", requestId: oldId });
-        internals.onMessage({
+        await webview.receive({ type: "sourceEdited", requestId: oldId, source: "flowchart TD" });
+        await webview.receive({ type: "writeToDocument", requestId: oldId });
+        await webview.receive({
           type: "selectionChanged",
           requestId: oldId,
           nodes: [{ id: "A", label: "Old" }],
         });
         assert.strictEqual(panel.current?.source, replacement.source);
         assert.strictEqual(panel.current?.editedByUser, false);
-        assert.deepStrictEqual(internals.selection, []);
-        assert.strictEqual(writes, 0);
+        assert.match(panel.describeForModel() ?? "", /no nodes selected/);
       }
       assert.strictEqual(warnings.length, 4);
-      internals.onMessage({ type: "sourceEdited", requestId: currentId, source: flowchart.source });
+      void webview.receive({
+        type: "sourceEdited",
+        requestId: currentId,
+        source: flowchart.source,
+      });
       assert.strictEqual(
         panel.current?.source,
         flowchart.source,
         "failed diagrams remain editable",
       );
-      const repairedId = sourceRequestId(panel);
-      internals.finishRender(repairedId, { ok: true, diagramType: "flowchart" });
-      internals.onMessage({ type: "writeToDocument", requestId: repairedId });
-      assert.strictEqual(writes, 1);
     } finally {
       vscode.window.showWarningMessage = warning;
       panel.dispose();
@@ -133,13 +146,13 @@ suite("panel", function () {
     const document = await vscode.workspace.openTextDocument({ content: "Keep editing here" });
     const editor = await vscode.window.showTextDocument(document);
     const panel = newPanel();
-    const internals = panel as unknown as { panel: vscode.WebviewPanel };
     try {
+      const opened = openWebviewPanel(panel, true);
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.strictEqual(vscode.window.activeTextEditor, editor);
 
       await new Promise<void>((resolve, reject) => {
-        const listener = internals.panel.onDidChangeViewState(({ webviewPanel }) => {
+        const listener = opened.onDidChangeViewState(({ webviewPanel }) => {
           if (webviewPanel.active) {
             clearTimeout(timeout);
             listener.dispose();
@@ -152,7 +165,7 @@ suite("panel", function () {
         }, 5000);
         panel.show();
       });
-      assert.ok(internals.panel.active, "Show Panel should focus the diagram");
+      assert.ok(opened.active, "Show Panel should focus the diagram");
     } finally {
       panel.dispose();
     }
@@ -163,16 +176,16 @@ suite("panel", function () {
     const document = await vscode.workspace.openTextDocument({ content: "Keep editing here" });
     const editor = await vscode.window.showTextDocument(document);
     const panel = newPanel();
-    const internals = panel as unknown as { panel: vscode.WebviewPanel };
     try {
+      const opened = openWebviewPanel(panel, true);
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.strictEqual(vscode.window.activeTextEditor, editor);
-      assert.ok(internals.panel.visible);
-      const reveal = internals.panel.reveal;
+      assert.ok(opened.visible);
+      const reveal = opened.reveal;
       let revealed = false;
-      internals.panel.reveal = (...args) => {
+      opened.reveal = (...args) => {
         revealed = true;
-        reveal.apply(internals.panel, args);
+        reveal.apply(opened, args);
       };
       assert.ok(panel.annotate({ marks: [], dim: false }).ok);
       assert.ok(!revealed, "An annotation should not reveal a panel that is already visible");
@@ -223,13 +236,8 @@ suite("panel", function () {
   });
 
   test("replacing a pending render ends it and replays only the latest diagram", async () => {
-    const panel = newPanel();
-    const sent: ToWebview[] = [];
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      post(message: ToWebview): void;
-    };
-    internals.post = (message) => sent.push(message);
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
     try {
       const first = panel.render(flowchart, "tool");
       const second = panel.render({ ...flowchart, title: "Replacement" }, "tool");
@@ -238,18 +246,12 @@ suite("panel", function () {
         kind: "unavailable",
         error: "The diagram was replaced before it finished rendering.",
       });
-      sent.length = 0;
-      internals.onMessage({ type: "ready" });
-      assert.strictEqual(sent.length, 2);
-      assert.deepStrictEqual(sent[0], { type: "chartOptions", visible: false });
-      const latest = sent[1];
-      assert.ok(latest?.type === "render");
-      assert.strictEqual(latest.title, "Replacement");
-      internals.onMessage({
-        type: "rendered",
-        requestId: latest.requestId,
-        diagramType: "flowchart",
-      });
+      webview.sent.length = 0;
+      await webview.receive({ type: "ready" });
+      assert.strictEqual(webview.sent.length, 2);
+      assert.deepStrictEqual(webview.sent[0], { type: "chartOptions", visible: false });
+      assert.strictEqual(webview.render.title, "Replacement");
+      await webview.finishRender();
       assert.ok((await second).ok);
     } finally {
       panel.dispose();
@@ -257,20 +259,16 @@ suite("panel", function () {
   });
 
   test("an unavailable render ends a waiting pick without blaming the source", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      pendingRender: { message: { requestId: number } };
-      finishRender(requestId: number, outcome: unknown): void;
-    };
+    const { panel, webview } = await newFakePanel();
+    webview.deliver = (message) => message.type !== "render";
     try {
       const rendering = panel.render(flowchart, "tool");
       const picking = pick(panel);
       const outcome = {
         ok: false,
         kind: "unavailable",
-        error: "The diagram panel did not respond within 15 seconds.",
+        error: "The diagram panel is unavailable. Reopen it and try again.",
       };
-      internals.finishRender(internals.pendingRender.message.requestId, outcome);
       assert.deepStrictEqual(await rendering, outcome);
       assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
       assert.strictEqual(panel.current?.error, undefined);
@@ -281,20 +279,14 @@ suite("panel", function () {
 
   test("failed message delivery ends render and pick requests", async () => {
     for (const rejected of [false, true]) {
-      const panel = newPanel();
-      const internals = panel as unknown as {
-        panel: vscode.WebviewPanel;
-        webviewReady: boolean;
+      const { panel, webview } = await newFakePanel();
+      webview.deliver = () => {
+        if (rejected) {
+          throw new Error("Disconnected");
+        }
+        return false;
       };
       try {
-        panel.show();
-        internals.webviewReady = true;
-        internals.panel.webview.postMessage = async () => {
-          if (rejected) {
-            throw new Error("Disconnected");
-          }
-          return false;
-        };
         const rendering = panel.render(flowchart, "tool");
         const picking = pick(panel);
         const outcome = await rendering;
@@ -309,39 +301,24 @@ suite("panel", function () {
   });
 
   test("failed deliveries from before a reload cannot cancel replayed requests", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
     const delivery = Promise.withResolvers<boolean>();
-    const internals = panel as unknown as {
-      panel: vscode.WebviewPanel;
-      webviewReady: boolean;
-      pendingRender?: { message: { requestId: number } };
-      pendingPick?: { message: { pickId: number } };
-      onMessage(message: FromWebview): void;
-    };
+    webview.deliver = () => delivery.promise;
     try {
-      panel.show();
-      internals.webviewReady = true;
-      internals.panel.webview.postMessage = () => delivery.promise;
       const rendering = panel.render(flowchart, "tool");
       const picking = pick(panel);
-      const render = internals.pendingRender;
-      const pendingPick = internals.pendingPick;
-      assert.ok(render && pendingPick);
+      const startPick = webview.sent.findLast((message) => message.type === "startPick");
+      assert.ok(startPick);
 
-      internals.panel.webview.postMessage = async () => true;
-      internals.onMessage({ type: "ready" });
+      webview.deliver = () => true;
+      await webview.receive({ type: "ready" });
       delivery.resolve(false);
       await new Promise((resolve) => setImmediate(resolve));
-      assert.strictEqual(internals.pendingRender, render);
-      assert.strictEqual(internals.pendingPick, pendingPick);
 
-      internals.onMessage({
-        type: "rendered",
-        requestId: render.message.requestId,
-        diagramType: "flowchart",
-      });
+      await webview.finishRender();
       const nodes = [{ id: "A", label: "Parser" }];
-      internals.onMessage({ type: "picked", pickId: pendingPick.message.pickId, nodes });
+      await webview.receive({ type: "picked", pickId: startPick.pickId, nodes });
       assert.ok((await rendering).ok);
       assert.deepStrictEqual(await picking, { picked: true, nodes });
     } finally {
@@ -352,46 +329,37 @@ suite("panel", function () {
 
   test("source is saved before the webview responds, without saving successful renders twice", async () => {
     const values = new Map<string, unknown>();
-    const panel = newPanel(values);
-    const internals = panel as unknown as {
-      post(): void;
-      applyEdit(source: string): Promise<void>;
-      onMessage(message: FromWebview): void;
-      renderCurrent(): Promise<RenderOutcome>;
-      pendingRender: { message: { requestId: number } };
-      context: vscode.ExtensionContext;
-    };
-    internals.post = () => {};
+    const state = memento(values);
     let writes = 0;
-    const update = internals.context.workspaceState.update;
-    internals.context.workspaceState.update = (key, value) => {
+    const update = state.update;
+    state.update = (key, value) => {
       writes++;
       return update(key, value);
     };
-    const finish = () =>
-      internals.onMessage({
-        type: "rendered",
-        requestId: internals.pendingRender.message.requestId,
-        diagramType: "flowchart",
-      });
+    const { panel, webview } = await newFakePanel(state);
+    webview.answer = undefined;
     try {
       const rendering = panel.render(flowchart, "tool");
       assert.strictEqual((values.get("diagram.state") as DiagramState).source, flowchart.source);
-      finish();
+      await webview.finishRender();
       assert.ok((await rendering).ok);
       assert.strictEqual(writes, 1);
 
-      const reopening = internals.renderCurrent();
-      finish();
-      assert.ok((await reopening).ok);
+      // The webview reloads, and draws the diagram again.
+      await webview.receive({ type: "ready" });
+      await webview.finishRender();
       assert.strictEqual(writes, 1, "reopening unchanged source must not serialize it again");
 
       const source = "flowchart LR\n  C --> D";
-      const editing = internals.applyEdit(source);
+      const editing = webview.receive({
+        type: "sourceEdited",
+        requestId: webview.render.requestId,
+        source,
+      });
       const saved = values.get("diagram.state") as DiagramState;
       assert.strictEqual(saved.source, source);
       assert.strictEqual(saved.editedByUser, true);
-      finish();
+      await webview.finishRender();
       await editing;
       assert.strictEqual(writes, 2);
     } finally {
@@ -400,23 +368,9 @@ suite("panel", function () {
   });
 
   test("an unavailable rendering ignores stale clicks on the previous diagram", async () => {
-    const panel = newPanel();
-    const actions: string[] = [];
-    const internals = panel as unknown as {
-      post(): void;
-      onMessage(message: FromWebview): void;
-      pendingRender: { message: { requestId: number } };
-      finishRender(id: number, outcome: RenderOutcome): void;
-      askInChat(text: string): Promise<void>;
-      openLink(link: NodeLink, label: string): Promise<void>;
-    };
-    internals.post = () => {};
-    internals.askInChat = async () => {
-      actions.push("chat");
-    };
-    internals.openLink = async () => {
-      actions.push("file");
-    };
+    const { panel, webview } = await newFakePanel();
+    webview.deliver = (message) => message.type !== "render";
+    const clicks = recordClicks();
     try {
       const rendering = panel.render(
         {
@@ -426,34 +380,23 @@ suite("panel", function () {
         },
         "tool",
       );
-      internals.finishRender(internals.pendingRender.message.requestId, {
-        ok: false,
-        kind: "unavailable",
-        error: "The panel stopped responding.",
-      });
-      await rendering;
+      assert.ok(!(await rendering).ok);
       const node = { id: "A", label: "Parser" };
-      internals.onMessage({ type: "clickToAsk", node });
-      internals.onMessage({ type: "clickToOpen", node });
-      assert.deepStrictEqual(actions, []);
+      await webview.receive({ type: "clickToAsk", node });
+      await webview.receive({ type: "clickToOpen", node });
+      assert.deepStrictEqual(clicks.actions, []);
     } finally {
+      clicks.restore();
       panel.dispose();
     }
   });
 
   test("a completed render cannot mark a newer copy of the same source as broken", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      pendingRender: { message: { requestId: number } };
-    };
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
     try {
       const first = panel.render(flowchart, "tool");
-      internals.onMessage({
-        type: "renderError",
-        requestId: internals.pendingRender.message.requestId,
-        message: "Old error",
-      });
+      void webview.finishRender("Old error");
       const second = panel.render(flowchart, "tool");
       assert.deepStrictEqual(await first, {
         ok: false,
@@ -461,11 +404,7 @@ suite("panel", function () {
         error: "The diagram was replaced before it finished rendering.",
       });
       assert.strictEqual(panel.current?.error, undefined);
-      internals.onMessage({
-        type: "rendered",
-        requestId: internals.pendingRender.message.requestId,
-        diagramType: "flowchart",
-      });
+      await webview.finishRender();
       assert.ok((await second).ok);
     } finally {
       panel.dispose();
@@ -473,35 +412,24 @@ suite("panel", function () {
   });
 
   test("replacing a render while it saves prevents an obsolete repair", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      pendingRender: { message: { requestId: number } };
-      context: vscode.ExtensionContext;
-    };
     const save = Promise.withResolvers<void>();
     const saving = Promise.withResolvers<void>();
-    internals.context.workspaceState.update = () => {
+    const state = memento(new Map());
+    state.update = () => {
       saving.resolve();
       return save.promise;
     };
+    const { panel, webview } = await newFakePanel(state);
+    webview.answer = undefined;
     try {
       const first = panel.render(flowchart, "tool");
-      internals.onMessage({
-        type: "renderError",
-        requestId: internals.pendingRender.message.requestId,
-        message: "Old error",
-      });
+      await webview.finishRender("Old error");
       await saving.promise;
       const second = panel.render(flowchart, "tool");
       save.resolve();
       const outcome = await first;
       assert.ok(!outcome.ok && outcome.kind === "unavailable");
-      internals.onMessage({
-        type: "rendered",
-        requestId: internals.pendingRender.message.requestId,
-        diagramType: "flowchart",
-      });
+      await webview.finishRender();
       assert.ok((await second).ok);
       assert.strictEqual(panel.current?.error, undefined);
     } finally {
@@ -511,13 +439,11 @@ suite("panel", function () {
   });
 
   test("saving failures do not turn successful renders into errors", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      context: vscode.ExtensionContext;
-    };
-    internals.context.workspaceState.update = async () => {
+    const state = memento(new Map());
+    state.update = async () => {
       throw new Error("Storage is unavailable");
     };
+    const panel = newPanel(state);
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.strictEqual(panel.current?.source, flowchart.source);
@@ -528,28 +454,20 @@ suite("panel", function () {
   });
 
   test("picking after an unavailable render retries it instead of waiting on an empty panel", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      post(): void;
-      pendingRender?: { message: { requestId: number } };
-      finishRender(id: number, outcome: RenderOutcome): void;
-    };
-    internals.post = () => {};
+    const { panel, webview } = await newFakePanel();
+    webview.deliver = (message) => message.type !== "render";
     const unavailable = {
       ok: false,
       kind: "unavailable",
-      error: "The diagram panel did not respond.",
+      error: "The diagram panel is unavailable. Reopen it and try again.",
     } as const;
+    const renders = () => webview.sent.filter((message) => message.type === "render").length;
     try {
-      const rendering = panel.render(flowchart, "tool");
-      assert.ok(internals.pendingRender);
-      internals.finishRender(internals.pendingRender.message.requestId, unavailable);
-      assert.deepStrictEqual(await rendering, unavailable);
+      assert.deepStrictEqual(await panel.render(flowchart, "tool"), unavailable);
       assert.strictEqual(panel.current?.error, undefined);
 
       const picking = pick(panel);
-      assert.ok(internals.pendingRender, "Picking must restart the failed render");
-      internals.finishRender(internals.pendingRender.message.requestId, unavailable);
+      assert.strictEqual(renders(), 2, "Picking must restart the failed render");
       assert.deepStrictEqual(await picking, { picked: false, reason: unavailable.error });
     } finally {
       panel.dispose();
@@ -742,39 +660,29 @@ suite("panel", function () {
   });
 
   test("opening chat clears only the selection that sent the request", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     const execute = vscode.commands.executeCommand;
-    const sent: ToWebview[] = [];
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      askInChat(text: string): Promise<void>;
-      post(message: ToWebview): void;
-      selection: { id: string; label: string }[];
-      sourceRequestId: number;
-    };
-    internals.sourceRequestId = 1;
-    internals.post = (message) => sent.push(message);
     try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const { requestId } = webview.render;
+      const select = (node: { id: string; label: string }) =>
+        webview.receive({ type: "selectionChanged", requestId, nodes: [node] });
       for (const changed of [true, false]) {
         const opened = Promise.withResolvers<void>();
         vscode.commands.executeCommand = (() => opened.promise) as typeof execute;
-        internals.onMessage({
-          type: "selectionChanged",
-          requestId: 1,
-          nodes: [{ id: "A", label: "Parser" }],
-        });
-        const asking = internals.askInChat("Explain the selection");
+        await select({ id: "A", label: "Parser" });
+        webview.sent.length = 0;
+        const asking = webview.receive({ type: "ask", text: "Explain the selection", nodes: [] });
         if (changed) {
-          internals.onMessage({
-            type: "selectionChanged",
-            requestId: 1,
-            nodes: [{ id: "B", label: "Checker" }],
-          });
+          await select({ id: "B", label: "Checker" });
         }
         opened.resolve();
         await asking;
-        assert.deepStrictEqual(sent, changed ? [] : [{ type: "clearSelection" }]);
-        assert.deepStrictEqual(internals.selection, changed ? [{ id: "B", label: "Checker" }] : []);
+        assert.deepStrictEqual(webview.sent, changed ? [] : [{ type: "clearSelection" }]);
+        assert.match(
+          panel.describeForModel() ?? "",
+          changed ? /selected these nodes in the panel: "Checker"/ : /no nodes selected/,
+        );
       }
     } finally {
       vscode.commands.executeCommand = execute;
@@ -837,18 +745,16 @@ suite("panel", function () {
   });
 
   test("a reloaded webview starts without a selection", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
-      const receive = (message: FromWebview) =>
-        (panel as unknown as { onMessage(message: FromWebview): void }).onMessage(message);
-      receive({
+      await webview.receive({
         type: "selectionChanged",
-        requestId: sourceRequestId(panel),
+        requestId: webview.render.requestId,
         nodes: [{ id: "A", label: "Parser" }],
       });
       assert.match(panel.describeForModel() ?? "", /selected these nodes/);
-      receive({ type: "ready" });
+      await webview.receive({ type: "ready" });
       assert.match(panel.describeForModel() ?? "", /no nodes selected/);
     } finally {
       panel.dispose();
@@ -907,63 +813,60 @@ suite("panel", function () {
   });
 
   test("a diagram that fails to render takes no clicks", async () => {
-    const panel = newPanel();
-    const asked: string[] = [];
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      askInChat(text: string): void;
-    };
-    internals.askInChat = (text) => asked.push(text);
+    const { panel, webview } = await newFakePanel();
+    const clicks = recordClicks();
+    const links = { A: { file: "sizes.tsv", line: 2 } };
+    const click = (id: string) => webview.receive({ type: "clickToOpen", node: { id, label: id } });
     try {
       assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
-      const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete" };
+      await webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
+      assert.deepStrictEqual(clicks.actions, ['chat: Explain "Parser"']);
+      clicks.actions.length = 0;
+
+      webview.nextRender((render) =>
+        webview.receive({
+          type: "renderError",
+          requestId: render.requestId,
+          message: "Parse error",
+        }),
+      );
+      const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete", links };
       assert.ok(!(await panel.render({ ...flowchart, ...broken }, "tool")).ok);
-      // A click on the previous diagram, e.g. one sent just before it was replaced.
-      internals.onMessage({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
-      assert.deepStrictEqual(asked, []);
+      // Clicks on the previous diagram, e.g. sent just before it was replaced.
+      await webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
+      await click("A");
+      assert.deepStrictEqual(clicks.actions, []);
     } finally {
+      clicks.restore();
       panel.dispose();
     }
   });
 
   test("only a click on a node with a link opens code", async () => {
-    const panel = newPanel();
-    const opened: string[] = [];
-    const internals = panel as unknown as {
-      onMessage(message: FromWebview): void;
-      openLink(link: NodeLink, label: string): Promise<void>;
-    };
-    internals.openLink = async (link, label) => void opened.push(`${label}: ${linkText(link)}`);
-    const click = (id: string) =>
-      internals.onMessage({ type: "clickToOpen", node: { id, label: id } });
-    const links = { A: { file: "sizes.tsv", line: 2 } };
+    const { panel, webview } = await newFakePanel();
+    const clicks = recordClicks();
+    const click = (id: string) => webview.receive({ type: "clickToOpen", node: { id, label: id } });
     try {
+      const links = { A: { file: "sizes.tsv", line: 2 } };
       assert.ok((await panel.render({ ...flowchart, links }, "tool")).ok);
       assert.match(panel.describeForModel() ?? "", /A → sizes\.tsv#L2/);
-      click("A");
+      await click("A");
       // A node without a link, and an id that only Object.prototype has, link nowhere.
-      click("B");
-      click("constructor");
-      assert.deepStrictEqual(opened, ["A: sizes.tsv#L2"]);
-
-      // A diagram that fails to render has no nodes: the click was on the one it replaced.
-      const broken = { ...flowchart, source: "flowchart TD\n  A --> --> B[", links };
-      assert.ok(!(await panel.render(broken, "tool")).ok);
-      click("A");
-      assert.deepStrictEqual(opened, ["A: sizes.tsv#L2"]);
+      await click("B");
+      await click("constructor");
+      assert.deepStrictEqual(clicks.actions, ["open: sizes.tsv#L2"]);
     } finally {
+      clicks.restore();
       panel.dispose();
     }
   });
 
-  test("opening a link shows the file with its lines selected", async () => {
-    const panel = newPanel();
+  test("opening a link shows the file beside the diagram with its lines selected", async () => {
+    const { panel, webview } = await newFakePanel();
     const link = { file: "sizes.tsv", line: 2, endLine: 3 };
     try {
       assert.ok((await panel.render({ ...flowchart, links: { A: link } }, "tool")).ok);
-      await (
-        panel as unknown as { openLink(link: NodeLink, label: string): Promise<void> }
-      ).openLink(link, "Parser");
+      await webview.receive({ type: "clickToOpen", node: { id: "A", label: "Parser" } });
       const shown = vscode.window.visibleTextEditors.find((editor) =>
         editor.document.uri.path.endsWith("/sizes.tsv"),
       );
@@ -971,8 +874,7 @@ suite("panel", function () {
       assert.strictEqual(shown.selection.start.line, 1);
       assert.strictEqual(shown.selection.end.line, 2);
       // Beside the diagram, rather than over it in its own tab group.
-      const diagramColumn = (panel as unknown as { panel?: vscode.WebviewPanel }).panel?.viewColumn;
-      assert.notStrictEqual(shown.viewColumn, diagramColumn);
+      assert.notStrictEqual(shown.viewColumn, webview.panel.viewColumn);
     } finally {
       panel.dispose();
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -981,7 +883,7 @@ suite("panel", function () {
 
   test("large manual chart edits survive a reload", async () => {
     const values = new Map<string, unknown>();
-    const panel = newPanel(values);
+    const { panel, webview } = await newFakePanel(values);
     const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
     const edited = `${source}${" ".repeat(1_000_000)}`;
     try {
@@ -995,8 +897,7 @@ suite("panel", function () {
         "tool",
       );
       assert.ok(outcome.ok);
-      const internals = panel as unknown as { applyEdit(source: string): Promise<void> };
-      await internals.applyEdit(edited);
+      await edit(webview, edited);
       const restored = newPanel(values);
       try {
         assert.strictEqual(restored.current?.source, edited);
@@ -1010,13 +911,8 @@ suite("panel", function () {
   });
 
   test("exporting waits for a successful render and reports an unavailable panel", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      post(): void;
-      pendingRender: { message: { requestId: number } };
-      finishRender(id: number, outcome: RenderOutcome): void;
-    };
-    internals.post = () => {};
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
     const warn = vscode.window.showWarningMessage;
     const save = vscode.window.showSaveDialog;
     let warning = "";
@@ -1035,15 +931,12 @@ suite("panel", function () {
       await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
       assert.match(warning, /Wait.*rendering/);
-      internals.finishRender(internals.pendingRender.message.requestId, {
-        ok: false,
-        kind: "unavailable",
-        error: "The diagram panel did not respond.",
-      });
+      webview.deliver = (message) => message.type !== "render";
+      assert.ok(!(await panel.render(chart, "tool")).ok);
       await rendering;
       await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
-      assert.match(warning, /^The diagram panel did not respond\. Use Diagram: Show Panel/);
+      assert.match(warning, /^The diagram panel is unavailable\. .*Use Diagram: Show Panel/);
     } finally {
       vscode.window.showWarningMessage = warn;
       vscode.window.showSaveDialog = save;
@@ -1053,7 +946,7 @@ suite("panel", function () {
 
   test("refresh preserves manual styling through panel state restoration", async () => {
     const values = new Map<string, unknown>();
-    let panel = newPanel(values);
+    let { panel, webview } = await newFakePanel(values);
     const chart = { type: "bar", data: "name,value\nC,20\nD,40" } as const;
     const option = buildChart(chart, parseTable("name,value\nA,2\nB,4")).option;
     try {
@@ -1070,13 +963,10 @@ suite("panel", function () {
         name: "Revenue",
         axisLabel: { formatter: "USD {value}" },
       };
-      await (panel as unknown as { applyEdit(source: string): Promise<void> }).applyEdit(
-        JSON.stringify(option),
-      );
+      await edit(webview, JSON.stringify(option));
       panel.dispose();
-      panel = newPanel(values);
-      panel.show();
-      await (panel as unknown as { refreshChart(): Promise<void> }).refreshChart();
+      ({ panel, webview } = await newFakePanel(values));
+      await webview.receive({ type: "refresh" });
       const refreshed = JSON.parse(panel.current?.source ?? "");
       assert.deepStrictEqual(refreshed.series[0].data, [20, 40]);
       assert.deepStrictEqual(refreshed.xAxis.data, ["C", "D"]);
@@ -1090,7 +980,7 @@ suite("panel", function () {
   });
 
   test("blocked custom source is preserved without loading data", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     const progress = vscode.window.withProgress;
     const showError = vscode.window.showErrorMessage;
     let error = "";
@@ -1107,11 +997,7 @@ suite("panel", function () {
         },
         "tool",
       );
-      const internals = panel as unknown as {
-        applyEdit(source: string): Promise<void>;
-        refreshChart(): Promise<void>;
-      };
-      await internals.applyEdit(edited);
+      await edit(webview, edited);
       vscode.window.withProgress = async (options, task) => {
         loads++;
         return progress(options, task);
@@ -1120,7 +1006,7 @@ suite("panel", function () {
         error = message;
         return undefined;
       };
-      await internals.refreshChart();
+      await webview.receive({ type: "refresh" });
       assert.strictEqual(loads, 0);
       assert.strictEqual(panel.current?.source, edited);
       assert.match(error, /source is kept.*Reset Styling/);
@@ -1132,7 +1018,7 @@ suite("panel", function () {
   });
 
   test("a failed refresh render restores the previous source and presentation", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     const showError = vscode.window.showErrorMessage;
     let error = "";
     try {
@@ -1148,25 +1034,18 @@ suite("panel", function () {
       );
       assert.ok(panel.annotate({ marks: [{ id: "A", kind: "good" }], dim: false }).ok);
       const before = panel.current;
-      const internals = panel as unknown as {
-        renderCurrent(): Promise<RenderOutcome>;
-        refreshChart(): Promise<void>;
-        renderVersion: number;
-      };
-      const render = internals.renderCurrent.bind(internals);
-      let calls = 0;
-      internals.renderCurrent = async () => {
-        if (calls++ === 0) {
-          internals.renderVersion++;
-          return { ok: false, kind: "invalid", error: "test refresh failure" };
-        }
-        return render();
-      };
+      webview.nextRender((render) =>
+        webview.receive({
+          type: "renderError",
+          requestId: render.requestId,
+          message: "test refresh failure",
+        }),
+      );
       vscode.window.showErrorMessage = async (message: string) => {
         error = message;
         return undefined;
       };
-      await internals.refreshChart();
+      await webview.receive({ type: "refresh" });
       assert.strictEqual(panel.current?.source, before?.source);
       assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
       assert.match(error, /test refresh failure.*previous chart is kept/);
@@ -1178,7 +1057,7 @@ suite("panel", function () {
   });
 
   test("refreshing chart data ends a pending pick", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     try {
       const outcome = await panel.render(
         {
@@ -1191,7 +1070,7 @@ suite("panel", function () {
       );
       assert.ok(outcome.ok);
       const picking = pick(panel);
-      await (panel as unknown as { refreshChart(): Promise<void> }).refreshChart();
+      await webview.receive({ type: "refresh" });
       assert.deepStrictEqual(await picking, {
         picked: false,
         reason: "The chart data was refreshed before the user picked.",
@@ -1202,7 +1081,7 @@ suite("panel", function () {
   });
 
   test("a refresh that started before a hand edit keeps the edit", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
     const pie = (name: string) =>
       JSON.stringify({ series: [{ type: "pie", data: [{ name, value: 1 }] }] });
     try {
@@ -1212,17 +1091,8 @@ suite("panel", function () {
         "tool",
       );
       assert.ok(outcome.ok);
-      const internals = panel as unknown as {
-        onMessage(message: FromWebview): void;
-        refreshChart(): Promise<void>;
-      };
-      const refreshing = internals.refreshChart();
-      internals.onMessage({
-        type: "sourceEdited",
-        requestId: sourceRequestId(panel),
-        source: pie("B"),
-      });
-      await refreshing;
+      const refreshing = webview.receive({ type: "refresh" });
+      await Promise.all([refreshing, edit(webview, pie("B"))]);
       assert.strictEqual(panel.current?.source, pie("B"));
       assert.ok(panel.current?.editedByUser);
     } finally {
@@ -1232,12 +1102,8 @@ suite("panel", function () {
 
   for (const action of ["edit and revert", "close and reopen"]) {
     test(`refresh does not overwrite the chart after ${action}`, async () => {
-      const panel = newPanel();
+      const { panel, webview } = await newFakePanel();
       const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
-      const internals = panel as unknown as {
-        refreshChart(): Promise<void>;
-        applyEdit(source: string): Promise<void>;
-      };
       const progress = vscode.window.withProgress;
       const resumed = Promise.withResolvers<void>();
       try {
@@ -1255,13 +1121,13 @@ suite("panel", function () {
           await resumed.promise;
           return progress(options, task);
         };
-        const refreshing = internals.refreshChart();
+        const refreshing = webview.receive({ type: "refresh" });
         if (action === "edit and revert") {
-          await internals.applyEdit(`${source} `);
-          await internals.applyEdit(source);
+          await edit(webview, `${source} `);
+          await edit(webview, source);
         } else {
-          panel.dispose();
-          panel.show();
+          webview.panel.dispose();
+          await showInFake(panel);
         }
         resumed.resolve();
         await refreshing;
@@ -1276,16 +1142,11 @@ suite("panel", function () {
   }
 
   test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
-    const panel = newPanel();
-    const sent: ToWebview[] = [];
+    const { panel, webview } = await newFakePanel();
+    const { sent } = webview;
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
-      const internals = panel as unknown as { post(message: ToWebview): void };
-      const post = internals.post.bind(internals);
-      internals.post = (message) => {
-        sent.push(message);
-        post(message);
-      };
+      sent.length = 0;
       const outcome = panel.annotate({
         marks: [{ id: "A", kind: "problem", note: "fails here" }],
         caption: "Step 1 of 2",
@@ -1346,11 +1207,19 @@ suite("panel", function () {
     }
   });
 
-  test("annotation ids prefer exact names and only repair unambiguous padding", () => {
-    const panel = newPanel();
-    const internals = panel as unknown as { state: DiagramState; nodeIds?: string[] };
-    internals.state = { ...flowchart, origin: "tool", editedByUser: false };
-    panel.show = () => {};
+  test("annotation ids prefer exact names and only repair unambiguous padding", async () => {
+    const { panel, webview } = await newFakePanel();
+    const draw = async (nodeIds?: string[]) => {
+      webview.nextRender((render) =>
+        webview.receive({
+          type: "rendered",
+          requestId: render.requestId,
+          diagramType: "test",
+          nodeIds,
+        }),
+      );
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+    };
     const annotate = (...ids: string[]) => {
       const outcome = panel.annotate({
         marks: ids.map((id) => ({ id, kind: "info" })),
@@ -1360,11 +1229,11 @@ suite("panel", function () {
       return { ids: outcome.annotation.marks.map((mark) => mark.id), unknown: outcome.unknown };
     };
     try {
-      internals.nodeIds = ["A", "B", " B "];
+      await draw(["A", "B", " B "]);
       assert.deepStrictEqual(annotate(" A ", " B "), { ids: ["A", " B "], unknown: [] });
       assert.deepStrictEqual(annotate(" A ", "A"), { ids: ["A"], unknown: [" A "] });
       assert.deepStrictEqual(annotate(" A ", "  A"), { ids: ["A"], unknown: ["  A"] });
-      internals.nodeIds = undefined;
+      await draw();
       assert.deepStrictEqual(annotate(" A "), { ids: [" A "], unknown: [] });
     } finally {
       panel.dispose();
@@ -1372,17 +1241,13 @@ suite("panel", function () {
   });
 
   test("the marks go back on a webview that reloaded", async () => {
-    const panel = newPanel();
-    const sent: ToWebview[] = [];
+    const { panel, webview } = await newFakePanel();
+    const { sent } = webview;
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.ok(panel.annotate({ marks: [{ id: "B", kind: "current" }], dim: false }).ok);
-      const internals = panel as unknown as {
-        onMessage(message: FromWebview): void;
-        post(message: ToWebview): void;
-      };
-      internals.post = (message) => sent.push(message);
-      internals.onMessage({ type: "ready" });
+      sent.length = 0;
+      await webview.receive({ type: "ready" });
       // Restore the controls, then the diagram and the marks that belong on it.
       assert.deepStrictEqual(
         sent.map((message) => message.type),

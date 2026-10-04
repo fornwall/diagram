@@ -4,8 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
-import type { ExportFormat, FromWebview, ToWebview } from "../protocol";
-import { newPanel } from "./newPanel";
+import type { ExportFormat, ToWebview } from "../protocol";
+import { type FakeWebview, newFakePanel, newPanel, showInFake } from "./newPanel";
 
 const diagram: Diagram = {
   language: "mermaid",
@@ -136,42 +136,57 @@ suite("native export", function () {
 
   for (const action of ["replace", "reload", "close"] as const) {
     test(`ends a pending export on ${action}, ignores stale replies, and permits retry`, async () => {
-      assert.ok((await panel.render(diagram, "tool")).ok);
-      const internals = panel as unknown as {
-        post(message: ToWebview): Promise<void>;
-        onMessage(message: FromWebview): void;
+      const fake = await newFakePanel();
+      let { webview } = fake;
+      const requested: Extract<ToWebview, { type: "export" }>[] = [];
+      /** Answers renders, and exports once the first export request is ended. */
+      const answering = (page: FakeWebview) => {
+        const answer = page.answer;
+        page.answer = (message) => {
+          if (message.type !== "export") return answer?.(message);
+          requested.push(message);
+          return requested.length > 1
+            ? { type: "exportImage", requestId: message.requestId, format: "svg", data: "<svg/>" }
+            : undefined;
+        };
       };
-      const post = internals.post.bind(panel);
-      const captured = Promise.withResolvers<Extract<ToWebview, { type: "export" }>>();
-      internals.post = async (message) => {
-        if (message.type === "export") captured.resolve(message);
-        else await post(message);
-      };
-      const exporting = panel.exportDiagram();
-      const request = await captured.promise;
-      internals.onMessage({
-        type: "exportError",
-        requestId: request.requestId + 1,
-        message: "stale",
-      });
-      if (action === "replace") await panel.render(chart, "tool");
-      else if (action === "reload") internals.onMessage({ type: "ready" });
-      else panel.dispose();
-      await exporting;
-      assert.strictEqual(dialogs.length, 0);
-      assert.strictEqual(errors.length, 1);
-      assert.match(errors[0] ?? "", /changed|reloaded|closed/);
-      internals.onMessage({
-        type: "exportImage",
-        requestId: request.requestId,
-        format: "svg",
-        data: "late",
-      });
-      internals.post = post;
-      assert.ok((await panel.render(diagram, "tool")).ok);
-      await panel.exportDiagram();
-      assert.strictEqual(dialogs.length, 1);
-      assert.strictEqual(errors.length, 1);
+      answering(webview);
+      try {
+        assert.ok((await fake.panel.render(diagram, "tool")).ok);
+        const exporting = fake.panel.exportDiagram();
+        while (requested.length === 0) await new Promise((resolve) => setImmediate(resolve));
+        const [request] = requested;
+        assert.ok(request);
+        await webview.receive({
+          type: "exportError",
+          requestId: request.requestId + 1,
+          message: "stale",
+        });
+        if (action === "replace") await fake.panel.render(chart, "tool");
+        else if (action === "reload") await webview.receive({ type: "ready" });
+        else {
+          webview.panel.dispose();
+          webview = await showInFake(fake.panel);
+          answering(webview);
+        }
+        await exporting;
+        assert.strictEqual(dialogs.length, 0);
+        assert.strictEqual(errors.length, 1);
+        assert.match(errors[0] ?? "", /changed|reloaded|closed/);
+        await webview.receive({
+          type: "exportImage",
+          requestId: request.requestId,
+          format: "svg",
+          data: "late",
+        });
+        assert.ok((await fake.panel.render(diagram, "tool")).ok);
+        await fake.panel.exportDiagram();
+        assert.strictEqual(dialogs.length, 1);
+        assert.strictEqual(errors.length, 1);
+        assert.strictEqual(fs.readFileSync(path.join(directory, "export.svg"), "utf8"), "<svg/>");
+      } finally {
+        fake.panel.dispose();
+      }
     });
   }
 });

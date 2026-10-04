@@ -7,17 +7,9 @@ import { updatedChartSpec } from "../chartOptions";
 import { type ChartSpec, validateChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
-import { type DataTable, parseTable } from "../data";
+import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import type { ToWebview } from "../protocol";
-import { newPanel } from "./newPanel";
-
-interface Internals {
-  post(message: ToWebview): void;
-  finishRender(id: number, outcome: RenderOutcome): void;
-  applyEdit(source: string): Promise<void>;
-  chartTable: DataTable | undefined;
-}
+import { type FakeWebview, newFakePanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2\nc,3";
 const token = new vscode.CancellationTokenSource().token;
@@ -29,32 +21,14 @@ function text(result: vscode.LanguageModelToolResult): string {
     .join("\n");
 }
 
-function harness() {
+async function harness() {
   const values = new Map<string, unknown>();
-  const panel = newPanel(values);
-  const internals = panel as unknown as Internals;
-  const sent: ToWebview[] = [];
-  let next: ((message: Extract<ToWebview, { type: "render" }>) => void) | undefined;
-  internals.post = (message) => {
-    sent.push(message);
-    if (message.type !== "render") return;
-    const handler = next;
-    next = undefined;
-    queueMicrotask(() =>
-      handler
-        ? handler(message)
-        : internals.finishRender(message.requestId, { ok: true, diagramType: "bar" }),
-    );
-  };
-  return {
-    panel,
-    internals,
-    values,
-    sent,
-    nextRender: (handler: NonNullable<typeof next>) => {
-      next = handler;
-    },
-  };
+  return { ...(await newFakePanel(values)), values };
+}
+
+/** Applies an edit of the source in the panel, as the webview's Apply does. */
+function edit(webview: FakeWebview, source: string): Promise<void> {
+  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
 }
 
 async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }) {
@@ -77,7 +51,7 @@ suite("chart agent tools", function () {
   this.timeout(10_000);
 
   test("analysis updates reuse the full cached table and retain the prior chart on invalid filters", async () => {
-    const { panel, internals, values } = harness();
+    const { panel, values } = await harness();
     const samples = "service,latency\na,1\na,2\nb,10\nb,20";
     const table = parseTable(samples);
     const chart: ChartSpec = { type: "bar", command: "must-not-run", valueColumns: ["latency"] };
@@ -110,7 +84,7 @@ suite("chart agent tools", function () {
           )
         ).ok,
       );
-      assert.strictEqual(internals.chartTable, table);
+      assert.strictEqual(panel.loadedChartData, table);
       assert.strictEqual(panel.current?.chart?.facetColumn, "service");
       assert.deepStrictEqual((values.get("diagram.state") as DiagramState).chart?.filters, [
         { column: "latency", op: "gte", value: 2 },
@@ -135,7 +109,7 @@ suite("chart agent tools", function () {
         ),
         4,
       );
-      assert.strictEqual(internals.chartTable, table);
+      assert.strictEqual(panel.loadedChartData, table);
     } finally {
       panel.dispose();
     }
@@ -196,7 +170,7 @@ suite("chart agent tools", function () {
   });
 
   test("inspection reads inline and loaded data without replacing the current chart", async () => {
-    const { panel } = harness();
+    const { panel } = await harness();
     try {
       await draw(panel);
       const before = panel.current;
@@ -227,7 +201,7 @@ suite("chart agent tools", function () {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-inspect-"));
     const file = path.join(directory, "data.csv");
     fs.writeFileSync(file, data);
-    const { panel } = harness();
+    const { panel } = await harness();
     try {
       const tool = new InspectDataTool(panel);
       assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
@@ -245,12 +219,12 @@ suite("chart agent tools", function () {
   });
 
   test("updates retain manual styling and loaded command data and support adoption", async () => {
-    const { panel, internals } = harness();
+    const { panel, webview } = await harness();
     try {
       const source = await draw(panel, { type: "bar", command: "this-command-must-never-run" });
       const styled = JSON.parse(source);
       styled.backgroundColor = "#123456";
-      await internals.applyEdit(JSON.stringify(styled));
+      await edit(webview, JSON.stringify(styled));
       const request = { requestId: "chart-update" } as never;
       const result = await new UpdateChartTool(panel).invoke(
         {
@@ -273,7 +247,7 @@ suite("chart agent tools", function () {
   });
 
   test("updates reject stale revisions, missing caches and unsupported manual data edits", async () => {
-    const { panel, internals } = harness();
+    const { panel, webview, values } = await harness();
     try {
       const source = await draw(panel, { type: "bar", command: "never-run" });
       const before = panel.current;
@@ -282,15 +256,19 @@ suite("chart agent tools", function () {
         /chart changed/,
       );
       assert.strictEqual(panel.current, before);
-      internals.chartTable = undefined;
-      await assert.rejects(
-        panel.updateChart({ limit: 2 }, token),
-        /not loaded.*Call diagram_chart again with the same command and the new settings/,
-      );
-      internals.chartTable = parseTable(data);
+      // The table of a command is not kept when VS Code restarts.
+      const restored = await newFakePanel(values);
+      try {
+        await assert.rejects(
+          restored.panel.updateChart({ limit: 2 }, token),
+          /not loaded.*Call diagram_chart again with the same command and the new settings/,
+        );
+      } finally {
+        restored.panel.dispose();
+      }
       const edited = JSON.parse(source);
       edited.series[0].data[0] = 999;
-      await internals.applyEdit(JSON.stringify(edited));
+      await edit(webview, JSON.stringify(edited));
       const manual = panel.current;
       await assert.rejects(panel.updateChart({ limit: 2 }, token), /source|data|edit/i);
       assert.strictEqual(panel.current, manual);
@@ -300,18 +278,19 @@ suite("chart agent tools", function () {
   });
 
   test("render failure restores the prior chart and persisted state", async () => {
-    const { panel, internals, nextRender, values, sent } = harness();
+    const { panel, webview, values } = await harness();
+    const { sent } = webview;
     try {
       await draw(panel);
       const annotation = { marks: [{ id: "a", kind: "good" as const }], dim: true };
       assert.ok(panel.annotate(annotation).ok);
       sent.length = 0;
       const before = panel.current;
-      nextRender((message) =>
-        internals.finishRender(message.requestId, {
-          ok: false,
-          kind: "invalid",
-          error: "bad renderer",
+      webview.nextRender((render) =>
+        webview.receive({
+          type: "renderError",
+          requestId: render.requestId,
+          message: "bad renderer",
         }),
       );
       const result = await panel.updateChart({ limit: 2 }, token);
@@ -329,11 +308,11 @@ suite("chart agent tools", function () {
   });
 
   test("closing the panel during an update restores persisted state", async () => {
-    const { panel, nextRender, values } = harness();
+    const { panel, webview, values } = await harness();
     try {
       await draw(panel);
       const before = panel.current;
-      nextRender(() => panel.dispose());
+      webview.nextRender(() => panel.dispose());
       assert.ok(!(await panel.updateChart({ limit: 2 }, token)).ok);
       assert.deepStrictEqual((values.get("diagram.state") as DiagramState).source, before?.source);
       assert.deepStrictEqual(panel.current, before);
@@ -343,12 +322,12 @@ suite("chart agent tools", function () {
   });
 
   test("cancellation while rendering restores the chart, and pre-cancellation makes no changes", async () => {
-    const { panel, nextRender } = harness();
+    const { panel, webview } = await harness();
     const cancellation = new vscode.CancellationTokenSource();
     try {
       await draw(panel);
       const before = panel.current;
-      nextRender(() => cancellation.cancel());
+      webview.nextRender(() => cancellation.cancel());
       await assert.rejects(
         panel.updateChart({ limit: 2 }, cancellation.token),
         vscode.CancellationError,
@@ -373,11 +352,11 @@ suite("chart agent tools", function () {
   });
 
   test("a superseding render wins over an in-flight chart update", async () => {
-    const { panel, nextRender } = harness();
+    const { panel, webview } = await harness();
     let replacement: Promise<RenderOutcome> | undefined;
     try {
       await draw(panel);
-      nextRender(() => {
+      webview.nextRender(() => {
         replacement = panel.render(
           { language: "mermaid", title: "New", source: "flowchart TD\nA-->B" },
           "tool",
@@ -393,14 +372,14 @@ suite("chart agent tools", function () {
   });
 
   test("cancellation does not wait for an unresponsive rollback renderer", async () => {
-    const { panel, nextRender } = harness();
+    const { panel, webview } = await harness();
     const cancellation = new vscode.CancellationTokenSource();
     let timer: NodeJS.Timeout | undefined;
     try {
       await draw(panel);
       const before = panel.current;
-      nextRender(() => {
-        nextRender(() => {
+      webview.nextRender(() => {
+        webview.nextRender(() => {
           /* Simulate an unresponsive webview during restoration. */
         });
         cancellation.cancel();
@@ -421,12 +400,12 @@ suite("chart agent tools", function () {
   });
 
   test("cancelling a superseded update does not restore the older chart", async () => {
-    const { panel, nextRender } = harness();
+    const { panel, webview } = await harness();
     const cancellation = new vscode.CancellationTokenSource();
     let replacement: Promise<RenderOutcome> | undefined;
     try {
       await draw(panel);
-      nextRender(() => {
+      webview.nextRender(() => {
         replacement = panel.render(
           { language: "mermaid", title: "Replacement", source: "flowchart TD\nA-->B" },
           "tool",

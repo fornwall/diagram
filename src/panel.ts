@@ -284,12 +284,10 @@ export class DiagramPanel implements vscode.Disposable {
     this.webviewReady = false;
     loadWebview(panel.webview, this.context.extensionUri);
 
-    const messageListener = panel.webview.onDidReceiveMessage((message: unknown) => {
-      // The webview renders content written by a model, so do not trust what it sends.
-      if (isFromWebview(message)) {
-        this.onMessage(message);
-      }
-    });
+    // The webview renders content written by a model, so do not trust what it sends.
+    const messageListener = panel.webview.onDidReceiveMessage((message: unknown) =>
+      isFromWebview(message) ? this.onMessage(message) : undefined,
+    );
     // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
     // draw the current chart again, now with its code.
     const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
@@ -342,7 +340,8 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  private onMessage(message: FromWebview): void {
+  /** Handles a message from the webview, returning any work it starts, for tests to await. */
+  private onMessage(message: FromWebview): Promise<void> | undefined {
     switch (message.type) {
       case "ready":
         this.cancelExport("The diagram panel reloaded before export finished. Try again.");
@@ -383,23 +382,20 @@ export class DiagramPanel implements vscode.Disposable {
         break;
       case "sourceEdited":
         if (message.requestId === this.sourceRequestId) {
-          void this.applyEdit(message.source);
-        } else {
-          void vscode.window.showWarningMessage(
-            "The diagram changed before your edit arrived. Your draft is kept in Edit source; review it and apply again.",
-          );
+          return this.applyEdit(message.source);
         }
+        void vscode.window.showWarningMessage(
+          "The diagram changed before your edit arrived. Your draft is kept in Edit source; review it and apply again.",
+        );
         break;
       case "closeChartOptions":
         this.chartOptionsVisible = false;
         break;
       case "resetChartStyling":
       case "applyChartOptions":
-        void this.applyChartOptions(message);
-        break;
+        return this.applyChartOptions(message);
       case "refresh":
-        void this.refreshChart();
-        break;
+        return this.refreshChart();
       case "exportImage":
       case "exportTheme":
       case "exportError":
@@ -407,16 +403,14 @@ export class DiagramPanel implements vscode.Disposable {
         break;
       case "writeToDocument":
         if (message.requestId === this.sourceRequestId) {
-          void this.writeShownToDocument();
-        } else {
-          void vscode.window.showWarningMessage(
-            "The diagram changed before it could be written. Review it and write it again.",
-          );
+          return this.writeShownToDocument();
         }
+        void vscode.window.showWarningMessage(
+          "The diagram changed before it could be written. Review it and write it again.",
+        );
         break;
       case "ask":
-        void this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
-        break;
+        return this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
       case "clickToAsk":
         // A diagram that fails to render has no nodes: the click was on the one it replaced.
         if (
@@ -425,17 +419,14 @@ export class DiagramPanel implements vscode.Disposable {
           !this.pendingRender &&
           !this.unavailable
         ) {
-          void this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
+          return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
       case "clickToOpen": {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
         const link = this.linkOf(message.node);
-        if (link) {
-          void this.openLink(link, message.node.label);
-        }
-        break;
+        return link && this.openLink(link, message.node.label);
       }
       case "picked":
         this.finishPick(message.pickId, { picked: true, nodes: message.nodes });

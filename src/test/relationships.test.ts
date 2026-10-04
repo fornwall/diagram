@@ -11,16 +11,24 @@ suite("relationships", function () {
 
   let panel: DiagramPanel;
   let evaluate: WebviewHarness["evaluate"];
+  /** The selection, and the relationships drawn, that the webview last reported. */
+  let selection: DiagramNode[] = [];
+  let drawnRelationships: DiagramNode[] = [];
   suiteSetup(() => {
     panel = newPanel();
-    ({ evaluate } = instrumentWebview(panel));
+    const harness = instrumentWebview(panel);
+    evaluate = harness.evaluate;
+    harness.webview.onDidReceiveMessage((message) => {
+      if (message.type === "selectionChanged") selection = message.nodes;
+      if (message.type === "rendered") drawnRelationships = message.relationships ?? [];
+    });
   });
   suiteTeardown(() => panel.dispose());
 
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
 
-  const selected = () => (panel as unknown as { selection: DiagramNode[] }).selection;
+  const selected = () => selection;
   const click = (selector: string, modifier = false) =>
     evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -184,14 +192,12 @@ suite("relationships", function () {
   test("selects the relationships of class, state, ER and requirement diagrams", async () => {
     const relationships = async (source: string) => {
       assert.ok((await render({ source })).ok);
-      return (panel as unknown as { relationships: DiagramNode[] }).relationships.map(
-        ({ label, relationship }) => [
-          label,
-          relationship?.source,
-          relationship?.target,
-          relationship?.direction,
-        ],
-      );
+      return drawnRelationships.map(({ label, relationship }) => [
+        label,
+        relationship?.source,
+        relationship?.target,
+        relationship?.direction,
+      ]);
     };
     // An inheritance arrow points to the parent; a composition diamond is no arrowhead.
     assert.deepStrictEqual(
@@ -216,7 +222,7 @@ suite("relationships", function () {
       ),
       [["sim → req: <<satisfies>>", "sim", "req", "forward"]],
     );
-    const id = (panel as unknown as { relationships: DiagramNode[] }).relationships[0]?.id;
+    const id = drawnRelationships[0]?.id;
     await click(`[data-diagram-id="${id}"][tabindex="0"]`);
     assert.deepStrictEqual(
       selected().map((n) => n.id),
