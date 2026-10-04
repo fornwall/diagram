@@ -93,7 +93,7 @@ suite("dataSource", () => {
 
     test("stops a command that runs too long or prints too much", async () => {
       await assert.rejects(runCommand("sleep 5", token, 100), /timed out after 0.1 s/);
-      await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MB/);
+      await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MiB/);
     });
 
     test("stops the processes a command started", async () => {
@@ -148,7 +148,7 @@ suite("dataSource", () => {
     }
     const large = path.join(dir, "large.csv");
     fs.writeFileSync(large, Buffer.alloc(10 * 1024 * 1024 + 1));
-    await assert.rejects(readDataFile(large), /is larger than the 10 MB limit/);
+    await assert.rejects(readDataFile(large), /is larger than the 10 MiB limit/);
   });
 
   test("reads UTF-16 files with a byte order mark", async () => {

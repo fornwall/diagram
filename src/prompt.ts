@@ -547,7 +547,7 @@ async function readImage(
   }
   const tooLarge = (bytes: number) => ({
     name,
-    error: `the image takes ${(bytes / 1024 / 1024).toFixed(1)} MB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MB limit. Attach a smaller or more compressed image.`,
+    error: `the image takes ${(bytes / 1024 / 1024).toFixed(1)} MiB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB limit. Attach a smaller or more compressed image.`,
   });
   try {
     if (source instanceof vscode.Uri) {

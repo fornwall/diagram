@@ -1,10 +1,9 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
-import { columnName, defaultValueColumns, findColumn } from "./chartColumns";
+import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
-import { quoteAll } from "./text";
 
 function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
   switch (op) {
@@ -93,13 +92,14 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   for (const key of ["aggregate", "sort", "limit", "labelColumn"] as const) {
     if (spec[key] !== undefined) {
       throw new Error(
-        `A histogram summarizes raw observations in numeric order. Leave "${key}" out; use filters to select observations or facetColumn to group distributions.`,
+        `A histogram bins the raw rows of one column. Leave "${key}" out; select rows with ` +
+          '"filters", or compare groups with "facetColumn".',
       );
     }
   }
   if (spec.valueColumns !== undefined && spec.valueColumns.length !== 1) {
     throw new Error(
-      'A histogram needs exactly one "valueColumns" entry. Use facetColumn to compare distributions.',
+      'A histogram bins one column; give one in "valueColumns", and compare groups with "facetColumn".',
     );
   }
   const explicit = spec.valueColumns?.[0];
@@ -107,11 +107,12 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
     explicit === undefined
       ? defaultValueColumns(table, [], 1)[0]
       : findColumn(table, explicit, "value");
-  if (column === undefined)
+  if (column === undefined) {
     throw new Error(
-      `No column holds numbers to bin. Columns: ${quoteAll(table.columns.map((c) => c.name))}. ` +
-        'Set "valueColumns" to a numeric column, or "format" if the data was not split as intended.',
+      `No column holds numbers to bin. Columns: ${describeColumns(table)}. If the data was not ` +
+        'split into columns as intended, set "format".',
     );
+  }
   let minimum = Infinity;
   let maximum = -Infinity;
   let count = 0;

@@ -154,7 +154,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         const [summary = "", ...details] = failure.error.split("\n");
         const excerpt = details.length > 0 ? `\n\n${codeFence(details.join("\n"))}` : "";
         stream.markdown(
-          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${escapeMarkdown(summary)}${excerpt}\n\nYou can fix it with **Edit source** in the diagram panel.`,
+          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${escapeMarkdown(summary)}${excerpt}\n\nYou can fix it in the source view of the diagram panel, which the \`</>\` button at its top right opens.`,
         );
         return { metadata: failure.block };
       }

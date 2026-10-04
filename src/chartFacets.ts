@@ -5,6 +5,7 @@ import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
 import { errorMessage, isPlainObject } from "./protocol";
+import { quoteAll } from "./text";
 
 type Option = Record<string, unknown>;
 const MAX_FACETS = 12;
@@ -39,7 +40,7 @@ export function buildFacetedChart(
 ): Chart {
   if (!FACET_TYPES.includes(spec.type)) {
     throw new Error(
-      `Faceting is not supported for ${spec.type} charts. Use one of ${FACET_TYPES.join(", ")}, or leave out "facetColumn".`,
+      `Faceting is not supported for ${spec.type} charts. Use one of ${quoteAll(FACET_TYPES)}, or leave out "facetColumn".`,
     );
   }
   const index = findColumn(table, spec.facetColumn ?? "", "facet");
@@ -224,10 +225,11 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
           stack[index] = totals;
           const sign = value < 0 ? 0 : 1;
           totals[sign] += value;
-          if (!Number.isFinite(totals[sign]))
+          if (!Number.isFinite(totals[sign])) {
             throw new Error(
               "The stacked facet total exceeds the numeric range. Rescale the values before charting them.",
             );
+          }
         }
       });
     }

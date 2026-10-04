@@ -377,7 +377,7 @@ function describeColumn(table: DataTable, column: number): string {
 }
 
 /** E.g. `"dir" (text), "size" (bytes)`. */
-function describeColumns(table: DataTable): string {
+export function describeColumns(table: DataTable): string {
   return table.columns
     .map((column, i) => `${JSON.stringify(column.name)} (${describeColumn(table, i)})`)
     .join(", ");

@@ -3,7 +3,7 @@
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
 import { isPlainObject } from "./protocol";
-import { quoteAll } from "./text";
+import { quoteAll, unknownProperties } from "./text";
 
 const CONTROL_KEYS = [
   "type",
@@ -39,8 +39,9 @@ export function withChartControls(spec: ChartSpec, input: unknown): ChartSpec {
   if (!isPlainObject(input)) {
     throw new Error("Chart options must be an object.");
   }
-  if (Object.keys(input).some((key) => !CONTROL_KEYS.some((control) => control === key))) {
-    throw new Error("Only chart controls, facets and filters can be changed here.");
+  const unknown = unknownProperties(input, CONTROL_KEYS);
+  if (unknown !== undefined) {
+    throw new Error(unknown);
   }
   const result: Record<string, unknown> = { ...spec };
   for (const key of CONTROL_KEYS) {
@@ -61,7 +62,9 @@ export type ChartUpdateInput = Partial<Pick<ChartSpec, "type" | "title">> & {
 
 /** A partial update; source and advanced options cannot be replaced through this tool. */
 export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
-  if (!isPlainObject(input)) throw new Error("Chart updates must be an object.");
+  if (!isPlainObject(input)) {
+    throw new Error("Chart updates must be an object.");
+  }
   const unknown = Object.keys(input).filter(
     (key) => key !== "revision" && !(UPDATE_KEYS as readonly string[]).includes(key),
   );
@@ -77,10 +80,12 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
   ) {
     throw new Error('"revision" must be a nonnegative integer from diagram_getState.');
   }
-  if (!UPDATE_KEYS.some((key) => Object.hasOwn(input, key)))
+  if (!UPDATE_KEYS.some((key) => Object.hasOwn(input, key))) {
     throw new Error(`Give at least one chart setting to change: ${quoteAll(UPDATE_KEYS)}.`);
-  if (input.type === null || input.title === null)
+  }
+  if (input.type === null || input.title === null) {
     throw new Error('"type" and "title" cannot be cleared with null.');
+  }
   const { revision: _, ...changes } = input;
   return validateChartSpec({ ...spec, ...changes });
 }

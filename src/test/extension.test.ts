@@ -202,7 +202,7 @@ suite("Extension", function () {
     assert.match(after, /Regional sales/);
 
     const invalid = await invoke("diagram_updateChart", { valueColumns: ["missing"] });
-    assert.match(invalid, /^Chart was not updated:/);
+    assert.match(invalid, /^The chart was not updated:/);
     assert.strictEqual(await invoke("diagram_getState", {}), after);
   });
 

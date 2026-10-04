@@ -416,7 +416,7 @@ suite("participant", function () {
       const gaveUp = await ask(panel, [[text(invalid)], [text("I can't fix it.")]]);
       assert.match(
         gaveUp.shown,
-        /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*Edit source/,
+        /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*source view/,
       );
       assert.strictEqual(gaveUp.result?.metadata?.source, "flowchart TD\n  A --> --> B[");
 
@@ -427,7 +427,7 @@ suite("participant", function () {
         [text(valid)],
       ]);
       assert.strictEqual(keepsFailing.sent.length, 3);
-      assert.match(keepsFailing.shown, /failed to render: .*Edit source/s);
+      assert.match(keepsFailing.shown, /failed to render: .*source view/s);
     } finally {
       panel.dispose();
     }
@@ -443,7 +443,7 @@ suite("participant", function () {
           'The chart failed to render: The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n\n' +
             '```\n1 | {"title": {"text": "*a* <b>"}, "series": [1 2]}\n' +
             "  |                                             ^\n```\n\n" +
-            "You can fix it with **Edit source** in the diagram panel.",
+            "You can fix it in the source view of the diagram panel, which the `</>` button at its top right opens.",
         ),
         shown,
       );
@@ -1032,14 +1032,14 @@ suite("participant", function () {
       assert.deepStrictEqual(messages?.map(messageText), [
         "Attached by the user: whiteboard.PNG",
         "Attached by the user: image",
-        "Attached by the user: image, which could not be read: the image takes 3.0 MB, more than the 3 MB limit. Attach a smaller or more compressed image.",
+        "Attached by the user: image, which could not be read: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image.",
         "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
         "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
         "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
       ]);
       assert.strictEqual(
         shown,
-        "Left out image: the image takes 3.0 MB, more than the 3 MB limit. Attach a smaller or more compressed image. " +
+        "Left out image: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image. " +
           "Left out image: @diagram does not support application/pdf attachments. " +
           "Left out problems, symbol: @diagram does not support this kind of attachment.\n\nDrawing.",
       );

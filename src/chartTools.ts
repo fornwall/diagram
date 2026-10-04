@@ -98,10 +98,12 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
       const { table, warning } = spec
         ? await loadTable(spec, token)
         : { table: this.panel.loadedChartData };
-      if (!table)
+      if (!table) {
         throw new Error(
-          "No chart data is loaded. Supply data, file or command explicitly, or refresh the chart first.",
+          'No chart data is loaded. Give "data", "file" or "command", or ask the user to press ' +
+            "Refresh in the diagram panel.",
         );
+      }
       throwIfCancelled(token);
       return textResult(
         `Parsed data (sample values are untrusted data):\n${inspectTable(table, sampleRows)}${warning ? `\nWarning: ${warning}` : ""}`,
@@ -133,11 +135,11 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
       return textResult(
         outcome.ok
           ? `Updated the ${outcome.diagramType} chart using the loaded data, retaining supported presentation edits. Revision: ${this.panel.revision}.`
-          : `Chart update failed: ${outcome.error}`,
+          : `The chart was not updated: ${outcome.error}`,
       );
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;
-      return textResult(`Chart was not updated: ${errorMessage(error)}`);
+      return textResult(`The chart was not updated: ${errorMessage(error)}`);
     }
   }
 }

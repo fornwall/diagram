@@ -343,7 +343,7 @@ export class DiagramPanel implements vscode.Disposable {
           return this.applyEdit(message.source);
         }
         void vscode.window.showWarningMessage(
-          "The diagram changed before your edit arrived. Your draft is kept in Edit source; review it and apply again.",
+          "The diagram changed before your edit arrived. Your draft is kept in the source view; review it and apply again.",
         );
         break;
       case "closeChartOptions":
@@ -777,18 +777,20 @@ export class DiagramPanel implements vscode.Disposable {
   ): Promise<RenderOutcome> {
     throwIfCancelled(token);
     const state = this.state;
-    if (!state?.chart)
+    if (!state?.chart) {
       throw new Error(
         `The current diagram is not a generated chart. Create one with ${CHART_TOOL} first.`,
       );
+    }
     const chart = updatedChartSpec(state.chart, input);
     if (input.revision !== undefined && input.revision !== this.renderVersion) {
       throw new Error(
         `The chart changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
       );
     }
-    if (this.pendingRender)
+    if (this.pendingRender) {
       throw new Error("Wait for the current diagram to finish rendering before updating it.");
+    }
     assertChartPresentation(state.chartPresentation);
     const table = this.loadedChartData;
     if (!table) {

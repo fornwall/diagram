@@ -10,8 +10,8 @@ import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 
 /** The largest file or command output that is read. */
-const MAX_MB = 10;
-const MAX_BYTES = MAX_MB * 1024 * 1024;
+const MAX_MIB = 10;
+const MAX_BYTES = MAX_MIB * 1024 * 1024;
 const COMMAND_TIMEOUT_MS = 60_000;
 /**
  * How long to wait for the rest of a command's output after it exits, in case a process it left
@@ -146,7 +146,7 @@ export async function readDataFile(file: string): Promise<string> {
   const checkSize = (size: number): void => {
     if (size > MAX_BYTES) {
       throw new Error(
-        `The file ${uri.fsPath} is larger than the ${MAX_MB} MB limit. ` +
+        `The file ${uri.fsPath} is larger than the ${MAX_MIB} MiB limit. ` +
           "Use a command that summarizes it instead.",
       );
     }
@@ -306,7 +306,7 @@ export async function runCommand(
       if (stdoutBytes > MAX_BYTES) {
         kill(
           new Error(
-            `The command printed more than ${MAX_MB} MB. ` +
+            `The command printed more than ${MAX_MIB} MiB. ` +
               "Narrow its output down, e.g. by filtering or with head.",
           ),
         );
