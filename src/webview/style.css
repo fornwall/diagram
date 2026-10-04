@@ -428,7 +428,11 @@ input:focus {
   color: var(--vscode-descriptionForeground);
 }
 
+/* As wide as a drawing larger than the canvas, so that scrolling reaches its far side and the
+   canvas padding beyond it. */
 #diagram {
+  width: max-content;
+  min-width: 100%;
   text-align: center;
 }
 

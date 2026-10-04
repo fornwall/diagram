@@ -461,6 +461,27 @@ suite("webview", function () {
     }
   });
 
+  test("scrolls past every side of a Mermaid drawing larger than the canvas", async () => {
+    assert.ok((await render({ source: "flowchart LR\n  A[Left] --> B[Middle] --> C[Right]" })).ok);
+    const padded = await evaluate(`(async () => {
+      for (let i = 0; i < 12; i++) document.getElementById("zoom-in").click();
+      const canvas = document.getElementById("canvas");
+      const visible = canvas.getBoundingClientRect();
+      const right = visible.left + canvas.clientLeft + canvas.clientWidth;
+      const bottom = visible.top + canvas.clientTop + canvas.clientHeight;
+      const svg = document.querySelector("#diagram svg");
+      canvas.scrollTo(0, 0);
+      const start = svg.getBoundingClientRect();
+      canvas.scrollTo(canvas.scrollWidth, canvas.scrollHeight);
+      const end = svg.getBoundingClientRect();
+      document.getElementById("zoom-reset").click();
+      // Some of the canvas padding shows beyond each side.
+      return {left: start.left - visible.left >= 1, top: start.top - visible.top >= 1,
+        right: right - end.right >= 1, bottom: bottom - end.bottom >= 1};
+    })()`);
+    assert.deepStrictEqual(padded, { left: true, top: true, right: true, bottom: true });
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
