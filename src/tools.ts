@@ -63,7 +63,8 @@ function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: str
     return 'Give "source", the complete diagram, as a string.';
   }
   const { title, clickPrompt } = input;
-  language ??= "mermaid";
+  // Mermaid source never starts with "{", so a model that left out the language means ECharts.
+  language ??= source.trimStart().startsWith("{") ? "echarts" : "mermaid";
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }

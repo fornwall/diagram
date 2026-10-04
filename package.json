@@ -109,7 +109,7 @@
                 "mermaid",
                 "echarts"
               ],
-              "description": "Defaults to \"mermaid\"."
+              "description": "Defaults to \"echarts\" for a source starting with \"{\", else \"mermaid\"."
             },
             "title": {
               "type": "string",
