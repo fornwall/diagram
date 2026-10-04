@@ -2,6 +2,7 @@
 // did with it.
 
 import { codeFence } from "./blocks";
+import { quoteAll } from "./chartSpec";
 import { documentName } from "./documentDiagram";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
@@ -14,6 +15,7 @@ import {
   isPlainObject,
   nodeNoun,
   RENDER_TOOL,
+  type RepeatedName,
   UPDATE_CHART_TOOL,
 } from "./protocol";
 
@@ -26,6 +28,7 @@ export function describeDiagram(
   selection: readonly DiagramNode[],
   annotation?: Annotation,
   relationships: readonly DiagramNode[] = [],
+  repeatedNames: readonly RepeatedName[] = [],
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [`Current ${what}: ${JSON.stringify(state.title)}`, "", describeSource(state), ""];
@@ -65,6 +68,11 @@ export function describeDiagram(
   if (relationships.length > 0) {
     lines.push(
       `Selectable relationships (use these exact ids for ${ANNOTATE_TOOL}): ${nodeList(relationships)}.`,
+    );
+  }
+  if (repeatedNames.length > 0) {
+    lines.push(
+      `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
     );
   }
   const parts = selection.some((node) => node.relationship)
@@ -136,6 +144,16 @@ export function nodeList(nodes: readonly DiagramNode[]): string {
         ? `; ${relation.kind}; from: ${relation.source}; to: ${relation.target}; direction: ${relation.direction}`
         : "";
       return `"${node.label}" (id: ${node.id}${details})`;
+    })
+    .join(", ");
+}
+
+/** Lists repeated chart item names with their ids, e.g. `"Yes" (ids: "Yes (q1)", "Yes (q2)")`. */
+export function repeatedList(repeated: readonly RepeatedName[]): string {
+  return repeated
+    .map(({ name, ids, count }) => {
+      const more = count > ids.length ? ` and ${count - ids.length} more` : "";
+      return `${JSON.stringify(name)} (ids: ${quoteAll(ids)}${more})`;
     })
     .join(", ");
 }

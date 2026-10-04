@@ -1,4 +1,4 @@
-import type { Annotation, DiagramNode } from "../protocol";
+import type { Annotation, DiagramNode, RepeatedName } from "../protocol";
 import type { DiagramImage } from "./images";
 
 /** A clickable part of a diagram: a Mermaid node or a chart data item. */
@@ -27,6 +27,8 @@ export interface Renderer {
   showMarks(annotation: Annotation): void;
   /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
+  /** Names that several chart items go by, which marks must replace with the items' ids. */
+  repeatedNames?(): RepeatedName[];
   /** Whether the current drawing supports path selection between its nodes. */
   readonly supportsPaths?: boolean;
   findPath?(from: string, to: string): DiagramNode[] | undefined;

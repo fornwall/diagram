@@ -41,7 +41,10 @@ export function errorMessage(error: unknown): string {
 }
 
 export interface DiagramNode {
-  /** Mermaid node id, or chart item name ("Series/Name" for multiple series). */
+  /**
+   * Mermaid node id, or chart item id: the item's own id or else its name, prefixed with "Series/"
+   * when the chart has several series, and told apart by its index when that repeats.
+   */
   id: string;
   /** The visible label of the node, or the name of the chart data item. */
   label: string;
@@ -52,6 +55,15 @@ export interface DiagramNode {
     target: string;
     direction: "forward" | "both" | "undirected";
   };
+}
+
+/** A name that several items of a chart series go by, which marks need the ids of instead. */
+export interface RepeatedName {
+  name: string;
+  /** The first of the ids. */
+  ids: string[];
+  /** How many items go by the name. */
+  count: number;
 }
 
 /** Mark colors: focus, red, green and blue, respectively. */
@@ -161,6 +173,7 @@ export type FromWebview =
       nodeIds?: string[];
       /** Selectable edges or sequence messages, with authoritative endpoints. */
       relationships?: DiagramNode[];
+      repeatedNames?: RepeatedName[];
     }
   | { type: "renderError"; requestId: number; message: string }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
@@ -196,6 +209,11 @@ const isNode: Check = (value) =>
       ["forward", "both", "undirected"].includes(value.relationship.direction as string)));
 const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
 const isStrings: Check = (value) => Array.isArray(value) && value.every(isString);
+const isRepeatedNames: Check = (value) =>
+  Array.isArray(value) &&
+  value.every(
+    (item) => isPlainObject(item) && isString(item.name) && isStrings(item.ids) && isId(item.count),
+  );
 const optional =
   (check: Check): Check =>
   (value) =>
@@ -237,6 +255,7 @@ const FROM_WEBVIEW_FIELDS: {
     diagramType: isString,
     nodeIds: optional(isStrings),
     relationships: optional(isNodes),
+    repeatedNames: optional(isRepeatedNames),
   },
   renderError: { requestId: isId, message: isString },
   selectionChanged: { requestId: isId, nodes: isNodes },

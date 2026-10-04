@@ -70,7 +70,7 @@ For `diagram_updateChart`, omitted settings are kept; `null` clears optional set
 
 `diagram_inspectData` returns columns and up to 20 sample rows. Omit the source to inspect loaded data; an explicit source is read anew, including rerunning commands.
 
-Annotate relationships using exact `edge:` or `message:` IDs from `diagram_getState`. IDs distinguish parallel edges and repeated messages; they survive rerendering but may change after source edits.
+Annotate relationships using exact `edge:` or `message:` IDs from `diagram_getState`. IDs distinguish parallel edges and repeated messages; they survive rerendering but may change after source edits. Chart items that share a name, such as "Yes" in several stages of a sankey, are marked by the ids it lists for them.
 
 Both rendering tools accept `clickPrompt`, such as `"Explain {label} in more detail"`, to send a chat request immediately on click. Once the panel has shown a chart with JavaScript code, which could send such requests itself, clicks and the message box only fill in the chat input until the panel is closed, and writing to a Markdown block or rerunning a chart's command asks first; once you decline, the panel stops asking and refuses. For Mermaid, `diagram_render` also accepts code links, e.g. `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30"}`. Links take priority over `clickPrompt`; picking and Ctrl/Cmd/Shift+click take priority over both.
 

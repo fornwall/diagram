@@ -182,6 +182,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
       diagramType,
       nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
       relationships: drawn?.filter((node) => node.relationship),
+      repeatedNames: renderer.repeatedNames?.(),
     });
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the

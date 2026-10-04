@@ -1259,6 +1259,43 @@ suite("panel", function () {
     }
   });
 
+  test("marking a chart item name that several items share asks for their ids", async () => {
+    const { panel, webview } = await newFakePanel();
+    const repeatedNames = [{ name: "Yes", ids: ["Yes (q1)", "Yes (q2)"], count: 2 }];
+    webview.nextRender((render) =>
+      webview.receive({
+        type: "rendered",
+        requestId: render.requestId,
+        diagramType: "sankey",
+        repeatedNames,
+      }),
+    );
+    try {
+      const chart = { language: "echarts", source: '{"series": []}', title: "Survey" } as const;
+      assert.ok((await panel.render(chart, "tool")).ok);
+      assert.match(
+        panel.describeForModel() ?? "",
+        /Chart items that share a name \(mark them by these exact ids with diagram_annotate\): "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\./,
+      );
+      const result = await new AnnotateDiagramTool(panel).invoke(
+        { input: { marks: [{ id: "Yes" }, { id: "Yes (q2)" }] } } as never,
+        new vscode.CancellationTokenSource().token,
+      );
+      assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
+      assert.match(result.content[0].value, /^Marked 1 chart item: Yes \(q2\) \(current\)\./);
+      assert.match(
+        result.content[0].value,
+        /These names each name several items of the chart, so nothing was marked for them: "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\. Mark the items you mean by their ids\./,
+      );
+      const outcome = panel.annotate({ marks: [{ id: "Yes", kind: "info" }], dim: false });
+      assert.ok(outcome.ok);
+      assert.deepStrictEqual(outcome.annotation.marks, []);
+      assert.deepStrictEqual(outcome.repeated, repeatedNames);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("the marks go back on a webview that reloaded", async () => {
     const { panel, webview } = await newFakePanel();
     const { sent } = webview;

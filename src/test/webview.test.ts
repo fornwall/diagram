@@ -1705,6 +1705,65 @@ suite("webview", function () {
     );
   });
 
+  test("tells apart chart items of the same name when selecting and marking them", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: JSON.stringify({
+            animation: false,
+            xAxis: { type: "category", data: ["A", "B", "A"] },
+            yAxis: {},
+            series: [
+              {
+                type: "bar",
+                data: [1, 1, 1],
+                itemStyle: { color: "#0000ff" },
+                emphasis: { itemStyle: { color: "#ff0000" } },
+              },
+            ],
+          }),
+        })
+      ).ok,
+    );
+    assert.strictEqual(
+      await evaluate(`(() => {
+        const bar = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[2];
+        const box = bar.getBoundingClientRect();
+        const mouse = {
+          bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2
+        };
+        for (const type of ["mousedown", "mouseup", "click"]) {
+          bar.dispatchEvent(new MouseEvent(type, mouse));
+        }
+        return document.getElementById("selection-label").textContent;
+      })()`),
+      "Selected: “A”",
+    );
+    assert.match(
+      panel.describeForModel() ?? "",
+      /selected these chart items in the panel: "A" \(id: A \(item 3\)\)/,
+    );
+    const ambiguous = panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
+    assert.ok(ambiguous.ok);
+    assert.deepStrictEqual(ambiguous.repeated, [
+      { name: "A", ids: ["A (item 1)", "A (item 3)"], count: 2 },
+    ]);
+    panel.annotate({ marks: [{ id: "A (item 3)", kind: "info" }], dim: false });
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const svg = document.querySelector("#chart svg");
+          const marked = svg.querySelectorAll('path[fill="#ff0000"]');
+          if (marked.length === 1) return marked[0].getBBox().x > svg.clientWidth / 2;
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        return false;
+      })()`),
+      true,
+    );
+  });
+
   test("highlights the right unnamed or slash-named chart series", async () => {
     for (const names of [
       [undefined, undefined],

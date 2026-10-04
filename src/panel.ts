@@ -39,6 +39,7 @@ import {
   GET_STATE_TOOL,
   isPlainObject,
   RENDER_TOOL,
+  type RepeatedName,
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
@@ -60,6 +61,8 @@ export type AnnotateOutcome =
       ok: true;
       annotation: Annotation;
       unknown: string[];
+      /** Names that several chart items go by, which were not marked. */
+      repeated: RepeatedName[];
       /** The ids the marks were checked against, or undefined when the panel does not know them. */
       ids?: readonly string[];
     }
@@ -139,6 +142,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Rendered node ids, or undefined when unavailable. */
   private nodeIds: string[] | undefined;
   private relationships: DiagramNode[] = [];
+  /** Names that several items of the chart go by, which marks must not use. */
+  private repeatedNames: RepeatedName[] = [];
 
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -182,7 +187,7 @@ export class DiagramPanel implements vscode.Disposable {
   describeForModel(): string | undefined {
     return (
       this.state &&
-      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships)}`
+      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships, this.repeatedNames)}`
     );
   }
 
@@ -312,6 +317,7 @@ export class DiagramPanel implements vscode.Disposable {
         if (this.pendingRender?.message.requestId === message.requestId) {
           this.nodeIds = message.nodeIds;
           this.relationships = message.relationships?.filter((node) => node.relationship) ?? [];
+          this.repeatedNames = message.repeatedNames ?? [];
         }
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
@@ -405,6 +411,7 @@ export class DiagramPanel implements vscode.Disposable {
     // What was drawn before says nothing about the rendering being drawn now.
     this.nodeIds = undefined;
     this.relationships = [];
+    this.repeatedNames = [];
     const replaced = {
       ok: false,
       kind: "unavailable",
@@ -567,7 +574,14 @@ export class DiagramPanel implements vscode.Disposable {
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
     const marks: Annotation["marks"] = [];
     const unknown: string[] = [];
+    const repeated: RepeatedName[] = [];
     for (const mark of annotation.marks) {
+      // A name that several items of a series go by does not say which of them to mark.
+      const named = this.repeatedNames.find(({ name }) => name === mark.id);
+      if (named) {
+        repeated.push(named);
+        continue;
+      }
       let id = mark.id;
       // Preserve exact chart names. Only repair padding for a known, unclaimed node.
       if (known && !known.has(id) && known.has(id.trim()) && !claimed.has(id.trim())) {
@@ -585,7 +599,7 @@ export class DiagramPanel implements vscode.Disposable {
     // the webview's ready message either way.
     this.show(true);
     this.post({ type: "annotate", ...this.annotation });
-    return { ok: true, annotation: this.annotation, unknown, ids };
+    return { ok: true, annotation: this.annotation, unknown, repeated, ids };
   }
 
   /** Why there is no drawing to pick from or mark, if there is none. */

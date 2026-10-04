@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import { EChartsRenderer } from "../webview/echartsRenderer";
+import { itemsOf } from "./echartsModel";
 
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
 function interactionRenderer() {
@@ -8,7 +9,9 @@ function interactionRenderer() {
   const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
   Object.assign(renderer, {
     chart: { dispatchAction: (action: unknown) => actions.push(action) },
-    option: { series: [{ type: "pie" }] },
+    chartItems: itemsOf({
+      series: [{ type: "pie", data: ["A", "B", "C", "D"].map((name) => ({ name, value: 1 })) }],
+    }),
     annotation: { marks: [], dim: false },
     hasHighlights: false,
     selectedKeys: new Set<string>(),
@@ -18,6 +21,8 @@ function interactionRenderer() {
   });
   return { renderer, actions, relayouts: () => relayouts };
 }
+
+const item = (dataIndex: number) => ({ seriesIndex: 0, dataType: undefined, dataIndex });
 
 suite("echartsRenderer interactions", () => {
   test("updates notes, kinds and order without revisiting chart graphics", () => {
@@ -29,7 +34,7 @@ suite("echartsRenderer interactions", () => {
       ],
       dim: false,
     });
-    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [{ name: "A" }, { name: "B" }] }]);
+    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(0), item(1)] }]);
     actions.length = 0;
     renderer.showMarks({
       marks: [
@@ -41,12 +46,12 @@ suite("echartsRenderer interactions", () => {
     assert.deepStrictEqual(actions, []);
     renderer.showMarks({ marks: [{ id: "C", kind: "info" }], dim: false });
     assert.deepStrictEqual(actions, [
-      { type: "downplay", batch: [{ name: "B" }, { name: "A" }] },
-      { type: "highlight", batch: [{ name: "C" }] },
+      { type: "downplay", batch: [item(1), item(0)] },
+      { type: "highlight", batch: [item(2)] },
     ]);
     actions.length = 0;
     renderer.showMarks({ marks: [], dim: false });
-    assert.deepStrictEqual(actions, [{ type: "downplay", batch: [{ name: "C" }] }]);
+    assert.deepStrictEqual(actions, [{ type: "downplay", batch: [item(2)] }]);
   });
 
   test("changing marks only downplays removed items while restoring retained emphasis", () => {
@@ -56,19 +61,15 @@ suite("echartsRenderer interactions", () => {
     actions.length = 0;
     renderer.showMarks({ marks: [mark("B"), mark("C")], dim: false });
     assert.deepStrictEqual(actions, [
-      { type: "downplay", batch: [{ name: "A" }] },
-      { type: "highlight", batch: [{ name: "B" }, { name: "C" }] },
+      { type: "downplay", batch: [item(0)] },
+      { type: "highlight", batch: [item(1), item(2)] },
     ]);
     actions.length = 0;
     renderer.showMarks({ marks: [mark("B"), mark("C"), mark("D")], dim: false });
-    assert.deepStrictEqual(actions, [
-      { type: "highlight", batch: [{ name: "B" }, { name: "C" }, { name: "D" }] },
-    ]);
+    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(1), item(2), item(3)] }]);
     actions.length = 0;
     renderer.showMarks({ marks: [], dim: false });
-    assert.deepStrictEqual(actions, [
-      { type: "downplay", batch: [{ name: "B" }, { name: "C" }, { name: "D" }] },
-    ]);
+    assert.deepStrictEqual(actions, [{ type: "downplay", batch: [item(1), item(2), item(3)] }]);
   });
 
   test("restores every remaining highlight after downplay clears a dimmed chart's blur", () => {
@@ -85,8 +86,8 @@ suite("echartsRenderer interactions", () => {
     });
     renderer.showMarks({ marks: [{ id: "B", kind: "info" }], dim: true });
     assert.deepStrictEqual(actions, [
-      { type: "downplay", batch: [{ name: "A" }] },
-      { type: "highlight", batch: [{ name: "B" }] },
+      { type: "downplay", batch: [item(0)] },
+      { type: "highlight", batch: [item(1)] },
     ]);
   });
 
@@ -98,6 +99,28 @@ suite("echartsRenderer interactions", () => {
     assert.strictEqual(relayouts(), 1);
     renderer.showMarks({ marks, dim: false });
     assert.strictEqual(relayouts(), 2);
+  });
+
+  test("marks an item by its id, not the first item of the same name", () => {
+    const { renderer, actions } = interactionRenderer();
+    Object.assign(renderer, {
+      chartItems: itemsOf({
+        series: [
+          {
+            type: "sankey",
+            data: [{ name: "Q" }, { id: "Yes (q1)", name: "Yes" }, { id: "Yes (q2)", name: "Yes" }],
+            links: [
+              { source: "Q", target: "Yes (q1)", value: 1 },
+              { source: "Yes (q1)", target: "Yes (q2)", value: 1 },
+            ],
+          },
+        ],
+      }),
+    });
+    renderer.showMarks({ marks: [{ id: "Yes (q2)", kind: "info" }], dim: false });
+    assert.deepStrictEqual(actions, [
+      { type: "highlight", batch: [{ seriesIndex: 0, dataType: "node", dataIndex: 2 }] },
+    ]);
   });
 
   test("coalesces selection updates and selects only the latest items", async () => {

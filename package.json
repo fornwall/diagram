@@ -339,7 +339,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable edges and sequence messages. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
+        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable edges and sequence messages, and the ids of chart items that share a name. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
         "tags": [
           "diagram",
           "mermaid",
@@ -411,7 +411,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Exact Mermaid node id, edge:/message: relationship id from diagram_getState, or chart item name."
+                    "description": "Exact Mermaid node id, edge:/message: relationship id from diagram_getState, or chart item name. Chart items that share a name need the ids diagram_getState lists for them."
                   },
                   "mark": {
                     "type": "string",

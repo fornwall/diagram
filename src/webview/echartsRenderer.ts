@@ -2,68 +2,17 @@
 // VS Code theme. Charts draw as SVG; see src/webview/echartsLibrary.ts for why.
 
 import type * as ECharts from "echarts/core";
-import { type Annotation, errorMessage, isPlainObject } from "../protocol";
+import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
+import { ChartItems, type ItemRef, itemKey, parseItemKey } from "./echartsItems";
 import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
-import { asArray, baseOption, type JsonObject, parseOption, seriesTypes } from "./echartsOption";
+import { type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { type Hit, type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
-
-/** A data item, or a node or edge of a graph, as ECharts' select actions refer to it. */
-interface ItemRef {
-  seriesIndex: number;
-  dataType?: string | undefined;
-  dataIndex: number;
-}
-
-function valueText(value: unknown): string | undefined {
-  if (value === null || value === undefined || value === "") {
-    return undefined;
-  }
-  if (Array.isArray(value)) {
-    return `(${value.map((item) => String(item)).join(", ")})`;
-  }
-  if (typeof value === "object") {
-    return JSON.stringify(value);
-  }
-  return String(value);
-}
-
-const itemKey = ({ seriesIndex, dataType, dataIndex }: ItemRef) =>
-  `${seriesIndex}:${dataType ?? ""}:${dataIndex}`;
-
-function parseItemKey(key: string): ItemRef {
-  const [series, dataType, data] = key.split(":");
-  return { seriesIndex: Number(series), dataType: dataType || undefined, dataIndex: Number(data) };
-}
-
-/** Resolves the panel's "Series/Name" ids, including unnamed series and names containing slashes. */
-function itemQuery(
-  id: string,
-  series: JsonObject[],
-): { name: string; seriesIndex?: number; seriesName?: string } {
-  let prefixLength = 0;
-  let seriesIndex: number | undefined;
-  if (series.length > 1) {
-    for (const [index, each] of series.entries()) {
-      const prefix = `${each.name || `Series ${index + 1}`}/`;
-      if (prefix.length > prefixLength && id.startsWith(prefix)) {
-        prefixLength = prefix.length;
-        seriesIndex = index;
-      }
-    }
-  }
-  if (seriesIndex !== undefined) {
-    return { seriesIndex, name: id.slice(prefixLength) };
-  }
-  // Dataset dimensions can supply a series name absent from the source option.
-  const slash = series.length > 1 ? id.indexOf("/") : -1;
-  return slash > 0 ? { seriesName: id.slice(0, slash), name: id.slice(slash + 1) } : { name: id };
-}
 
 export class EChartsRenderer implements Renderer {
   readonly noun = "chart";
@@ -74,6 +23,8 @@ export class EChartsRenderer implements Renderer {
   /** The library, loaded on the first chart. */
   private echarts: typeof EChartsLibrary | undefined;
   private chart: ECharts.ECharts | undefined;
+  /** The items of the chart, worked out when first needed. */
+  private chartItems: ChartItems | undefined;
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
@@ -114,6 +65,7 @@ export class EChartsRenderer implements Renderer {
     this.title = title;
     this.selectedKeys = new Set();
     this.annotation = UNMARKED;
+    this.chartItems = undefined;
     try {
       this.apply(true);
     } catch (error) {
@@ -135,6 +87,10 @@ export class EChartsRenderer implements Renderer {
     this.selectedKeys = keys;
     // ECharts toggles the selection of clicked items itself, after our click handlers ran.
     this.scheduleSelection();
+  }
+
+  repeatedNames(): RepeatedName[] {
+    return this.items()?.repeatedNames() ?? [];
   }
 
   showMarks(annotation: Annotation): void {
@@ -222,6 +178,7 @@ export class EChartsRenderer implements Renderer {
     clearTimeout(this.relayoutTimer);
     this.chart?.dispose();
     this.chart = undefined;
+    this.chartItems = undefined;
     this.shownSelected = [];
     this.hasHighlights = false;
     this.laidOut = "";
@@ -292,16 +249,13 @@ export class EChartsRenderer implements Renderer {
     if (!chart) {
       return;
     }
-    const series = asArray(baseOption(this.option ?? {}).series);
+    const items = (ids: Iterable<string>) => [...ids].flatMap((id) => this.items()?.find(id) ?? []);
     if (this.hasHighlights) {
       if (previousIds) {
         const current = new Set(this.annotation.marks.map(({ id }) => id));
-        const removed = [...previousIds].filter((id) => !current.has(id));
+        const removed = items([...previousIds].filter((id) => !current.has(id)));
         if (removed.length > 0) {
-          chart.dispatchAction({
-            type: "downplay",
-            batch: removed.map((id) => itemQuery(id, series)),
-          });
+          chart.dispatchAction({ type: "downplay", batch: removed });
         }
       } else {
         chart.dispatchAction({ type: "downplay" });
@@ -309,12 +263,18 @@ export class EChartsRenderer implements Renderer {
     }
     // Downplay clears ECharts' blur state, including any focus set by the source option itself.
     // Restore the remaining marks together, while only downplaying the removed items' graphics.
-    const batch = this.annotation.marks.map(({ id }) => itemQuery(id, series));
+    const batch = items(this.annotation.marks.map(({ id }) => id));
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
       chart.dispatchAction({ type: "highlight", batch });
     }
     this.hasHighlights = this.annotation.marks.length > 0;
+  }
+
+  /** The items of the chart, by key, id and name. */
+  private items(): ChartItems | undefined {
+    if (this.chart) this.chartItems ??= new ChartItems(this.chart);
+    return this.chartItems;
   }
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */
@@ -353,28 +313,10 @@ export class EChartsRenderer implements Renderer {
     return true;
   }
 
-  private hitFor(params: ECharts.ECElementEvent): Hit {
-    const { seriesIndex = 0, dataIndex, dataType } = params;
-    const data: unknown = params.data;
-    let label: string | undefined;
-    if (dataType === "edge" && isPlainObject(data)) {
-      label = `${String(data.source)} → ${String(data.target)}`;
-    } else if (typeof params.name === "string" && params.name.trim()) {
-      // ECharts resolves annotations by the exact data name, including surrounding spaces.
-      label = params.name;
-    }
-    label ??= valueText(params.value) ?? `Item ${dataIndex + 1}`;
-    const seriesCount = asArray(baseOption(this.option ?? {}).series).length;
-    const rawName = params.seriesName;
-    // ECharts names unnamed series "series\0<index>".
-    const name =
-      typeof rawName === "string" && rawName && !rawName.includes("\u0000")
-        ? rawName
-        : `Series ${seriesIndex + 1}`;
-    return {
-      key: itemKey({ seriesIndex, dataType, dataIndex }),
-      node: { id: seriesCount > 1 ? `${name}/${label}` : label, label },
-    };
+  private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent): Hit {
+    const key = itemKey({ seriesIndex, dataType, dataIndex });
+    const item = `Item ${dataIndex + 1}`;
+    return { key, node: this.items()?.node(key) ?? { id: item, label: item } };
   }
 
   /** Coalesces the panel and ECharts click handlers into one selection update. */

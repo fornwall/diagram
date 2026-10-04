@@ -13,7 +13,7 @@ import {
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
-import { nodeList } from "./describe";
+import { nodeList, repeatedList } from "./describe";
 import { isClosingFence, openingFence } from "./fences";
 import { LINK_SYNTAX, validateLinks } from "./links";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
@@ -318,6 +318,8 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
       if (drawn === undefined) {
         sentences.push("Item ids could not be verified; unknown items will not show marks.");
       }
+    } else if (outcome.unknown.length > 0 || outcome.repeated.length > 0) {
+      sentences.push(`Nothing was marked; the ${noun}'s previous marks are cleared.`);
     } else {
       sentences.push(`Cleared the ${noun}'s marks.`);
     }
@@ -329,7 +331,12 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
         ? `\n\nThese ids are not selectable items of the ${noun}, so nothing was marked for them: ` +
           `${quoteAll(outcome.unknown)}. Its ids are ${idList(drawn)}.`
         : "";
-    return textResult(sentences.join(" ") + unknown);
+    const repeated =
+      outcome.repeated.length > 0
+        ? `\n\nThese names each name several items of the ${noun}, so nothing was marked for them: ` +
+          `${repeatedList(outcome.repeated)}. Mark the items you mean by their ids.`
+        : "";
+    return textResult(sentences.join(" ") + unknown + repeated);
   }
 }
 
