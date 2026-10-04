@@ -8,5 +8,21 @@
   "formatter": {
     "indentStyle": "space",
     "lineWidth": 100
+  },
+  "linter": {
+    "rules": {
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "useExhaustiveSwitchCases": "error"
+      },
+      "suspicious": {
+        "noImportCycles": "error",
+        "useErrorMessage": "error"
+      },
+      "style": {
+        "useThrowOnlyError": "error"
+      }
+    }
   }
 }

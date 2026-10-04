@@ -277,13 +277,13 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       break;
     case "chartOptions":
       // The form starts hidden, so there is nothing to hide before it is loaded.
-      if (message.visible || chartOptions) {
+      if (message.visible || chartOptions !== undefined) {
         const form = loadChartOptions();
         enqueue(async () => (await form).update(message.state, message.visible));
       }
       break;
     case "chartOptionsError":
-      if (chartOptions) {
+      if (chartOptions !== undefined) {
         const form = chartOptions;
         enqueue(async () => (await form).showError(message.message));
       }

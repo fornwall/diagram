@@ -278,18 +278,19 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /** Sends a message to the webview, ending the request it makes if it does not arrive. */
-  private async post(message: ToWebview): Promise<void> {
-    const error = await this.webview.post(message);
-    if (error === undefined) {
-      return;
-    }
-    if (message.type === "render") {
-      this.finishRender(message.requestId, notShown(error));
-    } else if (message.type === "export") {
-      this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
-    } else if (message.type === "startPick") {
-      this.finishPick(message.pickId, { picked: false, reason: error });
-    }
+  private post(message: ToWebview): void {
+    void this.webview.post(message).then((error) => {
+      if (error === undefined) {
+        return;
+      }
+      if (message.type === "render") {
+        this.finishRender(message.requestId, notShown(error));
+      } else if (message.type === "export") {
+        this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
+      } else if (message.type === "startPick") {
+        this.finishPick(message.pickId, { picked: false, reason: error });
+      }
+    });
   }
 
   /** Handles a message from the webview, returning any work it starts, for tests to await. */
@@ -699,7 +700,7 @@ export class DiagramPanel implements vscode.Disposable {
     // write left it.
     const previous = this.writing;
     const writing = (async () => {
-      if (previous) await previous;
+      await previous;
       const current = this.movedBinding(binding);
       const outcome = await writeFence(current, source, isCurrent(current));
       if (!outcome.written) {
@@ -1087,7 +1088,7 @@ export class DiagramPanel implements vscode.Disposable {
           resolve(result);
         },
       };
-      void this.post(message);
+      this.post(message);
     });
   }
 
