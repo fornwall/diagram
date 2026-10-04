@@ -41,10 +41,9 @@ function sorted(value: unknown): unknown {
   if (Array.isArray(value)) {
     // Numeric series and category arrays already have canonical order. Keep them intact;
     // only allocate a copy when normalizing a nested object.
-    for (const item of value) {
-      if (item !== null && typeof item === "object") return value.map(sorted);
-    }
-    return value;
+    return value.some((item) => item !== null && typeof item === "object")
+      ? value.map(sorted)
+      : value;
   }
   if (!isPlainObject(value)) return value;
   return Object.fromEntries(

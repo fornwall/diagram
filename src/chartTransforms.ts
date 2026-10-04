@@ -5,29 +5,20 @@ import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
 
+const COMPARE: Record<"lt" | "lte" | "gt" | "gte", (cell: number, value: number) => boolean> = {
+  lt: (cell, value) => cell < value,
+  lte: (cell, value) => cell <= value,
+  gt: (cell, value) => cell > value,
+  gte: (cell, value) => cell >= value,
+};
+
 function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
-  switch (op) {
-    case "eq":
-      return cell === value;
-    case "neq":
-      return cell !== value;
-    case "contains":
-      return typeof cell === "string" && typeof value === "string" && cell.includes(value);
-    default:
-      if (typeof cell !== "number" || typeof value !== "number") {
-        return false;
-      }
-      switch (op) {
-        case "lt":
-          return cell < value;
-        case "lte":
-          return cell <= value;
-        case "gt":
-          return cell > value;
-        case "gte":
-          return cell >= value;
-      }
+  if (op === "eq") return cell === value;
+  if (op === "neq") return cell !== value;
+  if (op === "contains") {
+    return typeof cell === "string" && typeof value === "string" && cell.includes(value);
   }
+  return typeof cell === "number" && typeof value === "number" && COMPARE[op](cell, value);
 }
 
 /** AND predicates on parsed cells, before grouping, binning, sorting or limiting. */
