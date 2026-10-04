@@ -16,7 +16,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Charts of a shell command's output are only available in trusted workspaces."
+      "description": "Charts of a shell command's output, and chart options with JavaScript code such as callbacks, are only available in trusted workspaces."
     },
     "virtualWorkspaces": {
       "supported": "limited",

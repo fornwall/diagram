@@ -1,27 +1,33 @@
-// Turns the source of an ECharts option into a value: JSON, or a JavaScript expression when a
-// callback needs a function. A source that is neither gets an error that says where it is wrong,
-// for the model to repair its output.
+// Turns the source of an ECharts option into a value: JSON, a JavaScript object literal, or a
+// JavaScript expression when a callback needs a function. A source that is none of these gets an
+// error that says where it is wrong, for the model to repair its output.
 
 import { errorMessage } from "../protocol";
 
 /**
- * The source as a value: JSON when it parses, otherwise evaluated as a JavaScript expression. The
- * brackets make a leading "{" an object literal rather than a block, and a top-level "," a list
- * of values rather than a sequence expression that would throw all but the last of them away; the
- * line breaks keep a trailing "//" comment from swallowing the closing bracket. Only the webview
- * evaluates a source, inside its sandboxed iframe.
+ * The source as a value: JSON when it parses, or a JavaScript object literal, read without
+ * evaluating it, or else evaluated as a JavaScript expression, which the webview's content
+ * security policy allows only in a trusted workspace. The brackets make a leading "{" an object
+ * literal rather than a block, and a top-level "," a list of values rather than a sequence
+ * expression that would throw all but the last of them away; the line breaks keep a trailing "//"
+ * comment from swallowing the closing bracket.
  */
 export function evaluateSource(source: string): unknown {
   try {
     return JSON.parse(source);
   } catch {
-    // Evaluated as JavaScript instead.
+    // Read as JavaScript instead.
   }
+  const scanned = scan(source);
   let values: unknown[];
-  try {
-    values = (new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[])();
-  } catch (error) {
-    throw new Error(describeError(source, error));
+  if (Array.isArray(scanned)) {
+    values = scanned;
+  } else {
+    try {
+      values = (new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[])();
+    } catch (error) {
+      throw new Error(describeError(source, error, scanned));
+    }
   }
   if (values.length === 1) {
     return values[0];
@@ -37,22 +43,46 @@ export function evaluateSource(source: string): unknown {
 }
 
 /**
+ * The top-level values of a source of literals only; otherwise its first syntax error, where it
+ * goes beyond literals, or undefined if it is nested too deeply to scan.
+ */
+function scan(text: string): unknown[] | SourceError | Code | undefined {
+  try {
+    return new Scanner(text).scan();
+  } catch (thrown) {
+    if (thrown instanceof SourceError || thrown instanceof Code) return thrown;
+    if (thrown instanceof RangeError) return undefined;
+    throw thrown;
+  }
+}
+
+/**
  * V8 compiles the function above as "function anonymous(\n) {\n" and its body, whose first line
  * comes before the source as well, in what its stack frames refer to.
  */
 const LINES_BEFORE_SOURCE = 3;
 
 /** Describes why a source neither parses as JSON nor evaluates as JavaScript. */
-function describeError(text: string, error: unknown): string {
-  let found: SourceError | undefined;
-  try {
-    new Scanner(text).scan();
-  } catch (thrown) {
-    // UNCHECKED, or a stack overflow on deeply nested input: the engine's message has to do.
-    if (thrown instanceof SourceError) found = thrown;
-  }
-  if (found) {
+function describeError(
+  text: string,
+  error: unknown,
+  found: SourceError | Code | undefined,
+): string {
+  if (found instanceof SourceError) {
     return `The ECharts option could not be parsed: ${found.message}${located(text, found.position)}`;
+  }
+  // What the content security policy throws instead of evaluating code.
+  if (error instanceof EvalError) {
+    const trust =
+      "which the panel runs only in a trusted workspace. Write the option with literal values " +
+      "only, as JSON, or trust the workspace (Workspaces: Manage Workspace Trust) to use " +
+      "functions such as callbacks.";
+    if (!found) {
+      return `The ECharts option is nested too deeply to read other than as JavaScript code, ${trust}`;
+    }
+    const where = located(text, found.position);
+    const end = where.indexOf(".");
+    return `The ECharts option has JavaScript code${where.slice(0, end)}, ${trust}${where.slice(end + 1)}`;
   }
   if (error instanceof SyntaxError) {
     // The engine reports no position for a syntax error in new Function.
@@ -134,8 +164,28 @@ class SourceError {
   ) {}
 }
 
-/** Thrown where the source goes beyond literal syntax, such as a function, which only the engine checks. */
-const UNCHECKED = Symbol("unchecked");
+/** Thrown where the source goes beyond literal syntax, such as at a function, which only the engine can evaluate. */
+class Code {
+  constructor(readonly position: number) {}
+}
+
+const WORDS: Record<string, unknown> = {
+  true: true,
+  false: false,
+  null: null,
+  undefined: undefined,
+  NaN: Number.NaN,
+  Infinity: Number.POSITIVE_INFINITY,
+};
+const ESCAPES: Record<string, string> = {
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  v: "\v",
+  0: "\0",
+};
 
 const IDENTIFIER = /[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*/uy;
 const IDENTIFIER_START = /[\p{ID_Start}$_]/u;
@@ -167,9 +217,10 @@ function quote(char: string): string {
 }
 
 /**
- * Locates the first syntax error of a source written as JSON or as a JavaScript object literal,
- * which may use comments, unquoted keys, single quotes and trailing commas. It gives up (throwing
- * UNCHECKED) where the source goes beyond literals, as a function, a variable or an operator does.
+ * Reads a source written as JSON or as a JavaScript object literal, which may use comments,
+ * unquoted keys, single quotes and trailing commas, into the values it holds, or locates its first
+ * syntax error. It stops (throwing a Code) where the source goes beyond literals, as a function, a
+ * variable or an operator does, which only the engine can evaluate.
  */
 class Scanner {
   private index = 0;
@@ -178,7 +229,8 @@ class Scanner {
 
   constructor(private readonly text: string) {}
 
-  scan(): void {
+  scan(): unknown[] {
+    const values: unknown[] = [];
     this.space();
     if (this.text.startsWith("```", this.index)) {
       this.fail(
@@ -186,10 +238,10 @@ class Scanner {
           "as JSON or as a JavaScript object literal",
       );
     }
-    for (;;) {
-      this.value();
+    while (this.char() !== "") {
+      values.push(this.value());
       this.space();
-      if (this.char() === "") return;
+      if (this.char() === "") break;
       if (this.char() !== ",") {
         this.operator();
         this.fail(
@@ -197,11 +249,11 @@ class Scanner {
             'allowed, so check for a "}" that closes it too early',
         );
       }
-      // More values, which evaluate: evaluateSource says how many there are.
+      // More values: evaluateSource says how many there are.
       this.index++;
       this.space();
-      if (this.char() === "") return;
     }
+    return values;
   }
 
   private char(): string {
@@ -217,9 +269,9 @@ class Scanner {
     throw new SourceError(problem, position);
   }
 
-  /** Gives up at an operator after a value, which makes the value part of an expression. */
+  /** Stops at an operator after a value, which makes the value part of an expression. */
   private operator(): void {
-    if (matchAt(OPERATOR, this.text, this.index) !== undefined) throw UNCHECKED;
+    if (matchAt(OPERATOR, this.text, this.index) !== undefined) throw new Code(this.index);
   }
 
   private space(): void {
@@ -255,48 +307,56 @@ class Scanner {
       this.fail('Strings and property names must use straight quotes ("), not typographic ones');
     }
     // A parenthesized expression, a regular expression or an operator.
-    if ("(/!~".includes(char)) throw UNCHECKED;
+    if ("(/!~".includes(char)) throw new Code(this.index);
     this.fail(`Unexpected ${this.found()} while expecting ${what}`);
   }
 
-  private value(): void {
+  private value(): unknown {
     this.space();
     const char = this.char();
     if (char === "{" || char === "[") {
-      this.container(char === "{" ? "}" : "]");
-    } else if (char === '"' || char === "'") {
-      this.string(char);
-    } else if (char === "`") {
-      this.template();
-    } else if (this.text.startsWith("...", this.index) || char === "…") {
+      return this.container(char === "{" ? "}" : "]");
+    }
+    if (char === '"' || char === "'") {
+      return this.string(char);
+    }
+    if (char === "`") {
+      return this.template();
+    }
+    if (this.text.startsWith("...", this.index) || char === "…") {
       const end = this.index + (char === "…" ? 1 : 3);
       if (char === "…" || matchAt(PLACEHOLDER_END, this.text, end) !== undefined) {
         this.fail('Write out all values: there are no placeholders such as "..."');
       }
-      throw UNCHECKED; // A spread.
-    } else if (char === "-" || char === "+") {
+      throw new Code(this.index); // A spread.
+    }
+    if (char === "-" || char === "+") {
+      const sign = this.index;
       this.index++;
       this.space();
+      let magnitude: number;
       if (matchAt(IDENTIFIER, this.text, this.index) === "Infinity") {
         this.index += "Infinity".length;
+        magnitude = Infinity;
       } else if (/[\d.]/.test(this.char())) {
-        this.number();
+        magnitude = this.number();
       } else {
-        throw UNCHECKED; // The sign of an expression.
+        throw new Code(sign); // The sign of an expression.
       }
-    } else if (/[\d.]/.test(char)) {
-      this.number();
-    } else {
-      const word = matchAt(IDENTIFIER, this.text, this.index);
-      if (word === undefined) this.unexpected("a value");
-      this.word(word);
+      return char === "-" ? -magnitude : magnitude;
     }
+    if (/[\d.]/.test(char)) {
+      return this.number();
+    }
+    const word = matchAt(IDENTIFIER, this.text, this.index);
+    if (word === undefined) this.unexpected("a value");
+    return this.word(word);
   }
 
-  private word(word: string): void {
-    if (["true", "false", "null", "undefined", "NaN", "Infinity"].includes(word)) {
+  private word(word: string): unknown {
+    if (Object.hasOwn(WORDS, word)) {
       this.index += word.length;
-      return;
+      return WORDS[word];
     }
     if (word === "True" || word === "False" || word === "None") {
       this.fail(`${word} is not valid JSON or JavaScript; use true, false or null`);
@@ -312,10 +372,12 @@ class Scanner {
           "literal, with no assignment or statement around it",
       );
     }
-    throw UNCHECKED; // A variable, a function, a "new" expression, …
+    throw new Code(this.index); // A variable, a function, a "new" expression, …
   }
 
-  private container(close: "}" | "]"): void {
+  private container(close: "}" | "]"): unknown[] | Record<string, unknown> {
+    const array: unknown[] = [];
+    const object: Record<string, unknown> = {};
     this.open.push({ close, position: this.index });
     this.index++;
     for (;;) {
@@ -325,49 +387,57 @@ class Scanner {
         // Also after a trailing comma, which JavaScript allows.
         this.open.pop();
         this.index++;
-        return;
+        return close === "]" ? array : object;
       }
       if (close === "]" && char === ",") {
         // An array hole, which JavaScript allows too.
         this.index++;
+        array.length++;
         continue;
       }
       if (close === "}") {
-        this.property();
+        const key = this.property();
+        object[key] = this.value();
+      } else {
+        array.push(this.value());
       }
-      this.value();
       if (this.separator(close)) {
-        return;
+        return close === "]" ? array : object;
       }
     }
   }
 
-  /** Skips a property name and the ":" after it. */
-  private property(): void {
+  /** Reads a property name and skips the ":" after it. */
+  private property(): string {
+    const start = this.index;
     const char = this.char();
     let name: string | undefined;
+    let key: string;
     if (char === '"' || char === "'") {
-      this.string(char);
+      key = this.string(char);
     } else if (/[\d.]/.test(char)) {
-      this.number();
+      key = String(this.number());
     } else {
       name = matchAt(IDENTIFIER, this.text, this.index);
       if (name === undefined) {
         // A computed name, a spread or a generator method.
         if (char === "[" || char === "*" || this.text.startsWith("...", this.index)) {
-          throw UNCHECKED;
+          throw new Code(this.index);
         }
         this.unexpected("a property name");
       }
       this.index += name.length;
+      key = name;
     }
     this.space();
     const next = this.char();
     if (next === ":") {
+      // In an object literal, "__proto__" sets the prototype rather than a property.
+      if (key === "__proto__") throw new Code(start);
       this.index++;
-      return;
+      return key;
     }
-    // A method, a shorthand property or an accessor: JavaScript, but no literal to check.
+    // A method, a shorthand property or an accessor: JavaScript, but no literal to read.
     if (
       next === "(" ||
       (name !== undefined &&
@@ -375,7 +445,7 @@ class Scanner {
           next === "}" ||
           (/^(?:get|set|async)$/.test(name) && /["'[\p{ID_Start}$_*]/u.test(next))))
     ) {
-      throw UNCHECKED;
+      throw new Code(start);
     }
     this.unexpected('":" after the property name');
   }
@@ -412,15 +482,18 @@ class Scanner {
     );
   }
 
-  private string(quoteChar: string): void {
+  private string(quoteChar: string): string {
     const start = this.index;
     const missing = `missing the closing ${quoteChar === '"' ? "double" : "single"} quote`;
     this.index++;
+    let value = "";
+    let from = this.index;
     for (;;) {
       const char = this.char();
       if (char === quoteChar) {
+        value += this.text.slice(from, this.index);
         this.index++;
-        return;
+        return value;
       }
       if (char === "") {
         this.fail(`Unterminated string: ${missing}`, start);
@@ -433,64 +506,86 @@ class Scanner {
         );
       }
       if (char === "\\") {
-        this.escape();
+        value += this.text.slice(from, this.index) + this.escape();
+        from = this.index;
       } else {
         this.index++;
       }
     }
   }
 
-  /** Skips an escape sequence, rejecting the ones that strict mode JavaScript rejects. */
-  private escape(): void {
+  /** Reads an escape sequence, rejecting the ones that strict mode JavaScript rejects. */
+  private escape(): string {
     const at = this.index;
     const escaped = this.text.charAt(at + 1);
     this.index += 2;
-    if (escaped === "u") {
-      const digits = matchAt(/[\da-fA-F]{4}|\{[\da-fA-F]+\}/y, this.text, this.index);
+    if (escaped === "u" || escaped === "x") {
+      const digits =
+        escaped === "u"
+          ? matchAt(/[\da-fA-F]{4}|\{[\da-fA-F]+\}/y, this.text, this.index)
+          : matchAt(/[\da-fA-F]{2}/y, this.text, this.index);
       if (digits === undefined) {
-        this.fail('Invalid escape: write "\\u" with four hexadecimal digits, as in "\\u00e9"', at);
+        this.fail(
+          escaped === "u"
+            ? 'Invalid escape: write "\\u" with four hexadecimal digits, as in "\\u00e9"'
+            : 'Invalid escape: write "\\x" with two hexadecimal digits, as in "\\x41"',
+          at,
+        );
       }
       this.index += digits.length;
-    } else if (escaped === "x") {
-      if (matchAt(/[\da-fA-F]{2}/y, this.text, this.index) === undefined) {
-        this.fail('Invalid escape: write "\\x" with two hexadecimal digits, as in "\\x41"', at);
+      const code = Number.parseInt(digits.replace(/[{}]/g, ""), 16);
+      if (code > 0x10ffff) {
+        this.fail("Invalid escape: Unicode ends at \\u{10FFFF}", at);
       }
-      this.index += 2;
-    } else if (/[1-9]/.test(escaped) || (escaped === "0" && /\d/.test(this.char()))) {
+      return String.fromCodePoint(code);
+    }
+    if (/[1-9]/.test(escaped) || (escaped === "0" && /\d/.test(this.char()))) {
       this.fail(
         `Invalid escape "\\${escaped}": there are no octal escapes; write "\\u" with four ` +
           "hexadecimal digits instead",
         at,
       );
-    } else if (escaped === "\r" && this.char() === "\n") {
-      // A line continuation.
+    }
+    if (escaped === "\r" && this.char() === "\n") {
       this.index++;
     }
+    // A line continuation adds nothing.
+    return /[\n\r\u2028\u2029]/.test(escaped) ? "" : (ESCAPES[escaped] ?? escaped);
   }
 
-  private template(): void {
+  private template(): string {
     const start = this.index;
     this.index++;
+    let value = "";
     for (;;) {
       const char = this.char();
       if (char === "`") {
         this.index++;
-        return;
+        return value;
       }
       if (char === "") {
         this.fail("Unterminated template literal: missing the closing backtick", start);
       }
-      if (this.text.startsWith("${", this.index)) throw UNCHECKED;
-      this.index += char === "\\" ? 2 : 1;
+      if (this.text.startsWith("${", this.index)) throw new Code(this.index);
+      if (char === "\\") {
+        value += this.escape();
+      } else if (char === "\r") {
+        // A template turns its line breaks into "\n".
+        value += "\n";
+        this.index += this.text.charAt(this.index + 1) === "\n" ? 2 : 1;
+      } else {
+        value += char;
+        this.index++;
+      }
     }
   }
 
-  private number(): void {
+  private number(): number {
     const number = matchAt(NUMBER, this.text, this.index) ?? "";
     const end = this.index + number.length;
     const next = this.text.charAt(end);
     if (number && next === "." && IDENTIFIER_START.test(this.text.charAt(end + 1))) {
-      throw UNCHECKED; // A method call, such as 1.5.toFixed(1).
+      throw new Code(this.index); // A method call, such as 1.5.toFixed(1).
     }
     if (!number || /[\w$.]/.test(next)) {
       const token = matchAt(/[\w$.]+/y, this.text, this.index);
@@ -499,6 +594,8 @@ class Scanner {
           "units, and text in quotes",
       );
     }
+    if (number.endsWith("n")) throw new Code(this.index); // A BigInt, which no chart takes.
     this.index = end;
+    return Number(number.replaceAll("_", ""));
   }
 }

@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import { ComponentModel } from "echarts/core";
 import "../webview/echartsLibrary";
 import { type JsonObject, parseOption, SERIES_TYPES, seriesTypes } from "../webview/echartsOption";
+import { evaluateSource } from "../webview/optionSource";
 
 // ECharts' registry of series and component classes, which its typings leave out.
 const registry = ComponentModel as unknown as { getClass(main: string, sub: string): unknown };
@@ -44,6 +45,65 @@ suite("echartsOption", () => {
     assert.strictEqual(seriesTypes(option), "bar");
     // A comment at the end must not swallow the parenthesis that closes the expression.
     assert.strictEqual(seriesTypes(parseOption('{"series": [{"type": "pie"}]} // done')), "pie");
+  });
+
+  /** Runs the action as the panel of an untrusted workspace, whose policy refuses to evaluate code. */
+  function withoutEval<T>(action: () => T): T {
+    const original = globalThis.Function;
+    globalThis.Function = function refused() {
+      throw new EvalError(
+        "Refused to evaluate a string as JavaScript because 'unsafe-eval' is not allowed",
+      );
+    } as unknown as FunctionConstructor;
+    try {
+      return action();
+    } finally {
+      globalThis.Function = original;
+    }
+  }
+
+  test("reads object literals without evaluating them, to the values JavaScript gives", () => {
+    const literals = [
+      "{a: 1, 'b': \"x\\ty\", c: [1,,2,], d: {e: -0.5e3, f: .5, g: 5., h: 0x1F, i: 0b101, j: 0o17, k: 1_000}, }",
+      "{s: '\\u{1F600}\\u00e9\\x41\\0\\b\\f\\n\\r\\v\\'\\\"\\\\\\a', t: \"a\\\nb\", u: `raw\r\nline\\t\\``}",
+      "{1: 'a', 0x10: 'b', 1.50: 'c', .5: 'd', 1e3: 'e', default: 1, get: 3, constructor: 4}",
+      "{x: undefined, y: NaN, z: -Infinity, w: + 5, v: null, t: true, f: false, a: 1, a: 2} // done",
+      "/* only */ ['\\uD83D\\uDE00', \"\u2028\"], ",
+    ];
+    for (const source of literals) {
+      const [expected] = new Function(`"use strict"; return ([\n${source}\n]);`)();
+      assert.deepStrictEqual(
+        withoutEval(() => evaluateSource(source)),
+        expected,
+        source,
+      );
+    }
+  });
+
+  test("refuses JavaScript code where the panel may not evaluate it, saying where it is", () => {
+    const source = "{\n  series: [{type: 'pie', data: [1], label: {formatter: (p) => p.name}}],\n}";
+    assert.strictEqual(
+      withoutEval(() => errorOf(source)),
+      "The ECharts option has JavaScript code (line 2, column 56), which the panel runs only in " +
+        "a trusted workspace. Write the option with literal values only, as JSON, or trust the " +
+        "workspace (Workspaces: Manage Workspace Trust) to use functions such as callbacks.\n" +
+        "2 |   series: [{type: 'pie', data: [1], label: {formatter: (p) => p.name}}],\n" +
+        "  |                                                        ^",
+    );
+    // What literals cannot express goes to the engine, such as a prototype set by "__proto__".
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: a template literal in a source
+    for (const code of ["{a: Math.PI}", "{__proto__: {}}", "{a: 1n}", "{a: `${1}`}", "{a}"]) {
+      assert.match(
+        withoutEval(() => errorOf(code)),
+        /^The ECharts option has JavaScript code/,
+        code,
+      );
+    }
+    // Syntax errors are still located as such.
+    assert.match(
+      withoutEval(() => errorOf("{a: 1,, }")),
+      /^The ECharts option could not be parsed: Unexpected "," while expecting a property name/,
+    );
   });
 
   test("rejects a source that holds more than one top-level value", () => {

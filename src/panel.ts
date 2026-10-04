@@ -290,8 +290,15 @@ export class DiagramPanel implements vscode.Disposable {
         this.onMessage(message);
       }
     });
+    // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
+    // draw the current chart again, now with its code.
+    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      this.webviewReady = false;
+      loadWebview(panel.webview, this.context.extensionUri);
+    });
     panel.onDidDispose(() => {
       messageListener.dispose();
+      trustListener.dispose();
       this.cancelExport("The diagram panel was closed before export finished.");
       this.panel = undefined;
       this.webviewReady = false;

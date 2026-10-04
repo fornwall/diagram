@@ -1337,10 +1337,6 @@ suite("webview", function () {
     assert.match(long.error, /^The diagram is too long/);
   });
 
-  test("lets the webview compile an option written as JavaScript", () => {
-    assert.match(webview.html, /script-src 'nonce-[\w-]+' 'unsafe-eval'/);
-  });
-
   test("renders charts, and switches between charts and diagrams", async () => {
     const option = {
       xAxis: { type: "category", data: ["A", "B"] },
@@ -1698,5 +1694,58 @@ suite("webview", function () {
       }),
     });
     assert.deepStrictEqual(graph, { ok: true, diagramType: "graph" });
+  });
+});
+
+suite("JavaScript in chart options", function () {
+  this.timeout(20_000);
+
+  let panel: DiagramPanel;
+  let webview: vscode.Webview;
+  const messages: string[] = [];
+  suiteSetup(() => {
+    panel = newPanel();
+    panel.show();
+    ({ webview } = (panel as unknown as { panel: vscode.WebviewPanel }).panel);
+    webview.onDidReceiveMessage((message: { type: string }) => messages.push(message.type));
+  });
+  suiteTeardown(() => panel.dispose());
+
+  const render = (source: string): Promise<RenderOutcome> =>
+    panel.render({ language: "echarts", source, title: "Test" }, "tool");
+  // Code in the option clicks Refresh, which sends the extension a message as if the user had.
+  const forging =
+    '{series: [{type: "pie", data: [1]}], title: {text: (document.getElementById("refresh").click(), "Forged")}}';
+
+  test("runs in a trusted workspace, with all the power of the page", async () => {
+    assert.match(webview.html, /script-src 'nonce-[\w-]+' 'unsafe-eval'/);
+    assert.deepStrictEqual(await render(forging), { ok: true, diagramType: "pie" });
+    assert.ok(messages.includes("refresh"));
+  });
+
+  test("does not run in an untrusted workspace, whose page may not evaluate code", async () => {
+    const ready = new Promise<void>((resolve) => {
+      const listener = webview.onDidReceiveMessage((message: { type: string }) => {
+        if (message.type !== "ready") return;
+        listener.dispose();
+        resolve();
+      });
+    });
+    // The page that loadWebview makes for an untrusted workspace.
+    webview.html = webview.html.replace(" 'unsafe-eval'", "");
+    await ready;
+    messages.length = 0;
+    const outcome = await render(forging);
+    assert.ok(!outcome.ok);
+    assert.match(
+      outcome.error,
+      /^The ECharts option has JavaScript code \(line 1, column 52\), which the panel runs only in a trusted workspace\./,
+    );
+    assert.ok(!messages.includes("refresh"), "the code in the option ran");
+    // Object literals need no evaluation.
+    assert.deepStrictEqual(await render("{series: [{type: 'pie', data: [1,],}],}"), {
+      ok: true,
+      diagramType: "pie",
+    });
   });
 });

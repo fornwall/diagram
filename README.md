@@ -94,7 +94,7 @@ Histograms use one numeric value column; omit `labelColumn`, `aggregate`, `sort`
 
 ## Data access and limits
 
-VS Code asks before running a command, reading a data file outside the workspace, or opening a linked file outside it. Workspace exploration and data-file reads in an untrusted workspace also require confirmation, as does opening any linked file there. Commands require a trusted, nonvirtual workspace.
+VS Code asks before running a command, reading a data file outside the workspace, or opening a linked file outside it. Workspace exploration and data-file reads in an untrusted workspace also require confirmation, as does opening any linked file there. Commands require a trusted, nonvirtual workspace. ECharts options with JavaScript code, such as callbacks or custom series, render only in a trusted workspace; plain object literals render anywhere.
 
 Relative paths resolve from the first workspace folder. Commands run there with `/bin/sh` (`cmd.exe` on Windows), or in your home directory if no folder is open.
 
