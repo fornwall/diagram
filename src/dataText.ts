@@ -488,7 +488,7 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
  * header if `underlined`.
  */
 function splitWhitespace(lines: string[], underlined: boolean): Records {
-  // ls -l prints "total 16" above the files.
+  // ls -l prints "total 16" above the files, also with the inodes or blocks before them (-i, -s).
   if (/^total\s+\S+$/.test(lines[0] ?? "") && tokenize(lines[1] ?? "").length > 2) {
     return splitWhitespace(lines.slice(1), underlined);
   }
@@ -530,7 +530,10 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
   };
 }
 
-/** Splits text in the given format, or else in the one that fits it best, into records. */
+/**
+ * Splits text into records in the given format, or in auto format as the first that fits of
+ * those that parseTable (in data.ts) lists.
+ */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
   const all = text.split(/\r\n?|\n/);
   if (format === "auto") {

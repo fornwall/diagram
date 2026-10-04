@@ -226,6 +226,15 @@ function tableFromRecords(
 
 /**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
+ * The format is the first of these that fits, from the most specific to the most general:
+ * 1. JSON, or JSON Lines, if the text starts with "{", or with "[" and ends with "]";
+ * 2. the first Markdown table, if there is text or another table around it;
+ * 3. ls -l output;
+ * 4. TSV, if most lines have tabs, unless the first has none or an unclosed quote and CSV fits;
+ * 5. git diff --stat output, or a table drawn with pipes (Markdown, psql, mysql, sqlite3);
+ * 6. CSV, with commas or semicolons;
+ * 7. whitespace-separated columns, aligned under a header (docker ps, df, free) or not (du, wc).
+ *
  * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
  * {@link parseNumber} and {@link numberFormat}) become numbers, and empty cells null, as do
  * markers of missing values such as "N/A" and "-" in numeric columns.
