@@ -6,6 +6,7 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel } from "./newPanel";
+import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
 const MERMAID: Record<string, string> = {
   "flowchart-v2": "flowchart LR\n  A[Parser] --> B[Checker]",
@@ -27,90 +28,16 @@ suite("webview", function () {
 
   let panel: DiagramPanel;
   let webview: vscode.Webview;
+  let evaluate: WebviewHarness["evaluate"];
+  let nextRender: WebviewHarness["nextRender"];
   suiteSetup(() => {
     panel = newPanel();
-    panel.show();
-    webview = (panel as unknown as { panel: vscode.WebviewPanel }).panel.webview;
-    const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
-    assert.ok(nonce);
-    // Drive the actual DOM without adding test commands to the shipped webview.
-    webview.html = webview.html.replace(
-      '<script type="module"',
-      `<script nonce="${nonce}">
-        const acquire = acquireVsCodeApi;
-        acquireVsCodeApi = () => {
-          const api = acquire();
-          window.readTestState = () => api.getState();
-          window.testStateWrites = 0;
-          window.testRenderResults = [];
-          const postMessage = (message) => {
-            if (message.type === "rendered" || message.type === "renderError") {
-              window.testRenderResults.push(message.requestId);
-            }
-            return api.postMessage(message);
-          };
-          window.addEventListener("message", async ({data}) => {
-            if (data.type !== "testExpression") return;
-            try {
-              api.postMessage({type: "testResult", value: await new Function("return (" + data.expression + ")")()});
-            } catch (error) {
-              api.postMessage({type: "testResult", error: String(error)});
-            }
-          });
-          return {...api, postMessage, setState: (state) => {
-            window.testStateWrites++;
-            return api.setState(state);
-          }};
-        };
-      </script><script type="module"`,
-    );
+    ({ webview, evaluate, nextRender } = instrumentWebview(panel));
   });
   suiteTeardown(() => panel.dispose());
 
-  function evaluate(expression: string): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        listener.dispose();
-        reject(new Error("The webview did not answer the test expression."));
-      }, 5000);
-      const listener = webview.onDidReceiveMessage((message) => {
-        if (message.type === "testResult") {
-          clearTimeout(timer);
-          listener.dispose();
-          if (message.error) reject(new Error(message.error));
-          else resolve(message.value);
-        }
-      });
-      void webview.postMessage({ type: "testExpression", expression });
-    });
-  }
-
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
-
-  function nextRender(action: () => unknown): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        listener.dispose();
-        reject(new Error("The webview did not render its diagram."));
-      }, 10_000);
-      const listener = webview.onDidReceiveMessage((message) => {
-        if (message.type === "rendered" || message.type === "renderError") {
-          clearTimeout(timer);
-          listener.dispose();
-          if (message.type === "renderError") reject(new Error(message.message));
-          else resolve();
-        }
-      });
-      Promise.resolve()
-        .then(action)
-        .catch((error: unknown) => {
-          clearTimeout(timer);
-          listener.dispose();
-          reject(error);
-        });
-    });
-  }
 
   test("skips superseded queued renders and their annotations", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
@@ -1292,8 +1219,6 @@ suite("webview", function () {
   });
 
   test("lets the webview compile an option written as JavaScript", () => {
-    panel.show();
-    const { webview } = (panel as unknown as { panel: vscode.WebviewPanel }).panel;
     assert.match(webview.html, /script-src 'nonce-[\w-]+' 'unsafe-eval'/);
   });
 

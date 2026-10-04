@@ -3,59 +3,19 @@ import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import type { DiagramNode } from "../protocol";
 import { newPanel } from "./newPanel";
+import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
 suite("relationships", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
 
   let panel: DiagramPanel;
-  let webview: vscode.Webview;
+  let evaluate: WebviewHarness["evaluate"];
   suiteSetup(() => {
     panel = newPanel();
-    panel.show();
-    webview = (panel as unknown as { panel: vscode.WebviewPanel }).panel.webview;
-    const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
-    assert.ok(nonce);
-    // Drive the actual DOM without adding test commands to the shipped webview.
-    webview.html = webview.html.replace(
-      '<script type="module"',
-      `<script nonce="${nonce}">
-        const acquire = acquireVsCodeApi;
-        acquireVsCodeApi = () => {
-          const api = acquire();
-          window.readTestState = () => api.getState();
-          window.addEventListener("message", async ({data}) => {
-            if (data.type !== "testExpression") return;
-            try {
-              api.postMessage({type: "testResult", value: await new Function("return (" + data.expression + ")")()});
-            } catch (error) {
-              api.postMessage({type: "testResult", error: String(error)});
-            }
-          });
-          return api;
-        };
-      </script><script type="module"`,
-    );
+    ({ evaluate } = instrumentWebview(panel));
   });
   suiteTeardown(() => panel.dispose());
-
-  function evaluate(expression: string): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        listener.dispose();
-        reject(new Error("The webview did not answer the test expression."));
-      }, 5000);
-      const listener = webview.onDidReceiveMessage((message) => {
-        if (message.type === "testResult") {
-          clearTimeout(timer);
-          listener.dispose();
-          if (message.error) reject(new Error(message.error));
-          else resolve(message.value);
-        }
-      });
-      void webview.postMessage({ type: "testExpression", expression });
-    });
-  }
 
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
