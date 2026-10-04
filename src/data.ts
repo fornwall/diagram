@@ -159,14 +159,22 @@ function columnNames(header: Cell[], width: number): string[] {
   });
 }
 
-/** Builds a table from records, converting text to numbers where it is one. */
-function tableFromRecords({ records, header, csv = false, units, note }: Records): DataTable {
+/**
+ * Builds a table from records, converting text to numbers where it is one, and sizes with a bare
+ * unit in powers of 1000 if `si`.
+ */
+function tableFromRecords(
+  { records, header, csv = false, units, note }: Records,
+  si: boolean,
+): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
-  const formats = Array.from({ length: width }, (_, column) =>
-    numberFormat(records, column, header),
-  );
+  const formats = Array.from({ length: width }, (_, column) => {
+    const format = numberFormat(records, column, header);
+    format.si ||= si;
+    return format;
+  });
   const cellUnits = Array.from({ length: width }, () => new Set<Unit>());
   // The cells below the first row, which is counted once it is known not to be the header.
   const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
@@ -219,12 +227,14 @@ function tableFromRecords({ records, header, csv = false, units, note }: Records
 /**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
  * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
- * {@link parseNumber} and {@link numberFormat}) become numbers, and empty cells null, as do markers of missing values such
- * as "N/A" and "-" in numeric columns.
+ * {@link parseNumber} and {@link numberFormat}) become numbers, and empty cells null, as do
+ * markers of missing values such as "N/A" and "-" in numeric columns.
  *
+ * @param si Whether sizes with a bare unit ("1.2M") are in powers of 1000, as the command that
+ *   printed them says (du --si, df -H). Otherwise only a lowercase "k" beside them tells.
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
-export function parseTable(text: string, format: DataFormat = "auto"): DataTable {
+export function parseTable(text: string, format: DataFormat = "auto", si = false): DataTable {
   const content = text.replace(/^\uFEFF/, "");
   const trimmed = content.trim();
   if (trimmed === "") {
@@ -238,7 +248,7 @@ export function parseTable(text: string, format: DataFormat = "auto"): DataTable
     (format === "auto" &&
       (trimmed.startsWith("{") || (trimmed.startsWith("[") && trimmed.endsWith("]"))));
   // Not trimmed, as leading spaces align the columns of command output.
-  const table = tableFromRecords(json ? parseJson(content) : splitText(content, format));
+  const table = tableFromRecords(json ? parseJson(content) : splitText(content, format), si);
   if (table.columns.length === 0) {
     throw new Error("The data holds no values.");
   }

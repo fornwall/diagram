@@ -60,6 +60,20 @@ suite("dataSource", () => {
       ]);
     });
 
+    test("reads sizes in powers of 1000 from commands with --si, or df -H", async () => {
+      const sizes = async (command: string) =>
+        (await loadTable({ type: "bar", command }, token)).table.rows.map((row) =>
+          row.find((cell) => typeof cell === "number"),
+        );
+      // Functions stand in for du and df, whose output depends on the machine.
+      const du = "du() { printf '1.5M\\tsrc\\n2G\\tdocs\\n'; }; ";
+      assert.deepStrictEqual(await sizes(`${du}du -s --si *`), [1.5e6, 2e9]);
+      assert.deepStrictEqual(await sizes(`${du}du -sh *`), [1.5 * 1024 ** 2, 2 * 1024 ** 3]);
+      const df = "df() { printf 'Filesystem Size\\n/dev/sda1 500G\\n'; }; ";
+      assert.deepStrictEqual(await sizes(`${df}df -TH /`), [500e9]);
+      assert.deepStrictEqual(await sizes(`${df}df -h /`), [500 * 1024 ** 3]);
+    });
+
     test("keeps the output of a failed command, with a warning", async () => {
       const result = await runCommand("echo 'a 1'; echo 'no access' >&2; exit 1", token);
       assert.deepStrictEqual(result, {

@@ -19,6 +19,8 @@ const COMMAND_TIMEOUT_MS = 60_000;
  */
 const EXIT_GRACE_MS = 200;
 const STDERR_TAIL = 2000;
+/** The options of du, df, ls and free that print sizes in powers of 1000: --si, and df's -H. */
+const SI_OPTIONS = /(?:^|\s)--si\b|\bdf(?:\s+-\S+)*\s+-[a-zA-Z]*H/;
 
 /** The locale categories that LC_ALL sets, other than LC_NUMERIC. */
 const LOCALE_CATEGORIES = [
@@ -364,5 +366,6 @@ export async function loadTable(
   if (token.isCancellationRequested) {
     throw new vscode.CancellationError();
   }
-  return { table: parseTable(text, spec.format), ...(warning ? { warning } : {}) };
+  const si = spec.command !== undefined && SI_OPTIONS.test(spec.command);
+  return { table: parseTable(text, spec.format, si), ...(warning ? { warning } : {}) };
 }

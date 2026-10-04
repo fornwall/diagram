@@ -485,6 +485,15 @@ suite("data", () => {
     ]);
   });
 
+  test("reads bare size units in powers of 1000 when told the command prints them so", () => {
+    const text = "1.5M\tsrc\n2G\tdocs";
+    assert.deepStrictEqual(parseTable(text, "auto", true).rows, [
+      [1.5e6, "src"],
+      [2e9, "docs"],
+    ]);
+    assert.deepStrictEqual(parseTable(text).rows[0], [1.5 * 1024 ** 2, "src"]);
+  });
+
   test("reads thousands grouped with spaces or apostrophes in consistent columns", () => {
     assert.deepStrictEqual(
       parse("Pays;Habitants;Part\nFrance;68 042 591;12,5 %\nBelgique;11\u00A0763\u00A0650;1,25 %"),
