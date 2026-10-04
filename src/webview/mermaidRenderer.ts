@@ -346,7 +346,10 @@ export class MermaidRenderer implements Renderer {
     new ResizeObserver(() => {
       if (this.fitting && this.displayedSource !== undefined) {
         cancelAnimationFrame(this.fitFrame);
-        this.fitFrame = requestAnimationFrame(() => this.fit());
+        // The user may zoom by hand before the frame.
+        this.fitFrame = requestAnimationFrame(() => {
+          if (this.fitting && this.displayedSource !== undefined) this.fit();
+        });
       }
     }).observe(canvas);
   }

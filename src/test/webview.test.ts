@@ -680,6 +680,32 @@ suite("webview", function () {
     );
   });
 
+  test("keeps a zoom made while fitting the diagram to a resized panel is pending", async () => {
+    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
+    assert.ok((await render({ source: `flowchart LR\n  ${chain}` })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
+        const canvas = document.getElementById("canvas");
+        const zoom = () => document.getElementById("zoom-reset").textContent;
+        await frame();
+        try {
+          // The resize observer runs after this frame, and fits the diagram in the next one.
+          canvas.style.paddingRight = "60px";
+          await frame();
+          document.getElementById("zoom-in").click();
+          const zoomed = zoom();
+          await frame();
+          await frame();
+          return zoom() === zoomed;
+        } finally {
+          canvas.style.paddingRight = "";
+        }
+      })()`),
+      true,
+    );
+  });
+
   test("ends panning when released outside the canvas or pointer capture is lost", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
