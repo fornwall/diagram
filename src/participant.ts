@@ -84,12 +84,16 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
 
     try {
-      const messages = await unlessCancelled(
+      const prompt = await unlessCancelled(
         () => promptMessages(request, context, explain, current, token),
         token,
       );
-      if (typeof messages === "string") {
-        return { errorDetails: { message: messages } };
+      if (typeof prompt === "string") {
+        return { errorDetails: { message: prompt } };
+      }
+      const { messages, notice } = prompt;
+      if (notice) {
+        stream.markdown(`${notice}\n\n`);
       }
       const budget: ToolBudget = { rounds: 0, calls: 0 };
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>

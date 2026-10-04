@@ -71,12 +71,17 @@ interface Exchange {
 type Attachment = { name: string } & (
   | { text: string }
   | { image: vscode.LanguageModelDataPart }
-  | { error: string }
+  | {
+      error: string;
+      /** The model can still explore it with tools. */
+      explorable?: boolean;
+    }
 );
 
 /**
  * Fit instructions, the request and current diagram first, then attachments and recent history.
  * Shorten attachments and omit older diagrams as needed. Return an error if essentials don't fit.
+ * The notice tells the user which of the request's attachments were left out, and why.
  */
 export async function promptMessages(
   request: vscode.ChatRequest,
@@ -84,7 +89,7 @@ export async function promptMessages(
   explain: boolean,
   current: string | undefined,
   token: vscode.CancellationToken,
-): Promise<vscode.LanguageModelChatMessage[] | string> {
+): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice?: string } | string> {
   const { model } = request;
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
   const documents = new Map<string, Thenable<vscode.TextDocument>>();
@@ -179,7 +184,7 @@ export async function promptMessages(
     );
   }
 
-  return [
+  const messages = [
     User(instructions),
     ...history,
     ...attached.texts.map((text, index) => {
@@ -191,6 +196,19 @@ export async function promptMessages(
     ...(current ? [User(current)] : []),
     User(request.prompt),
   ];
+  return { messages, notice: leftOutNotice(attachments) };
+}
+
+/** Which attachments were left out, grouped by reason. */
+function leftOutNotice(attachments: Attachment[]): string | undefined {
+  const leftOut = attachments.flatMap((attachment) =>
+    "error" in attachment && !attachment.explorable ? [attachment] : [],
+  );
+  const reasons = [...Map.groupBy(leftOut, ({ error }) => error)].map(
+    ([error, group]) =>
+      `Left out ${group.map(({ name }) => name).join(", ")}: ${error.replace(/[^.]$/, "$&.")}`,
+  );
+  return reasons.length > 0 ? reasons.join(" ") : undefined;
 }
 
 /**
@@ -441,8 +459,9 @@ async function readAttachment(
     }
     return { name, text: (await document).getText(location?.range) };
   } catch (error) {
-    const folder = location ? undefined : await folderHint(uri);
-    return { name, error: folder ?? errorMessage(error) };
+    return (
+      (location ? undefined : await readFolder(name, uri)) ?? { name, error: errorMessage(error) }
+    );
   }
 }
 
@@ -513,15 +532,19 @@ async function readImage(
 }
 
 /** A folder, as attached with #folder, has no text, but the workspace tools can explore it. */
-async function folderHint(uri: vscode.Uri): Promise<string | undefined> {
+async function readFolder(name: string, uri: vscode.Uri): Promise<Attachment | undefined> {
   const stat = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch(() => undefined);
   if (!stat || !(stat.type & vscode.FileType.Directory)) {
     return undefined;
   }
   const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.path.replace(/\/$/, "");
   if (root === undefined) {
-    return "it is a folder outside the workspace";
+    return { name, error: "it is a folder outside the workspace" };
   }
   const relative = uri.path.slice(root.length + 1);
-  return `it is a folder; list its files with ${FIND_FILES_TOOL} and the glob "${relative ? `${relative}/**` : "**"}"`;
+  return {
+    name,
+    error: `it is a folder; list its files with ${FIND_FILES_TOOL} and the glob "${relative ? `${relative}/**` : "**"}"`,
+    explorable: true,
+  };
 }

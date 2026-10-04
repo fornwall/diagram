@@ -935,9 +935,10 @@ suite("participant", function () {
     const folder = vscode.Uri.joinPath(root, "attached-folder");
     await vscode.workspace.fs.createDirectory(folder);
     try {
-      const { sent } = await ask(panel, [[text("Exploring.")]], {
+      const { sent, shown } = await ask(panel, [[text("Exploring.")]], {
         references: [{ id: "folder", value: folder }],
       });
+      assert.strictEqual(shown, "Exploring.");
       const attached = sent[0]?.messages.map(messageText).find((m) => m.startsWith("Attached"));
       assert.match(
         attached ?? "",
@@ -956,7 +957,7 @@ suite("participant", function () {
       throw new Error("Permission denied");
     };
     try {
-      const { result, sent } = await ask(panel, [[text("Cannot read that file.")]], {
+      const { result, sent, shown } = await ask(panel, [[text("Cannot read that file.")]], {
         references: [
           { id: "file", value: vscode.Uri.file("/unreadable.csv") },
           { id: "text", value: "Chart the file when available" },
@@ -970,6 +971,10 @@ suite("participant", function () {
         /unreadable\.csv, which could not be read: Permission denied/,
       );
       assert.match(attached?.[0] ?? "", /Chart the file when available/);
+      assert.match(
+        shown,
+        /^Left out \S*unreadable\.csv: Permission denied\.\n\nCannot read that file\.$/,
+      );
     } finally {
       vscode.workspace.openTextDocument = open;
       panel.dispose();
@@ -997,8 +1002,9 @@ suite("participant", function () {
         { id: "problems", value: { diagnostics: [] } },
         { id: "file", value: file },
         pasted("image/jpeg", new Uint8Array([1, 2, 3])),
+        { id: "symbol", value: 42 },
       ].reverse();
-      const { sent } = await ask(panel, [[text("Drawing.")]], { references });
+      const { sent, shown } = await ask(panel, [[text("Drawing.")]], { references });
       const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
       assert.deepStrictEqual(messages?.map(messageText), [
         "Attached by the user: whiteboard.PNG",
@@ -1006,7 +1012,14 @@ suite("participant", function () {
         "Attached by the user: image, which could not be read: the image takes 3.0 MB, more than the 3 MB limit. Attach a smaller or more compressed image.",
         "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
         "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
+        "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
       ]);
+      assert.strictEqual(
+        shown,
+        "Left out image: the image takes 3.0 MB, more than the 3 MB limit. Attach a smaller or more compressed image. " +
+          "Left out image: @diagram does not support application/pdf attachments. " +
+          "Left out problems, symbol: @diagram does not support this kind of attachment.\n\nDrawing.",
+      );
       const images = messages?.map((m) =>
         m.content.find((part) => part instanceof vscode.LanguageModelDataPart),
       );
@@ -1043,7 +1056,7 @@ suite("participant", function () {
       const history = [
         new RequestTurn("Draw this", undefined, references, "diagram.participant", []),
       ];
-      const { sent } = await ask(panel, [[text("Hm.")]], {
+      const { sent, shown } = await ask(panel, [[text("Hm.")]], {
         history,
         references,
         capabilities: { supportsImageToText: false },
@@ -1054,6 +1067,11 @@ suite("participant", function () {
         "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
         "Attached by the user: image, which could not be read: Fake does not accept images. Choose a model that does, or describe the image in words.",
       ]);
+      // Only about this request's attachments.
+      assert.strictEqual(
+        shown,
+        "Left out image: Fake does not accept images. Choose a model that does, or describe the image in words.\n\nHm.",
+      );
     } finally {
       panel.dispose();
     }
