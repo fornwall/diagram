@@ -37,6 +37,9 @@ export const CARTESIAN_TYPES = [
 
 export type CartesianType = (typeof CARTESIAN_TYPES)[number];
 
+/** The charts that can be split into small multiples by a facet column. */
+export const FACET_TYPES: readonly ChartType[] = [...CARTESIAN_TYPES, "scatter", "histogram"];
+
 export const DATA_FORMATS = ["auto", "csv", "tsv", "json", "whitespace"] as const;
 
 export type DataFormat = (typeof DATA_FORMATS)[number];

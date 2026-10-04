@@ -1,11 +1,10 @@
 // Compose generated Cartesian charts into independently selectable small multiples.
-import { CARTESIAN_TYPES, type ChartSpec, type ChartType } from "./chartSpec";
+import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import { type Cell, type DataTable, findColumn } from "./data";
 import { errorMessage, isPlainObject } from "./protocol";
 
 type Option = Record<string, unknown>;
-const FACET_TYPES: readonly ChartType[] = [...CARTESIAN_TYPES, "scatter", "histogram"];
 const MAX_FACETS = 12;
 
 const objects = (value: unknown): Option[] =>

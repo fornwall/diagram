@@ -1,6 +1,22 @@
 import type { ChartOptionsState } from "../chartOptions";
-import { AGGREGATIONS, CHART_TYPES, type ChartFilter } from "../chartSpec";
+import { AGGREGATIONS, CHART_TYPES, type ChartFilter, FACET_TYPES } from "../chartSpec";
 import type { FromWebview } from "../protocol";
+
+function button(text: string, className = "secondary"): HTMLButtonElement {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = className;
+  element.textContent = text;
+  return element;
+}
+
+/** Removes a row of a list, moving focus to the row after it, the one before it or `fallback`. */
+function removeRow(row: Element, fallback: HTMLElement): void {
+  const next = row.nextElementSibling?.querySelector("select");
+  const previous = row.previousElementSibling?.querySelector("select");
+  row.remove();
+  (next ?? previous ?? fallback).focus();
+}
 
 /** A compact form inside the diagram view, opened by the native editor action. */
 export class ChartOptionsForm {
@@ -22,8 +38,8 @@ export class ChartOptionsForm {
   private readonly error = document.createElement("p");
   private readonly replace = document.createElement("input");
   private readonly replaceLabel = document.createElement("label");
-  private readonly apply = document.createElement("button");
-  private readonly reset = document.createElement("button");
+  private readonly apply = button("Apply", "");
+  private readonly reset = button("Reset styling");
 
   constructor(
     private readonly container: HTMLElement,
@@ -32,10 +48,7 @@ export class ChartOptionsForm {
   ) {
     const heading = document.createElement("strong");
     heading.textContent = "Chart Options";
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "secondary";
-    close.textContent = "Close";
+    const close = button("Close");
     close.addEventListener("click", () => this.close());
     const header = document.createElement("div");
     header.className = "chart-options-heading";
@@ -124,14 +137,8 @@ export class ChartOptionsForm {
     this.replace.type = "checkbox";
     this.replaceLabel.append(this.replace, " Replace manual source edits with the generated chart");
     this.replaceLabel.hidden = true;
-    this.apply.type = "button";
-    this.apply.textContent = "Apply";
-    const reset = this.reset;
-    reset.type = "button";
-    reset.className = "secondary";
-    reset.textContent = "Reset styling";
-    reset.title = "Remove manual styling changes and return to the generated chart";
-    reset.addEventListener("click", () => {
+    this.reset.title = "Remove manual styling changes and return to the generated chart";
+    this.reset.addEventListener("click", () => {
       if (this.state) {
         this.post({
           type: "resetChartStyling",
@@ -142,7 +149,7 @@ export class ChartOptionsForm {
     });
     const actions = document.createElement("div");
     actions.className = "actions";
-    actions.append(this.apply, reset);
+    actions.append(this.apply, this.reset);
     const form = document.createElement("form");
     form.append(this.fields, this.replaceLabel, this.error, actions);
     // Native submission is blocked because the webview disables forms.
@@ -245,16 +252,7 @@ export class ChartOptionsForm {
   }
 
   private canFacet(): boolean {
-    return [
-      "bar",
-      "horizontalBar",
-      "stackedBar",
-      "line",
-      "area",
-      "stackedArea",
-      "scatter",
-      "histogram",
-    ].includes(this.type.value);
+    return (FACET_TYPES as readonly string[]).includes(this.type.value);
   }
 
   private updateAvailability(): void {
@@ -286,10 +284,7 @@ export class ChartOptionsForm {
   private fillFilters(filters: ChartFilter[]): void {
     this.filters.replaceChildren();
     this.filterRows.clear();
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "secondary";
-    add.textContent = "Add filter";
+    const add = button("Add filter");
     const append = (filter?: ChartFilter): HTMLSelectElement => {
       const row = document.createElement("div");
       row.className = "chart-filter-row";
@@ -350,18 +345,12 @@ export class ChartOptionsForm {
         }
       });
       updateOperator();
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "secondary";
-      remove.textContent = "−";
+      const remove = button("−");
       remove.setAttribute("aria-label", "Remove filter");
       remove.addEventListener("click", () => {
-        const next = row.nextElementSibling?.querySelector("select");
-        const previous = row.previousElementSibling?.querySelector("select");
-        row.remove();
         this.filterRows.delete(row);
         add.disabled = false;
-        (next ?? previous ?? add).focus();
+        removeRow(row, add);
       });
       row.append(column, operator, valueType, value, remove);
       this.filters.insertBefore(row, add);
@@ -385,10 +374,7 @@ export class ChartOptionsForm {
 
   private fillColumns(container: HTMLElement, selected: string[]): void {
     container.replaceChildren();
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "secondary";
-    add.textContent = selected.length ? "Add column" : "Automatic · choose column";
+    const add = button(selected.length ? "Add column" : "Automatic · choose column");
     const updateLabels = (): void => {
       for (const [index, row] of Array.from(
         container.querySelectorAll(".chart-column-row"),
@@ -403,19 +389,13 @@ export class ChartOptionsForm {
       row.className = "chart-column-row";
       const select = document.createElement("select");
       this.fillColumnSelect(select, name);
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "secondary";
-      remove.textContent = "−";
+      const remove = button("−");
       remove.addEventListener("click", () => {
-        const next = row.nextElementSibling?.querySelector("select");
-        const previous = row.previousElementSibling?.querySelector("select");
-        row.remove();
+        removeRow(row, add);
         updateLabels();
         add.textContent = container.querySelector("select")
           ? "Add column"
           : "Automatic · choose column";
-        (next ?? previous ?? add).focus();
       });
       row.append(select, remove);
       container.insertBefore(row, add);
