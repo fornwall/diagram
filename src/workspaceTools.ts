@@ -507,7 +507,9 @@ export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput
       const input = objectInput(options.input, ["file", "startLine", "endLine"]);
       const start = integer(input.startLine, 1, "startLine");
       const requestedEnd = integer(input.endLine, start + DEFAULT_READ_LINES - 1, "endLine");
-      if (requestedEnd < start) throw new Error("endLine must not be less than startLine.");
+      if (requestedEnd < start) {
+        throw new Error('"endLine" must not be less than "startLine".');
+      }
       const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
       const roots = folders();
       const uri = resolveWorkspaceFile(input.file, roots);
@@ -549,7 +551,7 @@ export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput
       }
       if (start > totalLines) {
         throw new Error(
-          `startLine ${start} is past the end of the file, which has ${totalLines} lines.`,
+          `"startLine" ${start} is past the end of the file, which has ${plural(totalLines, "line")}.`,
         );
       }
       const notes = [
