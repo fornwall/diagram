@@ -56,7 +56,7 @@ Any chat agent can use these tools; `@diagram` includes them by default. Attach 
 | Tool | Reference | Purpose |
 | --- | --- | --- |
 | `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks and custom series. Reports render errors. |
-| `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns, groups rows, recognizes dates and reports how it read the data. |
+| `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
 | `diagram_annotate` | `#diagramAnnotate` | Mark items with notes, a caption and fading, without redrawing. Omit marks to clear them. |
