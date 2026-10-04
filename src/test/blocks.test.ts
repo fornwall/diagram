@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "../blocks";
-import { isClosingFence } from "../fences";
 
 function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
   const filter = new DiagramBlockFilter();
@@ -10,30 +9,6 @@ function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
 }
 
 suite("blocks", () => {
-  test("closing fences follow CommonMark: matching markers, indented less than 4 columns", () => {
-    const backticks = { fence: "````" };
-    for (const line of ["````", "   ````` \r\n", "```` \t\n", "````\r"]) {
-      assert.ok(isClosingFence(line, backticks), JSON.stringify(line));
-    }
-    for (const line of [
-      // Tabs stop every 4 columns.
-      " \t````",
-      "```",
-      "    ````",
-      "\t````",
-      "~~~~",
-      "```` text",
-      "````~",
-      "` ` ` `",
-      // Only spaces and tabs are indentation and trailing whitespace.
-      "\u00a0````",
-      "````\u00a0",
-      "x".repeat(1_000_000),
-    ]) {
-      assert.ok(!isClosingFence(line, backticks), JSON.stringify(line));
-    }
-  });
-
   test("lastDiagramBlock finds the last mermaid or echarts block", () => {
     const mermaid =
       "Here you go:\n```mermaid\nflowchart TD\n  A --> B\n```\n```ts\nconst x = 1;\n```\n";

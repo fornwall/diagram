@@ -4,6 +4,7 @@ import {
   fenceAt,
   findDiagramFences,
   findDocumentDiagramFences,
+  isClosingFence,
   isDiagramFence,
   relocateFence,
   rewriteFence,
@@ -118,6 +119,30 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("~~~mermaid\nA --> B\n```\n"), [
       '0-2 mermaid "": "A --> B\\n```"',
     ]);
+  });
+
+  test("isClosingFence follows CommonMark: matching markers, indented less than 4 columns", () => {
+    const backticks = { fence: "````" };
+    for (const line of ["````", "   ````` \r\n", "```` \t\n", "````\r"]) {
+      assert.ok(isClosingFence(line, backticks), JSON.stringify(line));
+    }
+    for (const line of [
+      // Tabs stop every 4 columns.
+      " \t````",
+      "```",
+      "    ````",
+      "\t````",
+      "~~~~",
+      "```` text",
+      "````~",
+      "` ` ` `",
+      // Only spaces and tabs are indentation and trailing whitespace.
+      "\u00a0````",
+      "````\u00a0",
+      "x".repeat(1_000_000),
+    ]) {
+      assert.ok(!isClosingFence(line, backticks), JSON.stringify(line));
+    }
   });
 
   test("findDiagramFences closes a block only at a fence indented by less than 4 columns", () => {

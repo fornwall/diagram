@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { type DocumentBinding, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
-import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
+import { type FakeWebview, newFakePanel } from "./newPanel";
 
 suite("documentDiagram", function () {
   // A panel that an agent renders in loads the webview, which can take a while.
@@ -546,7 +546,7 @@ suite("documentDiagram", function () {
   test("changing diagram language drops the previous document binding", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel } = await restored(openedState(read));
     try {
       const rendering = panel.render(
         { language: "echarts", source: '{"series": []}', title: "Chart" },
@@ -602,7 +602,7 @@ suite("documentDiagram", function () {
   test("an agent that replaces the diagram keeps the binding without writing", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
-    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const { panel } = await restored(openedState(read));
     try {
       const outcome = await panel.render(
         { language: "mermaid", source: "flowchart LR\n  C --> D", title: "Other" },
