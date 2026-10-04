@@ -194,6 +194,10 @@ const WITH_DATABASE = new Set([
   "xychart",
   "flowchart-v2",
   "flowchart",
+  "classDiagram",
+  "stateDiagram",
+  "er",
+  "requirement",
   "sequence",
 ]);
 interface DiagramDb {
@@ -611,10 +615,14 @@ export class MermaidRenderer implements Renderer {
     svg.style.maxWidth = "none";
   }
 
-  /** Join renderer metadata to DOM IDs; endpoint names are never inferred from generated IDs. */
+  /**
+   * Joins renderer metadata to DOM IDs; endpoint names are never inferred from generated IDs.
+   * `nodeIds` gives the id of each node by the id Mermaid draws it with.
+   */
   private findRelationships(
     svg: SVGSVGElement,
     db: DiagramDb | undefined,
+    nodeIds: ReadonlyMap<string, string>,
     add: (element: Element, node: DiagramNode) => void,
   ): void {
     const used = new Set(Array.from(this.nodes.values(), (node) => node.id));
@@ -665,7 +673,11 @@ export class MermaidRenderer implements Renderer {
         relationship: { kind, source, target, direction },
       };
     };
-    if (this.supportsPaths && db?.getData) {
+    // Edges of flowcharts and class, state, ER and requirement diagrams, which Mermaid lays out
+    // alike. Diamonds, lollipops, cardinalities and "contains" circles are not arrowheads.
+    const arrowhead = (marker = "") =>
+      /^(?:arrow_|extension$|dependency$|requirement_arrow$)/.test(marker);
+    if (db?.getData) {
       const edges = db.getData().edges;
       const counts = new Map<string, number>();
       for (const edge of edges) counts.set(edge.id, (counts.get(edge.id) ?? 0) + 1);
@@ -683,17 +695,27 @@ export class MermaidRenderer implements Renderer {
       );
       for (const edge of edges) {
         const line = lines.get(edge.id);
-        // Ambiguous duplicate renderer IDs cannot safely identify a relationship.
-        if (!line || counts.get(edge.id) !== 1 || edge.thickness === "invisible") continue;
+        const source = nodeIds.get(edge.start) ?? edge.start;
+        const target = nodeIds.get(edge.end) ?? edge.end;
+        // Ambiguous duplicate renderer IDs cannot safely identify a relationship, and one with an
+        // end that is not a node, like a state diagram's start, cannot be described.
+        if (
+          !line ||
+          counts.get(edge.id) !== 1 ||
+          edge.thickness === "invisible" ||
+          !names.has(source) ||
+          !names.has(target)
+        )
+          continue;
         const label = labels.get(edge.id);
         const node = relation(
           "edge",
           edge.id,
-          edge.start,
-          edge.end,
+          source,
+          target,
           label ? textOf(label) : plainText(edge.label ?? ""),
-          edge.arrowTypeStart !== "none" && !!edge.arrowTypeStart,
-          edge.arrowTypeEnd !== "none" && !!edge.arrowTypeEnd,
+          arrowhead(edge.arrowTypeStart),
+          arrowhead(edge.arrowTypeEnd),
         );
         addLine(line, node);
         if (label) add(label, node);
@@ -775,6 +797,7 @@ export class MermaidRenderer implements Renderer {
     // Their element ids are the source ids, some decorated like "flowchart-A-0". Mermaid makes up
     // the ids of mind map nodes ("node_0"), notes ("note0", "state-A----note-2") and subgraphs
     // titled with spaces and no id ("subGraph0"), so those go by their names.
+    const nodeIds = new Map<string, string>();
     for (const element of svg.querySelectorAll(
       "g.node, g.rough-node, g.cluster, g.statediagram-cluster, g.architecture-service",
     )) {
@@ -787,6 +810,7 @@ export class MermaidRenderer implements Renderer {
       const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
         ? uniqueId(label)
         : (decorated?.[1] ?? decorated?.[2] ?? domId);
+      nodeIds.set(domId, id);
       add(element, { id, label });
     }
 
@@ -806,7 +830,7 @@ export class MermaidRenderer implements Renderer {
       }
     }
 
-    this.findRelationships(svg, db, add);
+    this.findRelationships(svg, db, nodeIds, add);
 
     // Gantt tasks: a bar and a label with ids derived from the task id.
     for (const bar of svg.querySelectorAll("rect.task")) {

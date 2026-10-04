@@ -339,7 +339,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable flowchart edges and sequence messages. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
+        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable edges and sequence messages. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
         "tags": [
           "diagram",
           "mermaid",
@@ -360,7 +360,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(target)",
         "userDescription": "Ask you to select nodes, relationships or chart items in the diagram panel",
-        "modelDescription": "Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for flowchart edges and sequence messages, or why nothing was picked.",
+        "modelDescription": "Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for edges and sequence messages, or why nothing was picked.",
         "tags": [
           "diagram",
           "mermaid",
@@ -392,7 +392,7 @@
         "toolReferenceName": "diagramAnnotate",
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
-        "userDescription": "Mark nodes, flowchart edges, sequence messages or chart items without drawing again",
+        "userDescription": "Mark nodes, edges, sequence messages or chart items without drawing again",
         "modelDescription": "Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it. Each call replaces the previous marks, caption and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
         "tags": [
           "diagram",

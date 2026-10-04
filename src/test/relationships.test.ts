@@ -181,6 +181,49 @@ suite("relationships", function () {
     }
   });
 
+  test("selects the relationships of class, state, ER and requirement diagrams", async () => {
+    const relationships = async (source: string) => {
+      assert.ok((await render({ source })).ok);
+      return (panel as unknown as { relationships: DiagramNode[] }).relationships.map(
+        ({ label, relationship }) => [
+          label,
+          relationship?.source,
+          relationship?.target,
+          relationship?.direction,
+        ],
+      );
+    };
+    // An inheritance arrow points to the parent; a composition diamond is no arrowhead.
+    assert.deepStrictEqual(
+      await relationships("classDiagram\n  Animal <|-- Duck : is a\n  Pond *-- Duck"),
+      [
+        ["Duck → Animal: is a", "Duck", "Animal", "forward"],
+        ["Pond — Duck", "Pond", "Duck", "undirected"],
+      ],
+    );
+    // The transition from the start state has no node to describe.
+    assert.deepStrictEqual(
+      await relationships("stateDiagram-v2\n  [*] --> Still\n  Still --> Moving : push"),
+      [["Still → Moving: push", "Still", "Moving", "forward"]],
+    );
+    // Entities go by their names, not the ids Mermaid draws them with; cardinalities are no arrows.
+    assert.deepStrictEqual(await relationships("erDiagram\n  CUSTOMER ||--o{ ORDER : places"), [
+      ["CUSTOMER — ORDER: places", "CUSTOMER", "ORDER", "undirected"],
+    ]);
+    assert.deepStrictEqual(
+      await relationships(
+        "requirementDiagram\n  requirement req {\n    id: 1\n  }\n  element sim {\n    type: simulation\n  }\n  sim - satisfies -> req",
+      ),
+      [["sim → req: <<satisfies>>", "sim", "req", "forward"]],
+    );
+    const id = (panel as unknown as { relationships: DiagramNode[] }).relationships[0]?.id;
+    await click(`[data-diagram-id="${id}"][tabindex="0"]`);
+    assert.deepStrictEqual(
+      selected().map((n) => n.id),
+      [id],
+    );
+  });
+
   test("highlights a deterministic shortest path through cycles in selected direction and reports no path", async () => {
     assert.ok(
       (

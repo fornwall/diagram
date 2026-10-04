@@ -45,7 +45,7 @@ export interface DiagramNode {
   id: string;
   /** The visible label of the node, or the name of the chart data item. */
   label: string;
-  /** Only flowchart edges and sequence messages have relationship metadata. */
+  /** Only edges and sequence messages have relationship metadata. */
   relationship?: {
     kind: "edge" | "message";
     source: string;
@@ -159,7 +159,7 @@ export type FromWebview =
       diagramType: string;
       /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
       nodeIds?: string[];
-      /** Selectable flowchart edges or sequence messages, with authoritative endpoints. */
+      /** Selectable edges or sequence messages, with authoritative endpoints. */
       relationships?: DiagramNode[];
     }
   | { type: "renderError"; requestId: number; message: string }
