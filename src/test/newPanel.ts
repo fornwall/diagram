@@ -118,6 +118,11 @@ export class FakeWebview {
         : { type: "renderError", requestId, message: error },
     );
   }
+
+  /** Applies an edit of the source shown, as the page's Apply does. */
+  edit(source: string): Promise<void> {
+    return this.receive({ type: "sourceEdited", requestId: this.render.requestId, source });
+  }
 }
 
 /** Shows the panel in a fake webview that is ready, with any diagram it has drawn. */

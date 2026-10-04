@@ -1,7 +1,6 @@
 import * as assert from "node:assert";
 import { chartControls, withChartControls } from "../chartOptions";
 import type { ChartSpec } from "../chartSpec";
-import { isFromWebview } from "../protocol";
 
 suite("chart options", () => {
   const spec: ChartSpec = {
@@ -81,17 +80,5 @@ suite("chart options", () => {
     }
     assert.strictEqual(histogram.command, spec.command);
     assert.deepStrictEqual(histogram.options, spec.options);
-  });
-  test("validates options revision and explicit source replacement before handling messages", () => {
-    const valid = {
-      type: "applyChartOptions",
-      revision: 1,
-      controls: { type: "bar" },
-      replaceSource: false,
-    };
-    assert.ok(isFromWebview(valid));
-    assert.ok(!isFromWebview({ ...valid, revision: "1" }));
-    assert.ok(!isFromWebview({ ...valid, controls: [] }));
-    assert.ok(!isFromWebview({ ...valid, replaceSource: "true" }));
   });
 });

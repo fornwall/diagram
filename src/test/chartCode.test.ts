@@ -146,13 +146,11 @@ suite("chart code in the panel", function () {
         },
         "document",
       );
-    const write = (source: string) =>
-      webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
     const confirmed = answerWarnings("Write");
     try {
       assert.ok((await renderChart(panel, codeChart)).ok);
       assert.ok((await open()).ok);
-      await write(flowchart);
+      await webview.edit(flowchart);
       assert.strictEqual(document.getText(), `\`\`\`mermaid\n${flowchart}\n\`\`\`\n`);
       assert.deepStrictEqual(confirmed.warnings, ["Write this diagram to notes.md?"]);
     } finally {
@@ -160,7 +158,7 @@ suite("chart code in the panel", function () {
     }
     const declined = answerWarnings();
     try {
-      await write("flowchart TD");
+      await webview.edit("flowchart TD");
       assert.strictEqual(document.getText(), `\`\`\`mermaid\n${flowchart}\n\`\`\`\n`);
       assert.deepStrictEqual(declined.warnings, ["Write this diagram to notes.md?"]);
     } finally {

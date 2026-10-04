@@ -1,15 +1,9 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { toolText } from "./toolText";
 
-async function invoke(
-  name: string,
-  input: object,
-  token?: vscode.CancellationToken,
-): Promise<string> {
-  const result = await vscode.lm.invokeTool(name, { input, toolInvocationToken: undefined }, token);
-  return result.content
-    .map((part) => (part instanceof vscode.LanguageModelTextPart ? part.value : ""))
-    .join("");
+async function invoke(name: string, input: object): Promise<string> {
+  return toolText(await vscode.lm.invokeTool(name, { input, toolInvocationToken: undefined }));
 }
 
 suite("Extension", function () {

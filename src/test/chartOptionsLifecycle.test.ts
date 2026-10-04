@@ -37,11 +37,6 @@ function applyOptions(
   return webview.receive({ replaceSource: false, ...change, revision: panel.revision });
 }
 
-/** Applies an edit of the source in the panel, as the webview's Apply does. */
-function edit(webview: FakeWebview, source: string): Promise<void> {
-  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
-}
-
 suite("chart options lifecycle", function () {
   this.timeout(10_000);
 
@@ -80,7 +75,7 @@ suite("chart options lifecycle", function () {
       const source = await draw(panel, { type: "bar", data });
       const styled = JSON.parse(source);
       styled.backgroundColor = "#123456";
-      await edit(webview, JSON.stringify(styled));
+      await webview.edit(JSON.stringify(styled));
       assert.strictEqual(panel.current?.editedByUser, true);
       await applyOptions(panel, webview, {
         type: "applyChartOptions",

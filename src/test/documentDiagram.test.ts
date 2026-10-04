@@ -65,11 +65,6 @@ suite("documentDiagram", function () {
     return newFakePanel(new Map<string, unknown>([["diagram.state", state]]));
   }
 
-  /** What the panel's Apply posts. */
-  function applyEdit(webview: FakeWebview, source: string): Promise<void> {
-    return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
-  }
-
   /** What the panel's Write button posts, for a diagram the user has not edited. */
   function writeShown(webview: FakeWebview): Promise<void> {
     return webview.receive({ type: "writeToDocument", requestId: webview.render.requestId });
@@ -298,14 +293,14 @@ suite("documentDiagram", function () {
     const read = binding(document);
     const { panel, webview } = await restored(openedState(read));
     try {
-      await applyEdit(webview, "flowchart LR\n  A --> B");
+      await webview.edit("flowchart LR\n  A --> B");
       assert.strictEqual(
         document.getText(),
         "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
       );
       // The binding follows the block it wrote, so that the next Apply recognizes it.
       assert.strictEqual(panel.current?.document?.fence.lastLine, 4);
-      await applyEdit(webview, "flowchart TD");
+      await webview.edit("flowchart TD");
       assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n```\n");
     } finally {
       panel.dispose();
@@ -373,7 +368,7 @@ suite("documentDiagram", function () {
       return undefined;
     };
     try {
-      await applyEdit(webview, "flowchart ??");
+      await webview.edit("flowchart ??");
       assert.strictEqual(document.getText(), before);
       assert.strictEqual(panel.current?.source, "flowchart ??");
       assert.strictEqual(panel.current?.editedByUser, true);
@@ -381,7 +376,7 @@ suite("documentDiagram", function () {
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
       assert.match(warning, /not written.*Your edits are kept in the panel/s);
 
-      await applyEdit(webview, "flowchart LR\n  A --> B");
+      await webview.edit("flowchart LR\n  A --> B");
       assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n  A --> B\n```\n");
       assert.strictEqual(panel.current?.error, undefined);
     } finally {
@@ -478,7 +473,7 @@ suite("documentDiagram", function () {
     const { panel, webview } = await restored(openedState(read));
     try {
       await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
-      await applyEdit(webview, "flowchart RL");
+      await webview.edit("flowchart RL");
       assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n```\n");
       // The diagram is still the document's, with the block as it was read.
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
@@ -499,7 +494,7 @@ suite("documentDiagram", function () {
       warnings.push(message);
     }) as typeof warn;
     try {
-      const applying = applyEdit(webview, "flowchart RL");
+      const applying = webview.edit("flowchart RL");
       const opening = panel.render(openedState(binding(second)), "document");
       await webview.finishRender();
       await Promise.all([applying, opening]);
@@ -589,8 +584,8 @@ suite("documentDiagram", function () {
           assert.ok((await panel.render({ ...state, document: { ...read } }, "document")).ok);
         } else {
           // Editing and restoring the same text still invalidates the original confirmation.
-          await applyEdit(webview, "flowchart RL");
-          await applyEdit(webview, state.source);
+          await webview.edit("flowchart RL");
+          await webview.edit(state.source);
         }
         confirmation.resolve("Write");
         await writing;

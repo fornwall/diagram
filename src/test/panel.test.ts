@@ -8,7 +8,7 @@ import { parseTable } from "../data";
 import { linkTexts } from "../links";
 import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
 import { isFromWebview } from "../protocol";
-import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
+import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
 import {
   FakeWebview,
@@ -19,6 +19,7 @@ import {
   showInFake,
 } from "./newPanel";
 import { testColors } from "./themeColors";
+import { toolText } from "./toolText";
 
 const flowchart: Diagram = {
   language: "mermaid",
@@ -41,11 +42,6 @@ async function webviewTabs(labels: string[]): Promise<vscode.Tab[]> {
 
 function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().token) {
   return panel.pickNodes("Which part?", false, token);
-}
-
-/** Applies an edit of the source in the panel, as the webview's Apply does. */
-function edit(webview: FakeWebview, source: string): Promise<void> {
-  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
 }
 
 /** Records the requests to chat and the files and URLs opened, which clicks on nodes lead to. */
@@ -206,6 +202,8 @@ suite("panel", function () {
     assert.ok(isFromWebview({ type: "ready" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
     assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
+    const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
+    assert.ok(isFromWebview({ ...options, replaceSource: false }));
     const malformed = [
       null,
       "ready",
@@ -219,6 +217,11 @@ suite("panel", function () {
       { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
       { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
       { type: "exportTheme", requestId: 1, colors: { ...testColors, fontSize: Number.NaN } },
+      // Replacing a chart's source takes an explicit choice, for the revision it was made for.
+      options,
+      { ...options, replaceSource: "true" },
+      { ...options, replaceSource: false, revision: "1" },
+      { ...options, replaceSource: false, controls: [] },
     ];
     for (const message of malformed) {
       assert.ok(!isFromWebview(message), JSON.stringify(message));
@@ -567,32 +570,6 @@ suite("panel", function () {
     }
   });
 
-  test("cancelled render tools leave the current diagram and closed panel alone", async () => {
-    const state: DiagramState = { ...flowchart, origin: "tool", editedByUser: true };
-    const values = new Map<string, unknown>([["diagram.state", state]]);
-    const panel = newPanel(values);
-    const cancellation = new vscode.CancellationTokenSource();
-    cancellation.cancel();
-    try {
-      const tools = [
-        { tool: new RenderDiagramTool(panel), input: { source: "flowchart LR\n  C --> D" } },
-        { tool: new ChartTool(panel), input: { type: "bar" as const, data: "A,1\nB,2" } },
-      ];
-      for (const { tool, input } of tools) {
-        await assert.rejects(
-          tool.invoke({ input } as never, cancellation.token),
-          vscode.CancellationError,
-        );
-        assert.strictEqual(panel.current, state);
-        assert.strictEqual(values.get("diagram.state"), state);
-      }
-      await webviewTabs([]);
-    } finally {
-      cancellation.dispose();
-      panel.dispose();
-    }
-  });
-
   test("a cancelled pick leaves an existing pick active", async () => {
     const panel = newPanel();
     const cancellation = new vscode.CancellationTokenSource();
@@ -609,61 +586,6 @@ suite("panel", function () {
         picked: false,
         reason: "The user closed the diagram panel.",
       });
-    } finally {
-      cancellation.dispose();
-      panel.dispose();
-    }
-  });
-
-  test("cancelling a chart stops waiting for a file read", async () => {
-    const panel = newPanel();
-    const cancellation = new vscode.CancellationTokenSource();
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "fs");
-    assert.ok(descriptor);
-    const started = Promise.withResolvers<void>();
-    const data = Promise.withResolvers<Uint8Array>();
-    Object.defineProperty(vscode.workspace, "fs", {
-      configurable: true,
-      value: {
-        ...vscode.workspace.fs,
-        readFile: () => {
-          started.resolve();
-          return data.promise;
-        },
-      },
-    });
-    try {
-      const result = new ChartTool(panel).invoke(
-        { input: { type: "bar", file: "sizes.tsv" } } as never,
-        cancellation.token,
-      );
-      await started.promise;
-      cancellation.cancel();
-      await assert.rejects(result, vscode.CancellationError);
-      assert.strictEqual(panel.current, undefined);
-    } finally {
-      data.resolve(new TextEncoder().encode("name,value\nA,1"));
-      Object.defineProperty(vscode.workspace, "fs", descriptor);
-      cancellation.dispose();
-      panel.dispose();
-    }
-  });
-
-  test("a cancelled annotation leaves the current marks alone", () => {
-    const panel = newPanel();
-    const cancellation = new vscode.CancellationTokenSource();
-    let marked = false;
-    panel.annotate = () => {
-      marked = true;
-      return { ok: false, reason: "Unexpected annotation" };
-    };
-    cancellation.cancel();
-    try {
-      assert.throws(
-        () => new AnnotateDiagramTool(panel).invoke({ input: {} } as never, cancellation.token),
-        vscode.CancellationError,
-      );
-      assert.strictEqual(marked, false);
     } finally {
       cancellation.dispose();
       panel.dispose();
@@ -697,60 +619,6 @@ suite("panel", function () {
       }
     } finally {
       vscode.commands.executeCommand = execute;
-      panel.dispose();
-    }
-  });
-
-  test("render tools accept Markdown fences with longer closing markers", async () => {
-    const panel = newPanel();
-    const cancellation = new vscode.CancellationTokenSource();
-    const rendered: string[] = [];
-    panel.render = async (diagram) => {
-      rendered.push(`${diagram.language}: ${diagram.source.trim()}`);
-      return { ok: true, diagramType: "test" };
-    };
-    try {
-      const tool = new RenderDiagramTool(panel);
-      for (const source of ["```mermaid\nflowchart TD\n````", "  ~~~echarts\r\n{}\r\n~~~~  "]) {
-        await tool.invoke({ input: { source } } as never, cancellation.token);
-      }
-      assert.deepStrictEqual(rendered, ["mermaid: flowchart TD", "echarts: {}"]);
-      for (const source of ["```mermaid\n```", "~~~echarts\n  \n~~~~"]) {
-        const result = await tool.invoke({ input: { source } } as never, cancellation.token);
-        assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
-        assert.match(result.content[0].value, /Nothing was rendered: Give "source"/);
-      }
-      assert.strictEqual(rendered.length, 2);
-    } finally {
-      cancellation.dispose();
-      panel.dispose();
-    }
-  });
-
-  test("tools report malformed input without throwing during preparation", async () => {
-    const panel = newPanel();
-    const cancellation = new vscode.CancellationTokenSource();
-    try {
-      for (const tool of [
-        new RenderDiagramTool(panel),
-        new ChartTool(panel),
-        new PickDiagramNodesTool(panel),
-        new AnnotateDiagramTool(panel),
-      ]) {
-        for (const input of [null, undefined, [], 42]) {
-          const options = { input } as never;
-          assert.doesNotThrow(() => tool.prepareInvocation(options));
-          const result = await tool.invoke(options, cancellation.token);
-          assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
-          assert.match(
-            result.content[0].value,
-            /Nothing was rendered|No chart was rendered|No node was picked|Nothing was marked/,
-          );
-        }
-      }
-      assert.strictEqual(panel.current, undefined);
-    } finally {
-      cancellation.dispose();
       panel.dispose();
     }
   });
@@ -972,7 +840,7 @@ suite("panel", function () {
         "tool",
       );
       assert.ok(outcome.ok);
-      await edit(webview, edited);
+      await webview.edit(edited);
       const restored = newPanel(values);
       try {
         assert.strictEqual(restored.current?.source, edited);
@@ -1041,7 +909,7 @@ suite("panel", function () {
         name: "Revenue",
         axisLabel: { formatter: "USD {value}" },
       };
-      await edit(webview, JSON.stringify(option));
+      await webview.edit(JSON.stringify(option));
       panel.dispose();
       ({ panel, webview } = await newFakePanel(values));
       await webview.receive({ type: "refresh" });
@@ -1075,7 +943,7 @@ suite("panel", function () {
         },
         "tool",
       );
-      await edit(webview, edited);
+      await webview.edit(edited);
       vscode.window.withProgress = async (options, task) => {
         loads++;
         return progress(options, task);
@@ -1170,7 +1038,7 @@ suite("panel", function () {
       );
       assert.ok(outcome.ok);
       const refreshing = webview.receive({ type: "refresh" });
-      await Promise.all([refreshing, edit(webview, pie("B"))]);
+      await Promise.all([refreshing, webview.edit(pie("B"))]);
       assert.strictEqual(panel.current?.source, pie("B"));
       assert.ok(panel.current?.editedByUser);
     } finally {
@@ -1201,8 +1069,8 @@ suite("panel", function () {
         };
         const refreshing = webview.receive({ type: "refresh" });
         if (action === "edit and revert") {
-          await edit(webview, `${source} `);
-          await edit(webview, source);
+          await webview.edit(`${source} `);
+          await webview.edit(source);
         } else {
           webview.panel.dispose();
           await showInFake(panel);
@@ -1277,9 +1145,8 @@ suite("panel", function () {
         { input: { source: flowchart.source, links: linkTexts(links) } } as never,
         new vscode.CancellationTokenSource().token,
       );
-      assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
-      assert.match(result.content[0].value, /These links name nodes the diagram does not have/);
-      assert.match(result.content[0].value, /"Checker"\. Its node ids are "A", "B"\./);
+      assert.match(toolText(result), /These links name nodes the diagram does not have/);
+      assert.match(toolText(result), /"Checker"\. Its node ids are "A", "B"\./);
     } finally {
       panel.dispose();
     }
@@ -1340,10 +1207,9 @@ suite("panel", function () {
         { input: { marks: [{ id: "Yes" }, { id: "Yes (q2)" }] } } as never,
         new vscode.CancellationTokenSource().token,
       );
-      assert.ok(result.content[0] instanceof vscode.LanguageModelTextPart);
-      assert.match(result.content[0].value, /^Marked 1 chart item: Yes \(q2\) \(current\)\./);
+      assert.match(toolText(result), /^Marked 1 chart item: Yes \(q2\) \(current\)\./);
       assert.match(
-        result.content[0].value,
+        toolText(result),
         /These names each name several items of the chart, so nothing was marked for them: "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\. Mark the items you mean by their ids\./,
       );
       const outcome = panel.annotate({ marks: [{ id: "Yes", kind: "info" }], dim: false });

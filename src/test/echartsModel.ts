@@ -6,13 +6,9 @@ import { ChartItems } from "../webview/echartsItems";
 export function withChart<T>(
   option: Record<string, unknown>,
   read: (chart: ECharts.ECharts) => T,
+  { width = 400, height = 300 } = {},
 ): T {
-  const chart = initECharts(null, undefined, {
-    renderer: "svg",
-    ssr: true,
-    width: 400,
-    height: 300,
-  });
+  const chart = initECharts(null, undefined, { renderer: "svg", ssr: true, width, height });
   try {
     chart.setOption(option);
     return read(chart as unknown as ECharts.ECharts);

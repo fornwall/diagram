@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { SAVED_CHART, type SavedChart, safeFileName } from "../protocol";
+import { SAVED_CHART, type SavedChart } from "../protocol";
 import { savedChartHtml } from "../savedChart";
 import { testColors } from "./themeColors";
 
@@ -17,22 +17,6 @@ function build(overrides: Partial<SavedChart> = {}): Promise<string> {
 }
 
 suite("savedChart", () => {
-  test("names the file after the title, without what file names cannot hold", () => {
-    assert.strictEqual(safeFileName("Commits per author", "chart"), "Commits per author");
-    assert.strictEqual(safeFileName(' Disk usage of /tmp/*? "x" ', "chart"), "Disk usage of tmp x");
-    assert.strictEqual(safeFileName("Sales 2026.", "chart"), "Sales 2026");
-    assert.strictEqual(safeFileName("  ", "chart"), "chart");
-    assert.ok(safeFileName("Long ".repeat(100), "chart").length <= 80);
-  });
-
-  test("truncating a title preserves valid Unicode file names", () => {
-    const prefix = "a".repeat(79);
-    const name = safeFileName(`${prefix}📊 Results`, "chart");
-    assert.strictEqual(name, prefix);
-    assert.doesNotThrow(() => encodeURIComponent(name));
-    assert.strictEqual(safeFileName("📊".repeat(50), "chart"), "📊".repeat(40));
-  });
-
   test("writes a page that draws the chart with everything it needs inlined", async () => {
     const html = await build();
     assert.ok(html.startsWith("<!DOCTYPE html>"));

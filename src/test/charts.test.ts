@@ -1,9 +1,10 @@
 import * as assert from "node:assert";
-import { time as echartsTime, init as initECharts } from "echarts";
+import { time as echartsTime } from "echarts";
 import { describeTable } from "../chartColumns";
 import { CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
+import { withChart } from "./echartsModel";
 import { newPanel } from "./newPanel";
 
 const LANGUAGES = parseTable(
@@ -247,19 +248,11 @@ suite("charts", () => {
     assert.strictEqual(large(chart("scatter"), 2000), true);
     // The SVG renderer draws them, as one path each rather than an element per item.
     for (const spec of [bar, chart("scatter")]) {
-      const rendered = initECharts(null, undefined, {
-        renderer: "svg",
-        ssr: true,
+      const svg = withChart(build(spec, rows(3000)), (rendered) => rendered.renderToSVGString(), {
         width: 800,
         height: 600,
       });
-      try {
-        rendered.setOption(build(spec, rows(3000)));
-        const svg = rendered.renderToSVGString();
-        assert.ok(svg.split("<path").length < 300, spec.type);
-      } finally {
-        rendered.dispose();
-      }
+      assert.ok(svg.split("<path").length < 300, spec.type);
     }
   });
 
@@ -532,20 +525,12 @@ suite("charts", () => {
       { source: "Yes (q2)", target: "Yes (q3)", value: 2 },
     ]);
     // ECharts identifies the nodes by id, and labels them by name.
-    const rendered = initECharts(null, undefined, {
-      renderer: "svg",
-      ssr: true,
+    const svg = withChart({ ...option, animation: false }, (chart) => chart.renderToSVGString(), {
       width: 800,
       height: 600,
     });
-    try {
-      rendered.setOption({ ...option, animation: false });
-      const svg = rendered.renderToSVGString();
-      assert.strictEqual(svg.match(/>Yes</g)?.length, 3);
-      assert.doesNotMatch(svg, /\(q\d\)/);
-    } finally {
-      rendered.dispose();
-    }
+    assert.strictEqual(svg.match(/>Yes</g)?.length, 3);
+    assert.doesNotMatch(svg, /\(q\d\)/);
     // An empty answer skips its stage, rather than moving the next answer into it.
     const skipped = build(chart("sankey"), "q1,q2,q3,n\nYes,,No,4\nNo,Maybe,No,1").series[0];
     assert.deepStrictEqual(skipped.links[0], { source: "Yes", target: "No (q3)", value: 4 });
@@ -1255,20 +1240,12 @@ suite("charts", () => {
           option.series[0].data,
           type === "scatter" ? dates.map((date) => [date, 3]) : [3, 3],
         );
-        const rendered = initECharts(null, undefined, {
-          renderer: "svg",
-          ssr: true,
+        const svg = withChart(option, (rendered) => rendered.renderToSVGString(), {
           width: 1200,
           height: 800,
         });
-        try {
-          rendered.setOption(option);
-          const svg = rendered.renderToSVGString();
-          for (const date of dates) {
-            assert.ok(svg.includes(date), `${type} must display the original label ${date}`);
-          }
-        } finally {
-          rendered.dispose();
+        for (const date of dates) {
+          assert.ok(svg.includes(date), `${type} must display the original label ${date}`);
         }
       }
     }

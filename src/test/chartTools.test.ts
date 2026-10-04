@@ -9,26 +9,15 @@ import { buildChart } from "../charts";
 import { InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { type FakeWebview, newFakePanel } from "./newPanel";
+import { newFakePanel } from "./newPanel";
+import { toolText } from "./toolText";
 
 const data = "name,amount\na,1\nb,2\nc,3";
 const token = new vscode.CancellationTokenSource().token;
 
-function text(result: vscode.LanguageModelToolResult): string {
-  return result.content
-    .filter((part) => part instanceof vscode.LanguageModelTextPart)
-    .map((part) => part.value)
-    .join("\n");
-}
-
 async function harness() {
   const values = new Map<string, unknown>();
   return { ...(await newFakePanel(values)), values };
-}
-
-/** Applies an edit of the source in the panel, as the webview's Apply does. */
-function edit(webview: FakeWebview, source: string): Promise<void> {
-  return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
 }
 
 async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }) {
@@ -175,7 +164,7 @@ suite("chart agent tools", function () {
       await draw(panel);
       const before = panel.current;
       const tool = new InspectDataTool(panel);
-      const inline = text(
+      const inline = toolText(
         await tool.invoke(
           { input: { data, sampleRows: 0 }, toolInvocationToken: undefined },
           token,
@@ -183,12 +172,14 @@ suite("chart agent tools", function () {
       );
       assert.match(inline, /"rowCount":3/);
       assert.match(inline, /"sample":\[\]/);
-      const cached = text(await tool.invoke({ input: {}, toolInvocationToken: undefined }, token));
+      const cached = toolText(
+        await tool.invoke({ input: {}, toolInvocationToken: undefined }, token),
+      );
       assert.match(cached, /"rowCount":3/);
       assert.strictEqual(panel.current, before);
       for (const input of [{ sampleRows: 21 }, { data, file: "x" }, { type: "bar", data }]) {
         assert.match(
-          text(await tool.invoke({ input, toolInvocationToken: undefined }, token)),
+          toolText(await tool.invoke({ input, toolInvocationToken: undefined }, token)),
           /could not be inspected/,
         );
       }
@@ -208,7 +199,7 @@ suite("chart agent tools", function () {
       assert.ok(tool.prepareInvocation({ input: { command: "printf data" } }).confirmationMessages);
       assert.ok(!tool.prepareInvocation({ input: { data } }).confirmationMessages);
       assert.match(
-        text(await tool.invoke({ input: { file }, toolInvocationToken: undefined }, token)),
+        toolText(await tool.invoke({ input: { file }, toolInvocationToken: undefined }, token)),
         /"rowCount":3/,
       );
       assert.strictEqual(panel.current, undefined);
@@ -224,7 +215,7 @@ suite("chart agent tools", function () {
       const source = await draw(panel, { type: "bar", command: "this-command-must-never-run" });
       const styled = JSON.parse(source);
       styled.backgroundColor = "#123456";
-      await edit(webview, JSON.stringify(styled));
+      await webview.edit(JSON.stringify(styled));
       const request = { requestId: "chart-update" } as never;
       const result = await new UpdateChartTool(panel).invoke(
         {
@@ -233,7 +224,7 @@ suite("chart agent tools", function () {
         },
         token,
       );
-      assert.match(text(result), /Updated/);
+      assert.match(toolText(result), /Updated/);
       assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
       assert.strictEqual(panel.current?.chart?.limit, 2);
       assert.strictEqual(panel.loadedChartData?.rows.length, 3);
@@ -268,7 +259,7 @@ suite("chart agent tools", function () {
       }
       const edited = JSON.parse(source);
       edited.series[0].data[0] = 999;
-      await edit(webview, JSON.stringify(edited));
+      await webview.edit(JSON.stringify(edited));
       const manual = panel.current;
       await assert.rejects(panel.updateChart({ limit: 2 }, token), /source|data|edit/i);
       assert.strictEqual(panel.current, manual);

@@ -1,9 +1,9 @@
 import * as assert from "node:assert";
-import { init as initECharts } from "echarts";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { layoutOption } from "../webview/echartsLayout";
+import { withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
 
 // biome-ignore lint/suspicious/noExplicitAny: inspect plain JSON chart options in tests.
@@ -194,21 +194,16 @@ suite("chart facets", () => {
         });
         // Simulate a viewer in another timezone than the extension host.
         process.env.TZ = "America/Los_Angeles";
-        const chart = initECharts(null, undefined, {
-          renderer: "svg",
-          ssr: true,
-          width: 800,
-          height: 600,
-        });
-        try {
-          chart.setOption({ ...option, animation: false });
-          const localEnd = new Date(2026, 1, 1, hour).getTime();
-          const endPixel = chart.convertToPixel({ xAxisIndex: 1 }, localEnd);
-          const boundPixel = chart.convertToPixel({ xAxisIndex: 1 }, option.xAxis[1].max);
-          assert.strictEqual(endPixel, boundPixel, end);
-        } finally {
-          chart.dispose();
-        }
+        withChart(
+          { ...option, animation: false },
+          (chart) => {
+            const localEnd = new Date(2026, 1, 1, hour).getTime();
+            const endPixel = chart.convertToPixel({ xAxisIndex: 1 }, localEnd);
+            const boundPixel = chart.convertToPixel({ xAxisIndex: 1 }, option.xAxis[1].max);
+            assert.strictEqual(endPixel, boundPixel, end);
+          },
+          { width: 800, height: 600 },
+        );
       }
     } finally {
       if (previousTimezone === undefined) delete process.env.TZ;
@@ -404,24 +399,19 @@ suite("chart facets", () => {
 
   test("renders all facet grids and titles as actual ECharts SVG", () => {
     const option = build("service,operation,ms\napi,read,2\nworker,write,30");
-    const chart = initECharts(null, undefined, {
-      renderer: "svg",
-      ssr: true,
-      width: 800,
-      height: 600,
-    });
-    try {
-      chart.setOption({ ...option, animation: false });
-      const svg = chart.renderToSVGString();
-      assert.match(svg, /service = api/);
-      assert.match(svg, /service = worker/);
-      assert.match(svg, />read<\/text>/);
-      assert.match(svg, />write<\/text>/);
-      const x1 = chart.convertToPixel({ xAxisIndex: 0 }, "read");
-      const x2 = chart.convertToPixel({ xAxisIndex: 1 }, "read");
-      assert.ok(typeof x1 === "number" && typeof x2 === "number" && x2 > x1 + 100);
-    } finally {
-      chart.dispose();
-    }
+    withChart(
+      { ...option, animation: false },
+      (chart) => {
+        const svg = chart.renderToSVGString();
+        assert.match(svg, /service = api/);
+        assert.match(svg, /service = worker/);
+        assert.match(svg, />read<\/text>/);
+        assert.match(svg, />write<\/text>/);
+        const x1 = chart.convertToPixel({ xAxisIndex: 0 }, "read");
+        const x2 = chart.convertToPixel({ xAxisIndex: 1 }, "read");
+        assert.ok(typeof x1 === "number" && typeof x2 === "number" && x2 > x1 + 100);
+      },
+      { width: 800, height: 600 },
+    );
   });
 });

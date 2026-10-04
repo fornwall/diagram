@@ -9,6 +9,7 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
+import { toolText } from "./toolText";
 
 suite("workspace tools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
@@ -24,9 +25,7 @@ suite("workspace tools", function () {
   async function invoke<T>(tool: vscode.LanguageModelTool<T>, input: T, token = source.token) {
     const result = await tool.invoke({ input, toolInvocationToken: undefined }, token);
     assert.ok(result);
-    const part = result.content[0];
-    assert.ok(part instanceof vscode.LanguageModelTextPart);
-    return part.value;
+    return toolText(result);
   }
 
   suiteSetup(async () => {

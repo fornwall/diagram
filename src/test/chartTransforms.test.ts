@@ -1,9 +1,9 @@
 import * as assert from "node:assert";
-import { init as initECharts } from "echarts";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { filterTable } from "../chartTransforms";
 import { type DataTable, parseTable } from "../data";
+import { withChart } from "./echartsModel";
 
 // biome-ignore lint/suspicious/noExplicitAny: inspecting generated ECharts JSON
 type Option = Record<string, any>;
@@ -107,18 +107,10 @@ suite("chart transforms", () => {
       { name: "[0, 2]", value: 3, lower: 0, upper: 2 },
     ]);
     assert.strictEqual(option.series[0].barCategoryGap, "0%");
-    const chart = initECharts(null, undefined, {
-      renderer: "svg",
-      ssr: true,
-      width: 600,
-      height: 400,
-    });
-    try {
-      chart.setOption(option);
-      assert.match(chart.renderToSVGString(), /<svg/);
-    } finally {
-      chart.dispose();
-    }
+    assert.match(
+      withChart(option, (chart) => chart.renderToSVGString(), { width: 600, height: 400 }),
+      /<svg/,
+    );
   });
 
   test("histograms round bin names and skip identifier columns by default", () => {
@@ -210,18 +202,10 @@ suite("chart transforms", () => {
       }
       assert.strictEqual(option.series[0].data[2], null);
       assert.strictEqual(option.series[1].data[0], null);
-      const chart = initECharts(null, undefined, {
-        renderer: "svg",
-        ssr: true,
-        width: 600,
-        height: 400,
-      });
-      try {
-        chart.setOption(option);
-        assert.match(chart.renderToSVGString(), /<svg/);
-      } finally {
-        chart.dispose();
-      }
+      assert.match(
+        withChart(option, (chart) => chart.renderToSVGString(), { width: 600, height: 400 }),
+        /<svg/,
+      );
     }
   });
 });
