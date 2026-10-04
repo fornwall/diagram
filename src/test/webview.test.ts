@@ -1763,10 +1763,11 @@ suite("webview", function () {
         'Unknown diagram type "C4": did you mean "C4Context", "C4Container" or "C4Component"?',
       ],
     );
-    const [unknown, fenced, labeled] = await errors(
+    const [unknown, fenced, labeled, empty] = await errors(
       "nonsense\n  A --> B",
       "```mermaid\nflowchart TD\n  A --> B\n```",
       "mermaid\nflowchart TD",
+      " \n%% only a comment\n",
     );
     assert.match(
       unknown ?? "",
@@ -1774,6 +1775,7 @@ suite("webview", function () {
     );
     assert.match(fenced ?? "", /^Remove the code fence/);
     assert.match(labeled ?? "", /^Remove the "mermaid" line/);
+    assert.match(empty ?? "", /^The diagram is empty: start it with the diagram type/);
   });
 
   test("knows the diagram types that Mermaid detects", async function () {

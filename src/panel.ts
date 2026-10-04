@@ -653,7 +653,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Writes the current diagram without requiring a source edit first. */
   private async writeShownToDocument(): Promise<void> {
     const state = this.state;
-    if (!state?.document) {
+    // Write names the request of a drawn source, and writeFence refuses an empty one.
+    if (!state?.document || state.source === undefined) {
       return;
     }
     let warning: string;
@@ -661,9 +662,6 @@ export class DiagramPanel implements vscode.Disposable {
       warning = "Wait for the diagram to finish rendering before writing it.";
     } else if (this.unavailable) {
       warning = `The diagram was not written: ${this.unavailable} Reopen the panel and try again.`;
-    } else if (!state.source?.trim()) {
-      warning =
-        "There is nothing to write: the diagram is not drawn. Press Refresh to draw it again.";
     } else if (state.error) {
       warning = `The diagram is not written, as it fails to render: ${state.error}`;
     } else {

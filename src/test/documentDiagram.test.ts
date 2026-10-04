@@ -437,6 +437,26 @@ suite("documentDiagram", function () {
     }
   });
 
+  test("a diagram that no document holds ignores a Write from the page", async () => {
+    const { panel, webview } = await newFakePanel();
+    const warn = vscode.window.showWarningMessage;
+    const warnings: string[] = [];
+    vscode.window.showWarningMessage = (async (message: string) => {
+      warnings.push(message);
+    }) as typeof warn;
+    try {
+      assert.ok(
+        (await panel.render({ language: "mermaid", source: "flowchart TD", title: "Flow" }, "tool"))
+          .ok,
+      );
+      await writeShown(webview);
+      assert.deepStrictEqual(warnings, []);
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+    }
+  });
+
   test("an unavailable render cannot be written to the document", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
