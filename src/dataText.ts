@@ -272,6 +272,34 @@ function splitPipes(lines: string[]): string[][] {
     });
 }
 
+/** A GFM delimiter row, as under the header of a Markdown table: "|---|:--:|" or "--|--". */
+const DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+
+/**
+ * Finds Markdown tables among `lines`: a header row above a delimiter row with as many cells, and
+ * the rows below them up to a line without a pipe.
+ */
+function markdownTables(lines: string[]): { start: number; end: number }[] {
+  const tables: { start: number; end: number }[] = [];
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const header = lines[i] ?? "";
+    const delimiter = lines[i + 1] ?? "";
+    if (
+      PIPE.test(header) &&
+      delimiter.includes("|") &&
+      DELIMITER_ROW.test(delimiter) &&
+      !RULE.test(header) &&
+      splitPipes([header])[0]?.length === splitPipes([delimiter])[0]?.length
+    ) {
+      let end = i + 2;
+      while (end < lines.length && PIPE.test(lines[end] ?? "")) end++;
+      tables.push({ start: i, end });
+      i = end - 1;
+    }
+  }
+  return tables;
+}
+
 interface Token {
   text: string;
   start: number;
@@ -416,9 +444,25 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
 
 /** Splits text in the given format, or else in the one that fits it best, into records. */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
-  const { lines, underlined } = withoutRules(
-    text.split(/\r\n?|\n/).filter((line) => !isBlank(line)),
-  );
+  const all = text.split(/\r\n?|\n/);
+  if (format === "auto") {
+    // A Markdown table in a document or a chat answer, with text or more tables around it.
+    const tables = markdownTables(all);
+    const [table] = tables;
+    if (
+      table !== undefined &&
+      (tables.length > 1 ||
+        all.some((line, i) => (i < table.start || i >= table.end) && !isBlank(line)))
+    ) {
+      const lines = `lines ${table.start + 1}\u2013${table.end}`;
+      const note =
+        tables.length > 1
+          ? `The data has ${tables.length} Markdown tables; only the first (${lines}) was read.`
+          : `Only the Markdown table (${lines}) was read, not the text around it.`;
+      return { ...splitText(all.slice(table.start, table.end).join("\n"), format), note };
+    }
+  }
+  const { lines, underlined } = withoutRules(all.filter((line) => !isBlank(line)));
   const tabs = lines.filter((line) => line.includes("\t")).length;
   let tabular: Records | undefined;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {

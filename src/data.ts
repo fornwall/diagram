@@ -23,6 +23,8 @@ export interface DataTable {
   rows: Cell[][];
   /** Whether the column names come from the data, rather than being generated ("Column 1"). */
   header: boolean;
+  /** What of the data was left out, such as the text around a Markdown table. */
+  note?: string;
 }
 
 /** Finds a column by its exact name, then ignoring case and surrounding spaces. */
@@ -46,6 +48,7 @@ export interface Records {
   header?: boolean;
   /** Whether they are CSV, which usually has a header even when all its columns hold text. */
   csv?: boolean;
+  note?: string;
 }
 
 /**
@@ -155,7 +158,7 @@ function columnNames(header: Cell[], width: number): string[] {
 }
 
 /** Builds a table from records, converting text to numbers where it is one. */
-function tableFromRecords({ records, header, csv = false }: Records): DataTable {
+function tableFromRecords({ records, header, csv = false, note }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
@@ -204,7 +207,7 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
       found.length === 0 && name.includes("%") ? "%" : found.length === 1 ? found[0] : undefined;
     return numeric && unit !== undefined ? { name, numeric, unit } : { name, numeric };
   });
-  return { columns, rows, header: named };
+  return { columns, rows, header: named, ...(note === undefined ? {} : { note }) };
 }
 
 /**

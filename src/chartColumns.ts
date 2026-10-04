@@ -370,6 +370,7 @@ export function describeTable(table: DataTable): string {
   const count = table.rows.length;
   return [
     `${count} ${count === 1 ? "row" : "rows"}; columns: ${describeColumns(table)}`,
+    ...(table.note === undefined ? [] : [table.note]),
     count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:",
     ...table.rows.slice(0, PREVIEW_ROWS).map((row) => JSON.stringify(row)),
   ].join("\n");

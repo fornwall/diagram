@@ -788,6 +788,44 @@ suite("data", () => {
     ]);
   });
 
+  test("reads the first Markdown table among text and other tables, and says so", () => {
+    const answer = [
+      "Here are the line counts:",
+      "",
+      "| lang | lines |",
+      "|------|------:|",
+      "| ts   | 1,200 |",
+      "| css  |   300 |",
+      "",
+      "TypeScript dominates.",
+    ].join("\n");
+    const table = parseTable(answer);
+    assert.deepStrictEqual(table.rows, [
+      ["ts", 1200],
+      ["css", 300],
+    ]);
+    assert.deepStrictEqual(
+      table.columns.map((column) => column.name),
+      ["lang", "lines"],
+    );
+    assert.strictEqual(
+      table.note,
+      "Only the Markdown table (lines 3\u20136) was read, not the text around it.",
+    );
+    // Prose directly above the header, and a line without a pipe ending the table.
+    assert.deepStrictEqual(parse("Results:\na | b\n--|--\nx | 1\nDone.").rows, [["x", 1]]);
+    assert.strictEqual(
+      parseTable(`${answer}\n\n| a | b |\n|---|---|\n| y | 2 |`).note,
+      "The data has 2 Markdown tables; only the first (lines 3\u20136) was read.",
+    );
+    // A table alone has no note, and a delimiter row needs as many cells as the header.
+    assert.strictEqual(parseTable("| a | b |\n|---|---|\n| x | 1 |").note, undefined);
+    assert.strictEqual(
+      parseTable("intro\n| a | b | c |\n|---|---|\n| x | 1 | 2 |").note,
+      undefined,
+    );
+  });
+
   test("leaves out rules, taking the line above one as the header", () => {
     assert.deepStrictEqual(parse("Package    Version\n---------- -------\nnumpy      1.26.0"), {
       columns: ["Package", "Version"],

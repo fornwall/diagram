@@ -1571,6 +1571,10 @@ suite("charts", () => {
       describeTable({ columns: [{ name: "x", numeric: true }], rows: [[null]], header: true }),
       /"x" \(empty\)/,
     );
+    assert.strictEqual(
+      describeTable(parseTable("Sizes:\n| x |\n|---|\n| 1 |")),
+      '1 row; columns: "x" (numbers)\nOnly the Markdown table (lines 2\u20134) was read, not the text around it.\nRows:\n[1]',
+    );
   });
 
   test("describeTable points out text cells in numeric columns", () => {

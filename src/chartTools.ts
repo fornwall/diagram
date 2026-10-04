@@ -56,6 +56,7 @@ export function inspectTable(table: DataTable, sampleRows: number): string {
       rowCount: table.rows.length,
       columnCount: table.columns.length,
       header: table.header,
+      note: table.note,
       columns,
       sample,
       sampleRowsOmitted: table.rows.length - sample.length,
