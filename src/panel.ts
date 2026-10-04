@@ -370,13 +370,7 @@ export class DiagramPanel implements vscode.Disposable {
       case "ask":
         return this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
       case "clickToAsk":
-        // A diagram that fails to render has no nodes: the click was on the one it replaced.
-        if (
-          this.state?.clickPrompt &&
-          !this.state.error &&
-          !this.pendingRender &&
-          !this.unavailable
-        ) {
+        if (this.state?.clickPrompt && this.drawn) {
           return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
@@ -392,13 +386,8 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
       case "openUrl":
-        // Only a Mermaid diagram links to URLs, and one that failed to render has no nodes.
-        if (
-          this.state?.language === "mermaid" &&
-          !this.state.error &&
-          !this.pendingRender &&
-          !this.unavailable
-        ) {
+        // Only a Mermaid diagram links to URLs.
+        if (this.state?.language === "mermaid" && this.drawn) {
           return openUrl(message.url, this.pageRanCode, (ask) => this.confirmForPage(ask));
         }
         break;
@@ -676,31 +665,20 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state?.document) {
       return;
     }
+    let warning: string;
     if (this.pendingRender) {
-      void vscode.window.showWarningMessage(
-        "Wait for the diagram to finish rendering before writing it.",
-      );
-      return;
+      warning = "Wait for the diagram to finish rendering before writing it.";
+    } else if (this.unavailable) {
+      warning = `The diagram was not written: ${this.unavailable} Reopen the panel and try again.`;
+    } else if (!state.source?.trim()) {
+      warning =
+        "There is nothing to write: the diagram is not drawn. Press Refresh to draw it again.";
+    } else if (state.error) {
+      warning = `The diagram is not written, as it fails to render: ${state.error}`;
+    } else {
+      return this.writeToDocument(state.document, state.source);
     }
-    if (this.unavailable) {
-      void vscode.window.showWarningMessage(
-        `The diagram was not written: ${this.unavailable} Reopen the panel and try again.`,
-      );
-      return;
-    }
-    if (state.source === undefined || !state.source.trim()) {
-      void vscode.window.showWarningMessage(
-        "There is nothing to write: the diagram is not drawn. Press Refresh to draw it again.",
-      );
-      return;
-    }
-    if (state.error) {
-      void vscode.window.showWarningMessage(
-        `The diagram is not written, as it fails to render: ${state.error}`,
-      );
-      return;
-    }
-    await this.writeToDocument(state.document, state.source);
+    void vscode.window.showWarningMessage(warning);
   }
 
   /**
@@ -859,12 +837,6 @@ export class DiagramPanel implements vscode.Disposable {
     } catch (error) {
       unavailable = errorMessage(error);
     }
-    let edited = false;
-    try {
-      assertChartPresentation(state.chartPresentation);
-    } catch {
-      edited = true;
-    }
     this.post({
       type: "chartOptions",
       visible: this.chartOptionsVisible,
@@ -873,7 +845,8 @@ export class DiagramPanel implements vscode.Disposable {
         controls: chartControls(chart),
         columns: table?.columns ?? [],
         rowCount: table?.rows.length ?? 0,
-        edited,
+        // Edits that the chart cannot keep when rebuilt from its data.
+        edited: Boolean(state.chartPresentation?.blocked),
         unavailable:
           unavailable ??
           (table ? undefined : "Press Refresh to load the data before changing chart options."),
@@ -1156,18 +1129,16 @@ export class DiagramPanel implements vscode.Disposable {
   /** Where a node of the diagram shown links to in the code, if anywhere. */
   private linkOf(node: DiagramNode): NodeLink | undefined {
     const links = this.state?.links;
-    // A diagram that fails to render has no nodes: the click was on the one it replaced. Node ids
-    // are a model's words, so only the map's own entries count, not "constructor" and the like.
-    if (
-      !links ||
-      this.state?.error ||
-      this.pendingRender ||
-      this.unavailable ||
-      !Object.hasOwn(links, node.id)
-    ) {
-      return undefined;
-    }
-    return links[node.id];
+    // Node ids are a model's words, so only the map's own entries count, not "constructor".
+    return links && this.drawn && Object.hasOwn(links, node.id) ? links[node.id] : undefined;
+  }
+
+  /**
+   * Whether the panel shows the current diagram drawn. One that fails to render has no nodes, so a
+   * click on a node was on the diagram it replaced.
+   */
+  private get drawn(): boolean {
+    return !this.state?.error && !this.pendingRender && !this.unavailable;
   }
 
   /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */
