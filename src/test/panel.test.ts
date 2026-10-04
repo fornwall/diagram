@@ -402,64 +402,6 @@ suite("panel", function () {
     }
   });
 
-  test("unchanged saves share pending writes, retry failures and persist rollbacks", async () => {
-    const panel = newPanel();
-    const internals = panel as unknown as {
-      state: DiagramState;
-      save(): Promise<void>;
-      context: vscode.ExtensionContext;
-    };
-    const warning = vscode.window.showWarningMessage;
-    vscode.window.showWarningMessage = async () => undefined;
-    const pending = Promise.withResolvers<void>();
-    let writes = 0;
-    internals.context.workspaceState.update = () => {
-      writes++;
-      return writes === 1 ? pending.promise : Promise.resolve();
-    };
-    try {
-      const first: DiagramState = { ...flowchart, origin: "tool", editedByUser: false };
-      internals.state = first;
-      const saving = internals.save();
-      assert.strictEqual(internals.save(), saving);
-      assert.strictEqual(writes, 1);
-      pending.reject(new Error("Storage is unavailable"));
-      await saving;
-      await internals.save();
-      assert.strictEqual(writes, 2, "retry unchanged state after failed persistence");
-      await internals.save();
-      assert.strictEqual(writes, 2);
-      internals.state = { ...first, title: "Replacement" };
-      await internals.save();
-      internals.state = first;
-      await internals.save();
-      assert.strictEqual(writes, 4, "rolling back a previously saved state must write it again");
-    } finally {
-      pending.resolve();
-      vscode.window.showWarningMessage = warning;
-      panel.dispose();
-    }
-  });
-
-  test("restored state needs no save until changed", async () => {
-    const state: DiagramState = { ...flowchart, origin: "tool", editedByUser: false };
-    const panel = newPanel(new Map([["diagram.state", state]]));
-    const internals = panel as unknown as {
-      save(): Promise<void>;
-      context: vscode.ExtensionContext;
-    };
-    let writes = 0;
-    internals.context.workspaceState.update = async () => {
-      writes++;
-    };
-    try {
-      await internals.save();
-      assert.strictEqual(writes, 0);
-    } finally {
-      panel.dispose();
-    }
-  });
-
   test("an unavailable rendering ignores stale clicks on the previous diagram", async () => {
     const panel = newPanel();
     const actions: string[] = [];
@@ -1056,16 +998,8 @@ suite("panel", function () {
         "tool",
       );
       assert.ok(outcome.ok);
-      const internals = panel as unknown as {
-        onMessage(message: FromWebview): void;
-        save(): Promise<void>;
-      };
-      internals.onMessage({
-        type: "sourceEdited",
-        requestId: sourceRequestId(panel),
-        source: edited,
-      });
-      await internals.save();
+      const internals = panel as unknown as { applyEdit(source: string): Promise<void> };
+      await internals.applyEdit(edited);
       const restored = newPanel(values);
       try {
         assert.strictEqual(restored.current?.source, edited);
@@ -1238,7 +1172,7 @@ suite("panel", function () {
       await internals.refreshChart();
       assert.strictEqual(panel.current?.source, before?.source);
       assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
-      assert.match(error, /test refresh failure.*previous source and styling are kept/);
+      assert.match(error, /test refresh failure.*previous chart is kept/);
       assert.match(panel.describeForModel() ?? "", /A \(good\)/);
     } finally {
       vscode.window.showErrorMessage = showError;
