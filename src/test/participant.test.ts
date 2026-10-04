@@ -976,7 +976,7 @@ suite("participant", function () {
     }
   });
 
-  test("gives the model attached images, and says why others are left out", async () => {
+  test("gives the model attached images once, and says why others are left out", async () => {
     const panel = newPanel();
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(root);
@@ -995,6 +995,8 @@ suite("participant", function () {
         pasted("image/png", new Uint8Array(3 * 1024 * 1024 + 1)),
         pasted("application/pdf", new Uint8Array([1])),
         { id: "problems", value: { diagnostics: [] } },
+        { id: "file", value: file },
+        pasted("image/jpeg", new Uint8Array([1, 2, 3])),
       ].reverse();
       const { sent } = await ask(panel, [[text("Drawing.")]], { references });
       const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));

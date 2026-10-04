@@ -1,6 +1,7 @@
 // What the @diagram participant sends a language model: its instructions, the conversation so far
 // and the user's attachments, as much as fits.
 
+import { createHash } from "node:crypto";
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
 import { describeChartParameters } from "./describe";
@@ -360,8 +361,8 @@ async function pastExchanges(
 }
 
 /**
- * Deduplicate attachments in prompt order. Images are given to the `model` that the request is
- * sent to, or described as left out.
+ * Deduplicate attachments in prompt order, images by their content. Images are given to the
+ * `model` that the request is sent to, or described as left out.
  */
 async function readAttachments(
   { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
@@ -372,9 +373,13 @@ async function readAttachments(
   const attachments = await Promise.all(
     references.toReversed().map((reference) => readAttachment(reference, documents, model)),
   );
-  const unique = new Map<unknown, Attachment>();
+  const unique = new Map<string, Attachment>();
   for (const attachment of attachments) {
-    unique.set("image" in attachment ? attachment : attachmentText(attachment), attachment);
+    const key =
+      "image" in attachment
+        ? createHash("sha256").update(attachment.image.data).digest("hex")
+        : attachmentText(attachment);
+    unique.set(key, attachment);
   }
   return [...unique.values()];
 }
