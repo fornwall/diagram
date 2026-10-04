@@ -44,16 +44,19 @@ interface ItemData {
    * The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data as data
    * index 0, named after the series.
    */
-  tree?: { getNodeByDataIndex(index: number): TreeNode };
+  tree?: { root: TreeNode; getNodeByDataIndex(index: number): TreeNode };
 }
 
 interface TreeNode {
   parentNode?: TreeNode;
+  children: TreeNode[];
   getRawIndex(): number;
 }
 
 interface SeriesModel {
   componentIndex: number;
+  /** The type of series, such as "tree". */
+  subType: string;
   name: string;
   /** The option of the series, with ECharts' defaults. */
   get(key: string): unknown;
@@ -111,6 +114,8 @@ interface Item {
 export class ChartItems {
   private readonly series: SeriesItems[] = [];
   private readonly prefixed: boolean;
+  /** What a model should know about parts of the option that ECharts does not draw. */
+  readonly warnings: string[] = [];
 
   constructor(chart: ECharts.ECharts) {
     const model = modelOf(chart);
@@ -123,7 +128,14 @@ export class ChartItems {
         series.name && !series.name.includes("\u0000") ? series.name : `Series ${index + 1}`;
       if (prefixes.has(name)) name = `${name} (series ${index + 1})`;
       prefixes.add(name);
-      this.series[index] = new SeriesItems(index, this.prefixed ? `${name}/` : "", series);
+      const items = new SeriesItems(index, this.prefixed ? `${name}/` : "", series);
+      this.series[index] = items;
+      if (items.trees > 1) {
+        const named = name === series.name ? ` (${JSON.stringify(name)})` : "";
+        this.warnings.push(
+          `Tree series ${index + 1}${named} has ${items.trees} trees in its data, of which ECharts draws only the first: put them under one root node to draw them all.`,
+        );
+      }
     });
   }
 
@@ -193,6 +205,8 @@ interface TypedData {
   raw: boolean;
   /** The index of the first item: 1 in a tree, to leave out the root ECharts adds. */
   first: number;
+  /** The index after the last item. */
+  end: number;
 }
 
 class SeriesItems {
@@ -201,6 +215,8 @@ class SeriesItems {
   /** The ids and labels that several items go by. */
   readonly repeated = new Set<string>();
   private readonly datas: TypedData[];
+  /** How many trees a tree series has in its data, of which ECharts lays out and draws the first. */
+  readonly trees: number;
   /** A graph's edges name their nodes by id or name, or by index. */
   private readonly nodeLabels = new Map<string, string>();
   private readonly nodeLabelsByIndex: string[] = [];
@@ -215,12 +231,21 @@ class SeriesItems {
   ) {
     const raw = series.getRawData();
     // Legends and data zoom filter items out, but they can be marked once shown again.
-    this.datas = series.getAllData().map(({ data }) => ({
-      ...(data.dataType === raw.dataType ? { data: raw, raw: true } : { data, raw: false }),
-      // Actions find the one data of a tree without its type, which ECharts calls "main".
-      dataType: data.dataType === "main" ? undefined : data.dataType,
-      first: data.tree ? 1 : 0,
-    }));
+    const roots = (series.subType === "tree" && raw.tree?.root.children) || [];
+    this.trees = roots.length;
+    this.datas = series.getAllData().map((shown) => {
+      const all = shown.data.dataType === raw.dataType;
+      const data = all ? raw : shown.data;
+      return {
+        data,
+        raw: all,
+        // Actions find the one data of a tree without its type, which ECharts calls "main".
+        dataType: data.dataType === "main" ? undefined : data.dataType,
+        first: data.tree ? 1 : 0,
+        // The nodes of a tree come in depth-first order.
+        end: roots[1]?.getRawIndex() ?? data.count(),
+      };
+    });
     const count = (name: string) => {
       const count = (this.counts.get(name) ?? 0) + 1;
       this.counts.set(name, count);
@@ -234,7 +259,7 @@ class SeriesItems {
 
   each(callback: (item: Item) => void): void {
     for (const data of this.datas) {
-      for (let index = data.first; index < data.data.count(); index++) {
+      for (let index = data.first; index < data.end; index++) {
         callback(this.describe(data, index));
       }
     }
@@ -244,9 +269,7 @@ class SeriesItems {
     const found = this.datas.find((data) => data.dataType === dataType);
     if (!found) return undefined;
     const index = found.raw ? dataIndex : found.data.indexOfRawIndex(dataIndex);
-    return index >= found.first && index < found.data.count()
-      ? this.describe(found, index)
-      : undefined;
+    return index >= found.first && index < found.end ? this.describe(found, index) : undefined;
   }
 
   /** The item's id, told apart by its index from another item of the same name. */

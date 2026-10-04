@@ -109,6 +109,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     if (outcome.ok) {
       return textResult(
         `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
+          this.panel.warnings.map((warning) => ` ${warning}`).join("") +
           leftOutLinks(problems) +
           linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds),
       );

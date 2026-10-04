@@ -35,6 +35,7 @@ suite("echartsItems", () => {
           methods(series, "SeriesModel", ["get", "getRawData", "getAllData"]);
           assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");
           assert.strictEqual(typeof series.name, "string", "SeriesModel.name");
+          assert.strictEqual(series.subType, option.series[0]?.type, "SeriesModel.subType");
           assert.strictEqual(model.getSeriesByIndex(0), series, "GlobalModel.getSeriesByIndex");
           const datas = series.getAllData().map(({ data }) => data);
           assert.deepStrictEqual(
@@ -53,6 +54,7 @@ suite("echartsItems", () => {
             methods(node, "TreeNode", ["getRawIndex"]);
             assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
             assert.ok(!tree?.getNodeByDataIndex(0).parentNode, "the root is data index 0");
+            assert.strictEqual(tree?.root.children[0], node, "Tree.root, TreeNode.children");
             assert.strictEqual(series.get("nodeClick"), "zoomToNode", "SeriesModel.get");
           }
         });
@@ -189,6 +191,26 @@ suite("echartsItems", () => {
       );
       assert.strictEqual(items.labelOf("src/a/index.ts"), "src/a/index.ts");
       assert.strictEqual(items.labelOf("src/a"), "a");
+    }
+  });
+
+  test("leaves out the trees after the first of a tree series, which ECharts does not draw", () => {
+    const data = ["A", "B", "C"].map((name) => ({ name, children: [{ name: "leaf", value: 1 }] }));
+    const tree = itemsOf({ series: [{ type: "tree", name: "Org", data }] });
+    assert.deepStrictEqual(tree.node("0::2"), { id: "A/leaf", label: "leaf" });
+    assert.strictEqual(tree.node("0::3"), undefined);
+    assert.deepStrictEqual(tree.find("leaf"), [item(2)]);
+    assert.deepStrictEqual(tree.repeatedNames(), []);
+    assert.deepStrictEqual(tree.warnings, [
+      'Tree series 1 ("Org") has 3 trees in its data, of which ECharts draws only the first: put them under one root node to draw them all.',
+    ]);
+    const unnamed = itemsOf({ series: [{ type: "tree", data: data.slice(0, 2) }] });
+    assert.match(unnamed.warnings.join(), /^Tree series 1 has 2 trees/);
+    // A treemap and a sunburst draw them all.
+    for (const type of ["treemap", "sunburst"]) {
+      const items = itemsOf({ series: [{ type, data }] });
+      assert.deepStrictEqual(items.find("C/leaf"), [item(6)], type);
+      assert.deepStrictEqual(items.warnings, [], type);
     }
   });
 

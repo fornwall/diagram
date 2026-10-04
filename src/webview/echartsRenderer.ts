@@ -104,6 +104,10 @@ export class EChartsRenderer implements Renderer {
     return this.items()?.repeatedNames() ?? [];
   }
 
+  warnings(): string[] {
+    return this.items()?.warnings ?? [];
+  }
+
   showMarks(annotation: Annotation): void {
     const wasBlurring = this.blurring();
     const previousIds = new Set(this.annotation.marks.map(({ id }) => id));

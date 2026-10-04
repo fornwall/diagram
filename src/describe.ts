@@ -29,6 +29,7 @@ export function describeDiagram(
   annotation?: Annotation,
   relationships: readonly DiagramNode[] = [],
   repeatedNames: readonly RepeatedName[] = [],
+  warnings: readonly string[] = [],
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [`Current ${what}: ${JSON.stringify(state.title)}`, "", describeSource(state), ""];
@@ -65,6 +66,7 @@ export function describeDiagram(
   if (state.editedByUser) {
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
+  lines.push(...warnings);
   if (relationships.length > 0) {
     lines.push(
       `Selectable relationships (use these exact ids for ${ANNOTATE_TOOL}): ${nodeList(relationships)}.`,

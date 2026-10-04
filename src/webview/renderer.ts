@@ -40,6 +40,8 @@ export interface Renderer {
   labelOf(id: string): string | undefined;
   /** Names that several chart items go by, which marks must replace with the items' ids. */
   repeatedNames?(): RepeatedName[];
+  /** What a model should know about parts of the source that the rendering leaves out. */
+  warnings?(): string[];
   /** Whether the current drawing supports path selection between its nodes. */
   readonly supportsPaths?: boolean;
   findPath?(from: string, to: string): DiagramNode[] | undefined;

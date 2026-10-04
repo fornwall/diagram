@@ -144,6 +144,7 @@ export class DiagramPanel implements vscode.Disposable {
   private relationships: DiagramNode[] = [];
   /** Names that several items of the chart go by, which marks must not use. */
   private repeatedNames: RepeatedName[] = [];
+  private renderWarnings: string[] = [];
 
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -183,11 +184,16 @@ export class DiagramPanel implements vscode.Disposable {
     return this.nodeIds;
   }
 
+  /** What a model should know about parts of the source that the panel did not draw. */
+  get warnings(): readonly string[] {
+    return this.renderWarnings;
+  }
+
   /** Describes the current diagram and the user's interactions with it, for a language model. */
   describeForModel(): string | undefined {
     return (
       this.state &&
-      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships, this.repeatedNames)}`
+      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships, this.repeatedNames, this.renderWarnings)}`
     );
   }
 
@@ -318,6 +324,7 @@ export class DiagramPanel implements vscode.Disposable {
           this.nodeIds = message.nodeIds;
           this.relationships = message.relationships?.filter((node) => node.relationship) ?? [];
           this.repeatedNames = message.repeatedNames ?? [];
+          this.renderWarnings = message.warnings ?? [];
         }
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
@@ -423,6 +430,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.nodeIds = undefined;
     this.relationships = [];
     this.repeatedNames = [];
+    this.renderWarnings = [];
     const replaced = {
       ok: false,
       kind: "unavailable",

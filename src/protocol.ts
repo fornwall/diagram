@@ -175,6 +175,8 @@ export type FromWebview =
       /** Selectable edges or sequence messages, with authoritative endpoints. */
       relationships?: DiagramNode[];
       repeatedNames?: RepeatedName[];
+      /** Parts of the source that the rendering leaves out. */
+      warnings?: string[];
     }
   | { type: "renderError"; requestId: number; message: string }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
@@ -259,6 +261,7 @@ const FROM_WEBVIEW_FIELDS: {
     nodeIds: optional(isStrings),
     relationships: optional(isNodes),
     repeatedNames: optional(isRepeatedNames),
+    warnings: optional(isStrings),
   },
   renderError: { requestId: isId, message: isString },
   selectionChanged: { requestId: isId, nodes: isNodes },

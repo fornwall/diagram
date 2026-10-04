@@ -79,6 +79,22 @@ suite("Extension", function () {
     assert.match(text, /Rendered the bar chart/);
   });
 
+  test("tells the agent that a tree series draws only the first of its trees", async () => {
+    const tree = (...names: string[]) =>
+      invoke("diagram_render", {
+        source: JSON.stringify({
+          series: [{ type: "tree", data: names.map((name) => ({ name })) }],
+        }),
+        language: "echarts",
+      });
+    const warning =
+      "Tree series 1 has 2 trees in its data, of which ECharts draws only the first: put them under one root node to draw them all.";
+    assert.ok((await tree("A", "B")).endsWith(` ${warning}`));
+    assert.ok((await invoke("diagram_getState", {})).includes(`\n${warning}\n`));
+    assert.doesNotMatch(await tree("A"), /Tree series/);
+    assert.doesNotMatch(await invoke("diagram_getState", {}), /Tree series/);
+  });
+
   test("reports syntax errors back to the agent", async () => {
     const text = await invoke("diagram_render", { source: "flowchart TD\n  A --> --> B[" });
     assert.match(text, /failed to render/);
