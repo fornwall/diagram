@@ -15,16 +15,13 @@ import { pngDataUrl } from "./images";
 import { MermaidRenderer } from "./mermaidRenderer";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
+import { type EditorState, SourceEditor } from "./sourceEditor";
 import { enableSplitter } from "./splitter";
 import "./style.css";
 import { readThemeColors } from "./vscodeTheme";
 
-type ViewMode = "visual" | "split" | "source";
-
-interface State {
+interface State extends EditorState {
   draft: string;
-  view?: ViewMode;
-  editor?: { source: string; base: string };
 }
 
 declare function acquireVsCodeApi(): {
@@ -52,9 +49,6 @@ const panes = element("panes");
 const splitter = element("splitter");
 const canvas = element("canvas");
 const diagram = element("diagram");
-const sourceInput = element<HTMLTextAreaElement>("source");
-const applyButton = element<HTMLButtonElement>("apply");
-const revertButton = element<HTMLButtonElement>("revert");
 const selectionLabel = element("selection-label");
 const highlightPathButton = element<HTMLButtonElement>("highlight-path");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
@@ -68,11 +62,6 @@ const refreshButton = element<HTMLButtonElement>("refresh");
 const writeToButton = element<HTMLButtonElement>("write-to");
 const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
-const viewButtons: Record<ViewMode, HTMLButtonElement> = {
-  visual: element<HTMLButtonElement>("view-visual"),
-  split: element<HTMLButtonElement>("view-split"),
-  source: element<HTMLButtonElement>("view-source"),
-};
 const annotationBanner = element("annotation");
 const annotationCaption = element("annotation-caption");
 const annotationNotes = element("annotation-notes");
@@ -95,17 +84,25 @@ const forgetDragImage = enableDragOut(dragOutHandle, {
   hint: transientHint,
 });
 
+const editor = new SourceEditor(
+  {
+    panes,
+    input: element("source"),
+    apply: element("apply"),
+    revert: element("revert"),
+    staleNote: element("stale-note"),
+    viewButtons: {
+      visual: element("view-visual"),
+      split: element("view-split"),
+      source: element("view-source"),
+    },
+  },
+  (requestId, source) => post({ type: "sourceEdited", requestId, source }),
+  saveState,
+);
+
 /** Last requested diagram, including failed renders. */
-let current:
-  | { renderer: Renderer; source: string; requestId: number; editorSource?: string }
-  | undefined;
-/** Source baseline for detecting unapplied edits. */
-let editedFrom = "";
-/** Pending edit, recognized when the extension sends it back to render. */
-let appliedSource: string | undefined;
-/** Preferred view, restored once a diagram is available. */
-let viewMode: ViewMode = "visual";
-let sourceShown = false;
+let current: { renderer: Renderer; requestId: number } | undefined;
 /** Selected nodes or chart items, by renderer key. */
 const selection = new Map<string, DiagramNode>();
 /** When set, a plain click on a node asks about it in chat. */
@@ -151,10 +148,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
   }
   const renderer = renderers[language];
-  current = { renderer, source, requestId };
-  // The first diagram makes the source available, and with it the view chosen before a reload.
-  setViewMode(viewMode);
-  sourceChanged(source);
+  current = { renderer, requestId };
+  editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
   // The previous drawing may remain visible while rendering, but its actions are now stale.
   canvas.inert = true;
@@ -199,15 +194,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.
   clearSelection();
   showAnnotation(UNMARKED);
-  for (const [button, description] of [
-    [viewButtons.visual, `Show the ${renderer.noun}`],
-    [viewButtons.split, `Show the ${renderer.noun} and its source`],
-    [viewButtons.source, `Edit the ${renderer.sourceName}`],
-  ] as const) {
-    button.title = description;
-    button.setAttribute("aria-label", description);
-  }
-  sourceInput.setAttribute("aria-label", renderer.sourceName);
   updateToolbar();
   updateSelectionUi();
 }
@@ -459,8 +445,8 @@ function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
 
 function startPick(id: number, prompt: string, multiple: boolean): void {
   // Reveal the nodes without discarding an unfinished source edit.
-  if (viewMode === "source") {
-    setViewMode("split");
+  if (editor.view === "source") {
+    editor.setView("split");
   }
   pick = { id, multiple };
   clearSelection();
@@ -485,7 +471,7 @@ function endPick(): void {
 
 /** Keeps keyboard navigation in the visible content when a focused action disappears. */
 function focusContent(): void {
-  (viewMode === "source" ? sourceInput : canvas).focus();
+  editor.content(canvas).focus();
 }
 
 pickDoneButton.addEventListener("click", () => {
@@ -523,12 +509,7 @@ clearSelectionButton.addEventListener("click", () => {
 // Keep drafts when the webview reloads, e.g. when moved to another window.
 let savedState: State | undefined;
 function saveState(): void {
-  const source = sourceInput.value;
-  const next: State = {
-    draft: askInput.value,
-    view: viewMode,
-    editor: source === editedFrom ? undefined : { source, base: editedFrom },
-  };
+  const next: State = { draft: askInput.value, ...editor.state() };
   // setState serializes the whole draft and sends it to the host. View and render updates can
   // reach here several times with the same state, including multi-megabyte source edits.
   if (
@@ -545,12 +526,7 @@ function saveState(): void {
 const restored = vscode.getState();
 savedState = restored;
 askInput.value = restored?.draft ?? "";
-viewMode = restored?.view ?? "visual";
-if (restored?.editor) {
-  sourceInput.value = restored.editor.source;
-  editedFrom = restored.editor.base;
-  updateEditorActions();
-}
+if (restored) editor.restore(restored);
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };
@@ -618,103 +594,6 @@ function transientHint(text: string): void {
   clearTimeout(hintTimer);
   hintTimer = setTimeout(updateSelectionUi, 4000);
 }
-
-// The views, and source editing.
-
-const staleNote = element("stale-note");
-
-/** Format only when needed, once per incoming diagram, even when switching views repeatedly. */
-function editorSource(): string {
-  if (!current) return "";
-  current.editorSource ??= current.renderer.formatForEditing(current.source);
-  return current.editorSource;
-}
-
-/** Shows the source of the diagram as rendered, as the editor's starting point. */
-function loadSource(): void {
-  editedFrom = editorSource();
-  if (sourceInput.value !== editedFrom) sourceInput.value = editedFrom;
-  staleNote.hidden = true;
-  updateEditorActions();
-}
-
-function updateEditorActions(): void {
-  const edited = sourceInput.value !== editedFrom;
-  applyButton.disabled = !edited;
-  revertButton.disabled = !edited;
-  saveState();
-}
-
-/** Changes views without discarding unapplied edits. */
-function setViewMode(mode: ViewMode): void {
-  viewMode = mode;
-  // Before the first diagram there is no source to show.
-  const shown = current === undefined ? "visual" : mode;
-  for (const [name, button] of Object.entries(viewButtons)) {
-    button.setAttribute("aria-pressed", String(name === shown));
-  }
-  // On the panes, not the body: a body class change would look like a theme change.
-  panes.className = `view-${shown}`;
-  const opening = shown !== "visual" && !sourceShown;
-  sourceShown = shown !== "visual";
-  if (opening && sourceInput.value === editedFrom) {
-    loadSource();
-  }
-  saveState();
-}
-
-for (const [mode, button] of Object.entries(viewButtons)) {
-  button.addEventListener("click", () => {
-    setViewMode(mode as ViewMode);
-    if (sourceShown) {
-      sourceInput.focus();
-    }
-  });
-}
-
-/** Keeps drafts when the diagram changes, and warns before they replace newer source. */
-function sourceChanged(source: string): void {
-  if (!sourceShown && sourceInput.value === editedFrom) {
-    return;
-  }
-  if (source === appliedSource) {
-    // Keep edits made while waiting for Apply to render.
-    if (sourceInput.value === appliedSource) {
-      loadSource();
-    } else {
-      editedFrom = editorSource();
-      updateEditorActions();
-    }
-    appliedSource = undefined;
-  } else if (sourceInput.value === editedFrom || sourceInput.value === source) {
-    loadSource();
-  } else {
-    staleNote.hidden = editorSource() === editedFrom;
-  }
-}
-
-function applySource(): void {
-  if (!current || sourceInput.value === editedFrom) {
-    return;
-  }
-  // The diagram that comes back is this edit, and not a change to warn about.
-  appliedSource = sourceInput.value;
-  staleNote.hidden = true;
-  post({ type: "sourceEdited", requestId: current.requestId, source: appliedSource });
-}
-
-sourceInput.addEventListener("input", updateEditorActions);
-sourceInput.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-    event.preventDefault();
-    applySource();
-  }
-});
-applyButton.addEventListener("click", applySource);
-revertButton.addEventListener("click", () => {
-  loadSource();
-  sourceInput.focus();
-});
 
 // Zoom (Mermaid only; charts fit the panel).
 
