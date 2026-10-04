@@ -1019,6 +1019,13 @@ suite("data", () => {
     assert.strictEqual(columns[100_000], "x (100001)");
   });
 
+  test("parses a very wide header with more words than the columns below it", () => {
+    const words = (count: number, prefix: string) =>
+      Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(" ");
+    const table = parse(`${words(60_000, "h")}\n${words(30_000, "")}`);
+    assert.strictEqual(table.rows.length, 1);
+  });
+
   test("parses a long line that almost is a rule", () => {
     assert.strictEqual(parse(`a 1\n${"-".repeat(1_000_000)}x 2`).rows.length, 2);
   });

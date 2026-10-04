@@ -421,6 +421,8 @@ function splitMultiWordHeader(tokens: Token[][]): string[][] | undefined {
     header === undefined ||
     count < 2 ||
     header.length <= count ||
+    // Each word is compared with each column, which would take long for very wide output.
+    header.length * count > MAX_CELLS ||
     rest.some((line) => line.length !== count)
   ) {
     return undefined;
