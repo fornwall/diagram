@@ -153,6 +153,23 @@ function showAllText(svg: SVGSVGElement): void {
   }
 }
 
+/**
+ * Centers the SVG text labels of nodes that Mermaid leaves starting at the middle of the node.
+ * Its label helper draws a text label from x = 0, for the diagram's CSS to center it, which only
+ * flowchart CSS does: mind map circles, squares and hexagons, and use case ellipses, would show
+ * their labels from the middle to the right. The shapes that place a label themselves move it
+ * from x = 0.
+ */
+function centerTextLabels(svg: SVGSVGElement): void {
+  for (const text of svg.querySelectorAll<SVGTextElement>(
+    'g.node > g.label[transform^="translate(0,"] text',
+  )) {
+    if (getComputedStyle(text).textAnchor === "start") {
+      text.style.textAnchor = "middle";
+    }
+  }
+}
+
 export class MermaidRenderer implements Renderer {
   readonly noun = "diagram";
   readonly itemNoun = "node";
@@ -357,6 +374,7 @@ export class MermaidRenderer implements Renderer {
         throw new Error("Mermaid did not produce an SVG to make an image of.");
       }
       layoutContainer().append(parsed);
+      centerTextLabels(parsed);
       showAllText(parsed);
       const image = standaloneSvg(parsed, background);
       parsed.remove();

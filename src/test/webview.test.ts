@@ -1421,6 +1421,42 @@ suite("webview", function () {
     assert.match(journey.text, /Brewtea/);
   });
 
+  test("centers exported Mermaid labels that Mermaid leaves to CSS", async () => {
+    // Mermaid starts these labels at the middle of the node, for CSS that only flowcharts have.
+    for (const source of [
+      "mindmap\n  root((Central idea with long text))\n    sq[Square node text]\n    hx{{Hexagon node text}}\n    Default node text",
+      'usecase-beta\n  actor Customer\n  Customer --> "Place an order with a long name"',
+      "flowchart LR\n  A((Circle label)) --> B[Rectangle label]",
+    ]) {
+      assert.ok((await render({ source })).ok, source);
+      const offCenter = await evaluate(`(async () => {
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const image = dataTransfer.getData("image/svg+xml");
+          if (!image) continue;
+          const host = document.createElement("div");
+          host.innerHTML = image;
+          document.body.append(host);
+          const center = (box) => (box.left + box.right) / 2;
+          const problems = Array.from(host.querySelectorAll("g.node"), node => {
+            const text = node.querySelector("text").getBoundingClientRect();
+            const shape = node.querySelector(":scope > :is(circle, ellipse, path, polygon, rect)").getBoundingClientRect();
+            // Mermaid itself places some labels, like those under use case actors, a few pixels off.
+            return Math.abs(center(text) - center(shape)) > 8 ? node.textContent : undefined;
+          }).filter(Boolean);
+          host.remove();
+          return problems;
+        }
+        throw new Error("The diagram image was not prepared.");
+      })()`);
+      assert.deepStrictEqual(offCenter, [], source);
+    }
+  });
+
   test("keeps Mermaid image export separate from an incoming render", async () => {
     assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
     assert.deepStrictEqual(
