@@ -1878,3 +1878,40 @@ suite("JavaScript in chart options", function () {
     });
   });
 });
+
+suite("Mermaid sources from a model or an untrusted repository", function () {
+  this.timeout(20_000);
+
+  let panel: DiagramPanel;
+  let evaluate: WebviewHarness["evaluate"];
+  suiteSetup(() => {
+    panel = newPanel();
+    ({ evaluate } = instrumentWebview(panel));
+  });
+  suiteTeardown(() => panel.dispose());
+
+  const script = "<img src=x onerror='window.pwned=1'>";
+  const payloads: Record<string, string> = {
+    "HTML labels": `flowchart LR\n  A["${script}"] --> B["<a href='javascript:window.pwned=2'>x</a>"]\n  C["<iframe srcdoc='<script>parent.pwned=3</script>'></iframe>"]`,
+    "click directives": `flowchart LR\n  A --> B --> C --> D\n  click A call alert(1)\n  click B href "javascript:window.pwned=4"\n  click C href "https://example.com/?secret" _blank\n  click D href "vscode://file/etc/passwd"`,
+    "links in labels and actor menus": `sequenceDiagram\n  participant A as <a href='https://example.com'>A</a>\n  links A: {"Repo": "https://example.com"}\n  A->>B: <a href='mailto:x@example.com'>mail</a>`,
+    "an init directive": `%%{init: {"securityLevel": "loose", "dompurifyConfig": {"ADD_ATTR": ["onerror"]}}}%%\nflowchart LR\n  A["${script}"] --> B\n  click B call alert(1)`,
+    "front matter": `---\nconfig:\n  securityLevel: loose\n  dompurifyConfig:\n    ADD_ATTR: [onerror]\n---\nflowchart LR\n  A["${script}"] --> B`,
+  };
+
+  for (const [name, source] of Object.entries(payloads)) {
+    test(`runs no script and opens no link from ${name}`, async () => {
+      assert.ok((await panel.render({ language: "mermaid", source, title: name }, "tool")).ok);
+      const found = await evaluate(`(() => {
+        const elements = [...document.getElementById("diagram").querySelectorAll("*")];
+        return {
+          handlers: elements.flatMap(e => [...e.attributes].filter(a => /^on/i.test(a.name)).map(a => a.name)),
+          frames: elements.filter(e => /^(script|iframe|object|embed)$/i.test(e.tagName)).length,
+          links: elements.filter(e => e.tagName === "a" && (e.hasAttribute("href") || e.hasAttributeNS("http://www.w3.org/1999/xlink", "href"))).length,
+          pwned: window.pwned ?? null,
+        };
+      })()`);
+      assert.deepStrictEqual(found, { handlers: [], frames: 0, links: 0, pwned: null });
+    });
+  }
+});

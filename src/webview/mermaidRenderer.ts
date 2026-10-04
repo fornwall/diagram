@@ -415,6 +415,13 @@ export class MermaidRenderer implements Renderer {
         )
       : undefined;
     this.diagram.innerHTML = result.svg;
+    // A click selects, and code links open through the extension. A link that Mermaid draws, from
+    // a click directive or a label, would open its URL, written by a model, on that same click, in
+    // a trusted workspace without asking.
+    for (const link of this.diagram.querySelectorAll("a")) {
+      link.removeAttribute("href");
+      link.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+    }
     result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
