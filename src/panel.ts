@@ -132,6 +132,10 @@ export class DiagramPanel implements vscode.Disposable {
   private chartOptionsVisible = false;
   private refreshing = false;
   private exporting = false;
+  /** The last write to a document, which the next one waits for. */
+  private writing: Promise<void> | undefined;
+  /** Where a binding moved once its block was written, as the panel follows the written block. */
+  private readonly movedBindings = new WeakMap<DocumentBinding, DocumentBinding>();
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
@@ -662,7 +666,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.annotation = undefined;
     this.cancelPick("The user edited the diagram source instead of picking.");
     const outcome = await this.renderCurrent();
-    const binding = state.document;
+    const binding = state.document && this.movedBinding(state.document);
     // An intervening render must not redirect this Apply to another document, even if the source
     // happens to match.
     if (binding && this.state?.document === binding && this.state.source === source) {
@@ -712,31 +716,48 @@ export class DiagramPanel implements vscode.Disposable {
   /** Confirms agent replacements and follows the document block after a successful write. */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
     const version = this.renderVersion;
-    const isCurrent = () =>
+    const isCurrent = (current: DocumentBinding) => () =>
       this.renderVersion === version &&
-      this.state?.document === binding &&
+      this.state?.document === current &&
       this.state.source === source;
     if (binding.replaced && !(await confirmReplacedWrite(binding))) {
       return;
     }
-    if (!isCurrent()) {
+    if (!isCurrent(this.movedBinding(binding))()) {
       void vscode.window.showWarningMessage(
         "The diagram changed while you were confirming the write. Review it and write it again.",
       );
       return;
     }
-    const outcome = await writeFence(binding, source, isCurrent);
-    if (!outcome.written) {
-      // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
-      void reportWriteFailure(binding, outcome.reason);
-      return;
-    }
-    // Follow the written block, unless another diagram acquired its own binding while writing.
-    const state = this.state;
-    if (state?.document === binding) {
-      this.state = { ...state, document: { uri: binding.uri, fence: outcome.fence } };
-      await this.store.save(this.state);
-    }
+    // One write at a time, so that e.g. a second click on Write finds the block where the first
+    // write left it.
+    const previous = this.writing;
+    const writing = (async () => {
+      if (previous) await previous;
+      const current = this.movedBinding(binding);
+      const outcome = await writeFence(current, source, isCurrent(current));
+      if (!outcome.written) {
+        // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
+        void reportWriteFailure(current, outcome.reason);
+        return;
+      }
+      // Follow the written block, unless another diagram acquired its own binding while writing.
+      const moved = { uri: current.uri, fence: outcome.fence };
+      this.movedBindings.set(current, moved);
+      const state = this.state;
+      if (state?.document === current) {
+        this.state = { ...state, document: moved };
+        await this.store.save(this.state);
+      }
+    })();
+    this.writing = writing.catch(() => {});
+    await writing;
+  }
+
+  /** The binding of the block as the panel last wrote it. */
+  private movedBinding(binding: DocumentBinding): DocumentBinding {
+    const moved = this.movedBindings.get(binding);
+    return moved ? this.movedBinding(moved) : binding;
   }
 
   // Charts generated from data.

@@ -59,6 +59,9 @@ export async function writeFence(
   if (!fence) {
     return changed;
   }
+  if (fence.source === diagram) {
+    return { written: true, fence };
+  }
   const lines = diagram.split("\n").map((line) => (line.trim() ? fence.indent + line : line));
   const opening = openingFence(document.lineAt(fence.openingLine).text);
   if (!opening) {

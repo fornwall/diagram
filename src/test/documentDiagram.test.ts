@@ -284,6 +284,31 @@ suite("documentDiagram", function () {
     }
   });
 
+  test("a second write finds the block where the first one left it", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
+    const read = binding(document);
+    const panel = newPanel(new Map<string, unknown>([["diagram.state", openedState(read)]]));
+    const warn = vscode.window.showWarningMessage;
+    const warnings: string[] = [];
+    vscode.window.showWarningMessage = (async (message: string) => {
+      warnings.push(message);
+    }) as typeof warn;
+    try {
+      const internals = panel as unknown as { state: DiagramState };
+      internals.state = { ...openedState(read), source: "flowchart LR\n  A --> B" };
+      await Promise.all([writeShown(panel), writeShown(panel)]);
+      assert.deepStrictEqual(warnings, []);
+      assert.strictEqual(
+        document.getText(),
+        "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
+      );
+      assert.strictEqual(panel.current?.document?.fence.source, "flowchart LR\n  A --> B");
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+    }
+  });
+
   test("an invalid Apply keeps the edits in the panel without overwriting the document", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const before = document.getText();
