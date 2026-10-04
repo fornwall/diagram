@@ -32,12 +32,18 @@ function numbersRows(table: DataTable, column: number): boolean {
   );
 }
 
-/** Distinct labels, excluding digit-prefixed dates and times such as those in ls -l. */
+/**
+ * Distinct labels, excluding digit-prefixed ones and dates and times such as those of ls -l
+ * ("Oct 4 14:02", "Oct 4 2025").
+ */
 function namesRows(table: DataTable, column: number): boolean {
   const seen = new Set<Cell | undefined>();
   for (const row of table.rows) {
     const cell = row[column];
-    if (seen.has(cell) || (typeof cell === "string" && /^\d/.test(cell))) {
+    if (
+      seen.has(cell) ||
+      (typeof cell === "string" && /^\d|\d:\d\d|^\S+ \d\d? \d{4}$/.test(cell))
+    ) {
       return false;
     }
     seen.add(cell);

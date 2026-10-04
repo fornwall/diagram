@@ -1396,6 +1396,8 @@ suite("charts", () => {
       "drwxr-xr-x 3 fred staff 4096 Jan  3 10:15 src",
     ].join("\n");
     assert.deepStrictEqual(build(chart("bar"), ls).xAxis.data, ["a.txt", "my notes.md", "src"]);
+    const old = ls.replaceAll(/\d\d:\d\d/g, " 2024");
+    assert.deepStrictEqual(build(chart("bar"), old).xAxis.data, ["a.txt", "my notes.md", "src"]);
     // Dates label the rows when nothing else does, and a cartesian chart draws them as times.
     const sales = "date,region,sales\n2024-01-01,north,3\n2024-01-02,north,5";
     const option = build(chart("line"), sales);

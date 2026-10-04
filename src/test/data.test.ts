@@ -611,38 +611,87 @@ suite("data", () => {
     });
   });
 
-  test("parses ls -l output, leaving out its total line", () => {
-    const table = parse(
+  test("parses ls -l output into named columns, the name keeping its spaces", () => {
+    // GNU ls, with a device file, a symbolic link and a name with spaces.
+    const table = parseTable(
       [
         "total 16",
-        "-rw-r--r-- 1 fred staff 1234 Jan  1 12:00 a.txt",
-        "-rw-r--r-- 1 fred staff 56 Feb 12 09:30 my notes.md",
-        "drwxr-xr-x 3 fred staff 4096 Mar  3  2024 src",
+        "-rw-r--r--  1 fred staff  1234 Oct  4 14:02 a.txt",
+        "-rw-r--r--. 1 fred staff    56 Feb 12  2025 my notes.md",
+        "crw-rw-rw-  1 root root  1,   3 Oct  4 12:36 null",
+        "lrwxrwxrwx  1 root root     7 Oct  4 12:36 bin -> usr/bin",
+        "drwxr-xr-x+ 3 fred staff  4096 Mar  3  2024 src",
       ].join("\n"),
     );
-    assert.strictEqual(table.columns.length, 9);
-    assert.strictEqual(table.rows.length, 3);
-    assert.deepStrictEqual(table.rows[1]?.[8], "my notes.md");
-    assert.deepStrictEqual(table.rows[2]?.[4], 4096);
+    assert.deepStrictEqual(table.columns, [
+      { name: "Mode", numeric: false },
+      { name: "Links", numeric: true },
+      { name: "Owner", numeric: false },
+      { name: "Group", numeric: false },
+      { name: "Size", numeric: true, unit: "bytes" },
+      { name: "Modified", numeric: false },
+      { name: "Name", numeric: false },
+    ]);
+    assert.deepStrictEqual(table.rows, [
+      ["-rw-r--r--", 1, "fred", "staff", 1234, "Oct 4 14:02", "a.txt"],
+      ["-rw-r--r--.", 1, "fred", "staff", 56, "Feb 12 2025", "my notes.md"],
+      ["crw-rw-rw-", 1, "root", "root", "1, 3", "Oct 4 12:36", "null"],
+      ["lrwxrwxrwx", 1, "root", "root", 7, "Oct 4 12:36", "bin"],
+      ["drwxr-xr-x+", 3, "fred", "staff", 4096, "Mar 3 2024", "src"],
+    ]);
   });
 
-  test("parses ls -l output whose first file could pass for an aligned header", () => {
-    const table = parse(
-      [
-        "total 12",
-        "-rw-r--r--  1 fred staff  1234 Jan  1 12:00 a.txt",
-        "-rw-r--r--  1 fred staff  5678 Feb  2 09:30 my notes.md",
-        "drwxr-xr-x  3 fred staff  4096 Mar  3 10:15 src",
-      ].join("\n"),
-    );
-    assert.strictEqual(table.rows.length, 3);
+  test("parses ls -lh output of BSD, other time styles and several directories", () => {
+    const columns = (text: string) => parse(text).columns;
+    const sizes = (text: string) => parse(text).rows.map((row) => row.at(-3));
+    const names = (text: string) => parse(text).rows.map((row) => row.at(-1));
+    // macOS, with extended attributes, and "B" for bytes.
+    const bsd = [
+      "total 24",
+      "-rw-r--r--@  1 fred  staff   512B Oct  4 14:02 a b.txt",
+      "-rw-r--r--   1 fred  staff   1.5K Oct  4  2025 c.txt",
+      "drwxr-xr-x  12 fred  staff   384B Oct  4 14:02 src",
+    ].join("\n");
+    assert.deepStrictEqual(sizes(bsd), [512, 1536, 384]);
+    assert.deepStrictEqual(names(bsd), ["a b.txt", "c.txt", "src"]);
+    const longIso = [
+      "total 8.0K",
+      "-rw-r--r-- 1 fred fred 4.0K 2025-10-04 14:02 2024 report.pdf",
+      "-rw-r--r-- 1 fred fred  12M 2025-01-30 09:00 data.csv",
+    ].join("\n");
+    assert.deepStrictEqual(sizes(longIso), [4096, 12 * 1024 ** 2]);
+    assert.deepStrictEqual(names(longIso), ["2024 report.pdf", "data.csv"]);
     assert.deepStrictEqual(
-      table.rows.map((row) => [row[4], row[8]]),
-      [
-        [1234, "a.txt"],
-        [5678, "my notes.md"],
-        [4096, "src"],
-      ],
+      parse(longIso).rows.map((row) => row[5]),
+      ["2025-10-04 14:02", "2025-01-30 09:00"],
+    );
+    const fullIso = "-rw-r--r-- 1 fred fred 10 2025-10-04 14:02:00.123456789 +0200 a b";
+    assert.deepStrictEqual(names(fullIso), ["a b"]);
+    // ls -T on BSD, and ls -l of two directories.
+    assert.deepStrictEqual(names("-rw-r--r--  1 fred  staff  5 Oct  4 14:02:33 2025 x"), ["x"]);
+    const directories = [
+      "a:",
+      "total 4",
+      "-rw-r--r-- 1 fred fred 3 Oct  4 14:02 one",
+      "",
+      "b:",
+      "total 4",
+      "-rw-r--r-- 1 fred fred 5 Oct  4 14:02 two",
+    ].join("\n");
+    assert.deepStrictEqual(names(directories), ["one", "two"]);
+    // ls -o leaves out the group.
+    assert.deepStrictEqual(columns("-rw-r--r-- 1 fred 1234 Oct  4 14:02 a.txt"), [
+      "Mode",
+      "Links",
+      "Owner",
+      "Size",
+      "Modified",
+      "Name",
+    ]);
+    // A line that is not a file, as from ls -li, leaves the generic split.
+    assert.strictEqual(
+      columns("total 4\n123 -rw-r--r-- 1 fred fred 3 Oct  4 14:02 one")[0],
+      "Column 1",
     );
   });
 

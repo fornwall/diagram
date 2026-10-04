@@ -48,6 +48,8 @@ export interface Records {
   header?: boolean;
   /** Whether they are CSV, which usually has a header even when all its columns hold text. */
   csv?: boolean;
+  /** The units of columns that the format tells, as ls -l prints sizes in bytes. */
+  units?: (Unit | undefined)[];
   note?: string;
 }
 
@@ -158,14 +160,14 @@ function columnNames(header: Cell[], width: number): string[] {
 }
 
 /** Builds a table from records, converting text to numbers where it is one. */
-function tableFromRecords({ records, header, csv = false, note }: Records): DataTable {
+function tableFromRecords({ records, header, csv = false, units, note }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
   const formats = Array.from({ length: width }, (_, column) =>
     numberFormat(records, column, header ? 1 : 0),
   );
-  const units = Array.from({ length: width }, () => new Set<Unit>());
+  const cellUnits = Array.from({ length: width }, () => new Set<Unit>());
   // The cells below the first row, which is counted once it is known not to be the header.
   const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
     numbers: 0,
@@ -180,7 +182,7 @@ function tableFromRecords({ records, header, csv = false, note }: Records): Data
       let cell = field;
       if (typeof field === "string" && !(header && row === 0)) {
         const number = parseNumber(field, formats[column]);
-        if (number?.unit !== undefined) units[column]?.add(number.unit);
+        if (number?.unit !== undefined) cellUnits[column]?.add(number.unit);
         cell = number?.value ?? (field.trim() || null);
       }
       record[column] = cell;
@@ -202,9 +204,13 @@ function tableFromRecords({ records, header, csv = false, note }: Records): Data
         }
       }
     }
-    const found = [...(units[column] ?? [])];
+    const found = [...(cellUnits[column] ?? [])];
     const unit =
-      found.length === 0 && name.includes("%") ? "%" : found.length === 1 ? found[0] : undefined;
+      found.length === 0
+        ? (units?.[column] ?? (name.includes("%") ? "%" : undefined))
+        : found.length === 1
+          ? found[0]
+          : undefined;
     return numeric && unit !== undefined ? { name, numeric, unit } : { name, numeric };
   });
   return { columns, rows, header: named, ...(note === undefined ? {} : { note }) };

@@ -4,7 +4,7 @@
 import type { DataFormat } from "./chartSpec";
 import type { Records } from "./data";
 import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
-import { parseNumber } from "./dataNumber";
+import { parseNumber, type Unit } from "./dataNumber";
 
 function isBlank(line: string): boolean {
   return line.trim() === "";
@@ -328,6 +328,64 @@ function splitDiffStat(lines: string[]): Records | undefined {
   return records.length > 1 && (summary || bars) ? { records, header: true } : undefined;
 }
 
+/** A file's type and permissions, perhaps marked for an ACL, a security context or attributes. */
+const LS_MODE = "[-bcdDlnpsw?][-rwxsStTlL]{9}[.+@]?";
+/** A size, as "1234" or "4.0K" (-h), or a device's major and minor numbers: "8,   1". */
+const LS_SIZE = String.raw`\d+, *\d+|0x[\da-f]+|\d[\d.,]*[A-Za-z]*`;
+/**
+ * A modification time: "Oct  4 14:02", "Oct  4  2025", "4 okt. 14:02" in other locales,
+ * "Oct  4 14:02:33 2025" (-T), "2025-10-04 14:02" (long-iso), with seconds and a time zone
+ * (full-iso), or "10-04 14:02" and "2024-10-04" (iso).
+ */
+const LS_TIME = [
+  String.raw`\d{4}-\d\d-\d\d(?: +\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?: +[-+]\d{4})?)?`,
+  String.raw`\d\d-\d\d +\d\d:\d\d`,
+  String.raw`\S+ +\S+ +(?:\d{1,2}:\d\d(?::\d\d +\d{4})?|\d{4})`,
+].join("|");
+/** A line of ls -l, with or without the group (as with -o or -g). */
+const LS_LINE = new RegExp(
+  String.raw`^(${LS_MODE}) +(\d+) +(\S+) +(?:(\S+) +)?(${LS_SIZE}) +(${LS_TIME}) +(.+)$`,
+);
+
+/**
+ * Splits the output of ls -l, as GNU and BSD ls print it, into named columns, leaving out the
+ * "total" lines and the headings of directories ("src:"). The names of symbolic links leave out
+ * their targets ("bin -> usr/bin"). Returns undefined unless every other line is a file.
+ */
+function splitLs(lines: string[]): Records | undefined {
+  const files: string[][] = [];
+  let groups = false;
+  for (const line of lines) {
+    const match = LS_LINE.exec(line);
+    if (match === null) {
+      if (/^\S+ +\d[\d.,]*[A-Za-z]*$|:$/.test(line)) continue;
+      return undefined;
+    }
+    const [, mode = "", links = "", owner = "", group, size = "", time = "", name = ""] = match;
+    groups ||= group !== undefined;
+    const file = name.trimEnd();
+    files.push([
+      mode,
+      links,
+      owner,
+      group ?? "",
+      size.replace(/, +/, ", "),
+      time.replace(/ +/g, " "),
+      mode.startsWith("l") ? (file.split(" -> ")[0] ?? file) : file,
+    ]);
+  }
+  if (files.length === 0) {
+    return undefined;
+  }
+  const header = ["Mode", "Links", "Owner", "Group", "Size", "Modified", "Name"];
+  const units: (Unit | undefined)[] = [undefined, undefined, undefined, undefined, "bytes"];
+  if (!groups) {
+    for (const record of [header, ...files]) record.splice(3, 1);
+    units.splice(3, 1);
+  }
+  return { records: [header, ...files], header: true, units };
+}
+
 interface Token {
   text: string;
   start: number;
@@ -491,6 +549,12 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     }
   }
   const { lines, underlined } = withoutRules(all.filter((line) => !isBlank(line)));
+  if (format === "auto") {
+    const ls = splitLs(lines);
+    if (ls !== undefined) {
+      return ls;
+    }
+  }
   const tabs = lines.filter((line) => line.includes("\t")).length;
   let tabular: Records | undefined;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {

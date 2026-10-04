@@ -76,7 +76,7 @@ Both rendering tools accept `clickPrompt`, such as `"Explain {label} in more det
 
 ## Chart data
 
-`diagram_chart` reads CSV, TSV, JSON (nested objects become dotted columns such as `cpu.user`), JSON Lines, Markdown and other pipe tables and whitespace-separated output such as `du` or `wc -l`. It supports pie, doughnut, bar, line, area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts, including horizontal bars and stacked bars/areas. ISO dates become a time axis.
+`diagram_chart` reads CSV, TSV, JSON (nested objects become dotted columns such as `cpu.user`), JSON Lines, Markdown and other pipe tables and whitespace-separated output such as `du`, `wc -l` or `ls -l`. It supports pie, doughnut, bar, line, area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts, including horizontal bars and stacked bars/areas. ISO dates become a time axis.
 
 | Setting | Behavior |
 | --- | --- |
