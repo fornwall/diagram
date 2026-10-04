@@ -3,7 +3,7 @@ import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
 import { isPlainObject } from "./protocol";
 
-const CONTROL_KEYS = [
+export const CONTROL_KEYS = [
   "type",
   "labelColumn",
   "valueColumns",

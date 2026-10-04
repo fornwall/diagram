@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import { CONTROL_KEYS } from "./chartOptions";
+import { type ChartSpec, quoteAll, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
@@ -13,54 +14,38 @@ export interface InspectDataInput {
   sampleRows?: number;
 }
 
+/** What diagram_updateChart changes: the chart controls, title and maximum, never the source. */
+const UPDATE_KEYS = [...CONTROL_KEYS, "title", "max"] as const;
+
+type UpdateKey = (typeof UPDATE_KEYS)[number];
+
+/** Settings to change; null clears an optional one. */
 export type ChartUpdateInput = Partial<Pick<ChartSpec, "type" | "title">> & {
-  revision?: number;
-  labelColumn?: ChartSpec["labelColumn"] | null;
-  valueColumns?: string[] | null;
-  max?: number | null;
-  aggregate?: ChartSpec["aggregate"] | null;
-  sort?: ChartSpec["sort"] | null;
-  limit?: number | null;
-  bins?: number | null;
-  facetColumn?: string | null;
-  facetColumns?: number | null;
-  facetScales?: ChartSpec["facetScales"] | null;
-  filters?: ChartSpec["filters"] | null;
-};
+  [Key in Exclude<UpdateKey, "type" | "title">]?: ChartSpec[Key] | null;
+} & { revision?: number };
 
 /** A partial update; source and advanced options cannot be replaced through this tool. */
 export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
   if (!isPlainObject(input)) throw new Error("Chart updates must be an object.");
-  const keys = [
-    "type",
-    "title",
-    "labelColumn",
-    "valueColumns",
-    "max",
-    "aggregate",
-    "sort",
-    "limit",
-    "bins",
-    "facetColumn",
-    "facetColumns",
-    "facetScales",
-    "filters",
-  ];
-  if (Object.keys(input).some((key) => key !== "revision" && !keys.includes(key))) {
+  const unknown = Object.keys(input).filter(
+    (key) => key !== "revision" && !(UPDATE_KEYS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
     throw new Error(
-      `Only ${keys.join(", ")} and revision can be updated. Data and styling are retained.`,
+      `${quoteAll(unknown)} cannot be updated; only ${quoteAll(UPDATE_KEYS)} and "revision" can. ` +
+        "The data, its source and styling options are kept.",
     );
   }
   if (
     input.revision !== undefined &&
     (!Number.isSafeInteger(input.revision) || Number(input.revision) < 0)
   ) {
-    throw new Error("revision must be a nonnegative integer from diagram_getState.");
+    throw new Error('"revision" must be a nonnegative integer from diagram_getState.');
   }
-  if (!keys.some((key) => Object.hasOwn(input, key)))
-    throw new Error("Give at least one chart setting to change.");
+  if (!UPDATE_KEYS.some((key) => Object.hasOwn(input, key)))
+    throw new Error(`Give at least one chart setting to change: ${quoteAll(UPDATE_KEYS)}.`);
   if (input.type === null || input.title === null)
-    throw new Error("type and title cannot be null.");
+    throw new Error('"type" and "title" cannot be cleared with null.');
   const { revision: _, ...changes } = input;
   return validateChartSpec({ ...spec, ...changes });
 }
@@ -69,10 +54,15 @@ function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
   if (!isPlainObject(input)) throw new Error("Data inspection input must be an object.");
   const { sampleRows = 5, ...source } = input;
   if (!Number.isInteger(sampleRows) || Number(sampleRows) < 0 || Number(sampleRows) > 20) {
-    throw new Error("sampleRows must be an integer from 0 to 20.");
+    throw new Error('"sampleRows" must be an integer from 0 to 20.');
   }
-  if (Object.keys(source).some((key) => !["data", "file", "command", "format"].includes(key))) {
-    throw new Error("Use data, file, command, format and sampleRows only.");
+  const unknown = Object.keys(source).filter(
+    (key) => !["data", "file", "command", "format"].includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown ${quoteAll(unknown)}; use "data", "file", "command", "format" and "sampleRows".`,
+    );
   }
   if (Object.keys(source).length === 0) return { sampleRows: Number(sampleRows) };
   return { spec: validateChartSpec({ type: "bar", ...source }), sampleRows: Number(sampleRows) };

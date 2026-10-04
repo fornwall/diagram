@@ -12,7 +12,7 @@ const objects = (value: unknown): Option[] =>
   Array.isArray(value) ? value.filter(isPlainObject) : isPlainObject(value) ? [value] : [];
 
 /** Exclude the grouping field from inference, unless explicitly requested as a chart field. */
-export function facetTable(spec: ChartSpec, table: DataTable): DataTable {
+function facetTable(spec: ChartSpec, table: DataTable): DataTable {
   const index = findColumn(table, spec.facetColumn ?? "", "facet");
   const explicit = [spec.labelColumn ?? []].flat().concat(spec.valueColumns ?? []);
   const keep = explicit.some((name) => findColumn(table, name, "chart") === index);

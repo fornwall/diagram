@@ -166,6 +166,10 @@ suite("chart agent tools", function () {
     ]) {
       assert.throws(() => updatedChartSpec(spec, input));
     }
+    assert.throws(
+      () => updatedChartSpec(spec, { data: "x", options: {} }),
+      /^Error: "data", "options" cannot be updated; only "type", .*"title", "max" and "revision" can\./,
+    );
   });
 
   test("inspection reports inferred schema, nulls and bounded samples", () => {
