@@ -30,11 +30,12 @@ suite("echartsItems", () => {
     for (const [option, dataTypes] of options) {
       withChart(option, (chart) => {
         const model = modelOf(chart);
-        methods(model, "GlobalModel", ["getSeriesCount", "eachRawSeries"]);
+        methods(model, "GlobalModel", ["getSeriesCount", "getSeriesByIndex", "eachRawSeries"]);
         model.eachRawSeries((series) => {
-          methods(series, "SeriesModel", ["getRawData", "getAllData"]);
+          methods(series, "SeriesModel", ["get", "getRawData", "getAllData"]);
           assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");
           assert.strictEqual(typeof series.name, "string", "SeriesModel.name");
+          assert.strictEqual(model.getSeriesByIndex(0), series, "GlobalModel.getSeriesByIndex");
           const datas = series.getAllData().map(({ data }) => data);
           assert.deepStrictEqual(
             datas.map((data) => data.dataType),
@@ -52,6 +53,7 @@ suite("echartsItems", () => {
             methods(node, "TreeNode", ["getRawIndex"]);
             assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
             assert.ok(!tree?.getNodeByDataIndex(0).parentNode, "the root is data index 0");
+            assert.strictEqual(series.get("nodeClick"), "zoomToNode", "SeriesModel.get");
           }
         });
       });

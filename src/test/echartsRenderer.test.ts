@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { EChartsRenderer } from "../webview/echartsRenderer";
-import { itemsOf } from "./echartsModel";
+import { itemsOf, withChart } from "./echartsModel";
 
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
 function interactionRenderer() {
@@ -140,19 +140,44 @@ suite("echartsRenderer interactions", () => {
     ]);
   });
 
-  test("counts a click on a treemap's root or breadcrumb as one on empty space", () => {
-    const { renderer } = interactionRenderer();
-    Object.assign(renderer, {
-      chartItems: itemsOf({ series: [{ type: "treemap", data: [{ name: "A", value: 1 }] }] }),
-    });
-    const hitFor = (event: object) =>
-      (renderer as unknown as { hitFor(event: object): unknown }).hitFor(event);
-    assert.deepStrictEqual(hitFor({ seriesIndex: 0, dataIndex: 1 }), {
-      key: "0::1",
-      node: { id: "A", label: "A" },
-    });
-    assert.strictEqual(hitFor({ seriesIndex: 0, dataIndex: 0 }), undefined);
-    // A breadcrumb's click names its node only in `nodeData`.
-    assert.strictEqual(hitFor({ seriesIndex: 0, nodeData: { dataIndex: 0 } }), undefined);
+  test("takes a click on a treemap's root or breadcrumb, or a sunburst's root, to navigate", () => {
+    const cases = [
+      ["treemap", {}, true],
+      ["treemap", { nodeClick: false }, false],
+      ["treemap", { nodeClick: "link" }, false],
+      ["sunburst", {}, true],
+    ] as const;
+    for (const [type, options, navigates] of cases) {
+      const series = { type, ...options, data: [{ name: "A", value: 1 }] };
+      withChart({ series: [series] }, (chart) => {
+        const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
+        Object.assign(renderer, { chart });
+        const call = (method: string, event: object) =>
+          (renderer as unknown as Record<string, (event: object) => unknown>)[method]?.call(
+            renderer,
+            // ECharts calls the one data of a tree "main" in events.
+            { seriesIndex: 0, seriesType: type, dataType: "main", ...event },
+          );
+        const what = JSON.stringify(series);
+        assert.deepStrictEqual(
+          call("hitFor", { dataIndex: 1 }),
+          { key: "0::1", node: { id: "A", label: "A" } },
+          what,
+        );
+        // The root ECharts adds above the data is no item, and neither is a breadcrumb, whose
+        // click names its node only in `nodeData`.
+        assert.strictEqual(call("hitFor", { dataIndex: 0 }), undefined, what);
+        assert.strictEqual(call("navigates", { dataIndex: 0 }), navigates, what);
+        if (type === "treemap") {
+          const breadcrumb = {
+            selfType: "breadcrumb",
+            dataType: undefined,
+            nodeData: { dataIndex: 0 },
+          };
+          assert.strictEqual(call("hitFor", breadcrumb), undefined, what);
+          assert.strictEqual(call("navigates", breadcrumb), true, what);
+        }
+      });
+    }
   });
 });

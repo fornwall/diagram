@@ -4,7 +4,7 @@
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { ChartItems, type ItemRef, itemKey, parseItemKey } from "./echartsItems";
+import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
 import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
@@ -170,7 +170,10 @@ export class EChartsRenderer implements Renderer {
       if (params.componentType !== "series") {
         return;
       }
-      this.itemClicked(this.hitFor(params), withModifier(params.event?.event));
+      const hit = this.hitFor(params);
+      if (hit || !this.navigates(params)) {
+        this.itemClicked(hit, withModifier(params.event?.event));
+      }
       this.scheduleSelection();
     });
     chart.getZr().on("click", (event) => {
@@ -329,15 +332,23 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  /**
-   * The item a click on a series hit. A treemap's breadcrumb, and the root ECharts adds above a
-   * treemap or sunburst (showing between the rectangles, or in the middle to drill up), are no
-   * items: a click on them counts as one on empty space.
-   */
+  /** The item a click on a series hit, if it hit one. */
   private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent) {
     const key = itemKey({ seriesIndex, dataType, dataIndex });
     const node = this.items()?.node(key);
     return node && { key, node };
+  }
+
+  /**
+   * Whether a click on a part of a series that is no item zooms out or drills up, which leaves the
+   * selection as it is: a treemap's breadcrumb, the root ECharts adds above a sunburst, drawn in
+   * its middle once drilled down, or that above a treemap, drawn between its rectangles, where a
+   * click zooms out unless the series' nodeClick says otherwise.
+   */
+  private navigates({ seriesType, seriesIndex = 0, selfType }: ECharts.ECElementEvent): boolean {
+    if (selfType === "breadcrumb" || seriesType === "sunburst") return true;
+    const series = this.chart && modelOf(this.chart).getSeriesByIndex(seriesIndex);
+    return seriesType === "treemap" && series?.get("nodeClick") === "zoomToNode";
   }
 
   /** Coalesces the panel and ECharts click handlers into one selection update. */

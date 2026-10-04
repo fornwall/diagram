@@ -13,8 +13,12 @@ export interface ItemRef {
   dataIndex: number;
 }
 
+/**
+ * The key of an item. Events and selectchanged name the one data of a tree, treemap or sunburst by
+ * the type "main", which actions need not name: keys leave it out.
+ */
 export const itemKey = ({ seriesIndex, dataType, dataIndex }: ItemRef) =>
-  `${seriesIndex}:${dataType ?? ""}:${dataIndex}`;
+  `${seriesIndex}:${dataType === "main" ? "" : (dataType ?? "")}:${dataIndex}`;
 
 export function parseItemKey(key: string): ItemRef {
   const [series, dataType, data] = key.split(":");
@@ -51,6 +55,8 @@ interface TreeNode {
 interface SeriesModel {
   componentIndex: number;
   name: string;
+  /** The option of the series, with ECharts' defaults. */
+  get(key: string): unknown;
   getRawData(): ItemData;
   /** The data of each type, such as the nodes and edges of a graph, after filtering. */
   getAllData(): { data: ItemData }[];
@@ -58,6 +64,7 @@ interface SeriesModel {
 
 interface GlobalModel {
   getSeriesCount(): number;
+  getSeriesByIndex(index: number): SeriesModel | undefined;
   eachRawSeries(callback: (series: SeriesModel) => void): void;
 }
 
@@ -210,7 +217,7 @@ class SeriesItems {
     // Legends and data zoom filter items out, but they can be marked once shown again.
     this.datas = series.getAllData().map(({ data }) => ({
       ...(data.dataType === raw.dataType ? { data: raw, raw: true } : { data, raw: false }),
-      // Events and actions leave out the type of the one data of a tree, which ECharts calls "main".
+      // Actions find the one data of a tree without its type, which ECharts calls "main".
       dataType: data.dataType === "main" ? undefined : data.dataType,
       first: data.tree ? 1 : 0,
     }));

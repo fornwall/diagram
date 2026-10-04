@@ -2158,6 +2158,74 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the chart selection through zooming out and drilling up", async () => {
+    const color = (color: string) => ({ itemStyle: { color } });
+    const charts = {
+      treemap: {
+        itemStyle: { gapWidth: 20 },
+        breadcrumb: color("#00aa00"),
+        data: [
+          { name: "A", value: 1, ...color("#0000aa") },
+          { name: "B", value: 1, ...color("#0000bb") },
+        ],
+      },
+      sunburst: {
+        data: [
+          { name: "A", ...color("#0000aa"), children: [{ name: "a", value: 1 }] },
+          { name: "B", value: 1, ...color("#0000bb") },
+        ],
+      },
+    };
+    const shown: Record<string, unknown> = {};
+    for (const [type, series] of Object.entries(charts)) {
+      const source = JSON.stringify({ animation: false, series: [{ type, ...series }] });
+      assert.ok((await render({ language: "echarts", source })).ok);
+      shown[type] = await evaluate(`(async () => {
+        const label = document.getElementById("selection-label");
+        const svg = document.querySelector("#chart svg");
+        // ECharts draws what changed in the next frame.
+        const drawn = async () => {
+          for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
+        };
+        const all = async fill => {
+          await drawn();
+          return [...svg.querySelectorAll('[fill="' + fill + '"]')];
+        };
+        const center = element => {
+          const box = element.getBoundingClientRect();
+          return [box.x + box.width / 2, box.y + box.height / 2];
+        };
+        const click = ([clientX, clientY]) => {
+          for (const type of ["mousedown", "mouseup", "click"]) {
+            svg.dispatchEvent(new MouseEvent(type, {bubbles: true, clientX, clientY}));
+          }
+          return label.textContent;
+        };
+        const shown = {selected: click(center((await all("#0000aa"))[0]))};
+        if (${JSON.stringify(type)} === "treemap") {
+          // Zoomed in on A, which hides B, until a click on the breadcrumb of the root.
+          shown.breadcrumb = click(center((await all("#00aa00"))[0]));
+          // Between A and B, the root shows.
+          const [a, b] = [(await all("#0000aa"))[0], (await all("#0000bb"))[0]].map(center);
+          shown.root = click([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+        } else {
+          // Drilled down into A, the root shows in the middle, inside A.
+          shown.root = click(center((await all("#0000aa"))[0]));
+          shown.drilledUp = (await all("#0000bb")).length === 1;
+        }
+        const box = svg.getBoundingClientRect();
+        shown.empty = click([box.x + 2, box.y + 2]);
+        return shown;
+      })()`);
+    }
+    const selected = "Selected: “A”";
+    const empty = "Click chart items to select them (Ctrl/Cmd/Shift+click for several).";
+    assert.deepStrictEqual(shown, {
+      treemap: { selected, breadcrumb: selected, root: selected, empty },
+      sunburst: { selected, root: selected, drilledUp: true, empty },
+    });
+  });
+
   test("renders custom shapes without a coordinate system", async () => {
     assert.deepStrictEqual(
       await render({
