@@ -511,15 +511,110 @@ suite("charts", () => {
     );
   });
 
-  test("sankey says what it cannot draw", () => {
-    assert.throws(
-      () => build(chart("sankey"), "from,to,n\na,b,3\nb,a,1"),
-      /come back around: "a" -> "b" -> "a"/,
+  test("sankey gives each stage nodes of its own, named as in the data", () => {
+    const survey = "q1,q2,q3,n\nYes,Yes,No,5\nYes,No,No,3\nNo,Yes,Yes,2";
+    const option = build(chart("sankey"), survey);
+    const [series] = option.series;
+    assert.deepStrictEqual(series.data, [
+      { id: "Yes (q1)", name: "Yes", depth: 0 },
+      { id: "Yes (q2)", name: "Yes", depth: 1 },
+      { id: "No (q3)", name: "No", depth: 2 },
+      { id: "No (q2)", name: "No", depth: 1 },
+      { id: "No (q1)", name: "No", depth: 0 },
+      { id: "Yes (q3)", name: "Yes", depth: 2 },
+    ]);
+    assert.deepStrictEqual(series.links, [
+      { source: "Yes (q1)", target: "Yes (q2)", value: 5 },
+      { source: "Yes (q2)", target: "No (q3)", value: 5 },
+      { source: "Yes (q1)", target: "No (q2)", value: 3 },
+      { source: "No (q2)", target: "No (q3)", value: 3 },
+      { source: "No (q1)", target: "Yes (q2)", value: 2 },
+      { source: "Yes (q2)", target: "Yes (q3)", value: 2 },
+    ]);
+    // ECharts identifies the nodes by id, and labels them by name.
+    const rendered = initECharts(null, undefined, {
+      renderer: "svg",
+      ssr: true,
+      width: 800,
+      height: 600,
+    });
+    try {
+      rendered.setOption({ ...option, animation: false });
+      const svg = rendered.renderToSVGString();
+      assert.strictEqual(svg.match(/>Yes</g)?.length, 3);
+      assert.doesNotMatch(svg, /\(q\d\)/);
+    } finally {
+      rendered.dispose();
+    }
+    // An empty answer skips its stage, rather than moving the next answer into it.
+    const skipped = build(chart("sankey"), "q1,q2,q3,n\nYes,,No,4\nNo,Maybe,No,1").series[0];
+    assert.deepStrictEqual(skipped.links[0], { source: "Yes", target: "No (q3)", value: 4 });
+    assert.deepStrictEqual(skipped.data[1], { id: "No (q3)", name: "No", depth: 2 });
+  });
+
+  test("sankey joins the names of two columns unless that makes flows run in a circle", () => {
+    // Plans before and after: some stay, some move both ways.
+    const plans = "before,after,n\nBasic,Basic,5\nBasic,Pro,2\nPro,Basic,1";
+    const [series] = build(chart("sankey"), plans).series;
+    assert.deepStrictEqual(series.links, [
+      { source: "Basic (before)", target: "Basic (after)", value: 5 },
+      { source: "Basic (before)", target: "Pro (after)", value: 2 },
+      { source: "Pro (before)", target: "Basic (after)", value: 1 },
+    ]);
+    assert.match(
+      summary(chart("sankey"), plans),
+      /drew the names in both "before" and "after" as separate nodes, since joined they would make flows run in a circle\.$/,
+    );
+    // Rows of a matrix flowing into a column each.
+    const moves = build(chart("sankey"), "from,A,B\nA,1,2\nB,3,0").series[0];
+    assert.deepStrictEqual(moves.links, [
+      { source: "A (from)", target: "A", value: 1 },
+      { source: "A (from)", target: "B", value: 2 },
+      { source: "B (from)", target: "A", value: 3 },
+    ]);
+    assert.match(
+      summary(chart("sankey"), "from,A,B\nA,1,2\nB,3,0"),
+      /drew the names in both "from" and the value columns as separate nodes/,
+    );
+  });
+
+  test("sankey gives the same name under two parents of a path nodes of its own", () => {
+    const [series] = build(chart("sankey"), "path,size\na/lib/x,1\nb/lib/y,2").series;
+    assert.deepStrictEqual(
+      series.data.map((node: Option) => node.id ?? node.name),
+      ["a", "a/lib", "x", "b", "b/lib", "y"],
+    );
+    assert.deepStrictEqual(series.links[1], { source: "a/lib", target: "x", value: 1 });
+  });
+
+  test("sankey sums up the smallest nodes of a crowded column as Other", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => `s${i},sink,${i + 1}`);
+    const data = ["from,to,n", "Other,sink,100", ...rows].join("\n");
+    const option = build(chart("sankey"), data);
+    const [series] = option.series;
+    assert.strictEqual(series.data.length, 31);
+    assert.deepStrictEqual(
+      series.links.find((link: Option) => link.source === "Other"),
+      // s0 to s10, and the "Other" of the data.
+      { source: "Other", target: "sink", value: 100 + (11 * 12) / 2 },
     );
     assert.match(
-      summary(chart("sankey"), "from,to,n\na,a,3\na,b,1\nb,c,2"),
-      /left out 1 flow from a node to itself/,
+      summary(chart("sankey"), data),
+      /kept the 29 largest nodes of each column and summed up the other 12 as "Other"\.$/,
     );
+    // Each stage has an "Other" of its own.
+    const stages = Array.from({ length: 40 }, (_, i) => `a${i},b${i},c,${i + 1}`);
+    const others = build(chart("sankey"), ["a,b,c,n", ...stages].join("\n")).series[0].data;
+    assert.deepStrictEqual(
+      others.filter((node: Option) => node.name === "Other"),
+      [
+        { id: "Other (a)", name: "Other", depth: 0 },
+        { id: "Other (b)", name: "Other", depth: 1 },
+      ],
+    );
+  });
+
+  test("sankey says what it cannot draw", () => {
     assert.throws(
       () => build(chart("sankey"), "dir,size\nsrc/,10\ndist/,20"),
       /needs flows between two nodes, but every row holds one level only/,

@@ -80,7 +80,7 @@ Both rendering tools accept `clickPrompt`, such as `"Explain {label} in more det
 
 | Setting | Behavior |
 | --- | --- |
-| `labelColumn`, `valueColumns` | Choose columns by name, or omit to infer them. Multiple label columns define hierarchy levels, Sankey stages or heatmap axes. |
+| `labelColumn`, `valueColumns` | Choose columns by name, or omit to infer them. Multiple label columns define hierarchy levels, Sankey stages or heatmap axes. Each Sankey stage has nodes of its own, except that two columns are read as the edges of a graph when their shared names flow one way only. |
 | `aggregate` | Group matching labels by `sum`, `mean`, `count`, `min`, `max` or `median`. |
 | `sort`, `limit` | Sort by the first value column, then keep the requested number of rows. |
 | `filters` | Keep rows matching every predicate before other transformations. Example: `[{"column":"latency","op":"gte","value":100}]`. |
@@ -102,6 +102,7 @@ Relative paths resolve from the first workspace folder. Commands run there with 
 - Workspace code reads: 1 MiB per file, at most 500 lines per read. Text search scans at most 1,000 files and 16 MiB per call; results and line previews are bounded and report truncation.
 - Tables: 1,000,000 cells, including headers and empty cells.
 - Treemap, sunburst and sankey: 100 hierarchy levels per row.
+- Sankey: 30 nodes per column; the smallest of a column with more are summed up as "Other".
 
 Summarize larger datasets before charting them.
 

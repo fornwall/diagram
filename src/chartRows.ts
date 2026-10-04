@@ -1,7 +1,7 @@
 // The rows a chart draws: labeled, without totals or parent rows, grouped, sorted and limited.
 
-import { type Columns, columnName, readsLevels } from "./chartColumns";
-import { type Aggregation, type ChartSpec, quoteAll } from "./chartSpec";
+import { type Columns, chained, columnName, readsLevels } from "./chartColumns";
+import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
 
 /** Bounds prefix construction and recursive hierarchy traversal in both the host and renderer. */
@@ -315,7 +315,7 @@ function rowLabels(
   row: Cell[],
   index: number,
   { labels, separator }: Columns,
-  nested: boolean,
+  type: ChartType,
 ): string[] {
   const first = labels[0];
   if (first === undefined) {
@@ -325,7 +325,15 @@ function rowLabels(
     separator === undefined
       ? labels.map((column) => String(row[column] ?? ""))
       : String(row[first] ?? "").split(separator);
-  const levels = nested ? parts.filter((part) => part !== "") : parts;
+  if (type === "sankey" && separator === undefined) {
+    // Each label column is a stage, which an empty label in between skips rather than shifting
+    // the later stages into its place.
+    while (parts.length > 1 && parts.at(-1) === "") parts.pop();
+    return parts;
+  }
+  // Levels leave out the empty labels so that "src/" and "src" nest alike; any other chart keeps
+  // an empty label as the category it is.
+  const levels = readsLevels(type) ? parts.filter((part) => part !== "") : parts;
   return levels.length > 0 ? levels : [""];
 }
 
@@ -353,11 +361,9 @@ export function readRows(
       `left out the last row, ${JSON.stringify(table.rows.at(-1)?.[labelIndex])}, a total of the others`,
     );
   }
-  // A hierarchy and a flow read the labels as levels, leaving out the empty ones so that "src/"
-  // and "src" nest alike; any other chart keeps an empty label as the category it is.
   const nested = readsLevels(type);
   let rows: Row[] = tableRows.map((row, i) => ({
-    labels: rowLabels(row, i, columns, nested),
+    labels: rowLabels(row, i, columns, type),
     values: valueIndices.map((index) => {
       const cell = row[index];
       return typeof cell === "number" ? cell : null;
@@ -408,7 +414,7 @@ export function readRows(
     type === "funnel" ||
     type === "treemap" ||
     type === "sunburst" ||
-    (type === "sankey" && (columns.labels.length >= 2 || columns.separator !== undefined));
+    (type === "sankey" && chained(columns));
   if (positive || type === "scatter") {
     const charted = rows.filter(({ values }) =>
       positive ? (values[0] ?? 0) > 0 : !values.includes(null),

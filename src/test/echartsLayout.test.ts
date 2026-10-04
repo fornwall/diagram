@@ -344,6 +344,24 @@ suite("echartsLayout", () => {
     const nodes = Array.from({ length: 10 }, (_, index) => ({ name: `N${index}` }));
     const option = layout({ series: [{ type: "sankey", data: nodes }] });
     assert.strictEqual(option.series[0].data[9].itemStyle.color, "#090000");
+    // The nodes of the same name in two stages share a color.
+    const stages = layout({
+      series: [
+        {
+          type: "sankey",
+          data: [
+            { id: "Yes (q1)", name: "Yes" },
+            { id: "No (q1)", name: "No" },
+            { id: "Yes (q2)", name: "Yes" },
+            { name: "Maybe" },
+          ],
+        },
+      ],
+    });
+    assert.deepStrictEqual(
+      stages.series[0].data.map((node: Option) => node.itemStyle.color),
+      ["#000000", "#010000", "#000000", "#020000"],
+    );
   });
 
   test("defaults tooltips, selection and screen reader support", () => {

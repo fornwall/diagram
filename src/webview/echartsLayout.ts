@@ -527,15 +527,21 @@ function styleSeries(series: JsonObject[], yAxes: JsonObject[], colors: ThemeCol
     }
     if (each.type === "sankey" && each.color === undefined) {
       // ECharts colors sankey nodes by value along the palette, mixing hues; give each node its
-      // own categorical color instead.
+      // own categorical color instead, shared by the nodes of the same name in other stages.
       const key = each.data != null ? "data" : "nodes";
       const nodes: unknown = each[key];
       if (Array.isArray(nodes)) {
+        const colorIndices = new Map<unknown, number>();
         each[key] = nodes.map((node: unknown, index) => {
           if (!isPlainObject(node)) return node;
+          const name = node.name === undefined ? index : String(node.name);
+          const colorIndex = colorIndices.get(name) ?? colorIndices.size;
+          colorIndices.set(name, colorIndex);
           const copy = cloneValue(node) as JsonObject;
           const itemStyle = isPlainObject(copy.itemStyle) ? copy.itemStyle : {};
-          itemStyle.color ??= toCss(colors.palette[index % colors.palette.length] ?? colors.blue);
+          itemStyle.color ??= toCss(
+            colors.palette[colorIndex % colors.palette.length] ?? colors.blue,
+          );
           copy.itemStyle = itemStyle;
           return copy;
         });
