@@ -1643,9 +1643,14 @@ suite("webview", function () {
         ["gantt", "  dateFormat YYYY-MM-DD", "  Task :a1, 2026-01-01, 7d", "  : : :"],
         'Parse error on line 11, column 3: unexpected ": : :"',
       ],
+      // Blank lines after the type, which Mermaid fails on in mind maps and kanban boards, are left out.
       [
-        ["mindmap", "  root((Plan))", "    A", "    B))("],
-        'Parse error on line 11, column 8: unexpected "("',
+        ["mindmap", "", "  root((Plan))", "    A", "    B))("],
+        'Parse error on line 12, column 8: unexpected "("',
+      ],
+      [
+        ["kanban", " ", "  Todo", "    Task))("],
+        'Parse error on line 11, column 11: unexpected "("',
       ],
       // A lexer error, which Jison reports without a column.
       [
@@ -1688,6 +1693,20 @@ suite("webview", function () {
       const source = [...preamble, header, "  %% comment", ...body].join("\r\n");
       const error = await renderError(source);
       assert.ok(error?.startsWith(expected), `${header}: ${error}`);
+    }
+  });
+
+  test("draws mind maps, kanban boards and Ishikawa diagrams with blank lines after their type", async () => {
+    // Mermaid fails on the indentation after them, also after a comment line it removes.
+    for (const [header, node] of [
+      ["mindmap", "root((Plan))"],
+      ["kanban", "Todo"],
+      ["ishikawa-beta", "Problem"],
+    ] as const) {
+      const source = `---\ntitle: T\n---\n${header}\n\n  %% comment\n  \n  ${node}\n    Child`;
+      assert.ok((await render({ source })).ok, header);
+      const text = (await evaluate(`document.querySelector("#diagram svg").textContent`)) as string;
+      assert.match(text, /Child/, header);
     }
   });
 

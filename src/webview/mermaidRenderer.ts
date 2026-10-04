@@ -4,7 +4,7 @@ import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
-import { describeError } from "./mermaidErrors";
+import { describeError, parsableSource } from "./mermaidErrors";
 import { shortestPath } from "./relationships";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
@@ -314,13 +314,14 @@ export class MermaidRenderer implements Renderer {
     if (width > 0) {
       container.style.width = `${width}px`;
     }
-    const result = await mermaid.render(id, source, container).catch((error: unknown) => {
-      throw describeError(error, source, () => mermaid.detectType(source));
+    const text = parsableSource(source);
+    const result = await mermaid.render(id, text, container).catch((error: unknown) => {
+      throw describeError(error, source, () => mermaid.detectType(text));
     });
     // mermaid.render keeps the diagram's database to itself: parse again for it. Should that
     // fail, the items are just not selectable.
     const db: DiagramDb | undefined = WITH_DATABASE.has(result.diagramType)
-      ? await mermaid.mermaidAPI.getDiagramFromText(source).then(
+      ? await mermaid.mermaidAPI.getDiagramFromText(text).then(
           (parsed) => parsed.db as DiagramDb,
           () => undefined,
         )
@@ -384,7 +385,7 @@ export class MermaidRenderer implements Renderer {
     try {
       const { svg } = await mermaid.render(
         `diagram-image-${++this.renderCounter}`,
-        source,
+        parsableSource(source),
         layoutContainer(),
       );
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;

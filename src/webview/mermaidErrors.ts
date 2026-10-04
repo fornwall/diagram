@@ -149,6 +149,26 @@ function frontMatterEnd(text: string): number {
   return 0;
 }
 
+/**
+ * Blank lines straight after the type of a mind map, kanban board or Ishikawa diagram, and comment
+ * lines, which Mermaid removes to leave blank ones: their parsers take them for a statement that
+ * must end with a line break, and fail on the indentation of the next line.
+ */
+const BLANK_LINES_AFTER_TYPE =
+  /^((?:[^\S\n]*(?:%%[^\n]*)?\n)*?[^\S\n]*(?:mindmap|kanban|ishikawa(?:-beta)?)\b[^\n]*\n)(?:[^\S\n]*(?:%%(?!\{)[^\n]*)?\n)+/gi;
+
+/** Removes from text after the front matter what Mermaid would parse but fail on. */
+function withoutBlankLinesAfterType(text: string): string {
+  return text.replace(BLANK_LINES_AFTER_TYPE, "$1");
+}
+
+/** The source as Mermaid can parse it, which describeError maps its errors back from. */
+export function parsableSource(source: string): string {
+  const normalized = source.replace(/\r\n?/g, "\n");
+  const start = frontMatterEnd(normalized);
+  return normalized.slice(0, start) + withoutBlankLinesAfterType(normalized.slice(start));
+}
+
 /** The text that Mermaid parses, with the offset in the source of each of its characters. */
 interface ParsedText {
   text: string;
@@ -213,6 +233,7 @@ function parsedText(normalized: string, type: string): ParsedText {
   const remove = () => "";
   const dropLast = (match: string) => match.slice(0, -1);
   const edits: [RegExp, (match: string) => string][] = [
+    [BLANK_LINES_AFTER_TYPE, withoutBlankLinesAfterType],
     [/%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi, remove],
   ];
   // Agent flows and event models keep comments for the diagram.
