@@ -919,7 +919,7 @@
     "package": "npm run check-types && npm run lint && node esbuild.mjs --production",
     "analyze": "node esbuild.mjs --production --analyze",
     "check-types": "tsc --noEmit && tsc --noEmit -p src/webview && tsc --noEmit -p tsconfig.test.json",
-    "lint": "biome check",
+    "lint": "biome check --error-on-warnings",
     "format": "biome check --write",
     "compile-tests": "node -e \"fs.rmSync('out',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
     "pretest": "npm run compile && npm run compile-tests",

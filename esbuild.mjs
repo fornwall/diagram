@@ -61,17 +61,18 @@ const savedPage = {
 // Chunk names are hashed, so start from scratch to not ship stale chunks.
 rmSync("dist", { recursive: true, force: true });
 
+// The targets are the runtimes of VS Code 1.140, the oldest that engines in package.json allows.
 const contexts = await Promise.all([
   esbuild.context({
     ...common,
     entryPoints: ["src/extension.ts"],
     format: "cjs",
     platform: "node",
-    target: "node26",
+    target: "node24",
     outfile: "dist/extension.js",
     external: ["vscode"],
   }),
-  // An ES module, so that the renderers can load Mermaid and ECharts on demand as chunks.
+  // An ES module, so that Mermaid and its diagrams load on demand as chunks.
   esbuild.context({
     ...common,
     entryPoints: { webview: "src/webview/main.ts" },
@@ -80,7 +81,7 @@ const contexts = await Promise.all([
     outdir: "dist",
     chunkNames: "chunks/[name]-[hash]",
     platform: "browser",
-    target: "chrome140",
+    target: "chrome150",
   }),
   esbuild.context({
     ...savedPage,
