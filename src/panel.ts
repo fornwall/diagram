@@ -113,10 +113,10 @@ export class DiagramPanel implements vscode.Disposable {
   private annotation: Annotation | undefined;
 
   private readonly webview: WebviewChannel;
-  /** Pending renders and picks are replayed when the webview reloads. */
   private nextRequestId = 1;
   /** Counts renders, to detect intervening ones; tools see it as the revision. */
   private renderVersion = 0;
+  /** Pending renders and picks are replayed when the webview reloads. */
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private pendingExport: Pending<"export", ExportResult> | undefined;
