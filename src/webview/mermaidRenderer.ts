@@ -403,6 +403,9 @@ export class MermaidRenderer implements Renderer {
     mermaid.initialize({
       ...this.config(),
       htmlLabels: false,
+      // SVG text would show the tags of HTML in labels, such as <b> and <a>: keep only their text,
+      // the line breaks that Mermaid splits SVG text at, and formulas, which are MathML.
+      dompurifyConfig: { USE_PROFILES: { mathMl: true }, ADD_TAGS: ["br"] },
       // Front matter and init directives must not put HTML labels back into an image.
       secure: [...(mermaid.mermaidAPI.defaultConfig.secure ?? []), "htmlLabels"],
     });

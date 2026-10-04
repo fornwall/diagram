@@ -1457,6 +1457,39 @@ suite("webview", function () {
     }
   });
 
+  test("exports the text of HTML in Mermaid labels, without its tags", async () => {
+    const source = [
+      "flowchart LR",
+      '  A["<b>Bold</b> and <i>italic</i>"] -->|"<u>edge</u>"| B["<a href=\'https://example.com\'>Link</a>"]',
+      '  B --> C["First<br>second"]',
+      "  C --> D[\"1 &lt; 2 <span style='color: red'>red</span>\"]",
+    ].join("\n");
+    assert.ok((await render({ source })).ok);
+    const exported = await evaluate(`(async () => {
+      const handle = document.getElementById("drag-out");
+      handle.dispatchEvent(new PointerEvent("pointerenter"));
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        const image = dataTransfer.getData("image/svg+xml");
+        if (image) {
+          const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
+          return Array.from(parsed.querySelectorAll("text"), text =>
+            Array.from(text.querySelectorAll(".text-outer-tspan"), line => line.textContent.replace(/\\s+/g, " ").trim()).join("|"));
+        }
+      }
+      throw new Error("The diagram image was not prepared.");
+    })()`);
+    assert.deepStrictEqual(exported, [
+      "edge",
+      "Bold and italic",
+      "Link",
+      "First|second",
+      "1 < 2 red",
+    ]);
+  });
+
   test("keeps Mermaid image export separate from an incoming render", async () => {
     assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
     assert.deepStrictEqual(
