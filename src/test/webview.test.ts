@@ -1632,12 +1632,18 @@ suite("webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const settle = () => new Promise(resolve => setTimeout(resolve, 300));
-        // Let a resize left over from an earlier test, which a busy machine delays, finish.
-        for (let draws = -1; draws !== window.chartDraws; ) {
+        const chart = document.getElementById("chart");
+        // Let a resize left over from an earlier test, which a busy machine delays, finish: the
+        // drawing has the size of the container, and its debounced layout has run.
+        const fitted = () => {
+          const svg = chart.querySelector("svg");
+          return svg?.getAttribute("width") === String(chart.clientWidth) &&
+            svg.getAttribute("height") === String(chart.clientHeight);
+        };
+        for (let draws = -1; draws !== window.chartDraws || !fitted(); ) {
           draws = window.chartDraws;
           await settle();
         }
-        const chart = document.getElementById("chart");
         const before = window.chartDraws;
         const width = chart.clientWidth;
         const height = chart.clientHeight;
