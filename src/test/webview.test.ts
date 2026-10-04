@@ -1256,33 +1256,40 @@ suite("webview", function () {
   });
 
   test("exports Mermaid labels as SVG text despite diagram configuration", async () => {
-    assert.ok(
-      (
-        await render({
-          source:
-            "---\nconfig:\n  htmlLabels: true\n---\nflowchart LR\n A[Exported label] --> B[Other label]",
-        })
-      ).ok,
-    );
-    const exported = await evaluate(`(async () => {
-      const handle = document.getElementById("drag-out");
-      handle.dispatchEvent(new PointerEvent("pointerenter"));
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        const svg = dataTransfer.getData("image/svg+xml");
-        if (svg) {
-          const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-          return {
-            htmlLabels: parsed.querySelectorAll("foreignObject").length,
-            text: Array.from(parsed.querySelectorAll("text"), node => node.textContent).join("").replace(/\\s/g, "")
-          };
+    const exported = async (source: string) => {
+      assert.ok((await render({ source })).ok);
+      return evaluate(`(async () => {
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const svg = dataTransfer.getData("image/svg+xml");
+          if (svg) {
+            const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+            return {
+              htmlLabels: parsed.querySelectorAll("foreignObject").length,
+              text: Array.from(parsed.querySelectorAll("text"), node => node.textContent).join("").replace(/\\s/g, "")
+            };
+          }
         }
-      }
-      throw new Error("The diagram image was not prepared.");
-    })()`);
-    assert.deepStrictEqual(exported, { htmlLabels: 0, text: "ExportedlabelOtherlabel" });
+        throw new Error("The diagram image was not prepared.");
+      })()`);
+    };
+    assert.deepStrictEqual(
+      await exported(
+        "---\nconfig:\n  htmlLabels: true\n---\nflowchart LR\n A[Exported label] --> B[Other label]",
+      ),
+      { htmlLabels: 0, text: "ExportedlabelOtherlabel" },
+    );
+    // User journeys draw task names as HTML with a text fallback.
+    const journey = (await exported("journey\n  section Work\n    Brew tea: 5: Me")) as {
+      htmlLabels: number;
+      text: string;
+    };
+    assert.strictEqual(journey.htmlLabels, 0);
+    assert.match(journey.text, /Brewtea/);
   });
 
   test("keeps Mermaid image export separate from an incoming render", async () => {

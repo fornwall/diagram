@@ -46,6 +46,9 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
       element.removeAttribute(attribute);
     }
   }
+  // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
+  // application that reads SVG draws.
+  for (const element of svg.querySelectorAll("switch > foreignObject")) element.remove();
   // Remove local file paths, keeping tooltips supplied by the diagram itself.
   for (const title of svg.querySelectorAll("title.diagram-link")) {
     title.remove();
