@@ -10,7 +10,9 @@ import {
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
 
-suite("workspace tools", () => {
+suite("workspace tools", function () {
+  // Each file search starts ripgrep processes, which can take seconds on a busy machine.
+  this.timeout(10_000);
   let dir: string;
   let outside: string;
   let relative: string;
@@ -228,7 +230,8 @@ suite("workspace tools", () => {
   });
 
   test("reads and searches unsaved editor changes", async () => {
-    const file = path.join(dir, "dirty.ts");
+    // Plain text, as opening a TypeScript file would start TypeScript's language features.
+    const file = path.join(dir, "dirty.txt");
     await fs.writeFile(file, "saved text");
     const document = await vscode.workspace.openTextDocument(file);
     const edit = new vscode.WorkspaceEdit();
@@ -237,10 +240,10 @@ suite("workspace tools", () => {
     try {
       assert.strictEqual(
         await invoke(reader, { file }),
-        `${relative}/dirty.ts, lines 1-2 of 2, with unsaved changes:\n1: unsaved Needle\n2: saved text`,
+        `${relative}/dirty.txt, lines 1-2 of 2, with unsaved changes:\n1: unsaved Needle\n2: saved text`,
       );
-      const search = await invoke(searcher, { query: "Needle", glob: `${relative}/dirty.ts` });
-      assert.match(search, /\n.*dirty\.ts \(unsaved changes\)\n {2}1: unsaved Needle$/);
+      const search = await invoke(searcher, { query: "Needle", glob: `${relative}/dirty.txt` });
+      assert.match(search, /\n.*dirty\.txt \(unsaved changes\)\n {2}1: unsaved Needle$/);
     } finally {
       await document.save();
     }
