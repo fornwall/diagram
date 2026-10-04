@@ -3,9 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { ChartSpec } from "../chartSpec";
+import { updatedChartSpec } from "../chartOptions";
+import { type ChartSpec, validateChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { InspectDataTool, inspectTable, UpdateChartTool, updatedChartSpec } from "../chartTools";
+import { InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import type { ToWebview } from "../protocol";
@@ -439,5 +440,29 @@ suite("chart agent tools", function () {
       cancellation.dispose();
       panel.dispose();
     }
+  });
+
+  test("updates retain or explicitly clear analysis settings without replacing the source", () => {
+    const source = { type: "histogram", data: "service,latency\na,5\nb,12" };
+    const initial = validateChartSpec({
+      ...source,
+      bins: 10,
+      facetColumn: "service",
+      facetColumns: 2,
+      facetScales: "independent",
+      filters: [{ column: "latency", op: "gt", value: 0 }],
+    });
+    const retained = updatedChartSpec(initial, { title: "Latency" });
+    assert.deepStrictEqual(retained, { ...initial, title: "Latency" });
+    const cleared = updatedChartSpec(retained, {
+      bins: null,
+      facetColumn: null,
+      facetColumns: null,
+      facetScales: null,
+      filters: null,
+    });
+    assert.deepStrictEqual(cleared, { ...source, title: "Latency" });
+    assert.deepStrictEqual(updatedChartSpec(initial, { filters: [] }).filters, []);
+    assert.strictEqual(initial.bins, 10);
   });
 });

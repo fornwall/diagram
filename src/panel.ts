@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 import { unlessCancelled } from "./cancellation";
-import { chartControls, withChartControls } from "./chartOptions";
+import {
+  type ChartUpdateInput,
+  chartControls,
+  updatedChartSpec,
+  withChartControls,
+} from "./chartOptions";
 import {
   assertChartPresentation,
   type ChartPresentation,
@@ -8,7 +13,6 @@ import {
   rebuildChart,
 } from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
-import { type ChartUpdateInput, updatedChartSpec } from "./chartTools";
 import { type DataTable, parseTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
 import { describeDiagram, nodeList } from "./describe";

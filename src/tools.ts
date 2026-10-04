@@ -398,6 +398,6 @@ function nonBlank(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function textResult(text: string): vscode.LanguageModelToolResult {
+export function textResult(text: string): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
 }
