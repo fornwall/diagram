@@ -979,6 +979,34 @@ suite("data", () => {
     );
   });
 
+  test("keeps rows of single dashes, unless they underline one-letter names", () => {
+    const missing = [null, null];
+    assert.deepStrictEqual(parse("x  1  2\n-  -  -\ny  3  4"), {
+      columns: ["Column 1", "Column 2", "Column 3"],
+      rows: [
+        ["x", 1, 2],
+        ["-", ...missing],
+        ["y", 3, 4],
+      ],
+    });
+    assert.deepStrictEqual(parse("- - -\nx 1 2").rows, [
+      ["-", ...missing],
+      ["x", 1, 2],
+    ]);
+    assert.deepStrictEqual(parse("name  size\na     1\n-     -\nb     2").rows, [
+      ["a", 1],
+      ["-", null],
+      ["b", 2],
+    ]);
+    assert.deepStrictEqual(parse("x\t1\n-\t-\ny\t2").rows, [
+      ["x", 1],
+      ["-", null],
+      ["y", 2],
+    ]);
+    assert.deepStrictEqual(parse("a b\n- -\n1 2"), { columns: ["a", "b"], rows: [[1, 2]] });
+    assert.deepStrictEqual(parse("a\tb\n-\t-\n1\t2"), { columns: ["a", "b"], rows: [[1, 2]] });
+  });
+
   test("leaves out rules and empty rows in CSV and TSV", () => {
     assert.deepStrictEqual(parse("a,b\n1,2\n-----\n3,4\n,\n"), {
       columns: ["a", "b"],

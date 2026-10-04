@@ -16,12 +16,36 @@ function isBlank(line: string): boolean {
  */
 const RULE = /^(?=[^-=]*[-=])[\s|+:=-]+$/;
 
+/** A line of single dashes, which may be missing values ("-  -") rather than a rule. */
+const SINGLE_DASHES = /^\s*-(?:\s+-)*\s*$/;
+
+/**
+ * Whether `line` is a rule, given the `first` line if it is the second. Single dashes are one only
+ * under a header of as many one-letter names in the same places, as under "a b"; otherwise they
+ * are a row of missing values.
+ */
+function isRule(line: string, first: string | undefined): boolean {
+  if (!RULE.test(line)) return false;
+  if (!SINGLE_DASHES.test(line)) return true;
+  const dashes = tokenize(line);
+  const names = tokenize(first ?? "");
+  return (
+    names.length === dashes.length &&
+    names.every(
+      (name, i) =>
+        name.start === dashes[i]?.start &&
+        name.end === dashes[i]?.end &&
+        parseNumber(name.text) === undefined,
+    )
+  );
+}
+
 /** Leaves out rules, and tells whether one is under the first line, making it a header. */
 function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {
   const kept: string[] = [];
   let underlined = false;
   for (const line of lines) {
-    if (RULE.test(line)) {
+    if (isRule(line, kept.length === 1 ? kept[0] : undefined)) {
       underlined ||= kept.length === 1;
     } else {
       kept.push(line);
@@ -38,14 +62,16 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   const records: string[][] = [];
   let width = 0;
   let underlined = false;
+  let first: string | undefined;
   /** Adds a record unless it is empty or, as `line` without quotes, a rule. */
   const add = (record: string[], line: string | undefined): void => {
     // Spreadsheets save empty rows as ",,,".
     if (record.every(isBlank)) return;
-    if (line !== undefined && RULE.test(line)) {
+    if (line !== undefined && isRule(line, records.length === 1 ? first : undefined)) {
       underlined ||= records.length === 1;
       return;
     }
+    first ??= line;
     width = Math.max(width, record.length);
     checkTableSize(records.length + 1, width);
     records.push(record);
