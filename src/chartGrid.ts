@@ -138,18 +138,16 @@ export function heatmapOption({
 }: Reading): Record<string, unknown> {
   const labelNames = columns.labels.map((index) => columnName(table, index));
   const pivot = labelNames.length >= 2;
-  const yCategories: string[] = [];
-  const xCategories: string[] = pivot ? [] : [...names];
+  /** The index of each category of a pivot's axis, in the order they first appear. */
   const yIndices = new Map<string, number>();
   const xIndices = new Map<string, number>();
-  const category = (categories: string[], indices: Map<string, number>, name: string) => {
-    const found = indices.get(name);
-    if (found !== undefined) {
-      return found;
+  const category = (indices: Map<string, number>, name: string): number => {
+    let index = indices.get(name);
+    if (index === undefined) {
+      index = indices.size;
+      indices.set(name, index);
     }
-    indices.set(name, categories.length);
-    categories.push(name);
-    return categories.length - 1;
+    return index;
   };
   const cells = new Map<string, [number, number, number]>();
   const data: [number, number, number][] = [];
@@ -162,8 +160,8 @@ export function heatmapOption({
         empty++;
         continue;
       }
-      const y = category(yCategories, yIndices, label(row));
-      const x = category(xCategories, xIndices, row.labels[1] ?? "");
+      const y = category(yIndices, label(row));
+      const x = category(xIndices, row.labels[1] ?? "");
       const key = `${y} ${x}`;
       const cell = cells.get(key);
       if (cell === undefined) {
@@ -176,8 +174,6 @@ export function heatmapOption({
       }
       continue;
     }
-    // Without a second label column every row is a row of its own, even one labeled like another.
-    yCategories.push(label(row));
     row.values.forEach((value, x) => {
       if (value === null) {
         empty++;
@@ -201,6 +197,9 @@ export function heatmapOption({
     min = Math.min(min, value);
     max = Math.max(max, value);
   }
+  // Without a second label column every row is a row of its own, even one labeled like another.
+  const yCategories = pivot ? [...yIndices.keys()] : rows.map(label);
+  const xCategories = pivot ? [...xIndices.keys()] : names;
   const axis = (categories: string[], name: string | undefined) => ({
     type: "category",
     data: categories,

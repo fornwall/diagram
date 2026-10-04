@@ -386,16 +386,9 @@ export class FenceScanner {
  * only spaces and tabs: a no-break space is content.
  */
 export function trimBlankLines(lines: readonly string[]): string {
-  const blank = (line: string | undefined) => /^[ \t]*$/.test(line ?? "");
-  let first = 0;
-  let last = lines.length - 1;
-  while (first <= last && blank(lines[first])) {
-    first++;
-  }
-  while (last >= first && blank(lines[last])) {
-    last--;
-  }
-  return lines.slice(first, last + 1).join("\n");
+  const content = (line: string) => !/^[ \t]*$/.test(line);
+  const first = lines.findIndex(content);
+  return first === -1 ? "" : lines.slice(first, lines.findLastIndex(content) + 1).join("\n");
 }
 
 /** A Markdown diagram with zero-based line positions for write-back. */
@@ -564,16 +557,8 @@ export function relocateFence(
   if (original) {
     return matches(original) ? original : undefined;
   }
-  let found: DiagramFence | undefined;
-  for (const fence of fences) {
-    if (matches(fence)) {
-      if (found) {
-        return undefined;
-      }
-      found = fence;
-    }
-  }
-  return found;
+  const found = fences.filter(matches);
+  return found.length === 1 ? found[0] : undefined;
 }
 
 /** Validate command arguments, which can also come from other extensions. */

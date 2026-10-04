@@ -131,12 +131,9 @@ function joinByName({ nodes, flows }: Graph): Graph {
  * last column for a node without outflows. Undefined if the flows run in a circle.
  */
 function layOut({ nodes, flows }: Graph): Map<string, number> | undefined {
-  const outflows = new Map<string, string[]>();
+  const outflows = Map.groupBy(flows.values(), ({ source }) => source);
   const inflows = new Map<string, number>();
-  for (const { source, target } of flows.values()) {
-    const targets = outflows.get(source);
-    if (targets === undefined) outflows.set(source, [target]);
-    else targets.push(target);
+  for (const { target } of flows.values()) {
     inflows.set(target, (inflows.get(target) ?? 0) + 1);
   }
   const depths = new Map<string, number>();
@@ -145,7 +142,7 @@ function layOut({ nodes, flows }: Graph): Map<string, number> | undefined {
   for (let i = 0; i < ready.length; i++) {
     const source = ready[i] ?? "";
     const depth = (depths.get(source) ?? 0) + 1;
-    for (const target of outflows.get(source) ?? []) {
+    for (const { target } of outflows.get(source) ?? []) {
       depths.set(target, Math.max(depths.get(target) ?? 0, depth));
       const left = (inflows.get(target) ?? 0) - 1;
       inflows.set(target, left);
@@ -175,12 +172,7 @@ function foldColumns(
     outflow.set(source, addValues(outflow.get(source) ?? 0, value));
     inflow.set(target, addValues(inflow.get(target) ?? 0, value));
   }
-  const columns = new Map<number, string[]>();
-  for (const [key, depth] of depths) {
-    const keys = columns.get(depth);
-    if (keys === undefined) columns.set(depth, [key]);
-    else keys.push(key);
-  }
+  const columns = Map.groupBy(depths.keys(), (key) => depths.get(key) ?? 0);
   const explicit = [...nodes.values()].some((node) => node.depth !== undefined);
   const size = (key: string) => Math.max(inflow.get(key) ?? 0, outflow.get(key) ?? 0);
   const folded = new Map<string, string>();

@@ -344,36 +344,23 @@ const TEXT_EXAMPLES = 3;
 
 function describeColumn(table: DataTable, column: number): string {
   const { numeric, unit } = table.columns[column] ?? {};
+  if (!table.rows.some((row) => row[column] != null)) {
+    return "empty";
+  }
   if (!numeric) {
-    return table.rows.some((row) => row[column] != null) ? "text" : "empty";
+    return "text";
   }
   const kind = unit === "bytes" ? "bytes" : unit === "%" ? "percentages" : "numbers";
   // Charts leave out text cells in numeric columns.
-  let empty = true;
-  let texts = 0;
-  const examples: string[] = [];
-  for (const row of table.rows) {
-    const cell = row[column];
-    if (cell != null) {
-      empty = false;
-    }
-    if (typeof cell === "string") {
-      texts++;
-      if (examples.length < TEXT_EXAMPLES) {
-        examples.push(JSON.stringify(cell));
-      }
-    }
-  }
-  if (empty) {
-    return "empty";
-  }
-  if (texts === 0) {
+  const texts = table.rows.flatMap((row) => (typeof row[column] === "string" ? [row[column]] : []));
+  if (texts.length === 0) {
     return kind;
   }
-  if (texts > TEXT_EXAMPLES) {
+  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => JSON.stringify(text));
+  if (texts.length > TEXT_EXAMPLES) {
     examples.push("…");
   }
-  return `${kind}, ${plural(texts, "text cell")}: ${examples.join(", ")}`;
+  return `${kind}, ${plural(texts.length, "text cell")}: ${examples.join(", ")}`;
 }
 
 /** E.g. `"dir" (text), "size" (bytes)`. */
