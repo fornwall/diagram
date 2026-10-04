@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
@@ -2341,4 +2341,104 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       assert.deepStrictEqual(found, { handlers: [], frames: 0, links: 0, pwned: null });
     });
   }
+
+  /** Records the URLs that the panel opens, instead of opening them. */
+  async function opening(action: () => Promise<unknown>, count: number): Promise<string[]> {
+    const openExternal = vscode.env.openExternal;
+    const opened: string[] = [];
+    vscode.env.openExternal = async (uri) => {
+      opened.push(uri.toString(true));
+      return true;
+    };
+    try {
+      await action();
+      for (let attempt = 0; attempt < 100 && opened.length < count; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      // Give a click that should not open anything as long to arrive.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return opened;
+    } finally {
+      vscode.env.openExternal = openExternal;
+    }
+  }
+
+  test("opens a node's link on a plain click or Enter, and selects or picks on other clicks", async () => {
+    const source = `flowchart LR\n  A[Docs] --> B["Mail <a href='mailto:docs@example.com'>us</a>"] --> C\n  click A href "https://example.com/docs?page=2" "Read the docs" _blank`;
+    assert.ok((await panel.render({ language: "mermaid", source, title: "Links" }, "tool")).ok);
+    let shown: unknown;
+    const opened = await opening(async () => {
+      shown = await evaluate(`(() => {
+        const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+        const click = (element, init) =>
+          element.dispatchEvent(new MouseEvent("click", {bubbles: true, ...init}));
+        const shown = {
+          tooltips: ["A", "B", "C"].map(id => node(id).querySelector("title.diagram-link")?.textContent ?? null),
+          hint: document.getElementById("selection-label").textContent,
+        };
+        click(node("A"), {shiftKey: true});
+        click(node("B").querySelector("a"), {ctrlKey: true});
+        shown.selected = [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
+          .map(element => element.getAttribute("data-diagram-id"));
+        window.dispatchEvent(new MessageEvent("message", {data: {
+          type: "startPick", pickId: 90001, prompt: "Pick a node", multiple: false
+        }}));
+        click(node("A"));
+        shown.picked = document.getElementById("pick").hidden;
+        click(node("A"));
+        node("A").dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        click(node("B").querySelector("a"));
+        click(node("B"));
+        click(node("C"));
+        return shown;
+      })()`);
+    }, 4);
+    assert.deepStrictEqual(shown, {
+      tooltips: ["Open https://example.com/docs?page=2", "Open mailto:docs@example.com", null],
+      hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
+      selected: ["A", "B"],
+      picked: true,
+    });
+    assert.deepStrictEqual(opened, [
+      "https://example.com/docs?page=2",
+      "https://example.com/docs?page=2",
+      "mailto:docs@example.com",
+      "mailto:docs@example.com",
+    ]);
+  });
+
+  test("opens a Gantt task's link through the extension, keeping the panel", async () => {
+    const source =
+      'gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d\n  click a1 href "https://example.com/plan"';
+    assert.ok((await panel.render({ language: "mermaid", source, title: "Plan" }, "tool")).ok);
+    const opened = await opening(
+      () =>
+        evaluate(`document.querySelector('#diagram [data-diagram-id="a1"][tabindex]')
+          .dispatchEvent(new MouseEvent("click", {bubbles: true}))`),
+      1,
+    );
+    assert.deepStrictEqual(opened, ["https://example.com/plan"]);
+    // Mermaid would have taken the panel to the URL itself.
+    assert.strictEqual(await evaluate(`document.getElementById("diagram").hidden`), false);
+  });
+
+  test("leaves links out of images", async () => {
+    const source =
+      'flowchart LR\n  A[Docs] --> B\n  click A href "https://example.com/docs" "Docs"';
+    assert.ok((await panel.render({ language: "mermaid", source, title: "Links" }, "tool")).ok);
+    const svg = await evaluate(`(async () => {
+      const handle = document.getElementById("drag-out");
+      handle.dispatchEvent(new PointerEvent("pointerenter"));
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        const svg = dataTransfer.getData("image/svg+xml");
+        if (svg) return svg;
+      }
+      throw new Error("The image was not prepared.");
+    })()`);
+    assert.ok(typeof svg === "string" && svg.includes("Docs"));
+    assert.doesNotMatch(svg, /example\.com|href/);
+  });
 });

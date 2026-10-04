@@ -6,6 +6,8 @@ export interface Hit {
   /** Identifies the part within the current rendering; parts with the same key are one. */
   key: string;
   node: DiagramNode;
+  /** Where a link in the Mermaid source leads from the part, unchecked: a model may have written it. */
+  url?: string;
 }
 
 /** A click on a diagram item, or empty space when `hit` is undefined. */
@@ -36,6 +38,8 @@ export interface Renderer {
   findPath?(from: string, to: string): DiagramNode[] | undefined;
   /** Adds code links and location tooltips to Mermaid nodes, keyed by node id. */
   showLinks?(locations: ReadonlyMap<string, string>): void;
+  /** Whether links in the source lead from some nodes. */
+  readonly hasWebLinks?: boolean;
   /** Exports a self-contained image on the given background. */
   toImage?(background: string): Promise<DiagramImage>;
   /** Renders the current diagram again with the current VS Code theme. */

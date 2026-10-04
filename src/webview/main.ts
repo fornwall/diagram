@@ -351,10 +351,11 @@ function hint(noun: string): string {
       : `Click a ${noun} to pick it.`;
   }
   const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
-  if (links.size > 0) {
+  if (links.size > 0 || active?.hasWebLinks) {
+    const open = active?.hasWebLinks ? "open its link" : "open its code";
     return clickPrompt
-      ? `Click a linked ${noun} to open its code, any other to ask about it in chat ${orSelect}.`
-      : `Click a linked ${noun} to open its code ${orSelect}.`;
+      ? `Click a linked ${noun} to ${open}, any other to ask about it in chat ${orSelect}.`
+      : `Click a linked ${noun} to ${open} ${orSelect}.`;
   }
   if (clickPrompt) {
     return `Click a ${noun} to ask about it in chat ${orSelect}.`;
@@ -392,11 +393,16 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
     return;
   }
   // What a plain click does, in order: answer a pick the agent is waiting for, open the code the
-  // node links to, ask the diagram's clickPrompt in chat, or select the node. A modified click
-  // always selects, so that every node can be selected whatever else a click does.
+  // node links to, open the URL that the source links it to, ask the diagram's clickPrompt in
+  // chat, or select the node. A modified click always selects, so that every node can be selected
+  // whatever else a click does.
   if (!pick && !modifier) {
     if (!hit.node.relationship && links.has(hit.node.id)) {
       post({ type: "clickToOpen", node: hit.node });
+      return;
+    }
+    if (hit.url !== undefined) {
+      post({ type: "openUrl", url: hit.url });
       return;
     }
     if (clickPrompt) {

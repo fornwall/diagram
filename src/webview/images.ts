@@ -17,7 +17,7 @@ const MAX_PNG_PIXELS = 16_000_000;
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed"];
 
-/** Clones the drawing with a background and removes panel interaction attributes and file paths. */
+/** Clones the drawing with a background, without panel interaction attributes or link targets. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;
   svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
@@ -49,9 +49,13 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
   // application that reads SVG draws.
   for (const element of svg.querySelectorAll("switch > foreignObject")) element.remove();
-  // Remove local file paths, keeping tooltips supplied by the diagram itself.
+  // Remove where links lead, from their targets and the panel's tooltips that name them, keeping
+  // the diagram's own tooltips.
   for (const title of svg.querySelectorAll("title.diagram-link")) {
     title.remove();
+  }
+  for (const link of svg.querySelectorAll("a")) {
+    for (const name of ["href", "xlink:href", "data-href", "target"]) link.removeAttribute(name);
   }
 
   const rect = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect");

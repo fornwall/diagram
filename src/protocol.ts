@@ -183,6 +183,8 @@ export type FromWebview =
   | { type: "clickToAsk"; node: DiagramNode }
   /** The host resolves this node's link; the webview cannot choose a path. */
   | { type: "clickToOpen"; node: DiagramNode }
+  /** A link that the Mermaid source drew, which the host checks: a model may have written it. */
+  | { type: "openUrl"; url: string }
   | { type: "picked"; pickId: number; nodes: DiagramNode[] }
   | { type: "pickCancelled"; pickId: number }
   /** The user asked to reload the chart's data from its file or command. */
@@ -264,6 +266,7 @@ const FROM_WEBVIEW_FIELDS: {
   ask: { text: isString, nodes: isNodes },
   clickToAsk: { node: isNode },
   clickToOpen: { node: isNode },
+  openUrl: { url: isString },
   picked: { pickId: isId, nodes: isNodes },
   pickCancelled: { pickId: isId },
   refresh: {},

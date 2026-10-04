@@ -187,3 +187,50 @@ export async function openLink(
     );
   }
 }
+
+/** What a link in a diagram may open: what VS Code opens outside itself, as a browser would. */
+const WEB_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+/**
+ * Opens a link that the Mermaid source drew, from a click directive or a label, which the page
+ * posts as written. VS Code asks before opening a website outside its trusted domains, which it
+ * would not for a link clicked in the page itself. Another scheme could run a command or open a
+ * file that a model chose. askFirst, once the page ran chart code that could post this as if the
+ * user clicked, has the panel ask too, naming the whole URL, as VS Code shortens long ones.
+ */
+export async function openUrl(
+  url: string,
+  askFirst: boolean,
+  confirm: (ask: () => Thenable<boolean>) => Promise<boolean>,
+): Promise<void> {
+  const parsed = URL.parse(url);
+  if (!parsed || !WEB_PROTOCOLS.has(parsed.protocol)) {
+    void vscode.window.showErrorMessage(
+      `Cannot open ${quote(url)}, which the diagram links to: the panel opens only http, https ` +
+        'and mailto URLs, written in full, e.g. "https://example.com/docs".',
+    );
+    return;
+  }
+  const target = parsed.href;
+  if (
+    askFirst &&
+    !(await confirm(async () => {
+      const open = await vscode.window.showWarningMessage(
+        "Open the link that you clicked in the diagram?",
+        {
+          modal: true,
+          detail: `${target}\n\nThe panel ran JavaScript code from a chart, which can click links as if you had.`,
+        },
+        "Open",
+      );
+      return open !== undefined;
+    }))
+  ) {
+    return;
+  }
+  try {
+    await vscode.env.openExternal(vscode.Uri.parse(target, true));
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Could not open ${target}: ${errorMessage(error)}`);
+  }
+}

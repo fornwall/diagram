@@ -48,11 +48,16 @@ function edit(webview: FakeWebview, source: string): Promise<void> {
   return webview.receive({ type: "sourceEdited", requestId: webview.render.requestId, source });
 }
 
-/** Records the requests to chat and the files opened, which clicks on nodes lead to. */
+/** Records the requests to chat and the files and URLs opened, which clicks on nodes lead to. */
 function recordClicks(): { actions: string[]; restore(): void } {
   const execute = vscode.commands.executeCommand;
   const show = vscode.window.showTextDocument;
+  const openExternal = vscode.env.openExternal;
   const actions: string[] = [];
+  vscode.env.openExternal = async (uri) => {
+    actions.push(`url: ${uri.toString(true)}`);
+    return true;
+  };
   vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
     if (command !== "workbench.action.chat.open") return execute(command, ...args);
     actions.push(`chat: ${(args[0] as { query: string }).query}`);
@@ -69,6 +74,7 @@ function recordClicks(): { actions: string[]; restore(): void } {
     restore: () => {
       vscode.commands.executeCommand = execute;
       vscode.window.showTextDocument = show;
+      vscode.env.openExternal = openExternal;
     },
   };
 }
@@ -388,6 +394,7 @@ suite("panel", function () {
       const node = { id: "A", label: "Parser" };
       await webview.receive({ type: "clickToAsk", node });
       await webview.receive({ type: "clickToOpen", node });
+      await webview.receive({ type: "openUrl", url: "https://example.com/" });
       assert.deepStrictEqual(clicks.actions, []);
     } finally {
       clicks.restore();
@@ -851,6 +858,7 @@ suite("panel", function () {
       // Clicks on the previous diagram, e.g. sent just before it was replaced.
       await webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
       await click("A");
+      await webview.receive({ type: "openUrl", url: "https://example.com/" });
       assert.deepStrictEqual(clicks.actions, []);
     } finally {
       clicks.restore();
@@ -872,6 +880,57 @@ suite("panel", function () {
       await click("constructor");
       assert.deepStrictEqual(clicks.actions, ["open: sizes.tsv#L2"]);
     } finally {
+      clicks.restore();
+      panel.dispose();
+    }
+  });
+
+  test("opens only http, https and mailto links that a diagram draws", async () => {
+    const { panel, webview } = await newFakePanel();
+    const clicks = recordClicks();
+    const showError = vscode.window.showErrorMessage;
+    const errors: string[] = [];
+    vscode.window.showErrorMessage = async (message: string) => {
+      errors.push(message);
+      return undefined;
+    };
+    const open = (url: string) => webview.receive({ type: "openUrl", url });
+    try {
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      for (const url of [
+        "https://example.com/docs?page=2#Usage",
+        " HTTP://Example.com",
+        "mailto:docs@example.com",
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "command:workbench.action.terminal.new",
+        "vscode://vscode.git/clone?url=https://example.com",
+        "docs/usage.html",
+        "about:blank",
+      ]) {
+        await open(url);
+      }
+      assert.deepStrictEqual(clicks.actions, [
+        "url: https://example.com/docs?page=2#Usage",
+        "url: http://example.com/",
+        "url: mailto:docs@example.com",
+      ]);
+      assert.strictEqual(errors.length, 6);
+      assert.ok(errors.every((error) => /opens only http, https and mailto URLs/.test(error)));
+      assert.match(errors[0] ?? "", /^Cannot open "javascript:alert\(1\)", which the diagram/);
+      // Only a Mermaid diagram draws links.
+      assert.ok(
+        (
+          await panel.render(
+            { language: "echarts", source: '{"series": []}', title: "Chart" },
+            "tool",
+          )
+        ).ok,
+      );
+      await open("https://example.com/");
+      assert.strictEqual(clicks.actions.length, 3);
+    } finally {
+      vscode.window.showErrorMessage = showError;
       clicks.restore();
       panel.dispose();
     }

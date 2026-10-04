@@ -461,19 +461,25 @@ input:focus {
 }
 
 /* Nodes that a click acts on, rather than selects: while picking, in click-to-ask mode, and those
-   that link to a place in the code. */
+   that link to a place in the code or a URL. */
 #canvas:is(.picking, .click-to-ask) #diagram .diagram-node:is(:hover, :focus-visible),
 #diagram .diagram-linked:is(:hover, :focus-visible) {
   filter: drop-shadow(0 0 2px var(--vscode-textLink-activeForeground))
     drop-shadow(0 0 6px var(--vscode-textLink-activeForeground));
 }
 
-/* A node that links to code is underlined like a link, in the SVG text and the HTML labels that
+/* A node that links somewhere is underlined like a link, in the SVG text and the HTML labels that
    Mermaid draws labels as. Nodes drawn without a label of their own keep the hover hint alone. */
 #diagram .diagram-linked:is(text, .nodeLabel),
 #diagram .diagram-linked :is(text, .nodeLabel) {
   text-decoration: underline dotted;
   text-underline-offset: 2px;
+}
+
+/* A link in an HTML label, which the panel opens instead of the browser, looks like one still. */
+#diagram foreignObject a[data-href] {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
 }
 
 /* Stacked shadows give selected nodes a solid outline, whatever their shape. */

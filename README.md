@@ -29,8 +29,8 @@ Follow-ups change the current diagram. Use `/new` to start another, `/explain` t
 | Chart Options | Use the toolbar gear or **Diagram: Chart Options…** to configure a chart generated from data. |
 | Refresh | Reload file or command data, preserving JSON source styling. Manual changes to data, structure or JavaScript source must be reverted or reset first. |
 | Export | Use the toolbar, drawing’s context menu or **Diagram: Export…**. Save PNG, SVG or an offline interactive HTML chart (ECharts only). |
-| Drag an image | Drag the picture handle into another app for PNG; hold Shift for SVG. PNG failures fall back to SVG. Images keep the theme and omit code-link tooltips and paths. |
-| Open code | Click an underlined node linked to a file. |
+| Drag an image | Drag the picture handle into another app for PNG; hold Shift for SVG. PNG failures fall back to SVG. Images keep the theme and omit links, their tooltips and paths. |
+| Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive or label link. VS Code asks before opening an untrusted website. |
 | Zoom and pan | Use the toolbar, Ctrl/Cmd+scroll and dragging. Charts fit the panel. |
 
 Chart Options uses loaded data without rerunning commands. After reopening VS Code, use **Refresh** for file or command data; inline charts remain configurable. **Reset styling** removes manual presentation changes and reloads data if needed. To discard incompatible source edits, select **Replace manual source edits** first.

@@ -24,7 +24,7 @@ import {
   writeFence,
 } from "./documentDiagram";
 import { exportDrawing } from "./export";
-import { linkTexts, type NodeLink, type NodeLinks, openLink } from "./links";
+import { linkTexts, type NodeLink, type NodeLinks, openLink, openUrl } from "./links";
 import { StateStore } from "./panelState";
 import {
   type Annotation,
@@ -384,6 +384,17 @@ export class DiagramPanel implements vscode.Disposable {
           )
         );
       }
+      case "openUrl":
+        // Only a Mermaid diagram links to URLs, and one that failed to render has no nodes.
+        if (
+          this.state?.language === "mermaid" &&
+          !this.state.error &&
+          !this.pendingRender &&
+          !this.unavailable
+        ) {
+          return openUrl(message.url, this.pageRanCode, (ask) => this.confirmForPage(ask));
+        }
+        break;
       case "picked":
         this.finishPick(message.pickId, { picked: true, nodes: message.nodes });
         break;

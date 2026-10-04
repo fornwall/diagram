@@ -210,6 +210,43 @@ suite("chart code in the panel", function () {
     }
   });
 
+  test("asks before opening a diagram's link once the page ran chart code", async () => {
+    const { panel, webview } = await newFakePanel();
+    const warn = vscode.window.showWarningMessage;
+    const openExternal = vscode.env.openExternal;
+    const details: string[] = [];
+    const opened: string[] = [];
+    let answer: string | undefined = "Open";
+    vscode.window.showWarningMessage = (async (_: string, options: vscode.MessageOptions) => {
+      details.push(options.detail ?? "");
+      return answer;
+    }) as typeof warn;
+    vscode.env.openExternal = async (uri) => {
+      opened.push(uri.toString(true));
+      return true;
+    };
+    // VS Code shortens a long URL when it asks, which the panel names in full.
+    const url = `https://example.com/collect?data=${"x".repeat(200)}`;
+    const open = () => webview.receive({ type: "openUrl", url });
+    try {
+      assert.ok((await renderChart(panel, codeChart)).ok);
+      assert.ok(
+        (await panel.render({ language: "mermaid", source: flowchart, title: "Flow" }, "tool")).ok,
+      );
+      await open();
+      answer = undefined;
+      await open();
+      await open();
+      assert.deepStrictEqual(opened, [url]);
+      assert.strictEqual(details.length, 2);
+      assert.ok(details[0]?.startsWith(`${url}\n`));
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      vscode.env.openExternal = openExternal;
+      panel.dispose();
+    }
+  });
+
   test("asks one question at a time, and no more once the user declines one", async () => {
     const file = path.join(dir, "spammed.md");
     fs.writeFileSync(file, "```mermaid\nflowchart TD\n```\n");

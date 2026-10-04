@@ -24,6 +24,8 @@ const MAX_TEXT_SIZE = 50_000;
 
 /** The namespace of the <title> elements that show where a linked node leads. */
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+/** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
 /**
  * Mermaid's dark theme colors mind maps, timelines, pies and kanban columns almost black. Use
@@ -54,6 +56,7 @@ const WITH_DATABASE = new Set([
   "er",
   "requirement",
   "sequence",
+  "gantt",
 ]);
 interface DiagramDb {
   getData?(): {
@@ -71,6 +74,8 @@ interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
+  /** A Gantt chart's task links, by task id. */
+  getLinks?(): Map<string, unknown>;
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
@@ -188,6 +193,8 @@ export class MermaidRenderer implements Renderer {
   private shownLinks: ReadonlyMap<string, string> = new Map();
   /** Where the nodes link to in the code, by node id, for as long as the diagram is shown. */
   private links: ReadonlyMap<string, string> = new Map();
+  /** The URLs that Mermaid links nodes to, by node id; see render. */
+  private webLinks = new Map<string, string>();
   /** The marks an agent put on the diagram, which a re-render for a new theme puts back. */
   private annotation: Annotation = UNMARKED;
   private zoom = 1;
@@ -205,9 +212,14 @@ export class MermaidRenderer implements Renderer {
     private readonly zoomButton: HTMLElement,
   ) {
     const activate = (event: MouseEvent | KeyboardEvent) => {
-      const element = event.target instanceof Element && event.target.closest(".diagram-node");
+      const target = event.target instanceof Element ? event.target : undefined;
+      const element = target?.closest(".diagram-node");
       const node = element ? this.nodes.get(element) : undefined;
-      itemClicked(node && { key: node.id, node }, withModifier(event));
+      // A link in a label leads where it says; anywhere else, and for a key, the node's link does.
+      const url =
+        target?.closest("a[data-href]")?.getAttribute("data-href") ??
+        (node && this.webLinks.get(node.id));
+      itemClicked(node && { key: node.id, node, url }, withModifier(event));
     };
     diagram.addEventListener("click", activate);
     // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
@@ -323,14 +335,20 @@ export class MermaidRenderer implements Renderer {
     }
     this.diagram.replaceChildren(...drawing.childNodes);
     drawing.remove();
-    // A click selects, and code links open through the extension. A link that Mermaid draws, from
-    // a click directive or a label, would open its URL, written by a model, on that same click, in
-    // a trusted workspace without asking.
+    // A click selects, and links open through the extension, which checks their URLs. A link that
+    // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
+    // that same click, in a trusted workspace without asking. Keep where it leads as data.
     for (const link of this.diagram.querySelectorAll("a")) {
+      const href = (
+        link.getAttribute("href") ?? link.getAttributeNS(XLINK_NAMESPACE, "href")
+      )?.trim();
       link.removeAttribute("href");
-      link.removeAttributeNS("http://www.w3.org/1999/xlink", "href");
+      link.removeAttributeNS(XLINK_NAMESPACE, "href");
+      if (href) link.setAttribute("data-href", href);
     }
-    result.bindFunctions?.(this.diagram);
+    // A Gantt chart binds nothing but its links, to open them with window.open, which would take
+    // the panel itself to the URL. prepareSvg links its tasks instead.
+    if (result.diagramType !== "gantt") result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
     this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
@@ -454,8 +472,10 @@ export class MermaidRenderer implements Renderer {
 
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
-    for (const id of new Set([...this.shownLinks.keys(), ...locations.keys()])) {
-      const location = locations.get(id);
+    // A node's code link takes precedence over its link in the source, as on a click.
+    const shown = new Map([...this.webLinks, ...locations]);
+    for (const id of new Set([...this.shownLinks.keys(), ...shown.keys()])) {
+      const location = shown.get(id);
       if (this.shownLinks.get(id) === location) continue;
       for (const element of this.elementsById.get(id) ?? []) {
         if (this.nodes.get(element)?.relationship) continue;
@@ -470,7 +490,11 @@ export class MermaidRenderer implements Renderer {
         }
       }
     }
-    this.shownLinks = locations;
+    this.shownLinks = shown;
+  }
+
+  get hasWebLinks(): boolean {
+    return this.webLinks.size > 0;
   }
 
   async themeChanged(): Promise<void> {
@@ -608,6 +632,7 @@ export class MermaidRenderer implements Renderer {
       element.setAttribute("aria-pressed", "false");
     }
     this.drawn = [...uniqueNodes.values()];
+    this.findWebLinks(svg, db);
     // Keep the tab stop on the same node in a new version of the drawing.
     const stops = svg.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
     const stop =
@@ -618,6 +643,28 @@ export class MermaidRenderer implements Renderer {
     this.showMarks(this.annotation);
     // Mermaid sizes the drawing to fit its container; setZoom sizes it instead.
     svg.style.maxWidth = "none";
+  }
+
+  /**
+   * Finds the nodes that links in the source lead from: those that a click directive wraps in a
+   * link, those with a link in their label, the first one if several, and linked Gantt tasks.
+   */
+  private findWebLinks(svg: SVGSVGElement, db: DiagramDb | undefined): void {
+    this.webLinks.clear();
+    for (const link of svg.querySelectorAll("a[data-href]")) {
+      const element = link.querySelector(".diagram-node") ?? link.closest(".diagram-node");
+      const node = element && this.nodes.get(element);
+      const url = link.getAttribute("data-href");
+      if (node && !node.relationship && url && !this.webLinks.has(node.id)) {
+        this.webLinks.set(node.id, url);
+      }
+    }
+    // A Gantt chart draws none, but keeps them by task id. (A state diagram keeps objects there.)
+    for (const [id, url] of db?.getLinks?.() ?? []) {
+      if (typeof url === "string" && url.trim() && this.elementsById.has(id)) {
+        this.webLinks.set(id, url.trim());
+      }
+    }
   }
 
   /**
