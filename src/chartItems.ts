@@ -1,26 +1,6 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
-import { addValues, label, type Reading } from "./chartRows";
-
-/** Items of the same name share a legend entry, which shows and hides them together. */
-function noteRepeatedLabels({ spec, rows, notes }: Reading, item: string, items: string): void {
-  if (spec.aggregate !== undefined) {
-    return;
-  }
-  const seen = new Set<string>();
-  let repeats = 0;
-  for (const row of rows) {
-    const name = label(row);
-    if (seen.has(name)) repeats++;
-    else seen.add(name);
-  }
-  if (repeats > 0) {
-    notes.push(
-      `${repeats} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
-        'earlier one; "aggregate" combines the rows of each label',
-    );
-  }
-}
+import { addValues, label, noteRepeatedLabels, type Reading } from "./chartRows";
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
   const { names, rows } = reading;

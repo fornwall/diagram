@@ -32,6 +32,33 @@ export function label({ labels }: Row): string {
   return labels[0] ?? "";
 }
 
+/**
+ * Notes how many items repeat an earlier label: slices of the same name share a legend entry, and
+ * bars of the same name read as one category, both suggesting rows that "aggregate" would combine.
+ */
+export function noteRepeatedLabels(
+  { spec, rows, notes }: Reading,
+  item: string,
+  items: string,
+): void {
+  if (spec.aggregate !== undefined) {
+    return;
+  }
+  const seen = new Set<string>();
+  let repeats = 0;
+  for (const row of rows) {
+    const name = label(row);
+    if (seen.has(name)) repeats++;
+    else seen.add(name);
+  }
+  if (repeats > 0) {
+    notes.push(
+      `${repeats} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
+        'earlier one; "aggregate" combines the rows of each label',
+    );
+  }
+}
+
 /** E.g. "1 row" or "3 rows". */
 export function plural(count: number, noun: string, nouns = `${noun}s`): string {
   return `${count} ${count === 1 ? noun : nouns}`;

@@ -2,7 +2,7 @@
 
 import { columnName } from "./chartColumns";
 import { timeValue } from "./chartDates";
-import { addValues, label, plural, quantile, type Reading } from "./chartRows";
+import { addValues, label, noteRepeatedLabels, plural, quantile, type Reading } from "./chartRows";
 import { type CartesianType, quoteAll } from "./chartSpec";
 
 const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
@@ -28,10 +28,11 @@ const LARGE_POINTS = 2000;
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
-export function cartesianOption(
-  type: CartesianType,
-  { table, columns, names, rows }: Reading,
-): Record<string, unknown> {
+export function cartesianOption(type: CartesianType, reading: Reading): Record<string, unknown> {
+  const { table, columns, names, rows } = reading;
+  if (!columns.timeAxis) {
+    noteRepeatedLabels(reading, "category", "categories");
+  }
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
   // Every value series uses the same time coordinate; parse offsets and fractions once per row.
