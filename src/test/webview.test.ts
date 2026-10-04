@@ -1606,7 +1606,11 @@ suite("webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const settle = () => new Promise(resolve => setTimeout(resolve, 300));
-        await settle();
+        // Let a resize left over from an earlier test, which a busy machine delays, finish.
+        for (let draws = -1; draws !== window.chartDraws; ) {
+          draws = window.chartDraws;
+          await settle();
+        }
         const chart = document.getElementById("chart");
         const before = window.chartDraws;
         const width = chart.clientWidth;
