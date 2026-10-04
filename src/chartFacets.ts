@@ -1,7 +1,9 @@
 // Compose generated Cartesian charts into independently selectable small multiples.
+
+import { columnName, findColumn } from "./chartColumns";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
-import { type Cell, type DataTable, findColumn } from "./data";
+import type { Cell, DataTable } from "./data";
 import { errorMessage, isPlainObject } from "./protocol";
 
 type Option = Record<string, unknown>;
@@ -10,12 +12,11 @@ const MAX_FACETS = 12;
 const objects = (value: unknown): Option[] =>
   Array.isArray(value) ? value.filter(isPlainObject) : isPlainObject(value) ? [value] : [];
 
-/** Exclude the grouping field from inference, unless explicitly requested as a chart field. */
-function facetTable(spec: ChartSpec, table: DataTable): DataTable {
-  const index = findColumn(table, spec.facetColumn ?? "", "facet");
-  const explicit = [spec.labelColumn ?? []].flat().concat(spec.valueColumns ?? []);
-  const keep = explicit.some((name) => findColumn(table, name, "chart") === index);
-  if (keep) return table;
+/** Exclude the facet column from inference, unless it is also a label or value column. */
+function facetTable(spec: ChartSpec, table: DataTable, index: number): DataTable {
+  const labels = [spec.labelColumn ?? []].flat().map((name) => findColumn(table, name, "label"));
+  const values = (spec.valueColumns ?? []).map((name) => findColumn(table, name, "value"));
+  if (labels.includes(index) || values.includes(index)) return table;
   return {
     ...table,
     columns: table.columns.filter((_, i) => i !== index),
@@ -42,6 +43,7 @@ export function buildFacetedChart(
     );
   }
   const index = findColumn(table, spec.facetColumn ?? "", "facet");
+  const facetName = columnName(table, index);
   const groups = new Map<Cell, number[]>();
   table.rows.forEach((row, rowIndex) => {
     const value = row[index] ?? null;
@@ -50,11 +52,11 @@ export function buildFacetedChart(
     groups.set(value, indices);
     if (groups.size > MAX_FACETS) {
       throw new Error(
-        `The facet column ${JSON.stringify(table.columns[index]?.name)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
+        `The facet column ${JSON.stringify(facetName)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
       );
     }
   });
-  const allFacets = facetTable(spec, table);
+  const allFacets = facetTable(spec, table, index);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.
   const labels = [...groups.keys()].map((value) => (value === null ? "(missing)" : String(value)));
@@ -106,7 +108,7 @@ export function buildFacetedChart(
     });
     titles.push({
       id,
-      text: `${table.columns[index]?.name} = ${panel.name}`,
+      text: `${facetName} = ${panel.name}`,
       left: `${left}%`,
       top: `${top}%`,
       textStyle: { fontSize: 13, overflow: "truncate", width: 180 },
@@ -140,7 +142,7 @@ export function buildFacetedChart(
       legend: { type: "scroll", bottom: 0, left: "center" },
       tooltip: { trigger: spec.type === "scatter" ? "item" : "axis", confine: true },
     },
-    summary: `Faceted by ${JSON.stringify(table.columns[index]?.name)} into ${panels.length} panels with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
+    summary: `Faceted by ${JSON.stringify(facetName)} into ${panels.length} panels with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
   };
 }
 

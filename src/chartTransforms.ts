@@ -1,9 +1,9 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
-import { defaultValueColumns } from "./chartColumns";
+import { columnName, defaultValueColumns, findColumn } from "./chartColumns";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
-import { type Cell, type DataTable, findColumn } from "./data";
+import type { Cell, DataTable } from "./data";
 import { quoteAll } from "./text";
 
 function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
@@ -122,7 +122,7 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
     maximum = Math.max(maximum, value);
     count++;
   }
-  const name = table.columns[column]?.name ?? "";
+  const name = columnName(table, column);
   if (count === 0) {
     throw new Error(`The value column ${JSON.stringify(name)} holds no numbers to bin.`);
   }

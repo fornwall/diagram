@@ -2,12 +2,27 @@
 
 import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type ChartSpec, type ChartType } from "./chartSpec";
-import { type Cell, type DataTable, findColumn, isYear } from "./data";
+import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
 import { plural, quoteAll } from "./text";
 
 export function columnName(table: DataTable, index: number): string {
   return table.columns[index]?.name ?? "";
+}
+
+/** Finds a column by its exact name, then ignoring case and surrounding spaces. */
+export function findColumn(table: DataTable, name: string, role: string): number {
+  let index = table.columns.findIndex((column) => column.name === name);
+  if (index < 0) {
+    const wanted = name.trim().toLowerCase();
+    index = table.columns.findIndex((column) => column.name.trim().toLowerCase() === wanted);
+  }
+  if (index < 0) {
+    throw new Error(
+      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
+    );
+  }
+  return index;
 }
 
 /** Whether a chart reads its labels as the levels of a hierarchy or the stages of a flow. */

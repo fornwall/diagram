@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
+import { findColumn } from "../chartColumns";
 import type { DataFormat } from "../chartSpec";
-import { findColumn, parseTable } from "../data";
+import { parseTable } from "../data";
 import { parseJson } from "../dataJson";
 import { parseNumber } from "../dataNumber";
 import { splitText } from "../dataText";

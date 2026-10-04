@@ -28,21 +28,6 @@ export interface DataTable {
   note?: string;
 }
 
-/** Finds a column by its exact name, then ignoring case and surrounding spaces. */
-export function findColumn(table: DataTable, name: string, role: string): number {
-  let index = table.columns.findIndex((column) => column.name === name);
-  if (index < 0) {
-    const wanted = name.trim().toLowerCase();
-    index = table.columns.findIndex((column) => column.name.trim().toLowerCase() === wanted);
-  }
-  if (index < 0) {
-    throw new Error(
-      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
-    );
-  }
-  return index;
-}
-
 /** Records of fields, the first of which is the header if `header`, or may be if undefined. */
 export interface Records {
   records: Cell[][];
