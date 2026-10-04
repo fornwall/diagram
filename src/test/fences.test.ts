@@ -188,6 +188,9 @@ suite("fences", () => {
     ]);
     // Indented by 4 columns more than the item's content, a fence is indented code.
     assert.deepStrictEqual(sources("- a\n\n      ```mermaid\n      A\n      ```\n"), []);
+    // A list marker indented by 4 columns is not one, even below a wider item (examples 312, 313).
+    assert.deepStrictEqual(sources("-    a\n    - ```mermaid\n      A\n      ```\n"), []);
+    assert.deepStrictEqual(sources("-    a\n\n    - ```mermaid\n      A\n      ```\n"), []);
     // Only an ordered list from 1 interrupts a paragraph, and a list item must not be empty.
     assert.deepStrictEqual(sources("Text\n2. ```mermaid\nA\n```\n"), []);
     assert.deepStrictEqual(sources("Text\n1. ```mermaid\n   A\n   ```\n"), [

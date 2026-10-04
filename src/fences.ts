@@ -152,7 +152,7 @@ function continues(cursor: Cursor, container: Container): boolean {
     return true;
   }
   if (cursor.nonspace() === cursor.line.length) {
-    // A blank line ends a list item that started with a blank line and holds nothing yet.
+    // A list item can begin with at most one blank line (5.2, example 280).
     cursor.skip(Math.min(indent, container.width));
     return !container.empty;
   }
@@ -160,6 +160,7 @@ function continues(cursor: Cursor, container: Container): boolean {
     return false;
   }
   cursor.skip(container.width);
+  container.empty = false;
   return true;
 }
 
@@ -205,7 +206,10 @@ export type FenceLine =
   | { kind: "other" };
 
 const OTHER: FenceLine = { kind: "other" };
-const THEMATIC_BREAK = /^([-*_])[ \t]*(?:\1[ \t]*){2,}$/;
+const ATX_HEADING = /#{1,6}(?:[ \t]|$)/y;
+const SETEXT_UNDERLINE = /(?:=+|-+)[ \t]*$/y;
+const THEMATIC_BREAK = /([-*_])[ \t]*(?:\1[ \t]*){2,}$/y;
+const LIST_MARKER = /(?:[-+*]|\d{1,9}[.)])(?=[ \t]|$)/y;
 const BLOCK_TAGS =
   "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|" +
   "dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|" +
@@ -228,6 +232,12 @@ const HTML_BLOCKS: [start: RegExp, end: RegExp | "blank line", interrupts: boole
     false,
   ],
 ];
+
+/** Whether a sticky regex matches a line at an index, after which its lastIndex is the match's end. */
+function matchesAt(regex: RegExp, line: string, index: number): boolean {
+  regex.lastIndex = index;
+  return regex.test(line);
+}
 
 /**
  * Follows the block structure of Markdown line by line, as far as it decides where fenced code
@@ -284,15 +294,9 @@ export class FenceScanner {
       this.html = undefined;
     }
 
-    let started = false;
-    const start = () => {
-      if (!started) {
-        // A new block closes the containers that this line does not continue.
-        containers.length = matched;
-        started = true;
-      }
-      this.paragraph = false;
-    };
+    // Container markers, then at most one leaf block. A block that starts on the line closes the
+    // containers that the line does not continue, and new containers take their place.
+    let depth = matched;
     let leaf = false;
     for (;;) {
       const indent = cursor.indent();
@@ -302,89 +306,74 @@ export class FenceScanner {
         break;
       }
       if (char === ">") {
-        start();
         quote(cursor, indent);
-        containers.push(">");
+        containers[depth++] = ">";
+        this.paragraph = false;
         continue;
-      }
-      if (char === "#" && /^#{1,6}(?:[ \t]|$)/.test(line.slice(at, at + 7))) {
-        start();
-        leaf = true;
-        break;
       }
       if (char === "`" || char === "~") {
         const fence = opening(line, at, indent);
         if (fence) {
-          start();
+          while (containers.length > depth) containers.pop();
+          this.paragraph = false;
           this.code = fence;
-          for (const container of containers) if (container !== ">") container.empty = false;
           return { kind: "opening", fence, prefix: continuationPrefix(line, at) };
         }
       }
       if (char === "<") {
         const text = line.slice(at);
+        // Any other tag cannot interrupt a paragraph, not even one that continues lazily (4.6).
         const html = HTML_BLOCKS.find(
           ([opens, , interrupts]) => opens.test(text) && (interrupts || !this.paragraph),
         );
         if (html) {
-          start();
           const [, end] = html;
           this.html = end === "blank line" || !end.test(text) ? end : undefined;
           leaf = true;
           break;
         }
       }
-      if (this.paragraph && all && !started && /^(?:=+|-+)[ \t]*$/.test(line.slice(at))) {
-        // A setext heading underline.
-        this.paragraph = false;
+      // An underline turns a paragraph into a heading, but not a lazy one (4.3, example 93).
+      if (this.paragraph && all && matchesAt(SETEXT_UNDERLINE, line, at)) {
         leaf = true;
         break;
       }
-      if ("-*_".includes(char) && THEMATIC_BREAK.test(line.slice(at))) {
-        start();
+      if (matchesAt(ATX_HEADING, line, at) || matchesAt(THEMATIC_BREAK, line, at)) {
         leaf = true;
         break;
       }
-      const marker = /^(?:[-+*]|\d{1,9}[.)])(?=[ \t]|$)/.exec(line.slice(at, at + 11))?.[0];
-      if (marker === undefined) {
+      if (!matchesAt(LIST_MARKER, line, at)) {
         break;
       }
+      const marker = line.slice(at, LIST_MARKER.lastIndex);
       let end = at + marker.length;
       while (line[end] === " " || line[end] === "\t") end++;
       const empty = end === line.length;
-      // A list item interrupts a paragraph only with content, and an ordered one only from 1.
+      // A list item interrupts a paragraph only with content, and an ordered one only from 1
+      // (5.2, example 285, and 5.3, example 304). Otherwise the paragraph continues.
       const ordered = marker.length > 1;
-      if (
-        this.paragraph &&
-        all &&
-        !started &&
-        (empty || (ordered && Number.parseInt(marker, 10) !== 1))
-      ) {
+      if (this.paragraph && all && (empty || (ordered && Number.parseInt(marker, 10) !== 1))) {
         break;
       }
-      start();
       cursor.skip(indent);
       cursor.advance(marker.length);
-      // Content indented by 5 or more columns is indented code, 1 column into the item.
+      // Content indented by 5 or more columns is indented code, 1 column into the item (5.2,
+      // example 273).
       const spaces = cursor.indent();
       const padding = empty || spaces > 4 ? 1 : spaces;
       cursor.skip(padding);
-      containers.push({ width: indent + marker.length + padding, empty });
+      containers[depth++] = { width: indent + marker.length + padding, empty };
+      this.paragraph = false;
     }
 
     const blank = cursor.nonspace() === line.length;
-    if (!started && !all && this.paragraph && !blank) {
-      // A lazy continuation line of a paragraph keeps the containers open.
+    if (!all && this.paragraph && !leaf && !blank) {
+      // A lazy continuation line of a paragraph keeps the containers open (5.1, example 233).
       return OTHER;
     }
-    if (!started) containers.length = matched;
-    if (blank) {
-      this.paragraph = false;
-    } else {
-      // Continue a paragraph, or start one or indented code.
-      if (!leaf) this.paragraph ||= cursor.indent() < 4;
-      for (const container of containers) if (container !== ">") container.empty = false;
-    }
+    while (containers.length > depth) containers.pop();
+    // Indented code cannot interrupt a paragraph (4.4, example 113).
+    this.paragraph = !blank && !leaf && (this.paragraph || cursor.indent() < 4);
     return OTHER;
   }
 }
@@ -444,7 +433,8 @@ interface CodeBlock {
 /** Yields the code blocks in a text in order, collecting the lines of wanted languages only. */
 function* codeBlocks(text: string, wanted: (language: string) => boolean): Generator<CodeBlock> {
   const scanner = new FenceScanner();
-  let open: { block: CodeBlock; wanted: boolean } | undefined;
+  let open: CodeBlock | undefined;
+  let collect = false;
   // Lines end at LF, as in VS Code, whose documents hold no lone CR, and not at Unicode separators.
   // A final line break ends the last line rather than starting another one.
   let line = 0;
@@ -454,27 +444,24 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
     const scanned = scanner.next(text.slice(start, end));
     start = end + 1;
     if (scanned.kind === "content") {
-      if (open?.wanted) open.block.lines.push(scanned.text);
+      if (collect) open?.lines.push(scanned.text);
       continue;
     }
     // Like CommonMark, a block that is never closed ends with its container or the document.
     if (open) {
-      open.block.lastLine = line - 1;
-      yield open.block;
+      open.lastLine = line - 1;
+      yield open;
       open = undefined;
     }
     if (scanned.kind === "opening") {
       const { language } = scanned.fence;
-      const { prefix } = scanned;
-      open = {
-        block: { language, prefix, openingLine: line, lastLine: line, lines: [] },
-        wanted: wanted(language),
-      };
+      open = { language, prefix: scanned.prefix, openingLine: line, lastLine: line, lines: [] };
+      collect = wanted(language);
     }
   }
   if (open) {
-    open.block.lastLine = line - 1;
-    yield open.block;
+    open.lastLine = line - 1;
+    yield open;
   }
 }
 
@@ -536,15 +523,13 @@ export function rewriteFence(
     if (block.lastLine < lastLine) {
       return { endingLine: block.lastLine - fence.openingLine };
     }
-    const read = block.lines.join("\n");
-    if (block.lastLine === lastLine && read === lines.join("\n")) {
-      const { language } = fence;
+    if (block.lastLine === lastLine && block.lines.join("\n") === source) {
       const { openingLine, prefix } = block;
       return {
         start,
         end: end ?? text.length,
         text: replaced,
-        fence: { language, source: read, openingLine, lastLine, prefix },
+        fence: { language: fence.language, source, openingLine, lastLine, prefix },
       };
     }
   }
