@@ -296,6 +296,8 @@ export class MermaidRenderer implements Renderer {
   private fitting = true;
   private displayedSource: string | undefined;
   private fitFrame = 0;
+  /** The node that has the drawing's tab stop. */
+  private tabStop: string | undefined;
 
   constructor(
     itemClicked: ItemClickHandler,
@@ -309,13 +311,24 @@ export class MermaidRenderer implements Renderer {
       itemClicked(node && { key: node.id, node }, withModifier(event));
     };
     diagram.addEventListener("click", activate);
-    // Nodes are buttons for the keyboard.
+    // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
+    // between them, Home and End to the first and the last.
     diagram.addEventListener("keydown", (event) => {
-      const onNode = event.target instanceof Element && this.nodes.has(event.target);
-      if (onNode && (event.key === "Enter" || event.key === " ")) {
+      const { target } = event;
+      if (!(target instanceof SVGElement && this.nodes.has(target))) return;
+      if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         activate(event);
+        return;
       }
+      const next = this.neighbor(target, event.key);
+      if (next !== undefined) {
+        event.preventDefault();
+        if (next) next.focus();
+      }
+    });
+    diagram.addEventListener("focusin", ({ target }) => {
+      if (target instanceof SVGElement && target.hasAttribute("tabindex")) this.setTabStop(target);
     });
     // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling: a trackpad pinch,
     // which Chromium reports as such, sends many small deltas. Apply them once per frame.
@@ -594,6 +607,60 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
+  /**
+   * The node to move the focus to from the given one for a key: the nearest in the direction of an
+   * arrow key (null if there is none), or the first or last node, in the order of the source, for
+   * Home and End. Undefined if the key does not move the focus.
+   */
+  private neighbor(from: SVGElement, key: string): SVGElement | null | undefined {
+    if (key === "Home" || key === "End") {
+      const nodes = this.drawn.filter((node) => !node.relationship);
+      const node = key === "Home" ? nodes[0] : nodes.at(-1);
+      return (
+        this.elementsById
+          .get(node?.id ?? "")
+          ?.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null
+      );
+    }
+    const stops = this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
+    const direction = {
+      ArrowRight: [1, 0],
+      ArrowLeft: [-1, 0],
+      ArrowDown: [0, 1],
+      ArrowUp: [0, -1],
+    }[key];
+    if (!direction) return undefined;
+    const [dx, dy] = direction as [number, number];
+    const center = (element: Element) => {
+      const box = element.getBoundingClientRect();
+      return [box.left + box.width / 2, box.top + box.height / 2] as const;
+    };
+    const [x, y] = center(from);
+    // The nearest node ahead, preferring one in line with this one.
+    let best: SVGElement | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const stop of stops) {
+      const [cx, cy] = center(stop);
+      const ahead = (cx - x) * dx + (cy - y) * dy;
+      const aside = Math.abs((cx - x) * dy) + Math.abs((cy - y) * dx);
+      const score = ahead + 2 * aside;
+      if (stop !== from && ahead > 0.5 && score < bestScore) {
+        best = stop;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  /** Makes the element the drawing's tab stop. */
+  private setTabStop(element: SVGElement): void {
+    const node = this.nodes.get(element);
+    if (!node || element.getAttribute("tabindex") === "0") return;
+    this.diagram.querySelector('.diagram-node[tabindex="0"]')?.setAttribute("tabindex", "-1");
+    element.setAttribute("tabindex", "0");
+    this.tabStop = node.id;
+  }
+
   /** Finds the selectable nodes. */
   private prepareSvg(svgId: string, db?: DiagramDb): void {
     this.nodes.clear();
@@ -616,6 +683,11 @@ export class MermaidRenderer implements Renderer {
       element.setAttribute("aria-pressed", "false");
     }
     this.drawn = [...uniqueNodes.values()];
+    // Keep the tab stop on the same node in a new version of the drawing.
+    const stops = svg.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
+    const stop =
+      Array.from(stops).find((element) => this.nodes.get(element)?.id === this.tabStop) ?? stops[0];
+    stop?.setAttribute("tabindex", "0");
     this.showSelection(this.selectedKeys);
     this.showLinks(this.links);
     this.showMarks(this.annotation);
@@ -768,10 +840,10 @@ export class MermaidRenderer implements Renderer {
       element.setAttribute("data-diagram-id", node.id);
       if (node.relationship) element.classList.add("diagram-relationship");
       this.nodes.set(element, node);
-      // One tab stop per node, although some are drawn as several elements.
+      // One focusable element per node, although some are drawn as several.
       if (!focusable.has(node.id)) {
         focusable.add(node.id);
-        element.setAttribute("tabindex", "0");
+        element.setAttribute("tabindex", "-1");
         element.setAttribute("role", "button");
         element.setAttribute("aria-label", node.label);
       }

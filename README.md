@@ -21,7 +21,7 @@ Follow-ups change the current diagram. Use `/new` to start another, `/explain` t
 
 | Action | How |
 | --- | --- |
-| Select | Click a node, edge, sequence message or chart item. Ctrl/Cmd+click or Shift+click selects several. Tab then Enter/Space also selects diagram items; modifiers add to the selection. |
+| Select | Click a node, edge, sequence message or chart item. Ctrl/Cmd+click or Shift+click selects several. In a Mermaid diagram, Tab to an item, move with the arrow keys (Home/End: first/last node) and press Enter/Space to select; modifiers add to the selection. |
 | Highlight a path | Select two flowchart nodes in order (start, then destination), then **Highlight Path**. Selects a shortest path, including its edges. |
 | Ask | **Send to chat** includes your selection and replies to the agent that drew the diagram. |
 | Edit | Use the top-right view buttons to show source. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. |

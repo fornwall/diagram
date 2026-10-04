@@ -35,7 +35,7 @@ suite("relationships", function () {
     if (!element) throw new Error("Missing selector: " + ${JSON.stringify(selector)});
     element.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: ${modifier} }));
   })()`);
-  const node = (id: string) => `[data-diagram-id="${id}"][tabindex="0"]`;
+  const node = (id: string) => `[data-diagram-id="${id}"][tabindex]`;
 
   test("selects labeled and parallel edges with authoritative underscore endpoints and stable IDs", async () => {
     const source =
@@ -43,7 +43,7 @@ suite("relationships", function () {
     assert.ok((await render({ source })).ok);
     assert.deepStrictEqual(
       await evaluate(
-        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex="0"]'), e => e.dataset.diagramId)`,
+        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
       ),
       ["edge:first", "edge:second", "edge:back"],
     );
@@ -69,7 +69,7 @@ suite("relationships", function () {
     );
     assert.ok(
       await evaluate(
-        `new Promise(resolve => setTimeout(() => resolve(document.querySelector('[data-diagram-id="edge:second"][tabindex="0"]').classList.contains('diagram-mark-problem')), 50))`,
+        `new Promise(resolve => setTimeout(() => resolve(document.querySelector('[data-diagram-id="edge:second"][tabindex]').classList.contains('diagram-mark-problem')), 50))`,
       ),
     );
     assert.strictEqual(
@@ -81,7 +81,7 @@ suite("relationships", function () {
     assert.ok((await render({ source })).ok);
     assert.deepStrictEqual(
       await evaluate(
-        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex="0"]'), e => e.dataset.diagramId)`,
+        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
       ),
       ["edge:first", "edge:second", "edge:back"],
     );
@@ -90,7 +90,7 @@ suite("relationships", function () {
   test("selects unlabeled edges by their wide hit target and keyboard without changing node selection", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B\n A --> B" })).ok);
     const ids = (await evaluate(
-      `Array.from(document.querySelectorAll('.diagram-relationship[tabindex="0"]'), e => e.dataset.diagramId)`,
+      `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
     )) as string[];
     assert.strictEqual(ids.length, 2);
     assert.notStrictEqual(ids[0], ids[1]);
@@ -223,7 +223,7 @@ suite("relationships", function () {
       [["sim → req: <<satisfies>>", "sim", "req", "forward"]],
     );
     const id = drawnRelationships[0]?.id;
-    await click(`[data-diagram-id="${id}"][tabindex="0"]`);
+    await click(`[data-diagram-id="${id}"][tabindex]`);
     assert.deepStrictEqual(
       selected().map((n) => n.id),
       [id],

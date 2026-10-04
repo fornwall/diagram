@@ -1329,6 +1329,32 @@ suite("webview", function () {
     );
   });
 
+  test("moves the focus between Mermaid nodes with arrow keys from one tab stop", async () => {
+    assert.ok((await render({ source: "flowchart LR\n  A --> B\n  A --> C\n  C --> D" })).ok);
+    const moves = (await evaluate(`(() => {
+      const stops = () => Array.from(document.querySelectorAll('#diagram [tabindex="0"]'), e => e.dataset.diagramId);
+      const press = (key) => {
+        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}));
+        return document.activeElement.dataset.diagramId;
+      };
+      const initial = stops();
+      document.querySelector('#diagram [data-diagram-id="A"][tabindex]').focus();
+      return {initial, right: [press("ArrowRight"), press("ArrowRight")], stops: stops(),
+        back: [press("ArrowLeft"), press("ArrowLeft")], end: press("End"), home: press("Home"),
+        edge: press("ArrowLeft")};
+    })()`)) as Record<string, string | string[]>;
+    const [edge, target] = moves.right as string[];
+    assert.match(edge ?? "", /^edge:L_A_(B|C)_0$/);
+    assert.strictEqual(target, edge?.slice("edge:L_A_".length, -2));
+    const { initial, stops, back, end, home, edge: leftOfA } = moves;
+    assert.strictEqual(initial?.length, 1);
+    // Nothing is left of A.
+    assert.deepStrictEqual(
+      { stops, back, end, home, leftOfA },
+      { stops: [target], back: [edge, "A"], end: "D", home: "A", leftOfA: "A" },
+    );
+  });
+
   test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
     assert.ok((await render({ source: "flowchart LR\n  A --> B" })).ok);
     await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);
