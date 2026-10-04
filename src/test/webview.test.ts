@@ -5,7 +5,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
-import { newPanel } from "./newPanel";
+import { newPanel, openWebviewPanel } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
 const MERMAID: Record<string, string> = {
@@ -1835,8 +1835,7 @@ suite("JavaScript in chart options", function () {
   const messages: string[] = [];
   suiteSetup(() => {
     panel = newPanel();
-    panel.show();
-    ({ webview } = (panel as unknown as { panel: vscode.WebviewPanel }).panel);
+    ({ webview } = openWebviewPanel(panel));
     webview.onDidReceiveMessage((message: { type: string }) => messages.push(message.type));
   });
   suiteTeardown(() => panel.dispose());

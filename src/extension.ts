@@ -22,6 +22,7 @@ import {
   PickDiagramNodesTool,
   RenderDiagramTool,
 } from "./tools";
+import { WebviewChannel } from "./webviewChannel";
 import {
   FindWorkspaceFilesTool,
   ReadWorkspaceFileTool,
@@ -54,7 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("diagram.export", () => panel.exportDiagram()),
     vscode.commands.registerCommand("diagram.chartOptions", () => panel.toggleChartOptions()),
     ...registerMarkdownDiagrams(panel),
-    vscode.window.registerWebviewPanelSerializer(DiagramPanel.viewType, {
+    vscode.window.registerWebviewPanelSerializer(WebviewChannel.viewType, {
       async deserializeWebviewPanel(webviewPanel) {
         panel.restore(webviewPanel);
       },

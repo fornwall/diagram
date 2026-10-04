@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DiagramPanel } from "../panel";
 import type { FromWebview, ToWebview } from "../protocol";
+import { WebviewChannel } from "../webviewChannel";
 
 type Render = Extract<ToWebview, { type: "render" }>;
 
@@ -73,7 +74,7 @@ export class FakeWebview {
       },
     };
     this.panel = {
-      viewType: DiagramPanel.viewType,
+      viewType: WebviewChannel.viewType,
       title: "Diagram",
       webview,
       options: {},

@@ -37,14 +37,13 @@ import {
   errorMessage,
   type FromWebview,
   GET_STATE_TOOL,
-  isFromWebview,
   isPlainObject,
   RENDER_TOOL,
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { runsCode } from "./webview/optionSource";
-import { loadWebview } from "./webviewHtml";
+import { WebviewChannel } from "./webviewChannel";
 
 /** Routes follow-up questions to the participant or the agent that invoked a tool. */
 type DiagramOrigin = "participant" | "tool" | "document";
@@ -105,8 +104,6 @@ const RENDER_TIMEOUT_MS = 15_000;
 
 /** The panel shared by the chat participant and language model tools. */
 export class DiagramPanel implements vscode.Disposable {
-  static readonly viewType = "diagram.panel";
-
   private readonly store: StateStore;
   private state: DiagramState | undefined;
   /** The id of the chat request that a tool rendered the current diagram for; see {@link adopt}. */
@@ -115,10 +112,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Transient marks: cleared on replacement, never persisted. */
   private annotation: Annotation | undefined;
 
-  private panel: vscode.WebviewPanel | undefined;
-  /** Messages wait for "ready"; pending renders and picks are replayed after reloads. */
-  private webviewReady = false;
-  private webviewGeneration = 0;
+  private readonly webview: WebviewChannel;
+  /** Pending renders and picks are replayed when the webview reloads. */
   private nextRequestId = 1;
   /** Counts renders, to detect intervening ones; tools see it as the revision. */
   private renderVersion = 0;
@@ -129,7 +124,7 @@ export class DiagramPanel implements vscode.Disposable {
   private unavailable: string | undefined;
   /**
    * Whether the page was sent a chart option with JavaScript code, which can post any message as
-   * if the user had acted, and stays in the page. Reset only for a new webview, as messages the
+   * if the user had acted, and stays in the page. Reset only when the tab closes, as messages the
    * old page sent before a reload may still arrive after it.
    */
   private pageRanCode = false;
@@ -152,6 +147,11 @@ export class DiagramPanel implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
+    this.webview = new WebviewChannel(
+      context.extensionUri,
+      (message) => this.onMessage(message),
+      () => this.closed(),
+    );
     this.state = this.store.load();
     this.updateChartOptionsContext();
   }
@@ -212,7 +212,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
-    this.reveal(origin !== "document");
+    this.webview.reveal(origin !== "document");
     return this.renderCurrent();
   }
 
@@ -229,18 +229,16 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Shows and focuses the panel unless a background update asks to preserve focus. */
   show(preserveFocus = false): void {
-    if ((this.reveal(preserveFocus) || this.unavailable) && this.state) {
+    if ((this.webview.reveal(preserveFocus) || this.unavailable) && this.state) {
       void this.renderCurrent();
     }
   }
 
   /** Takes over a panel restored by VS Code after a reload. */
   restore(panel: vscode.WebviewPanel): void {
-    if (this.panel) {
-      panel.dispose();
+    if (!this.webview.adopt(panel)) {
       return;
     }
-    this.attach(panel);
     if (this.state) {
       void this.renderCurrent();
     } else {
@@ -250,96 +248,29 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.panel?.dispose();
+    this.webview.dispose();
   }
 
   // The webview, and the requests waiting for its answers.
 
-  /** Reveals the panel, or creates it, in which case this returns true. */
-  private reveal(preserveFocus: boolean): boolean {
-    if (this.panel) {
-      if (!preserveFocus || !this.panel.visible) {
-        this.panel.reveal(undefined, preserveFocus);
-      }
-      return false;
-    }
-    // After a window reload, VS Code restores a panel in a background tab only once the tab is
-    // shown. Replace such a tab rather than open a second one.
-    const leftovers = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .filter(
-        (tab) =>
-          tab.input instanceof vscode.TabInputWebview &&
-          tab.input.viewType.endsWith(DiagramPanel.viewType),
-      );
-    const panel = vscode.window.createWebviewPanel(
-      DiagramPanel.viewType,
-      "Diagram",
-      {
-        viewColumn: leftovers[0]?.group.viewColumn ?? vscode.ViewColumn.Beside,
-        preserveFocus,
-      },
-      // Keeps the webview while hidden behind another tab, so that it can still render and be
-      // asked to pick, and keeps its zoom and source editor.
-      { retainContextWhenHidden: true },
-    );
-    this.attach(panel);
-    void vscode.window.tabGroups.close(leftovers, true);
-    return true;
-  }
-
-  private attach(panel: vscode.WebviewPanel): void {
-    this.panel = panel;
-    panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
-    this.webviewReady = false;
+  private closed(): void {
     this.pageRanCode = false;
-    loadWebview(panel.webview, this.context.extensionUri);
-
-    // The webview renders content written by a model, so do not trust what it sends.
-    const messageListener = panel.webview.onDidReceiveMessage((message: unknown) =>
-      isFromWebview(message) ? this.onMessage(message) : undefined,
-    );
-    // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
-    // draw the current chart again, now with its code.
-    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
-      this.webviewReady = false;
-      loadWebview(panel.webview, this.context.extensionUri);
-    });
-    panel.onDidDispose(() => {
-      messageListener.dispose();
-      trustListener.dispose();
-      this.cancelExport("The diagram panel was closed before export finished.");
-      this.panel = undefined;
-      this.webviewReady = false;
-      this.selection = [];
-      this.cancelPick("The user closed the diagram panel.");
-      if (this.pendingRender) {
-        this.finishRender(this.pendingRender.message.requestId, {
-          ok: false,
-          kind: "unavailable",
-          error: "The diagram panel was closed before it finished rendering.",
-        });
-      }
-    });
+    this.cancelExport("The diagram panel was closed before export finished.");
+    this.selection = [];
+    this.cancelPick("The user closed the diagram panel.");
+    if (this.pendingRender) {
+      this.finishRender(this.pendingRender.message.requestId, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram panel was closed before it finished rendering.",
+      });
+    }
   }
 
+  /** Sends a message to the webview, ending the request it makes if it does not arrive. */
   private async post(message: ToWebview): Promise<void> {
-    if (!this.webviewReady || !this.panel) {
-      return;
-    }
-    const panel = this.panel;
-    const generation = this.webviewGeneration;
-    let error: string;
-    try {
-      if (await panel.webview.postMessage(message)) {
-        return;
-      }
-      error = "The diagram panel is unavailable. Reopen it and try again.";
-    } catch (cause) {
-      error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
-    }
-    // Reloads replay pending requests with the same ids. An older delivery must not cancel them.
-    if (panel !== this.panel || generation !== this.webviewGeneration) {
+    const error = await this.webview.post(message);
+    if (error === undefined) {
       return;
     }
     if (message.type === "render") {
@@ -358,8 +289,6 @@ export class DiagramPanel implements vscode.Disposable {
         this.cancelExport("The diagram panel reloaded before export finished. Try again.");
         // The webview loaded, or lost its content and loaded again (e.g. when moved to another
         // window). Keep the pending request id so its caller is answered.
-        this.webviewReady = true;
-        this.webviewGeneration++;
         this.selection = [];
         if (this.pendingRender) {
           this.sendChartOptions();
@@ -454,7 +383,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Shows the current diagram in the webview, and keeps its render error, if any, for later requests. */
   private async renderCurrent(): Promise<RenderOutcome> {
     const state = this.state;
-    if (!state || !this.panel) {
+    const tab = this.webview.tab;
+    if (!state || !tab) {
       return { ok: false, kind: "unavailable", error: "There is no diagram panel to render in." };
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
@@ -475,9 +405,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.unavailable = undefined;
     // The title names the document a diagram was opened from, as an Apply then writes to that file.
-    this.panel.title = state.document
-      ? `${state.title} — ${documentName(state.document)}`
-      : state.title;
+    tab.title = state.document ? `${state.title} — ${documentName(state.document)}` : state.title;
     const { source, title } = state;
     const refreshFrom =
       state.chart && (state.chart.file || state.chart.command)
@@ -827,7 +755,7 @@ export class DiagramPanel implements vscode.Disposable {
       );
     }
     const rebuilt = rebuildChart(chart, table, state.chartPresentation);
-    this.reveal(true);
+    this.webview.reveal(true);
     const outcome = await this.showChart(
       {
         ...state,
@@ -910,7 +838,7 @@ export class DiagramPanel implements vscode.Disposable {
     message: Extract<FromWebview, { type: "applyChartOptions" | "resetChartStyling" }>,
   ): Promise<void> {
     const state = this.state;
-    const panel = this.panel;
+    const tab = this.webview.tab;
     try {
       if (!state?.chart || message.revision !== this.renderVersion) {
         throw new Error("The chart changed. Reopen Chart Options and try again.");
@@ -927,7 +855,7 @@ export class DiagramPanel implements vscode.Disposable {
           },
           (_progress, token) => loadTable(state.chart as ChartSpec, token),
         );
-        if (message.revision !== this.renderVersion || this.panel !== panel || !panel) return;
+        if (message.revision !== this.renderVersion || this.webview.tab !== tab || !tab) return;
         table = loaded.table;
         if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);
       }
@@ -950,7 +878,7 @@ export class DiagramPanel implements vscode.Disposable {
         "Chart options changed before the user picked.",
       );
       // Unless the chart was replaced or closed meanwhile, which says nothing about the options.
-      if (!outcome.ok && this.state === state && this.panel === panel) {
+      if (!outcome.ok && this.state === state && this.webview.tab === tab) {
         throw new Error(`Could not apply the chart options: ${outcome.error}`);
       }
     } catch (error) {
@@ -963,7 +891,7 @@ export class DiagramPanel implements vscode.Disposable {
     const chart = this.state?.chart;
     const presentation = this.state?.chartPresentation;
     const version = this.renderVersion;
-    const panel = this.panel;
+    const tab = this.webview.tab;
     if (!chart || this.refreshing) {
       return;
     }
@@ -977,7 +905,7 @@ export class DiagramPanel implements vscode.Disposable {
       );
       // Any intervening render wins, even if an edit restored the same source.
       const state = this.state;
-      if (this.renderVersion !== version || this.panel !== panel || !panel || !state) {
+      if (this.renderVersion !== version || this.webview.tab !== tab || !tab || !state) {
         return;
       }
       if (warning) void vscode.window.showWarningMessage(warning);
@@ -992,11 +920,11 @@ export class DiagramPanel implements vscode.Disposable {
         table,
         "The chart data was refreshed before the user picked.",
       );
-      if (!outcome.ok && this.state === state && this.panel === panel) {
+      if (!outcome.ok && this.state === state && this.webview.tab === tab) {
         void vscode.window.showErrorMessage(`Could not refresh the chart: ${outcome.error}`);
       }
     } catch (error) {
-      if (this.renderVersion === version && this.panel === panel) {
+      if (this.renderVersion === version && this.webview.tab === tab) {
         void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
       }
     } finally {
@@ -1031,7 +959,8 @@ export class DiagramPanel implements vscode.Disposable {
     pickReason: string,
     token?: vscode.CancellationToken,
   ): Promise<RenderOutcome> {
-    const { state, chartTable, annotation, panel } = this;
+    const { state, chartTable, annotation } = this;
+    const tab = this.webview.tab;
     this.state = next;
     this.chartTable = table;
     this.selection = [];
@@ -1061,8 +990,8 @@ export class DiagramPanel implements vscode.Disposable {
     await this.store.save(state);
     if (
       this.renderVersion === revision &&
-      panel &&
-      this.panel === panel &&
+      tab &&
+      this.webview.tab === tab &&
       (cancelled || (!outcome.ok && outcome.kind === "invalid"))
     ) {
       // Draw the kept chart again, but a cancelled request does not wait for the webview.
@@ -1089,7 +1018,7 @@ export class DiagramPanel implements vscode.Disposable {
       warning = "Press Refresh to draw the chart again, then export it.";
     } else if (state.error) {
       warning = `There is nothing to export, as the diagram fails to render: ${state.error}`;
-    } else if (this.unavailable || !this.webviewReady || this.renderedRequestId === undefined) {
+    } else if (this.unavailable || !this.webview.isReady || this.renderedRequestId === undefined) {
       warning = `${this.unavailable ?? "The diagram panel is not showing the diagram."} Use Diagram: Show Panel and try again.`;
     }
     if (warning || state?.source === undefined) {
@@ -1103,7 +1032,7 @@ export class DiagramPanel implements vscode.Disposable {
         { language: state.language, title: state.title, source: state.source },
         (format) => {
           const rendered = this.renderedRequestId;
-          if (version !== this.renderVersion || !this.webviewReady || rendered === undefined) {
+          if (version !== this.renderVersion || !this.webview.isReady || rendered === undefined) {
             throw new Error("The diagram changed or closed while choosing a format. Try again.");
           }
           return this.requestExport(format, rendered);
@@ -1196,7 +1125,7 @@ export class DiagramPanel implements vscode.Disposable {
       const document = await vscode.workspace.openTextDocument(uri);
       // The click made the panel's tab group active, so show the code in another one, leaving the
       // diagram visible beside it.
-      const column = this.panel?.viewColumn;
+      const column = this.webview.tab?.viewColumn;
       const elsewhere = vscode.window.tabGroups.all.find((group) => group.viewColumn !== column);
       await vscode.window.showTextDocument(document, {
         selection: linkSelection(link, document),

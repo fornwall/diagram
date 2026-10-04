@@ -6,9 +6,10 @@ import * as vscode from "vscode";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { linkTexts } from "../links";
-import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "../panel";
+import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
 import { isFromWebview } from "../protocol";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
+import { WebviewChannel } from "../webviewChannel";
 import {
   FakeWebview,
   memento,
@@ -774,7 +775,7 @@ suite("panel", function () {
   });
 
   test("opening the panel replaces a diagram tab left from before a reload", async () => {
-    vscode.window.createWebviewPanel(DiagramPanel.viewType, "Old", {
+    vscode.window.createWebviewPanel(WebviewChannel.viewType, "Old", {
       viewColumn: vscode.ViewColumn.Two,
       preserveFocus: true,
     });
