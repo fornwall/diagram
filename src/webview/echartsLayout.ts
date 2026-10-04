@@ -201,10 +201,26 @@ function hideRepeatedTitle(base: JsonObject, header: string): void {
 function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size: Size): void {
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
   for (const title of asArray(base.title)) {
-    const atTop = title.bottom === undefined && (typeof title.top !== "number" || title.top < 40);
-    if (title.show !== false && atTop && (title.text || title.subtext)) {
+    if (title.show === false || !(title.text || title.subtext)) {
+      continue;
+    }
+    const { top, bottom } = title;
+    const side =
+      bottom !== undefined || top === "bottom"
+        ? "bottom"
+        : top === undefined || top === "top" || (typeof top === "number" && top < 40)
+          ? "top"
+          : undefined;
+    if (side) {
       const height = 10 + (title.text ? 22 : 0) + (title.subtext ? 18 : 0);
-      reserved.top = Math.max(reserved.top, height);
+      reserved[side] = Math.max(reserved[side], height);
+    }
+    // A title wider than the panel is cut short rather than cut off.
+    for (const key of ["textStyle", "subtextStyle"]) {
+      const style = isPlainObject(title[key]) ? title[key] : {};
+      style.width ??= size.width - 16;
+      style.overflow ??= "truncate";
+      title[key] = style;
     }
   }
   // A timeline takes the bottom of the chart, where ECharts places it unless told otherwise.
@@ -358,7 +374,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       });
       // The ECharts 6 way to keep axis labels and names inside the grid rectangle.
       if (grid.containLabel === undefined) {
-        Object.assign(grid, { outerBoundsMode: "same", outerBoundsContain: "all" });
+        grid.outerBoundsMode = "same";
       }
     }
     base.grid ??= grid;

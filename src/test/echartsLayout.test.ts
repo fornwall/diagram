@@ -186,7 +186,26 @@ suite("echartsLayout", () => {
     const subtitled = layout(bars({ title: { text: "Sales", subtext: "2026" } }), {
       title: "Sales",
     });
-    assert.deepStrictEqual(subtitled.title, { text: "", subtext: "2026" });
+    assert.deepStrictEqual([subtitled.title.text, subtitled.title.subtext], ["", "2026"]);
+  });
+
+  test("reserves room for a title on the side it is placed, and truncates a long one", () => {
+    const grid = (title: Option) => {
+      const { top, bottom } = layout(bars({ title })).grid;
+      return [top, bottom];
+    };
+    assert.deepStrictEqual(grid({ text: "T" }), [46, 8]);
+    assert.deepStrictEqual(grid({ text: "T", top: "bottom" }), [14, 40]);
+    assert.deepStrictEqual(grid({ text: "T", bottom: 0 }), [14, 40]);
+    assert.deepStrictEqual(grid({ text: "T", top: "middle" }), [14, 8]);
+    const { textStyle, subtextStyle } = layout(
+      bars({ title: { text: "T", textStyle: { width: 50 } } }),
+      {
+        width: 300,
+      },
+    ).title;
+    assert.deepStrictEqual(textStyle, { width: 50, overflow: "truncate" });
+    assert.deepStrictEqual(subtextStyle, { width: 284, overflow: "truncate" });
   });
 
   test("adds a legend for several named series, beside non-grid charts when there is room", () => {
