@@ -137,15 +137,13 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
-    let spec: ChartSpec;
-
     try {
-      spec = validateChartSpec(options.input);
+      const spec = validateChartSpec(options.input);
+      return prepareDataInvocation(spec, `Rendering chart "${chartTitle(spec)}"`);
     } catch {
       // Reported when the tool is invoked.
       return { invocationMessage: "Rendering a chart" };
     }
-    return prepareDataInvocation(spec, `Rendering chart "${chartTitle(spec)}"`);
   }
 
   async invoke(

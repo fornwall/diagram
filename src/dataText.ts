@@ -177,16 +177,11 @@ function splitLeniently(text: string, delimiter: string): { table: Records; quot
 /** The most common value, preferring the smallest on ties. */
 function mode(values: number[]): number {
   const counts = new Map<number, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   let best = 0;
-  let bestCount = 0;
   for (const [value, count] of counts) {
-    if (count > bestCount || (count === bestCount && value < best)) {
-      best = value;
-      bestCount = count;
-    }
+    const bestCount = counts.get(best) ?? 0;
+    if (count > bestCount || (count === bestCount && value < best)) best = value;
   }
   return best;
 }
