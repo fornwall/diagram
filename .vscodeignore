@@ -5,6 +5,7 @@
 !dist/standalone.js
 !dist/chunks/*.js
 !dist/webview.css
+!dist/THIRD_PARTY_NOTICES.txt
 !images/icon.png
 !package.json
 !README.md

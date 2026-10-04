@@ -1,4 +1,5 @@
-import { rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import * as esbuild from "esbuild";
 
 const production = process.argv.includes("--production");
@@ -37,7 +38,7 @@ const common = {
   minify: production,
   sourcemap: !production,
   sourcesContent: false,
-  metafile: analyze,
+  metafile: true,
   logLevel: "silent",
   plugins: [problemMatcherPlugin],
 };
@@ -87,6 +88,10 @@ const contexts = await Promise.all([
     ...savedPage,
     entryPoints: { echarts: "src/webview/echartsLibrary.ts" },
     globalName: "DiagramECharts",
+    // Saved charts carry ECharts without the notices file, so name its licenses here.
+    banner: {
+      js: "/*! Apache ECharts, Copyright 2017-2026 The Apache Software Foundation, Apache-2.0 License. ZRender, Copyright (c) 2017, Baidu Inc., BSD-3-Clause License. */",
+    },
   }),
   esbuild.context({ ...savedPage, entryPoints: { standalone: "src/webview/standalone.ts" } }),
 ]);
@@ -100,4 +105,38 @@ if (watch) {
   if (analyze) {
     for (const { metafile } of results) console.log(await esbuild.analyzeMetafile(metafile));
   }
+  writeFileSync("dist/THIRD_PARTY_NOTICES.txt", thirdPartyNotices(results.map((r) => r.metafile)));
+}
+
+/**
+ * The license and notice files of the packages that the bundles include code from, as their
+ * licenses ask to be distributed with it. Minifying drops most of the comments that carry them.
+ */
+function thirdPartyNotices(metafiles) {
+  const packages = new Set();
+  for (const { outputs } of metafiles) {
+    for (const { inputs } of Object.values(outputs)) {
+      for (const [path, { bytesInOutput }] of Object.entries(inputs)) {
+        const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(path);
+        if (match && bytesInOutput > 0) packages.add(match[1]);
+      }
+    }
+  }
+  const sections = new Map();
+  for (const dir of packages) {
+    const { name, version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    const files = readdirSync(dir)
+      .filter((file) => /^(licen[cs]e|notice)(-[\w-]+)?(\.(md|txt))?$/i.test(file))
+      .map((file) => join(dir, file));
+    // ECharts adds the licenses of code it includes from elsewhere.
+    const others = join(dir, "licenses");
+    if (statSync(others, { throwIfNoEntry: false })?.isDirectory()) {
+      files.push(...readdirSync(others).map((file) => join(others, file)));
+    }
+    if (files.length === 0) throw new Error(`${name} has no license file to include`);
+    const texts = files.map((file) => readFileSync(file, "utf8").trim());
+    sections.set(`${name} ${version}`, texts.join("\n\n"));
+  }
+  const text = [...sections].sort().map((section) => section.join("\n\n"));
+  return `@diagram includes the following third-party software.\n\n${text.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
 }
