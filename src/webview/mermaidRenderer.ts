@@ -44,12 +44,19 @@ function unknownTypeError(message: string): Error {
   );
 }
 
+/** A position in the source, from 1, and its offset in the source with normalized line breaks. */
+interface SourcePosition {
+  line: number;
+  column: number;
+  offset: number;
+}
+
 /**
- * The source line of each line that Mermaid parses. Mermaid parses the source without its front
- * matter, directives, comment lines and leading blank lines (see preprocessDiagram in Mermaid),
- * and numbers the lines in its errors accordingly.
+ * Maps a position in the text that Mermaid parses to the source. Mermaid parses the source without
+ * its front matter, directives, comment lines and leading whitespace (see preprocessDiagram in
+ * Mermaid), and numbers the lines and columns in its errors accordingly.
  */
-function parsedLines(source: string): number[] {
+function sourcePositions(source: string): (line: number, column?: number) => SourcePosition {
   const normalized = source.replace(/\r\n?/g, "\n");
   let text = normalized;
   /** The offset in the normalized source of each character of the text. */
@@ -66,9 +73,7 @@ function parsedLines(source: string): number[] {
     let from = 0;
     const keep = (to: number) => {
       kept += text.slice(from, to);
-      for (const origin of origins.slice(from, to)) {
-        keptOrigins.push(origin);
-      }
+      for (let i = from; i < to; i++) keptOrigins.push(origins[i] as number);
     };
     for (const match of text.matchAll(removed)) {
       keep(match.index);
@@ -78,25 +83,35 @@ function parsedLines(source: string): number[] {
     text = kept;
     origins = keptOrigins;
   }
-  // The origins of the parsed lines increase, so count the source lines in one pass.
-  let line = 1;
-  let counted = 0;
-  const lineAt = (offset = normalized.length) => {
-    for (; counted < offset; counted++) {
-      if (normalized[counted] === "\n") {
-        line++;
-      }
-    }
-    return line;
+  const lineStarts = (value: string) => {
+    const starts = [0];
+    for (let i = value.indexOf("\n"); i >= 0; i = value.indexOf("\n", i + 1)) starts.push(i + 1);
+    return starts;
   };
-  const lines = [lineAt(origins[0])];
-  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) {
-    lines.push(lineAt(origins[i + 1]));
-  }
-  return lines;
+  const parsedStarts = lineStarts(text);
+  const sourceStarts = lineStarts(normalized);
+  return (line, column = 1) => {
+    const parsed = (parsedStarts[line - 1] ?? text.length) + column - 1;
+    const offset = origins[parsed] ?? normalized.length;
+    // The last line that starts at or before the offset.
+    let low = 0;
+    let high = sourceStarts.length - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if ((sourceStarts[middle] as number) <= offset) low = middle;
+      else high = middle - 1;
+    }
+    return { line: low + 1, column: offset - (sourceStarts[low] as number) + 1, offset };
+  };
 }
 
-/** Makes Mermaid's error clear, and its line numbers those of the source. */
+/** The errors of the parsers that Mermaid generates with Langium, as @mermaid-js/parser reports them. */
+interface LangiumResult {
+  lexerErrors: { line?: number; column?: number; length: number }[];
+  parserErrors: { message: string; token: { startLine?: number; startColumn?: number } }[];
+}
+
+/** Makes Mermaid's error clear, and its positions those of the source. */
 function describeError(error: unknown, source: string): unknown {
   if (!(error instanceof Error)) {
     return error;
@@ -117,10 +132,38 @@ function describeError(error: unknown, source: string): unknown {
       `The diagram has more than ${edgeLimit[1]} edges, more than Mermaid draws: split it into smaller diagrams.`,
     );
   }
-  const lines = parsedLines(source);
+  const position = sourcePositions(source);
+  // Langium's messages say "Parsing failed:" and give offsets in the parsed text; list each error
+  // at its position in the source instead, the first in the source first.
+  const { result } = error as { result?: LangiumResult };
+  if (result?.lexerErrors && result.parserErrors) {
+    const normalized = source.replace(/\r\n?/g, "\n");
+    const problems = [
+      // A position is missing, or NaN, at the end of the text.
+      ...result.lexerErrors.map(({ line, column, length }) => {
+        const at = position(line || Infinity, column || 1);
+        const text = normalized.slice(at.offset, at.offset + Math.min(length, 40));
+        return { at, message: `unexpected ${JSON.stringify(text)}.` };
+      }),
+      ...result.parserErrors.map(({ message, token }) => ({
+        at: position(token.startLine || Infinity, token.startColumn || 1),
+        message,
+      })),
+    ].sort((a, b) => a.at.offset - b.at.offset);
+    if (problems.length > 0) {
+      return new Error(
+        problems
+          .map(
+            ({ at, message }) => `Parse error on line ${at.line}, column ${at.column}: ${message}`,
+          )
+          .join("\n"),
+      );
+    }
+  }
+  // Mermaid's other parsers, generated with Jison, number lines but not columns.
   error.message = error.message.replace(
     /\bon line (\d+)/g,
-    (_, line: string) => `on line ${lines[Number(line) - 1] ?? line}`,
+    (_, line: string) => `on line ${position(Number(line)).line}`,
   );
   return error;
 }

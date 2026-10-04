@@ -1232,6 +1232,21 @@ suite("webview", function () {
     const yaml = await render({ source: "---\ntitle: [\n---\nflowchart TD" });
     assert.ok(!yaml.ok);
     assert.match(yaml.error, /^Invalid YAML in the front matter on line \d+: /);
+    // Mermaid's Langium parsers report columns too, and offsets in the parsed text.
+    const pie = await render({
+      source: '---\ntitle: T\n---\n%% note\npie\n  "Dogs" : 386\n  Rats : 1',
+    });
+    assert.ok(!pie.ok);
+    assert.strictEqual(
+      pie.error.split("\n")[0],
+      'Parse error on line 7, column 3: unexpected "Rats".',
+    );
+    const git = await render({ source: "gitGraph\n  commit\n  comit" });
+    assert.ok(!git.ok);
+    assert.strictEqual(
+      git.error,
+      "Parse error on line 3, column 3: Expecting token of type 'EOF' but found `comit`.",
+    );
   });
 
   test("explains Mermaid's limits", async () => {
