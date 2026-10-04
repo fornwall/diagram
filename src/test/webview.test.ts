@@ -1244,6 +1244,19 @@ suite("webview", function () {
     );
   });
 
+  test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
+    assert.ok((await render({ source: "flowchart LR\n  A --> B" })).ok);
+    await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);
+    assert.ok((await render({ source: "flowchart LR\n  A --> B --> C" })).ok);
+    assert.strictEqual(
+      await evaluate(`document.activeElement.getAttribute("data-diagram-id")`),
+      "B",
+    );
+    await evaluate(`document.querySelector('#diagram [data-diagram-id="C"][tabindex]').focus()`);
+    assert.ok((await render({ source: "flowchart LR\n  A --> B" })).ok);
+    assert.strictEqual(await evaluate(`document.activeElement.id`), "canvas");
+  });
+
   test("keeps keyboard focus and selection on a Mermaid node when the theme redraws it", async () => {
     assert.ok(
       (

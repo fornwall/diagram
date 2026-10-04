@@ -152,6 +152,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
   // The previous drawing may remain visible while rendering, but its actions are now stale.
+  // That takes the focus from it, so give it back afterwards, to the same node if there is one.
+  const focusedNode = canvas.contains(document.activeElement)
+    ? (document.activeElement?.getAttribute("data-diagram-id") ?? "")
+    : undefined;
   canvas.inert = true;
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
@@ -166,7 +170,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
     labels = new Map(drawn?.map((node) => [node.id, node.label]));
-    errorElement.hidden = true;
     // The ids go along so that the extension host can tell a model when it names a node that is
     // not in the diagram, e.g. in a link or a mark.
     post({
@@ -189,6 +192,12 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     canvas.inert = false;
     canvas.setAttribute("aria-busy", "false");
     renderStatus.textContent = "";
+  }
+  if (focusedNode !== undefined && document.activeElement === document.body) {
+    const node =
+      focusedNode &&
+      canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(focusedNode)}"][tabindex]`);
+    (node || canvas).focus({ preventScroll: true });
   }
   // The extension forgets the selection and the marks when it sends a diagram, whether or not it
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.
