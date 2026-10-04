@@ -5,6 +5,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
+import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
 import { newPanel, openWebviewPanel } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
@@ -72,6 +73,17 @@ suite("webview", function () {
 
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
+  /** Renders each Mermaid source in turn, for the errors they fail with. */
+  const errors = async (...sources: string[]): Promise<(string | undefined)[]> => {
+    const found = [];
+    for (const source of sources) found.push(await renderError(source));
+    return found;
+  };
+  /** Renders the Mermaid source, for the error it fails with. */
+  const renderError = async (source: string): Promise<string | undefined> => {
+    const outcome = await render({ source });
+    return outcome.ok ? undefined : outcome.error;
+  };
 
   test("skips superseded queued renders and their annotations", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
@@ -1531,39 +1543,135 @@ suite("webview", function () {
     );
   });
 
-  test("names an unknown Mermaid diagram type instead of repeating the source", async () => {
-    const outcome = await render({ source: "flowchar TD\n  A --> B" });
-    assert.ok(!outcome.ok);
-    assert.match(outcome.error, /^Unknown diagram type "flowchar": the first line must declare/);
-    const fenced = await render({ source: "```mermaid\nflowchart TD\n  A --> B\n```" });
-    assert.ok(!fenced.ok);
-    assert.match(fenced.error, /^Remove the code fence/);
+  test("names an unknown Mermaid diagram type, and what it could be", async () => {
+    assert.deepStrictEqual(
+      await errors("flowchar TD\n  A --> B", "sequence\n  A->>B: x", "erdiagram", "C4"),
+      [
+        'Unknown diagram type "flowchar": did you mean "flowchart"?',
+        'Unknown diagram type "sequence": did you mean "sequenceDiagram"?',
+        'Unknown diagram type "erdiagram": did you mean "erDiagram"?',
+        'Unknown diagram type "C4": did you mean "C4Context", "C4Container" or "C4Component"?',
+      ],
+    );
+    const [unknown, fenced, labeled] = await errors(
+      "nonsense\n  A --> B",
+      "```mermaid\nflowchart TD\n  A --> B\n```",
+      "mermaid\nflowchart TD",
+    );
+    assert.match(
+      unknown ?? "",
+      /^Unknown diagram type "nonsense": start the diagram with its type, such as flowchart, /,
+    );
+    assert.match(fenced ?? "", /^Remove the code fence/);
+    assert.match(labeled ?? "", /^Remove the "mermaid" line/);
   });
 
-  test("reports Mermaid errors on the line of the source", async () => {
-    // Mermaid numbers the lines without front matter, directives, comments and leading blank lines.
-    const source =
-      "---\ntitle: T\n---\n%%{init: {}}%%\n\nflowchart TD\n  %% note\n  A --> B\n  B -> C";
-    const outcome = await render({ source });
-    assert.ok(!outcome.ok);
-    assert.match(outcome.error, /^Parse error on line 9:/);
-    const yaml = await render({ source: "---\ntitle: [\n---\nflowchart TD" });
-    assert.ok(!yaml.ok);
-    assert.match(yaml.error, /^Invalid YAML in the front matter on line \d+: /);
-    // Mermaid's Langium parsers report columns too, and offsets in the parsed text.
-    const pie = await render({
-      source: '---\ntitle: T\n---\n%% note\npie\n  "Dogs" : 386\n  Rats : 1',
-    });
-    assert.ok(!pie.ok);
-    assert.strictEqual(
-      pie.error.split("\n")[0],
-      'Parse error on line 7, column 3: unexpected "Rats".',
+  test("knows the diagram types that Mermaid detects", async function () {
+    this.timeout(60_000);
+    for (const type of DIAGRAM_TYPES) {
+      assert.doesNotMatch((await renderError(`${type}\n  !`)) ?? "", /Unknown diagram type/, type);
+    }
+  });
+
+  test("reports Mermaid syntax errors at their line and column in the source", async () => {
+    // Mermaid parses the text without front matter, directives, comment lines and leading blank
+    // lines, normalizes line breaks and encodes entities, and some diagrams change it further.
+    const preamble = ["---", "title: T", "---", '%%{init: {"theme": "dark"}}%%', "%% comment", ""];
+    const cases: [string[], string][] = [
+      // The flowchart parser drops blank lines after "}".
+      [
+        ["flowchart TD", "  A{x} --> B{y}", "", "", "  B -> C"],
+        'Parse error on line 12, column 5: unexpected "-"',
+      ],
+      [
+        ["flowchart LR", '  A["#quot;Hi#quot;"] -- x'],
+        "Parse error on line 9, column 27: unexpected end of the diagram",
+      ],
+      [
+        ["sequenceDiagram", "  Alice->>Bob: Hi", "  Alice->>: x"],
+        'Parse error on line 10, column 11: unexpected ": x"',
+      ],
+      [
+        ["classDiagram", "  class A {", "    +x int", "  }", "", "  A <|-- -- B"],
+        'Parse error on line 13, column 10: unexpected "--"',
+      ],
+      [
+        ["stateDiagram-v2", "  [*] --> S", "  S --> --> T"],
+        'Parse error on line 10, column 9: unexpected "-->"; expected ID or EDGE_STATE.',
+      ],
+      [
+        ["erDiagram", "  A ||--o{ B : has", "  A ||-- B"],
+        'Parse error on line 10, column 10: unexpected "B"',
+      ],
+      [
+        ["gantt", "  dateFormat YYYY-MM-DD", "  Task :a1, 2026-01-01, 7d", "  : : :"],
+        'Parse error on line 11, column 3: unexpected ": : :"',
+      ],
+      [
+        ["mindmap", "  root((Plan))", "    A", "    B))("],
+        'Parse error on line 11, column 8: unexpected "("',
+      ],
+      // A lexer error, which Jison reports without a column.
+      [
+        ["quadrantChart", "  x-axis Low --> High", "  Point A: [0.3, 0.6] !"],
+        'Parse error on line 10, column 23: unexpected "!".',
+      ],
+      // The sankey parser drops blank lines.
+      [
+        ["sankey", "A,B,10", "", 'B,C,"x'],
+        "Parse error on line 11, column 7: unexpected end of the diagram",
+      ],
+      [
+        ["C4Context", '  Person(a, "A")', "  Rel(a,"],
+        "Parse error on line 10, column 9: unexpected end of the diagram",
+      ],
+      // Langium parsers report each error.
+      [
+        ["pie", '  "Dogs" : 386', "  Rats : 1", "  Cats : 2"],
+        'Parse error on line 10, column 3: unexpected "Rats".\nParse error on line 11, column 3: unexpected "Cats".',
+      ],
+      [
+        ["gitGraph", "  commit", "  comit"],
+        'Parse error on line 10, column 3: unexpected "comit"; expected end of the diagram.',
+      ],
+      [
+        ["treemap-beta", '  "A"', '    "B": 1', '    "C" x'],
+        'Parse error on line 11, column 9: unexpected "x"; expected STRING2 or CLASS_DEF.',
+      ],
+      // Agent flows keep comment lines.
+      [
+        ["agentflow-beta", "  %% kept", "  A --> B", "  B -> --> C"],
+        'Parse error on line 11, column 5: unexpected "-"',
+      ],
+      [
+        ["usecase-beta", "  actor A", "  A --> --> B"],
+        'Parse error on line 10, column 9: unexpected "-->"',
+      ],
+    ];
+    for (const [[header, ...body], expected] of cases) {
+      const source = [...preamble, header, "  %% comment", ...body].join("\r\n");
+      const error = await renderError(source);
+      assert.ok(error?.startsWith(expected), `${header}: ${error}`);
+    }
+  });
+
+  test("reports invalid YAML at its line and column in the source", async () => {
+    assert.deepStrictEqual(
+      await errors(
+        "---\ntitle: T\nconfig:\n  theme: : x\n---\nflowchart TD",
+        "flowchart TD\n  A@{ shape: [ } --> B",
+        "flowchart TD\n  A@{\n    label: [\n  } --> B",
+      ),
+      [
+        "Invalid YAML in the front matter on line 4, column 10: bad indentation of a mapping entry.",
+        "Invalid YAML in the node's metadata on line 2, column 16: missed comma between flow collection entries.",
+        "Invalid YAML in the node's metadata on line 4, column 3: unexpected end of the stream within a flow collection.",
+      ],
     );
-    const git = await render({ source: "gitGraph\n  commit\n  comit" });
-    assert.ok(!git.ok);
+    // Agent flows check the shapes of nodes themselves, and number the lines of the source.
     assert.strictEqual(
-      git.error,
-      "Parse error on line 3, column 3: Expecting token of type 'EOF' but found `comit`.",
+      await renderError("---\ntitle: T\n---\nagentflow-beta\n  %% c\n  A@{ shape: nope } --> B"),
+      "Error on line 6, column 4: No such shape: nope.",
     );
   });
 

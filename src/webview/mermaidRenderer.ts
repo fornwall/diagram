@@ -4,6 +4,7 @@ import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
+import { describeError } from "./mermaidErrors";
 import { shortestPath } from "./relationships";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
@@ -23,152 +24,6 @@ const MAX_TEXT_SIZE = 50_000;
 
 /** The namespace of the <title> elements that show where a linked node leads. */
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-
-const TYPE_EXAMPLES = '"flowchart TD", "sequenceDiagram", "classDiagram", "erDiagram", "mindmap"';
-
-/** Replaces Mermaid's error for an unknown diagram type, which quotes the whole source. */
-function unknownTypeError(message: string): Error {
-  // Mermaid quotes the source without front matter, directives and comments.
-  const text = /for text: (.*)$/s.exec(message)?.[1]?.trim() ?? "";
-  if (text.startsWith("```")) {
-    return new Error(
-      `Remove the code fence around the diagram: the source must start with the diagram type, e.g. ${TYPE_EXAMPLES}.`,
-    );
-  }
-  if (!text) {
-    return new Error(
-      `The diagram is empty: start it with the diagram type, e.g. ${TYPE_EXAMPLES}.`,
-    );
-  }
-  const type = text.split(/\s/, 1)[0]?.slice(0, 40);
-  return new Error(
-    `Unknown diagram type "${type}": the first line must declare the type, e.g. ${TYPE_EXAMPLES}.`,
-  );
-}
-
-/** A position in the source, from 1, and its offset in the source with normalized line breaks. */
-interface SourcePosition {
-  line: number;
-  column: number;
-  offset: number;
-}
-
-/**
- * Maps a position in the text that Mermaid parses to the source. Mermaid parses the source without
- * its front matter, directives, comment lines and leading whitespace (see preprocessDiagram in
- * Mermaid), and numbers the lines and columns in its errors accordingly.
- */
-function sourcePositions(source: string): (line: number, column?: number) => SourcePosition {
-  const normalized = source.replace(/\r\n?/g, "\n");
-  let text = normalized;
-  /** The offset in the normalized source of each character of the text. */
-  let origins = Array.from({ length: text.length }, (_, i) => i);
-  // Mermaid's patterns, in its order.
-  for (const removed of [
-    /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/gs,
-    /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi,
-    /^\s*%%(?!\{)[^\n]+\n?/gm,
-    /^\s+/g,
-  ]) {
-    let kept = "";
-    const keptOrigins: number[] = [];
-    let from = 0;
-    const keep = (to: number) => {
-      kept += text.slice(from, to);
-      for (let i = from; i < to; i++) keptOrigins.push(origins[i] as number);
-    };
-    for (const match of text.matchAll(removed)) {
-      keep(match.index);
-      from = match.index + match[0].length;
-    }
-    keep(text.length);
-    text = kept;
-    origins = keptOrigins;
-  }
-  const lineStarts = (value: string) => {
-    const starts = [0];
-    for (let i = value.indexOf("\n"); i >= 0; i = value.indexOf("\n", i + 1)) starts.push(i + 1);
-    return starts;
-  };
-  const parsedStarts = lineStarts(text);
-  const sourceStarts = lineStarts(normalized);
-  return (line, column = 1) => {
-    const parsed = (parsedStarts[line - 1] ?? text.length) + column - 1;
-    const offset = origins[parsed] ?? normalized.length;
-    // The last line that starts at or before the offset.
-    let low = 0;
-    let high = sourceStarts.length - 1;
-    while (low < high) {
-      const middle = Math.ceil((low + high) / 2);
-      if ((sourceStarts[middle] as number) <= offset) low = middle;
-      else high = middle - 1;
-    }
-    return { line: low + 1, column: offset - (sourceStarts[low] as number) + 1, offset };
-  };
-}
-
-/** The errors of the parsers that Mermaid generates with Langium, as @mermaid-js/parser reports them. */
-interface LangiumResult {
-  lexerErrors: { line?: number; column?: number; length: number }[];
-  parserErrors: { message: string; token: { startLine?: number; startColumn?: number } }[];
-}
-
-/** Makes Mermaid's error clear, and its positions those of the source. */
-function describeError(error: unknown, source: string): unknown {
-  if (!(error instanceof Error)) {
-    return error;
-  }
-  if (error.name === "UnknownDiagramError") {
-    return unknownTypeError(error.message);
-  }
-  // js-yaml numbers the lines of the front matter after its "---" line, from 0.
-  const yaml = error as Error & { reason?: string; mark?: { line: number } };
-  if (error.name === "YAMLException" && yaml.mark) {
-    return new Error(
-      `Invalid YAML in the front matter on line ${yaml.mark.line + 2}: ${yaml.reason ?? error.message}.`,
-    );
-  }
-  const edgeLimit = /^Edge limit exceeded.* the limit is (\d+)/.exec(error.message);
-  if (edgeLimit) {
-    return new Error(
-      `The diagram has more than ${edgeLimit[1]} edges, more than Mermaid draws: split it into smaller diagrams.`,
-    );
-  }
-  const position = sourcePositions(source);
-  // Langium's messages say "Parsing failed:" and give offsets in the parsed text; list each error
-  // at its position in the source instead, the first in the source first.
-  const { result } = error as { result?: LangiumResult };
-  if (result?.lexerErrors && result.parserErrors) {
-    const normalized = source.replace(/\r\n?/g, "\n");
-    const problems = [
-      // A position is missing, or NaN, at the end of the text.
-      ...result.lexerErrors.map(({ line, column, length }) => {
-        const at = position(line || Infinity, column || 1);
-        const text = normalized.slice(at.offset, at.offset + Math.min(length, 40));
-        return { at, message: `unexpected ${JSON.stringify(text)}.` };
-      }),
-      ...result.parserErrors.map(({ message, token }) => ({
-        at: position(token.startLine || Infinity, token.startColumn || 1),
-        message,
-      })),
-    ].sort((a, b) => a.at.offset - b.at.offset);
-    if (problems.length > 0) {
-      return new Error(
-        problems
-          .map(
-            ({ at, message }) => `Parse error on line ${at.line}, column ${at.column}: ${message}`,
-          )
-          .join("\n"),
-      );
-    }
-  }
-  // Mermaid's other parsers, generated with Jison, number lines but not columns.
-  error.message = error.message.replace(
-    /\bon line (\d+)/g,
-    (_, line: string) => `on line ${position(Number(line)).line}`,
-  );
-  return error;
-}
 
 /**
  * Mermaid's dark theme colors mind maps, timelines, pies and kanban columns almost black. Use
@@ -431,7 +286,7 @@ export class MermaidRenderer implements Renderer {
       container.style.width = `${width}px`;
     }
     const result = await mermaid.render(id, source, container).catch((error: unknown) => {
-      throw describeError(error, source);
+      throw describeError(error, source, () => mermaid.detectType(source));
     });
     // mermaid.render keeps the diagram's database to itself: parse again for it. Should that
     // fail, the items are just not selectable.
