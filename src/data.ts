@@ -160,19 +160,15 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
     hasDecimalCommas(records, column, header ? 1 : 0),
   );
   const units = Array.from({ length: width }, () => new Set<Unit>());
-  // Count while normalizing, in row order, instead of revisiting every cell for each column.
-  // Keep the first row out until header inference has decided whether it is data.
+  // The cells below the first row, which is counted once it is known not to be the header.
   const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
     numbers: 0,
     others: 0,
     missing: false,
   }));
-  // Parsers give us fresh records: normalize those rows in place instead of retaining a
-  // second rectangular table and allocating a callback for every row.
+  // The records are the parser's own, so they are converted in place.
   const first = records[0]?.slice() ?? [];
-  for (let row = 0; row < records.length; row++) {
-    const record = records[row];
-    if (!record) continue;
+  for (const [row, record] of records.entries()) {
     for (let column = 0; column < width; column++) {
       const field = record[column] ?? null;
       let cell = field;
@@ -186,12 +182,11 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
       if (row > 0 && count !== undefined) countCell(count, cell);
     }
   }
-  const cells = records;
-  const named = header ?? hasHeader(cells, counts, csv);
-  const rows = named ? cells.slice(1) : cells;
+  const named = header ?? hasHeader(records, counts, csv);
+  const rows = named ? records.slice(1) : records;
   const columns = columnNames(named ? first : [], width).map((name, column) => {
     const count = counts[column] ?? { numbers: 0, others: 0, missing: false };
-    if (!named) countCell(count, cells[0]?.[column] ?? null);
+    if (!named) countCell(count, records[0]?.[column] ?? null);
     const numeric = isNumeric(count);
     if (numeric && count.missing) {
       for (const row of rows) {

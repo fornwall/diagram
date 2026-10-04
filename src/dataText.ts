@@ -35,28 +35,31 @@ function withoutRules(lines: string[]): { lines: string[]; underlined: boolean }
  * newlines and "" escapes.
  */
 function splitDelimited(text: string, delimiter: string, quoting = true): Records {
-  // Most exports have no quoted fields. Native splitting avoids visiting every character
-  // in JavaScript and constructing field strings one character at a time.
+  const records: string[][] = [];
+  let width = 0;
+  let underlined = false;
+  /** Adds a record unless it is empty or, as `line` without quotes, a rule. */
+  const add = (record: string[], line: string | undefined): void => {
+    // Spreadsheets save empty rows as ",,,".
+    if (record.every(isBlank)) return;
+    if (line !== undefined && RULE.test(line)) {
+      underlined ||= records.length === 1;
+      return;
+    }
+    width = Math.max(width, record.length);
+    checkTableSize(records.length + 1, width);
+    records.push(record);
+  };
+  // Most exports have no quoted fields, and native splitting is much faster.
   if (!quoting || !text.includes('"')) {
-    const records: string[][] = [];
-    let width = 0;
-    let underlined = false;
     for (const line of text.split(/\r\n?|\n/)) {
-      // Stop at the first excess cell, matching the general parser's early size rejection.
+      // Stop at the first excess cell, as the parser below does.
       const record = line.split(delimiter, MAX_CELLS + 1);
       checkTableSize(1, record.length);
-      if (record.every(isBlank)) continue;
-      if (RULE.test(line)) {
-        underlined ||= records.length === 1;
-        continue;
-      }
-      width = Math.max(width, record.length);
-      checkTableSize(records.length + 1, width);
-      records.push(record);
+      add(record, line);
     }
     return { records, header: underlined || undefined };
   }
-  const records: string[][] = [];
   let record: string[] = [];
   let field = "";
   let quoted = false;
@@ -65,20 +68,9 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let line = 1;
   let quoteLine = 0;
   let recordQuoted = false;
-  let underlined = false;
-  let width = 0;
   const finishRecord = (): void => {
     record.push(field);
-    // Spreadsheets save empty rows as ",,,".
-    if (!record.every(isBlank)) {
-      if (!recordQuoted && RULE.test(record.join(delimiter))) {
-        underlined ||= records.length === 1;
-      } else {
-        width = Math.max(width, record.length);
-        checkTableSize(records.length + 1, width);
-        records.push(record);
-      }
-    }
+    add(record, recordQuoted ? undefined : record.join(delimiter));
     record = [];
     field = "";
     fieldStart = true;
@@ -102,7 +94,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
           line++;
         }
       }
-    } else if (quoting && char === '"' && fieldStart) {
+    } else if (char === '"' && fieldStart) {
       quoted = true;
       recordQuoted = true;
       quoteLine = line;
@@ -122,9 +114,9 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       finishRecord();
     } else {
       if (closedQuote && char !== " " && char !== "\t") {
-        const quoted = JSON.stringify(field.length > 40 ? `${field.slice(0, 40)}…` : field);
+        const shown = JSON.stringify(field.length > 40 ? `${field.slice(0, 40)}…` : field);
         throw new Error(
-          `Unexpected text after the quoted field ${quoted} on line ${line}. Separate fields ` +
+          `Unexpected text after the quoted field ${shown} on line ${line}. Separate fields ` +
             `with the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
         );
       }
@@ -142,6 +134,18 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   }
   finishRecord();
   return { records, header: underlined || undefined };
+}
+
+/** Splits delimited text, ignoring quotes if they are not closed as CSV quotes are. */
+function splitLeniently(text: string, delimiter: string): { table: Records; quoteError?: unknown } {
+  try {
+    return { table: splitDelimited(text, delimiter) };
+  } catch (error) {
+    if (error instanceof TableSizeError) {
+      throw error;
+    }
+    return { table: splitDelimited(text, delimiter, false), quoteError: error };
+  }
 }
 
 /** The most common value, preferring the smallest on ties. */
@@ -186,27 +190,19 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     ) {
       continue;
     }
-    let table: Records;
-    let candidateError: unknown;
+    let split: ReturnType<typeof splitLeniently>;
     try {
-      try {
-        table = splitDelimited(text, delimiter);
-      } catch (error) {
-        if (error instanceof TableSizeError) {
-          throw error;
-        }
-        if (strict) {
-          quoteError ??= error;
-        }
-        candidateError = error;
-        table = splitDelimited(text, delimiter, false);
-      }
+      split = splitLeniently(text, delimiter);
     } catch (error) {
       if (!(error instanceof TableSizeError)) {
         throw error;
       }
       sizeError ??= error;
       continue;
+    }
+    const { table, quoteError: candidateError } = split;
+    if (strict) {
+      quoteError ??= candidateError;
     }
     const { records } = table;
     const width = mode(records.map((record) => record.length));
@@ -423,21 +419,15 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
   const tabs = lines.filter((line) => line.includes("\t")).length;
   let tabular: Records | undefined;
   if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
-    try {
-      tabular = splitDelimited(text, "\t");
-      if (format === "tsv" || (tabular.records[0]?.length ?? 0) > 1) {
-        return tabular;
-      }
-    } catch (error) {
-      if (error instanceof TableSizeError) {
-        throw error;
-      }
-      // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
-      tabular = splitDelimited(text, "\t", false);
-      const first = tabular.records[0] ?? [];
-      if (format === "tsv" || (first.length > 1 && !String(first[0]).includes('"'))) {
-        return tabular;
-      }
+    // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
+    const { table, quoteError } = splitLeniently(text, "\t");
+    tabular = table;
+    const first = table.records[0] ?? [];
+    if (
+      format === "tsv" ||
+      (first.length > 1 && (quoteError === undefined || !String(first[0]).includes('"')))
+    ) {
+      return table;
     }
   }
   if (format === "auto" && lines[0]?.includes("|")) {
