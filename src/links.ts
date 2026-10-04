@@ -1,7 +1,7 @@
 // Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
-import { resolveFile } from "./dataSource";
+import { resolveFile } from "./files";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 import { quote } from "./text";
 

@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
+import { decodeText, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -53,29 +54,6 @@ export function commandEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   }
   result.LC_NUMERIC = "C";
   return result;
-}
-
-/**
- * Resolves a data file path as given in a chart spec: "~" and "~/…" relative to the home
- * directory, absolute paths as they are, and other paths relative to the first workspace folder.
- *
- * @throws Error when the path is relative but no workspace folder is open.
- */
-export function resolveFile(file: string): vscode.Uri {
-  if (file === "~" || file.startsWith("~/")) {
-    return vscode.Uri.file(path.join(os.homedir(), file.slice(1)));
-  }
-  if (path.isAbsolute(file)) {
-    return vscode.Uri.file(file);
-  }
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (folder === undefined) {
-    throw new Error(
-      `The file path ${JSON.stringify(file)} is relative, but no workspace folder is open. ` +
-        "Give an absolute path.",
-    );
-  }
-  return vscode.Uri.joinPath(folder.uri, file);
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -163,25 +141,20 @@ export async function readDataFile(file: string): Promise<string> {
     throw fileError(error, file, uri);
   }
   checkSize(bytes.byteLength);
-  // UTF-16 files, as PowerShell writes with >, start with a byte order mark.
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return new TextDecoder("utf-16le").decode(bytes);
+  let text: string;
+  try {
+    text = decodeText(bytes);
+  } catch {
+    // Excel on Windows saves CSV files in the Windows code page.
+    text = new TextDecoder("windows-1252").decode(bytes);
   }
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return new TextDecoder("utf-16be").decode(bytes);
-  }
-  if (bytes.includes(0)) {
+  if (text.includes("\0")) {
     throw new Error(
       `The file ${uri.fsPath} is not a text file (it may be a spreadsheet). ` +
         "Save its data as CSV, or use a command that prints it.",
     );
   }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    // Excel on Windows saves CSV files in the Windows code page.
-    return new TextDecoder("windows-1252").decode(bytes);
-  }
+  return text;
 }
 
 function tail(text: string): string {

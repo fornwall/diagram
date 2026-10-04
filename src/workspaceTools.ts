@@ -5,6 +5,7 @@ import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
+import { decodeText } from "./files";
 import { errorMessage, isPlainObject } from "./protocol";
 import { plural, unknownProperties } from "./text";
 import { textResult } from "./tools";
@@ -264,13 +265,7 @@ async function readText(
   if (bytes > MAX_FILE_BYTES) return { bytes, error: tooLarge };
   let text: string;
   try {
-    const encoding =
-      content[0] === 0xff && content[1] === 0xfe
-        ? "utf-16le"
-        : content[0] === 0xfe && content[1] === 0xff
-          ? "utf-16be"
-          : "utf-8";
-    text = new TextDecoder(encoding, { fatal: true }).decode(content);
+    text = decodeText(content);
   } catch {
     return { bytes, error: "The file is not valid UTF-8 or UTF-16 text." };
   }
