@@ -1499,7 +1499,7 @@ suite("charts", () => {
     const table = "id,name,score\n7,a,10\n3,b,20";
     assert.deepStrictEqual(seriesNames(build(chart("bar"), table)), ["score"]);
     assert.strictEqual(build(chart("pie"), table).series[0].name, "score");
-    for (const name of ["ID", "#", "user_id", "Rank", "PID", "userId"]) {
+    for (const name of ["ID", "#", "user_id", "user.id", "Rank", "PID", "userId"]) {
       const option = build(chart("bar"), table.replace("id", name));
       assert.deepStrictEqual(seriesNames(option), ["score"], name);
     }

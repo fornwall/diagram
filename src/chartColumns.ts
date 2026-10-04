@@ -14,10 +14,10 @@ export function readsLevels(type: ChartType): boolean {
   return type === "treemap" || type === "sunburst" || type === "sankey";
 }
 
-/** Whether a column name is like "id", "#", "index", "rank", "pid", "user_id" or "userId". */
+/** Whether a column name is like "id", "#", "rank", "pid", "user_id", "user.id" or "userId". */
 function isIdName(name: string): boolean {
   return (
-    /^(?:id|#|no\.?|nr|num|index|idx|rank|row|pid|ppid|tid|uid|gid)$|[_ -]id$/i.test(name) ||
+    /^(?:id|#|no\.?|nr|num|index|idx|rank|row|pid|ppid|tid|uid|gid)$|[_ .-]id$/i.test(name) ||
     /[a-z]I[dD]$/.test(name)
   );
 }
