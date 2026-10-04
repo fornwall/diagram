@@ -61,7 +61,7 @@ export interface DiagramNode {
 /** A name that several items of a chart series go by, which marks need the ids of instead. */
 export interface RepeatedName {
   name: string;
-  /** The first of the ids. */
+  /** The ids of the first items, up to a limit. */
   ids: string[];
   /** How many items go by the name. */
   count: number;

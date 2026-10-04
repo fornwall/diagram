@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { errorMessage, isPlainObject } from "./protocol";
 import { plural, unknownProperties } from "./text";
+import { textResult } from "./tools";
 
 interface FindInput {
   glob?: string;
@@ -277,14 +278,12 @@ async function readText(
 }
 
 async function result(operation: () => Promise<string>): Promise<vscode.LanguageModelToolResult> {
-  let text: string;
   try {
-    text = await operation();
+    return textResult(await operation());
   } catch (error) {
     if (error instanceof vscode.CancellationError) throw error;
-    text = `Error: ${errorMessage(error)}`;
+    return textResult(`Error: ${errorMessage(error)}`);
   }
-  return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
 }
 
 function prepare(message: string): vscode.PreparedToolInvocation {
