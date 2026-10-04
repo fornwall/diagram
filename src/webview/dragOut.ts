@@ -6,6 +6,8 @@ import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
 interface Prepared {
   image?: DiagramImage;
   png?: string;
+  /** Why there is no PNG, once rasterizing failed. */
+  pngError?: string;
   preview?: HTMLImageElement;
   error?: string;
 }
@@ -27,8 +29,9 @@ async function rasterize(entry: Prepared, image: DiagramImage): Promise<void> {
     preview.src = entry.png;
     await preview.decode();
     entry.preview = preview;
-  } catch {
-    // Drag the SVG instead.
+  } catch (error) {
+    // Drag the SVG instead, or the PNG without a preview.
+    if (!entry.png) entry.pngError = errorMessage(error);
   }
 }
 
@@ -82,12 +85,16 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
       prepare();
       return;
     }
-    const { image, png, preview } = ready;
+    const { image, png, pngError, preview } = ready;
     const title = options.title();
     const name = safeFileName(title, "diagram");
     const svg = svgRequested || !png;
     if (!svgRequested && !png) {
-      options.hint("PNG is not ready. Dragging the drawing as SVG instead.");
+      options.hint(
+        pngError
+          ? `Dragging the drawing as SVG, as the PNG failed: ${pngError}`
+          : "The PNG is not ready yet. Dragging the drawing as SVG instead.",
+      );
     }
     dataTransfer.effectAllowed = "copy";
     // A file the drop target downloads from the data URL. This is what an application that takes
