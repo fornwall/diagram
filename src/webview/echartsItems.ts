@@ -25,7 +25,10 @@ export function parseItemKey(key: string): ItemRef {
 const MAX_REPEATED_NAMES = 50;
 const MAX_REPEATED_IDS = 20;
 
-// The parts of ECharts' model read here; its types keep `getModel` private.
+// ECharts' public API cannot list the items of a chart: `getOption()` copies the whole option and
+// leaves out how datasets, encodings, categories, graph links and trees name items, and which items
+// a legend or data zoom filters out. Its model knows, but its types keep `getModel` private. These
+// are the parts of the model read here, which echartsItems.test.ts checks ECharts still has.
 interface ItemData {
   dataType?: string;
   count(): number;
@@ -54,6 +57,9 @@ interface GlobalModel {
   getSeriesCount(): number;
   eachRawSeries(callback: (series: SeriesModel) => void): void;
 }
+
+export const modelOf = (chart: ECharts.ECharts) =>
+  (chart as unknown as { getModel(): GlobalModel }).getModel();
 
 function valueText(value: unknown): string | undefined {
   if (value === null || value === undefined || value === "") {
@@ -97,7 +103,7 @@ export class ChartItems {
   private readonly prefixed: boolean;
 
   constructor(chart: ECharts.ECharts) {
-    const model = (chart as unknown as { getModel(): GlobalModel }).getModel();
+    const model = modelOf(chart);
     this.prefixed = model.getSeriesCount() > 1;
     const prefixes = new Set<string>();
     model.eachRawSeries((series) => {

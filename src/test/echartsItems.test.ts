@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
-import { itemsOf } from "./echartsModel";
+import { modelOf } from "../webview/echartsItems";
+import { itemsOf, withChart } from "./echartsModel";
 
 const item = (dataIndex: number, seriesIndex = 0, dataType?: string) => ({
   seriesIndex,
@@ -8,6 +9,54 @@ const item = (dataIndex: number, seriesIndex = 0, dataType?: string) => ({
 });
 
 suite("echartsItems", () => {
+  test("reads the parts of ECharts' private model that it relies on", () => {
+    // If this fails, an update of ECharts changed its model: adapt the interfaces in echartsItems.ts.
+    const methods = (object: unknown, where: string, names: string[]) => {
+      for (const name of names) {
+        const member = (object as Record<string, unknown> | undefined)?.[name];
+        assert.strictEqual(typeof member, "function", `ECharts no longer has ${where}.${name}()`);
+      }
+    };
+    const graph = {
+      type: "graph",
+      data: [{ name: "a" }, { name: "b" }],
+      links: [{ source: 0, target: 1 }],
+    };
+    const options = [
+      [{ xAxis: {}, yAxis: {}, series: [{ type: "line", data: [[1, 2]] }] }, [undefined]],
+      [{ series: [graph] }, ["node", "edge"]],
+      [{ series: [{ type: "treemap", data: [{ name: "a", value: 1 }] }] }, ["main"]],
+    ] as const;
+    for (const [option, dataTypes] of options) {
+      withChart(option, (chart) => {
+        const model = modelOf(chart);
+        methods(model, "GlobalModel", ["getSeriesCount", "eachRawSeries"]);
+        model.eachRawSeries((series) => {
+          methods(series, "SeriesModel", ["getRawData", "getAllData"]);
+          assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");
+          assert.strictEqual(typeof series.name, "string", "SeriesModel.name");
+          const datas = series.getAllData().map(({ data }) => data);
+          assert.deepStrictEqual(
+            datas.map((data) => data.dataType),
+            dataTypes,
+            "SeriesData.dataType",
+          );
+          for (const data of [series.getRawData(), ...datas]) {
+            const names = ["count", "getRawIndex", "getName", "getRawDataItem", "indexOfRawIndex"];
+            methods(data, "SeriesData", names);
+          }
+          const tree = series.getRawData().tree;
+          if (dataTypes[0] === "main") {
+            methods(tree, "Tree", ["getNodeByDataIndex"]);
+            const node = tree?.getNodeByDataIndex(1);
+            methods(node, "TreeNode", ["getRawIndex"]);
+            assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
+          }
+        });
+      });
+    }
+  });
+
   test("names sankey nodes by their ids and labels them by name", () => {
     const items = itemsOf({
       series: [
