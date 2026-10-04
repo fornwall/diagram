@@ -100,6 +100,43 @@ suite("echartsItems", () => {
     ]);
   });
 
+  test("names the nodes of a tree by their path", () => {
+    const tree = [
+      {
+        name: "src",
+        children: [
+          { name: "a", children: [{ name: "index.ts", value: 1 }] },
+          { name: "b", children: [{ name: "index.ts", value: 2 }] },
+          { name: "b", children: [{ name: "index.ts", value: 3 }] },
+        ],
+      },
+    ];
+    for (const type of ["treemap", "sunburst", "tree"]) {
+      const items = itemsOf({ series: [{ type, data: tree }] });
+      // Index 0 is the root ECharts adds above the data.
+      assert.deepStrictEqual(items.node("0::1"), { id: "src", label: "src" }, type);
+      assert.deepStrictEqual(items.node("0::3"), { id: "src/a/index.ts", label: "index.ts" }, type);
+      assert.deepStrictEqual(items.find("src/a/index.ts"), [item(3)], type);
+      // Paths that repeat are told apart by position.
+      assert.deepStrictEqual(items.node("0::7"), {
+        id: "src/b/index.ts (item 8)",
+        label: "index.ts",
+      });
+      assert.deepStrictEqual(
+        items.repeatedNames().map(({ name, ids }) => [name, ids]),
+        [
+          ["index.ts", ["src/a/index.ts", "src/b/index.ts (item 6)", "src/b/index.ts (item 8)"]],
+          ["src/b", ["src/b (item 5)", "src/b (item 7)"]],
+          ["b", ["src/b (item 5)", "src/b (item 7)"]],
+          ["src/b/index.ts", ["src/b/index.ts (item 6)", "src/b/index.ts (item 8)"]],
+        ],
+        type,
+      );
+      assert.strictEqual(items.labelOf("src/a/index.ts"), "src/a/index.ts");
+      assert.strictEqual(items.labelOf("src/a"), "a");
+    }
+  });
+
   test("labels unnamed items by value, and lists only the first ids of a repeated name", () => {
     const items = itemsOf({
       xAxis: {},

@@ -42,8 +42,9 @@ export function errorMessage(error: unknown): string {
 
 export interface DiagramNode {
   /**
-   * Mermaid node id, or chart item id: the item's own id or else its name, prefixed with "Series/"
-   * when the chart has several series, and told apart by its index when that repeats.
+   * Mermaid node id, or chart item id: the item's own id or else its name (its path in a tree),
+   * prefixed with "Series/" when the chart has several series, and told apart by its index when
+   * that repeats.
    */
   id: string;
   /** The visible label of the node, or the name of the chart data item. */

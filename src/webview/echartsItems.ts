@@ -33,6 +33,13 @@ interface ItemData {
   getName(index: number): string;
   getRawDataItem(index: number): unknown;
   indexOfRawIndex(rawIndex: number): number;
+  /** The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data. */
+  tree?: { getNodeByDataIndex(index: number): TreeNode };
+}
+
+interface TreeNode {
+  parentNode?: TreeNode;
+  getRawIndex(): number;
 }
 
 interface SeriesModel {
@@ -59,6 +66,17 @@ function valueText(value: unknown): string | undefined {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function itemLabel(data: ItemData, index: number): string {
+  // ECharts resolves names exactly, including surrounding spaces.
+  const name = data.getName(index);
+  const item = data.getRawDataItem(index);
+  return (
+    (name.trim() ? name : undefined) ??
+    valueText(isPlainObject(item) ? item.value : item) ??
+    `Item ${data.getRawIndex(index) + 1}`
+  );
 }
 
 function ownId(item: unknown): string | undefined {
@@ -151,12 +169,20 @@ export class ChartItems {
   }
 }
 
+/** The data of one type in a series, and the type that events and actions give it. */
+interface TypedData {
+  data: ItemData;
+  dataType: string | undefined;
+  /** Whether the data has every item, including those filtered out. */
+  raw: boolean;
+}
+
 class SeriesItems {
   /** How many items go by each id or label. */
   readonly counts = new Map<string, number>();
   /** The ids and labels that several items go by. */
   readonly repeated = new Set<string>();
-  private readonly datas: { data: ItemData; raw: boolean }[];
+  private readonly datas: TypedData[];
   /** A graph's edges name their nodes by id or name, or by index. */
   private readonly nodeLabels = new Map<string, string>();
   private readonly nodeLabelsByIndex: string[] = [];
@@ -171,11 +197,11 @@ class SeriesItems {
   ) {
     const raw = series.getRawData();
     // Legends and data zoom filter items out, but they can be marked once shown again.
-    this.datas = series
-      .getAllData()
-      .map(({ data }) =>
-        data.dataType === raw.dataType ? { data: raw, raw: true } : { data, raw: false },
-      );
+    this.datas = series.getAllData().map(({ data }) => ({
+      ...(data.dataType === raw.dataType ? { data: raw, raw: true } : { data, raw: false }),
+      // Events and actions leave out the type of the one data of a tree, which ECharts calls "main".
+      dataType: data.dataType === "main" ? undefined : data.dataType,
+    }));
     const count = (name: string) => {
       const count = (this.counts.get(name) ?? 0) + 1;
       this.counts.set(name, count);
@@ -188,16 +214,16 @@ class SeriesItems {
   }
 
   each(callback: (item: Item) => void): void {
-    for (const { data } of this.datas) {
-      for (let index = 0; index < data.count(); index++) callback(this.describe(data, index));
+    for (const data of this.datas) {
+      for (let index = 0; index < data.data.count(); index++) callback(this.describe(data, index));
     }
   }
 
   item({ dataType, dataIndex }: ItemRef): Item | undefined {
-    const found = this.datas.find(({ data }) => data.dataType === dataType);
+    const found = this.datas.find((data) => data.dataType === dataType);
     if (!found) return undefined;
     const index = found.raw ? dataIndex : found.data.indexOfRawIndex(dataIndex);
-    return index >= 0 && index < found.data.count() ? this.describe(found.data, index) : undefined;
+    return index >= 0 && index < found.data.count() ? this.describe(found, index) : undefined;
   }
 
   /** The item's id, told apart by its index from another item of the same name. */
@@ -210,10 +236,10 @@ class SeriesItems {
     const indexed = /^(.*) \((item|edge) ([1-9]\d*)\)$/.exec(name);
     if (indexed) {
       const [, id = "", kind, position] = indexed;
-      const data = this.datas.find(({ data }) => (data.dataType === "edge") === (kind === "edge"));
+      const data = this.datas.find(({ dataType }) => (dataType === "edge") === (kind === "edge"));
       const ref = {
         seriesIndex: this.seriesIndex,
-        dataType: data?.data.dataType,
+        dataType: data?.dataType,
         dataIndex: Number(position) - 1,
       };
       const item = this.item(ref);
@@ -235,8 +261,7 @@ class SeriesItems {
     return this.byName.get(name) ?? [];
   }
 
-  private describe(data: ItemData, index: number): Item {
-    const { dataType } = data;
+  private describe({ data, dataType }: TypedData, index: number): Item {
     const ref = { seriesIndex: this.seriesIndex, dataType, dataIndex: data.getRawIndex(index) };
     const item = data.getRawDataItem(index);
     const own = ownId(item);
@@ -248,16 +273,19 @@ class SeriesItems {
       const label = `${nodeLabel(item.source)} → ${nodeLabel(item.target)}`;
       return { ref, label, id: own ?? `${String(item.source)} → ${String(item.target)}` };
     }
-    // ECharts resolves names exactly, including surrounding spaces.
-    const name = data.getName(index);
-    const label =
-      (name.trim() ? name : undefined) ??
-      valueText(isPlainObject(item) ? item.value : item) ??
-      `Item ${ref.dataIndex + 1}`;
+    const label = itemLabel(data, index);
     if (dataType === "node") {
-      this.nodeLabels.set(own ?? (name || String(ref.dataIndex)), label);
+      this.nodeLabels.set(own ?? (data.getName(index) || String(ref.dataIndex)), label);
       this.nodeLabelsByIndex[ref.dataIndex] = label;
     }
-    return { ref, label, id: own ?? label };
+    let id = own ?? label;
+    // The nodes of a tree go by their path, as names repeat in different folders and the like.
+    if (own === undefined && data.tree) {
+      const node = data.tree.getNodeByDataIndex(index);
+      for (let parent = node.parentNode; parent?.parentNode; parent = parent.parentNode) {
+        id = `${itemLabel(data, parent.getRawIndex())}/${id}`;
+      }
+    }
+    return { ref, label, id };
   }
 }
