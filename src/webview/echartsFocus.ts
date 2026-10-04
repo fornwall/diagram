@@ -241,12 +241,12 @@ export class ChartNavigation {
   }
 
   private nearest(spot: Spot, direction: Point): Spot | undefined {
-    const here = this.boxOf(spot);
-    if (!here) return undefined;
-    return nearestInDirection(center(here), direction, this.untreed(), (candidate) => {
+    const centerOf = (candidate: Spot) => {
       const box = this.boxOf(candidate);
       return box && center(box);
-    });
+    };
+    const same = (a: Spot, b: Spot) => a.track === b.track && a.index === b.index;
+    return nearestInDirection(spot, direction, this.untreed(), centerOf, same);
   }
 
   /** Every shown item outside of trees. */

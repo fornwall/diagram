@@ -750,7 +750,7 @@ export class MermaidRenderer implements Renderer {
       return [box.left + box.width / 2, box.top + box.height / 2];
     };
     const stops = this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
-    return nearestInDirection(center(from), direction, stops, center) ?? null;
+    return nearestInDirection(from, direction, stops, center) ?? null;
   }
 
   /** Makes the element the drawing's tab stop. */

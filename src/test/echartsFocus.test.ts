@@ -121,6 +121,34 @@ suite("echartsFocus", () => {
     assert.strictEqual(back, edge);
   });
 
+  test("reaches every one of several points at the same place, in their order", () => {
+    const scatter = {
+      xAxis: {},
+      yAxis: {},
+      series: [
+        {
+          type: "scatter",
+          data: [
+            [1, 1],
+            [1, 1],
+            [1, 1],
+            [2, 1],
+          ],
+        },
+      ],
+    };
+    const keys = ["ArrowRight", "ArrowRight", "ArrowRight", "ArrowLeft", "ArrowLeft", "ArrowLeft"];
+    assert.deepStrictEqual(walk(scatter, [...keys, "ArrowLeft"]), [
+      "0::1",
+      "0::2",
+      "0::3",
+      "0::2",
+      "0::1",
+      "0::0",
+      "0::0",
+    ]);
+  });
+
   test("leaves out series hidden by the legend, and finds where lines without symbols are", () => {
     const option = {
       legend: { selected: { Hidden: false } },
