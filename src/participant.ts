@@ -148,16 +148,17 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
             : { language: drawn.language, source: drawn.source },
         };
       }
-      if (failure) {
-        // As in the panel: details after the first line, like a source excerpt with a caret, in a
-        // fixed font.
-        const [summary = "", ...details] = failure.error.split("\n");
-        const excerpt = details.length > 0 ? `\n\n${codeFence(details.join("\n"))}` : "";
-        stream.markdown(
-          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${escapeMarkdown(summary)}${excerpt}\n\nYou can fix it in the source view of the diagram panel, which the \`</>\` button at its top right opens.`,
-        );
-        return { metadata: failure.block };
+      if (!failure) {
+        return;
       }
+      // As in the panel: details after the first line, like a source excerpt with a caret, in a
+      // fixed font.
+      const [summary = "", ...details] = failure.error.split("\n");
+      const excerpt = details.length > 0 ? `\n\n${codeFence(details.join("\n"))}` : "";
+      stream.markdown(
+        `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${escapeMarkdown(summary)}${excerpt}\n\nYou can fix it in the source view of the diagram panel, which the \`</>\` button at its top right opens.`,
+      );
+      return { metadata: failure.block };
     } catch (error) {
       // E.g. a CancellationError from counting tokens or sending a request.
       if (token.isCancellationRequested) {

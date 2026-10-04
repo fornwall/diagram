@@ -86,6 +86,7 @@ function recordClicks(): { actions: string[]; restore(): void } {
   vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
     if (command !== "workbench.action.chat.open") return execute(command, ...args);
     actions.push(`chat: ${(args[0] as { query: string }).query}`);
+    return undefined;
   }) as typeof execute;
   vscode.window.showTextDocument = (async (
     document: vscode.TextDocument,
@@ -1368,6 +1369,7 @@ suite("panel", function () {
       if (command !== "workbench.action.chat.open") return execute(command, ...args);
       if (chatFails) throw new Error("Chat is disabled.");
       queries.push((args[0] as { query: string }).query);
+      return undefined;
     }) as typeof execute;
     vscode.window.showErrorMessage = async (message: string) => {
       errors.push(message);

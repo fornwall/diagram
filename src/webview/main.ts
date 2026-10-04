@@ -260,8 +260,8 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       break;
     case "render": {
       const revision = ++renderRevision;
-      enqueue(() => {
-        if (revision === renderRevision) return render(message);
+      enqueue(async () => {
+        if (revision === renderRevision) await render(message);
       });
       break;
     }

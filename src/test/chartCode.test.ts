@@ -62,6 +62,7 @@ suite("chart code in the panel", function () {
       if (command !== "workbench.action.chat.open") return execute(command, ...args);
       const { query, isPartialQuery } = args[0] as { query: string; isPartialQuery: boolean };
       requests.push(`${isPartialQuery ? "fill" : "send"}: ${query}`);
+      return undefined;
     }) as typeof execute;
     const { panel, webview } = await newFakePanel();
     const click = () => webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
@@ -111,6 +112,7 @@ suite("chart code in the panel", function () {
     vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
       if (command !== "workbench.action.chat.open") return execute(command, ...args);
       requests.push(`${(args[0] as { isPartialQuery: boolean }).isPartialQuery ? "fill" : "send"}`);
+      return undefined;
     }) as typeof execute;
     try {
       assert.ok(

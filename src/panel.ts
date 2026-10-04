@@ -395,6 +395,7 @@ export class DiagramPanel implements vscode.Disposable {
         });
         break;
     }
+    return undefined;
   }
 
   /** Shows the current diagram in the webview, and keeps its render error, if any, for later requests. */
