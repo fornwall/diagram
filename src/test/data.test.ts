@@ -416,7 +416,10 @@ suite("data", () => {
       ["b", -0.025],
       ["c", 12345],
     ]);
-    assert.deepStrictEqual(parseNumber("1,5e2KiB", true), { value: 150 * 1024, unit: "bytes" });
+    assert.deepStrictEqual(parseNumber("1,5e2KiB", { decimalComma: true }), {
+      value: 150 * 1024,
+      unit: "bytes",
+    });
   });
 
   test("explicit headers do not change the numeric format or unit of their values", () => {
@@ -453,6 +456,108 @@ suite("data", () => {
       ["x", 3.25],
       ["y", 4],
     ]);
+  });
+
+  test("reads bare size units in powers of 1000 in columns with SI evidence", () => {
+    // du --si and df -H write 1000 as a lowercase k, but 1000² as M.
+    assert.deepStrictEqual(parse("4.1k\tsrc\n1.3M\tdist\n2.0G\tnode_modules\n").rows, [
+      [4100, "src"],
+      [1.3e6, "dist"],
+      [2e9, "node_modules"],
+    ]);
+    const df = parseTable(
+      [
+        "Filesystem      Size  Used Avail Use% Mounted on",
+        "/dev/nvme0n1p5  2.1T  1.7T  284G  86% /",
+        "efivarfs        132k   79k   49k  62% /sys/firmware/efi/efivars",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(df.rows[0]?.slice(1, 4), [2.1e12, 1.7e12, 284e9]);
+    // Without a lowercase k, as from du -h and ls -lh, or with an uppercase K beside it.
+    assert.deepStrictEqual(parse("4.0K\tsrc\n1.3M\tdist\n").rows[1], [1.3 * 1024 ** 2, "dist"]);
+    assert.deepStrictEqual(parse("4.0K\ta\n4.1k\tb\n1M\tc\n").rows[2], [1024 ** 2, "c"]);
+    // Explicit units keep their base in an SI column.
+    assert.deepStrictEqual(parse("a\t150k\nb\t3Mi\nc\t2GiB\nd\t5MB\n").rows, [
+      ["a", 150_000],
+      ["b", 3 * 1024 ** 2],
+      ["c", 2 * 1024 ** 3],
+      ["d", 5e6],
+    ]);
+  });
+
+  test("reads thousands grouped with spaces or apostrophes in consistent columns", () => {
+    assert.deepStrictEqual(
+      parse("Pays;Habitants;Part\nFrance;68 042 591;12,5 %\nBelgique;11\u00A0763\u00A0650;1,25 %"),
+      {
+        columns: ["Pays", "Habitants", "Part"],
+        rows: [
+          ["France", 68042591, 12.5],
+          ["Belgique", 11763650, 1.25],
+        ],
+      },
+    );
+    assert.deepStrictEqual(parse("a;1\u202F234,5\nb;999,25").rows, [
+      ["a", 1234.5],
+      ["b", 999.25],
+    ]);
+    assert.deepStrictEqual(
+      parse("Kanton,Betrag\nZH,\"1'234.50\"\nBE,1\u2019000\nGE,-12'000").rows,
+      [
+        ["ZH", 1234.5],
+        ["BE", 1000],
+        ["GE", -12000],
+      ],
+    );
+    // Two numbers with a space between them, as in a column of resolutions, stay text.
+    assert.deepStrictEqual(parse("size,n\n640 480,1\n1920 1080,2\n320 240,3").rows, [
+      ["640 480", 1],
+      ["1920 1080", 2],
+      ["320 240", 3],
+    ]);
+    assert.strictEqual(parseNumber("1 234"), undefined);
+    assert.deepStrictEqual(parseNumber("-$1 234.5", { groups: true }), { value: -1234.5 });
+    assert.strictEqual(parseNumber("1 2345", { groups: true }), undefined);
+    assert.strictEqual(parseNumber("1 234 5", { groups: true }), undefined);
+    assert.strictEqual(parseNumber("1 234'567", { groups: true }), undefined);
+  });
+
+  test("reads numbers in parentheses as negative in accounting columns", () => {
+    assert.deepStrictEqual(
+      parse('Item,Amount\nSales,"1,234.00"\nRefunds,"(567.50)"\nFees,$(89)\nTax,"($1,000)"').rows,
+      [
+        ["Sales", 1234],
+        ["Refunds", -567.5],
+        ["Fees", -89],
+        ["Tax", -1000],
+      ],
+    );
+    assert.deepStrictEqual(parse("a;(1.234,5)\nb;2,5").rows, [
+      ["a", -1234.5],
+      ["b", 2.5],
+    ]);
+    // A column that also has minus signs does not use parentheses for them.
+    assert.deepStrictEqual(parse("a,-5\nb,(5)\nc,7").rows, [
+      ["a", -5],
+      ["b", "(5)"],
+      ["c", 7],
+    ]);
+    assert.strictEqual(parseNumber("(5)"), undefined);
+    assert.strictEqual(parseNumber("(-5)", { accounting: true }), undefined);
+    assert.strictEqual(parseNumber("(5", { accounting: true }), undefined);
+  });
+
+  test("reads kubectl restart counts with the time since the last restart", () => {
+    const table = parse(
+      [
+        "NAME                     READY   STATUS    RESTARTS      AGE",
+        "web-7d4b9c8f5-abcde      1/1     Running   0             5d2h",
+        "db-0                     1/1     Running   2 (3h ago)    10d",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      table.rows.map((row) => row[3]),
+      [0, 2],
+    );
   });
 
   test("parses TSV, keeping spaces in fields", () => {

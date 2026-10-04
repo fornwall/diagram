@@ -233,7 +233,7 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       (uniform === best.uniform &&
         (width >= best.width ||
           records.every((row) =>
-            row.every((field) => parseNumber(String(field), true) !== undefined),
+            row.every((field) => parseNumber(String(field), { decimalComma: true }) !== undefined),
           )))
     ) {
       best = { table, uniform, width };

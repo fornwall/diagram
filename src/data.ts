@@ -4,7 +4,7 @@
 import { type DataFormat, quoteAll } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
-import { hasDecimalCommas, parseNumber, type Unit } from "./dataNumber";
+import { numberFormat, parseNumber, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
 
 /** A table cell: text, a number, or null when empty. */
@@ -159,8 +159,8 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
-  const decimalComma = Array.from({ length: width }, (_, column) =>
-    hasDecimalCommas(records, column, header ? 1 : 0),
+  const formats = Array.from({ length: width }, (_, column) =>
+    numberFormat(records, column, header ? 1 : 0),
   );
   const units = Array.from({ length: width }, () => new Set<Unit>());
   // The cells below the first row, which is counted once it is known not to be the header.
@@ -176,7 +176,7 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
       const field = record[column] ?? null;
       let cell = field;
       if (typeof field === "string" && !(header && row === 0)) {
-        const number = parseNumber(field, decimalComma[column]);
+        const number = parseNumber(field, formats[column]);
         if (number?.unit !== undefined) units[column]?.add(number.unit);
         cell = number?.value ?? (field.trim() || null);
       }
@@ -210,7 +210,7 @@ function tableFromRecords({ records, header, csv = false }: Records): DataTable 
 /**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
  * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
- * {@link parseNumber}) become numbers, and empty cells null, as do markers of missing values such
+ * {@link parseNumber} and {@link numberFormat}) become numbers, and empty cells null, as do markers of missing values such
  * as "N/A" and "-" in numeric columns.
  *
  * @throws Error when the text is empty or cannot be parsed in the given format.

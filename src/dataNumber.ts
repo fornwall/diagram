@@ -25,27 +25,67 @@ const COMMA_NUMBER = new RegExp(
   String.raw`^${PREFIX}(?:\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+,\d+)(?:[eE][-+]?\d+)?(?:[^\S\r\n]*(?:${SUFFIX}))?$`,
 );
 
+/** How a column writes its numbers, as told by {@link numberFormat}. */
+export interface NumberFormat {
+  /** "1,5" and "1.234,5" have a decimal comma. */
+  decimalComma?: boolean;
+  /** Sizes with a bare unit are in powers of 1000, as du --si prints "1.2M" beside "150k". */
+  si?: boolean;
+  /** Spaces or apostrophes group thousands, as in "1 234,5" (French) or "1'234.5" (Swiss). */
+  groups?: boolean;
+  /** Parentheses mark negative numbers, as in accounting: "(1,234)". */
+  accounting?: boolean;
+}
+
+/** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
+const GROUPS =
+  /^([-+\u2212]?[$€£¥]?)(\d{1,3}([ \u00A0\u2009\u202F'\u2019])\d{3}(?:\3\d{3})*)(?!\d)/;
+
+/** Leaves out the spaces or apostrophes that group the leading digits of `text` by thousands. */
+function ungroup(text: string): string {
+  return text.replace(
+    GROUPS,
+    (_, prefix: string, digits: string, separator: string) =>
+      prefix + digits.replaceAll(separator, ""),
+  );
+}
+
+/** A number in parentheses, perhaps after a currency symbol, as accounting writes negatives. */
+const ACCOUNTING = /^([$€£¥]?)\(([$€£¥]?[\d.].*)\)$/;
+
+/** kubectl's restart counts: "2 (3h ago)". */
+const SINCE = /^(\d+) \([^()]+ ago\)$/;
+
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
  * "$9.99", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h
- * prints them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k" (in units of 1000, as
- * docker and du --si print them). With `decimalComma`, "1,5" and "1.234,5" are read with a decimal
- * comma.
+ * and ls -lh print them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k" (in units of
+ * 1000, as docker and du --si print them). The column's `format` tells how to read "1,5",
+ * "1 234", "(5)" and "1.2M" beside "150k".
  */
 export function parseNumber(
   text: string,
-  decimalComma = false,
+  format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
-  let trimmed = text.trim();
-  if (decimalComma && COMMA_NUMBER.test(trimmed)) {
+  let trimmed = text.trim().replace(SINCE, "$1");
+  let sign = 1;
+  const accounting = format.accounting ? ACCOUNTING.exec(trimmed) : null;
+  if (accounting) {
+    trimmed = `${accounting[1]}${accounting[2]}`;
+    sign = -1;
+  }
+  if (format.groups) {
+    trimmed = ungroup(trimmed);
+  }
+  if (format.decimalComma && COMMA_NUMBER.test(trimmed)) {
     trimmed = trimmed.replaceAll(".", "").replace(",", ".");
   }
-  const [, sign, digits, suffix] = NUMBER.exec(trimmed) ?? [];
+  const [, prefix, digits, suffix] = NUMBER.exec(trimmed) ?? [];
   if (digits === undefined) {
     return undefined;
   }
   const value =
-    (sign === "" || sign === "+" ? 1 : -1) *
+    (prefix === "" || prefix === "+" ? sign : -sign) *
     Number(digits.includes(",") ? digits.replaceAll(",", "") : digits);
   if (!Number.isFinite(value)) {
     return undefined;
@@ -56,28 +96,66 @@ export function parseNumber(
   if (suffix === "%") {
     return { value, unit: "%" };
   }
-  // SI units, as printed by docker ("1.2kB") and coreutils' --si option ("150k").
-  const base = suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) ? 1000 : 1024;
+  // Explicit binary units ("KiB", "Mi") are in powers of 1024, and SI units in powers of 1000:
+  // "kB", "MB" as docker prints them, and "k" as coreutils' --si option does.
+  const base = suffix.includes("i")
+    ? 1024
+    : suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) || format.si
+      ? 1000
+      : 1024;
   const bytes = value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase());
   return Number.isFinite(bytes) ? { value: bytes, unit: "bytes" } : undefined;
 }
 
 /**
- * Whether a column writes numbers with a decimal comma: some field can only be read that way
- * ("1,5", "1234,5"), and none only with thousands separators ("1,234.5", "1,234,567").
+ * How a column writes its numbers, from the cells from row `start` on:
+ * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5") and none only
+ *   with thousands separators ("1,234.5", "1,234,567");
+ * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
+ * - with spaces or apostrophes between thousands, if some cell has them and no other cell has
+ *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
+ * - in accounting format, if some cell is a number in parentheses and none has a minus sign.
  */
-export function hasDecimalCommas(records: Cell[][], column: number, start = 0): boolean {
-  let decimal = false;
+export function numberFormat(records: Cell[][], column: number, start = 0): NumberFormat {
+  let comma = false;
+  let point = false;
+  let lowerK = false;
+  let upperK = false;
+  let grouped = false;
+  let ungrouped = false;
+  let parenthesized = false;
+  let minus = false;
   for (let row = start; row < records.length; row++) {
-    const text = records[row]?.[column];
-    if (typeof text === "string" && text.includes(",")) {
-      const comma = COMMA_NUMBER.test(text.trim());
-      const point = NUMBER.test(text.trim());
-      if (point && !comma) {
-        return false;
-      }
-      decimal ||= comma && !point;
+    const cell = records[row]?.[column];
+    if (typeof cell !== "string") continue;
+    let text = cell.trim();
+    const accounting = ACCOUNTING.exec(text);
+    if (accounting) {
+      text = `${accounting[1]}${accounting[2]}`;
     }
+    const grouping = GROUPS.test(text);
+    if (grouping) {
+      text = ungroup(text);
+    }
+    const number = NUMBER.test(text);
+    const commaNumber = COMMA_NUMBER.test(text);
+    if (grouping && (number || commaNumber)) grouped = true;
+    else if (/\d[\s'\u2019]+\d/.test(cell)) ungrouped = true;
+    if (!number && !commaNumber) continue;
+    if (accounting) parenthesized = true;
+    else if (/^[-\u2212]/.test(text)) minus = true;
+    if (text.includes(",")) {
+      point ||= number && !commaNumber;
+      comma ||= commaNumber && !number;
+    }
+    const unit = /\d\s*([kK])$/.exec(text)?.[1];
+    if (unit === "k") lowerK = true;
+    else if (unit === "K") upperK = true;
   }
-  return decimal;
+  return {
+    decimalComma: comma && !point,
+    si: lowerK && !upperK,
+    groups: grouped && !ungrouped,
+    accounting: parenthesized && !minus,
+  };
 }
