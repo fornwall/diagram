@@ -159,7 +159,11 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   canvas.inert = true;
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
-  renderStatus.textContent = `Rendering ${renderer.noun}…`;
+  // Only for a slow render: the status line would shift a quick one down and back up, and a chart
+  // measured meanwhile would not fit the canvas, as its resize observer may not see the change.
+  const statusTimer = setTimeout(() => {
+    renderStatus.textContent = `Rendering ${renderer.noun}…`;
+  }, 300);
   try {
     const diagramType = await renderer.render(source, message.title);
     if (active !== renderer) {
@@ -191,6 +195,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   } finally {
     canvas.inert = false;
     canvas.setAttribute("aria-busy", "false");
+    clearTimeout(statusTimer);
     renderStatus.textContent = "";
   }
   if (focusedNode !== undefined && document.activeElement === document.body) {

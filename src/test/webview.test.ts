@@ -1458,6 +1458,7 @@ suite("webview", function () {
           window.testRenderingInert = document.getElementById("canvas").inert;
           window.testRenderingBusy = document.getElementById("canvas").getAttribute("aria-busy");
           window.testRenderingStatus = document.getElementById("render-status").textContent;
+          window.testRenderingHeight = document.getElementById("canvas").clientHeight;
           return {series: ${series}};
         })()`,
       });
@@ -1467,6 +1468,8 @@ suite("webview", function () {
           during: window.testRenderingInert,
           duringBusy: window.testRenderingBusy,
           duringStatus: window.testRenderingStatus,
+          // A status shown only while rendering would size the chart for a smaller canvas.
+          sameHeight: window.testRenderingHeight === document.getElementById("canvas").clientHeight,
           after: document.getElementById("canvas").inert,
           afterBusy: document.getElementById("canvas").getAttribute("aria-busy"),
           afterStatus: document.getElementById("render-status").textContent,
@@ -1475,7 +1478,10 @@ suite("webview", function () {
         {
           during: true,
           duringBusy: "true",
-          duringStatus: "Rendering chart…",
+          // Only a slow render shows its status.
+          duringStatus: "",
+          // Unlike the error that follows a failed render.
+          sameHeight: series !== "[]",
           after: false,
           afterBusy: "false",
           afterStatus: "",
