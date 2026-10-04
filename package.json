@@ -88,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Render Mermaid diagrams (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map) or Apache ECharts 6 charts (quantitative data, language \"echarts\"). Replaces the diagram beside chat; users can select items, edit source and send follow-ups. Mermaid nodes can open code through \"links\". Returns success or an error to fix. For data files or command output, use diagram_chart.",
+        "modelDescription": "Show a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, etc.) or an Apache ECharts 6 chart (language \"echarts\") in the panel beside chat, replacing the current one. Users can select its items and send follow-ups. Returns the diagram type, or the render error to fix. To chart a file, command output or table, use diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source or ECharts option, without a code fence or diff. ECharts accepts JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, labelLayout, etc.), including custom series. Prefer string templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts; the panel handles theming and chart sizing."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal; no code fence or diff. JavaScript allows callbacks wherever ECharts takes them (formatter, renderItem, symbolSize, labelLayout, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
             },
             "language": {
               "type": "string",
@@ -109,22 +109,22 @@
                 "mermaid",
                 "echarts"
               ],
-              "description": "How the source is written. Defaults to \"mermaid\"."
+              "description": "Defaults to \"mermaid\"."
             },
             "title": {
               "type": "string",
-              "description": "A short title for the diagram, shown in the panel."
+              "description": "Short title shown in the panel."
             },
             "clickPrompt": {
               "type": "string",
-              "description": "A single click immediately sends this request to chat on the user's behalf, replacing {label} with the node label or chart item name, e.g. \"Explain {label} in more detail\". Use for explorable overviews."
+              "description": "Chat request sent on the user's behalf when they click a node or chart item, with {label} replaced by its label, e.g. \"Explain {label} in more detail\". For explorable overviews."
             },
             "links": {
               "type": "object",
               "additionalProperties": {
                 "type": "string"
               },
-              "description": "Map exact Mermaid node ids to file paths, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\", \"cli\": \"src/cli.ts\"}. Clicking opens that location. Link nodes to code you have read. Mermaid only."
+              "description": "Mermaid node ids mapped to code locations, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\", \"cli\": \"src/cli.ts\"}. Clicking a linked node opens its location. Link only code you have read."
             }
           },
           "required": [
@@ -140,7 +140,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Chart data with Apache ECharts, replacing the diagram beside chat. Supply exactly one of \"data\" (inline), \"file\" or \"command\" (shell output), e.g. a pie chart, plot of sales.csv, bar chart of lines per folder, or treemap of du -ah src. Returns how the data was interpreted. For full option control or callbacks such as custom-series renderItem, use diagram_render. Supports row filters, histogram binning and faceted Cartesian charts with shared or independent scales.",
+        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of \"data\" (inline), \"file\" or \"command\" (its standard output), e.g. a treemap of `du -ah src`. Infers columns and reports how it read the data. For full control of the option or callbacks such as renderItem, use diagram_render.",
         "tags": [
           "chart",
           "echarts",
@@ -176,7 +176,7 @@
             },
             "title": {
               "type": "string",
-              "description": "A short title for the chart, shown in the panel."
+              "description": "Short title shown in the panel."
             },
             "data": {
               "type": "string",
@@ -184,11 +184,11 @@
             },
             "file": {
               "type": "string",
-              "description": "Path to a file with the data, absolute or relative to the first workspace folder."
+              "description": "Data file path, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
-              "description": "A shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder. The user is asked to confirm it."
+              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder once the user confirms it."
             },
             "format": {
               "type": "string",
@@ -199,7 +199,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "Defaults to \"auto\" detection, required for Markdown tables. \"json\" also reads JSON Lines."
+              "description": "\"auto\" (default) also detects Markdown tables; \"json\" also reads JSON Lines."
             },
             "labelColumn": {
               "anyOf": [
@@ -259,7 +259,7 @@
             },
             "clickPrompt": {
               "type": "string",
-              "description": "A single click on a chart item immediately sends this request to the chat on the user's behalf, with {label} replaced by the item's name, e.g. \"Which files make {label} so large?\"."
+              "description": "Chat request sent on the user's behalf when they click a chart item, with {label} replaced by its name, e.g. \"Which files make {label} so large?\"."
             },
             "bins": {
               "type": "integer",
@@ -339,7 +339,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the current diagram or chart: Mermaid source or ECharts JSON/JavaScript, manual edits, render errors and selected nodes/items. Call before changing a diagram or when the user refers to \"this\", \"these\" or selected parts. Lists selectable flowchart edges and sequence messages with exact relationship ids and endpoints for annotation.",
+        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable flowchart edges and sequence messages. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
         "tags": [
           "diagram",
           "mermaid",
@@ -360,7 +360,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(target)",
         "userDescription": "Ask you to select nodes, relationships or chart items in the diagram panel",
-        "modelDescription": "Ask the user to select diagram nodes or chart items and wait for their answer, e.g. \"Which step is failing?\". Returns picked labels and ids, or why none was picked. First render with diagram_render or diagram_chart. Mermaid flowchart edges and sequence messages are also selectable; picked relationships include ids and endpoints.",
+        "modelDescription": "Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for flowchart edges and sequence messages, or why nothing was picked.",
         "tags": [
           "diagram",
           "mermaid",
@@ -373,11 +373,11 @@
           "properties": {
             "prompt": {
               "type": "string",
-              "description": "One short question, shown above the diagram, e.g. 'Which part would you like to learn more about?'"
+              "description": "One short question shown above the diagram."
             },
             "multiple": {
               "type": "boolean",
-              "description": "Whether the user may pick several nodes, confirming with a Done button. Defaults to false: the first click answers."
+              "description": "Let the user pick several items and confirm with Done. Defaults to false: the first click answers."
             }
           },
           "required": [
@@ -393,7 +393,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
         "userDescription": "Mark nodes, flowchart edges, sequence messages or chart items without drawing again",
-        "modelDescription": "Mark existing nodes or chart items for walkthroughs, problems or paths without redrawing or moving the diagram. Each call replaces all marks; include every mark to keep, or omit marks to clear them. Marks do not change the source and clear on a new diagram. Returns marked and unknown ids. For flowchart edges and sequence messages, read exact edge:/message: relationship ids using diagram_getState; pass those ids in marks.",
+        "modelDescription": "Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it. Each call replaces the previous marks, caption and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
         "tags": [
           "diagram",
           "mermaid",
@@ -411,7 +411,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Exact Mermaid node id, edge:/message: relationship id, or chart item name reported by the panel. Call diagram_getState first; relationship ids may change when source changes."
+                    "description": "Exact Mermaid node id, edge:/message: relationship id from diagram_getState, or chart item name."
                   },
                   "mark": {
                     "type": "string",
@@ -421,11 +421,12 @@
                       "good",
                       "info"
                     ],
-                    "description": "Theme-colored mark: \"current\" (default) for the step being explained, \"problem\" for a failure, \"good\" for something working or a recommended path, \"info\" for a pointer."
+                    "description": "\"current\" (default) for the step being explained, \"problem\" for a failure, \"good\" for something working or a recommended path, \"info\" for a pointer."
                   },
                   "note": {
                     "type": "string",
-                    "description": "A short note about this node, at most 120 characters, shown above the diagram after the node's label, e.g. \"times out after 30 s\"."
+                    "description": "Short note shown above the diagram after the item's label, e.g. \"times out after 30 s\".",
+                    "maxLength": 120
                   }
                 },
                 "required": [
@@ -433,15 +434,17 @@
                 ],
                 "additionalProperties": false
               },
-              "description": "Up to 50 node marks, replacing all previous marks. Omit or pass [] to clear."
+              "description": "Omit or pass [] to clear the marks.",
+              "maxItems": 50
             },
             "caption": {
               "type": "string",
-              "description": "One short line shown above the diagram, at most 120 characters, e.g. \"Step 2 of 3: the request is retried here\"."
+              "description": "One line shown above the diagram, e.g. \"Step 2 of 3: the request is retried here\".",
+              "maxLength": 120
             },
             "dim": {
               "type": "boolean",
-              "description": "Fade unmarked items to emphasize marked nodes or paths. Defaults to false."
+              "description": "Fade unmarked items. Defaults to false."
             }
           },
           "additionalProperties": false
@@ -562,7 +565,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(table)",
         "userDescription": "Inspect columns and sample rows from the current chart or another data source",
-        "modelDescription": "Inspect data without rendering or changing the current diagram. Omit the source to inspect the current chart's loaded data without reloading it, or supply exactly one of data, file or command. Returns column names and inferred types, row count and a bounded sample. Commands and external file access require the same confirmation as diagram_chart. Inspection of an explicit source and subsequent charting load the source separately.",
+        "modelDescription": "Report a data source's columns, inferred types, row count and sample rows, without drawing anything. Omit the source to inspect the current chart's loaded data; otherwise give exactly one of data, file or command, which diagram_chart reads again when charting it.",
         "tags": [
           "diagram"
         ],
@@ -575,11 +578,11 @@
             },
             "file": {
               "type": "string",
-              "description": "Path to a file with the data, absolute or relative to the first workspace folder."
+              "description": "Data file path, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
-              "description": "A shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder. The user is asked to confirm it."
+              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder once the user confirms it."
             },
             "format": {
               "type": "string",
@@ -590,13 +593,13 @@
                 "json",
                 "whitespace"
               ],
-              "description": "Defaults to \"auto\" detection, required for Markdown tables. \"json\" also reads JSON Lines."
+              "description": "\"auto\" (default) also detects Markdown tables; \"json\" also reads JSON Lines."
             },
             "sampleRows": {
               "type": "integer",
               "minimum": 0,
               "maximum": 20,
-              "description": "Number of sample rows, defaults to 5. Samples may be shortened to fit output limits."
+              "description": "Defaults to 5."
             }
           },
           "additionalProperties": false
@@ -608,8 +611,8 @@
         "toolReferenceName": "diagramUpdate",
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
-        "userDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update.",
-        "modelDescription": "Change the current generated chart using its already loaded data, preserving supported manual presentation edits. Omitted fields are kept. Does not reload files or rerun commands. Use diagram_chart for a new data source; use Refresh in the panel if data is unavailable after reload. Unsupported manual source changes are preserved and block the update. Supports row filters, histogram binning and faceted Cartesian charts with shared or independent scales.",
+        "userDescription": "Change the current chart's settings without reloading its data",
+        "modelDescription": "Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
         "tags": [
           "diagram"
         ],
@@ -637,34 +640,27 @@
                 "boxplot",
                 "gauge",
                 "funnel"
-              ],
-              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in equal-width bins; select one value column and omit labelColumn, aggregate, sort and limit."
+              ]
             },
             "title": {
-              "type": "string",
-              "description": "A short title for the chart, shown in the panel."
+              "type": "string"
             },
             "labelColumn": {
               "anyOf": [
                 {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "minItems": 1
-                    }
-                  ]
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
                 },
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), or heatmap rows/columns. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. Bar, line, area and scatter charts use ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") as a time axis with proportional spacing. Ambiguous dates (\"01/02/2026\") and plain years remain labels. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "valueColumns": {
               "anyOf": [
@@ -678,8 +674,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Value columns, one series each. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, treemap, sunburst, gauge and funnel use only the first; boxplot uses its raw numbers. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "max": {
               "anyOf": [
@@ -689,8 +684,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred from the data when left out: 100 for percentages, the total of the column, or rounded up from the value. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "aggregate": {
               "anyOf": [
@@ -708,8 +702,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Combine rows sharing the same label or labels. \"count\" counts rows without a value column, e.g. one row per commit or log entry. Grouping precedes \"sort\" and \"limit\"; sort descending to keep the largest groups. Omit for boxplot, which summarizes raw groups itself. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "sort": {
               "anyOf": [
@@ -723,8 +716,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Sorts the rows by the first value column, after grouping. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "limit": {
               "anyOf": [
@@ -735,13 +727,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Keep the first rows after sorting. Pie/doughnut exclude nonpositive values and combine omitted positive rows as \"Other\". Pass null to clear this setting; omit to keep it."
+              ]
             },
             "revision": {
               "type": "integer",
               "minimum": 0,
-              "description": "Revision from diagram_getState; rejects stale updates when provided."
+              "description": "Revision from diagram_getState; the update is refused if the chart has changed since."
             },
             "bins": {
               "anyOf": [
@@ -753,8 +744,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Number of equal-width histogram bins. Omit for automatic binning (square root of sample count, at most 50). Constant data uses one bin. Histogram only; use one value column and omit labelColumn, aggregate, sort and limit. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "facetColumn": {
               "anyOf": [
@@ -765,8 +755,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Split a Cartesian chart or histogram into one panel per distinct value of this column (at most 12 panels). Filtering happens first; aggregation, sorting and limits apply inside each panel. The facet column is excluded from automatic label/value inference. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "facetColumns": {
               "anyOf": [
@@ -778,8 +767,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Number of facet panels per row (1\u20134). Omit for automatic arrangement. Use with facetColumn. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "facetScales": {
               "anyOf": [
@@ -793,8 +781,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Axis domains across facet panels; defaults to shared for comparable values. Independent scales fit each panel separately. Histogram bin boundaries are shared across panels in either mode. Pass null to clear this setting; omit to keep it."
+              ]
             },
             "filters": {
               "anyOf": [
@@ -839,8 +826,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units, e.g. bytes for sizes. An empty array clears filters. Pass null to clear this setting; omit to keep it."
+              ]
             }
           },
           "additionalProperties": false

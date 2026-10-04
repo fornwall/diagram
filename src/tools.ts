@@ -27,6 +27,7 @@ import {
   isPlainObject,
   nodeNoun,
   RENDER_TOOL,
+  UPDATE_CHART_TOOL,
 } from "./protocol";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
@@ -193,7 +194,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     );
     if (outcome.ok) {
       return textResult(
-        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf the columns were not read as intended, call ${CHART_TOOL} again with format, labelColumn or valueColumns.`,
+        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose labelColumn or valueColumns with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a format.`,
       );
     }
     const fix = spec.options
