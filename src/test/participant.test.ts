@@ -902,7 +902,10 @@ suite("participant", () => {
         assert.strictEqual(result?.errorDetails, undefined);
         const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
         assert.strictEqual(attached?.length, 1);
-        assert.match(attached?.[0] ?? "", /File unavailable/);
+        assert.strictEqual(
+          attached?.[0],
+          "Attached by the user, but not read: /unavailable.csv does not exist.",
+        );
       }
     } finally {
       vscode.workspace.openTextDocument = open;
@@ -930,33 +933,26 @@ suite("participant", () => {
   });
 
   test("reports attachment read failures without losing the rest of the request", async () => {
-    const open = vscode.workspace.openTextDocument;
-    vscode.workspace.openTextDocument = async () => {
-      throw new Error("Permission denied");
-    };
-    try {
-      const { result, sent, shown } = await ask([[text("Cannot read that file.")]], {
-        references: [
-          { id: "file", value: vscode.Uri.file("/un*read_able <x> [1].csv") },
-          { id: "text", value: "Chart the file when available" },
-        ],
-      });
-      assert.strictEqual(result?.errorDetails, undefined);
-      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
-      assert.strictEqual(attached?.length, 2);
-      assert.match(
-        attached?.[1] ?? "",
-        /un\*read_able <x> \[1\]\.csv, which could not be read: Permission denied/,
-      );
-      assert.match(attached?.[0] ?? "", /Chart the file when available/);
-      // Markdown, with the file name shown as is.
-      assert.strictEqual(
-        shown,
-        `${String.raw`Left out /un\*read\_able \<x\> \[1\].csv: Permission denied.`}\n\nCannot read that file.`,
-      );
-    } finally {
-      vscode.workspace.openTextDocument = open;
-    }
+    const { result, sent, shown } = await ask([[text("Cannot read that file.")]], {
+      references: [
+        { id: "file", value: vscode.Uri.file("/un*read_able <x> [1].csv") },
+        { id: "text", value: "Chart the file when available" },
+      ],
+    });
+    assert.strictEqual(result?.errorDetails, undefined);
+    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    assert.strictEqual(attached?.length, 2);
+    // The error names the file once.
+    assert.strictEqual(
+      attached?.[1],
+      "Attached by the user, but not read: /un*read_able <x> [1].csv does not exist.",
+    );
+    assert.match(attached?.[0] ?? "", /Chart the file when available/);
+    // Markdown, with the file name shown as is.
+    assert.strictEqual(
+      shown,
+      `${String.raw`Left out: /un\*read\_able \<x\> \[1\].csv does not exist.`}\n\nCannot read that file.`,
+    );
   });
 
   test("gives the model attached images once, and says why others are left out", async () => {
@@ -980,6 +976,7 @@ suite("participant", () => {
         { id: "file", value: file },
         pasted("image/jpeg", new Uint8Array([1, 2, 3])),
         { id: "symbol", value: 42 },
+        { id: "file", value: vscode.Uri.joinPath(root, "gone.png") },
       ].reverse();
       const { sent, shown } = await ask([[text("Drawing.")]], { references });
       const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
@@ -990,12 +987,14 @@ suite("participant", () => {
         "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
         "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
         "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
+        "Attached by the user, but not read: gone.png does not exist.",
       ]);
       assert.strictEqual(
         shown,
         "Left out image: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image. " +
           "Left out image: @diagram does not support application/pdf attachments. " +
-          "Left out problems, symbol: @diagram does not support this kind of attachment.\n\nDrawing.",
+          "Left out problems, symbol: @diagram does not support this kind of attachment. " +
+          "Left out: gone.png does not exist.\n\nDrawing.",
       );
       const images = messages?.map((m) =>
         m.content.find((part) => part instanceof vscode.LanguageModelDataPart),

@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { codeFence } from "./blocks";
 import { throwIfCancelled } from "./cancellation";
 import { describeChartParameters } from "./describe";
+import { fileError, openDocument } from "./files";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
@@ -77,7 +78,9 @@ type Attachment = { name: string } & (
       keys: [string, ...string[]];
     }
   | {
+      /** Why it was not read: words that follow its name, or a sentence that names it if `named`. */
       error: string;
+      named?: boolean;
       /** The model can still explore it with tools. */
       explorable?: boolean;
     }
@@ -208,10 +211,12 @@ function leftOutNotice(attachments: Attachment[]): string | undefined {
   const leftOut = attachments.flatMap((attachment) =>
     "error" in attachment && !attachment.explorable ? [attachment] : [],
   );
-  const reasons = [...Map.groupBy(leftOut, ({ error }) => error)].map(
-    ([error, group]) =>
-      `Left out ${group.map(({ name }) => escapeMarkdown(name)).join(", ")}: ${escapeMarkdown(error.replace(/[^.]$/, "$&."))}`,
-  );
+  const reasons = [...Map.groupBy(leftOut, ({ error }) => error)].map(([error, group]) => {
+    const names = group[0]?.named
+      ? ""
+      : ` ${group.map(({ name }) => escapeMarkdown(name)).join(", ")}`;
+    return `Left out${names}: ${escapeMarkdown(error.replace(/[^.]$/, "$&."))}`;
+  });
   return reasons.length > 0 ? reasons.join(" ") : undefined;
 }
 
@@ -422,7 +427,9 @@ async function readAttachments(
 function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH): string {
   const label = `Attached by the user: ${attachment.name}`;
   if ("error" in attachment) {
-    return `${label}, which could not be read: ${attachment.error}`;
+    return attachment.named
+      ? `Attached by the user, but not read: ${attachment.error}`
+      : `${label}, which could not be read: ${attachment.error}`;
   }
   if ("image" in attachment) {
     return label;
@@ -478,13 +485,18 @@ async function readAttachment(
     let document = documents.get(key);
     if (!document) {
       // Share reads across selections and earlier turns, but reread on the next request.
-      document = vscode.workspace.openTextDocument(uri);
+      document = openDocument(uri);
       documents.set(key, document);
     }
     return { name, text: (await document).getText(location?.range) };
   } catch (error) {
+    // openDocument says why in a sentence that names the file.
     return (
-      (location ? undefined : await readFolder(name, uri)) ?? { name, error: errorMessage(error) }
+      (location ? undefined : await readFolder(name, uri)) ?? {
+        name,
+        error: errorMessage(error),
+        named: true,
+      }
     );
   }
 }
@@ -569,7 +581,9 @@ async function readImage(
     ];
     return { name, image: vscode.LanguageModelDataPart.image(data, mimeType), keys };
   } catch (error) {
-    return { name, error: errorMessage(error) };
+    // A file system error is explained in a sentence that names the file.
+    const explained = source instanceof vscode.Uri ? fileError(error, source) : error;
+    return { name, error: errorMessage(explained), named: explained !== error };
   }
 }
 
