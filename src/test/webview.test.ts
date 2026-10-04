@@ -474,6 +474,21 @@ suite("webview", function () {
     );
   });
 
+  test("shows why an action is disabled on hover", async () => {
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const button = document.getElementById("highlight-path");
+        return {disabled: button.disabled, title: button.title, hoverable: getComputedStyle(button).pointerEvents !== "none"};
+      })()`),
+      {
+        disabled: true,
+        title: "Select two flowchart nodes, first the start and then the destination",
+        hoverable: true,
+      },
+    );
+  });
+
   test("only enables sending to chat when the message contains text", async () => {
     assert.deepStrictEqual(
       await evaluate(`(() => {

@@ -82,7 +82,7 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:enabled:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
@@ -91,9 +91,10 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Still hoverable, for a title that explains why. */
 button:disabled {
   opacity: 0.4;
-  pointer-events: none;
+  cursor: default;
 }
 
 button.secondary {
@@ -101,7 +102,7 @@ button.secondary {
   color: var(--vscode-button-secondaryForeground);
 }
 
-button.secondary:hover {
+button.secondary:enabled:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
@@ -135,14 +136,14 @@ header button,
   border-color: var(--vscode-contrastBorder, transparent);
 }
 
-header button:hover,
+header button:enabled:hover,
 .drag-out:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px solid var(--vscode-toolbar-hoverOutline, transparent);
   outline-offset: -1px;
 }
 
-header button:active,
+header button:enabled:active,
 .drag-out:active {
   background: var(--vscode-toolbar-activeBackground);
 }
@@ -156,7 +157,7 @@ header button:focus-visible {
   cursor: grabbing;
 }
 
-button.link:hover {
+button.link:enabled:hover {
   background: none;
   text-decoration: underline;
 }
