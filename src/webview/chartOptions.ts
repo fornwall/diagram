@@ -80,8 +80,7 @@ export class ChartOptionsForm {
     for (let count = 1; count <= 4; count++) {
       this.facetColumns.add(new Option(String(count), String(count)));
     }
-    this.facetScales.add(new Option("Shared (default)", ""));
-    this.facetScales.add(new Option("Shared", "shared"));
+    this.facetScales.add(new Option("Shared", ""));
     this.facetScales.add(new Option("Independent", "independent"));
     this.fields.className = "chart-options-fields";
     for (const [name, control] of [
@@ -220,7 +219,8 @@ export class ChartOptionsForm {
     this.bins.value = controls.bins?.toString() ?? "";
     this.fillColumnSelect(this.facet, controls.facetColumn, "None");
     this.facetColumns.value = controls.facetColumns?.toString() ?? "";
-    this.facetScales.value = controls.facetScales ?? "";
+    // Shared is the default, which a stored "shared" only spells out.
+    this.facetScales.value = controls.facetScales === "independent" ? "independent" : "";
     this.fillFilters(controls.filters ?? []);
     this.updateAvailability();
     this.fields.disabled = state.unavailable !== undefined;

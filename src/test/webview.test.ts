@@ -349,14 +349,14 @@ suite("webview", function () {
       type.value = 'histogram';
       type.dispatchEvent(new Event('change'));
       document.getElementById('chart-option-bins').value = '3';
-      document.getElementById('chart-option-axis').value = 'shared';
+      document.getElementById('chart-option-axis').value = '';
       document.querySelector('#chart-options .actions button').click();
     })()`),
     );
     assert.strictEqual(panel.current?.chart?.type, "histogram");
     assert.strictEqual(panel.current?.chart?.bins, 3);
     assert.strictEqual(panel.current?.chart?.facetColumn, "service");
-    assert.strictEqual(panel.current?.chart?.facetScales, "shared");
+    assert.strictEqual(panel.current?.chart?.facetScales, undefined);
     assert.deepStrictEqual(panel.current?.chart?.filters, chart.filters);
     for (const key of ["labelColumn", "aggregate", "sort", "limit"] as const) {
       assert.strictEqual(panel.current?.chart?.[key], undefined);
@@ -375,6 +375,38 @@ suite("webview", function () {
     }
     await evaluate(
       `document.querySelector('#chart-options .chart-options-heading button').click()`,
+    );
+  });
+
+  test("chart options show explicitly shared facet scales as the default", async () => {
+    const data = "name,service,amount\na,api-a,1\nb,api-b,3";
+    const table = parseTable(data);
+    const chart: ChartSpec = { type: "bar", data, facetColumn: "service", facetScales: "shared" };
+    assert.ok(
+      (
+        await panel.render(
+          {
+            language: "echarts",
+            chart,
+            title: "Shared scales",
+            source: JSON.stringify(buildChart(chart, table).option),
+          },
+          "tool",
+          undefined,
+          table,
+        )
+      ).ok,
+    );
+    panel.toggleChartOptions();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const scales = document.getElementById('chart-option-axis');
+        const shown = {choices: [...scales.options].map(option => option.text),
+          selected: scales.selectedOptions[0]?.text};
+        document.querySelector('#chart-options .chart-options-heading button').click();
+        return shown;
+      })()`),
+      { choices: ["Shared", "Independent"], selected: "Shared" },
     );
   });
 
