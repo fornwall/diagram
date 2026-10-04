@@ -2625,6 +2625,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
   const script = "<img src=x onerror='window.pwned=1'>";
   const payloads: Record<string, string> = {
     "HTML labels": `flowchart LR\n  A["${script}"] --> B["<a href='javascript:window.pwned=2'>x</a>"]\n  C["<iframe srcdoc='<script>parent.pwned=3</script>'></iframe>"]`,
+    "a link in a label": `flowchart LR\n  A["Docs <a href='https://example.com'>here</a>"]`,
     "click directives": `flowchart LR\n  A --> B --> C --> D\n  click A call alert(1)\n  click B href "javascript:window.pwned=4"\n  click C href "https://example.com/?secret" _blank\n  click D href "vscode://file/etc/passwd"`,
     "links in labels and actor menus": `sequenceDiagram\n  participant A as <a href='https://example.com'>A</a>\n  links A: {"Repo": "https://example.com"}\n  A->>B: <a href='mailto:x@example.com'>mail</a>`,
     "an init directive": `%%{init: {"securityLevel": "loose", "dompurifyConfig": {"ADD_ATTR": ["onerror"]}}}%%\nflowchart LR\n  A["${script}"] --> B\n  click B call alert(1)`,
@@ -2639,7 +2640,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         return {
           handlers: elements.flatMap(e => [...e.attributes].filter(a => /^on/i.test(a.name)).map(a => a.name)),
           frames: elements.filter(e => /^(script|iframe|object|embed)$/i.test(e.tagName)).length,
-          links: elements.filter(e => e.tagName === "a" && (e.hasAttribute("href") || e.hasAttributeNS("http://www.w3.org/1999/xlink", "href"))).length,
+          links: elements.filter(e => e.localName === "a" && (e.hasAttribute("href") || e.hasAttributeNS("http://www.w3.org/1999/xlink", "href"))).length,
           pwned: window.pwned ?? null,
         };
       })()`);
