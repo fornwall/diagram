@@ -336,6 +336,9 @@ suite("fences", () => {
   test("findDiagramFences does not mistake in-line separators for new document lines", () => {
     for (const separator of ["\r", "\u2028", "\u2029"]) {
       assert.deepStrictEqual(sources(`prose${separator}\`\`\`mermaid\nA\n\`\`\``), []);
+      assert.deepStrictEqual(sources(`\`\`\`mermaid${separator}x\nA\n\`\`\``), [
+        '0-1 mermaid "": "A"',
+      ]);
       assert.deepStrictEqual(sources(`\`\`\`mermaid\nA${separator}\`\`\`\nB\n\`\`\``), [
         `0-2 mermaid "": ${JSON.stringify(`A${separator}\`\`\`\nB`)}`,
       ]);

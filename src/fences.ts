@@ -83,7 +83,8 @@ export interface OpeningFence {
 
 /** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
 function opening(line: string, start: number, indent: number): OpeningFence | undefined {
-  const match = /^(`{3,}|~{3,})(.*)$/.exec(line.slice(start).trimEnd());
+  // Unicode line separators are not line endings in Markdown, so "." must match them.
+  const match = /^(`{3,}|~{3,})(.*)$/s.exec(line.slice(start).trimEnd());
   if (!match) {
     return undefined;
   }
