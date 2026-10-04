@@ -24,7 +24,7 @@ suite("workspace tools", () => {
     assert.ok(result);
     const part = result.content[0];
     assert.ok(part instanceof vscode.LanguageModelTextPart);
-    return JSON.parse(part.value);
+    return part.value;
   }
 
   suiteSetup(async () => {
@@ -61,33 +61,41 @@ suite("workspace tools", () => {
   });
 
   test("finds bounded workspace paths and respects default exclusions", async () => {
-    const result = await invoke(finder, { glob: `${relative}/**/*.ts` });
-    assert.deepStrictEqual(
-      result.files.map((entry: { file: string }) => path.basename(entry.file)),
-      ["code.ts"],
+    assert.strictEqual(
+      await invoke(finder, { glob: `${relative}/**/*.ts` }),
+      `${relative}/code.ts`,
     );
-    assert.strictEqual(result.truncated, false);
-    assert.strictEqual(result.files[0].uri, vscode.Uri.file(path.join(dir, "code.ts")).toString());
-    const bounded = await invoke(finder, { glob: `${relative}/*`, maxResults: 1 });
-    assert.strictEqual(bounded.files.length, 1);
-    assert.strictEqual(bounded.truncated, true);
+    const bounded = (await invoke(finder, { glob: `${relative}/*`, maxResults: 1 })).split("\n");
+    assert.strictEqual(bounded.length, 2);
+    assert.strictEqual(bounded[1], "Showing the first 1 file; narrow the glob to see more.");
+    assert.strictEqual(
+      await invoke(finder, { glob: `${relative}/*.missing` }),
+      `No files match "${relative}/*.missing".`,
+    );
   });
 
   test("reads inclusive line ranges from relative paths and absolute URIs", async () => {
-    const result = await invoke(reader, { file: `${relative}/code.ts`, startLine: 2, endLine: 3 });
-    assert.deepStrictEqual(result.lines, [
-      { line: 2, text: "const value = 'Needle';" },
-      { line: 3, text: "needle needle" },
-    ]);
-    assert.strictEqual(result.nextStartLine, 4);
-    assert.strictEqual(result.truncated, false);
-    const uri = await invoke(reader, {
-      file: vscode.Uri.file(path.join(dir, "code.ts")).toString(),
-      startLine: 4,
-      endLine: 500,
-    });
-    assert.strictEqual(uri.endLine, 5);
-    assert.strictEqual(uri.nextStartLine, undefined);
+    assert.strictEqual(
+      await invoke(reader, { file: `${relative}/code.ts`, startLine: 2, endLine: 3 }),
+      `${relative}/code.ts, lines 2-3 of 5:\n2: const value = 'Needle';\n3: needle needle\nContinue with startLine 4.`,
+    );
+    assert.strictEqual(
+      await invoke(reader, {
+        file: vscode.Uri.file(path.join(dir, "code.ts")).toString(),
+        startLine: 4,
+        endLine: 500,
+      }),
+      `${relative}/code.ts, lines 4-5 of 5:\n4: last\n5: `,
+    );
+  });
+
+  test("reads at most 500 lines and says where to continue", async () => {
+    const file = path.join(dir, "pages.txt");
+    await fs.writeFile(file, "line\n".repeat(600));
+    const page = (await invoke(reader, { file, startLine: 2, endLine: 1000 })).split("\n");
+    assert.strictEqual(page[0], `${relative}/pages.txt, lines 2-501 of 601:`);
+    assert.strictEqual(page.length, 502);
+    assert.strictEqual(page.at(-1), "Continue with startLine 502.");
   });
 
   test("fills result limits across overlapping workspace roots", async () => {
@@ -112,87 +120,71 @@ suite("workspace tools", () => {
       return matches.slice(0, maxResults);
     };
     try {
-      const complete = await invoke(finder, { maxResults: 3 });
-      assert.deepStrictEqual(
-        complete.files.map((entry: { uri: string }) => entry.uri),
-        files.map((uri) => uri.toString()),
+      // Paths outside the first root are absolute, so that reading them is unambiguous.
+      assert.strictEqual(
+        await invoke(finder, { maxResults: 3 }),
+        ["a.ts", "b.ts", files[2]?.fsPath].join("\n"),
       );
-      assert.strictEqual(complete.truncated, false);
-      const limited = await invoke(finder, { maxResults: 2 });
-      assert.strictEqual(limited.files.length, 2);
-      assert.strictEqual(limited.truncated, true);
+      assert.strictEqual(
+        await invoke(finder, { maxResults: 2 }),
+        "a.ts\nb.ts\nShowing the first 2 files; narrow the glob to see more.",
+      );
     } finally {
       vscode.workspace.findFiles = findFiles;
       Object.defineProperty(vscode.workspace, "workspaceFolders", descriptor);
     }
   });
 
-  test("searches literal text with accurate lines, columns and case control", async () => {
-    const result = await invoke(searcher, { query: "needle", glob: `${relative}/code.ts` });
-    assert.deepStrictEqual(
-      result.matches.map((match: { line: number; column: number }) => [match.line, match.column]),
-      [
-        [2, 16],
-        [3, 1],
-      ],
+  test("searches literal text with accurate lines and case control", async () => {
+    assert.strictEqual(
+      await invoke(searcher, { query: "needle", glob: `${relative}/code.ts` }),
+      `2 matches in 1 file (searched 1 file).\n${relative}/code.ts\n  2: const value = 'Needle';\n  3: needle needle`,
     );
     const exact = await invoke(searcher, {
       query: "Needle",
       glob: `${relative}/code.ts`,
       caseSensitive: true,
     });
-    assert.strictEqual(exact.matches.length, 1);
+    assert.match(exact, /^1 match in 1 file/);
     const literal = await invoke(searcher, { query: "a.*[x]", glob: `${relative}/literal.txt` });
-    assert.strictEqual(literal.matches.length, 1);
+    assert.match(literal, /^1 match in 1 file.*\n.*\n {2}1: special a\.\*\[x\] here$/);
     const unicode = await invoke(searcher, { query: "Needle", glob: `${relative}/literal.txt` });
-    assert.strictEqual(unicode.matches[0].column, 9);
+    assert.match(unicode, /\n {2}2: İ first Needle then needle$/);
   });
 
   test("keeps line and preview boundaries across mixed line endings and repeated matches", async () => {
     const file = path.join(dir, "mixed-lines.txt");
     await fs.writeFile(file, "first\r\nNeedle Needle\rskip\n\nNeedle end\r\nNeedle");
     const result = await invoke(searcher, { query: "Needle", glob: `${relative}/mixed-lines.txt` });
-    assert.deepStrictEqual(
-      result.matches.map((match: { line: number; column: number; text: string }) => [
-        match.line,
-        match.column,
-        match.text,
-      ]),
-      [
-        [2, 1, "Needle Needle"],
-        [5, 1, "Needle end"],
-        [6, 1, "Needle"],
-      ],
-    );
-    const page = await invoke(reader, { file, startLine: 3, endLine: 5 });
-    assert.strictEqual(page.totalLines, 6);
-    assert.deepStrictEqual(page.lines, [
-      { line: 3, text: "skip" },
-      { line: 4, text: "" },
-      { line: 5, text: "Needle end" },
+    assert.deepStrictEqual(result.split("\n").slice(2), [
+      "  2: Needle Needle",
+      "  5: Needle end",
+      "  6: Needle",
     ]);
-    assert.strictEqual(page.nextStartLine, 6);
+    assert.strictEqual(
+      await invoke(reader, { file, startLine: 3, endLine: 5 }),
+      `${relative}/mixed-lines.txt, lines 3-5 of 6:\n3: skip\n4: \n5: Needle end\nContinue with startLine 6.`,
+    );
   });
 
   test("bounds results in files with many short lines and preserves trailing empty lines", async () => {
     const file = path.join(dir, "many-lines.txt");
     await fs.writeFile(file, `${"x\n".repeat(100_000)}Needle\n`);
     const search = await invoke(searcher, { query: "Needle", glob: `${relative}/many-lines.txt` });
-    assert.strictEqual(search.matches[0].line, 100_001);
-    const page = await invoke(reader, { file, startLine: 100_001, endLine: 100_002 });
-    assert.strictEqual(page.totalLines, 100_002);
-    assert.deepStrictEqual(page.lines, [
-      { line: 100_001, text: "Needle" },
-      { line: 100_002, text: "" },
-    ]);
-    assert.strictEqual(page.nextStartLine, undefined);
+    assert.match(search, /\n {2}100001: Needle$/);
+    assert.strictEqual(
+      await invoke(reader, { file, startLine: 100_001, endLine: 100_002 }),
+      `${relative}/many-lines.txt, lines 100001-100002 of 100002:\n100001: Needle\n100002: `,
+    );
     const bounded = await invoke(searcher, {
       query: "x",
       glob: `${relative}/many-lines.txt`,
       maxResults: 1,
     });
-    assert.strictEqual(bounded.matches.length, 1);
-    assert.strictEqual(bounded.truncated, true);
+    assert.strictEqual(
+      bounded,
+      `1 match in 1 file (searched 1 file). Incomplete: the search stopped because it reached 1 match. Narrow the glob or use a more specific query.\n${relative}/many-lines.txt\n  1: x`,
+    );
   });
 
   test("reports result limits and skipped binary or oversized files", async () => {
@@ -201,13 +193,11 @@ suite("workspace tools", () => {
       glob: `${relative}/code.ts`,
       maxResults: 1,
     });
-    assert.strictEqual(limited.matches.length, 1);
-    assert.strictEqual(limited.truncated, true);
+    assert.match(limited, /^1 match in 1 file .* Incomplete: .*\n.*\n {2}2: [^\n]+$/);
     const full = await invoke(searcher, { query: "missing", glob: `${relative}/*` });
-    assert.ok(full.skipped >= 2);
-    assert.strictEqual(full.matches.length, 0);
-    assert.match((await invoke(reader, { file: path.join(dir, "binary.bin") })).error, /Binary/);
-    assert.match((await invoke(reader, { file: path.join(dir, "large.txt") })).error, /1 MiB/);
+    assert.match(full, /^No matches \(searched \d+ files; skipped [2-9] files: binary/);
+    assert.match(await invoke(reader, { file: path.join(dir, "binary.bin") }), /^Error: Binary/);
+    assert.match(await invoke(reader, { file: path.join(dir, "large.txt") }), /^Error: .*1 MiB/);
   });
 
   test("charges binary and invalid text against the total scan byte limit", async () => {
@@ -220,25 +210,21 @@ suite("workspace tools", () => {
           Buffer.alloc(1024 * 1024, i % 2 ? 0xff : 0),
         );
       }
-      const result = await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` });
-      assert.strictEqual(result.truncated, true);
-      assert.strictEqual(result.skipped, 16);
-      assert.strictEqual(result.scannedBytes, 16 * 1024 * 1024);
-      assert.deepStrictEqual(result.matches, []);
+      assert.strictEqual(
+        await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` }),
+        "No matches (searched 0 files; skipped 16 files: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+      );
     } finally {
       await fs.rm(budgetDir, { recursive: true, force: true });
     }
   });
 
   test("bounds long line output while keeping search matches visible", async () => {
-    const read = await invoke(reader, { file: path.join(dir, "long.txt") });
-    assert.strictEqual(read.lines[0].text.length, 1000);
-    assert.strictEqual(read.lines[0].truncated, true);
-    assert.strictEqual(read.truncated, true);
+    const read = (await invoke(reader, { file: path.join(dir, "long.txt") })).split("\n");
+    assert.strictEqual(read[1], `1: ${"a".repeat(1000)}… (2006 characters)`);
+    assert.strictEqual(read.at(-1), "Lines longer than 1000 characters are cut.");
     const search = await invoke(searcher, { query: "Needle", glob: `${relative}/long.txt` });
-    assert.strictEqual(search.matches[0].column, 2001);
-    assert.ok(search.matches[0].text.includes("Needle"));
-    assert.strictEqual(search.matches[0].previewTruncated, true);
+    assert.strictEqual(search.split("\n")[2], `  1: …${"a".repeat(200)}Needle`);
   });
 
   test("reads and searches unsaved editor changes", async () => {
@@ -249,12 +235,12 @@ suite("workspace tools", () => {
     edit.insert(document.uri, new vscode.Position(0, 0), "unsaved Needle\n");
     assert.ok(await vscode.workspace.applyEdit(edit));
     try {
-      const read = await invoke(reader, { file });
-      assert.strictEqual(read.unsaved, true);
-      assert.strictEqual(read.lines[0].text, "unsaved Needle");
+      assert.strictEqual(
+        await invoke(reader, { file }),
+        `${relative}/dirty.ts, lines 1-2 of 2, with unsaved changes:\n1: unsaved Needle\n2: saved text`,
+      );
       const search = await invoke(searcher, { query: "Needle", glob: `${relative}/dirty.ts` });
-      assert.strictEqual(search.matches[0].unsaved, true);
-      assert.strictEqual(search.matches[0].line, 1);
+      assert.match(search, /\n.*dirty\.ts \(unsaved changes\)\n {2}1: unsaved Needle$/);
     } finally {
       await document.save();
     }
@@ -262,31 +248,33 @@ suite("workspace tools", () => {
 
   test("rejects outside paths and symlinks escaping the workspace", async function () {
     assert.match(
-      (await invoke(reader, { file: path.join(outside, "secret.txt") })).error,
+      await invoke(reader, { file: path.join(outside, "secret.txt") }),
       /inside an open workspace/,
     );
-    assert.match(
-      (await invoke(reader, { file: "../../../etc/passwd" })).error,
-      /inside an open workspace/,
-    );
+    assert.match(await invoke(reader, { file: "../../../etc/passwd" }), /inside an open workspace/);
     if (process.platform === "win32") this.skip();
     const link = path.join(dir, "external.txt");
     await fs.symlink(path.join(outside, "secret.txt"), link);
-    const read = await invoke(reader, { file: link });
-    assert.match(read.error, /symbolic link outside/);
+    assert.match(await invoke(reader, { file: link }), /symbolic link outside/);
     const search = await invoke(searcher, {
       query: "external secret",
       glob: `${relative}/external.txt`,
     });
-    assert.deepStrictEqual(search.matches, []);
-    const find = await invoke(finder, { glob: `${relative}/external.txt` });
-    assert.deepStrictEqual(find.files, []);
+    assert.match(search, /^No matches \(searched 0 files; skipped 1 file: /);
+    assert.strictEqual(
+      await invoke(finder, { glob: `${relative}/external.txt` }),
+      "Left out 1 file linked outside the workspace.",
+    );
     const parentLink = path.join(dir, "external-dir");
     await fs.symlink(outside, parentLink);
     assert.match(
-      (await invoke(reader, { file: path.join(parentLink, "secret.txt") })).error,
+      await invoke(reader, { file: path.join(parentLink, "secret.txt") }),
       /symbolic link outside/,
     );
+    // Links within the workspace can be read.
+    const inside = path.join(dir, "inside-link.ts");
+    await fs.symlink(path.join(dir, "code.ts"), inside);
+    assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
   });
 
   test("resolves multiple workspace roots and rejects URI decorations and sibling prefixes", () => {
@@ -335,8 +323,7 @@ suite("workspace tools", () => {
       { maxResults: 201 },
       { maxResults: 0 },
     ]) {
-      const result = await invoke(finder, input as never);
-      assert.strictEqual(typeof result.error, "string");
+      assert.match(await invoke(finder, input as never), /^Error: /);
     }
     for (const input of [
       { query: "" },
@@ -344,19 +331,15 @@ suite("workspace tools", () => {
       { query: "x", caseSensitive: "yes" },
       { query: "x", maxResults: 101 },
     ]) {
-      assert.strictEqual(typeof (await invoke(searcher, input as never)).error, "string");
+      assert.match(await invoke(searcher, input as never), /^Error: /);
     }
     for (const range of [
       { startLine: 0 },
       { startLine: 4, endLine: 3 },
-      { endLine: 501 },
       { startLine: 99 },
       { startLine: 1.5 },
     ]) {
-      assert.strictEqual(
-        typeof (await invoke(reader, { file: `${relative}/code.ts`, ...range })).error,
-        "string",
-      );
+      assert.match(await invoke(reader, { file: `${relative}/code.ts`, ...range }), /^Error: /);
     }
   });
 

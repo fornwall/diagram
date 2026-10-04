@@ -453,8 +453,8 @@
         "toolReferenceName": "diagramFiles",
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
-        "userDescription": "Find workspace files by glob before reading code to diagram. Returns bounded paths suitable for diagram_readFile and code links; reports truncation. Searches all workspace folders.",
-        "modelDescription": "Find workspace files by glob before reading code to diagram. Returns bounded paths suitable for diagram_readFile and code links; reports truncation. Searches all workspace folders.",
+        "userDescription": "Find workspace files by glob",
+        "modelDescription": "Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Honors files.exclude and search.exclude, and skips .git and node_modules.",
         "tags": [
           "diagram"
         ],
@@ -463,14 +463,14 @@
           "properties": {
             "glob": {
               "type": "string",
-              "description": "Workspace-relative glob, e.g. **/*.ts or src/**. Defaults to **/*. Honors files.exclude and search.exclude and omits .git and node_modules.",
+              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\". Defaults to \"**/*\".",
               "maxLength": 1000
             },
             "maxResults": {
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
-              "description": "Maximum paths returned; defaults to 100."
+              "description": "Defaults to 100."
             }
           },
           "additionalProperties": false
@@ -482,8 +482,8 @@
         "toolReferenceName": "diagramSearch",
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
-        "userDescription": "Search a literal string in workspace text files, including unsaved open documents. Returns bounded matching lines with paths and line numbers. Narrow the glob when results or scanned files are truncated.",
-        "modelDescription": "Search a literal string in workspace text files, including unsaved open documents. Returns bounded matching lines with paths and line numbers. Narrow the glob when results or scanned files are truncated.",
+        "userDescription": "Search workspace files for text",
+        "modelDescription": "Search workspace text files, including unsaved editor changes, for a literal string. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
         "tags": [
           "diagram"
         ],
@@ -493,12 +493,12 @@
             "query": {
               "type": "string",
               "minLength": 1,
-              "description": "Single-line literal text to find, not a regular expression.",
+              "description": "Literal text on one line, not a regular expression.",
               "maxLength": 500
             },
             "glob": {
               "type": "string",
-              "description": "Workspace-relative glob, e.g. **/*.ts or src/**. Defaults to **/*. Honors files.exclude and search.exclude and omits .git and node_modules.",
+              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\". Defaults to \"**/*\".",
               "maxLength": 1000
             },
             "caseSensitive": {
@@ -509,7 +509,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100,
-              "description": "Maximum matching lines returned; defaults to 50."
+              "description": "Maximum matching lines; defaults to 50."
             }
           },
           "additionalProperties": false,
@@ -524,8 +524,8 @@
         "toolReferenceName": "diagramRead",
         "canBeReferencedInPrompt": true,
         "icon": "$(file-code)",
-        "userDescription": "Read a bounded line range from a workspace text file, including unsaved editor changes. Returns numbered lines for understanding code and linking diagram nodes. Only files inside an open workspace are accepted.",
-        "modelDescription": "Read a bounded line range from a workspace text file, including unsaved editor changes. Returns numbered lines for understanding code and linking diagram nodes. Only files inside an open workspace are accepted.",
+        "userDescription": "Read lines from a workspace file",
+        "modelDescription": "Read numbered lines from a text file in an open workspace folder, including unsaved editor changes. Use the line numbers in code links.",
         "tags": [
           "diagram"
         ],
@@ -535,18 +535,18 @@
             "file": {
               "type": "string",
               "minLength": 1,
-              "description": "Absolute path or URI from diagram_findFiles/diagram_searchText, or a path relative to the first workspace folder.",
+              "description": "Path as diagram_findFiles and diagram_searchText return it: relative to the first workspace folder, or absolute.",
               "maxLength": 4096
             },
             "startLine": {
               "type": "integer",
               "minimum": 1,
-              "description": "First line, inclusive and 1-based; defaults to 1."
+              "description": "1-based; defaults to 1."
             },
             "endLine": {
               "type": "integer",
               "minimum": 1,
-              "description": "Last line, inclusive; defaults to startLine + 199. At most 500 lines per read."
+              "description": "Inclusive; defaults to startLine + 199. Reads at most 500 lines."
             }
           },
           "additionalProperties": false,
