@@ -122,7 +122,7 @@ export class WebviewChannel implements vscode.Disposable {
       if (await panel.webview.postMessage(message)) {
         return undefined;
       }
-      error = "The diagram panel is unavailable. Reopen it and try again.";
+      error = "The diagram panel is unavailable.";
     } catch (cause) {
       error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
     }

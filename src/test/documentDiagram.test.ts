@@ -462,7 +462,10 @@ suite("documentDiagram", function () {
       await rendering;
       await writeShown(webview);
       assert.strictEqual(document.getText(), before);
-      assert.match(warning, /not written.*unavailable.*Reopen/);
+      assert.strictEqual(
+        warning,
+        "The diagram was not written: The diagram panel is unavailable. Reopen the panel and try again.",
+      );
     } finally {
       vscode.window.showWarningMessage = warn;
       panel.dispose();

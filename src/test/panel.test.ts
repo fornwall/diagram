@@ -268,7 +268,7 @@ suite("panel", function () {
       const outcome = {
         ok: false,
         kind: "unavailable",
-        error: "The diagram panel is unavailable. Reopen it and try again.",
+        error: "The diagram panel is unavailable.",
       };
       assert.deepStrictEqual(await rendering, outcome);
       assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
@@ -292,7 +292,10 @@ suite("panel", function () {
         const picking = pick(panel);
         const outcome = await rendering;
         assert.ok(!outcome.ok && outcome.kind === "unavailable");
-        assert.match(outcome.error, rejected ? /Disconnected/ : /Reopen it/);
+        assert.match(
+          outcome.error,
+          rejected ? /Disconnected/ : /^The diagram panel is unavailable\.$/,
+        );
         assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
         assert.strictEqual(panel.current?.error, undefined);
       } finally {
@@ -460,7 +463,7 @@ suite("panel", function () {
     const unavailable = {
       ok: false,
       kind: "unavailable",
-      error: "The diagram panel is unavailable. Reopen it and try again.",
+      error: "The diagram panel is unavailable.",
     } as const;
     const renders = () => webview.sent.filter((message) => message.type === "render").length;
     try {
@@ -949,7 +952,10 @@ suite("panel", function () {
       await rendering;
       await panel.exportDiagram();
       assert.strictEqual(dialogs, 0);
-      assert.match(warning, /^The diagram panel is unavailable\. .*Use Diagram: Show Panel/);
+      assert.strictEqual(
+        warning,
+        "The diagram panel is unavailable. Use Diagram: Show Panel and try again.",
+      );
     } finally {
       vscode.window.showWarningMessage = warn;
       vscode.window.showSaveDialog = save;
