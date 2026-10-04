@@ -204,10 +204,10 @@ export class EChartsRenderer implements Renderer {
     if (relayout && this.theme && laidOut === this.laidOut) {
       return;
     }
+    const themeChanged = !this.theme && this.chart !== undefined;
     if (!this.theme) {
       const colors = this.readColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
-      this.chart?.setTheme(this.theme.echarts);
     }
     const option = layoutOption(this.option ?? {}, {
       width,
@@ -227,7 +227,13 @@ export class EChartsRenderer implements Renderer {
       keepUserState(option, () => chart.getOption() as JsonObject);
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
-    this.chart.setOption(option, { notMerge: true });
+    if (themeChanged) {
+      // setTheme draws the chart again. Leave the option to it, so that it draws only once.
+      this.chart.setOption(option, { notMerge: true, lazyUpdate: true });
+      this.chart.setTheme(this.theme.echarts);
+    } else {
+      this.chart.setOption(option, { notMerge: true });
+    }
     this.laidOut = laidOut;
     this.shownSelected = [];
     this.syncSelection();

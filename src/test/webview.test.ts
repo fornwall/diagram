@@ -22,6 +22,36 @@ const MERMAID: Record<string, string> = {
   xychart: "xychart\n  x-axis [jan, feb]\n  bar [10, 50]\n  line [15, 45]",
 };
 
+/** A chart that counts its draws in `window.chartDraws`. */
+const COUNTED_CHART = `(() => {
+  window.chartDraws = 0;
+  return {animation: false, series: [{type: "custom", coordinateSystem: null, data: [1],
+    renderItem: (params, api) => {
+      window.chartDraws++;
+      return {type: "circle", shape: {cx: 20, cy: 20, r: 10}, style: api.style()};
+    }}]};
+})()`;
+
+/**
+ * Webview code defining `settledChart()`, which waits until the counted chart is done drawing:
+ * it has the size of its container, and no draw happened for a while, so that also a debounced
+ * layout, or a resize observation a busy machine delays, has run.
+ */
+const SETTLED_CHART = `
+  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+  const settledChart = async () => {
+    const chart = document.getElementById("chart");
+    const fitted = () => {
+      const svg = chart.querySelector("svg");
+      return svg?.getAttribute("width") === String(chart.clientWidth) &&
+        svg.getAttribute("height") === String(chart.clientHeight);
+    };
+    for (let draws = -1; draws !== window.chartDraws || !fitted(); ) {
+      draws = window.chartDraws;
+      await settle();
+    }
+  };`;
+
 suite("webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -1865,36 +1895,12 @@ suite("webview", function () {
   });
 
   test("does not redraw a chart when a resize observation leaves its dimensions unchanged", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: `(() => {
-            window.chartDraws = 0;
-            return {animation: false, series: [{type: "custom", coordinateSystem: null,
-              data: [1], renderItem: () => {
-                window.chartDraws++;
-                return {type: "circle", shape: {cx: 20, cy: 20, r: 10}};
-              }}]};
-          })()`,
-        })
-      ).ok,
-    );
+    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-        const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+        ${SETTLED_CHART}
+        await settledChart();
         const chart = document.getElementById("chart");
-        // Let a resize left over from an earlier test, which a busy machine delays, finish: the
-        // drawing has the size of the container, and its debounced layout has run.
-        const fitted = () => {
-          const svg = chart.querySelector("svg");
-          return svg?.getAttribute("width") === String(chart.clientWidth) &&
-            svg.getAttribute("height") === String(chart.clientHeight);
-        };
-        for (let draws = -1; draws !== window.chartDraws || !fitted(); ) {
-          draws = window.chartDraws;
-          await settle();
-        }
         const before = window.chartDraws;
         const width = chart.clientWidth;
         const height = chart.clientHeight;
@@ -1909,6 +1915,81 @@ suite("webview", function () {
         }
       })()`),
       { sameSize: true, redraws: 0 },
+    );
+  });
+
+  test("draws a chart once in the colors of a new theme", async () => {
+    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${SETTLED_CHART}
+        await settledChart();
+        const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
+        const redraws = async (change) => {
+          const before = window.chartDraws;
+          change();
+          for (let attempt = 0; window.chartDraws === before; attempt++) {
+            if (attempt === 100) throw new Error("The theme change did not redraw the chart.");
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
+          await settledChart();
+          return window.chartDraws - before;
+        };
+        const root = document.documentElement.style;
+        const draws = await redraws(() => root.setProperty("--vscode-charts-blue", "#123456"));
+        const themed = fill();
+        await redraws(() => root.removeProperty("--vscode-charts-blue"));
+        return {draws, themed, restored: fill() !== themed};
+      })()`),
+      { draws: 1, themed: "#123456", restored: true },
+    );
+  });
+
+  test("keeps a selected chart item selected through a theme change", async () => {
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: JSON.stringify({
+            animation: false,
+            series: [
+              {
+                type: "pie",
+                data: ["A", "B"].map((name) => ({ name, value: 1 })),
+                select: { itemStyle: { color: "#ff0000" } },
+                emphasis: { disabled: true },
+              },
+            ],
+          }),
+        })
+      ).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const fills = () => [...document.querySelectorAll("#chart svg path")]
+          .map(path => path.getAttribute("fill")).filter(fill => fill !== "none").sort();
+        const waitFor = async (done) => {
+          for (let attempt = 0; attempt < 100 && !done(); attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
+        };
+        const slice = document.querySelectorAll("#chart svg path")[1];
+        const box = slice.getBoundingClientRect();
+        const mouse = {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
+        for (const type of ["mousedown", "mouseup", "click"]) {
+          slice.dispatchEvent(new MouseEvent(type, mouse));
+        }
+        await waitFor(() => fills().includes("#ff0000"));
+        const root = document.documentElement.style;
+        root.setProperty("--vscode-charts-blue", "#123456");
+        try {
+          await waitFor(() => fills().includes("#123456"));
+          return fills();
+        } finally {
+          root.removeProperty("--vscode-charts-blue");
+        }
+      })()`),
+      ["#123456", "#ff0000"],
     );
   });
 
