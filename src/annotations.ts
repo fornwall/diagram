@@ -7,7 +7,7 @@ import {
   isPlainObject,
   MARK_KINDS,
 } from "./protocol";
-import { quoteAll, unknownProperties } from "./text";
+import { givenProperties, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 export interface AnnotateInput {
@@ -29,10 +29,7 @@ export function validateAnnotation(value: unknown): Annotation {
   if (!isPlainObject(value)) {
     throw new Error(`The marks must be given as an object, e.g. ${EXAMPLE}.`);
   }
-  // Some models send null for the properties they leave out.
-  const input = Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
-  );
+  const input = givenProperties(value);
   const problems: string[] = [];
   const unknown = unknownProperties(input, INPUT_KEYS);
   if (unknown !== undefined) {

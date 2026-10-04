@@ -1,7 +1,7 @@
 // A request to render data as a chart, as given to the diagram_chart tool, and its validation.
 
 import { isPlainObject } from "./protocol";
-import { quote, quoteAll, unknownProperties } from "./text";
+import { givenProperties, quote, quoteAll, unknownProperties } from "./text";
 
 export const CHART_TYPES = [
   "pie",
@@ -159,10 +159,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
       'The chart spec must be an object, e.g. {"type": "pie", "data": "name,value\\na,1\\nb,2"}.',
     );
   }
-  // Some models send null for the properties they leave out.
-  const { clickPrompt: _, ...input } = Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
-  );
+  const { clickPrompt: _, ...input } = givenProperties(value);
   // And JSON data as JSON rather than as text, which reads the same.
   if (Array.isArray(input.data) || isPlainObject(input.data)) {
     input.data = JSON.stringify(input.data);

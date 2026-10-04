@@ -6,7 +6,7 @@ import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
 import { errorMessage, isPlainObject } from "./protocol";
-import { unknownProperties } from "./text";
+import { givenProperties, unknownProperties } from "./text";
 import { textResult } from "./tools";
 
 interface InspectDataInput {
@@ -19,11 +19,12 @@ interface InspectDataInput {
 
 function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
   if (!isPlainObject(input)) throw new Error("Data inspection input must be an object.");
-  const unknown = unknownProperties(input, ["data", "file", "command", "format", "sampleRows"]);
+  const given = givenProperties(input);
+  const unknown = unknownProperties(given, ["data", "file", "command", "format", "sampleRows"]);
   if (unknown !== undefined) {
     throw new Error(unknown);
   }
-  const { sampleRows = 5, ...source } = input;
+  const { sampleRows = 5, ...source } = given;
   if (!Number.isInteger(sampleRows) || Number(sampleRows) < 0 || Number(sampleRows) > 20) {
     throw new Error('"sampleRows" must be an integer from 0 to 20.');
   }

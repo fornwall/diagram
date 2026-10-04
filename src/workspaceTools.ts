@@ -7,22 +7,8 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { decodeText } from "./files";
 import { errorMessage, isPlainObject } from "./protocol";
-import { plural, unknownProperties } from "./text";
+import { givenProperties, plural, unknownProperties } from "./text";
 import { textResult } from "./tools";
-
-interface FindInput {
-  glob?: string;
-  maxResults?: number;
-}
-interface SearchInput extends FindInput {
-  query: string;
-  caseSensitive?: boolean;
-}
-interface ReadInput {
-  file: string;
-  startLine?: number;
-  endLine?: number;
-}
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_SCANNED_FILES = 1000;
@@ -37,10 +23,9 @@ const DEFAULT_READ_LINES = 200;
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
 
-/** The input without the null values some models send for omitted properties. */
 function objectInput(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!isPlainObject(value)) throw new Error("Give the tool input as an object.");
-  const input = Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null));
+  const input = givenProperties(value);
   const unknown = unknownProperties(input, keys);
   if (unknown !== undefined) {
     throw new Error(unknown);
@@ -272,292 +257,291 @@ async function readText(
   return text.includes("\0") ? { bytes, error: binary } : { bytes, text };
 }
 
-async function result(operation: () => Promise<string>): Promise<vscode.LanguageModelToolResult> {
-  try {
-    return textResult(await operation());
-  } catch (error) {
-    if (error instanceof vscode.CancellationError) throw error;
-    return textResult(`Error: ${errorMessage(error)}`);
-  }
-}
+/**
+ * A read-only workspace tool, which asks before reading an untrusted workspace and reports invalid
+ * input and failures to the model.
+ */
+abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
+  constructor(
+    private readonly message: string,
+    private readonly keys: readonly string[],
+  ) {}
 
-function prepare(message: string): vscode.PreparedToolInvocation {
-  return {
-    invocationMessage: message,
-    confirmationMessages: vscode.workspace.isTrusted
-      ? undefined
-      : {
-          title: "Read workspace files?",
-          message: "Allow the diagram agent to read files in this untrusted workspace?",
-        },
-  };
-}
-
-export class FindWorkspaceFilesTool implements vscode.LanguageModelTool<FindInput> {
   prepareInvocation(): vscode.PreparedToolInvocation {
-    return prepare("Finding workspace files");
+    return {
+      invocationMessage: this.message,
+      confirmationMessages: vscode.workspace.isTrusted
+        ? undefined
+        : {
+            title: "Read workspace files?",
+            message: "Allow the diagram agent to read files in this untrusted workspace?",
+          },
+    };
   }
 
-  invoke(
-    options: vscode.LanguageModelToolInvocationOptions<FindInput>,
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<unknown>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    return result(async () => {
+    try {
       throwIfCancelled(token);
-      const input = objectInput(options.input, ["glob", "maxResults"]);
-      const max = integer(input.maxResults, 100, "maxResults", 200);
-      const glob = globInput(input.glob);
-      const roots = folders();
-      const check = boundary(roots, token);
-      const found = await candidates(roots, glob, max, token);
-      const lines: string[] = [];
-      let outsideFiles = 0;
-      let outputChars = 0;
-      let truncated = found.truncated;
-      for (const uri of found.files) {
-        try {
-          await check(uri);
-        } catch (error) {
-          if (error instanceof vscode.CancellationError) throw error;
-          outsideFiles++;
-          continue;
-        }
-        const line = displayPath(uri, roots);
-        outputChars += line.length + 1;
-        if (outputChars > MAX_OUTPUT_CHARS) {
-          truncated = true;
-          break;
-        }
-        lines.push(line);
+      return textResult(await this.run(objectInput(options.input, this.keys), token));
+    } catch (error) {
+      if (error instanceof vscode.CancellationError) throw error;
+      return textResult(`Error: ${errorMessage(error)}`);
+    }
+  }
+
+  protected abstract run(
+    input: Record<string, unknown>,
+    token: vscode.CancellationToken,
+  ): Promise<string>;
+}
+
+export class FindWorkspaceFilesTool extends WorkspaceTool {
+  constructor() {
+    super("Finding workspace files", ["glob", "maxResults"]);
+  }
+
+  protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
+    const max = integer(input.maxResults, 100, "maxResults", 200);
+    const glob = globInput(input.glob);
+    const roots = folders();
+    const check = boundary(roots, token);
+    const found = await candidates(roots, glob, max, token);
+    const lines: string[] = [];
+    let outsideFiles = 0;
+    let outputChars = 0;
+    let truncated = found.truncated;
+    for (const uri of found.files) {
+      try {
+        await check(uri);
+      } catch (error) {
+        if (error instanceof vscode.CancellationError) throw error;
+        outsideFiles++;
+        continue;
       }
-      const listed = lines.length;
-      if (listed === 0 && !truncated && outsideFiles === 0) {
-        lines.push(`No files match ${JSON.stringify(glob)}.`);
+      const line = displayPath(uri, roots);
+      outputChars += line.length + 1;
+      if (outputChars > MAX_OUTPUT_CHARS) {
+        truncated = true;
+        break;
       }
-      if (outsideFiles > 0) {
-        lines.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);
-      }
-      if (truncated) {
-        lines.push(`Showing the first ${plural(listed, "file")}; narrow the glob to see more.`);
-      }
-      return lines.join("\n");
-    });
+      lines.push(line);
+    }
+    const listed = lines.length;
+    if (listed === 0 && !truncated && outsideFiles === 0) {
+      lines.push(`No files match ${JSON.stringify(glob)}.`);
+    }
+    if (outsideFiles > 0) {
+      lines.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);
+    }
+    if (truncated) {
+      lines.push(`Showing the first ${plural(listed, "file")}; narrow the glob to see more.`);
+    }
+    return lines.join("\n");
   }
 }
 
-export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchInput> {
-  prepareInvocation(): vscode.PreparedToolInvocation {
-    return prepare("Searching workspace text");
+export class SearchWorkspaceTextTool extends WorkspaceTool {
+  constructor() {
+    super("Searching workspace text", ["query", "glob", "caseSensitive", "maxResults"]);
   }
 
-  invoke(
-    options: vscode.LanguageModelToolInvocationOptions<SearchInput>,
-    token: vscode.CancellationToken,
-  ): Promise<vscode.LanguageModelToolResult> {
-    return result(async () => {
+  protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
+    const { query, caseSensitive } = input;
+    if (typeof query !== "string" || !query || query.length > 500 || /[\r\n\0]/.test(query)) {
+      throw new Error(
+        'Give "query" as a nonempty, single-line literal string of at most 500 characters.',
+      );
+    }
+    if (caseSensitive !== undefined && typeof caseSensitive !== "boolean") {
+      throw new Error('"caseSensitive" must be a boolean.');
+    }
+    const max = integer(input.maxResults, 50, "maxResults", 100);
+    const glob = globInput(input.glob);
+    const roots = folders();
+    const check = boundary(roots, token);
+    const { files, truncated: tooManyFiles } = await candidates(
+      roots,
+      glob,
+      MAX_SCANNED_FILES,
+      token,
+    );
+    // A Unicode regexp keeps source offsets correct when case folding changes string length.
+    const needle = new RegExp(
+      query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      caseSensitive ? "gu" : "giu",
+    );
+    const output: string[] = [];
+    let matches = 0;
+    let matchedFiles = 0;
+    let skipped = 0;
+    let scanned = 0;
+    let scannedBytes = 0;
+    let outputChars = 0;
+    let stopped: string | undefined;
+    const reads: Promise<FileText | { failure: unknown }>[] = [];
+    const read = (index: number) => {
+      const uri = files[index];
+      if (uri && !reads[index]) {
+        reads[index] = readText(uri, check, token).catch((failure: unknown) => ({ failure }));
+      }
+    };
+    search: for (const [index, uri] of files.entries()) {
+      for (let ahead = index; ahead < index + READ_AHEAD; ahead++) read(ahead);
+      const content = await unlessCancelled(async () => reads[index], token);
       throwIfCancelled(token);
-      const input = objectInput(options.input, ["query", "glob", "caseSensitive", "maxResults"]);
-      const { query, caseSensitive } = input;
-      if (typeof query !== "string" || !query || query.length > 500 || /[\r\n\0]/.test(query)) {
-        throw new Error(
-          'Give "query" as a nonempty, single-line literal string of at most 500 characters.',
-        );
+      if (!content || "failure" in content) {
+        if (content?.failure instanceof vscode.CancellationError) throw content.failure;
+        skipped++;
+        continue;
       }
-      if (caseSensitive !== undefined && typeof caseSensitive !== "boolean") {
-        throw new Error('"caseSensitive" must be a boolean.');
+      // Count binary and invalid text too, which is read before it is rejected.
+      if (scannedBytes + content.bytes > MAX_SCANNED_BYTES) {
+        stopped = "it reached the 16 MiB scan limit";
+        break;
       }
-      const max = integer(input.maxResults, 50, "maxResults", 100);
-      const glob = globInput(input.glob);
-      const roots = folders();
-      const check = boundary(roots, token);
-      const { files, truncated: tooManyFiles } = await candidates(
-        roots,
-        glob,
-        MAX_SCANNED_FILES,
-        token,
-      );
-      // A Unicode regexp keeps source offsets correct when case folding changes string length.
-      const needle = new RegExp(
-        query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        caseSensitive ? "gu" : "giu",
-      );
-      const output: string[] = [];
-      let matches = 0;
-      let matchedFiles = 0;
-      let skipped = 0;
-      let scanned = 0;
-      let scannedBytes = 0;
-      let outputChars = 0;
-      let stopped: string | undefined;
-      const reads: Promise<FileText | { failure: unknown }>[] = [];
-      const read = (index: number) => {
-        const uri = files[index];
-        if (uri && !reads[index]) {
-          reads[index] = readText(uri, check, token).catch((failure: unknown) => ({ failure }));
+      scannedBytes += content.bytes;
+      if ("error" in content) {
+        skipped++;
+        continue;
+      }
+      scanned++;
+      const { text } = content;
+      // Search the whole file and skip the remainder of each matching line. This avoids
+      // splitting and searching every line, and stops as soon as the output limit is reached.
+      needle.lastIndex = 0;
+      const lineBreaks = /\r\n|\r|\n/g;
+      let line = 1;
+      let lineStart = 0;
+      let fileHeader = false;
+      for (let match = needle.exec(text); match; match = needle.exec(text)) {
+        if (matches >= max) {
+          stopped = `it reached ${plural(max, "match", "matches")}`;
+          break search;
         }
-      };
-      search: for (const [index, uri] of files.entries()) {
-        for (let ahead = index; ahead < index + READ_AHEAD; ahead++) read(ahead);
-        const content = await unlessCancelled(async () => reads[index], token);
-        throwIfCancelled(token);
-        if (!content || "failure" in content) {
-          if (content?.failure instanceof vscode.CancellationError) throw content.failure;
-          skipped++;
-          continue;
-        }
-        // Count binary and invalid text too, which is read before it is rejected.
-        if (scannedBytes + content.bytes > MAX_SCANNED_BYTES) {
-          stopped = "it reached the 16 MiB scan limit";
-          break;
-        }
-        scannedBytes += content.bytes;
-        if ("error" in content) {
-          skipped++;
-          continue;
-        }
-        scanned++;
-        const { text } = content;
-        // Search the whole file and skip the remainder of each matching line. This avoids
-        // splitting and searching every line, and stops as soon as the output limit is reached.
-        needle.lastIndex = 0;
-        const lineBreaks = /\r\n|\r|\n/g;
-        let line = 1;
-        let lineStart = 0;
-        let fileHeader = false;
-        for (let match = needle.exec(text); match; match = needle.exec(text)) {
-          if (matches >= max) {
-            stopped = `it reached ${plural(max, "match", "matches")}`;
-            break search;
-          }
-          let newline = lineBreaks.exec(text);
-          while (newline && newline.index < match.index) {
-            line++;
-            lineStart = newline.index + newline[0].length;
-            newline = lineBreaks.exec(text);
-          }
-          const lineEnd = newline?.index ?? text.length;
-          let start = Math.max(lineStart, match.index - MATCH_CONTEXT_CHARS);
-          // Leading indentation says little in a search result.
-          while (start < match.index && (text[start] === " " || text[start] === "\t")) start++;
-          const end = Math.min(lineEnd, start + MAX_LINE_CHARS);
-          const preview =
-            (start > lineStart && /\S/.test(text.slice(lineStart, start)) ? "…" : "") +
-            text.slice(start, end) +
-            (end < lineEnd ? "…" : "");
-          const entry = [
-            ...(fileHeader
-              ? []
-              : [`${displayPath(uri, roots)}${content.unsaved ? " (unsaved changes)" : ""}`]),
-            `  ${line}: ${preview}`,
-          ];
-          outputChars += entry.join("\n").length + 1;
-          if (outputChars > MAX_OUTPUT_CHARS) {
-            stopped = "its output reached the size limit";
-            break search;
-          }
-          output.push(...entry);
-          matches++;
-          if (!fileHeader) {
-            fileHeader = true;
-            matchedFiles++;
-          }
-          if (!newline) break;
+        let newline = lineBreaks.exec(text);
+        while (newline && newline.index < match.index) {
           line++;
           lineStart = newline.index + newline[0].length;
-          needle.lastIndex = lineStart;
+          newline = lineBreaks.exec(text);
         }
+        const lineEnd = newline?.index ?? text.length;
+        let start = Math.max(lineStart, match.index - MATCH_CONTEXT_CHARS);
+        // Leading indentation says little in a search result.
+        while (start < match.index && (text[start] === " " || text[start] === "\t")) start++;
+        const end = Math.min(lineEnd, start + MAX_LINE_CHARS);
+        const preview =
+          (start > lineStart && /\S/.test(text.slice(lineStart, start)) ? "…" : "") +
+          text.slice(start, end) +
+          (end < lineEnd ? "…" : "");
+        const entry = [
+          ...(fileHeader
+            ? []
+            : [`${displayPath(uri, roots)}${content.unsaved ? " (unsaved changes)" : ""}`]),
+          `  ${line}: ${preview}`,
+        ];
+        outputChars += entry.join("\n").length + 1;
+        if (outputChars > MAX_OUTPUT_CHARS) {
+          stopped = "its output reached the size limit";
+          break search;
+        }
+        output.push(...entry);
+        matches++;
+        if (!fileHeader) {
+          fileHeader = true;
+          matchedFiles++;
+        }
+        if (!newline) break;
+        line++;
+        lineStart = newline.index + newline[0].length;
+        needle.lastIndex = lineStart;
       }
-      if (!stopped && tooManyFiles) {
-        stopped = `more than ${MAX_SCANNED_FILES} files match the glob`;
-      }
-      const summary = [
-        matches > 0
-          ? `${plural(matches, "match", "matches")} in ${plural(matchedFiles, "file")}`
-          : "No matches",
-        ` (searched ${plural(scanned, "file")}`,
-        skipped > 0
-          ? `; skipped ${plural(skipped, "file")}: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace`
-          : "",
-        ").",
-        stopped
-          ? ` Incomplete: the search stopped because ${stopped}. Narrow the glob or use a more specific query.`
-          : "",
-      ].join("");
-      return [summary, ...output].join("\n");
-    });
+    }
+    if (!stopped && tooManyFiles) {
+      stopped = `more than ${MAX_SCANNED_FILES} files match the glob`;
+    }
+    const summary = [
+      matches > 0
+        ? `${plural(matches, "match", "matches")} in ${plural(matchedFiles, "file")}`
+        : "No matches",
+      ` (searched ${plural(scanned, "file")}`,
+      skipped > 0
+        ? `; skipped ${plural(skipped, "file")}: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace`
+        : "",
+      ").",
+      stopped
+        ? ` Incomplete: the search stopped because ${stopped}. Narrow the glob or use a more specific query.`
+        : "",
+    ].join("");
+    return [summary, ...output].join("\n");
   }
 }
 
-export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput> {
-  prepareInvocation(): vscode.PreparedToolInvocation {
-    return prepare("Reading workspace file lines");
+export class ReadWorkspaceFileTool extends WorkspaceTool {
+  constructor() {
+    super("Reading workspace file lines", ["file", "startLine", "endLine"]);
   }
 
-  invoke(
-    options: vscode.LanguageModelToolInvocationOptions<ReadInput>,
-    token: vscode.CancellationToken,
-  ): Promise<vscode.LanguageModelToolResult> {
-    return result(async () => {
-      throwIfCancelled(token);
-      const input = objectInput(options.input, ["file", "startLine", "endLine"]);
-      const start = integer(input.startLine, 1, "startLine");
-      const requestedEnd = integer(input.endLine, start + DEFAULT_READ_LINES - 1, "endLine");
-      if (requestedEnd < start) {
-        throw new Error('"endLine" must not be less than "startLine".');
-      }
-      const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
-      const roots = folders();
-      const uri = resolveWorkspaceFile(input.file, roots);
-      const content = await readText(uri, boundary(roots, token), token);
-      if ("error" in content) throw new Error(content.error);
-      const { text } = content;
-      const lines: string[] = [];
-      let outputChars = 0;
-      let cutLines = false;
-      let totalLines = 0;
-      let lastLine = start - 1;
-      let lineStart = 0;
-      const nextBreak = (character: string, from: number): number => {
-        const index = text.indexOf(character, from);
-        return index < 0 ? text.length : index;
-      };
-      let lf = nextBreak("\n", 0);
-      let cr = nextBreak("\r", 0);
-      // Count every line, but allocate text only for the requested page. A large file may
-      // contain hundreds of thousands of short lines while a read returns at most 500.
-      for (;;) {
-        const lineEnd = lf < cr ? lf : cr;
-        totalLines++;
-        if (totalLines === lastLine + 1 && totalLines <= end) {
-          const cut = lineEnd - lineStart > MAX_LINE_CHARS;
-          const entry = `${totalLines}: ${text.slice(lineStart, cut ? lineStart + MAX_LINE_CHARS : lineEnd)}${cut ? `… (${lineEnd - lineStart} characters)` : ""}`;
-          outputChars += entry.length + 1;
-          if (outputChars <= MAX_OUTPUT_CHARS) {
-            cutLines ||= cut;
-            lines.push(entry);
-            lastLine = totalLines;
-          }
+  protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
+    const start = integer(input.startLine, 1, "startLine");
+    const requestedEnd = integer(input.endLine, start + DEFAULT_READ_LINES - 1, "endLine");
+    if (requestedEnd < start) {
+      throw new Error('"endLine" must not be less than "startLine".');
+    }
+    const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
+    const roots = folders();
+    const uri = resolveWorkspaceFile(input.file, roots);
+    const content = await readText(uri, boundary(roots, token), token);
+    if ("error" in content) throw new Error(content.error);
+    const { text } = content;
+    const lines: string[] = [];
+    let outputChars = 0;
+    let cutLines = false;
+    let totalLines = 0;
+    let lastLine = start - 1;
+    let lineStart = 0;
+    const nextBreak = (character: string, from: number): number => {
+      const index = text.indexOf(character, from);
+      return index < 0 ? text.length : index;
+    };
+    let lf = nextBreak("\n", 0);
+    let cr = nextBreak("\r", 0);
+    // Count every line, but allocate text only for the requested page. A large file may
+    // contain hundreds of thousands of short lines while a read returns at most 500.
+    for (;;) {
+      const lineEnd = lf < cr ? lf : cr;
+      totalLines++;
+      if (totalLines === lastLine + 1 && totalLines <= end) {
+        const cut = lineEnd - lineStart > MAX_LINE_CHARS;
+        const entry = `${totalLines}: ${text.slice(lineStart, cut ? lineStart + MAX_LINE_CHARS : lineEnd)}${cut ? `… (${lineEnd - lineStart} characters)` : ""}`;
+        outputChars += entry.length + 1;
+        if (outputChars <= MAX_OUTPUT_CHARS) {
+          cutLines ||= cut;
+          lines.push(entry);
+          lastLine = totalLines;
         }
-        if (lineEnd === text.length) break;
-        lineStart = lineEnd + (cr === lineEnd && lf === cr + 1 ? 2 : 1);
-        // Each cursor advances only when consumed, so mixed endings remain a linear scan.
-        if (lf < lineStart) lf = nextBreak("\n", lineStart);
-        if (cr < lineStart) cr = nextBreak("\r", lineStart);
       }
-      if (start > totalLines) {
-        throw new Error(
-          `"startLine" ${start} is past the end of the file, which has ${plural(totalLines, "line")}.`,
-        );
-      }
-      const notes = [
-        cutLines ? `Lines longer than ${MAX_LINE_CHARS} characters are cut.` : "",
-        lastLine < totalLines ? `Continue with startLine ${lastLine + 1}.` : "",
-      ].filter(Boolean);
-      return [
-        `${displayPath(uri, roots)}, lines ${start}-${lastLine} of ${totalLines}${content.unsaved ? ", with unsaved changes" : ""}:`,
-        ...lines,
-        ...notes,
-      ].join("\n");
-    });
+      if (lineEnd === text.length) break;
+      lineStart = lineEnd + (cr === lineEnd && lf === cr + 1 ? 2 : 1);
+      // Each cursor advances only when consumed, so mixed endings remain a linear scan.
+      if (lf < lineStart) lf = nextBreak("\n", lineStart);
+      if (cr < lineStart) cr = nextBreak("\r", lineStart);
+    }
+    if (start > totalLines) {
+      throw new Error(
+        `"startLine" ${start} is past the end of the file, which has ${plural(totalLines, "line")}.`,
+      );
+    }
+    const notes = [
+      cutLines ? `Lines longer than ${MAX_LINE_CHARS} characters are cut.` : "",
+      lastLine < totalLines ? `Continue with startLine ${lastLine + 1}.` : "",
+    ].filter(Boolean);
+    return [
+      `${displayPath(uri, roots)}, lines ${start}-${lastLine} of ${totalLines}${content.unsaved ? ", with unsaved changes" : ""}:`,
+      ...lines,
+      ...notes,
+    ].join("\n");
   }
 }

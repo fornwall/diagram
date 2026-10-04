@@ -172,6 +172,12 @@ suite("chart agent tools", function () {
       );
       assert.match(inline, /"rowCount":3/);
       assert.match(inline, /"sample":\[\]/);
+      // Some models send null for the properties they leave out.
+      const nulls = { data, file: null, sampleRows: null } as never;
+      assert.match(
+        toolText(await tool.invoke({ input: nulls, toolInvocationToken: undefined }, token)),
+        /"sample":\[\["a",1\]/,
+      );
       const cached = toolText(
         await tool.invoke({ input: {}, toolInvocationToken: undefined }, token),
       );

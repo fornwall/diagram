@@ -15,6 +15,11 @@ export function plural(count: number, noun: string, nouns = `${noun}s`): string 
   return `${count} ${count === 1 ? noun : nouns}`;
 }
 
+/** A tool input's properties, without the nulls that some models send for those they leave out. */
+export function givenProperties(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value != null));
+}
+
 /**
  * E.g. `Unknown property "colour"; the properties are "type", "title".`, or undefined if `input`
  * has only `known` properties. Unknown properties are refused rather than ignored, as a model
