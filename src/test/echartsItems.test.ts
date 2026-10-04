@@ -51,6 +51,7 @@ suite("echartsItems", () => {
             const node = tree?.getNodeByDataIndex(1);
             methods(node, "TreeNode", ["getRawIndex"]);
             assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
+            assert.ok(!tree?.getNodeByDataIndex(0).parentNode, "the root is data index 0");
           }
         });
       });
@@ -161,9 +162,12 @@ suite("echartsItems", () => {
       },
     ];
     for (const type of ["treemap", "sunburst", "tree"]) {
-      const items = itemsOf({ series: [{ type, data: tree }] });
-      // Index 0 is the root ECharts adds above the data.
+      // The series shares its name with the top node, and its value with no other.
+      const items = itemsOf({ series: [{ type, name: "src", data: tree }] });
+      // Index 0 is the root ECharts adds above the data, which is no item of its own.
+      assert.strictEqual(items.node("0::0"), undefined, type);
       assert.deepStrictEqual(items.node("0::1"), { id: "src", label: "src" }, type);
+      assert.deepStrictEqual(items.find("src"), [item(1)], type);
       assert.deepStrictEqual(items.node("0::3"), { id: "src/a/index.ts", label: "index.ts" }, type);
       assert.deepStrictEqual(items.find("src/a/index.ts"), [item(3)], type);
       // Paths that repeat are told apart by position.

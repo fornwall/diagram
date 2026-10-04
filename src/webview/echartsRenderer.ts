@@ -11,7 +11,7 @@ import { loadECharts } from "./echartsLoader";
 import { type JsonObject, parseOption, seriesTypes } from "./echartsOption";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
-import { type Hit, type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
+import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 export class EChartsRenderer implements Renderer {
@@ -329,10 +329,15 @@ export class EChartsRenderer implements Renderer {
     }
   }
 
-  private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent): Hit {
+  /**
+   * The item a click on a series hit. A treemap's breadcrumb, and the root ECharts adds above a
+   * treemap or sunburst (showing between the rectangles, or in the middle to drill up), are no
+   * items: a click on them counts as one on empty space.
+   */
+  private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent) {
     const key = itemKey({ seriesIndex, dataType, dataIndex });
-    const item = `Item ${dataIndex + 1}`;
-    return { key, node: this.items()?.node(key) ?? { id: item, label: item } };
+    const node = this.items()?.node(key);
+    return node && { key, node };
   }
 
   /** Coalesces the panel and ECharts click handlers into one selection update. */

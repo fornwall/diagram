@@ -139,4 +139,20 @@ suite("echartsRenderer interactions", () => {
       { type: "select", batch: [{ seriesIndex: 0, dataType: undefined, dataIndex: 3 }] },
     ]);
   });
+
+  test("counts a click on a treemap's root or breadcrumb as one on empty space", () => {
+    const { renderer } = interactionRenderer();
+    Object.assign(renderer, {
+      chartItems: itemsOf({ series: [{ type: "treemap", data: [{ name: "A", value: 1 }] }] }),
+    });
+    const hitFor = (event: object) =>
+      (renderer as unknown as { hitFor(event: object): unknown }).hitFor(event);
+    assert.deepStrictEqual(hitFor({ seriesIndex: 0, dataIndex: 1 }), {
+      key: "0::1",
+      node: { id: "A", label: "A" },
+    });
+    assert.strictEqual(hitFor({ seriesIndex: 0, dataIndex: 0 }), undefined);
+    // A breadcrumb's click names its node only in `nodeData`.
+    assert.strictEqual(hitFor({ seriesIndex: 0, nodeData: { dataIndex: 0 } }), undefined);
+  });
 });

@@ -36,7 +36,10 @@ interface ItemData {
   getName(index: number): string;
   getRawDataItem(index: number): unknown;
   indexOfRawIndex(rawIndex: number): number;
-  /** The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data. */
+  /**
+   * The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data as data
+   * index 0, named after the series.
+   */
   tree?: { getNodeByDataIndex(index: number): TreeNode };
 }
 
@@ -181,6 +184,8 @@ interface TypedData {
   dataType: string | undefined;
   /** Whether the data has every item, including those filtered out. */
   raw: boolean;
+  /** The index of the first item: 1 in a tree, to leave out the root ECharts adds. */
+  first: number;
 }
 
 class SeriesItems {
@@ -207,6 +212,7 @@ class SeriesItems {
       ...(data.dataType === raw.dataType ? { data: raw, raw: true } : { data, raw: false }),
       // Events and actions leave out the type of the one data of a tree, which ECharts calls "main".
       dataType: data.dataType === "main" ? undefined : data.dataType,
+      first: data.tree ? 1 : 0,
     }));
     const count = (name: string) => {
       const count = (this.counts.get(name) ?? 0) + 1;
@@ -221,7 +227,9 @@ class SeriesItems {
 
   each(callback: (item: Item) => void): void {
     for (const data of this.datas) {
-      for (let index = 0; index < data.data.count(); index++) callback(this.describe(data, index));
+      for (let index = data.first; index < data.data.count(); index++) {
+        callback(this.describe(data, index));
+      }
     }
   }
 
@@ -229,7 +237,9 @@ class SeriesItems {
     const found = this.datas.find((data) => data.dataType === dataType);
     if (!found) return undefined;
     const index = found.raw ? dataIndex : found.data.indexOfRawIndex(dataIndex);
-    return index >= 0 && index < found.data.count() ? this.describe(found, index) : undefined;
+    return index >= found.first && index < found.data.count()
+      ? this.describe(found, index)
+      : undefined;
   }
 
   /** The item's id, told apart by its index from another item of the same name. */
