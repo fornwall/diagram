@@ -913,6 +913,8 @@ suite("data", () => {
         ["South", 20, 18],
       ],
     });
+    // As pandas writes a pivot table, with an empty corner.
+    assert.deepStrictEqual(parse(",2024,2025\nNorth,10,14").columns, ["Column 1", "2024", "2025"]);
     assert.deepStrictEqual(parse("Alice,1990\nBob,1985").columns, ["Column 1", "Column 2"]);
     assert.deepStrictEqual(parse("apples,1500\npears,300").columns, ["Column 1", "Column 2"]);
   });

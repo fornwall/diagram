@@ -101,16 +101,19 @@ function namesCategories(rows: Cell[][]): boolean {
 }
 
 /**
- * Whether the first row names the columns: it has text, and no numbers other than a run of years
- * (as in "region,2024,2025"), but some column below it holds numbers. CSV of text only has a
- * header if it {@link namesCategories}.
+ * Whether the first row names the columns: it has text or a run of years, and no other numbers
+ * (as in "region,2024,2025", or ",2024,2025" as pandas writes a pivot table), and some column
+ * below it holds numbers. CSV of text only has a header if it {@link namesCategories}.
  */
 function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolean {
   const first = rows[0];
-  if (first === undefined || rows.length < 2 || !first.some((c) => typeof c === "string")) {
+  if (first === undefined || rows.length < 2) {
     return false;
   }
   const numbers = first.filter((cell) => typeof cell === "number");
+  if (numbers.length === 0 && !first.some((cell) => typeof cell === "string")) {
+    return false;
+  }
   if (numbers.length > 0) {
     // Years as column names come in order, unlike data such as "apples,1500" or "Alice,1990".
     const ascending = numbers.every((year, i) => i === 0 || year > (numbers[i - 1] ?? year));
