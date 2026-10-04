@@ -596,10 +596,6 @@ export class MermaidRenderer implements Renderer {
     this.canvas.scrollTop = (scrollTop * this.canvas.scrollHeight) / scrollHeight;
   }
 
-  formatForEditing(source: string): string {
-    return source;
-  }
-
   /** Zooms, keeping the point at the given client coordinates (the middle by default) in place. */
   zoomBy(factor: number, x?: number, y?: number): void {
     this.fitting = false;

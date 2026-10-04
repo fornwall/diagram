@@ -10,6 +10,16 @@ function button(text: string, className = "secondary"): HTMLButtonElement {
   return element;
 }
 
+/** A list box of the choices: [text, value], or a value that is its own text. */
+function select(choices: readonly (string | readonly [string, string])[]): HTMLSelectElement {
+  const element = document.createElement("select");
+  for (const choice of choices) {
+    const [text, value] = typeof choice === "string" ? [choice, choice] : choice;
+    element.add(new Option(text, value));
+  }
+  return element;
+}
+
 /** Removes a row of a list, moving focus to the row after it, the one before it or `fallback`. */
 function removeRow(row: Element, fallback: HTMLElement): void {
   const next = row.nextElementSibling?.querySelector("select");
@@ -22,16 +32,25 @@ function removeRow(row: Element, fallback: HTMLElement): void {
 export class ChartOptionsForm {
   private state: ChartOptionsState | undefined;
   private readonly fields = document.createElement("fieldset");
-  private readonly type = document.createElement("select");
+  private readonly type = select(
+    CHART_TYPES.map((type) => [type.replace(/([a-z])([A-Z])/g, "$1 $2"), type] as const),
+  );
   private readonly labels = document.createElement("div");
   private readonly values = document.createElement("div");
-  private readonly aggregate = document.createElement("select");
-  private readonly sort = document.createElement("select");
+  private readonly aggregate = select([["None", ""], ...AGGREGATIONS]);
+  private readonly sort = select([
+    ["Data order", ""],
+    ["Ascending", "ascending"],
+    ["Descending", "descending"],
+  ]);
   private readonly limit = document.createElement("input");
   private readonly bins = document.createElement("input");
   private readonly facet = document.createElement("select");
-  private readonly facetColumns = document.createElement("select");
-  private readonly facetScales = document.createElement("select");
+  private readonly facetColumns = select([["Automatic", ""], "1", "2", "3", "4"]);
+  private readonly facetScales = select([
+    ["Shared", ""],
+    ["Independent", "independent"],
+  ]);
   private readonly filters = document.createElement("div");
   private readonly filterRows = new Map<HTMLElement, () => ChartFilter>();
   private readonly status = document.createElement("p");
@@ -57,31 +76,14 @@ export class ChartOptionsForm {
     this.error.setAttribute("role", "alert");
     this.error.className = "chart-options-error";
     this.error.hidden = true;
-    for (const type of CHART_TYPES) {
-      this.type.add(new Option(type.replace(/([a-z])([A-Z])/g, "$1 $2"), type));
-    }
-    this.aggregate.add(new Option("None", ""));
-    for (const aggregate of AGGREGATIONS) {
-      this.aggregate.add(new Option(aggregate, aggregate));
-    }
-    this.sort.add(new Option("Data order", ""));
-    this.sort.add(new Option("Ascending", "ascending"));
-    this.sort.add(new Option("Descending", "descending"));
-    this.limit.type = "number";
-    this.limit.min = "1";
-    this.limit.step = "1";
-    this.limit.placeholder = "All rows";
-    this.bins.type = "number";
-    this.bins.min = "1";
-    this.bins.max = "200";
-    this.bins.step = "1";
-    this.bins.placeholder = "Automatic";
-    this.facetColumns.add(new Option("Automatic", ""));
-    for (let count = 1; count <= 4; count++) {
-      this.facetColumns.add(new Option(String(count), String(count)));
-    }
-    this.facetScales.add(new Option("Shared", ""));
-    this.facetScales.add(new Option("Independent", "independent"));
+    Object.assign(this.limit, { type: "number", min: "1", step: "1", placeholder: "All rows" });
+    Object.assign(this.bins, {
+      type: "number",
+      min: "1",
+      max: "200",
+      step: "1",
+      placeholder: "Automatic",
+    });
     this.fields.className = "chart-options-fields";
     for (const [name, control] of [
       ["Chart type", this.type],
@@ -291,25 +293,23 @@ export class ChartOptionsForm {
       const column = document.createElement("select");
       column.setAttribute("aria-label", "Filter column");
       this.fillColumnSelect(column, filter?.column);
-      const operator = document.createElement("select");
+      const operator = select([
+        ["Equals", "eq"],
+        ["Does not equal", "neq"],
+        ["Less than", "lt"],
+        ["At most", "lte"],
+        ["Greater than", "gt"],
+        ["At least", "gte"],
+        ["Contains", "contains"],
+      ]);
       operator.setAttribute("aria-label", "Filter operator");
-      for (const [value, label] of [
-        ["eq", "Equals"],
-        ["neq", "Does not equal"],
-        ["lt", "Less than"],
-        ["lte", "At most"],
-        ["gt", "Greater than"],
-        ["gte", "At least"],
-        ["contains", "Contains"],
-      ]) {
-        operator.add(new Option(label, value));
-      }
       operator.value = filter?.op ?? "eq";
-      const valueType = document.createElement("select");
+      const valueType = select([
+        ["Text", "string"],
+        ["Number", "number"],
+        ["Missing value", "null"],
+      ]);
       valueType.setAttribute("aria-label", "Filter value type");
-      valueType.add(new Option("Text", "string"));
-      valueType.add(new Option("Number", "number"));
-      valueType.add(new Option("Missing value", "null"));
       const columnValueType = (): string =>
         this.state?.columns.find((entry) => entry.name === column.value)?.numeric
           ? "number"
@@ -374,15 +374,15 @@ export class ChartOptionsForm {
 
   private fillColumns(container: HTMLElement, selected: string[]): void {
     container.replaceChildren();
-    const add = button(selected.length ? "Add column" : "Automatic · choose column");
-    const updateLabels = (): void => {
-      for (const [index, row] of Array.from(
-        container.querySelectorAll(".chart-column-row"),
-      ).entries()) {
+    const add = button("");
+    const update = (): void => {
+      const rows = container.querySelectorAll(".chart-column-row");
+      for (const [index, row] of rows.entries()) {
         const name = `${container === this.labels ? "Label" : "Value"} column ${index + 1}`;
         row.querySelector("select")?.setAttribute("aria-label", name);
         row.querySelector("button")?.setAttribute("aria-label", `Remove ${name.toLowerCase()}`);
       }
+      add.textContent = rows.length > 0 ? "Add column" : "Automatic · choose column";
     };
     const append = (name?: string): HTMLSelectElement => {
       const row = document.createElement("div");
@@ -392,19 +392,16 @@ export class ChartOptionsForm {
       const remove = button("−");
       remove.addEventListener("click", () => {
         removeRow(row, add);
-        updateLabels();
-        add.textContent = container.querySelector("select")
-          ? "Add column"
-          : "Automatic · choose column";
+        update();
       });
       row.append(select, remove);
       container.insertBefore(row, add);
-      add.textContent = "Add column";
-      updateLabels();
+      update();
       return select;
     };
     add.addEventListener("click", () => append().focus());
     container.append(add);
     for (const name of selected) append(name);
+    update();
   }
 }

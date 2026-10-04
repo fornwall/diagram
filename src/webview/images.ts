@@ -15,7 +15,7 @@ const MAX_PNG_SIDE = 8000;
 const MAX_PNG_PIXELS = 16_000_000;
 
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
-const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed"];
+const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 
 /** Clones the drawing with a background, without panel interaction attributes or link targets. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
@@ -41,12 +41,8 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   svg.setAttribute("height", String(height));
 
   for (const element of svg.querySelectorAll(".diagram-relationship-hit")) element.remove();
-  for (const element of svg.querySelectorAll("[data-diagram-id]"))
-    element.removeAttribute("data-diagram-id");
-  for (const element of svg.querySelectorAll("[tabindex], [role], [aria-pressed]")) {
-    for (const attribute of INTERACTION_ATTRIBUTES) {
-      element.removeAttribute(attribute);
-    }
+  for (const name of INTERACTION_ATTRIBUTES) {
+    for (const element of svg.querySelectorAll(`[${name}]`)) element.removeAttribute(name);
   }
   // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
   // application that reads SVG draws, unless the label is a formula, of which the text is TeX.

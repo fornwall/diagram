@@ -118,8 +118,8 @@ const renderers: Record<DiagramLanguage, Renderer> = {
   mermaid: new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue),
   echarts: new EChartsRenderer(itemClicked, canvas),
 };
+/** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
-let renderedRequestId: number | undefined;
 
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
@@ -135,7 +135,6 @@ function showError(renderer: Renderer, message: string): void {
 
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
   forgetDragImage();
-  renderedRequestId = undefined;
   const { language, source, requestId } = message;
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
@@ -172,7 +171,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
       active?.hide();
     }
     active = renderer;
-    renderedRequestId = requestId;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
     // The ids go along so that the extension host can tell a model when it names a node that is
@@ -334,9 +332,9 @@ function updateSelectionUi(): void {
 }
 
 highlightPathButton.addEventListener("click", () => {
-  const endpoints = Array.from(selection.values());
-  const [from, to] = endpoints;
-  if (!from || !to || endpoints.length !== 2 || from.relationship || to.relationship) return;
+  // Enabled only for two selected nodes.
+  const [from, to] = selection.values();
+  if (!from || !to) return;
   const path = active?.findPath?.(from.id, to.id);
   if (!path) {
     transientHint(`No path from ${from.label} to ${to.label} following the arrows.`);
@@ -591,7 +589,7 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
   const failed = (error: unknown) =>
     post({ type: "exportError", requestId, message: errorMessage(error) });
   try {
-    if (!active || renderedRequestId !== renderRequestId) {
+    if (!active || current?.requestId !== renderRequestId) {
       throw new Error("The diagram changed before it could be exported. Try again.");
     }
     if (format === "html") {

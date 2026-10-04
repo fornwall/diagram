@@ -53,8 +53,8 @@ export interface Renderer {
   toImage?(background: string): Promise<DiagramImage>;
   /** Renders the current diagram again with the current VS Code theme. */
   themeChanged(): Promise<void>;
-  /** The source as shown in the source editor. */
-  formatForEditing(source: string): string;
+  /** The source as shown in the source editor, if not as it is. */
+  formatForEditing?(source: string): string;
   /** Zooming, for renderers that do not fit the panel by themselves. */
   zoomBy?(factor: number): void;
   zoomReset?(): void;

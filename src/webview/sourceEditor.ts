@@ -145,7 +145,7 @@ export class SourceEditor {
   private formatted(): string {
     const { diagram } = this;
     if (!diagram) return "";
-    diagram.formatted ??= diagram.renderer.formatForEditing(diagram.source);
+    diagram.formatted ??= diagram.renderer.formatForEditing?.(diagram.source) ?? diagram.source;
     return diagram.formatted;
   }
 
