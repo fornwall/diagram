@@ -101,6 +101,9 @@ suite("fences", () => {
     ]);
     // The language must be the whole first word.
     assert.deepStrictEqual(sources("```mermaidx\nflowchart TD\n```"), []);
+    // Only spaces and tabs are trimmed from the info string.
+    assert.deepStrictEqual(sources("``` \tmermaid\u00a0\nA\n```"), ['0-1 mermaid "": "A"']);
+    assert.deepStrictEqual(sources("```\u00a0mermaid\nA\n```"), []);
   });
 
   test("findDiagramFences handles longer fences and tilde fences", () => {
@@ -320,6 +323,17 @@ suite("fences", () => {
     assert.strictEqual(
       rewritten("-\t```mermaid\r\n\tA\r\n\t```\r\n", "B\n C", "\r\n"),
       "-\t```mermaid\r\n \tB\r\n \t C\r\n\t```\r\n",
+    );
+  });
+
+  test("findDiagramFences and rewriteFence keep lines of no-break spaces around a diagram", () => {
+    // Only lines of spaces and tabs are blank in Markdown.
+    assert.deepStrictEqual(sources("```mermaid\n \t\n\u00a0\nA\n\u00a0\n\n```"), [
+      '0-5 mermaid "": "\u00a0\\nA\\n\u00a0"',
+    ]);
+    assert.strictEqual(
+      rewritten("> ```mermaid\n> A\n> ```\n", "\u00a0\nB\n\u00a0"),
+      "> ```mermaid\n> \u00a0\n> B\n> \u00a0\n> ```\n",
     );
   });
 

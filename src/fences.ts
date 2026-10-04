@@ -84,7 +84,7 @@ export interface OpeningFence {
 /** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
 function opening(line: string, start: number, indent: number): OpeningFence | undefined {
   // Unicode line separators are not line endings in Markdown, so "." must match them.
-  const match = /^(`{3,}|~{3,})(.*)$/s.exec(line.slice(start).trimEnd());
+  const match = /^(`{3,}|~{3,})(.*)$/s.exec(line.slice(start));
   if (!match) {
     return undefined;
   }
@@ -93,7 +93,9 @@ function opening(line: string, start: number, indent: number): OpeningFence | un
   if (fence.startsWith("`") && info.includes("`")) {
     return undefined;
   }
-  return { fence, language: info.trim().split(/\s/, 1)[0] ?? "", indent };
+  // The info string is trimmed of spaces and tabs only: a no-break space before a word leaves no
+  // language. The word ends at any whitespace.
+  return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1] ?? "", indent };
 }
 
 /** Whether the text at `start` closes a block: the fence's character, as many or more, then spaces. */
@@ -379,14 +381,18 @@ export class FenceScanner {
   }
 }
 
-/** Joins the lines of a code block without the blank lines around them. */
+/**
+ * Joins the lines of a code block without the blank lines around them, which, as in Markdown, hold
+ * only spaces and tabs: a no-break space is content.
+ */
 export function trimBlankLines(lines: readonly string[]): string {
+  const blank = (line: string | undefined) => /^[ \t]*$/.test(line ?? "");
   let first = 0;
   let last = lines.length - 1;
-  while (first <= last && !lines[first]?.trim()) {
+  while (first <= last && blank(lines[first])) {
     first++;
   }
-  while (last >= first && !lines[last]?.trim()) {
+  while (last >= first && blank(lines[last])) {
     last--;
   }
   return lines.slice(first, last + 1).join("\n");
