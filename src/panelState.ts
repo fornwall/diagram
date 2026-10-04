@@ -1,7 +1,6 @@
 // Persist the panel's diagram across window reloads and VS Code restarts.
 
 import * as vscode from "vscode";
-import { captureChartPresentation } from "./chartPresentation";
 import type { DiagramState } from "./panel";
 import { errorMessage } from "./protocol";
 
@@ -17,24 +16,7 @@ export class StateStore {
   constructor(private readonly memento: vscode.Memento) {}
 
   load(): DiagramState | undefined {
-    let state = this.memento.get<DiagramState>(STATE_KEY);
-    // Older saved states have no baseline against which manual changes can be distinguished.
-    if (state?.chart && !state.chartPresentation && state.source !== undefined) {
-      state = {
-        ...state,
-        chartPresentation: state.editedByUser
-          ? {
-              baseline: {},
-              // No source edit can establish which data was originally generated.
-              dataHash: "",
-              edits: [],
-              blocked:
-                "This saved chart has manual edits without a generated baseline. " +
-                "Your source is kept. Use Reset Styling in Chart Options to return to the generated chart.",
-            }
-          : captureChartPresentation(state.source),
-      };
-    }
+    const state = this.memento.get<DiagramState>(STATE_KEY);
     if (state) this.lastSave = { state: new WeakRef(state), promise: Promise.resolve() };
     return state;
   }
