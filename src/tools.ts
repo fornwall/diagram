@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
-import { unlessCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
 import {
   type ChartSpec,
@@ -284,9 +284,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     options: vscode.LanguageModelToolInvocationOptions<AnnotateInput>,
     token: vscode.CancellationToken,
   ): vscode.LanguageModelToolResult {
-    if (token.isCancellationRequested) {
-      throw new vscode.CancellationError();
-    }
+    throwIfCancelled(token);
     let annotation: Annotation;
     try {
       annotation = validateAnnotation(options.input);

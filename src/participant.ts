@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
-import { unlessCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
 import { escapeMarkdown, fitToolResults, promptMessages } from "./prompt";
 import {
@@ -194,9 +194,7 @@ async function streamReply(
   let diagram: DiagramBlock | undefined;
   let diagramState = panel.current;
   for (let round = 0; ; round++) {
-    if (token.isCancellationRequested) {
-      throw new vscode.CancellationError();
-    }
+    throwIfCancelled(token);
     // Some models only support a single tool when a tool call is required. The tools are passed
     // even when calls are no longer run, as some models reject requests whose messages contain
     // tool calls but no tools.
@@ -213,9 +211,7 @@ async function streamReply(
     const calls: vscode.LanguageModelToolCallPart[] = [];
     const show = (markdown: string) => markdown && stream.markdown(markdown);
     for await (const part of response.stream) {
-      if (token.isCancellationRequested) {
-        throw new vscode.CancellationError();
-      }
+      throwIfCancelled(token);
       if (part instanceof vscode.LanguageModelTextPart) {
         reply += part.value;
         show(filter.push(part.value));
@@ -223,9 +219,7 @@ async function streamReply(
         calls.push(part);
       }
     }
-    if (token.isCancellationRequested) {
-      throw new vscode.CancellationError();
-    }
+    throwIfCancelled(token);
     show(filter.flush());
     const block = filter.diagrams.at(-1);
     if (block) {
@@ -263,9 +257,7 @@ async function streamReply(
     const text = (value: string) => [new vscode.LanguageModelTextPart(value)];
     const results: vscode.LanguageModelToolResultPart[] = [];
     for (const call of calls) {
-      if (token.isCancellationRequested) {
-        throw new vscode.CancellationError();
-      }
+      throwIfCancelled(token);
       let content: unknown[];
       if (budget.calls >= MAX_TOOL_CALLS) {
         budget.notRun ??= "this request reached its tool call limit";
@@ -304,9 +296,7 @@ async function streamReply(
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
     await fitToolResults(request.model, messages, results, token);
-    if (token.isCancellationRequested) {
-      throw new vscode.CancellationError();
-    }
+    throwIfCancelled(token);
     messages.push(vscode.LanguageModelChatMessage.User(results));
     if (reply && !reply.endsWith("\n")) {
       stream.markdown("\n\n");

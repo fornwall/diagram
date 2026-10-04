@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
 import { codeFence } from "./blocks";
+import { throwIfCancelled } from "./cancellation";
 import { describeChartParameters } from "./describe";
 import {
   ANNOTATE_TOOL,
@@ -98,9 +99,7 @@ export async function promptMessages(
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
   const documents = new Map<string, Thenable<vscode.TextDocument>>();
   const attachments = await readAttachments(request, documents, model);
-  if (token.isCancellationRequested) {
-    throw new vscode.CancellationError();
-  }
+  throwIfCancelled(token);
   const images = attachments.filter((attachment) => "image" in attachment);
   const imageKeys = new Set(images.flatMap((image) => image.keys));
   const exchanges = await pastExchanges(context.history, documents, imageKeys);
@@ -300,9 +299,7 @@ function tokenCounter(
   const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
   const counts = new Map<string, Promise<number>>();
   return (text) => {
-    if (token.isCancellationRequested) {
-      throw new vscode.CancellationError();
-    }
+    throwIfCancelled(token);
     let count = counts.get(text);
     if (!count) {
       count = exact

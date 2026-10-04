@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { unlessCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 
@@ -216,9 +216,7 @@ export async function runCommand(
   if (!fs.existsSync(cwd)) {
     throw new Error(`Commands run in ${cwd}, which does not exist.`);
   }
-  if (token.isCancellationRequested) {
-    throw new vscode.CancellationError();
-  }
+  throwIfCancelled(token);
   const windows = process.platform === "win32";
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
@@ -351,9 +349,7 @@ export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
 ): Promise<{ table: DataTable; warning?: string }> {
-  if (token.isCancellationRequested) {
-    throw new vscode.CancellationError();
-  }
+  throwIfCancelled(token);
   let text: string;
   let warning: string | undefined;
   if (spec.data !== undefined) {
@@ -363,9 +359,7 @@ export async function loadTable(
   } else {
     ({ output: text, warning } = await runCommand(spec.command, token));
   }
-  if (token.isCancellationRequested) {
-    throw new vscode.CancellationError();
-  }
+  throwIfCancelled(token);
   const si = spec.command !== undefined && SI_OPTIONS.test(spec.command);
   return { table: parseTable(text, spec.format, si), ...(warning ? { warning } : {}) };
 }

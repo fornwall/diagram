@@ -4,7 +4,7 @@
 import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { unlessCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { errorMessage, isPlainObject } from "./protocol";
 
 interface FindInput {
@@ -33,10 +33,6 @@ const DEFAULT_READ_LINES = 200;
 /** Files read ahead while searching, as reading them one by one waits on each. */
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
-
-function checkCancelled(token: vscode.CancellationToken): void {
-  if (token.isCancellationRequested) throw new vscode.CancellationError();
-}
 
 /**
  * The input without the null values some models send for omitted properties. Unknown properties
@@ -179,7 +175,7 @@ function boundary(
     return checked;
   };
   return async (uri) => {
-    checkCancelled(token);
+    throwIfCancelled(token);
     const root = roots.find((root) => contains(root.uri, uri));
     if (!root) throw new Error("The file is outside the workspace folders.");
     if (uri.scheme !== "file") {
@@ -204,7 +200,7 @@ async function candidates(
   const files: vscode.Uri[] = [];
   const seen = new Set<string>();
   for (const root of roots) {
-    checkCancelled(token);
+    throwIfCancelled(token);
     // Passing an explicit exclude replaces files.exclude, so preserve both sets of settings.
     // Conditional exclusions are conservatively excluded too: they must not leak into searches.
     const patterns = new Set(DEFAULT_EXCLUDES);
@@ -228,7 +224,7 @@ async function candidates(
         ),
       token,
     );
-    checkCancelled(token);
+    throwIfCancelled(token);
     for (const uri of found) {
       if (!seen.has(uri.toString())) {
         seen.add(uri.toString());
@@ -320,7 +316,7 @@ export class FindWorkspaceFilesTool implements vscode.LanguageModelTool<FindInpu
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
-      checkCancelled(token);
+      throwIfCancelled(token);
       const input = objectInput(options.input, ["glob", "maxResults"]);
       const max = integer(input.maxResults, 100, "maxResults", 200);
       const glob = globInput(input.glob);
@@ -372,7 +368,7 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
-      checkCancelled(token);
+      throwIfCancelled(token);
       const input = objectInput(options.input, ["query", "glob", "caseSensitive", "maxResults"]);
       const { query, caseSensitive } = input;
       if (typeof query !== "string" || !query || query.length > 500 || /[\r\n\0]/.test(query)) {
@@ -416,7 +412,7 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
       search: for (const [index, uri] of files.entries()) {
         for (let ahead = index; ahead < index + READ_AHEAD; ahead++) read(ahead);
         const content = await unlessCancelled(async () => reads[index], token);
-        checkCancelled(token);
+        throwIfCancelled(token);
         if (!content || "failure" in content) {
           if (content?.failure instanceof vscode.CancellationError) throw content.failure;
           skipped++;
@@ -515,7 +511,7 @@ export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
-      checkCancelled(token);
+      throwIfCancelled(token);
       const input = objectInput(options.input, ["file", "startLine", "endLine"]);
       const start = integer(input.startLine, 1, "startLine");
       const requestedEnd = integer(input.endLine, start + DEFAULT_READ_LINES - 1, "endLine");

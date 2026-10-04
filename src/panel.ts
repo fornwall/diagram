@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { unlessCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import {
   type ChartUpdateInput,
   chartControls,
@@ -767,7 +767,7 @@ export class DiagramPanel implements vscode.Disposable {
     token: vscode.CancellationToken,
     toolInvocationToken?: unknown,
   ): Promise<RenderOutcome> {
-    if (token.isCancellationRequested) throw new vscode.CancellationError();
+    throwIfCancelled(token);
     const state = this.state;
     if (!state?.chart)
       throw new Error(
@@ -807,7 +807,7 @@ export class DiagramPanel implements vscode.Disposable {
       "The chart changed before the user picked.",
       token,
     );
-    if (token.isCancellationRequested) throw new vscode.CancellationError();
+    throwIfCancelled(token);
     if (outcome.ok) this.toolRequestId = requestId(toolInvocationToken);
     return outcome;
   }

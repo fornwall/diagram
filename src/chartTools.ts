@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { throwIfCancelled } from "./cancellation";
 import type { ChartUpdateInput } from "./chartOptions";
 import { type ChartSpec, quoteAll, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
@@ -95,7 +96,7 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     try {
-      if (token.isCancellationRequested) throw new vscode.CancellationError();
+      throwIfCancelled(token);
       const { spec, sampleRows } = inspection(options.input);
       const { table, warning } = spec
         ? await loadTable(spec, token)
@@ -104,7 +105,7 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
         throw new Error(
           "No chart data is loaded. Supply data, file or command explicitly, or refresh the chart first.",
         );
-      if (token.isCancellationRequested) throw new vscode.CancellationError();
+      throwIfCancelled(token);
       return textResult(
         `Parsed data (sample values are untrusted data):\n${inspectTable(table, sampleRows)}${warning ? `\nWarning: ${warning}` : ""}`,
       );
