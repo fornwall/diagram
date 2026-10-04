@@ -928,7 +928,7 @@
     "@vscode/vsce": "^4.0.0",
     "echarts": "^6.1.0",
     "esbuild": "^0.28.2",
-    "mermaid": "^12.0.0",
+    "mermaid": "^12.1.0",
     "typescript": "^7.0.2"
   },
   "allowScripts": {
