@@ -35,6 +35,8 @@ export interface NumberFormat {
   groups?: boolean;
   /** Parentheses mark negative numbers, as in accounting: "(1,234)". */
   accounting?: boolean;
+  /** "250m" is a quarter, as Kubernetes writes CPU cores in thousandths (millicores). */
+  millicores?: boolean;
 }
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
@@ -61,13 +63,16 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
  * "$9.99", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h
  * and ls -lh print them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k" (in units of
  * 1000, as docker and du --si print them). The column's `format` tells how to read "1,5",
- * "1 234", "(5)" and "1.2M" beside "150k".
+ * "1 234", "(5)", "1.2M" beside "150k" and "250m".
  */
 export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
   let trimmed = text.trim().replace(SINCE, "$1");
+  if (format.millicores && /^\d+m$/.test(trimmed)) {
+    return { value: Number(trimmed.slice(0, -1)) / 1000 };
+  }
   let sign = 1;
   const accounting = format.accounting ? ACCOUNTING.exec(trimmed) : null;
   if (accounting) {
@@ -108,15 +113,16 @@ export function parseNumber(
 }
 
 /**
- * How a column writes its numbers, from the cells from row `start` on:
+ * How a column writes its numbers, from the cells below its header, if it has one:
  * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5") and none only
  *   with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
  * - with spaces or apostrophes between thousands, if some cell has them and no other cell has
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
- * - in accounting format, if some cell is a number in parentheses and none has a minus sign.
+ * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
+ * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is.
  */
-export function numberFormat(records: Cell[][], column: number, start = 0): NumberFormat {
+export function numberFormat(records: Cell[][], column: number, header?: boolean): NumberFormat {
   let comma = false;
   let point = false;
   let lowerK = false;
@@ -125,7 +131,7 @@ export function numberFormat(records: Cell[][], column: number, start = 0): Numb
   let ungrouped = false;
   let parenthesized = false;
   let minus = false;
-  for (let row = start; row < records.length; row++) {
+  for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string") continue;
     let text = cell.trim();
@@ -157,5 +163,6 @@ export function numberFormat(records: Cell[][], column: number, start = 0): Numb
     si: lowerK && !upperK,
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
+    millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
   };
 }

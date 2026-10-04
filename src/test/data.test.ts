@@ -560,6 +560,39 @@ suite("data", () => {
     );
   });
 
+  test("reads the CPU of kubectl top in cores, and leaves ages in minutes as text", () => {
+    const pods = parseTable(
+      [
+        "NAME                     CPU(cores)   MEMORY(bytes)",
+        "web-7d4b9c8f5-abcde      250m         128Mi",
+        "db-0                     1            1Gi",
+        "worker-1                 1500m        512Ki",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(pods.columns, [
+      { name: "NAME", numeric: false },
+      { name: "CPU(cores)", numeric: true },
+      { name: "MEMORY(bytes)", numeric: true, unit: "bytes" },
+    ]);
+    assert.deepStrictEqual(
+      pods.rows.map((row) => row[1]),
+      [0.25, 1, 1.5],
+    );
+    const nodes = parse(
+      [
+        "NAME     CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)",
+        "node-1   312m         7%       5120Mi          32%",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(nodes.rows, [["node-1", 0.312, 7, 5120 * 1024 ** 2, 32]]);
+    const ages = parse(
+      ["NAME    READY   STATUS    RESTARTS   AGE", "web-1   1/1     Running   0          5m"].join(
+        "\n",
+      ),
+    );
+    assert.deepStrictEqual(ages.rows, [["web-1", "1/1", "Running", 0, "5m"]]);
+  });
+
   test("parses TSV, keeping spaces in fields", () => {
     assert.deepStrictEqual(parse("12\tsrc/a b.ts\n1.5K\tREADME.md\n"), {
       columns: ["Column 1", "Column 2"],
