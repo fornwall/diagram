@@ -4,6 +4,7 @@
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
+import { ChartFocus } from "./echartsFocus";
 import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
 import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
@@ -19,7 +20,10 @@ export class EChartsRenderer implements Renderer {
   readonly itemNoun = "chart item";
   readonly sourceName = "ECharts option (JSON or JavaScript)";
 
+  /** The chart's tab stop, around the element that ECharts draws in. */
   private readonly container: HTMLElement;
+  private readonly drawing: HTMLElement;
+  private readonly focus: ChartFocus;
   /** The library, loaded on the first chart. */
   private echarts: typeof EChartsLibrary | undefined;
   private chart: ECharts.ECharts | undefined;
@@ -52,7 +56,26 @@ export class EChartsRenderer implements Renderer {
     this.container = document.createElement("div");
     this.container.id = "chart";
     this.container.hidden = true;
+    // ECharts describes the chart on the element it draws in, as an image.
+    this.drawing = document.createElement("div");
+    this.drawing.id = "chart-drawing";
+    Object.assign(this.drawing.style, { position: "absolute", inset: "0" });
+    this.container.append(this.drawing);
+    this.container.setAttribute("aria-describedby", this.drawing.id);
     canvas.append(this.container);
+    this.focus = new ChartFocus(
+      this.container,
+      () => {
+        const items = this.items();
+        return this.chart && items && { chart: this.chart, items };
+      },
+      () => this.theme?.colors,
+      (key, event) => {
+        const node = this.items()?.node(key);
+        if (node) this.itemClicked({ key, node }, withModifier(event));
+        this.scheduleSelection();
+      },
+    );
     this.resizeObserver.observe(this.container);
     this.reducedMotion.addEventListener("change", () => this.relayout());
   }
@@ -64,6 +87,7 @@ export class EChartsRenderer implements Renderer {
     this.container.hidden = false;
     this.option = option;
     this.title = title;
+    this.container.setAttribute("aria-label", title.trim() || "Chart");
     this.selectedKeys = new Set();
     this.annotation = UNMARKED;
     this.chartItems = undefined;
@@ -169,12 +193,13 @@ export class EChartsRenderer implements Renderer {
   ): ECharts.ECharts {
     // The SVG renderer is registered in echartsLibrary.ts, but each instance still has to ask for
     // it: ECharts draws on a canvas unless told otherwise.
-    const chart = echarts.init(this.container, theme, { renderer: "svg", width, height });
+    const chart = echarts.init(this.drawing, theme, { renderer: "svg", width, height });
     chart.on("click", (params: ECharts.ECElementEvent) => {
       if (params.componentType !== "series") {
         return;
       }
       const hit = this.hitFor(params);
+      if (hit) this.focus.clicked(hit.key);
       if (hit || !this.navigates(params)) {
         this.itemClicked(hit, withModifier(params.event?.event));
       }
@@ -185,6 +210,8 @@ export class EChartsRenderer implements Renderer {
         this.itemClicked(undefined, withModifier(event.event));
       }
     });
+    // After animations and redraws, such as for roaming, the focused item may be elsewhere.
+    chart.on("finished", () => this.focus.chartDrawn());
     chart.on("selectchanged", (event) => {
       this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
     });
@@ -192,6 +219,7 @@ export class EChartsRenderer implements Renderer {
   }
 
   private disposeChart(): void {
+    this.focus.hide();
     cancelAnimationFrame(this.resizeFrame);
     clearTimeout(this.relayoutTimer);
     this.chart?.dispose();
@@ -256,6 +284,7 @@ export class EChartsRenderer implements Renderer {
     this.shownSelected = [];
     this.syncSelection();
     this.highlightMarks();
+    this.focus.chartChanged();
   }
 
   /** Whether the chart fades what is not marked, which needs something to be marked at all. */

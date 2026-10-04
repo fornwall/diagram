@@ -19,6 +19,7 @@ suite("echartsItems", () => {
     };
     const graph = {
       type: "graph",
+      layout: "circular",
       data: [{ name: "a" }, { name: "b" }],
       links: [{ source: 0, target: 1 }],
     };
@@ -30,9 +31,14 @@ suite("echartsItems", () => {
     for (const [option, dataTypes] of options) {
       withChart(option, (chart) => {
         const model = modelOf(chart);
-        methods(model, "GlobalModel", ["getSeriesCount", "getSeriesByIndex", "eachRawSeries"]);
+        methods(model, "GlobalModel", [
+          "getSeriesCount",
+          "getSeriesByIndex",
+          "eachRawSeries",
+          "eachSeries",
+        ]);
         model.eachRawSeries((series) => {
-          methods(series, "SeriesModel", ["get", "getRawData", "getAllData"]);
+          methods(series, "SeriesModel", ["get", "getRawData", "getAllData", "getBaseAxis"]);
           assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");
           assert.strictEqual(typeof series.name, "string", "SeriesModel.name");
           assert.strictEqual(series.subType, option.series[0]?.type, "SeriesModel.subType");
@@ -45,13 +51,17 @@ suite("echartsItems", () => {
           );
           for (const data of [series.getRawData(), ...datas]) {
             const names = ["count", "getRawIndex", "getName", "getRawDataItem", "indexOfRawIndex"];
-            methods(data, "SeriesData", names);
+            methods(data, "SeriesData", [...names, "getItemGraphicEl", "getLayout"]);
           }
+          const graphic = datas[0]?.getItemGraphicEl(dataTypes[0] === "main" ? 1 : 0);
+          methods(graphic, "Element", ["getBoundingRect", "getComputedTransform"]);
+          methods(graphic?.getBoundingRect().clone(), "BoundingRect", ["applyTransform"]);
           const tree = series.getRawData().tree;
           if (dataTypes[0] === "main") {
             methods(tree, "Tree", ["getNodeByDataIndex"]);
             const node = tree?.getNodeByDataIndex(1);
             methods(node, "TreeNode", ["getRawIndex"]);
+            assert.strictEqual(node?.dataIndex, 1, "TreeNode.dataIndex");
             assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
             assert.ok(!tree?.getNodeByDataIndex(0).parentNode, "the root is data index 0");
             assert.strictEqual(tree?.root.children[0], node, "Tree.root, TreeNode.children");

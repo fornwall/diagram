@@ -2488,6 +2488,218 @@ suite("webview", function () {
     );
   });
 
+  /** Renders a chart of the option, without animation. */
+  const renderChart = async (option: Record<string, unknown>) =>
+    assert.ok(
+      (
+        await render({
+          language: "echarts",
+          source: JSON.stringify({ animation: false, ...option }),
+        })
+      ).ok,
+    );
+  const SALES = {
+    xAxis: { type: "category", data: ["Mon", "Tue", "Wed"] },
+    yAxis: {},
+    series: ["A", "B", "C"].map((name, n) => ({ name, type: "bar", data: [n + 1, n + 2, n + 3] })),
+  };
+  /** Webview code defining `press(key, init)`, which says what the chart's focus announces. */
+  const PRESS = `
+    const chart = document.getElementById("chart");
+    const press = (key, init) => {
+      chart.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...init}));
+      return document.getElementById("chart-status").textContent;
+    };
+    const ring = () => {
+      const ring = document.getElementById("chart-focus");
+      return !ring.hidden && ring.getBoundingClientRect();
+    };
+    const tooltip = () => [...document.getElementById("chart-drawing").children]
+      .find(child => !child.querySelector("svg") && child.style.display !== "none")?.textContent;`;
+
+  test("moves the focus between chart items with arrow keys from one tab stop", async () => {
+    await renderChart(SALES);
+    const shown = (await evaluate(`(() => {
+      ${PRESS}
+      chart.focus();
+      try {
+        press("Home");
+        const moves = [press("ArrowRight")];
+        const first = ring();
+        moves.push(press("ArrowDown"), press("ArrowRight"));
+        const second = ring();
+        moves.push(press("ArrowUp"), press("End"));
+        const shownTooltip = tooltip();
+        moves.push(press("Home"), press("ArrowLeft"));
+        const selected = [];
+        for (const [key, init] of [["Enter"], ["ArrowRight"], [" ", {shiftKey: true}], ["Enter"]]) {
+          press(key, init);
+          selected.push(document.getElementById("selection-label").textContent);
+        }
+        return {tabStop: chart.tabIndex, role: chart.getAttribute("role"), moves,
+          ringMoved: Boolean(first && second && second.x > first.x), tooltip: shownTooltip,
+          focused: document.activeElement === chart, selected};
+      } finally {
+        document.getElementById("clear-selection").click();
+      }
+    })()`)) as Record<string, unknown>;
+    assert.match(String(shown.tooltip), /Wed.*C/s);
+    assert.deepStrictEqual(
+      { ...shown, tooltip: undefined },
+      {
+        tabStop: 0,
+        role: "application",
+        moves: [
+          "Tue: 2, series A, 2 of 3",
+          "Tue: 3, series B, 2 of 3",
+          "Wed: 4, series B, 3 of 3",
+          "Wed: 3, series A, 3 of 3",
+          "Wed: 5, series C, 3 of 3",
+          "Mon: 1, series A, 1 of 3",
+          // Nothing is left of the first item.
+          "Mon: 1, series A, 1 of 3",
+        ],
+        ringMoved: true,
+        tooltip: undefined,
+        focused: true,
+        selected: [
+          "Selected: “Mon”",
+          "Selected: “Mon”",
+          "Selected: “Mon”, “Tue”",
+          "Selected: “Tue”",
+        ],
+      },
+    );
+  });
+
+  test("moves the focus round pie slices, through trees and along sankey flows", async () => {
+    const charts: [Record<string, unknown>, string[]][] = [
+      [
+        {
+          series: [
+            {
+              type: "pie",
+              data: [
+                { name: "Dogs", value: 3 },
+                { name: "Cats", value: 2 },
+              ],
+            },
+          ],
+        },
+        ["ArrowRight", "ArrowRight", "ArrowUp"],
+      ],
+      [
+        {
+          series: [
+            {
+              type: "treemap",
+              data: [
+                {
+                  name: "src",
+                  children: [
+                    { name: "a.ts", value: 2 },
+                    { name: "b.ts", value: 1 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        ["ArrowRight", "ArrowDown", "ArrowLeft"],
+      ],
+      [
+        {
+          series: [
+            {
+              type: "sankey",
+              data: [{ name: "In" }, { name: "Out" }],
+              links: [{ source: "In", target: "Out", value: 2 }],
+            },
+          ],
+        },
+        ["ArrowRight", "ArrowRight", "ArrowLeft"],
+      ],
+    ];
+    const announced = [];
+    for (const [option, keys] of charts) {
+      await renderChart(option);
+      announced.push(
+        await evaluate(`(() => {
+          ${PRESS}
+          chart.focus();
+          press("Home");
+          return ${JSON.stringify(keys)}.map(key => press(key));
+        })()`),
+      );
+    }
+    assert.deepStrictEqual(announced, [
+      ["Cats: 2, 2 of 2", "Dogs: 3, 1 of 2", "Cats: 2, 2 of 2"],
+      ["a.ts: 2, 1 of 2", "b.ts: 1, 2 of 2", "src: 3, 1 of 1"],
+      ["In → Out: 2, 1 of 1", "Out, 2 of 2", "In → Out: 2, 1 of 1"],
+    ]);
+  });
+
+  test("picks a chart item with the keyboard", async () => {
+    await renderChart(SALES);
+    const tokens = new vscode.CancellationTokenSource();
+    const picking = panel.pickNodes("Pick a day", false, tokens.token);
+    await evaluate(`(async () => {
+      ${PRESS}
+      while (document.getElementById("pick").hidden) await new Promise(resolve => setTimeout(resolve, 10));
+      chart.focus();
+      press("Home");
+      press("ArrowRight");
+      press("Enter");
+    })()`);
+    assert.deepStrictEqual(await picking, {
+      picked: true,
+      nodes: [{ id: "A/Tue", label: "Tue" }],
+    });
+    tokens.dispose();
+  });
+
+  test("keeps the focus on a chart item through a theme change and a new rendering", async () => {
+    await renderChart(SALES);
+    const focus = (await evaluate(`(async () => {
+      ${PRESS}
+      chart.focus();
+      press("Home");
+      press("ArrowRight");
+      press("ArrowDown");
+      const root = document.documentElement.style;
+      root.setProperty("--vscode-charts-blue", "#123456");
+      try {
+        while (!document.querySelector('#chart svg path[fill="#123456"]')) {
+          await new Promise(requestAnimationFrame);
+        }
+        // The tooltip follows once ECharts has drawn the chart anew.
+        for (let frame = 0; frame < 20 && !/Tue/.test(tooltip()); frame++) {
+          await new Promise(requestAnimationFrame);
+        }
+        return {focused: document.activeElement === chart, ring: Boolean(ring()), tooltip: tooltip(),
+          next: press("ArrowRight")};
+      } finally {
+        root.removeProperty("--vscode-charts-blue");
+        while (document.querySelector('#chart svg path[fill="#123456"]')) {
+          await new Promise(requestAnimationFrame);
+        }
+      }
+    })()`)) as Record<string, unknown>;
+    assert.match(String(focus.tooltip), /Tue.*B/s);
+    assert.deepStrictEqual(
+      { ...focus, tooltip: undefined },
+      { focused: true, ring: true, tooltip: undefined, next: "Wed: 4, series B, 3 of 3" },
+    );
+    await renderChart(SALES);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        ${PRESS}
+        return {focused: document.activeElement === chart, ring: Boolean(ring()), next: press("ArrowLeft")};
+      })()`),
+      { focused: true, ring: true, next: "Tue: 3, series B, 2 of 3" },
+    );
+  });
+
   test("recovers from invalid chart components and renders an explicit graph view", async () => {
     const invalid = await render({
       language: "echarts",

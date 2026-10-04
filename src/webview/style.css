@@ -422,6 +422,10 @@ input:focus {
   inset: 8px 12px 10px;
 }
 
+#chart:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
 #empty {
   margin-top: 2em;
   text-align: center;

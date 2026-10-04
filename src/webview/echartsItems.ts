@@ -33,13 +33,17 @@ const MAX_REPEATED_IDS = 20;
 // leaves out how datasets, encodings, categories, graph links and trees name items, and which items
 // a legend or data zoom filters out. Its model knows, but its types keep `getModel` private. These
 // are the parts of the model read here, which echartsItems.test.ts checks ECharts still has.
-interface ItemData {
+export interface ItemData {
   dataType?: string;
   count(): number;
   getRawIndex(index: number): number;
   getName(index: number): string;
   getRawDataItem(index: number): unknown;
   indexOfRawIndex(rawIndex: number): number;
+  /** What draws the item, unless it is drawn together with others or not at all. */
+  getItemGraphicEl(index: number): Graphic | null | undefined;
+  /** A layout of all items, such as "points": [x, y] of each, of a line or large scatter chart. */
+  getLayout(key: string): unknown;
   /**
    * The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data as data
    * index 0, named after the series.
@@ -47,13 +51,27 @@ interface ItemData {
   tree?: { root: TreeNode; getNodeByDataIndex(index: number): TreeNode };
 }
 
-interface TreeNode {
+export interface TreeNode {
   parentNode?: TreeNode;
   children: TreeNode[];
+  dataIndex: number;
   getRawIndex(): number;
 }
 
-interface SeriesModel {
+/** A zrender element, with the bounding box of what it draws in its own coordinates. */
+export interface Graphic {
+  getBoundingRect(): Box & { clone(): Box & { applyTransform(matrix: number[]): void } };
+  getComputedTransform(): number[] | null;
+}
+
+export interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SeriesModel {
   componentIndex: number;
   /** The type of series, such as "tree". */
   subType: string;
@@ -61,6 +79,8 @@ interface SeriesModel {
   /** The option of the series, with ECharts' defaults. */
   get(key: string): unknown;
   getRawData(): ItemData;
+  /** The axis of the categories, or of time, or else the x axis, of a series on axes. */
+  getBaseAxis(): { inverse: boolean; isHorizontal?(): boolean } | undefined;
   /** The data of each type, such as the nodes and edges of a graph, after filtering. */
   getAllData(): { data: ItemData }[];
 }
@@ -69,6 +89,8 @@ interface GlobalModel {
   getSeriesCount(): number;
   getSeriesByIndex(index: number): SeriesModel | undefined;
   eachRawSeries(callback: (series: SeriesModel) => void): void;
+  /** The series that a legend does not hide. */
+  eachSeries(callback: (series: SeriesModel) => void): void;
 }
 
 export const modelOf = (chart: ECharts.ECharts) =>
@@ -96,6 +118,20 @@ function itemLabel(data: ItemData, index: number): string {
     valueText(isPlainObject(item) ? item.value : item) ??
     `Item ${data.getRawIndex(index) + 1}`
   );
+}
+
+/** The value of an item, unless its label says it already. */
+export function itemValue(data: ItemData, index: number): string | undefined {
+  const label = itemLabel(data, index);
+  const item = data.getRawDataItem(index);
+  let value = isPlainObject(item) ? item.value : item;
+  // A row of a dataset has the item's name among its values.
+  if (Array.isArray(value)) {
+    const parts = value.filter((part) => String(part) !== label);
+    value = parts.length === 1 ? parts[0] : parts;
+  }
+  const text = valueText(value);
+  return text === label || text === "()" ? undefined : text;
 }
 
 function ownId(item: unknown): string | undefined {
@@ -137,6 +173,11 @@ export class ChartItems {
         );
       }
     });
+  }
+
+  /** The name of the series, when the chart has several. */
+  seriesName(seriesIndex: number): string | undefined {
+    return this.series[seriesIndex]?.prefix.slice(0, -1) || undefined;
   }
 
   /** The item a click hit, as the panel lists it. */

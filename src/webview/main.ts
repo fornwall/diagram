@@ -153,9 +153,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   emptyElement.hidden = true;
   closeLinkMenu();
   // The previous drawing may remain visible while rendering, but its actions are now stale.
-  // That takes the focus from it, so give it back afterwards, to the same node if there is one.
-  const focusedNode = canvas.contains(document.activeElement)
-    ? (document.activeElement?.getAttribute("data-diagram-id") ?? "")
+  // That takes the focus from it, so give it back afterwards: to the same node if there is one, or
+  // to the chart, which keeps its own focused item.
+  const focused = canvas.contains(document.activeElement)
+    ? (document.activeElement as HTMLElement | SVGElement)
     : undefined;
   canvas.inert = true;
   canvas.setAttribute("aria-busy", "true");
@@ -200,11 +201,13 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     clearTimeout(statusTimer);
     renderStatus.textContent = "";
   }
-  if (focusedNode !== undefined && document.activeElement === document.body) {
-    const node =
-      focusedNode &&
-      canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(focusedNode)}"][tabindex]`);
-    (node || canvas).focus({ preventScroll: true });
+  if (focused && document.activeElement === document.body) {
+    const id = focused.getAttribute("data-diagram-id");
+    const node = id
+      ? canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`)
+      : focused;
+    node?.focus({ preventScroll: true });
+    if (document.activeElement === document.body) canvas.focus({ preventScroll: true });
   }
   // The extension forgets the selection and the marks when it sends a diagram, whether or not it
   // renders; the marks of this one, if an agent puts any on it, follow in their own message.

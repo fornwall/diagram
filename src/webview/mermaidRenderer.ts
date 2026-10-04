@@ -5,6 +5,7 @@ import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { describeError, parsableSource } from "./mermaidErrors";
+import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
 import {
   type ItemClickHandler,
@@ -740,34 +741,14 @@ export class MermaidRenderer implements Renderer {
           ?.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null
       );
     }
-    const stops = this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
-    const direction = {
-      ArrowRight: [1, 0],
-      ArrowLeft: [-1, 0],
-      ArrowDown: [0, 1],
-      ArrowUp: [0, -1],
-    }[key];
+    const direction = arrowDirection(key);
     if (!direction) return undefined;
-    const [dx, dy] = direction as [number, number];
-    const center = (element: Element) => {
+    const center = (element: Element): Point => {
       const box = element.getBoundingClientRect();
-      return [box.left + box.width / 2, box.top + box.height / 2] as const;
+      return [box.left + box.width / 2, box.top + box.height / 2];
     };
-    const [x, y] = center(from);
-    // The nearest node ahead, preferring one in line with this one.
-    let best: SVGElement | null = null;
-    let bestScore = Number.POSITIVE_INFINITY;
-    for (const stop of stops) {
-      const [cx, cy] = center(stop);
-      const ahead = (cx - x) * dx + (cy - y) * dy;
-      const aside = Math.abs((cx - x) * dy) + Math.abs((cy - y) * dx);
-      const score = ahead + 2 * aside;
-      if (stop !== from && ahead > 0.5 && score < bestScore) {
-        best = stop;
-        bestScore = score;
-      }
-    }
-    return best;
+    const stops = this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
+    return nearestInDirection(center(from), direction, stops, center) ?? null;
   }
 
   /** Makes the element the drawing's tab stop. */
