@@ -27,6 +27,15 @@ const flowchart: Diagram = {
   title: "Flow",
 };
 
+/** A chart of a file as saved when it is too large to keep: without its source. */
+const withoutSource: DiagramState = {
+  language: "echarts",
+  title: "Sizes",
+  chart: { type: "pie", file: "sizes.tsv" },
+  origin: "tool",
+  editedByUser: false,
+};
+
 /** Waits until the webview tabs have the given labels, as tabs are updated asynchronously. */
 async function webviewTabs(labels: string[]): Promise<vscode.Tab[]> {
   for (;;) {
@@ -457,7 +466,7 @@ suite("panel", function () {
     state.update = async () => {
       throw new Error("Storage is unavailable");
     };
-    const panel = newPanel(state);
+    const { panel } = await newFakePanel(state);
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       assert.strictEqual(panel.current?.source, flowchart.source);
@@ -497,7 +506,12 @@ suite("panel", function () {
         origin: "tool",
         editedByUser: false,
       };
-      const panel = newPanel(new Map([["diagram.state", state]]));
+      const { panel, webview } = await newFakePanel(new Map([["diagram.state", state]]));
+      // The page answers an export to HTML with the colors to draw the chart in.
+      webview.answer = (message) =>
+        message.type === "export"
+          ? { type: "exportTheme", requestId: message.requestId, colors: testColors }
+          : undefined;
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-save-test-"));
       const target = vscode.Uri.file(path.join(directory, "chart.html"));
       const saveDialog = vscode.window.showSaveDialog;
@@ -524,8 +538,6 @@ suite("panel", function () {
           }
           return false;
         };
-        assert.ok(state.source);
-        assert.ok((await panel.render({ ...state, source: state.source }, "tool")).ok);
         await panel.exportDiagram();
         const message = await reported.promise;
         assert.ok(fs.statSync(target.fsPath).size > 500_000);
@@ -545,7 +557,7 @@ suite("panel", function () {
   }
 
   test("a pick ends when another pick, a new diagram or cancellation replaces it", async () => {
-    const panel = newPanel();
+    const { panel } = await newFakePanel();
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
       const first = pick(panel);
@@ -571,7 +583,7 @@ suite("panel", function () {
   });
 
   test("a cancelled pick leaves an existing pick active", async () => {
-    const panel = newPanel();
+    const { panel } = await newFakePanel();
     const cancellation = new vscode.CancellationTokenSource();
     cancellation.cancel();
     try {
@@ -668,38 +680,16 @@ suite("panel", function () {
     }
   });
 
-  test("a large chart of a file is saved without its option, to be refreshed", async () => {
-    const values = new Map<string, unknown>();
-    const panel = newPanel(values);
-    const option = JSON.stringify({ series: [{ type: "pie", data: [{ name: "A", value: 1 }] }] });
+  test("a chart restored without its option, as a large one is saved, waits for Refresh", async () => {
+    const { panel } = await newFakePanel(new Map([["diagram.state", withoutSource]]));
     try {
-      const outcome = await panel.render(
-        {
-          language: "echarts",
-          source: option + " ".repeat(1_000_000),
-          title: "Sizes",
-          chart: { type: "pie", file: "sizes.tsv" },
-        },
-        "tool",
-      );
-      assert.ok(outcome.ok);
-      const saved = values.get("diagram.state") as DiagramState;
-      assert.strictEqual(saved.source, undefined);
-      assert.strictEqual(saved.title, "Sizes");
+      assert.strictEqual(panel.current?.title, "Sizes");
+      assert.match(panel.describeForModel() ?? "", /Not drawn.*press Refresh/);
+      const picking = await pick(panel);
+      assert.ok(!picking.picked && /too large to keep/.test(picking.reason));
+      assert.ok((await panel.render(flowchart, "tool")).ok);
     } finally {
       panel.dispose();
-    }
-
-    const restored = newPanel(values);
-    try {
-      assert.strictEqual(restored.current?.title, "Sizes");
-      restored.show();
-      assert.match(restored.describeForModel() ?? "", /Not drawn.*press Refresh/);
-      const picking = await pick(restored);
-      assert.ok(!picking.picked && /too large to keep/.test(picking.reason));
-      assert.ok((await restored.render(flowchart, "tool")).ok);
-    } finally {
-      restored.dispose();
     }
   });
 
@@ -1123,11 +1113,18 @@ suite("panel", function () {
   });
 
   test("marking reports the ids the diagram has no node for", async () => {
-    const panel = newPanel();
+    const { panel, webview } = await newFakePanel();
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "test",
+            nodeIds: ["A", "B"],
+          }
+        : undefined;
     try {
       assert.ok((await panel.render(flowchart, "tool")).ok);
-      const drawn = panel.drawnIds;
-      assert.ok(drawn?.includes("A") && drawn.includes("B"), JSON.stringify(drawn));
       const outcome = panel.annotate({
         marks: [
           { id: "A", kind: "good" },
@@ -1243,45 +1240,130 @@ suite("panel", function () {
     }
   });
 
-  test("annotate says why there is nothing to mark", async () => {
-    const panel = newPanel();
+  test("annotate and pickNodes say why there is nothing to mark or pick", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const mark = () => panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
     try {
-      const empty = panel.annotate({ marks: [], dim: false });
-      assert.ok(!empty.ok && /Render one with diagram_render/.test(empty.reason));
-
+      for (const nothing of [mark(), await pick(panel)]) {
+        assert.match(JSON.stringify(nothing), /no diagram.*Render one with diagram_render/i);
+      }
       const broken = { ...flowchart, source: "flowchart TD\n  A --> --> B[" };
-      assert.ok(!(await panel.render(broken, "tool")).ok);
-      const outcome = panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
-      assert.ok(!outcome.ok);
-      assert.match(outcome.reason, /fails to render, so there is nothing to mark/);
+      // A pick that starts before the render fails ends when it does.
+      const rendering = panel.render(broken, "tool");
+      const waiting = pick(panel);
+      await webview.finishRender("Parse error");
+      assert.deepStrictEqual(await rendering, { ok: false, kind: "invalid", error: "Parse error" });
+      for (const failed of [await waiting, await pick(panel)]) {
+        assert.ok(!failed.picked && /fails to render/.test(failed.reason), JSON.stringify(failed));
+      }
+      const outcome = mark();
+      assert.ok(!outcome.ok && /fails to render, so there is nothing to mark/.test(outcome.reason));
     } finally {
       panel.dispose();
     }
   });
 
-  test("pickNodes says why there is nothing to pick", async () => {
-    const panel = newPanel();
+  test("exporting says why there is nothing to export", async () => {
+    const warn = vscode.window.showWarningMessage;
+    const warnings: string[] = [];
+    vscode.window.showWarningMessage = async (message: string) => {
+      warnings.push(message);
+      return undefined;
+    };
+    const { panel, webview } = await newFakePanel();
+    const restored = await newFakePanel(new Map([["diagram.state", withoutSource]]));
     try {
-      const empty = await pick(panel);
-      assert.ok(!empty.picked && /Render one with diagram_render/.test(empty.reason));
-
-      const outcome = await panel.render(
-        { ...flowchart, source: "flowchart TD\n  A --> --> B[" },
-        "tool",
+      await panel.exportDiagram();
+      webview.nextRender((render) =>
+        webview.receive({ type: "renderError", requestId: render.requestId, message: "Oops" }),
       );
-      assert.ok(!outcome.ok && outcome.kind === "invalid");
-      const broken = await pick(panel);
-      assert.ok(!broken.picked && /fails to render/.test(broken.reason), JSON.stringify(broken));
-
-      // A pick that starts before the render fails ends when it does.
-      const rendering = panel.render(
-        { ...flowchart, source: "flowchart TD\n  C --> --> D[" },
-        "tool",
-      );
-      const waiting = await pick(panel);
-      assert.ok(!waiting.picked && /fails to render/.test(waiting.reason), JSON.stringify(waiting));
-      assert.ok(!(await rendering).ok);
+      assert.ok(!(await panel.render(flowchart, "tool")).ok);
+      await panel.exportDiagram();
+      await restored.panel.exportDiagram();
+      assert.deepStrictEqual(warnings, [
+        "Open or draw a diagram before exporting it.",
+        "There is nothing to export, as the diagram fails to render: Oops",
+        "Press Refresh to draw the chart again, then export it.",
+      ]);
     } finally {
+      vscode.window.showWarningMessage = warn;
+      panel.dispose();
+      restored.panel.dispose();
+    }
+  });
+
+  test("asks @diagram about the diagrams it drew, and keeps the selection if chat fails", async () => {
+    const { panel, webview } = await newFakePanel();
+    const execute = vscode.commands.executeCommand;
+    const showError = vscode.window.showErrorMessage;
+    const queries: string[] = [];
+    const errors: string[] = [];
+    let chatFails = false;
+    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+      if (command !== "workbench.action.chat.open") return execute(command, ...args);
+      if (chatFails) throw new Error("Chat is disabled.");
+      queries.push((args[0] as { query: string }).query);
+    }) as typeof execute;
+    vscode.window.showErrorMessage = async (message: string) => {
+      errors.push(message);
+      return undefined;
+    };
+    const ask = () => webview.receive({ type: "ask", text: "Why?", nodes: [] });
+    try {
+      for (const origin of ["tool", "participant"] as const) {
+        assert.ok((await panel.render(flowchart, origin)).ok);
+        await ask();
+      }
+      assert.deepStrictEqual(queries, [
+        "Regarding the diagram: Why?",
+        "@diagram Regarding the diagram: Why?",
+      ]);
+      const nodes = [{ id: "A", label: "Parser" }];
+      await webview.receive({
+        type: "selectionChanged",
+        requestId: webview.render.requestId,
+        nodes,
+      });
+      webview.sent.length = 0;
+      chatFails = true;
+      await ask();
+      assert.deepStrictEqual(errors, ["Could not send the request to chat: Chat is disabled."]);
+      assert.deepStrictEqual(webview.sent, []);
+      assert.match(panel.describeForModel() ?? "", /selected these nodes in the panel: "Parser"/);
+    } finally {
+      vscode.commands.executeCommand = execute;
+      vscode.window.showErrorMessage = showError;
+      panel.dispose();
+    }
+  });
+
+  test("chart options and chart updates need a chart made from data", async () => {
+    const { panel, webview } = await newFakePanel();
+    const information = vscode.window.showInformationMessage;
+    const messages: string[] = [];
+    vscode.window.showInformationMessage = async (message: string) => {
+      messages.push(message);
+      return undefined;
+    };
+    const token = new vscode.CancellationTokenSource().token;
+    try {
+      for (const drawn of [false, true]) {
+        if (drawn) assert.ok((await panel.render(flowchart, "tool")).ok);
+        webview.sent.length = 0;
+        panel.toggleChartOptions();
+        assert.deepStrictEqual(webview.sent, []);
+        await assert.rejects(
+          panel.updateChart({ limit: 2 }, token),
+          /^Error: The current diagram is not a generated chart\. Create one with diagram_chart first\.$/,
+        );
+      }
+      assert.deepStrictEqual(
+        messages,
+        Array(2).fill("Chart Options is available for charts created from data."),
+      );
+    } finally {
+      vscode.window.showInformationMessage = information;
       panel.dispose();
     }
   });
