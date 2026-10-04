@@ -177,12 +177,8 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
     });
     return;
   }
+  // The columns, and with them the axis types, are read once for every facet.
   const type = axes[0]?.type;
-  if (!axes.every((axis) => axis.type === type)) {
-    throw new Error(
-      "Facets inferred different axis types. Specify consistent labelColumn and valueColumns, or use independent facetScales.",
-    );
-  }
   let minimum = Infinity;
   let maximum = -Infinity;
   let minimumTime: unknown;

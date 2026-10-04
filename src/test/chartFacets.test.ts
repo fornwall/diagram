@@ -170,6 +170,16 @@ suite("chart facets", () => {
     );
   });
 
+  test("facets that alone would read their labels differently share one axis type", () => {
+    // Alone, "api" reads as dates and "worker" as categories.
+    const data = "service,when,ms\napi,2026-01-01,2\napi,2026-01-02,3\nworker,soon,30";
+    const option = build(data, { type: "line" });
+    assert.deepStrictEqual(
+      option.xAxis.map((axis: Option) => axis.type),
+      ["category", "category"],
+    );
+  });
+
   test("shared time bounds use the viewer's timezone for unzoned dates", () => {
     const previousTimezone = process.env.TZ;
     try {
