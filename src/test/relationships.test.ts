@@ -36,6 +36,14 @@ suite("relationships", function () {
     element.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: ${modifier} }));
   })()`);
   const node = (id: string) => `[data-diagram-id="${id}"][tabindex]`;
+  /** Waits until the expression holds in the page, which handles some messages asynchronously. */
+  const until = (expression: string) =>
+    evaluate(`(async () => {
+      for (let i = 0; i < 300 && !(${expression}); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (!(${expression})) throw new Error(${JSON.stringify(`Timed out waiting for ${expression}`)});
+    })()`);
 
   test("selects labeled and parallel edges with authoritative underscore endpoints and stable IDs", async () => {
     const source =
@@ -67,10 +75,9 @@ suite("relationships", function () {
         dim: true,
       }).ok,
     );
-    assert.ok(
-      await evaluate(
-        `new Promise(resolve => setTimeout(() => resolve(document.querySelector('[data-diagram-id="edge:second"][tabindex]').classList.contains('diagram-mark-problem')), 50))`,
-      ),
+    // The page draws marks in turn with renders.
+    await until(
+      `document.querySelector('[data-diagram-id="edge:second"][tabindex]').classList.contains('diagram-mark-problem')`,
     );
     assert.strictEqual(
       await evaluate(
@@ -151,7 +158,7 @@ suite("relationships", function () {
     assert.match(panel.describeForModel() ?? "", /message; from: B; to: A/);
     const token = new vscode.CancellationTokenSource();
     const picking = panel.pickNodes("Which message?", false, token.token);
-    await evaluate("new Promise(resolve => setTimeout(resolve, 50))");
+    await until("document.querySelector('.picking')");
     await click(node(ids[3] ?? ""));
     const result = await picking;
     assert.ok(result.picked);

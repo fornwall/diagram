@@ -1317,34 +1317,6 @@ suite("charts", () => {
     );
   });
 
-  test("grouped and timed charts render in ECharts", async function () {
-    this.timeout(20_000);
-    const panel = newPanel();
-    try {
-      const charts: [ChartType, ChartSpec][] = [
-        ["bar", chart("bar", { aggregate: "count" })],
-        ["line", chart("line", { aggregate: "sum" })],
-        ["scatter", chart("scatter")],
-        ["scatter", chart("scatter", { aggregate: "count" })],
-        ["horizontalBar", chart("horizontalBar")],
-      ];
-      for (const [type, spec] of charts) {
-        const source = JSON.stringify(build(spec, "date,n\n2026-01-02,3\n2026-01-02,5"));
-        const outcome = await panel.render({ language: "echarts", source, title: type }, "tool");
-        assert.deepStrictEqual(
-          outcome,
-          {
-            ok: true,
-            diagramType: type === "scatter" ? "scatter" : type === "line" ? "line" : "bar",
-          },
-          type,
-        );
-      }
-    } finally {
-      panel.dispose();
-    }
-  });
-
   test("without text columns, rows are labeled by identifiers, years or their numbers", () => {
     const years = build(chart("bar"), "year,sales\n2023,5\n2024,7");
     assert.deepStrictEqual(years.xAxis.data, ["2023", "2024"]);
@@ -1577,20 +1549,37 @@ suite("charts", () => {
     );
   });
 
-  test("every chart type renders in ECharts", async function () {
+  test("every chart type renders in ECharts, also grouped and on a time axis", async function () {
     // The first render loads the webview and ECharts.
     this.timeout(20_000);
     const panel = newPanel();
     try {
       const negative = "k,x,y\na,-1,3\nb,2,-4\nc,3,5";
       const single = "k,x,y\na,1,2";
-      for (const type of CHART_TYPES) {
-        for (const table of [LANGUAGES, negative, single]) {
-          const option = build(chart(type), table);
-          const source = JSON.stringify(option);
-          const outcome = await panel.render({ language: "echarts", source, title: type }, "tool");
-          assert.deepStrictEqual(outcome, { ok: true, diagramType: option.series[0].type }, type);
-        }
+      const dated = "date,n\n2026-01-02,3\n2026-01-02,5";
+      const charts: (readonly [ChartSpec, DataTable | string])[] = [
+        ...CHART_TYPES.flatMap((type) =>
+          [LANGUAGES, negative, single].map((table) => [chart(type), table] as const),
+        ),
+        // Grouped and on a time axis.
+        [chart("bar", { aggregate: "count" }), dated],
+        [chart("line", { aggregate: "sum" }), dated],
+        [chart("scatter"), dated],
+        [chart("scatter", { aggregate: "count" }), dated],
+        [chart("horizontalBar"), dated],
+      ];
+      for (const [spec, table] of charts) {
+        const option = build(spec, table);
+        const source = JSON.stringify(option);
+        const outcome = await panel.render(
+          { language: "echarts", source, title: spec.type },
+          "tool",
+        );
+        assert.deepStrictEqual(
+          outcome,
+          { ok: true, diagramType: option.series[0].type },
+          spec.type,
+        );
       }
     } finally {
       panel.dispose();

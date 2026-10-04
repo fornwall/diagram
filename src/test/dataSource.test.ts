@@ -96,13 +96,20 @@ suite("dataSource", () => {
       await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MiB/);
     });
 
-    test("stops the processes a command started", async () => {
+    test("stops a cancelled command, and the processes it started", async () => {
       const pidFile = path.join(dir, "pid");
-      await assert.rejects(
-        runCommand(`sleep 30 & echo $! > '${pidFile}'; wait`, token, 300),
-        /timed out/,
+      const source = new vscode.CancellationTokenSource();
+      const running = runCommand(
+        `sleep 30 & echo $! > '${pidFile}.tmp'; mv '${pidFile}.tmp' '${pidFile}'; wait`,
+        source.token,
       );
+      for (let i = 0; i < 500 && !fs.existsSync(pidFile); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      source.cancel();
+      await assert.rejects(running, vscode.CancellationError);
       const pid = Number(fs.readFileSync(pidFile, "utf8"));
+      assert.ok(pid > 0);
       const alive = () => {
         try {
           return process.kill(pid, 0);
@@ -114,12 +121,6 @@ suite("dataSource", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       assert.ok(!alive(), `process ${pid} is still running`);
-    });
-
-    test("stops a command when cancelled", async () => {
-      const source = new vscode.CancellationTokenSource();
-      setTimeout(() => source.cancel(), 50);
-      await assert.rejects(runCommand("sleep 5", source.token), vscode.CancellationError);
     });
   });
 
