@@ -83,6 +83,29 @@ suite("dataSource", () => {
       });
     });
 
+    test("keeps the end of long error output", async () => {
+      await assert.rejects(
+        runCommand(
+          "i=0; while [ $i -lt 2000 ]; do echo 'noise' >&2; i=$((i+1)); done; echo last >&2; exit 2",
+          token,
+        ),
+        (error: Error) => {
+          const output = error.message.split("Its error output:\n")[1] ?? "";
+          assert.match(output, /^…[a-z]*\n(noise\n)*last$/);
+          assert.strictEqual(output.length, 2001);
+          return true;
+        },
+      );
+    });
+
+    test("uses the output of a command that exited, while its background process holds the output open", async () => {
+      const started = Date.now();
+      assert.deepStrictEqual(await runCommand("echo 'a 1'; sleep 30 &", token), {
+        output: "a 1\n",
+      });
+      assert.ok(Date.now() - started < 5000);
+    });
+
     test("fails when a command prints nothing", async () => {
       await assert.rejects(
         runCommand("echo oops >&2; exit 3", token),
