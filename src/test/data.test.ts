@@ -667,6 +667,16 @@ suite("data", () => {
       ["y", null],
     ]);
     assert.deepStrictEqual(parse("|a|b|\n|-|-|\n||1|").rows, [[null, 1]]);
+    // Emphasis or code around a whole cell, but not around parts of it.
+    assert.deepStrictEqual(
+      parse("| a | b |\n|---|---|\n| **Total** | **12** |\n| `x` and `y` | `3` |\n| *a*b* | *4* |")
+        .rows,
+      [
+        ["Total", 12],
+        ["`x` and `y`", 3],
+        ["*a*b*", 4],
+      ],
+    );
     assert.deepStrictEqual(parse("ts|1200\ncss|300").rows, [
       ["ts", 1200],
       ["css", 300],

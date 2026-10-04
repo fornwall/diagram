@@ -254,6 +254,9 @@ const TABLE_FOOTER = /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*)$/
 /** A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM. */
 const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\|/;
 
+/** Markdown emphasis or code around a whole cell, as in "**Total**" or "`12`". */
+const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
+
 /**
  * Splits a table with "|" between cells, as in Markdown, printed by psql and mysql, or by sqlite3
  * and psql -A without spaces. A leading and trailing pipe are optional.
@@ -265,7 +268,7 @@ function splitPipes(lines: string[]): string[][] {
       const cells = line.trim().split(PIPE);
       if (cells.length > 1 && cells[0] === "") cells.shift();
       if (cells.length > 1 && cells.at(-1) === "") cells.pop();
-      return cells.map((cell) => cell.replaceAll("\\|", "|"));
+      return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
     });
 }
 
