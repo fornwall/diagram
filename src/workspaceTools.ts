@@ -415,7 +415,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       const lineBreaks = /\r\n|\r|\n/g;
       let line = 1;
       let lineStart = 0;
-      let fileHeader = false;
+      let fileMatched = false;
       for (let match = needle.exec(text); match; match = needle.exec(text)) {
         if (matches >= max) {
           stopped = `it reached ${plural(max, "match", "matches")}`;
@@ -436,23 +436,19 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
           (start > lineStart && /\S/.test(text.slice(lineStart, start)) ? "…" : "") +
           text.slice(start, end) +
           (end < lineEnd ? "…" : "");
-        const entry = [
-          ...(fileHeader
-            ? []
-            : [`${displayPath(uri, roots)}${content.unsaved ? " (unsaved changes)" : ""}`]),
-          `  ${line}: ${preview}`,
-        ];
-        outputChars += entry.join("\n").length + 1;
+        const found = `  ${line}: ${preview}`;
+        // The file's first match comes under its path.
+        const unsaved = content.unsaved ? " (unsaved changes)" : "";
+        const entry = fileMatched ? found : `${displayPath(uri, roots)}${unsaved}\n${found}`;
+        outputChars += entry.length + 1;
         if (outputChars > MAX_OUTPUT_CHARS) {
           stopped = "its output reached the size limit";
           break search;
         }
-        output.push(...entry);
+        output.push(entry);
         matches++;
-        if (!fileHeader) {
-          fileHeader = true;
-          matchedFiles++;
-        }
+        if (!fileMatched) matchedFiles++;
+        fileMatched = true;
         if (!newline) break;
         line++;
         lineStart = newline.index + newline[0].length;
