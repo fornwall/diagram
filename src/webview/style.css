@@ -441,6 +441,11 @@ input:focus {
   vertical-align: top;
 }
 
+/* Mermaid sizes an HTML label to its line boxes, which formulas draw beyond: show them whole. */
+#diagram foreignObject {
+  overflow: visible;
+}
+
 #diagram .diagram-node {
   cursor: pointer;
 }

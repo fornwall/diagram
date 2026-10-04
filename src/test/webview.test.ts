@@ -1510,6 +1510,31 @@ suite("webview", function () {
     ]);
   });
 
+  test("shows formulas whole, beyond the boxes Mermaid sizes to their line boxes", async () => {
+    // Italic letters and limits draw beyond those boxes, which would clip them.
+    assert.ok((await render({ source: "sequenceDiagram\n  A->>B: $$\\sum_{i=1}^{n} x_i$$" })).ok);
+    const overflow = await evaluate(`(async () => {
+      const shown = getComputedStyle(document.querySelector("#diagram foreignObject")).overflow;
+      const handle = document.getElementById("drag-out");
+      handle.dispatchEvent(new PointerEvent("pointerenter"));
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        const image = dataTransfer.getData("image/svg+xml");
+        if (!image) continue;
+        const host = document.createElement("div");
+        host.innerHTML = image;
+        document.body.append(host);
+        const exported = Array.from(host.querySelectorAll("foreignObject"), box => getComputedStyle(box).overflow);
+        host.remove();
+        return {shown, exported};
+      }
+      throw new Error("The diagram image was not prepared.");
+    })()`);
+    assert.deepStrictEqual(overflow, { shown: "visible", exported: ["visible"] });
+  });
+
   test("keeps Mermaid image export separate from an incoming render", async () => {
     assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
     assert.deepStrictEqual(

@@ -49,6 +49,10 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
   // application that reads SVG draws.
   for (const element of svg.querySelectorAll("switch > foreignObject")) element.remove();
+  // Formulas draw beyond the boxes that Mermaid sizes to their line boxes, as in the panel.
+  for (const element of svg.querySelectorAll("foreignObject")) {
+    element.setAttribute("overflow", "visible");
+  }
   // Remove where links lead, from their targets and the panel's tooltips that name them, keeping
   // the diagram's own tooltips.
   for (const title of svg.querySelectorAll("title.diagram-link")) {
