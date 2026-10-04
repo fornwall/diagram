@@ -204,16 +204,24 @@ export async function promptMessages(
   return { messages, notice: leftOutNotice(attachments) };
 }
 
-/** Which attachments were left out, grouped by reason. */
+/** Which attachments were left out, grouped by reason, in Markdown. */
 function leftOutNotice(attachments: Attachment[]): string | undefined {
   const leftOut = attachments.flatMap((attachment) =>
     "error" in attachment && !attachment.explorable ? [attachment] : [],
   );
   const reasons = [...Map.groupBy(leftOut, ({ error }) => error)].map(
     ([error, group]) =>
-      `Left out ${group.map(({ name }) => name).join(", ")}: ${error.replace(/[^.]$/, "$&.")}`,
+      `Left out ${group.map(({ name }) => escapeMarkdown(name)).join(", ")}: ${escapeMarkdown(error.replace(/[^.]$/, "$&."))}`,
   );
   return reasons.length > 0 ? reasons.join(" ") : undefined;
+}
+
+/**
+ * Text, such as a file name, to show as is within a line of Markdown. Unlike
+ * `MarkdownString.appendText`, this keeps spaces, as chat history gives the model the Markdown.
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_~[\]<>&$]/g, "\\$&");
 }
 
 /**

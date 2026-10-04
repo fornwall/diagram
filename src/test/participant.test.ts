@@ -414,7 +414,10 @@ suite("participant", function () {
     const panel = newPanel();
     try {
       const gaveUp = await ask(panel, [[text(invalid)], [text("I can't fix it.")]]);
-      assert.match(gaveUp.shown, /failed to render: .*Edit source/s);
+      assert.match(
+        gaveUp.shown,
+        /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*Edit source/,
+      );
       assert.strictEqual(gaveUp.result?.metadata?.source, "flowchart TD\n  A --> --> B[");
 
       const keepsFailing = await ask(panel, [
@@ -425,6 +428,25 @@ suite("participant", function () {
       ]);
       assert.strictEqual(keepsFailing.sent.length, 3);
       assert.match(keepsFailing.shown, /failed to render: .*Edit source/s);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("shows a render error as Markdown, with its source excerpt in a code block", async () => {
+    const panel = newPanel();
+    try {
+      const broken = text('```echarts\n{"title": {"text": "*a* <b>"}, "series": [1 2]}\n```');
+      const { shown } = await ask(panel, [[broken], [broken], [broken]]);
+      assert.ok(
+        shown.endsWith(
+          'The chart failed to render: The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n\n' +
+            '```\n1 | {"title": {"text": "*a* <b>"}, "series": [1 2]}\n' +
+            "  |                                             ^\n```\n\n" +
+            "You can fix it with **Edit source** in the diagram panel.",
+        ),
+        shown,
+      );
     } finally {
       panel.dispose();
     }
@@ -959,7 +981,7 @@ suite("participant", function () {
     try {
       const { result, sent, shown } = await ask(panel, [[text("Cannot read that file.")]], {
         references: [
-          { id: "file", value: vscode.Uri.file("/unreadable.csv") },
+          { id: "file", value: vscode.Uri.file("/un*read_able <x> [1].csv") },
           { id: "text", value: "Chart the file when available" },
         ],
       });
@@ -968,12 +990,13 @@ suite("participant", function () {
       assert.strictEqual(attached?.length, 2);
       assert.match(
         attached?.[1] ?? "",
-        /unreadable\.csv, which could not be read: Permission denied/,
+        /un\*read_able <x> \[1\]\.csv, which could not be read: Permission denied/,
       );
       assert.match(attached?.[0] ?? "", /Chart the file when available/);
-      assert.match(
+      // Markdown, with the file name shown as is.
+      assert.strictEqual(
         shown,
-        /^Left out \S*unreadable\.csv: Permission denied\.\n\nCannot read that file\.$/,
+        `${String.raw`Left out /un\*read\_able \<x\> \[1\].csv: Permission denied.`}\n\nCannot read that file.`,
       );
     } finally {
       vscode.workspace.openTextDocument = open;

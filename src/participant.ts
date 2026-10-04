@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
+import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import { unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
-import { fitToolResults, promptMessages } from "./prompt";
+import { escapeMarkdown, fitToolResults, promptMessages } from "./prompt";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
@@ -149,8 +149,12 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         };
       }
       if (failure) {
+        // As in the panel: details after the first line, like a source excerpt with a caret, in a
+        // fixed font.
+        const [summary = "", ...details] = failure.error.split("\n");
+        const excerpt = details.length > 0 ? `\n\n${codeFence(details.join("\n"))}` : "";
         stream.markdown(
-          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${failure.error}\n\nYou can fix it with **Edit source** in the diagram panel.`,
+          `\n\nThe ${diagramNoun(failure.block.language)} failed to render: ${escapeMarkdown(summary)}${excerpt}\n\nYou can fix it with **Edit source** in the diagram panel.`,
         );
         return { metadata: failure.block };
       }
