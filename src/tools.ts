@@ -54,7 +54,7 @@ function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: str
   const firstNewline = trimmed.indexOf("\n");
   const lastNewline = trimmed.lastIndexOf("\n");
   const opening = firstNewline < 0 ? undefined : openingFence(trimmed.slice(0, firstNewline));
-  if (opening && isClosingFence(trimmed.slice(lastNewline + 1), opening.fence)) {
+  if (opening && isClosingFence(trimmed.slice(lastNewline + 1), opening)) {
     source = trimmed.slice(firstNewline + 1, lastNewline);
     language ??= isDiagramLanguage(opening.language) ? opening.language : undefined;
   }

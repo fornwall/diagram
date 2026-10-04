@@ -98,6 +98,17 @@ suite("fences", () => {
     ]);
   });
 
+  test("findDiagramFences closes a block only at a fence indented by less than 4 columns more", () => {
+    // As in CommonMark, an indented fence is content, e.g. in a JavaScript template literal.
+    assert.deepStrictEqual(sources("```echarts\n{}\n    ```\n```\n"), [
+      '0-2 echarts "": "{}\\n    ```"',
+    ]);
+    assert.deepStrictEqual(sources("```mermaid\nA\n\t```\n"), ['0-2 mermaid "": "A\\n\\t```"']);
+    assert.deepStrictEqual(sources("  ```mermaid\n  A\n     ```\n"), ['0-1 mermaid "  ": "A"']);
+    // Only spaces and tabs indent a fence.
+    assert.deepStrictEqual(sources("\u00a0```mermaid\nA\n```\n"), []);
+  });
+
   test("findDiagramFences keeps the indentation of a fence in a list item", () => {
     const markdown = [
       "1. The flow:",

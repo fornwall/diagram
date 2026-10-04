@@ -64,7 +64,7 @@ export async function writeFence(
   if (!opening) {
     return changed;
   }
-  if (lines.some((line) => isClosingFence(line, opening.fence))) {
+  if (lines.some((line) => isClosingFence(line, opening))) {
     return {
       written: false,
       reason: `The ${noun} contains a closing Markdown fence, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,

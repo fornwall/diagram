@@ -80,11 +80,19 @@ function guessMermaidTitle(source: string): string {
   return type ?? "Diagram";
 }
 
-/** Parse a code fence, allowing extra indentation for Markdown list items. */
-export function openingFence(
-  line: string,
-): { indent: string; fence: string; language: string } | undefined {
-  const match = /^(\s*)(`{3,}|~{3,})(.*)$/.exec(line.trimEnd());
+/** An opening code fence: its indentation, its marker and the first word of its info string. */
+export interface OpeningFence {
+  indent: string;
+  fence: string;
+  language: string;
+}
+
+/**
+ * Parses an opening code fence. Unlike CommonMark, which allows up to 3 spaces, any indentation
+ * is accepted, as a fence may sit in a list item.
+ */
+export function openingFence(line: string): OpeningFence | undefined {
+  const match = /^([ \t]*)(`{3,}|~{3,})(.*)$/.exec(line.trimEnd());
   if (!match) {
     return undefined;
   }
@@ -96,21 +104,35 @@ export function openingFence(
   return { indent, fence, language: info.trim().split(/\s/, 1)[0] ?? "" };
 }
 
-/** Whether the line closes a block opened by the given fence: the same character, at least as many. */
-export function isClosingFence(line: string, fence: string): boolean {
-  const trimmed = line.trim();
-  if (trimmed.length < fence.length) return false;
-  // Most lines are source, sometimes megabytes of chart data. Reject at the first differing
-  // character instead of allocating a fence as large as the line just to compare it.
-  for (let index = 0; index < trimmed.length; index++) {
-    if (trimmed[index] !== fence[0]) return false;
+/**
+ * Whether the line closes the block that the opening fence opened: the same character, at least as
+ * many, followed only by spaces or tabs. As in CommonMark, it may be indented by at most 3 columns,
+ * here counted from the opening fence, which may be in a list item.
+ */
+export function isClosingFence(line: string, { indent, fence }: OpeningFence): boolean {
+  const maxIndent = indentWidth(indent) + 3;
+  let column = 0;
+  let index = 0;
+  for (; line[index] === " " || line[index] === "\t"; index++) {
+    column = line[index] === "\t" ? column + 4 - (column % 4) : column + 1;
+    if (column > maxIndent) return false;
   }
-  return true;
+  // Most lines are source, sometimes megabytes of chart data: stop at the first other character.
+  const start = index;
+  while (line[index] === fence[0]) index++;
+  return index - start >= fence.length && /^[ \t]*\r?\n?$/.test(line.slice(index));
+}
+
+/** The columns that indentation spans, with tab stops every 4 columns as in CommonMark. */
+function indentWidth(indent: string): number {
+  let column = 0;
+  for (const char of indent) column = char === "\t" ? column + 4 - (column % 4) : column + 1;
+  return column;
 }
 
 /** Whether an unfinished line may still turn out to open a diagram block. */
 function mayOpenDiagramBlock(partialLine: string): boolean {
-  const [, fence = "", rest = ""] = /^\s*(`+|~+)?(.*)$/s.exec(partialLine) ?? [];
+  const [, fence = "", rest = ""] = /^[ \t]*(`+|~+)?(.*)$/s.exec(partialLine) ?? [];
   if (rest === "") {
     return true;
   }
@@ -133,7 +155,7 @@ export class DiagramBlockFilter {
   /** How much of the current line has already been passed through. */
   private passed = 0;
   /** The code block the text is in, and the diagram it holds if it is a diagram block. */
-  private block: { fence: string; diagram?: DiagramBlock } | undefined;
+  private block: { opening: OpeningFence; diagram?: DiagramBlock } | undefined;
 
   /** Adds a fragment, returning the text that can be shown. */
   push(fragment: string): string {
@@ -181,15 +203,15 @@ export class DiagramBlockFilter {
       const opening = openingFence(line);
       if (opening) {
         // A line that may open a diagram block is held back by push, so none of it was shown.
-        const { fence, language } = opening;
+        const { language } = opening;
         this.block = isDiagramLanguage(language)
-          ? { fence, diagram: { language, source: "" } }
-          : { fence };
+          ? { opening, diagram: { language, source: "" } }
+          : { opening };
       }
       return this.block?.diagram ? "" : shown;
     }
-    const { fence, diagram } = this.block;
-    if (isClosingFence(line, fence)) {
+    const { opening, diagram } = this.block;
+    if (isClosingFence(line, opening)) {
       this.block = undefined;
       const source = diagram?.source.trim();
       if (diagram && source) {

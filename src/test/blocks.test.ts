@@ -15,11 +15,29 @@ function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
 }
 
 suite("blocks", () => {
-  test("closing fences require only matching markers, allowing surrounding whitespace", () => {
-    assert.ok(isClosingFence("\t ````` \r\n", "````"));
-    assert.ok(isClosingFence("\u00a0~~~~\u00a0", "~~~"));
-    for (const line of ["``", "~~~", "``` text", "```~", "` ` `", "x".repeat(1_000_000)]) {
-      assert.ok(!isClosingFence(line, "```"));
+  test("closing fences follow CommonMark: matching markers, indented less than 4 columns", () => {
+    const backticks = { indent: "", fence: "````", language: "" };
+    for (const line of ["````", "   ````` \r\n", "```` \t\n", "````\r"]) {
+      assert.ok(isClosingFence(line, backticks), JSON.stringify(line));
+    }
+    // A fence in a list item closes relative to its own indentation; tabs stop every 4 columns.
+    assert.ok(isClosingFence("      ````", { ...backticks, indent: "    " }));
+    assert.ok(isClosingFence(" \t````", { ...backticks, indent: "  " }));
+    assert.ok(!isClosingFence(" \t````", backticks));
+    for (const line of [
+      "```",
+      "    ````",
+      "\t````",
+      "~~~~",
+      "```` text",
+      "````~",
+      "` ` ` `",
+      // Only spaces and tabs are indentation and trailing whitespace.
+      "\u00a0````",
+      "````\u00a0",
+      "x".repeat(1_000_000),
+    ]) {
+      assert.ok(!isClosingFence(line, backticks), JSON.stringify(line));
     }
   });
 
@@ -196,6 +214,11 @@ suite("blocks", () => {
       { markdown: '````mermaid\nA["```"]\n```\n````\nB', source: 'A["```"]\n```', shown: "B" },
       { markdown: "~~~ mermaid title\nA\n~~~~\nB", source: "A", shown: "B" },
       { markdown: "~~~mermaid\nA\n```\n", shown: "", unterminated: true },
+      // A fence indented by 4 or more columns more than the opening fence is content.
+      { markdown: "```mermaid\nA\n    ```\n```\nB", source: "A\n    ```", shown: "B" },
+      { markdown: "  ```mermaid\nA\n     ```\nB", source: "A", shown: "B" },
+      // Indentation is spaces and tabs only.
+      { markdown: "\u00a0```mermaid\nA\n```\n", shown: "\u00a0```mermaid\nA\n```\n" },
       // A diagram fence inside another code block is just code.
       {
         markdown: "````md\n```mermaid\nA\n```\n````\n",

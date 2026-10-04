@@ -174,6 +174,14 @@ suite("documentDiagram", function () {
     const source = "{ title: { text: `\n```\n` } }";
     assert.ok((await writeFence(binding(document), source)).written);
     assert.strictEqual(document.getText(), `\`\`\`\`echarts\n${source}\n\`\`\`\`\n`);
+
+    // A fence indented by 4 columns more than the block's own is content.
+    const indented = await markdown("```echarts\n{}\n```\n");
+    const nested = "{ title: { text: `\n    ```\n` } }";
+    const written = await writeFence(binding(indented), nested);
+    assert.ok(written.written);
+    assert.strictEqual(written.fence.source, nested);
+    assert.strictEqual(binding(indented).fence.source, nested);
   });
 
   test("writeFence reports rejected workspace edits", async () => {

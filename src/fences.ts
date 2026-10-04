@@ -1,7 +1,7 @@
 // Locate Markdown diagrams for opening and write-back, using the same fence rules as chat.
 
 import type { TextDocument } from "vscode";
-import { type DiagramBlock, isClosingFence, openingFence } from "./blocks";
+import { type DiagramBlock, isClosingFence, type OpeningFence, openingFence } from "./blocks";
 import { isDiagramLanguage, isPlainObject } from "./protocol";
 
 /** A Markdown diagram with zero-based line positions for write-back. */
@@ -15,11 +15,7 @@ export interface DiagramFence extends DiagramBlock {
 }
 
 /** A block being scanned, before its content and its end are known. */
-interface OpenFence {
-  /** The opening marker, which the closing fence must match. */
-  fence: string;
-  language: string;
-  indent: string;
+interface OpenFence extends OpeningFence {
   openingLine: number;
   /** Offset immediately after the opening line's newline. */
   contentStart: number;
@@ -83,7 +79,7 @@ export function findDiagramFences(text: string): DiagramFence[] {
           contentStart: Math.min(text.length, offset + candidateLine.length + 1),
         };
       }
-    } else if (isClosingFence(candidateLine, open.fence)) {
+    } else if (isClosingFence(candidateLine, open)) {
       add(open, offset, index - 1);
       open = undefined;
     }
