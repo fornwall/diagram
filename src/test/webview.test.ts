@@ -9,7 +9,7 @@ import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
 import { newPanel, openWebviewPanel } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
-const MERMAID: Record<string, string> = {
+const MERMAID = {
   "flowchart-v2": "flowchart LR\n  A[Parser] --> B[Checker]",
   sequence: "sequenceDiagram\n  Alice->>Bob: Hello",
   classDiagram: "classDiagram\n  class Parser {\n    +parse() Ast\n  }",

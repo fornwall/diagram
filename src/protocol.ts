@@ -88,7 +88,7 @@ export interface DiagramMark {
 export interface Annotation {
   marks: DiagramMark[];
   /** One line shown above the drawing, e.g. "Step 2 of 3: the request is retried here". */
-  caption?: string;
+  caption?: string | undefined;
   /** Whether what is not marked is faded, so that the marked nodes stand out. */
   dim: boolean;
 }
@@ -138,16 +138,16 @@ export type ToWebview =
       source: string;
       title: string;
       /** When set, a plain click on a node asks this in chat instead of selecting the node. */
-      clickPrompt?: string;
+      clickPrompt?: string | undefined;
       /** Tooltip text by node id. The host holds the actual locations and opens them. */
-      links?: Record<string, string>;
+      links?: Record<string, string> | undefined;
       /** Where the chart's data can be reloaded from, e.g. "file sales.csv" or "command `du -s *`". */
-      refreshFrom?: string;
+      refreshFrom?: string | undefined;
       /** Bound document's display name, shown on the write-back action. */
-      writeTo?: string;
+      writeTo?: string | undefined;
     }
   /** The saved chart omitted its large source; ask the user to refresh its data. */
-  | { type: "needsRefresh"; title: string; refreshFrom?: string }
+  | { type: "needsRefresh"; title: string; refreshFrom?: string | undefined }
   | { type: "clearSelection" }
   /** Replace marks without redrawing; empty marks and no caption clears them. */
   | ({ type: "annotate" } & Annotation)
@@ -171,12 +171,12 @@ export type FromWebview =
       requestId: number;
       diagramType: string;
       /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
-      nodeIds?: string[];
+      nodeIds?: string[] | undefined;
       /** Selectable edges or sequence messages, with authoritative endpoints. */
-      relationships?: DiagramNode[];
-      repeatedNames?: RepeatedName[];
+      relationships?: DiagramNode[] | undefined;
+      repeatedNames?: RepeatedName[] | undefined;
       /** Parts of the source that the rendering leaves out. */
-      warnings?: string[];
+      warnings?: string[] | undefined;
     }
   | { type: "renderError"; requestId: number; message: string }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }

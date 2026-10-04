@@ -314,7 +314,7 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
 /** ECharts' nodes, by name unless another node has the same name, and the links between them. */
 function nodesAndLinks({ nodes, flows }: Graph): {
   data: { id?: string; name: string; depth?: number }[];
-  links: { source?: string; target?: string; value: number }[];
+  links: { source: string | undefined; target: string | undefined; value: number }[];
 } {
   const keys = new Set<string>();
   for (const { source, target } of flows.values()) {

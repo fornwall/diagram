@@ -7,7 +7,7 @@ export interface Hit {
   key: string;
   node: DiagramNode;
   /** The links in the Mermaid source from the part, and the element to show a menu of several at. */
-  links?: { targets: readonly WebLink[]; anchor: Element };
+  links?: { targets: readonly WebLink[]; anchor: Element } | undefined;
 }
 
 /** A link in the Mermaid source, unchecked: a model may have written it. */

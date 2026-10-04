@@ -232,7 +232,7 @@ interface GroupColumn {
   /** A power-of-two scale used only when a mean's running sum would overflow. */
   scale?: number;
   /** Only a median needs to retain all observations. */
-  samples?: number[];
+  samples?: number[] | undefined;
 }
 
 /** Aggregate rows by their labels, preserving the order of each group's first appearance. */

@@ -288,7 +288,7 @@ interface Problem {
   start: number;
   end: number;
   /** What the parser expected instead. */
-  expected?: string[];
+  expected?: string[] | undefined;
   /** A message other than the default "unexpected …". */
   message?: string;
 }

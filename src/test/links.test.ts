@@ -123,15 +123,15 @@ suite("links", () => {
 
   test("linkSelection selects the linked lines, within the document", async () => {
     const document = await vscode.workspace.openTextDocument({ content: "one\ntwo\nthree" });
-    const selection = (line?: number, endLine?: number) => {
-      const range = linkSelection({ file: "x", line, endLine }, document);
+    const selection = (lines: { line?: number; endLine?: number } = {}) => {
+      const range = linkSelection({ file: "x", ...lines }, document);
       return [range.start.line, range.start.character, range.end.line, range.end.character];
     };
     // A link without a line shows the file from the top, with nothing selected.
     assert.deepStrictEqual(selection(), [0, 0, 0, 0]);
-    assert.deepStrictEqual(selection(2), [1, 0, 1, 3]);
-    assert.deepStrictEqual(selection(1, 3), [0, 0, 2, 5]);
+    assert.deepStrictEqual(selection({ line: 2 }), [1, 0, 1, 3]);
+    assert.deepStrictEqual(selection({ line: 1, endLine: 3 }), [0, 0, 2, 5]);
     // A diagram may outlive the file it links to, and name lines it no longer has.
-    assert.deepStrictEqual(selection(9, 12), [2, 0, 2, 5]);
+    assert.deepStrictEqual(selection({ line: 9, endLine: 12 }), [2, 0, 2, 5]);
   });
 });

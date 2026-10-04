@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import { time as echartsTime } from "echarts";
 import { describeTable } from "../chartColumns";
-import { CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
+import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { withChart } from "./echartsModel";
@@ -864,7 +864,7 @@ suite("charts", () => {
   const AMOUNTS = "region,amount\nEU,5\nUS,3\nEU,7\nAS,1\nUS,9";
 
   test("aggregate collapses the rows that share a label", () => {
-    const combined = (how: ChartSpec["aggregate"]) =>
+    const combined = (how: Aggregation) =>
       build(chart("bar", { aggregate: how }), AMOUNTS).series[0].data;
     assert.deepStrictEqual(build(chart("bar", { aggregate: "sum" }), AMOUNTS).xAxis.data, [
       "EU",

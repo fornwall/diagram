@@ -9,7 +9,7 @@ export type ViewMode = "visual" | "split" | "source";
 export interface EditorState {
   view?: ViewMode;
   /** Unapplied edits, and the source they started from. */
-  editor?: { source: string; base: string };
+  editor?: { source: string; base: string } | undefined;
 }
 
 interface Elements {

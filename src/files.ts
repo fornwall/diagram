@@ -73,7 +73,7 @@ function explain(
   code: string | undefined,
   message: string,
   uri: vscode.Uri,
-  hints: Partial<Record<FileErrorCode, string>> = {},
+  hints: Partial<Record<FileErrorCode, string | undefined>> = {},
 ): Error {
   const name =
     uri.scheme === "file" || vscode.workspace.getWorkspaceFolder(uri)
@@ -103,7 +103,7 @@ function explain(
 export function fileError(
   error: unknown,
   uri: vscode.Uri,
-  hints?: Partial<Record<FileErrorCode, string>>,
+  hints?: Partial<Record<FileErrorCode, string | undefined>>,
 ): unknown {
   if (error instanceof vscode.FileSystemError) {
     return explain(error.code, error.message, uri, hints);

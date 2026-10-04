@@ -171,9 +171,9 @@ export interface Columns {
   /** The columns that give it values, at most as many as the chart shows. */
   values: number[];
   /** The separator that splits one label column into levels, as du -a prints paths. */
-  separator?: string;
+  separator?: string | undefined;
   /** How the dates in the label column are written, when they place each point along an axis. */
-  times?: string;
+  times?: string | undefined;
   /** Whether those dates are drawn on a time axis, rather than as the categories "options" asks for. */
   timeAxis: boolean;
 }

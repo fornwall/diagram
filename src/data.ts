@@ -31,7 +31,7 @@ export interface DataTable {
 /** Records of fields, the first of which is the header if `header`, or may be if undefined. */
 export interface Records {
   records: Cell[][];
-  header?: boolean;
+  header?: boolean | undefined;
   /** Whether they are CSV, which usually has a header even when all its columns hold text. */
   csv?: boolean;
   /** The units of columns that the format tells, as ls -l prints sizes in bytes. */

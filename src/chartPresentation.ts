@@ -19,7 +19,7 @@ export interface ChartPresentation {
   baseline: ObjectOption;
   dataHash: string;
   edits: Edit[];
-  blocked?: string;
+  blocked?: string | undefined;
 }
 
 const RECOVERY =

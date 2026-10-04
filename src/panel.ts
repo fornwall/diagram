@@ -64,7 +64,7 @@ type AnnotateOutcome =
       /** Names that several chart items go by, which were not marked. */
       repeated: RepeatedName[];
       /** The ids the marks were checked against, or undefined when the panel does not know them. */
-      ids?: readonly string[];
+      ids: readonly string[] | undefined;
     }
   | { ok: false; reason: string };
 
@@ -79,15 +79,15 @@ export interface Diagram {
   source: string;
   title: string;
   /** When set, a plain click on a node sends this request to chat; see {@link clickToAskQuery}. */
-  clickPrompt?: string;
+  clickPrompt?: string | undefined;
   /** Mermaid node locations. Links take precedence over clickPrompt on a plain click. */
-  links?: NodeLinks;
+  links?: NodeLinks | undefined;
   /** The original data request, retained for generated chart controls and refresh. */
   chart?: ChartSpec;
   /** Generated baseline and manual styling overrides, without a copy of the data. */
-  chartPresentation?: ChartPresentation;
+  chartPresentation?: ChartPresentation | undefined;
   /** Original Markdown block; Apply writes user edits back to it. */
-  document?: DocumentBinding;
+  document?: DocumentBinding | undefined;
 }
 
 export interface DiagramState extends Omit<Diagram, "source"> {
@@ -95,12 +95,12 @@ export interface DiagramState extends Omit<Diagram, "source"> {
    * Large generated chart options are omitted when saving, requiring Refresh after a reload.
    * Manual edits are always kept.
    */
-  source?: string;
+  source?: string | undefined;
   origin: DiagramOrigin;
   /** Set when the user changed the source in the panel after it was last rendered by an agent. */
   editedByUser: boolean;
   /** The last render error, if the current source fails to render. */
-  error?: string;
+  error?: string | undefined;
 }
 
 const RENDER_TIMEOUT_MS = 15_000;

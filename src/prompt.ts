@@ -94,7 +94,7 @@ export async function promptMessages(
   explain: boolean,
   current: string | undefined,
   token: vscode.CancellationToken,
-): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice?: string } | string> {
+): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice: string | undefined } | string> {
   const { model } = request;
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
   const documents = new Map<string, Thenable<vscode.TextDocument>>();
@@ -319,7 +319,7 @@ async function fitTexts<T extends { length: number; shorten: (length: number) =>
   entries: T[],
   room: number,
   tokens: (text: string) => Promise<number>,
-): Promise<{ texts: string[]; left: number; misfit?: T }> {
+): Promise<{ texts: string[]; left: number; misfit: T | undefined }> {
   const sized = await Promise.all(
     entries.map(async (entry) => {
       const text = entry.shorten(entry.length);
@@ -495,7 +495,9 @@ async function readAttachment(
  */
 function imageData(
   value: unknown,
-): { mimeType: string; data: () => Thenable<Uint8Array>; reference?: vscode.Uri } | undefined {
+):
+  | { mimeType: string; data: () => Thenable<Uint8Array>; reference: vscode.Uri | undefined }
+  | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
   }

@@ -152,7 +152,7 @@ suite("markdownDiagrams", function () {
       for (const [language, content] of [
         ["plaintext", "```mermaid\nflowchart TD\n```\n"],
         ["markdown", "# Notes\n\n```ts\nconst x = 1;\n```\n"],
-      ]) {
+      ] as const) {
         const document = await vscode.workspace.openTextDocument({ language, content });
         await vscode.window.showTextDocument(document);
         await vscode.commands.executeCommand("diagram.openAtCursor");

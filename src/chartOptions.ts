@@ -27,7 +27,7 @@ export interface ChartOptionsState {
   columns: Column[];
   rowCount: number;
   edited: boolean;
-  unavailable?: string;
+  unavailable?: string | undefined;
 }
 
 export function chartControls(spec: ChartSpec): ChartControls {

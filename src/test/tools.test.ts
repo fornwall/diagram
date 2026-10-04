@@ -27,14 +27,17 @@ suite("tools", () => {
 
   test("diagram_render reads a source starting with a brace as an ECharts option", () => {
     const tool = new RenderDiagramTool(panel);
-    const message = (source: string, language?: string) =>
-      tool.prepareInvocation({ input: { source, language } }).invocationMessage;
+    const message = (input: { source: string; language?: string }) =>
+      tool.prepareInvocation({ input }).invocationMessage;
     assert.strictEqual(
-      message(' {"title": {"text": "Sales"}, "series": []}'),
+      message({ source: ' {"title": {"text": "Sales"}, "series": []}' }),
       'Rendering chart "Sales"',
     );
-    assert.match(String(message("flowchart LR\n  A --> B")), /^Rendering diagram/);
-    assert.match(String(message('{"series": []}', "mermaid")), /^Rendering diagram/);
+    assert.match(String(message({ source: "flowchart LR\n  A --> B" })), /^Rendering diagram/);
+    assert.match(
+      String(message({ source: '{"series": []}', language: "mermaid" })),
+      /^Rendering diagram/,
+    );
   });
 
   test("diagram_render takes a source in a Markdown fence, with a longer closing marker", async () => {

@@ -56,7 +56,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 interface ChartPlan {
   columns: Columns;
   notes: string[];
-  bytePower?: number;
+  bytePower?: number | undefined;
 }
 
 /** Infer the shared columns and units once, rather than rescanning all rows for every facet. */

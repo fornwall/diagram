@@ -254,17 +254,15 @@ suite("chart presentation", () => {
   });
 
   test("removing facets does not turn a single axis into a partial array", () => {
-    const chart: ChartSpec = { type: "bar", data: "unused", facetColumn: "service" };
+    const unfaceted: ChartSpec = { type: "bar", data: "unused" };
+    const chart: ChartSpec = { ...unfaceted, facetColumn: "service" };
     const table = parseTable("service,day,latency\na,Mon,1\nb,Tue,2");
     const option = buildChart(chart, table).option as Option;
     const baseline = captureChartPresentation(JSON.stringify(option));
     option.yAxis[0].axisLabel = { formatter: "{value} ms" };
     const presentation = captureChartPresentation(JSON.stringify(option), baseline);
-    const single = rebuildChart({ ...chart, facetColumn: undefined }, table, presentation);
-    assert.deepStrictEqual(
-      single.option.yAxis,
-      buildChart({ ...chart, facetColumn: undefined }, table).option.yAxis,
-    );
+    const single = rebuildChart(unfaceted, table, presentation);
+    assert.deepStrictEqual(single.option.yAxis, buildChart(unfaceted, table).option.yAxis);
     assert.strictEqual(single.presentation.blocked, undefined);
   });
 

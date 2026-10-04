@@ -250,7 +250,10 @@ function showRefresh(from: string | undefined): void {
 }
 
 /** Shows the title of a chart that was not kept, and asks to draw it again. */
-function showNeedsRefresh({ title, refreshFrom }: { title: string; refreshFrom?: string }): void {
+function showNeedsRefresh({
+  title,
+  refreshFrom,
+}: Extract<ToWebview, { type: "needsRefresh" }>): void {
   titleElement.textContent = title;
   showRefresh(refreshFrom);
   emptyElement.textContent =
