@@ -49,6 +49,26 @@ async function webviewTabs(labels: string[]): Promise<vscode.Tab[]> {
   }
 }
 
+/** Holds back the timers of the given delay, until the test expires them. */
+function holdTimers(delay: number): { expire(): void; restore(): void } {
+  const set = globalThis.setTimeout;
+  const held: (() => void)[] = [];
+  globalThis.setTimeout = ((callback: () => void, ms?: number, ...args: unknown[]) => {
+    if (ms !== delay) return set(callback, ms, ...args);
+    held.push(callback);
+    // A handle for clearTimeout, which then has nothing to clear.
+    return set(() => {}, 0);
+  }) as typeof setTimeout;
+  return {
+    expire: () => {
+      for (const callback of held.splice(0)) callback();
+    },
+    restore: () => {
+      globalThis.setTimeout = set;
+    },
+  };
+}
+
 function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().token) {
   return panel.pickNodes("Which part?", false, token);
 }
@@ -1405,6 +1425,52 @@ suite("panel", function () {
       );
     } finally {
       vscode.window.showInformationMessage = information;
+      panel.dispose();
+    }
+  });
+
+  test("a render or an export that the page never answers ends after 15 seconds", async () => {
+    const { panel, webview } = await newFakePanel();
+    const draw = webview.answer;
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    const quickPick = vscode.window.showQuickPick;
+    const save = vscode.window.showSaveDialog;
+    const showError = vscode.window.showErrorMessage;
+    const errors: string[] = [];
+    vscode.window.showQuickPick = (async () => ({
+      label: "SVG image",
+      format: "svg",
+    })) as unknown as typeof quickPick;
+    vscode.window.showSaveDialog = async () => assert.fail("Nothing was exported to save.");
+    vscode.window.showErrorMessage = async (message: string) => {
+      errors.push(message);
+      return undefined;
+    };
+    try {
+      const rendering = panel.render(flowchart, "tool");
+      timers.expire();
+      assert.deepStrictEqual(await rendering, {
+        ok: false,
+        kind: "unavailable",
+        error: "The diagram panel did not respond within 15 seconds.",
+      });
+      webview.answer = draw;
+      assert.ok((await panel.render(flowchart, "tool")).ok);
+      const exporting = panel.exportDiagram();
+      while (!webview.sent.some((message) => message.type === "export")) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      timers.expire();
+      await exporting;
+      assert.deepStrictEqual(errors, [
+        "Could not export the diagram: The diagram panel did not finish exporting within 15 seconds. Try again or choose SVG.",
+      ]);
+    } finally {
+      timers.restore();
+      vscode.window.showQuickPick = quickPick;
+      vscode.window.showSaveDialog = save;
+      vscode.window.showErrorMessage = showError;
       panel.dispose();
     }
   });
