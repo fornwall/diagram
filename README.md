@@ -41,9 +41,9 @@ Diagrams follow your VS Code theme. Agents can ask you to pick items and annotat
 
 ## Edit Markdown diagrams
 
-Click **Open in Diagram** above a `mermaid` or `echarts` code block, or use **Diagram: Open Diagram at Cursor** from the Command Palette or editor context menu. Set `diagram.codeLens.enabled` to `false` to hide the inline actions.
+Click **Open in Diagram** above a `mermaid` or `echarts` code block, also in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or editor context menu. Set `diagram.codeLens.enabled` to `false` to hide the inline actions.
 
-**Apply** renders your edits and writes them to the original block, preserving fences, indentation and surrounding text. Failed renders leave the file unchanged and keep your edits in the panel. Writes can be undone in VS Code. If the block changed or cannot be identified safely, reopen it.
+**Apply** renders your edits and writes them to the original block, preserving fences, block quote markers, indentation and surrounding text. Failed renders leave the file unchanged and keep your edits in the panel. Writes can be undone in VS Code. If the block changed or cannot be identified safely, reopen it.
 
 If an agent replaces the diagram, **Write to** applies its version after confirmation. Switching between Mermaid and ECharts detaches it from the original block.
 

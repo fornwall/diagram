@@ -6,16 +6,35 @@ import {
   findDocumentDiagramFences,
   isDiagramFence,
   relocateFence,
+  rewriteFence,
 } from "../fences";
 
 /**
- * The diagrams in a document, as "<opening fence line>-<last content line> <language> <indentation>".
+ * The diagrams in a document, as "<opening fence line>-<last content line> <language> <prefix>".
  */
 function sources(markdown: string): string[] {
   return findDiagramFences(markdown).map(
-    ({ language, source, openingLine, lastLine, indent }) =>
-      `${openingLine}-${lastLine} ${language} ${JSON.stringify(indent)}: ${JSON.stringify(source)}`,
+    ({ language, source, openingLine, lastLine, prefix }) =>
+      `${openingLine}-${lastLine} ${language} ${JSON.stringify(prefix)}: ${JSON.stringify(source)}`,
   );
+}
+
+/** The document after writing `source` into its first diagram, or why it cannot be written. */
+function rewritten(markdown: string, source: string, eol = "\n"): string | number | undefined {
+  const [fence] = findDiagramFences(markdown);
+  assert.ok(fence, markdown);
+  const rewrite = rewriteFence(markdown, fence, source, eol);
+  if (!rewrite || !("fence" in rewrite)) {
+    return rewrite?.endingLine;
+  }
+  const written = markdown.slice(0, rewrite.start) + rewrite.text + markdown.slice(rewrite.end);
+  // What was written is what is read back, at the same place.
+  assert.deepStrictEqual(
+    findDiagramFences(written).find((found) => found.openingLine === fence.openingLine),
+    rewrite.fence,
+  );
+  assert.strictEqual(rewrite.fence.source, source.replace(/^[^\S\n]+$/gm, ""));
+  return written;
 }
 
 suite("fences", () => {
@@ -70,9 +89,9 @@ suite("fences", () => {
         source: "flowchart TD\n  A --> B",
         openingLine: 2,
         lastLine: 4,
-        indent: "",
+        prefix: "",
       },
-      { language: "echarts", source: '{"series": []}', openingLine: 7, lastLine: 8, indent: "" },
+      { language: "echarts", source: '{"series": []}', openingLine: 7, lastLine: 8, prefix: "" },
     ]);
   });
 
@@ -98,15 +117,42 @@ suite("fences", () => {
     ]);
   });
 
-  test("findDiagramFences closes a block only at a fence indented by less than 4 columns more", () => {
+  test("findDiagramFences closes a block only at a fence indented by less than 4 columns", () => {
     // As in CommonMark, an indented fence is content, e.g. in a JavaScript template literal.
     assert.deepStrictEqual(sources("```echarts\n{}\n    ```\n```\n"), [
       '0-2 echarts "": "{}\\n    ```"',
     ]);
     assert.deepStrictEqual(sources("```mermaid\nA\n\t```\n"), ['0-2 mermaid "": "A\\n\\t```"']);
-    assert.deepStrictEqual(sources("  ```mermaid\n  A\n     ```\n"), ['0-1 mermaid "  ": "A"']);
+    // The opening fence's indentation is removed from the content, not from the closing fence.
+    assert.deepStrictEqual(sources("  ```mermaid\n  A\n   ```\n"), ['0-1 mermaid "  ": "A"']);
+    assert.deepStrictEqual(sources("  ```mermaid\n  A\n    ```\n"), [
+      '0-2 mermaid "  ": "A\\n  ```"',
+    ]);
     // Only spaces and tabs indent a fence.
     assert.deepStrictEqual(sources("\u00a0```mermaid\nA\n```\n"), []);
+  });
+
+  test("findDiagramFences skips fences in indented code, paragraphs and HTML blocks", () => {
+    // Indented by 4 columns, outside a list item, a fence is indented code.
+    assert.deepStrictEqual(sources("    ```mermaid\n    A\n    ```\n"), []);
+    assert.deepStrictEqual(sources("\t```mermaid\n\tA\n\t```\n"), []);
+    // Indented code cannot interrupt a paragraph, so this continues it.
+    assert.deepStrictEqual(sources("Text\n    ```mermaid\n    A\n    ```\n"), []);
+    // An HTML block runs to a blank line, or a comment to its end, with Markdown inside left alone.
+    assert.deepStrictEqual(sources("<details>\n```mermaid\nA\n```\n</details>\n"), []);
+    assert.deepStrictEqual(sources("<!--\n\n```mermaid\nA\n```\n-->\n"), []);
+    assert.deepStrictEqual(
+      sources("<details>\n<summary>Flow</summary>\n\n```mermaid\nA\n```\n\n</details>\n"),
+      ['3-4 mermaid "": "A"'],
+    );
+    assert.deepStrictEqual(sources("<!-- A comment -->\n```mermaid\nA\n```\n"), [
+      '1-2 mermaid "": "A"',
+    ]);
+    // Any other tag alone on its line cannot interrupt a paragraph.
+    assert.deepStrictEqual(sources('Text\n<img src="flow.png">\n```mermaid\nA\n```\n'), [
+      '2-3 mermaid "": "A"',
+    ]);
+    assert.deepStrictEqual(sources('<img src="flow.png">\n```mermaid\nA\n```\n'), []);
   });
 
   test("findDiagramFences keeps the indentation of a fence in a list item", () => {
@@ -121,11 +167,77 @@ suite("fences", () => {
       "",
       "2. Done.",
     ].join("\n");
-    // The fence's own indentation is removed from each line, and deeper indentation is kept.
+    // The item's indentation is removed from each line, and deeper indentation is kept.
     assert.deepStrictEqual(sources(markdown), ['2-5 mermaid "   ": "flowchart TD\\n    A --> B"']);
-    // A tab counts as one character of indentation.
-    assert.deepStrictEqual(sources("\t```mermaid\n\t\tflowchart TD\n\t```"), [
-      '0-1 mermaid "\\t": "\\tflowchart TD"',
+    // A fence may start the item, whose content is indented by the marker and the spaces after it.
+    assert.deepStrictEqual(sources("- ```mermaid\n  A\n    B\n  ```\n"), [
+      '0-2 mermaid "  ": "A\\n  B"',
+    ]);
+    assert.deepStrictEqual(sources("10.  ```echarts\n     {}\n     ```\n"), [
+      '0-1 echarts "     ": "{}"',
+    ]);
+    // A line indented less than the item's content ends the item, and the block in it.
+    assert.deepStrictEqual(sources("1. ```mermaid\n   A\nB\n```\n"), ['0-1 mermaid "   ": "A"']);
+    // Blank lines continue the item.
+    assert.deepStrictEqual(sources("* ```mermaid\n  A\n\n  B\n  ```\n"), [
+      '0-3 mermaid "  ": "A\\n\\nB"',
+    ]);
+    // In a nested item, under a paragraph that continued lazily.
+    assert.deepStrictEqual(sources("- a\n  - b\nc\n\n    ```mermaid\n    A\n    ```\n"), [
+      '4-5 mermaid "    ": "A"',
+    ]);
+    // Indented by 4 columns more than the item's content, a fence is indented code.
+    assert.deepStrictEqual(sources("- a\n\n      ```mermaid\n      A\n      ```\n"), []);
+    // Only an ordered list from 1 interrupts a paragraph, and a list item must not be empty.
+    assert.deepStrictEqual(sources("Text\n2. ```mermaid\nA\n```\n"), []);
+    assert.deepStrictEqual(sources("Text\n1. ```mermaid\n   A\n   ```\n"), [
+      '1-2 mermaid "   ": "A"',
+    ]);
+    // Tabs indent to the next multiple of 4 columns.
+    assert.deepStrictEqual(sources("-\t```mermaid\n\tA\n\t\tB\n\t```"), [
+      '0-2 mermaid " \\t": "A\\n\\tB"',
+    ]);
+  });
+
+  test("findDiagramFences finds blocks in block quotes, removing their markers", () => {
+    const note = [
+      "> [!NOTE]",
+      "> The flow:",
+      ">",
+      "> ```mermaid",
+      "> flowchart TD",
+      ">   A --> B",
+      ">",
+      ">   B --> C",
+      "> ```",
+      "",
+    ].join("\n");
+    assert.deepStrictEqual(sources(note), [
+      '3-7 mermaid "> ": "flowchart TD\\n  A --> B\\n\\n  B --> C"',
+    ]);
+    // The space after the marker is optional, and written back after it.
+    assert.deepStrictEqual(sources(">```mermaid\n>A\n> B\n>```\n"), ['0-2 mermaid "> ": "A\\nB"']);
+    assert.deepStrictEqual(sources("> > ```mermaid\n> > A\n> > ```\n"), [
+      '0-1 mermaid "> > ": "A"',
+    ]);
+    // A line without the marker ends the block quote, and the block in it: code is never lazy.
+    assert.deepStrictEqual(sources("> ```mermaid\n> A\nB\n> ```\n"), ['0-1 mermaid "> ": "A"']);
+    assert.deepStrictEqual(sources("> > ```mermaid\n> > A\n> B\n"), ['0-1 mermaid "> > ": "A"']);
+    assert.deepStrictEqual(sources("> ```mermaid\n> A\n\n> B\n"), ['0-1 mermaid "> ": "A"']);
+    // A paragraph's lazy continuation line keeps the block quote open.
+    assert.deepStrictEqual(sources("> Text\nlazy\n> ```mermaid\n> A\n> ```\n"), [
+      '2-3 mermaid "> ": "A"',
+    ]);
+    // Block quotes and list items nest.
+    assert.deepStrictEqual(sources("> - ```mermaid\n>   A\n>   ```\n"), [
+      '0-1 mermaid ">   ": "A"',
+    ]);
+    assert.deepStrictEqual(sources("- > ```mermaid\n  > A\n  > ```\n"), [
+      '0-1 mermaid "  > ": "A"',
+    ]);
+    // The optional space may be a column of a tab, whose other columns indent the fence.
+    assert.deepStrictEqual(sources(">\t```mermaid\n>\tA\n>\t\tB\n>\t```\n"), [
+      '0-2 mermaid ">\\t": "A\\n\\tB"',
     ]);
   });
 
@@ -163,9 +275,54 @@ suite("fences", () => {
         source: "{}",
         openingLine: 10_005,
         lastLine: 10_007,
-        indent: "  ",
+        prefix: "  ",
       },
     ]);
+  });
+
+  test("rewriteFence writes every line behind the block's prefix", () => {
+    assert.strictEqual(
+      rewritten("Before\n```mermaid\nA\n```\nAfter\n", "B\n  C"),
+      "Before\n```mermaid\nB\n  C\n```\nAfter\n",
+    );
+    // Blank lines keep only the block quote markers, which hold the block quote together.
+    assert.strictEqual(
+      rewritten("> Note:\n> ```mermaid\n> A\n> ```\n> End.\n", "B\n\n  C\n \t\nD"),
+      "> Note:\n> ```mermaid\n> B\n>\n>   C\n>\n> D\n> ```\n> End.\n",
+    );
+    assert.strictEqual(
+      rewritten("> - ```mermaid\n>   A\n>   ```\n", "B\n\nC"),
+      "> - ```mermaid\n>   B\n>\n>   C\n>   ```\n",
+    );
+    assert.strictEqual(
+      rewritten("1. Flow:\n\n   ```mermaid\n   A\n   ```\n2. Done\n", "B\n\n C"),
+      "1. Flow:\n\n   ```mermaid\n   B\n\n    C\n   ```\n2. Done\n",
+    );
+    // The marker's optional space is added, so that a line starting with a space keeps it.
+    assert.strictEqual(
+      rewritten(">>```mermaid\n>>A\n>>```\n", " B"),
+      ">>```mermaid\n> >  B\n>>```\n",
+    );
+    // Tabs are kept, unless they follow an added space and would change width.
+    assert.strictEqual(
+      rewritten(">\t```mermaid\n>\tA\n", "B\n\tC"),
+      ">\t```mermaid\n>\tB\n>\t\tC\n",
+    );
+    assert.strictEqual(rewritten(">>\t```mermaid\n>>\tA", " B"), ">>\t```mermaid\n> >   B");
+    assert.strictEqual(
+      rewritten("-\t```mermaid\r\n\tA\r\n\t```\r\n", "B\n C", "\r\n"),
+      "-\t```mermaid\r\n \tB\r\n \t C\r\n\t```\r\n",
+    );
+  });
+
+  test("rewriteFence reports the source line that would end the block", () => {
+    assert.strictEqual(rewritten("```mermaid\nA\n```\n", "B\n```\nC"), 1);
+    assert.strictEqual(rewritten("> ~~~mermaid\n> A\n> ~~~\n", "~~~~"), 0);
+    // A fence indented by 4 columns in the block is content.
+    assert.strictEqual(
+      rewritten("- ```mermaid\n  A\n  ```\n", "    ```"),
+      "- ```mermaid\n      ```\n  ```\n",
+    );
   });
 
   test("findDiagramFences does not mistake in-line separators for new document lines", () => {
@@ -194,7 +351,7 @@ suite("fences", () => {
       source: "flowchart TD\n  A --> B",
       openingLine: 2,
       lastLine: 4,
-      indent: "",
+      prefix: "",
     };
     const moved = findDiagramFences(
       "# Notes\n\nText was added above.\n\n```mermaid\nflowchart TD\n  A --> B\n```\n",
@@ -211,7 +368,7 @@ suite("fences", () => {
   test("relocateFence keeps an unchanged block but refuses ambiguous moved copies", () => {
     const text = "```mermaid\nA\n```\n```mermaid\nA\n```\n```mermaid\nA\n```\n";
     const fences = findDiagramFences(text);
-    const read = { language: "mermaid", source: "A", indent: "" } as const;
+    const read = { language: "mermaid", source: "A", prefix: "" } as const;
     const near = (openingLine: number) =>
       relocateFence(fences, { ...read, openingLine, lastLine: openingLine + 1 })?.openingLine;
     assert.deepStrictEqual([near(0), near(3), near(5), near(9)], [0, 3, undefined, undefined]);
@@ -231,7 +388,7 @@ suite("fences", () => {
       source: "flowchart TD",
       openingLine: 0,
       lastLine: 1,
-      indent: "",
+      prefix: "",
     };
     assert.ok(isDiagramFence(fence));
     const malformed: unknown[] = [
@@ -241,7 +398,7 @@ suite("fences", () => {
       [fence],
       { ...fence, language: "dot" },
       { ...fence, source: 1 },
-      { ...fence, indent: undefined },
+      { ...fence, prefix: undefined },
       { ...fence, openingLine: -1 },
       { ...fence, openingLine: 1.5 },
       // The content must be at least one line long, below the opening fence.

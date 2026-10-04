@@ -1,11 +1,6 @@
 import * as assert from "node:assert";
-import {
-  codeFence,
-  type DiagramBlock,
-  DiagramBlockFilter,
-  guessTitle,
-  isClosingFence,
-} from "../blocks";
+import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "../blocks";
+import { isClosingFence } from "../fences";
 
 function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
   const filter = new DiagramBlockFilter();
@@ -16,15 +11,13 @@ function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
 
 suite("blocks", () => {
   test("closing fences follow CommonMark: matching markers, indented less than 4 columns", () => {
-    const backticks = { indent: "", fence: "````", language: "" };
+    const backticks = { fence: "````" };
     for (const line of ["````", "   ````` \r\n", "```` \t\n", "````\r"]) {
       assert.ok(isClosingFence(line, backticks), JSON.stringify(line));
     }
-    // A fence in a list item closes relative to its own indentation; tabs stop every 4 columns.
-    assert.ok(isClosingFence("      ````", { ...backticks, indent: "    " }));
-    assert.ok(isClosingFence(" \t````", { ...backticks, indent: "  " }));
-    assert.ok(!isClosingFence(" \t````", backticks));
     for (const line of [
+      // Tabs stop every 4 columns.
+      " \t````",
       "```",
       "    ````",
       "\t````",
@@ -216,7 +209,22 @@ suite("blocks", () => {
       { markdown: "~~~mermaid\nA\n```\n", shown: "", unterminated: true },
       // A fence indented by 4 or more columns more than the opening fence is content.
       { markdown: "```mermaid\nA\n    ```\n```\nB", source: "A\n    ```", shown: "B" },
-      { markdown: "  ```mermaid\nA\n     ```\nB", source: "A", shown: "B" },
+      { markdown: "  ```mermaid\nA\n   ```\nB", source: "A", shown: "B" },
+      // Indented by 4 columns, a fence is indented code.
+      { markdown: "    ```mermaid\n    A\n    ```\n", shown: "    ```mermaid\n    A\n    ```\n" },
+      // In block quotes and list items, as in Markdown documents.
+      {
+        markdown: "> Flow:\n> ```mermaid\n> A\n>   B\n> ```\n> End",
+        source: "A\n  B",
+        shown: "> Flow:\n> End",
+      },
+      {
+        markdown: "1. Flow:\n   ```mermaid\n   A\n   ```\n2. End",
+        source: "A",
+        shown: "1. Flow:\n2. End",
+      },
+      // The end of a block quote ends a block in it.
+      { markdown: "> ```mermaid\n> A\nEnd", source: "A", shown: "End" },
       // Indentation is spaces and tabs only.
       { markdown: "\u00a0```mermaid\nA\n```\n", shown: "\u00a0```mermaid\nA\n```\n" },
       // A diagram fence inside another code block is just code.

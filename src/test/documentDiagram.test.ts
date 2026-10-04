@@ -122,6 +122,24 @@ suite("documentDiagram", function () {
     assert.strictEqual(unclosed.getText(), "```mermaid\nflowchart LR\n  A --> B");
   });
 
+  test("writeFence writes a block in a block quote behind its markers", async () => {
+    const before = "> [!NOTE]\r\n> ```mermaid\r\n> flowchart TD\r\n> ```\r\nAfter.\r\n";
+    const document = await markdown(before);
+    const read = binding(document);
+    assert.strictEqual(read.fence.source, "flowchart TD");
+    const outcome = await writeFence(read, "flowchart LR\n\n  A --> B");
+    assert.ok(outcome.written);
+    assert.strictEqual(
+      document.getText(),
+      "> [!NOTE]\r\n> ```mermaid\r\n> flowchart LR\r\n>\r\n>   A --> B\r\n> ```\r\nAfter.\r\n",
+    );
+    assert.deepStrictEqual(outcome.fence, binding(document).fence);
+
+    const rejected = await writeFence({ ...read, fence: outcome.fence }, "flowchart TD\n```");
+    assert.ok(!rejected.written);
+    assert.match(rejected.reason, /closing Markdown fence on line 2, "```"/);
+  });
+
   test("writeFence normalizes lone carriage returns before checking fence boundaries", async () => {
     const before = "```echarts\n{}\n```\nAfter.\n";
     const document = await markdown(before);
@@ -172,7 +190,7 @@ suite("documentDiagram", function () {
       document.getText(),
       "- Flow:\n\n  ```mermaid\n  flowchart LR\n    A --> B\n  ```\n",
     );
-    assert.strictEqual(outcome.fence.indent, "  ");
+    assert.strictEqual(outcome.fence.prefix, "  ");
     assert.strictEqual(outcome.fence.source, "flowchart LR\n  A --> B");
   });
 

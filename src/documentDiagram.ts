@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
-import { isClosingFence, openingFence } from "./blocks";
-import { type DiagramFence, fenceSource, findDocumentDiagramFences, relocateFence } from "./fences";
+import {
+  type DiagramFence,
+  findDocumentDiagramFences,
+  relocateFence,
+  rewriteFence,
+  trimBlankLines,
+} from "./fences";
 import { diagramNoun, errorMessage } from "./protocol";
 
 /** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
@@ -23,8 +28,9 @@ export type WriteOutcome =
 
 /**
  * Replaces an unchanged fence's content with an undoable workspace edit, preserving fence markers,
- * indentation and line endings. Refuses ambiguous or changed blocks. isCurrent guards against
- * panel changes while opening the document.
+ * block quote markers, indentation and line endings. Refuses ambiguous or changed blocks, and
+ * source that would not read back unchanged. isCurrent guards against panel changes while opening
+ * the document.
  */
 export async function writeFence(
   binding: DocumentBinding,
@@ -33,9 +39,8 @@ export async function writeFence(
 ): Promise<WriteOutcome> {
   const name = documentName(binding);
   const noun = diagramNoun(binding.fence.language);
-  // Written as a fence is read: no blank lines around the diagram, and every line indented like the
-  // opening fence, which may sit in a list item.
-  const diagram = fenceSource(source.split(/\r\n|\r|\n/), "");
+  // Written as a fence is read: no blank lines around the diagram.
+  const diagram = trimBlankLines(source.split(/\r\n|\r|\n/));
   if (!diagram) {
     return { written: false, reason: `There is no ${noun} to write to ${name}.` };
   }
@@ -62,36 +67,26 @@ export async function writeFence(
   if (fence.source === diagram) {
     return { written: true, fence };
   }
-  const lines = diagram.split("\n").map((line) => (line.trim() ? fence.indent + line : line));
-  const opening = openingFence(document.lineAt(fence.openingLine).text);
-  if (!opening) {
+  const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+  // The scan read this text, so the replacement is located in the text rather than in VS Code's
+  // lines, whatever either makes of unusual line breaks.
+  const rewrite = rewriteFence(document.getText(), fence, diagram, eol);
+  if (!rewrite) {
     return changed;
   }
-  if (lines.some((line) => isClosingFence(line, opening))) {
+  if (!("fence" in rewrite)) {
+    const line = diagram.split("\n")[rewrite.endingLine];
     return {
       written: false,
-      reason: `The ${noun} contains a closing Markdown fence, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,
+      reason: `The ${noun} contains a closing Markdown fence on line ${rewrite.endingLine + 1}, ${JSON.stringify(line)}, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,
     };
   }
-
-  const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
-  const closingLine = fence.lastLine + 1;
-  // A block that is never closed ends at the end of the document, whose last line may have no
-  // newline of its own to keep.
-  const end =
-    closingLine < document.lineCount
-      ? new vscode.Position(closingLine, 0)
-      : document.lineAt(fence.lastLine).range.end;
-  const range = new vscode.Range(new vscode.Position(fence.openingLine + 1, 0), end);
-  // The lines the block was found on must hold what was found on them, whatever VS Code makes of
-  // the document's line endings. Anything else means the range is not the diagram's.
-  if (fenceSource(document.getText(range).split(/\r?\n/), fence.indent) !== fence.source) {
-    return changed;
-  }
-
-  const text = lines.join(eol);
+  const range = new vscode.Range(
+    document.positionAt(rewrite.start),
+    document.positionAt(rewrite.end),
+  );
   const edit = new vscode.WorkspaceEdit();
-  edit.replace(document.uri, range, end.character === 0 ? `${text}${eol}` : text);
+  edit.replace(document.uri, range, rewrite.text);
   try {
     if (!(await vscode.workspace.applyEdit(edit))) {
       return {
@@ -105,15 +100,7 @@ export async function writeFence(
       reason: `Could not write the ${noun} to ${name}: ${errorMessage(error)}`,
     };
   }
-  // The block now holds the diagram that was written, and has grown or shrunk with it.
-  return {
-    written: true,
-    fence: {
-      ...fence,
-      source: fenceSource(lines, fence.indent),
-      lastLine: fence.openingLine + lines.length,
-    },
-  };
+  return { written: true, fence: rewrite.fence };
 }
 
 /** Confirms writing an agent replacement back to the original document. */

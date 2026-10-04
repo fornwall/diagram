@@ -85,6 +85,32 @@ suite("markdownDiagrams", function () {
     assert.strictEqual(fence.source, "flowchart TD\n  A --> B");
   });
 
+  test("offers lenses in block quotes and list items, but not in indented code", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: [
+        "    ```mermaid",
+        "    flowchart TD",
+        "    ```",
+        "",
+        "> [!TIP]",
+        "> ```mermaid",
+        "> flowchart TD",
+        "> ```",
+        "",
+        "1. ```echarts",
+        "   {}",
+        "   ```",
+      ].join("\n"),
+    });
+    const lenses = await codeLenses(document);
+    assert.deepStrictEqual(
+      lenses.map((lens) => lens.range.start.line),
+      [5, 9],
+    );
+    assert.strictEqual(lenses[0]?.command?.arguments?.[1]?.source, "flowchart TD");
+  });
+
   test("offers no lenses while the setting turns them off", async () => {
     const document = await vscode.workspace.openTextDocument({
       language: "markdown",

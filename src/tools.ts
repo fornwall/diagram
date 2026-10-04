@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
-import { guessTitle, isClosingFence, openingFence } from "./blocks";
+import { guessTitle } from "./blocks";
 import { unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
 import {
@@ -14,6 +14,7 @@ import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import { nodeList } from "./describe";
+import { isClosingFence, openingFence } from "./fences";
 import { LINK_SYNTAX, validateLinks } from "./links";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import {
