@@ -17,7 +17,7 @@ import { type DataTable, parseTable } from "./data";
 import { loadTable, resolveFile } from "./dataSource";
 import { describeDiagram, nodeList } from "./describe";
 import {
-  confirmReplacedWrite,
+  confirmWrite,
   type DocumentBinding,
   documentName,
   reportWriteFailure,
@@ -43,6 +43,7 @@ import {
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { runsCode } from "./webview/optionSource";
 import { loadWebview } from "./webviewHtml";
 
 /** Routes follow-up questions to the participant or the agent that invoked a tool. */
@@ -126,6 +127,12 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingExport: Pending<"export", ExportResult> | undefined;
   /** Why the last render did not finish, if the panel closed or stopped responding. */
   private unavailable: string | undefined;
+  /**
+   * Whether the page was sent a chart option with JavaScript code, which can post any message as
+   * if the user had acted, and stays in the page. Reset only for a new webview, as messages the
+   * old page sent before a reload may still arrive after it.
+   */
+  private pageRanCode = false;
   /** The request that drew the current diagram, which is what an export captures. */
   private renderedRequestId: number | undefined;
   /** Identifies the editable source even when its render fails. */
@@ -285,6 +292,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.panel = panel;
     panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
     this.webviewReady = false;
+    this.pageRanCode = false;
     loadWebview(panel.webview, this.context.extensionUri);
 
     // The webview renders content written by a model, so do not trust what it sends.
@@ -496,6 +504,10 @@ export class DiagramPanel implements vscode.Disposable {
       writeTo: state.document && documentName(state.document),
     } as const;
     this.sourceRequestId = message.requestId;
+    // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
+    if (state.language === "echarts" && vscode.workspace.isTrusted && runsCode(source)) {
+      this.pageRanCode = true;
+    }
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.store.save(state);
     const result = await new Promise<RenderOutcome>((resolve) => {
@@ -720,14 +732,20 @@ export class DiagramPanel implements vscode.Disposable {
     await this.writeToDocument(state.document, state.source);
   }
 
-  /** Confirms agent replacements and follows the document block after a successful write. */
+  /**
+   * Confirms writes that an agent replacement or chart code may have caused, and follows the
+   * document block after a successful write.
+   */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
     const version = this.renderVersion;
     const isCurrent = (current: DocumentBinding) => () =>
       this.renderVersion === version &&
       this.state?.document === current &&
       this.state.source === source;
-    if (binding.replaced && !(await confirmReplacedWrite(binding))) {
+    if (
+      (binding.replaced || this.pageRanCode) &&
+      !(await confirmWrite(binding, binding.replaced ? "replaced" : "code"))
+    ) {
       return;
     }
     if (!isCurrent(this.movedBinding(binding))()) {
@@ -901,6 +919,7 @@ export class DiagramPanel implements vscode.Disposable {
       const reset = message.type === "resetChartStyling";
       let table = this.chartTable;
       if (!table && reset) {
+        if (!(await this.confirmReload(state.chart))) return;
         const loaded = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Window,
@@ -951,6 +970,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.refreshing = true;
     try {
       assertChartPresentation(presentation);
+      if (!(await this.confirmReload(chart))) return;
       const { table, warning } = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
@@ -982,6 +1002,23 @@ export class DiagramPanel implements vscode.Disposable {
     } finally {
       this.refreshing = false;
     }
+  }
+
+  /**
+   * Whether to reload the chart's data, which reruns its command: once chart code could have
+   * pressed Refresh, the user is asked first.
+   */
+  private async confirmReload(chart: ChartSpec): Promise<boolean> {
+    if (!chart.command || !this.pageRanCode) return true;
+    const run = await vscode.window.showWarningMessage(
+      "Run the chart's command again to reload its data?",
+      {
+        modal: true,
+        detail: `${chart.command}\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had.`,
+      },
+      "Run",
+    );
+    return run !== undefined;
   }
 
   /**
@@ -1180,12 +1217,18 @@ export class DiagramPanel implements vscode.Disposable {
       : `Regarding the ${noun}: `;
   }
 
-  /** Sends a request about the diagram to chat, routed to whoever produced the diagram. */
+  /**
+   * Sends a request about the diagram to chat, routed to whoever produced the diagram. Once chart
+   * code could have sent it, it only fills in the chat input, for the user to send.
+   */
   private async askInChat(text: string): Promise<void> {
     const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
     const selection = this.selection;
     try {
-      await vscode.commands.executeCommand("workbench.action.chat.open", { query });
+      await vscode.commands.executeCommand("workbench.action.chat.open", {
+        query,
+        isPartialQuery: this.pageRanCode,
+      });
     } catch (error) {
       // E.g. chat is disabled. The selection is kept, to try again.
       void vscode.window.showErrorMessage(

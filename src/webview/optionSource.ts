@@ -43,6 +43,19 @@ export function evaluateSource(source: string): unknown {
 }
 
 /**
+ * Whether {@link evaluateSource} evaluates the source as JavaScript, rather than reading its
+ * literals, so that code in it runs in the page.
+ */
+export function runsCode(source: string): boolean {
+  try {
+    JSON.parse(source);
+    return false;
+  } catch {
+    return !Array.isArray(scan(source));
+  }
+}
+
+/**
  * The top-level values of a source of literals only; otherwise its first syntax error, where it
  * goes beyond literals, or undefined if it is nested too deeply to scan.
  */

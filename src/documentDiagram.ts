@@ -103,15 +103,25 @@ export async function writeFence(
   return { written: true, fence: rewrite.fence };
 }
 
-/** Confirms writing an agent replacement back to the original document. */
-export async function confirmReplacedWrite(binding: DocumentBinding): Promise<boolean> {
+/**
+ * Confirms writing to the original document a diagram that an agent replaced, or that JavaScript
+ * code from a chart in the panel may have edited or asked to write.
+ */
+export async function confirmWrite(
+  binding: DocumentBinding,
+  cause: "replaced" | "code",
+): Promise<boolean> {
   const name = documentName(binding);
   const noun = diagramNoun(binding.fence.language);
+  const why =
+    cause === "replaced"
+      ? `An agent replaced the ${noun} that was opened from ${name}.`
+      : "The panel ran JavaScript code from a chart, which can apply edits and press Write as if you had.";
   const write = await vscode.window.showWarningMessage(
     `Write this ${noun} to ${name}?`,
     {
       modal: true,
-      detail: `An agent replaced the ${noun} that was opened from ${name}. Applying replaces the ${binding.fence.language} block it came from with what the panel shows now.`,
+      detail: `${why} Applying replaces the ${binding.fence.language} block it came from with what the panel shows now.`,
     },
     "Write",
   );
