@@ -443,6 +443,24 @@ suite("webview", function () {
     );
   });
 
+  test("draws Gantt charts at the width of the canvas they are shown in", async () => {
+    for (const view of ["split", "visual"]) {
+      await evaluate(`document.getElementById("view-${view}").click()`);
+      assert.ok((await render({ source: MERMAID.gantt })).ok);
+      const { drawn, room, zoom } = (await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const style = getComputedStyle(canvas);
+        return {
+          drawn: document.querySelector("#diagram svg").viewBox.baseVal.width,
+          room: canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          zoom: document.getElementById("zoom-reset").textContent,
+        };
+      })()`)) as { drawn: number; room: number; zoom: string };
+      assert.ok(Math.abs(drawn - room) < 1, `${view}: drawn ${drawn} wide in ${room}`);
+      assert.strictEqual(zoom, "100%", view);
+    }
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(

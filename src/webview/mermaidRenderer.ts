@@ -382,7 +382,15 @@ export class MermaidRenderer implements Renderer {
     const mermaid = await loadMermaid();
     mermaid.initialize(this.config());
     const id = `diagram-svg-${++this.renderCounter}`;
-    const result = await mermaid.render(id, source, layoutContainer()).catch((error: unknown) => {
+    const container = layoutContainer();
+    // Gantt charts take the width of the element they are drawn in: give them the width they are
+    // shown at, rather than shrinking their text to fit. In the Source view the canvas has no
+    // width; keep the last one.
+    const { width } = this.contentSize();
+    if (width > 0) {
+      container.style.width = `${width}px`;
+    }
+    const result = await mermaid.render(id, source, container).catch((error: unknown) => {
       throw describeError(error, source);
     });
     // mermaid.render keeps the diagram's database to itself: parse again for it. Should that
@@ -960,6 +968,16 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
+  /** The room for the diagram in the canvas, which is 0 × 0 while it is hidden. */
+  private contentSize(): { width: number; height: number } {
+    const style = getComputedStyle(this.canvas);
+    const sum = (a: string, b: string) => Number.parseFloat(a) + Number.parseFloat(b);
+    return {
+      width: this.canvas.clientWidth - sum(style.paddingLeft, style.paddingRight),
+      height: this.canvas.clientHeight - sum(style.paddingTop, style.paddingBottom),
+    };
+  }
+
   /** Scales large diagrams down to the panel width (and height, within reason). */
   private fit(): void {
     const natural = this.diagram.querySelector("svg")?.viewBox.baseVal;
@@ -967,10 +985,7 @@ export class MermaidRenderer implements Renderer {
       this.setZoom(1);
       return;
     }
-    const style = getComputedStyle(this.canvas);
-    const sum = (a: string, b: string) => Number.parseFloat(a) + Number.parseFloat(b);
-    const width = this.canvas.clientWidth - sum(style.paddingLeft, style.paddingRight);
-    const height = this.canvas.clientHeight - sum(style.paddingTop, style.paddingBottom);
+    const { width, height } = this.contentSize();
     if (width <= 0 || height <= 0) {
       return; // Not laid out yet (e.g. the panel is hidden); the resize observer fits later.
     }
