@@ -70,7 +70,11 @@ interface Exchange {
 /** An attachment's text or image, or the reason it could not be read. */
 type Attachment = { name: string } & (
   | { text: string }
-  | { image: vscode.LanguageModelDataPart }
+  | {
+      image: vscode.LanguageModelDataPart;
+      /** Its content hash, and its file if it has one. */
+      keys: [string, ...string[]];
+    }
   | {
       error: string;
       /** The model can still explore it with tools. */
@@ -97,7 +101,9 @@ export async function promptMessages(
   if (token.isCancellationRequested) {
     throw new vscode.CancellationError();
   }
-  const exchanges = await pastExchanges(context.history, documents);
+  const images = attachments.filter((attachment) => "image" in attachment);
+  const imageKeys = new Set(images.flatMap((image) => image.keys));
+  const exchanges = await pastExchanges(context.history, documents, imageKeys);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -127,7 +133,6 @@ export async function promptMessages(
     );
   }
 
-  const images = attachments.filter((attachment) => "image" in attachment);
   left -= images.length * IMAGE_TOKENS;
   if (left < 0) {
     return tooLarge(`your message leaves no room for the image ${images[0]?.name}`);
@@ -342,6 +347,7 @@ function sum(numbers: number[]): number {
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
+  imageKeys: ReadonlySet<string>,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
@@ -351,7 +357,7 @@ async function pastExchanges(
       exchanges.push(exchange);
       // Later requests often refer to the files, selections and text attached to earlier ones.
       reads.push(
-        readAttachments(turn, documents).then((attachments) => {
+        readAttachments(turn, documents, undefined, imageKeys).then((attachments) => {
           exchange.attachments = attachments.map((attachment) => attachmentText(attachment));
         }),
       );
@@ -380,24 +386,29 @@ async function pastExchanges(
 
 /**
  * Deduplicate attachments in prompt order, images by their content. Images are given to the
- * `model` that the request is sent to, or described as left out.
+ * `model` that the request is sent to. Without a model, for an earlier request, they are described
+ * as left out, unless attached again as identified by `imageKeys`.
  */
 async function readAttachments(
   { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
   documents: Map<string, Thenable<vscode.TextDocument>>,
-  model?: vscode.LanguageModelChat,
+  model: vscode.LanguageModelChat | undefined,
+  imageKeys: ReadonlySet<string> = new Set(),
 ): Promise<Attachment[]> {
   // The references come in reverse order of their position in the prompt.
   const attachments = await Promise.all(
-    references.toReversed().map((reference) => readAttachment(reference, documents, model)),
+    references
+      .toReversed()
+      .map((reference) => readAttachment(reference, documents, model, imageKeys)),
   );
   const unique = new Map<string, Attachment>();
   for (const attachment of attachments) {
-    const key =
-      "image" in attachment
-        ? createHash("sha256").update(attachment.image.data).digest("hex")
-        : attachmentText(attachment);
-    unique.set(key, attachment);
+    if (attachment) {
+      unique.set(
+        "image" in attachment ? attachment.keys[0] : attachmentText(attachment),
+        attachment,
+      );
+    }
   }
   return [...unique.values()];
 }
@@ -424,7 +435,8 @@ async function readAttachment(
   { id, value, modelDescription }: vscode.ChatPromptReference,
   documents: Map<string, Thenable<vscode.TextDocument>>,
   model: vscode.LanguageModelChat | undefined,
-): Promise<Attachment> {
+  imageKeys: ReadonlySet<string>,
+): Promise<Attachment | undefined> {
   const description = modelDescription ? ` (${modelDescription})` : "";
   if (typeof value === "string") {
     return { name: `text${description}`, text: value };
@@ -432,7 +444,14 @@ async function readAttachment(
   const image = imageData(value);
   if (image) {
     const path = image.reference ? vscode.workspace.asRelativePath(image.reference) : "image";
-    return readImage(`${path}${description}`, image.mimeType, image.data, model);
+    return readImage(
+      `${path}${description}`,
+      image.mimeType,
+      image.data,
+      model,
+      imageKeys,
+      image.reference,
+    );
   }
   const location = value instanceof vscode.Location ? value : undefined;
   const uri = location?.uri ?? (value instanceof vscode.Uri ? value : undefined);
@@ -447,7 +466,7 @@ async function readAttachment(
   const extension = /\.(\w+)$/.exec(uri.path)?.[1]?.toLowerCase();
   const mimeType = location || !extension ? undefined : IMAGE_TYPES.get(extension);
   if (mimeType) {
-    return readImage(name, mimeType, uri, model);
+    return readImage(name, mimeType, uri, model, imageKeys);
   }
   try {
     const key = uri.toString();
@@ -489,18 +508,30 @@ function imageData(
 /**
  * Give the model an image, unless it is too large or the model does not accept images. Models
  * describe this with `capabilities.supportsImageToText`, which is not part of the stable API.
+ * Without a model, for an earlier request, it is left out, unnoted if `imageKeys` identifies it.
  */
 async function readImage(
   name: string,
   mimeType: string,
   source: vscode.Uri | (() => Thenable<Uint8Array>),
   model: vscode.LanguageModelChat | undefined,
-): Promise<Attachment> {
+  imageKeys: ReadonlySet<string>,
+  reference = source instanceof vscode.Uri ? source : undefined,
+): Promise<Attachment | undefined> {
   if (!mimeType.startsWith("image/")) {
     return { name, error: `@diagram does not support ${mimeType} attachments` };
   }
   if (!model) {
-    return { name, error: "images are only given with the request they are attached to" };
+    // An image attached again is given with the current request.
+    const attachedNow =
+      imageKeys.size > 0 &&
+      (reference
+        ? imageKeys.has(reference.toString())
+        : !(source instanceof vscode.Uri) &&
+          imageKeys.has(await Promise.resolve(source()).then(contentKey, () => "")));
+    return attachedNow
+      ? undefined
+      : { name, error: "images are only given with the request they are attached to" };
   }
   const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
   if (capabilities?.supportsImageToText === false) {
@@ -525,10 +556,18 @@ async function readImage(
     if (data.byteLength > MAX_IMAGE_BYTES) {
       return tooLarge(data.byteLength);
     }
-    return { name, image: vscode.LanguageModelDataPart.image(data, mimeType) };
+    const keys: [string, ...string[]] = [
+      contentKey(data),
+      ...(reference ? [reference.toString()] : []),
+    ];
+    return { name, image: vscode.LanguageModelDataPart.image(data, mimeType), keys };
   } catch (error) {
     return { name, error: errorMessage(error) };
   }
+}
+
+function contentKey(data: Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex");
 }
 
 /** A folder, as attached with #folder, has no text, but the workspace tools can explore it. */

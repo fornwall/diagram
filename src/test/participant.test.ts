@@ -1077,6 +1077,42 @@ suite("participant", function () {
     }
   });
 
+  test("does not note an earlier request's image that is attached again", async () => {
+    const panel = newPanel();
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(root);
+    const file = vscode.Uri.joinPath(root, "again.png");
+    await vscode.workspace.fs.writeFile(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const pasted = (bytes: number[]) => ({
+      id: "pasted",
+      value: { mimeType: "image/png", data: async () => new Uint8Array(bytes) },
+    });
+    try {
+      const history = [
+        new RequestTurn(
+          "Draw these",
+          undefined,
+          [{ id: "file", value: file }, pasted([1, 2]), pasted([3])],
+          "diagram.participant",
+          [],
+        ),
+      ];
+      const { sent } = await ask(panel, [[text("Drawn.")]], {
+        history,
+        references: [pasted([1, 2]), { id: "file", value: file }],
+      });
+      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      assert.deepStrictEqual(attached, [
+        "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
+        "Attached by the user: again.png",
+        "Attached by the user: image",
+      ]);
+    } finally {
+      await vscode.workspace.fs.delete(file);
+      panel.dispose();
+    }
+  });
+
   test("gives the model earlier turns, with their diagrams and attachments", async () => {
     const panel = newPanel();
     try {
