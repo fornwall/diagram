@@ -15,7 +15,7 @@ import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import { nodeList } from "./describe";
 import { LINK_SYNTAX, validateLinks } from "./links";
-import { type Diagram, type DiagramPanel, type RenderOutcome, unknownNodeIds } from "./panel";
+import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import {
   ANNOTATE_TOOL,
   type Annotation,
@@ -354,7 +354,8 @@ function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | un
   if (!drawn) {
     return "";
   }
-  const unknown = unknownNodeIds(ids, drawn);
+  const known = new Set(drawn);
+  const unknown = ids.filter((id) => !known.has(id));
   if (unknown.length === 0) {
     return "";
   }

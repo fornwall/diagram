@@ -1207,22 +1207,6 @@ function failsToRender(language: DiagramLanguage, error: string, action = "pick 
 }
 
 /**
- * Which of the ids a model gave the panel has no node for, e.g. the nodes its links or its marks
- * name. Empty while the ids of the rendering are unknown, as nothing can be said about them then;
- * see {@link DiagramPanel.drawnIds}.
- */
-export function unknownNodeIds(
-  ids: readonly string[],
-  drawn: readonly string[] | undefined,
-): string[] {
-  if (!drawn) {
-    return [];
-  }
-  const known = new Set(drawn);
-  return ids.filter((id) => !known.has(id));
-}
-
-/**
  * Builds the chat request sent when a node is clicked in click-to-ask mode: `{label}` in the prompt
  * is replaced by the node's label, which is otherwise appended.
  */
