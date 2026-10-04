@@ -6,7 +6,13 @@ import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { describeError, parsableSource } from "./mermaidErrors";
 import { shortestPath } from "./relationships";
-import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
+import {
+  type ItemClickHandler,
+  type Renderer,
+  UNMARKED,
+  type WebLink,
+  withModifier,
+} from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -76,9 +82,20 @@ interface DiagramDb {
   getDirection?(): string;
   /** A Gantt chart's task links, by task id. */
   getLinks?(): Map<string, unknown>;
+  /** A sequence diagram's actors, by id, with their links by name. */
+  getActors?(): Map<string, { links?: Record<string, unknown> | null }>;
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
+}
+
+/** What a node's links in the source are called in its tooltip: "Open …". */
+function describeLinks(targets: readonly WebLink[]): string {
+  const [first] = targets;
+  if (targets.length > 1 || !first) {
+    return new Intl.ListFormat("en", { type: "disjunction" }).format(targets.map((t) => t.name));
+  }
+  return first.name === first.url ? first.url : `${first.name} (${first.url})`;
 }
 
 /** The text of an element, with its lines (separate text nodes) separated by spaces. */
@@ -193,8 +210,8 @@ export class MermaidRenderer implements Renderer {
   private shownLinks: ReadonlyMap<string, string> = new Map();
   /** Where the nodes link to in the code, by node id, for as long as the diagram is shown. */
   private links: ReadonlyMap<string, string> = new Map();
-  /** The URLs that Mermaid links nodes to, by node id; see render. */
-  private webLinks = new Map<string, string>();
+  /** The links in the source from nodes, by node id; see render. */
+  private webLinks = new Map<string, WebLink[]>();
   /** The marks an agent put on the diagram, which a re-render for a new theme puts back. */
   private annotation: Annotation = UNMARKED;
   private zoom = 1;
@@ -214,12 +231,19 @@ export class MermaidRenderer implements Renderer {
     const activate = (event: MouseEvent | KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : undefined;
       const element = target?.closest(".diagram-node");
-      const node = element ? this.nodes.get(element) : undefined;
-      // A link in a label leads where it says; anywhere else, and for a key, the node's link does.
-      const url =
-        target?.closest("a[data-href]")?.getAttribute("data-href") ??
-        (node && this.webLinks.get(node.id));
-      itemClicked(node && { key: node.id, node, url }, withModifier(event));
+      const node = element && this.nodes.get(element);
+      if (!element || !node) {
+        itemClicked(undefined, withModifier(event));
+        return;
+      }
+      // A link in a label or a shown actor menu leads where it says; anywhere else, and for a key,
+      // the node's links do.
+      const href = target?.closest("a[data-href]")?.getAttribute("data-href");
+      const targets = href ? [{ name: href, url: href }] : this.webLinks.get(node.id);
+      itemClicked(
+        { key: node.id, node, links: targets && { targets, anchor: element } },
+        withModifier(event),
+      );
     };
     diagram.addEventListener("click", activate);
     // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
@@ -473,8 +497,11 @@ export class MermaidRenderer implements Renderer {
 
   showLinks(locations: ReadonlyMap<string, string>): void {
     this.links = locations;
-    // A node's code link takes precedence over its link in the source, as on a click.
-    const shown = new Map([...this.webLinks, ...locations]);
+    // A node's code link takes precedence over its links in the source, as on a click.
+    const shown = new Map([
+      ...Array.from(this.webLinks, ([id, targets]) => [id, describeLinks(targets)] as const),
+      ...locations,
+    ]);
     for (const id of new Set([...this.shownLinks.keys(), ...shown.keys()])) {
       const location = shown.get(id);
       if (this.shownLinks.get(id) === location) continue;
@@ -648,23 +675,34 @@ export class MermaidRenderer implements Renderer {
 
   /**
    * Finds the nodes that links in the source lead from: those that a click directive wraps in a
-   * link, those with a link in their label, the first one if several, and linked Gantt tasks.
+   * link, those with a link in their label, the first one if several, linked Gantt tasks, and
+   * sequence diagram actors with links, which can have several.
    */
   private findWebLinks(svg: SVGSVGElement, db: DiagramDb | undefined): void {
     this.webLinks.clear();
+    const toLink = (url: unknown) =>
+      typeof url === "string" && url.trim() ? { name: url.trim(), url: url.trim() } : undefined;
     for (const link of svg.querySelectorAll("a[data-href]")) {
       const element = link.querySelector(".diagram-node") ?? link.closest(".diagram-node");
       const node = element && this.nodes.get(element);
-      const url = link.getAttribute("data-href");
-      if (node && !node.relationship && url && !this.webLinks.has(node.id)) {
-        this.webLinks.set(node.id, url);
+      const target = toLink(link.getAttribute("data-href"));
+      if (node && !node.relationship && target && !this.webLinks.has(node.id)) {
+        this.webLinks.set(node.id, [target]);
       }
     }
     // A Gantt chart draws none, but keeps them by task id. (A state diagram keeps objects there.)
     for (const [id, url] of db?.getLinks?.() ?? []) {
-      if (typeof url === "string" && url.trim() && this.elementsById.has(id)) {
-        this.webLinks.set(id, url.trim());
-      }
+      const target = toLink(url);
+      if (target && this.elementsById.has(id)) this.webLinks.set(id, [target]);
+    }
+    // An actor's links are drawn as a menu, which Mermaid hides unless sequence.forceMenus, and
+    // opens with a script that the strict security level removes.
+    for (const [id, actor] of db?.getActors?.() ?? []) {
+      const targets = Object.entries(actor.links ?? {}).flatMap(([name, url]) => {
+        const target = toLink(url);
+        return target ? [{ ...target, name: name.trim() || target.url }] : [];
+      });
+      if (targets.length > 0 && this.elementsById.has(id)) this.webLinks.set(id, targets);
     }
   }
 
@@ -880,6 +918,14 @@ export class MermaidRenderer implements Renderer {
       const node = participants.get(element.getAttribute("name") ?? "");
       if (group && node) {
         add(group, node);
+      }
+    }
+    // An actor's menu of links, when sequence.forceMenus shows it, is numbered like its lifeline.
+    for (const menu of svg.querySelectorAll('g.actorPopupMenu:not([display="none"])')) {
+      const line = svg.querySelector(`line[id="${CSS.escape(menu.id.replace(/_popup$/, ""))}"]`);
+      const node = participants.get(line?.getAttribute("data-id") ?? "");
+      if (node) {
+        add(menu, node);
       }
     }
 

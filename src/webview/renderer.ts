@@ -6,8 +6,15 @@ export interface Hit {
   /** Identifies the part within the current rendering; parts with the same key are one. */
   key: string;
   node: DiagramNode;
-  /** Where a link in the Mermaid source leads from the part, unchecked: a model may have written it. */
-  url?: string;
+  /** The links in the Mermaid source from the part, and the element to show a menu of several at. */
+  links?: { targets: readonly WebLink[]; anchor: Element };
+}
+
+/** A link in the Mermaid source, unchecked: a model may have written it. */
+export interface WebLink {
+  /** What the source calls it: the URL itself unless an actor's menu names it. */
+  name: string;
+  url: string;
 }
 
 /** A click on a diagram item, or empty space when `hit` is undefined. */

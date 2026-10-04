@@ -2441,11 +2441,110 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.strictEqual(await evaluate(`document.getElementById("diagram").hidden`), false);
   });
 
-  test("leaves links out of images", async () => {
-    const source =
-      'flowchart LR\n  A[Docs] --> B\n  click A href "https://example.com/docs" "Docs"';
-    assert.ok((await panel.render({ language: "mermaid", source, title: "Links" }, "tool")).ok);
-    const svg = await evaluate(`(async () => {
+  const actorLinks = `sequenceDiagram
+  participant Alice
+  participant Bob
+  link Alice: Dashboard @ https://example.com/dash
+  links Bob: {"Wiki": "https://example.com/wiki", "Repo": "https://example.com/repo"}
+  Alice->>Bob: hi`;
+
+  test("opens an actor's link, or offers a menu of its links", async () => {
+    assert.ok(
+      (await panel.render({ language: "mermaid", source: actorLinks, title: "Seq" }, "tool")).ok,
+    );
+    let shown: unknown;
+    const opened = await opening(async () => {
+      shown = await evaluate(`(() => {
+        const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+        const click = (element, init) =>
+          element.dispatchEvent(new MouseEvent("click", {bubbles: true, ...init}));
+        const key = (element, key) =>
+          element.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
+        const menu = () => document.querySelector("#canvas .link-menu");
+        const focused = () =>
+          document.activeElement.getAttribute("data-diagram-id") ?? document.activeElement.textContent;
+        const shown = {
+          tooltips: ["Alice", "Bob"].map(id => node(id).querySelector("title.diagram-link")?.textContent),
+          hint: document.getElementById("selection-label").textContent,
+        };
+        click(node("Alice"));
+        click(node("Bob"), {ctrlKey: true});
+        shown.selected = [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
+          .map(element => element.getAttribute("data-diagram-id"));
+        shown.menuAfterSelecting = menu() !== null;
+        node("Bob").focus();
+        key(node("Bob"), "Enter");
+        shown.menu = {
+          role: menu().getAttribute("role"),
+          label: menu().getAttribute("aria-label"),
+          items: [...menu().children].map(item => [item.getAttribute("role"), item.textContent, item.title]),
+          focused: focused(),
+        };
+        key(document.activeElement, "ArrowDown");
+        shown.afterArrowDown = focused();
+        key(document.activeElement, "ArrowDown");
+        shown.afterWrapping = focused();
+        key(document.activeElement, "End");
+        document.activeElement.click();
+        shown.afterChoosing = {menu: menu() !== null, focused: focused()};
+        key(node("Bob"), "Enter");
+        key(document.activeElement, "Escape");
+        shown.afterEscape = {menu: menu() !== null, focused: focused()};
+        // The footer copy of the actor, which takes no focus.
+        click(document.querySelector('#diagram [data-diagram-id="Bob"]:not([tabindex])'));
+        shown.footerMenu = menu() !== null;
+        document.getElementById("canvas").focus();
+        shown.afterFocusElsewhere = menu() !== null;
+        return shown;
+      })()`);
+    }, 2);
+    assert.deepStrictEqual(shown, {
+      tooltips: ["Open Dashboard (https://example.com/dash)", "Open Wiki or Repo"],
+      hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
+      selected: ["Bob"],
+      menuAfterSelecting: false,
+      menu: {
+        role: "menu",
+        label: "Links of Bob",
+        items: [
+          ["menuitem", "Wiki", "https://example.com/wiki"],
+          ["menuitem", "Repo", "https://example.com/repo"],
+        ],
+        focused: "Wiki",
+      },
+      afterArrowDown: "Repo",
+      afterWrapping: "Wiki",
+      afterChoosing: { menu: false, focused: "Bob" },
+      afterEscape: { menu: false, focused: "Bob" },
+      footerMenu: true,
+      afterFocusElsewhere: false,
+    });
+    assert.deepStrictEqual(opened, ["https://example.com/dash", "https://example.com/repo"]);
+  });
+
+  test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
+    const source = `%%{init: {"sequence": {"forceMenus": true}}}%%\n${actorLinks}`;
+    assert.ok((await panel.render({ language: "mermaid", source, title: "Seq" }, "tool")).ok);
+    const opened = await opening(
+      () =>
+        evaluate(`(() => {
+          const entry = document.querySelector('#diagram .actorPopupMenu a[data-href="https://example.com/wiki"] tspan');
+          entry.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        })()`),
+      1,
+    );
+    assert.deepStrictEqual(opened, ["https://example.com/wiki"]);
+  });
+
+  const linkedImages = {
+    "a flowchart":
+      'flowchart LR\n  A[Docs] --> B\n  click A href "https://example.com/docs" "Docs"',
+    "actor menus": `%%{init: {"sequence": {"forceMenus": true}}}%%\n${actorLinks}`,
+  };
+  for (const [name, source] of Object.entries(linkedImages)) {
+    test(`leaves links out of images of ${name}`, async () => {
+      assert.ok((await panel.render({ language: "mermaid", source, title: "Links" }, "tool")).ok);
+      const svg = await evaluate(`(async () => {
       const handle = document.getElementById("drag-out");
       handle.dispatchEvent(new PointerEvent("pointerenter"));
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -2457,7 +2556,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       }
       throw new Error("The image was not prepared.");
     })()`);
-    assert.ok(typeof svg === "string" && svg.includes("Docs"));
-    assert.doesNotMatch(svg, /example\.com|href/);
-  });
+      assert.ok(typeof svg === "string" && /Docs|Wiki/.test(svg));
+      assert.doesNotMatch(svg, /example\.com|href/);
+    });
+  }
 });

@@ -12,6 +12,7 @@ import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
 import { EChartsRenderer } from "./echartsRenderer";
 import { pngDataUrl } from "./images";
+import { showLinkMenu } from "./linkMenu";
 import { MermaidRenderer } from "./mermaidRenderer";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
@@ -393,16 +394,23 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
     return;
   }
   // What a plain click does, in order: answer a pick the agent is waiting for, open the code the
-  // node links to, open the URL that the source links it to, ask the diagram's clickPrompt in
-  // chat, or select the node. A modified click always selects, so that every node can be selected
-  // whatever else a click does.
+  // node links to, open the URL that the source links it to (or offer a menu of several), ask the
+  // diagram's clickPrompt in chat, or select the node. A modified click always selects, so that
+  // every node can be selected whatever else a click does.
   if (!pick && !modifier) {
     if (!hit.node.relationship && links.has(hit.node.id)) {
       post({ type: "clickToOpen", node: hit.node });
       return;
     }
-    if (hit.url !== undefined) {
-      post({ type: "openUrl", url: hit.url });
+    if (hit.links) {
+      const { targets, anchor } = hit.links;
+      const openUrl = (url: string) => post({ type: "openUrl", url });
+      const [only] = targets;
+      if (only && targets.length === 1) {
+        openUrl(only.url);
+      } else {
+        showLinkMenu(canvas, anchor, `Links of ${hit.node.label}`, targets, openUrl);
+      }
       return;
     }
     if (clickPrompt) {

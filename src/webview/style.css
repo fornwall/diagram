@@ -482,6 +482,41 @@ input:focus {
   text-decoration: underline;
 }
 
+/* The links of a node that has several, such as a sequence diagram actor, as VS Code shows menus. */
+.link-menu {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  max-width: min(360px, 80vw);
+  padding: 4px;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, transparent));
+  border-radius: 5px;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+}
+
+.link-menu button {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-menu button:is(:hover, :focus) {
+  outline: none;
+  border-color: var(--vscode-menu-selectionBorder, transparent);
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
 /* Stacked shadows give selected nodes a solid outline, whatever their shape. */
 #diagram .diagram-selected {
   filter: drop-shadow(0 0 1px var(--vscode-focusBorder))
