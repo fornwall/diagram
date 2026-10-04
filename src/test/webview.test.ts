@@ -482,6 +482,45 @@ suite("webview", function () {
     assert.deepStrictEqual(padded, { left: true, top: true, right: true, bottom: true });
   });
 
+  test("shows Mermaid labels whole, in the boxes Mermaid measured for them", async () => {
+    // Mermaid measures labels outside the canvas (see layoutContainer), so styles that apply only
+    // where the drawing is shown would make labels overflow the boxes laid out for them.
+    const diagrams = [
+      'flowchart TD\n  A[A label long enough to wrap onto several lines] -->|edge label| B{"`**Bold** and _emphasis_`"}\n  B --> C[Line one<br>line two]\n  subgraph S [A subgraph title]\n    C --> D[漢字のラベル 😀]\n  end',
+      "sequenceDiagram\n  actor U as A user\n  U->>S: A long message to the server\n  Note over U,S: A note over both",
+      "classDiagram\n  class Animal {\n    <<abstract>>\n    +String name\n    +makeSound(volume int) void\n  }\n  Animal <|-- Duck : inherits",
+      "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Busy : start a long job\n  state Busy {\n    [*] --> Working\n  }",
+      'erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name PK "full name"\n  }',
+      "mindmap\n  root((A central idea))\n    A branch with a longer label\n    Another",
+      "journey\n  section Work\n    Make tea with a long name: 5: Me",
+      "kanban\n  todo[To do]\n    t1[Write the documentation for a feature]",
+    ];
+    for (const source of diagrams) {
+      assert.ok((await render({ source })).ok, source);
+      const overflows = await evaluate(`(() => {
+        const svg = document.querySelector("#diagram svg");
+        const drawing = svg.getBoundingClientRect();
+        const problems = [];
+        for (const box of svg.querySelectorAll("foreignObject")) {
+          if (!box.textContent.trim()) continue;
+          const outer = box.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(box);
+          for (const line of range.getClientRects()) {
+            for (const bounds of [outer, drawing]) {
+              if (line.left < bounds.left - 1 || line.right > bounds.right + 1 ||
+                line.top < bounds.top - 1 || line.bottom > bounds.bottom + 1) {
+                problems.push(box.textContent.trim());
+              }
+            }
+          }
+        }
+        return [...new Set(problems)];
+      })()`);
+      assert.deepStrictEqual(overflows, [], source.split("\\n")[0]);
+    }
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
