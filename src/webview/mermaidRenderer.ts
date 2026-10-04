@@ -271,6 +271,33 @@ function layoutContainer(): HTMLElement {
   return container;
 }
 
+/**
+ * Grows the view box of a drawing in the layout container to take in all of its text, which the
+ * SVG would clip: Mermaid leaves some outside, such as long radar axis and quadrant point labels.
+ */
+function showAllText(svg: SVGSVGElement): void {
+  const box = svg.viewBox.baseVal;
+  const toUser = svg.getScreenCTM()?.inverse();
+  if (!box.width || !box.height || !toUser) {
+    return;
+  }
+  let [left, top, right, bottom] = [box.x, box.y, box.x + box.width, box.y + box.height];
+  for (const text of svg.querySelectorAll("text, foreignObject")) {
+    const bounds = text.getBoundingClientRect();
+    if (bounds.width && bounds.height) {
+      const start = new DOMPoint(bounds.left, bounds.top).matrixTransform(toUser);
+      const end = new DOMPoint(bounds.right, bounds.bottom).matrixTransform(toUser);
+      left = Math.min(left, start.x);
+      top = Math.min(top, start.y);
+      right = Math.max(right, end.x);
+      bottom = Math.max(bottom, end.y);
+    }
+  }
+  if (right - left > box.width || bottom - top > box.height) {
+    svg.setAttribute("viewBox", `${left} ${top} ${right - left} ${bottom - top}`);
+  }
+}
+
 export class MermaidRenderer implements Renderer {
   readonly noun = "diagram";
   readonly itemNoun = "node";
@@ -414,7 +441,16 @@ export class MermaidRenderer implements Renderer {
           () => undefined,
         )
       : undefined;
-    this.diagram.innerHTML = result.svg;
+    // Measured where it is laid out even while the canvas is hidden.
+    const drawing = document.createElement("div");
+    drawing.innerHTML = result.svg;
+    container.append(drawing);
+    const svg = drawing.querySelector("svg");
+    if (svg) {
+      showAllText(svg);
+    }
+    this.diagram.replaceChildren(...drawing.childNodes);
+    drawing.remove();
     // A click selects, and code links open through the extension. A link that Mermaid draws, from
     // a click directive or a label, would open its URL, written by a model, on that same click, in
     // a trusted workspace without asking.
@@ -465,7 +501,11 @@ export class MermaidRenderer implements Renderer {
       if (!(parsed instanceof SVGSVGElement)) {
         throw new Error("Mermaid did not produce an SVG to make an image of.");
       }
-      return standaloneSvg(parsed, background);
+      layoutContainer().append(parsed);
+      showAllText(parsed);
+      const image = standaloneSvg(parsed, background);
+      parsed.remove();
+      return image;
     } finally {
       // Leave Mermaid configured for the panel: a theme change or a resize may render before the
       // next diagram arrives, and would otherwise draw the labels as plain text.

@@ -521,6 +521,37 @@ suite("webview", function () {
     }
   });
 
+  test("widens the drawing for text that Mermaid draws beyond it, also in images", async () => {
+    // Mermaid places long radar axis labels and quadrant point labels partly outside its view box.
+    for (const source of [
+      'radar-beta\n  axis m["Math"], e["English literature and composition"]\n  curve a["Alice"]{85, 80}',
+      "quadrantChart\n  A point with a long label near the edge: [0.98, 0.5]",
+    ]) {
+      assert.ok((await render({ source })).ok, source);
+      const result = (await evaluate(`(async () => {
+        const svg = document.querySelector("#diagram svg");
+        const drawing = svg.getBoundingClientRect();
+        const clipped = Array.from(svg.querySelectorAll("text"), text => text.getBoundingClientRect())
+          .filter(text => text.width && (text.left < drawing.left - 1 || text.right > drawing.right + 1
+            || text.top < drawing.top - 1 || text.bottom > drawing.bottom + 1)).length;
+        const handle = document.getElementById("drag-out");
+        handle.dispatchEvent(new PointerEvent("pointerenter"));
+        for (let attempt = 0; attempt < 100; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          const dataTransfer = new DataTransfer();
+          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+          const image = dataTransfer.getData("image/svg+xml");
+          if (image) {
+            const exported = new DOMParser().parseFromString(image, "image/svg+xml").documentElement;
+            return {clipped, viewBox: svg.getAttribute("viewBox") === exported.getAttribute("viewBox")};
+          }
+        }
+        throw new Error("The diagram image was not prepared.");
+      })()`)) as { clipped: number; viewBox: boolean };
+      assert.deepStrictEqual(result, { clipped: 0, viewBox: true }, source);
+    }
+  });
+
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(
