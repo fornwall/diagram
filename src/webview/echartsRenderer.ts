@@ -41,6 +41,7 @@ export class EChartsRenderer implements Renderer {
   private resizeFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  private readonly resizeObserver = new ResizeObserver(() => this.scheduleRelayout());
 
   constructor(
     private readonly itemClicked: ItemClickHandler,
@@ -52,7 +53,7 @@ export class EChartsRenderer implements Renderer {
     this.container.id = "chart";
     this.container.hidden = true;
     canvas.append(this.container);
-    new ResizeObserver(() => this.scheduleRelayout()).observe(this.container);
+    this.resizeObserver.observe(this.container);
     this.reducedMotion.addEventListener("change", () => this.relayout());
   }
 
@@ -73,6 +74,12 @@ export class EChartsRenderer implements Renderer {
       this.disposeChart();
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
+    // ResizeObserver reports a size in a frame when it differs from the one it reported last, so it
+    // misses a container that changes size and back between frames, such as for a status line
+    // shown while rendering, or a hidden view shown again. Observing anew reports the size in the
+    // next frame the container has one, which the chart may not have been drawn at.
+    this.resizeObserver.unobserve(this.container);
+    this.resizeObserver.observe(this.container);
     return seriesTypes(option);
   }
 
@@ -297,26 +304,25 @@ export class EChartsRenderer implements Renderer {
   private scheduleRelayout(): void {
     cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
-      if (!this.resizeChart()) return;
-      // Layout decisions (legend position, label rotation, …) follow once resizing settles.
+      this.resizeChart();
+      // Layout decisions (legend position, label rotation, …) follow once resizing settles. They
+      // can be due without resizing, for a layout made for a size the container had briefly.
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.relayout(), 150);
     });
   }
 
-  private resizeChart(): boolean {
+  private resizeChart(): void {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
     if (
-      !this.chart ||
-      width === 0 ||
-      height === 0 ||
-      (this.chart.getWidth() === width && this.chart.getHeight() === height)
+      this.chart &&
+      width > 0 &&
+      height > 0 &&
+      (this.chart.getWidth() !== width || this.chart.getHeight() !== height)
     ) {
-      return false;
+      this.chart.resize({ width, height });
     }
-    this.chart.resize({ width, height });
-    return true;
   }
 
   private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent): Hit {

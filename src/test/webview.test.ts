@@ -22,34 +22,38 @@ const MERMAID: Record<string, string> = {
   xychart: "xychart\n  x-axis [jan, feb]\n  bar [10, 50]\n  line [15, 45]",
 };
 
-/** A chart that counts its draws in `window.chartDraws`. */
+/**
+ * A chart that counts its draws in `window.chartDraws`: how often each task that drew it did so,
+ * which tells what one layout drew apart from what drew it again later.
+ */
 const COUNTED_CHART = `(() => {
-  window.chartDraws = 0;
+  window.chartDraws = [];
+  let drawing = false;
   return {animation: false, series: [{type: "custom", coordinateSystem: null, data: [1],
     renderItem: (params, api) => {
-      window.chartDraws++;
+      if (!drawing) {
+        drawing = true;
+        window.chartDraws.push(0);
+        queueMicrotask(() => { drawing = false; });
+      }
+      window.chartDraws[window.chartDraws.length - 1]++;
       return {type: "circle", shape: {cx: 20, cy: 20, r: 10}, style: api.style()};
     }}]};
 })()`;
 
-/**
- * Webview code defining `settledChart()`, which waits until the counted chart is done drawing:
- * it has the size of its container, and no draw happened for a while, so that also a debounced
- * layout, or a resize observation a busy machine delays, has run.
- */
-const SETTLED_CHART = `
-  const settle = () => new Promise(resolve => setTimeout(resolve, 300));
-  const settledChart = async () => {
+/** Webview code defining `chartFitted()`: whether the chart takes the size of its container soon. */
+const CHART_FITTED = `
+  const chartFitted = async () => {
     const chart = document.getElementById("chart");
     const fitted = () => {
       const svg = chart.querySelector("svg");
       return svg?.getAttribute("width") === String(chart.clientWidth) &&
         svg.getAttribute("height") === String(chart.clientHeight);
     };
-    for (let draws = -1; draws !== window.chartDraws || !fitted(); ) {
-      draws = window.chartDraws;
-      await settle();
+    for (let frame = 0; frame < 10 && !fitted(); frame++) {
+      await new Promise(requestAnimationFrame);
     }
+    return fitted();
   };`;
 
 suite("webview", function () {
@@ -1930,19 +1934,35 @@ suite("webview", function () {
     assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-        ${SETTLED_CHART}
-        await settledChart();
+        ${CHART_FITTED}
+        // Let an earlier layout change, should one still be on its way, resize the chart first.
+        if (!(await chartFitted())) return "The chart does not take the size of its container.";
         const chart = document.getElementById("chart");
-        const before = window.chartDraws;
         const width = chart.clientWidth;
         const height = chart.clientHeight;
+        // The panel handles resize observations in an animation frame: count what those draw.
+        const requestFrame = window.requestAnimationFrame;
+        let redraws = 0;
+        window.requestAnimationFrame = (callback) => requestFrame((time) => {
+          const before = window.chartDraws.length;
+          callback(time);
+          redraws += window.chartDraws.length - before;
+        });
         try {
-          // Content-box changes trigger ResizeObserver, but the chart uses client dimensions.
-          chart.style.padding = "1px";
-          await settle();
-          return {sameSize: chart.clientWidth === width && chart.clientHeight === height,
-            redraws: window.chartDraws - before};
+          await new Promise((resolve) => {
+            // Observed after the panel's observer, so this observer hears of the same resize
+            // after it, and its frame follows the panel's.
+            const observer = new ResizeObserver(() => {
+              observer.disconnect();
+              requestFrame(resolve);
+            });
+            // Content-box changes trigger ResizeObserver, but the chart uses client dimensions.
+            chart.style.padding = "1px";
+            observer.observe(chart);
+          });
+          return {sameSize: chart.clientWidth === width && chart.clientHeight === height, redraws};
         } finally {
+          window.requestAnimationFrame = requestFrame;
           chart.style.padding = "";
         }
       })()`),
@@ -1950,30 +1970,70 @@ suite("webview", function () {
     );
   });
 
+  test("fits a chart drawn while its container briefly had another size or was hidden", async () => {
+    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${CHART_FITTED}
+        const chart = document.getElementById("chart");
+        const results = window.testRenderResults;
+        const send = (requestId, source) => window.dispatchEvent(new MessageEvent("message",
+          {data: {type: "render", requestId, language: "echarts", source, title: "Test"}}));
+        let request = 900010;
+        // Draws a new chart in place of one that failed, which hid the chart, between the same
+        // two frames, while its container has another size: ResizeObserver, which compares sizes
+        // in frames, sees none of it.
+        const redraw = async (whileDrawing, afterDrawing) => {
+          const failing = ++request;
+          const drawn = ++request;
+          const push = results.push;
+          results.push = (id) => {
+            if (id === failing) {
+              whileDrawing();
+              send(drawn, '{"series": [{"type": "pie", "data": [1]}]}');
+            } else if (id === drawn) {
+              afterDrawing();
+            }
+            return push.call(results, id);
+          };
+          try {
+            send(failing, '{"xAxis": null, "yAxis": {}, "series": [{"type": "bar", "data": [1]}]}');
+            while (!results.includes(drawn)) await new Promise(resolve => setTimeout(resolve, 10));
+          } finally {
+            results.push = push;
+          }
+          return chartFitted();
+        };
+        const view = (name) => () => document.getElementById("view-" + name).click();
+        return {
+          fitted: await chartFitted(),
+          resized: await redraw(() => { chart.style.bottom = "41px"; },
+            () => { chart.style.bottom = ""; }),
+          hidden: await redraw(view("source"), view("visual")),
+        };
+      })()`),
+      { fitted: true, resized: true, hidden: true },
+    );
+  });
+
   test("draws a chart once in the colors of a new theme", async () => {
     assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-        ${SETTLED_CHART}
-        await settledChart();
         const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
-        const redraws = async (change) => {
-          const before = window.chartDraws;
-          change();
-          for (let attempt = 0; window.chartDraws === before; attempt++) {
-            if (attempt === 100) throw new Error("The theme change did not redraw the chart.");
-            await new Promise(resolve => setTimeout(resolve, 20));
-          }
-          await settledChart();
-          return window.chartDraws - before;
-        };
         const root = document.documentElement.style;
-        const draws = await redraws(() => root.setProperty("--vscode-charts-blue", "#123456"));
-        const themed = fill();
-        await redraws(() => root.removeProperty("--vscode-charts-blue"));
-        return {draws, themed, restored: fill() !== themed};
+        const before = window.chartDraws.length;
+        root.setProperty("--vscode-charts-blue", "#123456");
+        try {
+          while (fill() !== "#123456") await new Promise(requestAnimationFrame);
+          // A layout that is not the theme's, still on its way from rendering, draws once too.
+          return [...new Set(window.chartDraws.slice(before))];
+        } finally {
+          root.removeProperty("--vscode-charts-blue");
+          while (fill() === "#123456") await new Promise(requestAnimationFrame);
+        }
       })()`),
-      { draws: 1, themed: "#123456", restored: true },
+      [1],
     );
   });
 
