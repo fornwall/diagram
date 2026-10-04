@@ -368,10 +368,32 @@ const LS_TIME = [
   String.raw`\d\d-\d\d +\d\d:\d\d`,
   String.raw`\S+ +\S+ +(?:\d{1,2}:\d\d(?::\d\d +\d{4})?|\d{4})`,
 ].join("|");
-/** A line of ls -l, with or without the group (as with -o or -g). */
+/**
+ * A line of ls -l, with or without the group (as with -o or -g), and perhaps with the inode
+ * (-i) and the number of blocks (-s, or -sh as "4.0K") before it.
+ */
 const LS_LINE = new RegExp(
-  String.raw`^(${LS_MODE}) +(\d+) +(\S+) +(?:(\S+) +)?(${LS_SIZE}) +(${LS_TIME}) +(.+)$`,
+  String.raw`^ *((?:\d[\d.,]*[A-Za-z]? +){0,2})(${LS_MODE}) +(\d+) +(\S+) +(?:(\S+) +)?(${LS_SIZE}) +(${LS_TIME}) +(.+)$`,
 );
+
+/**
+ * Names the number that ls -s or -i prints first in each of `files`: blocks if each could be the
+ * 512- or 1024-byte blocks that hold its file's size, or else inodes if they are unique.
+ */
+function lsNumberName(files: string[][]): string {
+  const numbers = files.map(([number = ""]) => number);
+  if (numbers.some((number) => !/^\d+$/.test(number))) return "Blocks";
+  let sized = false;
+  const holdSizes = files.every((file, i) => {
+    const size = parseNumber(file.at(-3) ?? "")?.value;
+    if (size === undefined) return true;
+    sized = true;
+    // Allowing for the rounding up to whole blocks of a file system, or for preallocation.
+    return Number(numbers[i]) * 1024 <= 2 * size + 65536;
+  });
+  if (sized && holdSizes) return "Blocks";
+  return new Set(numbers).size === numbers.length ? "Inode" : "";
+}
 
 /**
  * Splits the output of ls -l, as GNU and BSD ls print it, into named columns, leaving out the
@@ -380,6 +402,7 @@ const LS_LINE = new RegExp(
  */
 function splitLs(lines: string[]): Records | undefined {
   const files: string[][] = [];
+  let count: number | undefined;
   let groups = false;
   for (const line of lines) {
     const match = LS_LINE.exec(line);
@@ -387,10 +410,14 @@ function splitLs(lines: string[]): Records | undefined {
       if (/^\S+ +\d[\d.,]*[A-Za-z]*$|:$/.test(line)) continue;
       return undefined;
     }
-    const [, mode = "", links = "", owner = "", group, size = "", time = "", name = ""] = match;
+    const [, numbers = "", mode = "", links = "", owner = "", group, size = "", time = ""] = match;
+    const leading = numbers === "" ? [] : numbers.trimEnd().split(/ +/);
+    count ??= leading.length;
+    if (leading.length !== count) return undefined;
     groups ||= group !== undefined;
-    const file = name.trimEnd();
+    const file = (match[8] ?? "").trimEnd();
     files.push([
+      ...leading,
       mode,
       links,
       owner,
@@ -400,15 +427,15 @@ function splitLs(lines: string[]): Records | undefined {
       mode.startsWith("l") ? (file.split(" -> ")[0] ?? file) : file,
     ]);
   }
-  if (files.length === 0) {
+  if (count === undefined) {
     return undefined;
   }
-  const header = ["Mode", "Links", "Owner", "Group", "Size", "Modified", "Name"];
-  const units: (Unit | undefined)[] = [undefined, undefined, undefined, undefined, "bytes"];
+  const leading = count === 2 ? ["Inode", "Blocks"] : count === 1 ? [lsNumberName(files)] : [];
+  const header = [...leading, "Mode", "Links", "Owner", "Group", "Size", "Modified", "Name"];
   if (!groups) {
-    for (const record of [header, ...files]) record.splice(3, 1);
-    units.splice(3, 1);
+    for (const record of [header, ...files]) record.splice(count + 3, 1);
   }
+  const units = header.map((name): Unit | undefined => (name === "Size" ? "bytes" : undefined));
   return { records: [header, ...files], header: true, units };
 }
 

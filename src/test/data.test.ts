@@ -730,11 +730,54 @@ suite("data", () => {
       "Modified",
       "Name",
     ]);
-    // A line that is not a file, as from ls -li, leaves the generic split.
+    // A line that is not a file leaves the generic split.
     assert.strictEqual(
-      columns("total 4\n123 -rw-r--r-- 1 fred fred 3 Oct  4 14:02 one")[0],
+      columns("total 4\n-rw-r--r-- 1 fred fred 3 Oct  4 14:02 one\nfoo bar")[0],
       "Column 1",
     );
+  });
+
+  test("names the inodes and blocks that ls -i and -s print before the files", () => {
+    const columns = (text: string) => parseTable(text).columns.slice(0, 3);
+    const inodes = [
+      "total 8",
+      " 3934855 -rw-rw-r-- 1 fred fred  220 Oct  4 14:02 a.txt",
+      " 3934860 drwxrwxr-x 2 fred fred 4096 Oct  4 14:02 src",
+    ].join("\n");
+    assert.deepStrictEqual(columns(inodes), [
+      { name: "Inode", numeric: true },
+      { name: "Mode", numeric: false },
+      { name: "Links", numeric: true },
+    ]);
+    assert.deepStrictEqual(parse(inodes).rows[1]?.slice(-3), [4096, "Oct 4 14:02", "src"]);
+    const blocks = [
+      "total 8",
+      "4 -rw-rw-r-- 1 fred fred  220 Oct  4 14:02 a.txt",
+      "4 drwxrwxr-x 2 fred fred 4096 Oct  4 14:02 src",
+      "0 lrwxrwxrwx 1 fred fred    5 Oct  4 14:02 b -> a.txt",
+    ].join("\n");
+    assert.strictEqual(columns(blocks)[0]?.name, "Blocks");
+    // A large file's blocks are not taken for inodes, nor sizes with -h.
+    assert.strictEqual(
+      columns("2097160 -rw-r--r-- 1 fred fred 2147483648 Oct  4 14:02 disk.img")[0]?.name,
+      "Blocks",
+    );
+    assert.deepStrictEqual(columns("4.0K -rw-r--r-- 1 fred fred 220 Oct  4 14:02 a")[0], {
+      name: "Blocks",
+      numeric: true,
+      unit: "bytes",
+    });
+    // Both, as from ls -lis.
+    assert.deepStrictEqual(
+      parse("3934855 4 -rw-r--r-- 1 fred fred 220 Oct  4 14:02 a").columns.slice(0, 3),
+      ["Inode", "Blocks", "Mode"],
+    );
+    // Device files, which have no size, and hard links, which share an inode, are ambiguous.
+    const devices = [
+      "1043 crw-rw-rw- 2 root root 1, 3 Oct  4 12:36 null",
+      "1043 crw-rw-rw- 2 root root 1, 3 Oct  4 12:36 null2",
+    ].join("\n");
+    assert.deepStrictEqual(parse(devices).columns.slice(0, 2), ["Column 1", "Mode"]);
   });
 
   test("parses aligned output with multi-word headers and empty cells", () => {
