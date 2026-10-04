@@ -140,6 +140,12 @@ suite("webview", function () {
     );
     assert.ok(outcome.ok);
     panel.toggleChartOptions();
+    // The form loads when first shown.
+    assert.ok(
+      await evaluate(`(async () => {${UNTIL}
+        return until(() => !document.getElementById("chart-options").hidden);
+      })()`),
+    );
   };
   const closeChartOptions = () =>
     evaluate(`document.querySelector("#chart-options .chart-options-heading button").click()`);

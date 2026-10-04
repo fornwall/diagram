@@ -7,13 +7,11 @@ import {
   type FromWebview,
   type ToWebview,
 } from "../protocol";
-import { ChartOptionsForm } from "./chartOptions";
+import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
-import { EChartsRenderer } from "./echartsRenderer";
 import { pngDataUrl } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
-import { MermaidRenderer } from "./mermaidRenderer";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { type EditorState, SourceEditor } from "./sourceEditor";
@@ -70,7 +68,12 @@ const pickBanner = element("pick");
 const pickPrompt = element("pick-prompt");
 const pickDoneButton = element<HTMLButtonElement>("pick-done");
 
-const chartOptions = new ChartOptionsForm(element("chart-options"), post, focusContent);
+/** The chart options form, loaded when first shown. */
+let chartOptions: Promise<ChartOptionsForm> | undefined;
+const loadChartOptions = () =>
+  (chartOptions ??= import("./chartOptions").then(
+    ({ ChartOptionsForm }) => new ChartOptionsForm(element("chart-options"), post, focusContent),
+  ));
 
 // Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
@@ -103,7 +106,7 @@ const editor = new SourceEditor(
 );
 
 /** Last requested diagram, including failed renders. */
-let current: { renderer: Renderer; requestId: number } | undefined;
+let current: { language: DiagramLanguage; renderer: Renderer; requestId: number } | undefined;
 /** Selected nodes or chart items, by renderer key. */
 const selection = new Map<string, DiagramNode>();
 /** When set, a plain click on a node asks about it in chat. */
@@ -114,10 +117,27 @@ let pick: { id: number; multiple: boolean } | undefined;
 
 // Rendering.
 
-const renderers: Record<DiagramLanguage, Renderer> = {
-  mermaid: new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue),
-  echarts: new EChartsRenderer(itemClicked, canvas),
+// Each renderer's code loads with its first diagram, so that a panel showing only diagrams or only
+// charts does not load the code of the other.
+const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
+  mermaid: async () => {
+    const { MermaidRenderer } = await import("./mermaidRenderer");
+    return new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue);
+  },
+  echarts: async () => {
+    const { EChartsRenderer } = await import("./echartsRenderer");
+    return new EChartsRenderer(itemClicked, canvas);
+  },
 };
+const renderers = new Map<DiagramLanguage, Promise<Renderer>>();
+function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
+  let renderer = renderers.get(language);
+  if (!renderer) {
+    renderer = createRenderer[language]();
+    renderers.set(language, renderer);
+  }
+  return renderer;
+}
 /** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
 
@@ -136,6 +156,7 @@ function showError(renderer: Renderer, message: string): void {
 async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
   forgetDragImage();
   const { language, source, requestId } = message;
+  const renderer = await loadRenderer(language);
   titleElement.textContent = message.title;
   clickPrompt = message.clickPrompt;
   links = new Map(Object.entries(message.links ?? {}));
@@ -146,8 +167,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     writeToButton.textContent = `Write to ${message.writeTo}`;
     writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
   }
-  const renderer = renderers[language];
-  current = { renderer, requestId };
+  current = { language, renderer, requestId };
   editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
   closeLinkMenu();
@@ -253,13 +273,22 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       enqueue(() => exportDrawing(message));
       break;
     case "chartOptions":
-      enqueue(() => chartOptions.update(message.state, message.visible));
+      // The form starts hidden, so there is nothing to hide before it is loaded.
+      if (message.visible || chartOptions) {
+        const form = loadChartOptions();
+        enqueue(async () => (await form).update(message.state, message.visible));
+      }
       break;
     case "chartOptionsError":
-      enqueue(() => chartOptions.showError(message.message));
+      if (chartOptions) {
+        const form = chartOptions;
+        enqueue(async () => (await form).showError(message.message));
+      }
       break;
     case "render": {
       const revision = ++renderRevision;
+      // Load the renderer meanwhile if the queue is busy.
+      void loadRenderer(message.language);
       enqueue(async () => {
         if (revision === renderRevision) await render(message);
       });
@@ -299,8 +328,8 @@ const themeObserver = new MutationObserver(() => {
     // The image prepared for a drag was drawn in the colors that are now gone.
     forgetDragImage();
     closeLinkMenu();
-    for (const renderer of Object.values(renderers)) {
-      enqueue(() => renderer.themeChanged());
+    for (const renderer of renderers.values()) {
+      enqueue(async () => (await renderer).themeChanged());
     }
   });
 });
@@ -314,7 +343,7 @@ themeObserver.observe(document.documentElement, { attributes: true, attributeFil
 
 function updateSelectionUi(): void {
   active?.showSelection(new Set(selection.keys()));
-  const { noun, itemNoun } = current?.renderer ?? renderers.mermaid;
+  const { noun, itemNoun } = current?.renderer ?? { noun: "diagram", itemNoun: "node" };
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
   selectionLabel.textContent =
     labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(itemNoun);
@@ -593,7 +622,7 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
       throw new Error("The diagram changed before it could be exported. Try again.");
     }
     if (format === "html") {
-      if (active !== renderers.echarts)
+      if (current.language !== "echarts")
         throw new Error("Interactive HTML is only available for charts.");
       post({ type: "exportTheme", requestId, colors: readThemeColors() });
       return;
