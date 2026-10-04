@@ -2,8 +2,9 @@
 
 import { columnName } from "./chartColumns";
 import { timeValue } from "./chartDates";
-import { addValues, label, noteRepeatedLabels, plural, quantile, type Reading } from "./chartRows";
-import { type CartesianType, quoteAll } from "./chartSpec";
+import { addValues, label, noteRepeatedLabels, quantile, type Reading } from "./chartRows";
+import type { CartesianType } from "./chartSpec";
+import { plural, quoteAll } from "./text";
 
 const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
   bar: { type: "bar" },

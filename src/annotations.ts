@@ -1,6 +1,5 @@
 // Validate diagram_annotate input.
 
-import { quoteAll } from "./chartSpec";
 import {
   type Annotation,
   type DiagramMark,
@@ -8,6 +7,7 @@ import {
   isPlainObject,
   MARK_KINDS,
 } from "./protocol";
+import { quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 export interface AnnotateInput {
@@ -34,12 +34,9 @@ export function validateAnnotation(value: unknown): Annotation {
     Object.entries(value).filter(([, item]) => item !== null && item !== undefined),
   );
   const problems: string[] = [];
-  const unknown = Object.keys(input).filter((key) => !INPUT_KEYS.some((known) => known === key));
-  if (unknown.length > 0) {
-    problems.push(
-      `Unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; ` +
-        `the properties are ${quoteAll(INPUT_KEYS)}.`,
-    );
+  const unknown = unknownProperties(input, INPUT_KEYS);
+  if (unknown !== undefined) {
+    problems.push(unknown);
   }
 
   const marks: DiagramMark[] = [];
@@ -89,11 +86,11 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
   // A model may name a node without saying how to mark it, as a bare id rather than an object.
   const value = typeof given === "string" ? { id: given } : given;
   if (!isPlainObject(value)) {
-    return 'it must be an object, e.g. {"id": "pay", "mark": "problem"}.';
+    return 'A mark must be an object, e.g. {"id": "pay", "mark": "problem"}.';
   }
-  const unknown = Object.keys(value).filter((key) => !MARK_KEYS.some((known) => known === key));
-  if (unknown.length > 0) {
-    return `unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; a mark has ${quoteAll(MARK_KEYS)}.`;
+  const unknown = unknownProperties(value, MARK_KEYS);
+  if (unknown !== undefined) {
+    return unknown;
   }
   // Chart names are identities: "A" and " A " may name different data items.
   const id = typeof value.id === "string" ? value.id : "";

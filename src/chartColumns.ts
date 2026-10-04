@@ -1,9 +1,10 @@
 // Which columns of a table a chart reads, and in which role: given in the request, or inferred.
 
 import { dateFormat } from "./chartDates";
-import { CARTESIAN_TYPES, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
+import { CARTESIAN_TYPES, type ChartSpec, type ChartType } from "./chartSpec";
 import { type Cell, type DataTable, findColumn, isYear } from "./data";
 import { isPlainObject } from "./protocol";
+import { plural, quoteAll } from "./text";
 
 export function columnName(table: DataTable, index: number): string {
   return table.columns[index]?.name ?? "";
@@ -357,8 +358,7 @@ function describeColumn(table: DataTable, column: number): string {
   if (texts > TEXT_EXAMPLES) {
     examples.push("…");
   }
-  const count = `${texts} text ${texts === 1 ? "cell" : "cells"}`;
-  return `${kind}, ${count}: ${examples.join(", ")}`;
+  return `${kind}, ${plural(texts, "text cell")}: ${examples.join(", ")}`;
 }
 
 /** E.g. `"dir" (text), "size" (bytes)`. */
@@ -375,7 +375,7 @@ function describeColumns(table: DataTable): string {
 export function describeTable(table: DataTable): string {
   const count = table.rows.length;
   return [
-    `${count} ${count === 1 ? "row" : "rows"}; columns: ${describeColumns(table)}`,
+    `${plural(count, "row")}; columns: ${describeColumns(table)}`,
     ...(table.note === undefined ? [] : [table.note]),
     count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:",
     ...table.rows.slice(0, PREVIEW_ROWS).map((row) => JSON.stringify(row)),

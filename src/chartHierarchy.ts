@@ -1,8 +1,8 @@
 // Charts of rows read as paths of levels: treemap and sunburst nest them, sankey flows along them.
 
 import { chained, columnName } from "./chartColumns";
-import { addValues, label, plural, type Reading, type Row } from "./chartRows";
-import { quoteAll } from "./chartSpec";
+import { addValues, label, type Reading, type Row } from "./chartRows";
+import { plural, quoteAll } from "./text";
 
 /** A node of a hierarchy, before the values of the rows under it are summed up into it. */
 interface Level {

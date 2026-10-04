@@ -6,10 +6,11 @@ import { boxplotOption, cartesianOption, heatmapOption, scatterOption } from "./
 import { hierarchyOption, sankeyOption } from "./chartHierarchy";
 import { funnelOption, gaugeOption, pieOption, radarOption } from "./chartItems";
 import { type Reading, readRows, tableBytePower } from "./chartRows";
-import { type ChartSpec, quoteAll } from "./chartSpec";
+import type { ChartSpec } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import type { DataTable } from "./data";
 import { isPlainObject } from "./protocol";
+import { quoteAll } from "./text";
 
 export interface Chart {
   /** The ECharts option, as plain JSON that leaves colors, fonts and layout to the webview. */

@@ -5,6 +5,7 @@ import type { DataFormat } from "./chartSpec";
 import type { Records } from "./data";
 import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
 import { parseNumber, type Unit } from "./dataNumber";
+import { quote } from "./text";
 
 function isBlank(line: string): boolean {
   return line.trim() === "";
@@ -140,9 +141,8 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       finishRecord();
     } else {
       if (closedQuote && char !== " " && char !== "\t") {
-        const shown = JSON.stringify(field.length > 40 ? `${field.slice(0, 40)}…` : field);
         throw new Error(
-          `Unexpected text after the quoted field ${shown} on line ${line}. Separate fields ` +
+          `Unexpected text after the quoted field ${quote(field)} on line ${line}. Separate fields ` +
             `with the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
         );
       }

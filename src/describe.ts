@@ -2,7 +2,6 @@
 // did with it.
 
 import { codeFence } from "./blocks";
-import { quoteAll } from "./chartSpec";
 import { documentName } from "./documentDiagram";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
@@ -18,6 +17,7 @@ import {
   type RepeatedName,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { quoteAll } from "./text";
 
 /** Longer diagram sources are left out of the description. */
 const MAX_SOURCE_LENGTH = 30_000;

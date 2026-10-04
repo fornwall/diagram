@@ -1,8 +1,9 @@
 // The small, editable part of a chart request, changed in the Chart Options form or by
 // diagram_updateChart. Data and advanced styling stay on the host.
-import { type ChartSpec, quoteAll, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
 import { isPlainObject } from "./protocol";
+import { quoteAll } from "./text";
 
 const CONTROL_KEYS = [
   "type",

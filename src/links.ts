@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import { resolveFile } from "./dataSource";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
+import { quote } from "./text";
 
 /** Resolve paths when opened so saved links follow their workspace. Lines are one-based. */
 export interface NodeLink {
@@ -111,11 +112,6 @@ function parseLink(location: unknown): NodeLink | string {
     return { file };
   }
   return endLine === undefined ? { file, line } : { file, line, endLine };
-}
-
-/** Bound quoted locations in error messages. */
-function quote(text: string): string {
-  return JSON.stringify(text.length > 60 ? `${text.slice(0, 60)}…` : text);
 }
 
 /** A link as it was written, e.g. "src/panel.ts#L120-L138", for the panel and the model. */

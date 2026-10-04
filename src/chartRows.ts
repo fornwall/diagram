@@ -1,8 +1,9 @@
 // The rows a chart draws: labeled, without totals or parent rows, grouped, sorted and limited.
 
 import { type Columns, chained, columnName, readsLevels } from "./chartColumns";
-import { type Aggregation, type ChartSpec, type ChartType, quoteAll } from "./chartSpec";
+import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
+import { plural, quoteAll } from "./text";
 
 /** Bounds prefix construction and recursive hierarchy traversal in both the host and renderer. */
 const MAX_LEVELS = 100;
@@ -57,11 +58,6 @@ export function noteRepeatedLabels(
         'earlier one; "aggregate" combines the rows of each label',
     );
   }
-}
-
-/** E.g. "1 row" or "3 rows". */
-export function plural(count: number, noun: string, nouns = `${noun}s`): string {
-  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 export function addValues(left: number, right: number): number {

@@ -70,7 +70,7 @@ suite("annotations", () => {
       assert.match(problems(value), /The marks must be given as an object/);
     }
     assert.match(problems({ marks: "pay" }), /"marks" must be an array of objects/);
-    assert.match(problems({ marks: [42] }), /Mark 1: it must be an object/);
+    assert.match(problems({ marks: [42] }), /Mark 1: A mark must be an object/);
     assert.match(problems({ marks: [{}] }), /Mark 1: "id" must be the id of a node/);
     assert.match(problems({ marks: [{ id: " " }] }), /Mark 1: "id" must be the id of a node/);
     assert.match(
@@ -83,7 +83,7 @@ suite("annotations", () => {
     );
     assert.match(
       problems({ marks: [{ id: "a", label: "Pay" }] }),
-      /Mark 1: unknown property "label"; a mark has "id", "mark", "note"\./,
+      /Mark 1: Unknown property "label"; the properties are "id", "mark", "note"\./,
     );
     assert.match(problems({ marks: [{ id: "a", note: 42 }] }), /Mark 1: "note" must be a string/);
     assert.match(

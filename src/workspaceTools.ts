@@ -6,6 +6,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { errorMessage, isPlainObject } from "./protocol";
+import { plural, unknownProperties } from "./text";
 
 interface FindInput {
   glob?: string;
@@ -34,17 +35,13 @@ const DEFAULT_READ_LINES = 200;
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
 
-/**
- * The input without the null values some models send for omitted properties. Unknown properties
- * are refused rather than ignored, as they are likely misnamed.
- */
+/** The input without the null values some models send for omitted properties. */
 function objectInput(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!isPlainObject(value)) throw new Error("Give the tool input as an object.");
   const input = Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null));
-  const unknown = Object.keys(input).filter((key) => !keys.includes(key));
-  if (unknown.length > 0) {
-    const quote = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
-    throw new Error(`Unknown input ${quote(unknown)}; the inputs are ${quote(keys)}.`);
+  const unknown = unknownProperties(input, keys);
+  if (unknown !== undefined) {
+    throw new Error(unknown);
   }
   return input;
 }
@@ -300,10 +297,6 @@ function prepare(message: string): vscode.PreparedToolInvocation {
           message: "Allow the diagram agent to read files in this untrusted workspace?",
         },
   };
-}
-
-function plural(count: number, noun: string, nouns = `${noun}s`): string {
-  return `${count} ${count === 1 ? noun : nouns}`;
 }
 
 export class FindWorkspaceFilesTool implements vscode.LanguageModelTool<FindInput> {

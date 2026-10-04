@@ -1,6 +1,7 @@
 // A request to render data as a chart, as given to the diagram_chart tool, and its validation.
 
 import { isPlainObject } from "./protocol";
+import { quote, quoteAll, unknownProperties } from "./text";
 
 export const CHART_TYPES = [
   "pie",
@@ -137,10 +138,6 @@ export function dataOrigin({ file, command }: ChartSpec): string {
   return command !== undefined ? `command \`${command}\`` : "inline data";
 }
 
-export function quoteAll(values: readonly string[]): string {
-  return values.map((value) => JSON.stringify(value)).join(", ");
-}
-
 function isOneOf(values: readonly string[], value: unknown): boolean {
   return (values as readonly unknown[]).includes(value);
 }
@@ -177,12 +174,9 @@ export function validateChartSpec(value: unknown): ChartSpec {
     }
   };
 
-  const unknown = Object.keys(input).filter((key) => !isOneOf(SPEC_KEYS, key));
-  if (unknown.length > 0) {
-    problems.push(
-      `Unknown ${unknown.length === 1 ? "property" : "properties"} ${quoteAll(unknown)}; ` +
-        `the properties are ${quoteAll([...SPEC_KEYS, "clickPrompt"])}.`,
-    );
+  const unknown = unknownProperties(input, [...SPEC_KEYS, "clickPrompt"]);
+  if (unknown !== undefined) {
+    problems.push(unknown);
   }
   if (input.type === undefined) {
     problems.push(`"type" is missing; it must be one of ${quoteAll(CHART_TYPES)}.`);
@@ -285,12 +279,9 @@ function filterProblems(filter: unknown, at: string): string[] {
     ];
   }
   const problems: string[] = [];
-  const unknown = Object.keys(filter).filter((key) => !FILTER_KEYS.includes(key));
-  if (unknown.length > 0) {
-    problems.push(
-      `${at} has unknown ${unknown.length === 1 ? "property" : "properties"} ` +
-        `${quoteAll(unknown)}; a filter has ${quoteAll(FILTER_KEYS)}.`,
-    );
+  const unknown = unknownProperties(filter, FILTER_KEYS);
+  if (unknown !== undefined) {
+    problems.push(`${at}: ${unknown}`);
   }
   const { column, op, value } = filter;
   if (typeof column !== "string" || column.trim() === "") {
@@ -319,7 +310,7 @@ function filterProblems(filter: unknown, at: string): string[] {
   return problems;
 }
 
-/** A value as quoted in an error message: JSON, shortened. */
+/** A value as an error message names it. */
 function brief(value: unknown): string {
   if (value === undefined) {
     return "missing";
@@ -330,6 +321,5 @@ function brief(value: unknown): string {
   if (isPlainObject(value)) {
     return "an object";
   }
-  const json = JSON.stringify(value);
-  return json.length > 40 ? `${json.slice(0, 40)}…` : json;
+  return typeof value === "string" ? quote(value) : JSON.stringify(value);
 }

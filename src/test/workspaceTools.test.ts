@@ -342,7 +342,7 @@ suite("workspace tools", function () {
     );
     assert.strictEqual(
       await invoke(finder, { pattern: "*.ts" } as never),
-      'Error: Unknown input "pattern"; the inputs are "glob", "maxResults".',
+      'Error: Unknown property "pattern"; the properties are "glob", "maxResults".',
     );
     for (const range of [
       { startLine: 0 },

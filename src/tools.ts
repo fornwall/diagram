@@ -3,13 +3,7 @@ import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
-import {
-  type ChartSpec,
-  type ChartType,
-  dataOrigin,
-  quoteAll,
-  validateChartSpec,
-} from "./chartSpec";
+import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
@@ -30,6 +24,7 @@ import {
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { plural, quoteAll } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
@@ -307,9 +302,9 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
         language === "mermaid" &&
         this.panel.drawnIds &&
         marks.some((mark) => !this.panel.drawnIds?.includes(mark.id));
-      const parts = `${includesRelationships ? "item" : nodeNoun(language)}${marks.length === 1 ? "" : "s"}`;
+      const marked = plural(marks.length, includesRelationships ? "item" : nodeNoun(language));
       const listed = marks.map(({ id, kind }) => `${id} (${kind})`).join(", ");
-      sentences.push(`Marked ${marks.length} ${parts}: ${listed}.`);
+      sentences.push(`Marked ${marked}: ${listed}.`);
       if (dim) {
         sentences.push("Unmarked items are faded.");
       }

@@ -1,11 +1,12 @@
 import * as vscode from "vscode";
 import { throwIfCancelled } from "./cancellation";
 import type { ChartUpdateInput } from "./chartOptions";
-import { type ChartSpec, quoteAll, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
 import { errorMessage, isPlainObject } from "./protocol";
+import { unknownProperties } from "./text";
 import { textResult } from "./tools";
 
 interface InspectDataInput {
@@ -18,17 +19,13 @@ interface InspectDataInput {
 
 function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
   if (!isPlainObject(input)) throw new Error("Data inspection input must be an object.");
+  const unknown = unknownProperties(input, ["data", "file", "command", "format", "sampleRows"]);
+  if (unknown !== undefined) {
+    throw new Error(unknown);
+  }
   const { sampleRows = 5, ...source } = input;
   if (!Number.isInteger(sampleRows) || Number(sampleRows) < 0 || Number(sampleRows) > 20) {
     throw new Error('"sampleRows" must be an integer from 0 to 20.');
-  }
-  const unknown = Object.keys(source).filter(
-    (key) => !["data", "file", "command", "format"].includes(key),
-  );
-  if (unknown.length > 0) {
-    throw new Error(
-      `Unknown ${quoteAll(unknown)}; use "data", "file", "command", "format" and "sampleRows".`,
-    );
   }
   if (Object.keys(source).length === 0) return { sampleRows: Number(sampleRows) };
   return { spec: validateChartSpec({ type: "bar", ...source }), sampleRows: Number(sampleRows) };

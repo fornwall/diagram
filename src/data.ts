@@ -1,11 +1,12 @@
 // Parsing tabular data (JSON, CSV, TSV, Markdown tables or whitespace-separated command output)
 // for charts: telling the format, whether the first row is a header, and which cells are numbers.
 
-import { type DataFormat, quoteAll } from "./chartSpec";
+import type { DataFormat } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
 import { numberFormat, parseNumber, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
+import { quoteAll } from "./text";
 
 /** A table cell: text, a number, or null when empty. */
 export type Cell = string | number | null;

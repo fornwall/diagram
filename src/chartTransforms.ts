@@ -1,9 +1,10 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
 import { defaultValueColumns } from "./chartColumns";
-import { type ChartFilter, type ChartSpec, quoteAll } from "./chartSpec";
+import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import { type Cell, type DataTable, findColumn } from "./data";
+import { quoteAll } from "./text";
 
 function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
   switch (op) {
