@@ -10,7 +10,7 @@ import { clickToAskQuery, type Diagram, DiagramPanel, type DiagramState } from "
 import { isFromWebview } from "../protocol";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import {
-  type FakeWebview,
+  FakeWebview,
   memento,
   newFakePanel,
   newPanel,
@@ -756,6 +756,18 @@ suite("panel", function () {
       assert.match(panel.describeForModel() ?? "", /selected these nodes/);
       await webview.receive({ type: "ready" });
       assert.match(panel.describeForModel() ?? "", /no nodes selected/);
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("a restored panel without a saved diagram drops the title of the one it showed", async () => {
+    const panel = newPanel();
+    const webview = new FakeWebview();
+    webview.panel.title = "Old flow";
+    try {
+      panel.restore(webview.panel);
+      assert.strictEqual(webview.panel.title, "Diagram");
     } finally {
       panel.dispose();
     }

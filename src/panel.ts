@@ -236,6 +236,9 @@ export class DiagramPanel implements vscode.Disposable {
     this.attach(panel);
     if (this.state) {
       void this.renderCurrent();
+    } else {
+      // The tab keeps the title of the diagram it showed before, which was not saved.
+      panel.title = "Diagram";
     }
   }
 
