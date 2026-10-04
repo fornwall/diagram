@@ -467,18 +467,40 @@ suite("documentDiagram", function () {
     }
   });
 
-  test("applying an edit leaves a document that changed to the user", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+  test("applying an edit leaves a document that changed to the user, and offers to open it", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     const { panel, webview } = await restored(openedState(read));
+    const warn = vscode.window.showWarningMessage;
+    const show = vscode.window.showTextDocument;
+    const warnings: string[] = [];
+    const opened = Promise.withResolvers<[vscode.TextDocument, vscode.TextDocumentShowOptions]>();
+    vscode.window.showWarningMessage = (async (message: string, ...actions: string[]) => {
+      warnings.push(message, ...actions);
+      return actions[0];
+    }) as unknown as typeof warn;
+    vscode.window.showTextDocument = (async (
+      shown: vscode.TextDocument,
+      options: vscode.TextDocumentShowOptions,
+    ) => opened.resolve([shown, options])) as unknown as typeof show;
     try {
-      await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
+      await edit(document, new vscode.Range(3, 0, 3, 12), "flowchart LR");
       await webview.edit("flowchart RL");
-      assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n```\n");
+      assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
       // The diagram is still the document's, with the block as it was read.
       assert.strictEqual(panel.current?.document?.fence.source, "flowchart TD");
       assert.strictEqual(panel.current?.source, "flowchart RL");
+      const [shown, options] = await opened.promise;
+      const name = path.basename(document.uri.fsPath);
+      assert.deepStrictEqual(warnings, [
+        `The mermaid block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
+        `Open ${name}`,
+      ]);
+      assert.strictEqual(shown, document);
+      assert.deepStrictEqual(options.selection, new vscode.Range(2, 0, 2, 0));
     } finally {
+      vscode.window.showWarningMessage = warn;
+      vscode.window.showTextDocument = show;
       panel.dispose();
     }
   });
