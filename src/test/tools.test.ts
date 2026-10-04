@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import type { DiagramPanel, DiagramState } from "../panel";
+import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { newPanel } from "./newPanel";
 import { toolText } from "./toolText";
@@ -53,6 +53,79 @@ suite("tools", () => {
       assert.match(toolText(result), /Nothing was rendered: Give "source"/);
     }
     assert.strictEqual(rendered.length, 2);
+  });
+
+  test("diagram_render reports links it left out, and a panel that could not show the diagram", async () => {
+    const outcomes: RenderOutcome[] = [
+      { ok: true, diagramType: "flowchart" },
+      { ok: false, kind: "invalid", error: "Parse error" },
+      { ok: false, kind: "unavailable", error: "The diagram panel is unavailable." },
+    ];
+    panel.render = async () => outcomes.shift() ?? assert.fail("Rendered too often");
+    const render = async () =>
+      toolText(
+        await new RenderDiagramTool(panel).invoke(
+          {
+            input: { source: "flowchart LR\n  A --> B", links: { A: "a.ts#L1", B: "b.ts:2" } },
+          } as never,
+          token,
+        ),
+      );
+    const leftOut =
+      '\n\nThese links were left out:\n- "B": "b.ts:2" gives its line after a colon; write it as "#L42"';
+    const drawn = await render();
+    assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel next to the chat\./);
+    assert.ok(drawn.includes(leftOut), drawn);
+    assert.match(drawn, /Call diagram_render again with the links corrected to add them\.$/);
+    const invalid = await render();
+    assert.match(
+      invalid,
+      /^The diagram failed to render with this error:\n\nParse error\n\nFix the Mermaid syntax/,
+    );
+    assert.ok(invalid.includes(leftOut), invalid);
+    assert.match(
+      await render(),
+      /^The diagram could not be shown: The diagram panel is unavailable\. This is not a problem with the diagram; .*call diagram_render again to reopen the panel\./,
+    );
+  });
+
+  test("diagram_chart blames its options for a chart that fails to render", async () => {
+    panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
+    const chart = async (input: object) =>
+      toolText(
+        await new ChartTool(panel).invoke(
+          { input: { type: "bar", data: "a,1\nb,2", ...input } } as never,
+          token,
+        ),
+      );
+    assert.match(
+      await chart({ options: { yAxis: { type: "log" } } }),
+      /^The chart failed to render with this error:\n\nBad option\n\n"options" is the likely cause: fix or leave it out and call diagram_chart again\.\n\nCharted /,
+    );
+    assert.match(
+      await chart({}),
+      /Bad option\n\nTry another chart type, or write the ECharts option yourself/,
+    );
+  });
+
+  test("diagram_pickNodes reports the nodes the user picked", async () => {
+    const nodes = [
+      { id: "A", label: "Parser" },
+      {
+        id: "edge:L_A_B_0",
+        label: "Parser → Checker",
+        relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
+      },
+    ] as const;
+    panel.pickNodes = async () => ({ picked: true, nodes: [...nodes] });
+    const result = await new PickDiagramNodesTool(panel).invoke(
+      { input: { prompt: "Which?" } } as never,
+      token,
+    );
+    assert.strictEqual(
+      toolText(result),
+      'The user picked: "Parser" (id: A), "Parser → Checker" (id: edge:L_A_B_0; edge; from: A; to: B; direction: forward).',
+    );
   });
 
   test("tools report malformed input without throwing during preparation", async () => {

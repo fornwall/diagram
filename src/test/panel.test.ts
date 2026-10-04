@@ -743,6 +743,47 @@ suite("panel", function () {
     }
   });
 
+  test("asks before opening a linked file outside the workspace, and says why one cannot open", async () => {
+    const { panel, webview } = await newFakePanel();
+    const clicks = recordClicks();
+    const warn = vscode.window.showWarningMessage;
+    const showError = vscode.window.showErrorMessage;
+    const asked: string[] = [];
+    const errors: string[] = [];
+    let answer: string | undefined;
+    vscode.window.showWarningMessage = (async (message: string) => {
+      asked.push(message);
+      return answer;
+    }) as typeof warn;
+    vscode.window.showErrorMessage = async (message: string) => {
+      errors.push(message);
+      return undefined;
+    };
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-link-test-"));
+    const outside = path.join(directory, "outside.txt");
+    fs.writeFileSync(outside, "outside");
+    const click = (id: string) => webview.receive({ type: "clickToOpen", node: { id, label: id } });
+    try {
+      const links = { A: { file: outside }, B: { file: "missing.txt" } };
+      assert.ok((await panel.render({ ...flowchart, links }, "tool")).ok);
+      await click("A");
+      answer = "Open";
+      await click("A");
+      assert.deepStrictEqual(asked, Array(2).fill('Open the file that "A" links to?'));
+      assert.deepStrictEqual(clicks.actions, ["open: outside.txt#L1"]);
+      await click("B");
+      assert.strictEqual(asked.length, 2);
+      assert.strictEqual(errors.length, 1);
+      assert.match(errors[0] ?? "", /^Could not open the code that "B" links to: /);
+    } finally {
+      vscode.window.showWarningMessage = warn;
+      vscode.window.showErrorMessage = showError;
+      clicks.restore();
+      panel.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("opens only http, https and mailto links that a diagram draws", async () => {
     const { panel, webview } = await newFakePanel();
     const clicks = recordClicks();

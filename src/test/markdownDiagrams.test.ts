@@ -141,6 +141,36 @@ suite("markdownDiagrams", function () {
     );
   });
 
+  test("Open Diagram at Cursor says why there is nothing to open", async () => {
+    const information = vscode.window.showInformationMessage;
+    const messages: string[] = [];
+    vscode.window.showInformationMessage = async (message: string) => {
+      messages.push(message);
+      return undefined;
+    };
+    try {
+      for (const [language, content] of [
+        ["plaintext", "```mermaid\nflowchart TD\n```\n"],
+        ["markdown", "# Notes\n\n```ts\nconst x = 1;\n```\n"],
+      ]) {
+        const document = await vscode.workspace.openTextDocument({ language, content });
+        await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand("diagram.openAtCursor");
+      }
+      assert.strictEqual(messages.length, 2);
+      assert.strictEqual(
+        messages[0],
+        "Open a Markdown file to open a diagram or chart that is written in it.",
+      );
+      assert.match(
+        messages[1] ?? "",
+        /^Untitled-\d+ holds no mermaid or echarts code block to open\.$/,
+      );
+    } finally {
+      vscode.window.showInformationMessage = information;
+    }
+  });
+
   test("a stale CodeLens does not open a different nearby diagram", async () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     const document = await vscode.workspace.openTextDocument({
