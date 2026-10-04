@@ -550,6 +550,59 @@ suite("webview", function () {
     }
   });
 
+  test("lays Gantt charts out again at a new canvas width, keeping zoom, selection and focus", async () => {
+    // As the split view would, unless the panel is so narrow that it stacks the panes.
+    const narrow = `(() => {
+      const canvas = document.getElementById("canvas");
+      canvas.style.maxWidth = canvas.offsetWidth * 0.6 + "px";
+    })()`;
+    // Other diagrams are only scaled.
+    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        const svg = document.querySelector("#diagram svg");
+        ${narrow};
+        await new Promise(resolve => setTimeout(resolve, 500));
+        document.getElementById("canvas").style.maxWidth = "";
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return document.querySelector("#diagram svg") === svg;
+      })()`),
+      true,
+    );
+    assert.ok((await render({ source: MERMAID.gantt })).ok);
+    const result = await evaluate(`(async () => {
+      const canvas = document.getElementById("canvas");
+      const task = () => document.querySelector('#diagram rect.task[tabindex]');
+      task().dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      document.getElementById("zoom-in").click();
+      const before = document.querySelector("#diagram svg");
+      ${narrow};
+      task().focus();
+      for (let i = 0; i < 100 && document.querySelector("#diagram svg") === before; i++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      const style = getComputedStyle(canvas);
+      const result = {
+        drawn: Math.round(document.querySelector("#diagram svg").viewBox.baseVal.width),
+        room: Math.round(canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)),
+        zoom: document.getElementById("zoom-reset").textContent,
+        selected: task().classList.contains("diagram-selected"),
+        focused: document.activeElement === task(),
+      };
+      canvas.style.maxWidth = "";
+      document.getElementById("zoom-reset").click();
+      return result;
+    })()`);
+    const { room } = result as { room: number };
+    assert.deepStrictEqual(result, {
+      drawn: room,
+      room,
+      zoom: "125%",
+      selected: true,
+      focused: true,
+    });
+  });
+
   test("scrolls past every side of a Mermaid drawing larger than the canvas", async () => {
     assert.ok((await render({ source: "flowchart LR\n  A[Left] --> B[Middle] --> C[Right]" })).ok);
     const padded = await evaluate(`(async () => {

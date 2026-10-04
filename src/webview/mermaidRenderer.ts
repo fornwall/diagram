@@ -24,6 +24,12 @@ const MAX_ZOOM = 4;
 const WHEEL_ZOOM = 1.2;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
+/**
+ * How much the canvas width must change for a Gantt chart to be laid out again (scaling it to fit
+ * meanwhile), and how long after the last change: not for a scrollbar, nor for each step of a drag.
+ */
+const RELAYOUT_THRESHOLD = 16;
+const RELAYOUT_DELAY = 200;
 
 /** Mermaid's default limit: it draws a longer source as an error message instead. */
 const MAX_TEXT_SIZE = 50_000;
@@ -218,7 +224,11 @@ export class MermaidRenderer implements Renderer {
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
   private displayedSource: string | undefined;
+  private diagramType: string | undefined;
+  /** The width of the container that the drawing was laid out in. */
+  private layoutWidth = 0;
   private fitFrame = 0;
+  private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   /** The node that has the drawing's tab stop. */
   private tabStop: string | undefined;
 
@@ -227,6 +237,8 @@ export class MermaidRenderer implements Renderer {
     private readonly canvas: HTMLElement,
     private readonly diagram: HTMLElement,
     private readonly zoomButton: HTMLElement,
+    /** Runs a task in the panel's render queue. */
+    private readonly enqueue: (task: () => Promise<void>) => void,
   ) {
     const activate = (event: MouseEvent | KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : undefined;
@@ -296,12 +308,17 @@ export class MermaidRenderer implements Renderer {
       { passive: false },
     );
     new ResizeObserver(() => {
-      if (this.fitting && this.displayedSource !== undefined) {
+      if (this.displayedSource === undefined) return;
+      if (this.fitting) {
         cancelAnimationFrame(this.fitFrame);
         // The user may zoom by hand before the frame.
         this.fitFrame = requestAnimationFrame(() => {
           if (this.fitting && this.displayedSource !== undefined) this.fit();
         });
+      }
+      if (this.diagramType === "gantt") {
+        clearTimeout(this.relayoutTimer);
+        this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
       }
     }).observe(canvas);
   }
@@ -350,6 +367,7 @@ export class MermaidRenderer implements Renderer {
     }
     if (width > 0) {
       container.style.width = `${width}px`;
+      this.layoutWidth = width;
     }
     const text = parsableSource(source);
     const result = await mermaid.render(id, text, container).catch((error: unknown) => {
@@ -389,6 +407,7 @@ export class MermaidRenderer implements Renderer {
     if (result.diagramType !== "gantt") result.bindFunctions?.(this.diagram);
     this.diagram.hidden = false;
     this.displayedSource = source;
+    this.diagramType = result.diagramType;
     this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
     this.prepareSvg(id, db);
     // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
@@ -543,28 +562,65 @@ export class MermaidRenderer implements Renderer {
 
   async themeChanged(): Promise<void> {
     if (this.displayedSource !== undefined) {
-      const focused = document.activeElement;
-      const node = focused ? this.nodes.get(focused) : undefined;
-      try {
-        await this.render(this.displayedSource);
-        // Replacing the SVG removes its focused node. Keep keyboard navigation on that node,
-        // unless the user moved focus elsewhere while Mermaid was rendering.
-        if (node && !focused?.isConnected && document.activeElement === document.body) {
-          for (const [element, candidate] of this.nodes) {
-            if (
-              candidate.id === node.id &&
-              element instanceof SVGElement &&
-              element.hasAttribute("tabindex")
-            ) {
-              element.focus({ preventScroll: true });
-              break;
-            }
-          }
+      await this.redraw(this.displayedSource);
+    }
+  }
+
+  /**
+   * Renders the shown diagram again, keeping the keyboard focus on the node that has it. Failing
+   * that, as it rendered before, keeps what is shown.
+   */
+  private async redraw(source: string): Promise<boolean> {
+    const focused = document.activeElement;
+    const node = focused ? this.nodes.get(focused) : undefined;
+    try {
+      await this.render(source);
+    } catch {
+      return false;
+    }
+    // Replacing the SVG removes its focused node. Keep keyboard navigation on that node, unless
+    // the user moved focus elsewhere while Mermaid was rendering.
+    if (node && !focused?.isConnected && document.activeElement === document.body) {
+      for (const [element, candidate] of this.nodes) {
+        if (
+          candidate.id === node.id &&
+          element instanceof SVGElement &&
+          element.hasAttribute("tabindex")
+        ) {
+          element.focus({ preventScroll: true });
+          break;
         }
-      } catch {
-        // It rendered before with another theme; keep what is shown.
       }
     }
+    return true;
+  }
+
+  /**
+   * Lays a Gantt chart out again at the width of the canvas, which Mermaid draws it at, rather than
+   * scaling it with its text. A zoom by hand stays as much larger or smaller than fitting, and the
+   * canvas stays scrolled to the same part of the chart.
+   */
+  private async relayout(): Promise<void> {
+    const source = this.displayedSource;
+    const room = this.contentSize();
+    if (
+      source === undefined ||
+      this.diagramType !== "gantt" ||
+      room.width <= 0 ||
+      Math.abs(room.width - this.layoutWidth) < RELAYOUT_THRESHOLD
+    ) {
+      return;
+    }
+    const fitted = (width: number) =>
+      this.fitZoom(this.diagram.querySelector("svg")?.viewBox.baseVal, { ...room, width });
+    const relativeZoom = this.zoom / (fitted(this.layoutWidth) ?? this.zoom);
+    const { scrollLeft, scrollTop, scrollWidth, scrollHeight } = this.canvas;
+    if (!(await this.redraw(source))) return;
+    if (!this.fitting) {
+      this.setZoom((fitted(room.width) ?? 1) * relativeZoom);
+    }
+    this.canvas.scrollLeft = (scrollLeft * this.canvas.scrollWidth) / scrollWidth;
+    this.canvas.scrollTop = (scrollTop * this.canvas.scrollHeight) / scrollHeight;
   }
 
   formatForEditing(source: string): string {
@@ -1087,17 +1143,19 @@ export class MermaidRenderer implements Renderer {
 
   /** Scales large diagrams down to the panel width (and height, within reason). */
   private fit(): void {
-    const natural = this.diagram.querySelector("svg")?.viewBox.baseVal;
-    if (!natural?.width || !natural.height) {
-      this.setZoom(1);
-      return;
-    }
-    const { width, height } = this.contentSize();
-    if (width <= 0 || height <= 0) {
-      return; // Not laid out yet (e.g. the panel is hidden); the resize observer fits later.
-    }
-    const heightFit = Math.max(height / natural.height, MIN_HEIGHT_FIT);
-    this.setZoom(Math.min(1, width / natural.width, heightFit));
+    const zoom = this.fitZoom(this.diagram.querySelector("svg")?.viewBox.baseVal);
+    // Undefined until the canvas is laid out (e.g. the panel is hidden); the resize observer fits later.
+    if (zoom !== undefined) this.setZoom(zoom);
+  }
+
+  /** The zoom that fits a drawing of the given size into the room, if there is any. */
+  private fitZoom(
+    natural: DOMRect | undefined,
+    { width, height } = this.contentSize(),
+  ): number | undefined {
+    if (!natural?.width || !natural.height) return 1;
+    if (width <= 0 || height <= 0) return undefined;
+    return Math.min(1, width / natural.width, Math.max(height / natural.height, MIN_HEIGHT_FIT));
   }
 
   /**

@@ -115,7 +115,7 @@ let pick: { id: number; multiple: boolean } | undefined;
 // Rendering.
 
 const renderers: Record<DiagramLanguage, Renderer> = {
-  mermaid: new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton),
+  mermaid: new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue),
   echarts: new EChartsRenderer(itemClicked, canvas),
 };
 let active: Renderer | undefined;
