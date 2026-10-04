@@ -61,14 +61,14 @@ export function inspectTable(table: DataTable, sampleRows: number): string {
       columnsOmitted: table.columns.length - columns.length,
       truncated,
     });
-  while (report().length > 24_000 && sample.length > 0) {
-    sample.pop();
-    truncated = true;
-  }
-  while (report().length > 24_000 && columns.length > 0) {
-    columns.pop();
-    for (const row of sample) row.pop();
-    truncated = true;
+  // Leave out sample rows, and then columns, until the report fits, allowing for the counts of
+  // what is left out to grow by a few digits.
+  let excess = report().length + 8 - 24_000;
+  for (const items of [sample, columns]) {
+    while (excess > 0 && items.length > 0) {
+      excess -= JSON.stringify(items.pop()).length;
+      truncated = true;
+    }
   }
   return report();
 }

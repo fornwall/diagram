@@ -6,7 +6,7 @@ import { boxplotOption, cartesianOption, heatmapOption, scatterOption } from "./
 import { hierarchyOption, sankeyOption } from "./chartHierarchy";
 import { funnelOption, gaugeOption, pieOption, radarOption } from "./chartItems";
 import { type Reading, readRows, tableBytePower } from "./chartRows";
-import type { ChartSpec } from "./chartSpec";
+import type { ChartSpec, ChartType } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import type { DataTable } from "./data";
 import { isPlainObject } from "./protocol";
@@ -30,12 +30,13 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   let histogram: HistogramPlan | undefined;
   let facetPlan: ChartPlan | undefined;
   const single = (request: ChartSpec, data: DataTable, reference?: DataTable): Chart => {
-    if (request.type === "histogram") {
+    const { type } = request;
+    if (type === "histogram") {
       histogram ??= planHistogram(request, reference ?? data);
       return buildHistogram(data, histogram);
     }
     if (reference !== undefined) facetPlan ??= planChart(request, reference, true);
-    return buildSingleChart(request, data, facetPlan);
+    return buildSingleChart(type, request, data, facetPlan);
   };
   const chart =
     spec.facetColumn === undefined
@@ -69,7 +70,11 @@ function planChart(spec: ChartSpec, table: DataTable, faceted: boolean): ChartPl
   };
 }
 
+/** The chart types drawn from rows; a histogram is built from the raw observations instead. */
+type RowChartType = Exclude<ChartType, "histogram">;
+
 function buildSingleChart(
+  type: RowChartType,
   spec: ChartSpec,
   table: DataTable,
   plan = planChart(spec, table, false),
@@ -84,7 +89,7 @@ function buildSingleChart(
     notes,
     ...readRows(spec, table, columns, notes, plan.bytePower),
   };
-  const option = drawChart(reading);
+  const option = drawChart(type, reading);
   return {
     option,
     summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
@@ -92,11 +97,8 @@ function buildSingleChart(
 }
 
 /** Draws the rows as the requested chart, adding what the drawing worked out to the notes. */
-function drawChart(reading: Reading): Record<string, unknown> {
-  const { type } = reading.spec;
+function drawChart(type: RowChartType, reading: Reading): Record<string, unknown> {
   switch (type) {
-    case "histogram":
-      throw new Error("Histograms must be built from raw observations before row aggregation.");
     case "bar":
     case "horizontalBar":
     case "stackedBar":
