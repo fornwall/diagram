@@ -104,7 +104,6 @@ export function buildFacetedChart(
       width: `${width}%`,
       height: `${87 / rows - Math.min(7, 20 / rows) - 4}%`,
       outerBoundsMode: "same",
-      outerBoundsContain: "all",
     });
     titles.push({
       id,
