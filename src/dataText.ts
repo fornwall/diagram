@@ -300,6 +300,34 @@ function markdownTables(lines: string[]): { start: number; end: number }[] {
   return tables;
 }
 
+/** The summary under git diff --stat: "3 files changed, 9 insertions(+), 6 deletions(-)". */
+const DIFF_STAT_SUMMARY =
+  /^\s*\d+ files? changed(?:, \d+ insertions?\(\+\))?(?:, \d+ deletions?\(-\))?\s*$/;
+
+/** The part of a git diff --stat line after its pipe: changed lines and a bar, or "Bin …". */
+const DIFF_STAT_CHANGES = /^ +(?:(\d+)( [+-]+)?|Bin\b.*)$/;
+
+/**
+ * Splits the output of git diff --stat (" src/a.ts | 12 ++++--") into the files and their numbers
+ * of changed lines, leaving out the bars, which are scaled to fit, and the summary below them.
+ */
+function splitDiffStat(lines: string[]): Records | undefined {
+  const summary = DIFF_STAT_SUMMARY.test(lines.at(-1) ?? "");
+  const records: string[][] = [["File", "Changes"]];
+  let bars = false;
+  for (const line of summary ? lines.slice(0, -1) : lines) {
+    const pipe = line.lastIndexOf("|");
+    const [, changes, bar] = DIFF_STAT_CHANGES.exec(line.slice(pipe + 1)) ?? [];
+    const file = line.slice(0, pipe).trim();
+    if (pipe < 0 || file === "" || (changes === undefined && !line.includes("Bin"))) {
+      return undefined;
+    }
+    bars ||= bar !== undefined;
+    records.push([file, changes ?? ""]);
+  }
+  return records.length > 1 && (summary || bars) ? { records, header: true } : undefined;
+}
+
 interface Token {
   text: string;
   start: number;
@@ -478,6 +506,10 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     }
   }
   if (format === "auto" && lines[0]?.includes("|")) {
+    const diffStat = splitDiffStat(lines);
+    if (diffStat !== undefined) {
+      return diffStat;
+    }
     const records = splitPipes(lines);
     const width = records[0]?.length ?? 0;
     // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the

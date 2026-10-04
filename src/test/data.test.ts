@@ -826,6 +826,34 @@ suite("data", () => {
     );
   });
 
+  test("parses git diff --stat output as files and their numbers of changed lines", () => {
+    const stat = [
+      " README.md                    |   3 +-",
+      " src/{old => new}/prompt.ts   | 149 +++++++++++++++++++++-----",
+      " images/logo.png              | Bin 0 -> 1234 bytes",
+      " scripts/run.sh               |   0",
+      " 4 files changed, 120 insertions(+), 32 deletions(-)",
+    ].join("\n");
+    assert.deepStrictEqual(parse(stat), {
+      columns: ["File", "Changes"],
+      rows: [
+        ["README.md", 3],
+        ["src/{old => new}/prompt.ts", 149],
+        ["images/logo.png", null],
+        ["scripts/run.sh", 0],
+      ],
+    });
+    // Without the summary, the bars tell it apart from a table drawn with pipes.
+    assert.deepStrictEqual(parse("a.ts | 12 ++++--\nb.ts | 3 +++").rows, [
+      ["a.ts", 12],
+      ["b.ts", 3],
+    ]);
+    assert.deepStrictEqual(parse("a | 12\nb | 3").rows, [
+      ["a", 12],
+      ["b", 3],
+    ]);
+  });
+
   test("leaves out rules, taking the line above one as the header", () => {
     assert.deepStrictEqual(parse("Package    Version\n---------- -------\nnumpy      1.26.0"), {
       columns: ["Package", "Version"],
