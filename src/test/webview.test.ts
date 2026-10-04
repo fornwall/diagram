@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { parseTable } from "../data";
+import { type DataTable, parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
 import { newPanel, openWebviewPanel } from "./newPanel";
@@ -57,6 +57,33 @@ const CHART_FITTED = `
     return fitted();
   };`;
 
+/**
+ * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
+ * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
+ */
+const DRAG_IMAGE = `
+  const dragImage = async (init) => {
+    const handle = document.getElementById("drag-out");
+    handle.dispatchEvent(new PointerEvent("pointerenter"));
+    if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const dataTransfer = new DataTransfer();
+      handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+      if (dataTransfer.getData("image/svg+xml")) return dataTransfer;
+    }
+    throw new Error("The image was not prepared.");
+  };`;
+
+/** Webview code defining `clickChart(element, init)`, which clicks the middle of a chart's element. */
+const CLICK_CHART = `
+  const clickChart = (element, init) => {
+    const box = element.getBoundingClientRect();
+    const mouse = {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, ...init};
+    // ZRender takes a click only after a press and a release on the same item.
+    for (const type of ["mousedown", "mouseup", "click"]) element.dispatchEvent(new MouseEvent(type, mouse));
+  };`;
+
 suite("webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -84,6 +111,34 @@ suite("webview", function () {
     const outcome = await render({ source });
     return outcome.ok ? undefined : outcome.error;
   };
+  /** Renders the chart of the spec, with the data read as the table if given, and opens its options. */
+  const showChartOptions = async (
+    chart: ChartSpec,
+    table?: DataTable,
+    diagram: Partial<Diagram> = {},
+  ) => {
+    const source = JSON.stringify(buildChart(chart, table ?? parseTable(chart.data ?? "")).option);
+    const outcome = await panel.render(
+      { language: "echarts", source, title: "Test", chart, ...diagram },
+      "tool",
+      undefined,
+      table,
+    );
+    assert.ok(outcome.ok);
+    panel.toggleChartOptions();
+  };
+  const closeChartOptions = () =>
+    evaluate(`document.querySelector("#chart-options .chart-options-heading button").click()`);
+  /** Which half of the chart its one item drawn in red is in, once ECharts draws it so. */
+  const redHalf = () =>
+    evaluate(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const svg = document.querySelector("#chart svg");
+        const red = svg.querySelectorAll('path[fill="#ff0000"]');
+        if (red.length === 1) return red[0].getBBox().x < svg.clientWidth / 2 ? "left" : "right";
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    })()`);
 
   test("skips superseded queued renders and their annotations", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
@@ -121,23 +176,7 @@ suite("webview", function () {
       labelColumn: "name",
       valueColumns: ["amount"],
     };
-    assert.ok(
-      (
-        await panel.render(
-          {
-            language: "echarts",
-            source: JSON.stringify(buildChart(chart, table).option),
-            title: "Cached",
-            chart,
-            clickPrompt: "Explain {label}",
-          },
-          "tool",
-          undefined,
-          table,
-        )
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart, table, { clickPrompt: "Explain {label}" });
     assert.deepStrictEqual(
       await evaluate(`(() => {
       const section = document.getElementById("chart-options");
@@ -160,9 +199,7 @@ suite("webview", function () {
     assert.strictEqual(panel.current?.chart?.sort, "descending");
     assert.strictEqual(panel.current?.chart?.limit, 1);
     assert.strictEqual(panel.current?.clickPrompt, "Explain {label}");
-    await evaluate(
-      `document.querySelector("#chart-options .chart-options-heading button").click()`,
-    );
+    await closeChartOptions();
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
   });
 
@@ -172,16 +209,7 @@ suite("webview", function () {
       data: "name,value,other\na,1,2\nb,2,3",
       valueColumns: ["value", "other"],
     };
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          chart,
-          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
-        })
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart);
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const columns = document.getElementById("chart-option-value");
@@ -229,16 +257,7 @@ suite("webview", function () {
 
   test("chat and chart option fields fit a narrow panel", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          chart,
-          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
-        })
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart);
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const form = document.getElementById("ask-form");
@@ -283,22 +302,7 @@ suite("webview", function () {
         { column: "service", op: "contains", value: "api" },
       ],
     };
-    assert.ok(
-      (
-        await panel.render(
-          {
-            language: "echarts",
-            chart,
-            title: "Faceted",
-            source: JSON.stringify(buildChart(chart, table).option),
-          },
-          "tool",
-          undefined,
-          table,
-        )
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart, table);
     assert.deepStrictEqual(
       await evaluate(`(() => {
       const rows = [...document.querySelectorAll('.chart-filter-row')];
@@ -389,31 +393,14 @@ suite("webview", function () {
     for (const key of ["bins", "facetColumn", "facetColumns", "facetScales", "filters"] as const) {
       assert.strictEqual(panel.current?.chart?.[key], undefined);
     }
-    await evaluate(
-      `document.querySelector('#chart-options .chart-options-heading button').click()`,
-    );
+    await closeChartOptions();
   });
 
   test("chart options show explicitly shared facet scales as the default", async () => {
     const data = "name,service,amount\na,api-a,1\nb,api-b,3";
     const table = parseTable(data);
     const chart: ChartSpec = { type: "bar", data, facetColumn: "service", facetScales: "shared" };
-    assert.ok(
-      (
-        await panel.render(
-          {
-            language: "echarts",
-            chart,
-            title: "Shared scales",
-            source: JSON.stringify(buildChart(chart, table).option),
-          },
-          "tool",
-          undefined,
-          table,
-        )
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart, table);
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const scales = document.getElementById('chart-option-axis');
@@ -434,22 +421,7 @@ suite("webview", function () {
       labelColumn: " NAME ",
       valueColumns: ["AMOUNT"],
     };
-    assert.ok(
-      (
-        await panel.render(
-          {
-            language: "echarts",
-            title: "Columns",
-            chart,
-            source: JSON.stringify(buildChart(chart, table).option),
-          },
-          "tool",
-          undefined,
-          table,
-        )
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart, table);
     await nextRender(() =>
       evaluate(`(() => {
       document.getElementById("chart-option-sort").value = "descending";
@@ -458,23 +430,12 @@ suite("webview", function () {
     );
     assert.deepStrictEqual(panel.current?.chart?.labelColumn, [" NAME "]);
     assert.deepStrictEqual(panel.current?.chart?.valueColumns, ["AMOUNT"]);
-    await evaluate(
-      'document.querySelector("#chart-options .chart-options-heading button").click()',
-    );
+    await closeChartOptions();
   });
 
   test("chart options recover inline data and close on arbitrary ECharts replacement", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          chart,
-          source: JSON.stringify(buildChart(chart, parseTable(chart.data)).option),
-        })
-      ).ok,
-    );
-    panel.toggleChartOptions();
+    await showChartOptions(chart);
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), false);
     assert.ok(
       (
@@ -530,8 +491,11 @@ suite("webview", function () {
           document.getElementById("view-source").click();
         })()`);
         assert.ok((await render({ source: MERMAID.gantt })).ok);
-        await evaluate(`document.getElementById("view-visual").click()`);
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // The canvas fits the drawing in the frame after the one in which it sees its new size.
+        await evaluate(`(async () => {
+          document.getElementById("view-visual").click();
+          for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+        })()`);
       } else {
         await evaluate(`document.getElementById("view-${view}").click()`);
         assert.ok((await render({ source: MERMAID.gantt })).ok);
@@ -562,9 +526,9 @@ suite("webview", function () {
       await evaluate(`(async () => {
         const svg = document.querySelector("#diagram svg");
         ${narrow};
+        // Well past when a Gantt chart would be laid out again.
         await new Promise(resolve => setTimeout(resolve, 500));
         document.getElementById("canvas").style.maxWidth = "";
-        await new Promise(resolve => setTimeout(resolve, 500));
         return document.querySelector("#diagram svg") === svg;
       })()`),
       true,
@@ -678,19 +642,10 @@ suite("webview", function () {
         const clipped = Array.from(svg.querySelectorAll("text"), text => text.getBoundingClientRect())
           .filter(text => text.width && (text.left < drawing.left - 1 || text.right > drawing.right + 1
             || text.top < drawing.top - 1 || text.bottom > drawing.bottom + 1)).length;
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const image = dataTransfer.getData("image/svg+xml");
-          if (image) {
-            const exported = new DOMParser().parseFromString(image, "image/svg+xml").documentElement;
-            return {clipped, viewBox: svg.getAttribute("viewBox") === exported.getAttribute("viewBox")};
-          }
-        }
-        throw new Error("The diagram image was not prepared.");
+        ${DRAG_IMAGE}
+        const image = (await dragImage()).getData("image/svg+xml");
+        const exported = new DOMParser().parseFromString(image, "image/svg+xml").documentElement;
+        return {clipped, viewBox: svg.getAttribute("viewBox") === exported.getAttribute("viewBox")};
       })()`)) as { clipped: number; viewBox: boolean };
       assert.deepStrictEqual(result, { clipped: 0, viewBox: true }, source);
       assert.ok(
@@ -1236,25 +1191,16 @@ suite("webview", function () {
         const width = chart.width.baseVal.value;
         const height = chart.height.baseVal.value;
         document.getElementById("view-source").click();
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
         try {
-          for (let attempt = 0; attempt < 100; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-            const dataTransfer = new DataTransfer();
-            handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-            const svg = dataTransfer.getData("image/svg+xml");
-            if (svg) {
-              const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
-              return {
-                hidden: chart.getBoundingClientRect().width === 0,
-                sized: width > 0 && height > 0 && Number(image.getAttribute("width")) === width &&
-                  Number(image.getAttribute("height")) === height,
-                viewBox: image.getAttribute("viewBox") === "0 0 " + width + " " + height
-              };
-            }
-          }
-          throw new Error("The chart image was not prepared.");
+          ${DRAG_IMAGE}
+          const svg = (await dragImage()).getData("image/svg+xml");
+          const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+          return {
+            hidden: chart.getBoundingClientRect().width === 0,
+            sized: width > 0 && height > 0 && Number(image.getAttribute("width")) === width &&
+              Number(image.getAttribute("height")) === height,
+            viewBox: image.getAttribute("viewBox") === "0 0 " + width + " " + height
+          };
         } finally {
           document.getElementById("view-visual").click();
         }
@@ -1279,21 +1225,11 @@ suite("webview", function () {
       );
       paths.push(
         await evaluate(`(async () => {
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        handle.dispatchEvent(new PointerEvent("pointerdown", {shiftKey: true}));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const svg = dataTransfer.getData("image/svg+xml");
-          if (svg) {
-            const image = new DOMParser().parseFromString(svg, "image/svg+xml");
-            return [...image.querySelectorAll('path[fill="#123456"]')].map(path => path.getAttribute("d"));
-          }
-        }
-        throw new Error("The chart image was not prepared.");
-      })()`),
+          ${DRAG_IMAGE}
+          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const image = new DOMParser().parseFromString(svg, "image/svg+xml");
+          return [...image.querySelectorAll('path[fill="#123456"]')].map(path => path.getAttribute("d"));
+        })()`),
       );
     }
     assert.ok(Array.isArray(paths[1]) && paths[1].length === 2);
@@ -1316,20 +1252,10 @@ suite("webview", function () {
           chart.style.width = "321px";
           chart.style.height = "234px";
           const expected = [chart.clientWidth, chart.clientHeight];
-          const handle = document.getElementById("drag-out");
-          handle.dispatchEvent(new PointerEvent("pointerenter"));
-          handle.dispatchEvent(new PointerEvent("pointerdown", {shiftKey: true}));
-          for (let attempt = 0; attempt < 100; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-            const dataTransfer = new DataTransfer();
-            handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-            const svg = dataTransfer.getData("image/svg+xml");
-            if (svg) {
-              const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
-              return {expected, actual: [Number(image.getAttribute("width")), Number(image.getAttribute("height"))]};
-            }
-          }
-          throw new Error("The chart image was not prepared.");
+          ${DRAG_IMAGE}
+          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+          return {expected, actual: [Number(image.getAttribute("width")), Number(image.getAttribute("height"))]};
         } finally {
           chart.style.width = "";
           chart.style.height = "";
@@ -1387,25 +1313,28 @@ suite("webview", function () {
       ).ok,
     );
     const download = await evaluate(`(async () => {
-      const original = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = () => "data:,";
+      const original = HTMLCanvasElement.prototype.toBlob;
+      let failed = false;
+      HTMLCanvasElement.prototype.toBlob = (callback) => {
+        failed = true;
+        callback(null);
+      };
       try {
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; attempt < 100; attempt++) {
+        ${DRAG_IMAGE}
+        await dragImage();
+        for (let attempt = 0; attempt < 100 && !failed; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const download = dataTransfer.getData("DownloadURL");
-          if (download) return download;
         }
-        throw new Error("The SVG fallback was not prepared.");
+        await new Promise(resolve => setTimeout(resolve));
+        const dataTransfer = new DataTransfer();
+        document.getElementById("drag-out")
+          .dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        return dataTransfer.getData("DownloadURL");
       } finally {
-        HTMLCanvasElement.prototype.toDataURL = original;
+        HTMLCanvasElement.prototype.toBlob = original;
       }
     })()`);
-    assert.strictEqual(typeof download, "string");
-    assert.match(download as string, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
+    assert.match(String(download), /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
   });
 
   test("keeps SVG export and rendering available while PNG decoding stalls", async () => {
@@ -1461,22 +1390,13 @@ suite("webview", function () {
     const exported = async (source: string) => {
       assert.ok((await render({ source })).ok);
       return evaluate(`(async () => {
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const svg = dataTransfer.getData("image/svg+xml");
-          if (svg) {
-            const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-            return {
-              htmlLabels: parsed.querySelectorAll("foreignObject").length,
-              text: Array.from(parsed.querySelectorAll("text"), node => node.textContent).join("").replace(/\\s/g, "")
-            };
-          }
-        }
-        throw new Error("The diagram image was not prepared.");
+        ${DRAG_IMAGE}
+        const svg = (await dragImage()).getData("image/svg+xml");
+        const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+        return {
+          htmlLabels: parsed.querySelectorAll("foreignObject").length,
+          text: Array.from(parsed.querySelectorAll("text"), node => node.textContent).join("").replace(/\\s/g, "")
+        };
       })()`);
     };
     assert.deepStrictEqual(
@@ -1505,28 +1425,19 @@ suite("webview", function () {
     ]) {
       assert.ok((await render({ source })).ok, source);
       const offCenter = await evaluate(`(async () => {
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const image = dataTransfer.getData("image/svg+xml");
-          if (!image) continue;
-          const host = document.createElement("div");
-          host.innerHTML = image;
-          document.body.append(host);
-          const center = (box) => (box.left + box.right) / 2;
-          const problems = Array.from(host.querySelectorAll("g.node:has(text)"), node => {
-            const text = node.querySelector("text").getBoundingClientRect();
-            const shape = node.querySelector(":scope > :is(circle, ellipse, path, polygon, rect)").getBoundingClientRect();
-            // Mermaid itself places some labels, like those under use case actors, a few pixels off.
-            return Math.abs(center(text) - center(shape)) > 8 ? node.textContent : undefined;
-          }).filter(Boolean);
-          host.remove();
-          return problems;
-        }
-        throw new Error("The diagram image was not prepared.");
+        ${DRAG_IMAGE}
+        const host = document.createElement("div");
+        host.innerHTML = (await dragImage()).getData("image/svg+xml");
+        document.body.append(host);
+        const center = (box) => (box.left + box.right) / 2;
+        const problems = Array.from(host.querySelectorAll("g.node:has(text)"), node => {
+          const text = node.querySelector("text").getBoundingClientRect();
+          const shape = node.querySelector(":scope > :is(circle, ellipse, path, polygon, rect)").getBoundingClientRect();
+          // Mermaid itself places some labels, like those under use case actors, a few pixels off.
+          return Math.abs(center(text) - center(shape)) > 8 ? node.textContent : undefined;
+        }).filter(Boolean);
+        host.remove();
+        return problems;
       })()`);
       assert.deepStrictEqual(offCenter, [], source);
     }
@@ -1541,20 +1452,11 @@ suite("webview", function () {
     ].join("\n");
     assert.ok((await render({ source })).ok);
     const exported = await evaluate(`(async () => {
-      const handle = document.getElementById("drag-out");
-      handle.dispatchEvent(new PointerEvent("pointerenter"));
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        const image = dataTransfer.getData("image/svg+xml");
-        if (image) {
-          const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
-          return Array.from(parsed.querySelectorAll("text"), text =>
-            Array.from(text.querySelectorAll(".text-outer-tspan"), line => line.textContent.replace(/\\s+/g, " ").trim()).join("|"));
-        }
-      }
-      throw new Error("The diagram image was not prepared.");
+      ${DRAG_IMAGE}
+      const image = (await dragImage()).getData("image/svg+xml");
+      const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
+      return Array.from(parsed.querySelectorAll("text"), text =>
+        Array.from(text.querySelectorAll(".text-outer-tspan"), line => line.textContent.replace(/\\s+/g, " ").trim()).join("|"));
     })()`);
     assert.deepStrictEqual(exported, [
       "edge",
@@ -1570,22 +1472,13 @@ suite("webview", function () {
     assert.ok((await render({ source: "sequenceDiagram\n  A->>B: $$\\sum_{i=1}^{n} x_i$$" })).ok);
     const overflow = await evaluate(`(async () => {
       const shown = getComputedStyle(document.querySelector("#diagram foreignObject")).overflow;
-      const handle = document.getElementById("drag-out");
-      handle.dispatchEvent(new PointerEvent("pointerenter"));
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        const image = dataTransfer.getData("image/svg+xml");
-        if (!image) continue;
-        const host = document.createElement("div");
-        host.innerHTML = image;
-        document.body.append(host);
-        const exported = Array.from(host.querySelectorAll("foreignObject"), box => getComputedStyle(box).overflow);
-        host.remove();
-        return {shown, exported};
-      }
-      throw new Error("The diagram image was not prepared.");
+      ${DRAG_IMAGE}
+      const host = document.createElement("div");
+      host.innerHTML = (await dragImage()).getData("image/svg+xml");
+      document.body.append(host);
+      const exported = Array.from(host.querySelectorAll("foreignObject"), box => getComputedStyle(box).overflow);
+      host.remove();
+      return {shown, exported};
     })()`);
     assert.deepStrictEqual(overflow, { shown: "visible", exported: ["visible"] });
   });
@@ -1603,21 +1496,13 @@ suite("webview", function () {
       const formulas = await evaluate(`(async () => {
         const formulas = root => Array.from(root.querySelectorAll("math"), math => math.textContent).sort();
         const shown = formulas(document.querySelector("#diagram svg"));
-        const handle = document.getElementById("drag-out");
-        handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-          const dataTransfer = new DataTransfer();
-          handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-          const image = dataTransfer.getData("image/svg+xml");
-          if (!image) continue;
-          const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
-          // A formula's text fallback in a switch is its TeX.
-          const tex = Array.from(parsed.querySelectorAll("text"))
-            .some(text => !text.closest("switch") && text.textContent.includes("$$"));
-          return {shown, exported: formulas(parsed), tex};
-        }
-        throw new Error("The diagram image was not prepared.");
+        ${DRAG_IMAGE}
+        const image = (await dragImage()).getData("image/svg+xml");
+        const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
+        // A formula's text fallback in a switch is its TeX.
+        const tex = Array.from(parsed.querySelectorAll("text"))
+          .some(text => !text.closest("switch") && text.textContent.includes("$$"));
+        return {shown, exported: formulas(parsed), tex};
       })()`);
       const expected = (
         {
@@ -2082,32 +1967,14 @@ suite("webview", function () {
     );
     assert.strictEqual(
       await evaluate(`(() => {
-        const slice = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[1];
-        const box = slice.getBoundingClientRect();
-        const mouse = {
-          bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2
-        };
-        // ZRender accepts a click only after matching mouse down/up on the same item.
-        for (const type of ["mousedown", "mouseup", "click"]) {
-          slice.dispatchEvent(new MouseEvent(type, mouse));
-        }
+        ${CLICK_CHART}
+        clickChart(document.querySelectorAll('#chart svg path[fill="#0000ff"]')[1]);
         return document.getElementById("selection-label").textContent;
       })()`),
       "Selected: “ A ”",
     );
     panel.annotate(validateAnnotation({ marks: [{ id: " A " }] }));
-    assert.strictEqual(
-      await evaluate(`(async () => {
-        for (let attempt = 0; attempt < 100; attempt++) {
-          const svg = document.querySelector("#chart svg");
-          const marked = svg.querySelectorAll('path[fill="#ff0000"]');
-          if (marked.length === 1) return marked[0].getBBox().x < svg.clientWidth / 2;
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-        return false;
-      })()`),
-      true,
-    );
+    assert.strictEqual(await redHalf(), "left");
   });
 
   test("tells apart chart items of the same name when selecting and marking them", async () => {
@@ -2133,14 +2000,8 @@ suite("webview", function () {
     );
     assert.strictEqual(
       await evaluate(`(() => {
-        const bar = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[2];
-        const box = bar.getBoundingClientRect();
-        const mouse = {
-          bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2
-        };
-        for (const type of ["mousedown", "mouseup", "click"]) {
-          bar.dispatchEvent(new MouseEvent(type, mouse));
-        }
+        ${CLICK_CHART}
+        clickChart(document.querySelectorAll('#chart svg path[fill="#0000ff"]')[2]);
         return document.getElementById("selection-label").textContent;
       })()`),
       "Selected: “A”",
@@ -2155,18 +2016,7 @@ suite("webview", function () {
       { name: "A", ids: ["A (item 1)", "A (item 3)"], count: 2 },
     ]);
     panel.annotate({ marks: [{ id: "A (item 3)", kind: "info" }], dim: false });
-    assert.strictEqual(
-      await evaluate(`(async () => {
-        for (let attempt = 0; attempt < 100; attempt++) {
-          const svg = document.querySelector("#chart svg");
-          const marked = svg.querySelectorAll('path[fill="#ff0000"]');
-          if (marked.length === 1) return marked[0].getBBox().x > svg.clientWidth / 2;
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-        return false;
-      })()`),
-      true,
-    );
+    assert.strictEqual(await redHalf(), "right");
   });
 
   test("highlights the right unnamed or slash-named chart series", async () => {
@@ -2194,19 +2044,7 @@ suite("webview", function () {
         ).ok,
       );
       panel.annotate({ marks: [{ id: `${names[1] ?? "Series 2"}/A`, kind: "info" }], dim: false });
-      assert.strictEqual(
-        await evaluate(`(async () => {
-          for (let attempt = 0; attempt < 100; attempt++) {
-            const svg = document.querySelector("#chart svg");
-            const marked = svg.querySelectorAll('path[fill="#ff0000"]');
-            if (marked.length === 1) return marked[0].getBBox().x > svg.clientWidth / 2;
-            await new Promise(resolve => setTimeout(resolve, 20));
-          }
-          return false;
-        })()`),
-        true,
-        `Did not highlight the second series (${names[1] ?? "unnamed"}).`,
-      );
+      assert.strictEqual(await redHalf(), "right", `${names[1] ?? "Unnamed"} series`);
     }
   });
 
@@ -2232,13 +2070,9 @@ suite("webview", function () {
     );
     assert.deepStrictEqual(
       await evaluate(`(async () => {
+        ${CLICK_CHART}
         for (const slice of document.querySelectorAll('#chart svg path[fill="#0000ff"]')) {
-          const box = slice.getBoundingClientRect();
-          const mouse = {bubbles: true, ctrlKey: true,
-            clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
-          for (const type of ["mousedown", "mouseup", "click"]) {
-            slice.dispatchEvent(new MouseEvent(type, mouse));
-          }
+          clickChart(slice, {ctrlKey: true});
         }
         const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
         const waitFor = async expected => {
@@ -2472,12 +2306,8 @@ suite("webview", function () {
             await new Promise(resolve => setTimeout(resolve, 20));
           }
         };
-        const slice = document.querySelectorAll("#chart svg path")[1];
-        const box = slice.getBoundingClientRect();
-        const mouse = {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
-        for (const type of ["mousedown", "mouseup", "click"]) {
-          slice.dispatchEvent(new MouseEvent(type, mouse));
-        }
+        ${CLICK_CHART}
+        clickChart(document.querySelectorAll("#chart svg path")[1]);
         await waitFor(() => fills().includes("#ff0000"));
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "#123456");
@@ -2817,8 +2647,12 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     });
   }
 
-  /** Records the URLs that the panel opens, instead of opening them. */
-  async function opening(action: () => Promise<unknown>, count: number): Promise<string[]> {
+  /**
+   * Records the URLs that the panel opens for the action in the webview, instead of opening them.
+   * The panel handles the page's messages in order, and opens a URL as it handles its message, so
+   * it has opened them all by the time the page answers the action.
+   */
+  async function opening(action: () => Promise<unknown>): Promise<string[]> {
     const openExternal = vscode.env.openExternal;
     const opened: string[] = [];
     vscode.env.openExternal = async (uri) => {
@@ -2827,11 +2661,6 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     };
     try {
       await action();
-      for (let attempt = 0; attempt < 100 && opened.length < count; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      // Give a click that should not open anything as long to arrive.
-      await new Promise((resolve) => setTimeout(resolve, 100));
       return opened;
     } finally {
       vscode.env.openExternal = openExternal;
@@ -2867,7 +2696,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         click(node("C"));
         return shown;
       })()`);
-    }, 4);
+    });
     assert.deepStrictEqual(shown, {
       tooltips: ["Open https://example.com/docs?page=2", "Open mailto:docs@example.com", null],
       hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
@@ -2886,11 +2715,9 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     const source =
       'gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d\n  click a1 href "https://example.com/plan"';
     assert.ok((await panel.render({ language: "mermaid", source, title: "Plan" }, "tool")).ok);
-    const opened = await opening(
-      () =>
-        evaluate(`document.querySelector('#diagram [data-diagram-id="a1"][tabindex]')
+    const opened = await opening(() =>
+      evaluate(`document.querySelector('#diagram [data-diagram-id="a1"][tabindex]')
           .dispatchEvent(new MouseEvent("click", {bubbles: true}))`),
-      1,
     );
     assert.deepStrictEqual(opened, ["https://example.com/plan"]);
     // Mermaid would have taken the panel to the URL itself.
@@ -2953,7 +2780,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         shown.afterFocusElsewhere = menu() !== null;
         return shown;
       })()`);
-    }, 2);
+    });
     assert.deepStrictEqual(shown, {
       tooltips: ["Open Dashboard (https://example.com/dash)", "Open Wiki or Repo"],
       hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
@@ -3020,13 +2847,11 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
   test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
     const source = `%%{init: {"sequence": {"forceMenus": true}}}%%\n${actorLinks}`;
     assert.ok((await panel.render({ language: "mermaid", source, title: "Seq" }, "tool")).ok);
-    const opened = await opening(
-      () =>
-        evaluate(`(() => {
+    const opened = await opening(() =>
+      evaluate(`(() => {
           const entry = document.querySelector('#diagram .actorPopupMenu a[data-href="https://example.com/wiki"] tspan');
           entry.dispatchEvent(new MouseEvent("click", {bubbles: true}));
         })()`),
-      1,
     );
     assert.deepStrictEqual(opened, ["https://example.com/wiki"]);
   });
@@ -3040,17 +2865,9 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     test(`leaves links out of images of ${name}`, async () => {
       assert.ok((await panel.render({ language: "mermaid", source, title: "Links" }, "tool")).ok);
       const svg = await evaluate(`(async () => {
-      const handle = document.getElementById("drag-out");
-      handle.dispatchEvent(new PointerEvent("pointerenter"));
-      for (let attempt = 0; attempt < 100; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        const svg = dataTransfer.getData("image/svg+xml");
-        if (svg) return svg;
-      }
-      throw new Error("The image was not prepared.");
-    })()`);
+        ${DRAG_IMAGE}
+        return (await dragImage()).getData("image/svg+xml");
+      })()`);
       assert.ok(typeof svg === "string" && /Docs|Wiki/.test(svg));
       assert.doesNotMatch(svg, /example\.com|href/);
     });
