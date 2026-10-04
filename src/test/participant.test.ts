@@ -53,11 +53,16 @@ async function ask(
   {
     history = [],
     maxInputTokens = 100_000,
+    capabilities = {},
     token = new vscode.CancellationTokenSource().token,
     ...overrides
   }: Partial<
     vscode.ChatRequest &
-      vscode.ChatContext & { maxInputTokens: number; token: vscode.CancellationToken }
+      vscode.ChatContext & {
+        maxInputTokens: number;
+        capabilities: object;
+        token: vscode.CancellationToken;
+      }
   > = {},
 ) {
   const sent: {
@@ -68,6 +73,7 @@ async function ask(
   const model = {
     name: "Fake",
     maxInputTokens,
+    capabilities,
     countTokens: async (text: string) => {
       counted++;
       return tokenCount(text);
@@ -966,6 +972,87 @@ suite("participant", function () {
       assert.match(attached?.[0] ?? "", /Chart the file when available/);
     } finally {
       vscode.workspace.openTextDocument = open;
+      panel.dispose();
+    }
+  });
+
+  test("gives the model attached images, and says why others are left out", async () => {
+    const panel = newPanel();
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(root);
+    const file = vscode.Uri.joinPath(root, "whiteboard.PNG");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    await vscode.workspace.fs.writeFile(file, png);
+    // As chat gives pasted images, with a ChatReferenceBinaryData.
+    const pasted = (mimeType: string, data: Uint8Array) => ({
+      id: "pasted",
+      value: { mimeType, data: async () => data },
+    });
+    try {
+      const references = [
+        { id: "file", value: file },
+        pasted("image/jpeg", new Uint8Array([1, 2, 3])),
+        pasted("image/png", new Uint8Array(3 * 1024 * 1024 + 1)),
+        pasted("application/pdf", new Uint8Array([1])),
+        { id: "problems", value: { diagnostics: [] } },
+      ].reverse();
+      const { sent } = await ask(panel, [[text("Drawing.")]], { references });
+      const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
+      assert.deepStrictEqual(messages?.map(messageText), [
+        "Attached by the user: whiteboard.PNG",
+        "Attached by the user: image",
+        "Attached by the user: image, which could not be read: the image takes 3.0 MB, more than the 3 MB limit. Attach a smaller or more compressed image.",
+        "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
+        "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
+      ]);
+      const images = messages?.map((m) =>
+        m.content.find((part) => part instanceof vscode.LanguageModelDataPart),
+      );
+      assert.deepStrictEqual(
+        images?.slice(0, 2).map((part) => [part?.mimeType, [...(part?.data ?? [])]]),
+        [
+          ["image/png", [...png]],
+          ["image/jpeg", [1, 2, 3]],
+        ],
+      );
+      assert.ok(images?.slice(2).every((part) => part === undefined));
+    } finally {
+      await vscode.workspace.fs.delete(file);
+      panel.dispose();
+    }
+  });
+
+  test("leaves out images for models without image input and from earlier requests", async () => {
+    const panel = newPanel();
+    let reads = 0;
+    const references = [
+      {
+        id: "pasted",
+        value: {
+          mimeType: "image/png",
+          data: async () => {
+            reads++;
+            return new Uint8Array([1]);
+          },
+        },
+      },
+    ];
+    try {
+      const history = [
+        new RequestTurn("Draw this", undefined, references, "diagram.participant", []),
+      ];
+      const { sent } = await ask(panel, [[text("Hm.")]], {
+        history,
+        references,
+        capabilities: { supportsImageToText: false },
+      });
+      assert.strictEqual(reads, 0);
+      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      assert.deepStrictEqual(attached, [
+        "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
+        "Attached by the user: image, which could not be read: Fake does not accept images. Choose a model that does, or describe the image in words.",
+      ]);
+    } finally {
       panel.dispose();
     }
   });

@@ -21,6 +21,18 @@ import {
 
 /** Attached files are truncated to this many characters. */
 const MAX_ATTACHMENT_LENGTH = 50_000;
+/** Larger images are left out, below the limits of common model APIs. */
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+/** Assume an image takes this many tokens, about the most that models scale them to. */
+const IMAGE_TOKENS = 1_600;
+/** The image formats that common models accept, by file extension. */
+const IMAGE_TYPES = new Map([
+  ["gif", "image/gif"],
+  ["jpeg", "image/jpeg"],
+  ["jpg", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
+]);
 
 const INSTRUCTIONS = `You are @diagram in VS Code. You draw in an interactive panel beside chat, where the user can select nodes, edges, sequence messages and chart items, edit the source and send follow-ups.
 
@@ -54,8 +66,12 @@ interface Exchange {
   diagram: string;
 }
 
-/** An attachment's text or the reason it could not be read. */
-type Attachment = { name: string } & ({ text: string } | { error: string });
+/** An attachment's text or image, or the reason it could not be read. */
+type Attachment = { name: string } & (
+  | { text: string }
+  | { image: vscode.LanguageModelDataPart }
+  | { error: string }
+);
 
 /**
  * Fit instructions, the request and current diagram first, then attachments and recent history.
@@ -71,7 +87,7 @@ export async function promptMessages(
   const { model } = request;
   const instructions = explain ? EXPLAIN_INSTRUCTIONS : INSTRUCTIONS;
   const documents = new Map<string, Thenable<vscode.TextDocument>>();
-  const attachments = await readAttachments(request, documents);
+  const attachments = await readAttachments(request, documents, model);
   if (token.isCancellationRequested) {
     throw new vscode.CancellationError();
   }
@@ -103,6 +119,12 @@ export async function promptMessages(
     return tooLarge(
       `your message takes ${promptTokens} tokens${current ? ` and the current diagram ${currentTokens}` : ""}`,
     );
+  }
+
+  const images = attachments.filter((attachment) => "image" in attachment);
+  left -= images.length * IMAGE_TOKENS;
+  if (left < 0) {
+    return tooLarge(`your message leaves no room for the image ${images[0]?.name}`);
   }
 
   // Share what is left among the attachments, shortening those that don't fit.
@@ -159,7 +181,12 @@ export async function promptMessages(
   return [
     User(instructions),
     ...history,
-    ...attached.texts.map((text) => User(text)),
+    ...attached.texts.map((text, index) => {
+      const attachment = attachments[index];
+      return attachment && "image" in attachment
+        ? User([new vscode.LanguageModelTextPart(text), attachment.image])
+        : User(text);
+    }),
     ...(current ? [User(current)] : []),
     User(request.prompt),
   ];
@@ -185,7 +212,12 @@ export async function fitToolResults(
     budget,
     token,
   );
-  const room = budget - sum(await Promise.all(earlier.map(tokens)));
+  const images = messages.flatMap((message) =>
+    message.content.filter(
+      (part) => part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/"),
+    ),
+  );
+  const room = budget - sum(await Promise.all(earlier.map(tokens))) - images.length * IMAGE_TOKENS;
   const { texts, left } = await fitTexts(
     parts.map(({ value }) => ({
       length: value.length,
@@ -327,20 +359,22 @@ async function pastExchanges(
   return exchanges;
 }
 
-/** Deduplicate attachments in prompt order. */
+/**
+ * Deduplicate attachments in prompt order. Images are given to the `model` that the request is
+ * sent to, or described as left out.
+ */
 async function readAttachments(
   { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
   documents: Map<string, Thenable<vscode.TextDocument>>,
+  model?: vscode.LanguageModelChat,
 ): Promise<Attachment[]> {
   // The references come in reverse order of their position in the prompt.
   const attachments = await Promise.all(
-    references.toReversed().map((reference) => readAttachment(reference, documents)),
+    references.toReversed().map((reference) => readAttachment(reference, documents, model)),
   );
-  const unique = new Map<string, Attachment>();
+  const unique = new Map<unknown, Attachment>();
   for (const attachment of attachments) {
-    if (attachment) {
-      unique.set(attachmentText(attachment), attachment);
-    }
+    unique.set("image" in attachment ? attachment : attachmentText(attachment), attachment);
   }
   return [...unique.values()];
 }
@@ -351,6 +385,9 @@ function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH):
   if ("error" in attachment) {
     return `${label}, which could not be read: ${attachment.error}`;
   }
+  if ("image" in attachment) {
+    return label;
+  }
   const { text } = attachment;
   const truncated =
     text.length > length
@@ -359,22 +396,36 @@ function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH):
   return `${label}${truncated}\n\n${codeFence(text.slice(0, length))}`;
 }
 
-/** Reads file, selection and text attachments; unsupported reference types are skipped. */
+/** Reads file, selection, text and image attachments. */
 async function readAttachment(
-  { value, modelDescription }: vscode.ChatPromptReference,
+  { id, value, modelDescription }: vscode.ChatPromptReference,
   documents: Map<string, Thenable<vscode.TextDocument>>,
-): Promise<Attachment | undefined> {
+  model: vscode.LanguageModelChat | undefined,
+): Promise<Attachment> {
   const description = modelDescription ? ` (${modelDescription})` : "";
   if (typeof value === "string") {
     return { name: `text${description}`, text: value };
   }
+  const image = imageData(value);
+  if (image) {
+    const path = image.reference ? vscode.workspace.asRelativePath(image.reference) : "image";
+    return readImage(`${path}${description}`, image.mimeType, image.data, model);
+  }
   const location = value instanceof vscode.Location ? value : undefined;
   const uri = location?.uri ?? (value instanceof vscode.Uri ? value : undefined);
   if (!uri) {
-    return undefined;
+    return {
+      name: modelDescription ?? id,
+      error: "@diagram does not support this kind of attachment",
+    };
   }
   const path = vscode.workspace.asRelativePath(uri);
   const name = `${location ? `${path}:${location.range.start.line + 1}` : path}${description}`;
+  const extension = /\.(\w+)$/.exec(uri.path)?.[1]?.toLowerCase();
+  const mimeType = location || !extension ? undefined : IMAGE_TYPES.get(extension);
+  if (mimeType) {
+    return readImage(name, mimeType, uri, model);
+  }
   try {
     const key = uri.toString();
     let document = documents.get(key);
@@ -387,6 +438,72 @@ async function readAttachment(
   } catch (error) {
     const folder = location ? undefined : await folderHint(uri);
     return { name, error: folder ?? errorMessage(error) };
+  }
+}
+
+/**
+ * Chat gives pasted, dropped and screenshot images as a `ChatReferenceBinaryData`, which is not
+ * part of the stable API, though given to all participants.
+ */
+function imageData(
+  value: unknown,
+): { mimeType: string; data: () => Thenable<Uint8Array>; reference?: vscode.Uri } | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const { mimeType, data, reference } = value as Record<string, unknown>;
+  if (typeof mimeType !== "string" || typeof data !== "function") {
+    return undefined;
+  }
+  return {
+    mimeType,
+    data: () => data.call(value),
+    reference: reference instanceof vscode.Uri ? reference : undefined,
+  };
+}
+
+/**
+ * Give the model an image, unless it is too large or the model does not accept images. Models
+ * describe this with `capabilities.supportsImageToText`, which is not part of the stable API.
+ */
+async function readImage(
+  name: string,
+  mimeType: string,
+  source: vscode.Uri | (() => Thenable<Uint8Array>),
+  model: vscode.LanguageModelChat | undefined,
+): Promise<Attachment> {
+  if (!mimeType.startsWith("image/")) {
+    return { name, error: `@diagram does not support ${mimeType} attachments` };
+  }
+  if (!model) {
+    return { name, error: "images are only given with the request they are attached to" };
+  }
+  const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
+  if (capabilities?.supportsImageToText === false) {
+    return {
+      name,
+      error: `${model.name} does not accept images. Choose a model that does, or describe the image in words.`,
+    };
+  }
+  const tooLarge = (bytes: number) => ({
+    name,
+    error: `the image takes ${(bytes / 1024 / 1024).toFixed(1)} MB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MB limit. Attach a smaller or more compressed image.`,
+  });
+  try {
+    if (source instanceof vscode.Uri) {
+      const { size } = await vscode.workspace.fs.stat(source);
+      if (size > MAX_IMAGE_BYTES) {
+        return tooLarge(size);
+      }
+    }
+    const data =
+      source instanceof vscode.Uri ? await vscode.workspace.fs.readFile(source) : await source();
+    if (data.byteLength > MAX_IMAGE_BYTES) {
+      return tooLarge(data.byteLength);
+    }
+    return { name, image: vscode.LanguageModelDataPart.image(data, mimeType) };
+  } catch (error) {
+    return { name, error: errorMessage(error) };
   }
 }
 

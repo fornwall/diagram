@@ -13,6 +13,7 @@ Ask `@diagram` to draw, optionally attaching files with `#file`:
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 - `@diagram treemap of du -ah src`
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
+- `@diagram turn this whiteboard photo into a flowchart`, with an attached or pasted PNG, JPEG, GIF or WebP image of up to 3 MB, for models that accept images
 
 Follow-ups change the current diagram. Use `/new` to start another, `/explain` to discuss it without changing it, and `/show` to reopen the panel.
 
