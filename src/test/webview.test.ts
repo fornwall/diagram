@@ -644,6 +644,42 @@ suite("webview", function () {
     );
   });
 
+  test("zooms at the pointer in proportion to Ctrl+scrolling", async () => {
+    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
+    assert.ok((await render({ source: `flowchart LR\n  ${chain}` })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
+        const canvas = document.getElementById("canvas");
+        const zoom = () => document.getElementById("zoom-reset").textContent;
+        const wheel = (deltaY, deltaMode = 0) => {
+          const box = document.querySelector('[data-diagram-id="n15"][tabindex]').getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2;
+          canvas.dispatchEvent(new WheelEvent("wheel", {deltaY, deltaMode, clientX: x, clientY: y,
+            ctrlKey: true, bubbles: true, cancelable: true}));
+          return {x, y};
+        };
+        document.getElementById("zoom-reset").click();
+        if (zoom() !== "100%") document.getElementById("zoom-reset").click();
+        canvas.scrollLeft = (canvas.scrollWidth - canvas.clientWidth) / 2;
+        await frame();
+        // A pinch: many small deltas in one frame, which add up to one notch.
+        const anchor = wheel(-25);
+        for (let i = 0; i < 3; i++) wheel(-25);
+        await frame();
+        const pinched = zoom();
+        const box = document.querySelector('[data-diagram-id="n15"][tabindex]').getBoundingClientRect();
+        // The diagram is taller than the canvas only once zoomed in, so only scrolling left keeps up.
+        const moved = Math.abs(box.left + box.width / 2 - anchor.x);
+        wheel(6.25, WheelEvent.DOM_DELTA_LINE);
+        await frame();
+        return {pinched, steady: moved < 2, notch: zoom()};
+      })()`),
+      { pinched: "120%", steady: true, notch: "100%" },
+    );
+  });
+
   test("ends panning when released outside the canvas or pointer capture is lost", async () => {
     assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
     assert.deepStrictEqual(

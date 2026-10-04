@@ -823,15 +823,5 @@ revertButton.addEventListener("click", () => {
 zoomInButton.addEventListener("click", () => active?.zoomBy?.(1.25));
 zoomOutButton.addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
 zoomResetButton.addEventListener("click", () => active?.zoomReset?.());
-canvas.addEventListener(
-  "wheel",
-  (event) => {
-    if ((event.ctrlKey || event.metaKey) && active?.zoomBy) {
-      event.preventDefault();
-      active.zoomBy(event.deltaY < 0 ? 1.1 : 1 / 1.1);
-    }
-  },
-  { passive: false },
-);
 
 post({ type: "ready" });

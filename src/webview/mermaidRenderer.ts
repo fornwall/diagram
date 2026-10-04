@@ -13,6 +13,8 @@ const loadMermaid = () => (loading ??= import("mermaid").then((module) => module
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
+/** The zoom of a mouse wheel notch, or of as much scrolling on a trackpad. */
+const WHEEL_ZOOM = 1.2;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 
@@ -311,6 +313,36 @@ export class MermaidRenderer implements Renderer {
         activate(event);
       }
     });
+    // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling: a trackpad pinch,
+    // which Chromium reports as such, sends many small deltas. Apply them once per frame.
+    let wheel: { factor: number; x: number; y: number } | undefined;
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        if (!(event.ctrlKey || event.metaKey) || this.displayedSource === undefined) return;
+        event.preventDefault();
+        const pixels =
+          event.deltaY *
+          (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? canvas.clientHeight
+              : 1);
+        const factor = WHEEL_ZOOM ** (-Math.max(-100, Math.min(100, pixels)) / 100);
+        if (wheel) {
+          wheel = { factor: wheel.factor * factor, x: event.clientX, y: event.clientY };
+          return;
+        }
+        wheel = { factor, x: event.clientX, y: event.clientY };
+        requestAnimationFrame(() => {
+          if (wheel && this.displayedSource !== undefined) {
+            this.zoomBy(wheel.factor, wheel.x, wheel.y);
+          }
+          wheel = undefined;
+        });
+      },
+      { passive: false },
+    );
     new ResizeObserver(() => {
       if (this.fitting && this.displayedSource !== undefined) {
         cancelAnimationFrame(this.fitFrame);
@@ -360,10 +392,10 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = source;
     this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
     this.prepareSvg(id, db);
+    // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
+    this.setZoom(this.zoom);
     if (this.fitting) {
       this.fit();
-    } else {
-      this.setZoom(this.zoom);
     }
     return result.diagramType;
   }
@@ -518,9 +550,22 @@ export class MermaidRenderer implements Renderer {
     return source;
   }
 
-  zoomBy(factor: number): void {
+  /** Zooms, keeping the point at the given client coordinates (the middle by default) in place. */
+  zoomBy(factor: number, x?: number, y?: number): void {
     this.fitting = false;
+    const svg = this.diagram.querySelector("svg");
+    const before = svg?.getBoundingClientRect();
     this.setZoom(this.zoom * factor);
+    if (!svg || !before?.width || !before.height) return;
+    const view = this.canvas.getBoundingClientRect();
+    const anchorX = x ?? view.left + view.width / 2;
+    const anchorY = y ?? view.top + view.height / 2;
+    const after = svg.getBoundingClientRect();
+    // Scrolling stops at the edges, so a diagram that fits the canvas stays centered instead.
+    this.canvas.scrollLeft +=
+      after.left + ((anchorX - before.left) * after.width) / before.width - anchorX;
+    this.canvas.scrollTop +=
+      after.top + ((anchorY - before.top) * after.height) / before.height - anchorY;
   }
 
   /** Toggles between fitting the panel and the actual size. */
@@ -534,7 +579,7 @@ export class MermaidRenderer implements Renderer {
     }
   }
 
-  /** Finds the selectable nodes, and gives the SVG its natural size for zooming as a whole. */
+  /** Finds the selectable nodes. */
   private prepareSvg(svgId: string, db?: DiagramDb): void {
     this.nodes.clear();
     this.elementsById.clear();
@@ -559,12 +604,8 @@ export class MermaidRenderer implements Renderer {
     this.showSelection(this.selectedKeys);
     this.showLinks(this.links);
     this.showMarks(this.annotation);
-    const viewBox = svg.viewBox.baseVal;
-    if (viewBox.width > 0 && viewBox.height > 0) {
-      svg.setAttribute("width", String(viewBox.width));
-      svg.setAttribute("height", String(viewBox.height));
-      svg.style.maxWidth = "none";
-    }
+    // Mermaid sizes the drawing to fit its container; setZoom sizes it instead.
+    svg.style.maxWidth = "none";
   }
 
   /** Join renderer metadata to DOM IDs; endpoint names are never inferred from generated IDs. */
@@ -910,9 +951,18 @@ export class MermaidRenderer implements Renderer {
     this.setZoom(Math.min(1, width / natural.width, heightFit));
   }
 
+  /**
+   * Scales the drawing by its size, rather than by CSS zoom, which would leave the client
+   * coordinates of its elements unscaled.
+   */
   private setZoom(value: number): void {
     this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
-    this.diagram.style.zoom = String(this.zoom);
+    const svg = this.diagram.querySelector("svg");
+    const natural = svg?.viewBox.baseVal;
+    if (svg && natural?.width && natural.height) {
+      svg.setAttribute("width", String(natural.width * this.zoom));
+      svg.setAttribute("height", String(natural.height * this.zoom));
+    }
     this.zoomButton.textContent = `${Math.round(this.zoom * 100)}%`;
     this.zoomButton.title =
       this.fitting && this.zoom !== 1 ? "Show at actual size" : "Fit to the panel";
