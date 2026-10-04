@@ -190,6 +190,32 @@ suite("markdownDiagrams", function () {
     assert.deepStrictEqual(diagrams, []);
   });
 
+  test("a CodeLens of a file that no longer exists says why it cannot open it", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: "```mermaid\nflowchart TD\n```\n",
+    });
+    const command = (await codeLenses(document))[0]?.command;
+    assert.ok(command);
+    const file = path.join(dir, "deleted.md");
+    const showError = vscode.window.showErrorMessage;
+    let error: string | undefined;
+    vscode.window.showErrorMessage = (async (message: string) => {
+      error = message;
+      return undefined;
+    }) as typeof showError;
+    try {
+      await vscode.commands.executeCommand(
+        command.command,
+        vscode.Uri.file(file),
+        command.arguments?.[1],
+      );
+    } finally {
+      vscode.window.showErrorMessage = showError;
+    }
+    assert.match(error ?? "", /^Could not open .*deleted\.md: .+/);
+  });
+
   test("opening a diagram reports when the panel cannot display it", async () => {
     const document = await vscode.workspace.openTextDocument({
       language: "markdown",
