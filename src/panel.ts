@@ -100,34 +100,38 @@ const RENDER_TIMEOUT_MS = 15_000;
 export class DiagramPanel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
+  private readonly store: StateStore;
+  private state: DiagramState | undefined;
   /** The id of the chat request that a tool rendered the current diagram for; see {@link adopt}. */
   private toolRequestId: unknown;
+  private selection: DiagramNode[] = [];
+  /** Transient marks: cleared on replacement, never persisted. */
+  private annotation: Annotation | undefined;
 
   private panel: vscode.WebviewPanel | undefined;
   /** Messages wait for "ready"; pending renders and picks are replayed after reloads. */
   private webviewReady = false;
   private webviewGeneration = 0;
-  private state: DiagramState | undefined;
-  private selection: DiagramNode[] = [];
-  /** Rendered node ids, or undefined when unavailable. */
-  private nodeIds: string[] | undefined;
-  private relationships: DiagramNode[] = [];
-  /** Transient marks: cleared on replacement, never persisted. */
-  private annotation: Annotation | undefined;
   private nextRequestId = 1;
-  private pendingRender: Pending<"render", RenderOutcome> | undefined;
-  private unavailable: string | undefined;
+  /** Counts renders, to detect intervening ones; tools see it as the revision. */
   private renderVersion = 0;
+  private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
-  private refreshing = false;
-  private exporting = false;
+  private pendingExport: Pending<"export", ExportResult> | undefined;
+  /** Why the last render did not finish, if the panel closed or stopped responding. */
+  private unavailable: string | undefined;
+  /** The request that drew the current diagram, which is what an export captures. */
   private renderedRequestId: number | undefined;
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
-  private pendingExport: Pending<"export", ExportResult> | undefined;
+  /** Rendered node ids, or undefined when unavailable. */
+  private nodeIds: string[] | undefined;
+  private relationships: DiagramNode[] = [];
+
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
-  private readonly store: StateStore;
+  private refreshing = false;
+  private exporting = false;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
@@ -145,68 +149,20 @@ export class DiagramPanel implements vscode.Disposable {
     return this.renderVersion;
   }
 
-  /** Inspection never refreshes a file or reruns a command. */
-  get loadedChartData(): DataTable | undefined {
-    const chart = this.state?.chart;
-    if (!this.chartTable && chart?.data !== undefined) {
-      this.chartTable = parseTable(chart.data, chart.format);
-    }
-    return this.chartTable;
-  }
-
-  /** Change generated settings atomically using the retained table and manual styling. */
-  async updateChart(
-    input: ChartUpdateInput,
-    token: vscode.CancellationToken,
-    toolInvocationToken?: unknown,
-  ): Promise<RenderOutcome> {
-    if (token.isCancellationRequested) throw new vscode.CancellationError();
-    const state = this.state;
-    if (!state?.chart)
-      throw new Error(
-        "The current diagram is not a generated chart. Create one with diagram_chart first.",
-      );
-    const chart = updatedChartSpec(state.chart, input);
-    if (input.revision !== undefined && input.revision !== this.renderVersion) {
-      throw new Error(
-        "The chart changed. Read diagram_getState and retry with its current revision.",
-      );
-    }
-    if (this.pendingRender)
-      throw new Error("Wait for the current diagram to finish rendering before updating it.");
-    assertChartPresentation(state.chartPresentation);
-    const table = this.loadedChartData;
-    if (!table)
-      throw new Error(
-        "The chart data is not loaded. Refresh it first; updating never rereads files or reruns commands.",
-      );
-    const rebuilt = rebuildChart(chart, table, state.chartPresentation);
-    this.reveal(true);
-    const outcome = await this.showChart(
-      {
-        ...state,
-        chart,
-        title: chart.title ?? state.title,
-        source: JSON.stringify(rebuilt.option, null, 2),
-        chartPresentation: rebuilt.presentation,
-        editedByUser: rebuilt.presentation.edits.length > 0,
-        origin: "tool",
-      },
-      table,
-      "The chart changed before the user picked.",
-      token,
-    );
-    if (token.isCancellationRequested) throw new vscode.CancellationError();
-    if (outcome.ok) this.toolRequestId = requestId(toolInvocationToken);
-    return outcome;
-  }
-
   /**
    * The ids of the nodes the panel has drawn, when it knows them, so that a model can be told that
    * a node it named is not there. A chart reports none: its items are its data, not a list of ids.
    */
   get drawnIds(): readonly string[] | undefined {
     return this.nodeIds;
+  }
+
+  /** Describes the current diagram and the user's interactions with it, for a language model. */
+  describeForModel(): string | undefined {
+    return (
+      this.state &&
+      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships)}`
+    );
   }
 
   /** Opens and renders a diagram, tracking the originating tool request for adoption. */
@@ -261,98 +217,6 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /**
-   * Asks the user to click nodes in the current diagram, and waits until they do, cancel, or the
-   * token is cancelled. A new pick ends any pick that is still waiting.
-   */
-  async pickNodes(
-    prompt: string,
-    multiple: boolean,
-    token: vscode.CancellationToken,
-  ): Promise<PickOutcome> {
-    if (token.isCancellationRequested) {
-      return { picked: false, reason: "The request was cancelled." };
-    }
-    const state = this.state;
-    if (!state) {
-      return {
-        picked: false,
-        reason: `There is no diagram to pick from. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`,
-      };
-    }
-    if (state.source === undefined) {
-      return {
-        picked: false,
-        reason: `The chart is not drawn, as it was too large to keep when VS Code closed. Draw it again with ${CHART_TOOL} first.`,
-      };
-    }
-    if (state.error) {
-      return { picked: false, reason: failsToRender(state.language, state.error) };
-    }
-    this.cancelPick("Another request to pick nodes replaced this one.");
-    this.show();
-
-    const message = { type: "startPick", pickId: this.nextRequestId++, prompt, multiple } as const;
-    return new Promise<PickOutcome>((resolve) => {
-      const cancellation = token.onCancellationRequested(() =>
-        this.finishPick(message.pickId, { picked: false, reason: "The request was cancelled." }),
-      );
-      this.pendingPick = {
-        message,
-        resolve: (outcome) => {
-          cancellation.dispose();
-          resolve(outcome);
-        },
-      };
-      this.post(message);
-    });
-  }
-
-  /** Replaces marks without redrawing, reporting any unknown node ids. */
-  annotate(annotation: Annotation): AnnotateOutcome {
-    const state = this.state;
-    if (!state) {
-      return {
-        ok: false,
-        reason: `There is no diagram to mark. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`,
-      };
-    }
-    if (state.source === undefined) {
-      return {
-        ok: false,
-        reason: `The chart is not drawn, as it was too large to keep when VS Code closed. Draw it again with ${CHART_TOOL} first.`,
-      };
-    }
-    if (state.error) {
-      return { ok: false, reason: failsToRender(state.language, state.error, "mark") };
-    }
-    // The ids of the diagram as it is drawn now: opening the panel below draws it again.
-    const ids = this.nodeIds && [...this.nodeIds, ...this.relationships.map((node) => node.id)];
-    const known = ids && new Set(ids);
-    const claimed = new Set(annotation.marks.map((mark) => mark.id));
-    const marks: Annotation["marks"] = [];
-    const unknown: string[] = [];
-    for (const mark of annotation.marks) {
-      let id = mark.id;
-      // Preserve exact chart names. Only repair padding for a known, unclaimed node.
-      if (known && !known.has(id) && known.has(id.trim()) && !claimed.has(id.trim())) {
-        id = id.trim();
-        claimed.add(id);
-      }
-      if (known && !known.has(id)) {
-        unknown.push(mark.id);
-      } else {
-        marks.push(id === mark.id ? mark : { ...mark, id });
-      }
-    }
-    this.annotation = { ...annotation, marks };
-    // Showing the panel may have to open it, which renders the diagram again; the marks follow on
-    // the webview's ready message either way.
-    this.show(true);
-    this.post({ type: "annotate", ...this.annotation });
-    return { ok: true, annotation: this.annotation, unknown, ids };
-  }
-
   /** Takes over a panel restored by VS Code after a reload. */
   restore(panel: vscode.WebviewPanel): void {
     if (this.panel) {
@@ -365,17 +229,11 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /** Describes the current diagram and the user's interactions with it, for a language model. */
-  describeForModel(): string | undefined {
-    return (
-      this.state &&
-      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships)}`
-    );
-  }
-
   dispose(): void {
     this.panel?.dispose();
   }
+
+  // The webview, and the requests waiting for its answers.
 
   /** Reveals the panel, or creates it, in which case this returns true. */
   private reveal(preserveFocus: boolean): boolean {
@@ -437,6 +295,34 @@ export class DiagramPanel implements vscode.Disposable {
         });
       }
     });
+  }
+
+  private async post(message: ToWebview): Promise<void> {
+    if (!this.webviewReady || !this.panel) {
+      return;
+    }
+    const panel = this.panel;
+    const generation = this.webviewGeneration;
+    let error: string;
+    try {
+      if (await panel.webview.postMessage(message)) {
+        return;
+      }
+      error = "The diagram panel is unavailable. Reopen it and try again.";
+    } catch (cause) {
+      error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
+    }
+    // Reloads replay pending requests with the same ids. An older delivery must not cancel them.
+    if (panel !== this.panel || generation !== this.webviewGeneration) {
+      return;
+    }
+    if (message.type === "render") {
+      this.finishRender(message.requestId, { ok: false, kind: "unavailable", error });
+    } else if (message.type === "export") {
+      this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
+    } else if (message.type === "startPick") {
+      this.finishPick(message.pickId, { picked: false, reason: error });
+    }
   }
 
   private onMessage(message: FromWebview): void {
@@ -655,6 +541,43 @@ export class DiagramPanel implements vscode.Disposable {
     resolve(outcome);
   }
 
+  // Picking and marking nodes.
+
+  /**
+   * Asks the user to click nodes in the current diagram, and waits until they do, cancel, or the
+   * token is cancelled. A new pick ends any pick that is still waiting.
+   */
+  async pickNodes(
+    prompt: string,
+    multiple: boolean,
+    token: vscode.CancellationToken,
+  ): Promise<PickOutcome> {
+    if (token.isCancellationRequested) {
+      return { picked: false, reason: "The request was cancelled." };
+    }
+    const nothing = this.nothingTo("pick from");
+    if (nothing) {
+      return { picked: false, reason: nothing };
+    }
+    this.cancelPick("Another request to pick nodes replaced this one.");
+    this.show();
+
+    const message = { type: "startPick", pickId: this.nextRequestId++, prompt, multiple } as const;
+    return new Promise<PickOutcome>((resolve) => {
+      const cancellation = token.onCancellationRequested(() =>
+        this.finishPick(message.pickId, { picked: false, reason: "The request was cancelled." }),
+      );
+      this.pendingPick = {
+        message,
+        resolve: (outcome) => {
+          cancellation.dispose();
+          resolve(outcome);
+        },
+      };
+      this.post(message);
+    });
+  }
+
   private finishPick(id: number, outcome: PickOutcome): void {
     if (this.pendingPick?.message.pickId !== id) {
       return;
@@ -670,6 +593,56 @@ export class DiagramPanel implements vscode.Disposable {
       this.finishPick(this.pendingPick.message.pickId, { picked: false, reason });
     }
   }
+
+  /** Replaces marks without redrawing, reporting any unknown node ids. */
+  annotate(annotation: Annotation): AnnotateOutcome {
+    const nothing = this.nothingTo("mark");
+    if (nothing) {
+      return { ok: false, reason: nothing };
+    }
+    // The ids of the diagram as it is drawn now: opening the panel below draws it again.
+    const ids = this.nodeIds && [...this.nodeIds, ...this.relationships.map((node) => node.id)];
+    const known = ids && new Set(ids);
+    const claimed = new Set(annotation.marks.map((mark) => mark.id));
+    const marks: Annotation["marks"] = [];
+    const unknown: string[] = [];
+    for (const mark of annotation.marks) {
+      let id = mark.id;
+      // Preserve exact chart names. Only repair padding for a known, unclaimed node.
+      if (known && !known.has(id) && known.has(id.trim()) && !claimed.has(id.trim())) {
+        id = id.trim();
+        claimed.add(id);
+      }
+      if (known && !known.has(id)) {
+        unknown.push(mark.id);
+      } else {
+        marks.push(id === mark.id ? mark : { ...mark, id });
+      }
+    }
+    this.annotation = { ...annotation, marks };
+    // Showing the panel may have to open it, which renders the diagram again; the marks follow on
+    // the webview's ready message either way.
+    this.show(true);
+    this.post({ type: "annotate", ...this.annotation });
+    return { ok: true, annotation: this.annotation, unknown, ids };
+  }
+
+  /** Why there is no drawing to pick from or mark, if there is none. */
+  private nothingTo(action: "pick from" | "mark"): string | undefined {
+    const state = this.state;
+    if (!state) {
+      return `There is no diagram to ${action}. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`;
+    }
+    if (state.source === undefined) {
+      return `The chart is not drawn, as it was too large to keep when VS Code closed. Draw it again with ${CHART_TOOL} first.`;
+    }
+    if (state.error) {
+      return failsToRender(state.language, state.error, action);
+    }
+    return undefined;
+  }
+
+  // Source edits, and writing them back to the document a diagram was opened from.
 
   /** Applies the user's source edit and writes it to its bound document, if any. */
   private async applyEdit(source: string): Promise<void> {
@@ -766,12 +739,62 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  private updateChartOptionsContext(): void {
-    void vscode.commands.executeCommand(
-      "setContext",
-      "diagram.chartOptionsAvailable",
-      this.state?.chart !== undefined,
+  // Charts generated from data.
+
+  /** Inspection never refreshes a file or reruns a command. */
+  get loadedChartData(): DataTable | undefined {
+    const chart = this.state?.chart;
+    if (!this.chartTable && chart?.data !== undefined) {
+      this.chartTable = parseTable(chart.data, chart.format);
+    }
+    return this.chartTable;
+  }
+
+  /** Change generated settings atomically using the retained table and manual styling. */
+  async updateChart(
+    input: ChartUpdateInput,
+    token: vscode.CancellationToken,
+    toolInvocationToken?: unknown,
+  ): Promise<RenderOutcome> {
+    if (token.isCancellationRequested) throw new vscode.CancellationError();
+    const state = this.state;
+    if (!state?.chart)
+      throw new Error(
+        "The current diagram is not a generated chart. Create one with diagram_chart first.",
+      );
+    const chart = updatedChartSpec(state.chart, input);
+    if (input.revision !== undefined && input.revision !== this.renderVersion) {
+      throw new Error(
+        "The chart changed. Read diagram_getState and retry with its current revision.",
+      );
+    }
+    if (this.pendingRender)
+      throw new Error("Wait for the current diagram to finish rendering before updating it.");
+    assertChartPresentation(state.chartPresentation);
+    const table = this.loadedChartData;
+    if (!table)
+      throw new Error(
+        "The chart data is not loaded. Refresh it first; updating never rereads files or reruns commands.",
+      );
+    const rebuilt = rebuildChart(chart, table, state.chartPresentation);
+    this.reveal(true);
+    const outcome = await this.showChart(
+      {
+        ...state,
+        chart,
+        title: chart.title ?? state.title,
+        source: JSON.stringify(rebuilt.option, null, 2),
+        chartPresentation: rebuilt.presentation,
+        editedByUser: rebuilt.presentation.edits.length > 0,
+        origin: "tool",
+      },
+      table,
+      "The chart changed before the user picked.",
+      token,
     );
+    if (token.isCancellationRequested) throw new vscode.CancellationError();
+    if (outcome.ok) this.toolRequestId = requestId(toolInvocationToken);
+    return outcome;
   }
 
   /** Native editor action: opening options never reads a file or executes a command. */
@@ -785,6 +808,14 @@ export class DiagramPanel implements vscode.Disposable {
     this.chartOptionsVisible = !this.chartOptionsVisible;
     this.show();
     this.sendChartOptions();
+  }
+
+  private updateChartOptionsContext(): void {
+    void vscode.commands.executeCommand(
+      "setContext",
+      "diagram.chartOptionsAvailable",
+      this.state?.chart !== undefined,
+    );
   }
 
   private sendChartOptions(): void {
@@ -876,6 +907,51 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
+  /** Reloads chart data while retaining supported manual presentation edits. */
+  private async refreshChart(): Promise<void> {
+    const chart = this.state?.chart;
+    const presentation = this.state?.chartPresentation;
+    const version = this.renderVersion;
+    const panel = this.panel;
+    if (!chart || this.refreshing) {
+      return;
+    }
+    this.refreshing = true;
+    try {
+      assertChartPresentation(presentation);
+      const { table, warning } = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
+        (_progress, token) => loadTable(chart, token),
+      );
+      // Any intervening render wins, even if an edit restored the same source.
+      const state = this.state;
+      if (this.renderVersion !== version || this.panel !== panel || !panel || !state) {
+        return;
+      }
+      if (warning) void vscode.window.showWarningMessage(warning);
+      const rebuilt = rebuildChart(chart, table, presentation);
+      const outcome = await this.showChart(
+        {
+          ...state,
+          source: JSON.stringify(rebuilt.option, null, 2),
+          chartPresentation: rebuilt.presentation,
+          editedByUser: rebuilt.presentation.edits.length > 0,
+        },
+        table,
+        "The chart data was refreshed before the user picked.",
+      );
+      if (!outcome.ok && this.state === state && this.panel === panel) {
+        void vscode.window.showErrorMessage(`Could not refresh the chart: ${outcome.error}`);
+      }
+    } catch (error) {
+      if (this.renderVersion === version && this.panel === panel) {
+        void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
+      }
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
   /**
    * Shows a chart rebuilt from the table, keeping the current chart if it fails to render or the
    * token is cancelled, in which case the outcome's error says so.
@@ -929,50 +1005,7 @@ export class DiagramPanel implements vscode.Disposable {
       : { ...outcome, error: `${outcome.error} The previous chart is kept.` };
   }
 
-  /** Reloads chart data while retaining supported manual presentation edits. */
-  private async refreshChart(): Promise<void> {
-    const chart = this.state?.chart;
-    const presentation = this.state?.chartPresentation;
-    const version = this.renderVersion;
-    const panel = this.panel;
-    if (!chart || this.refreshing) {
-      return;
-    }
-    this.refreshing = true;
-    try {
-      assertChartPresentation(presentation);
-      const { table, warning } = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
-        (_progress, token) => loadTable(chart, token),
-      );
-      // Any intervening render wins, even if an edit restored the same source.
-      const state = this.state;
-      if (this.renderVersion !== version || this.panel !== panel || !panel || !state) {
-        return;
-      }
-      if (warning) void vscode.window.showWarningMessage(warning);
-      const rebuilt = rebuildChart(chart, table, presentation);
-      const outcome = await this.showChart(
-        {
-          ...state,
-          source: JSON.stringify(rebuilt.option, null, 2),
-          chartPresentation: rebuilt.presentation,
-          editedByUser: rebuilt.presentation.edits.length > 0,
-        },
-        table,
-        "The chart data was refreshed before the user picked.",
-      );
-      if (!outcome.ok && this.state === state && this.panel === panel) {
-        void vscode.window.showErrorMessage(`Could not refresh the chart: ${outcome.error}`);
-      }
-    } catch (error) {
-      if (this.renderVersion === version && this.panel === panel) {
-        void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
-      }
-    } finally {
-      this.refreshing = false;
-    }
-  }
+  // Export.
 
   /** Exports a snapshot through VS Code's format picker and save dialog. */
   async exportDiagram(): Promise<void> {
@@ -1054,6 +1087,8 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
+  // Clicks on nodes, and requests to chat.
+
   /** Where a node of the diagram shown links to in the code, if anywhere. */
   private linkOf(node: DiagramNode): NodeLink | undefined {
     const links = this.state?.links;
@@ -1130,34 +1165,6 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.selection === selection) {
       this.selection = [];
       this.post({ type: "clearSelection" });
-    }
-  }
-
-  private async post(message: ToWebview): Promise<void> {
-    if (!this.webviewReady || !this.panel) {
-      return;
-    }
-    const panel = this.panel;
-    const generation = this.webviewGeneration;
-    let error: string;
-    try {
-      if (await panel.webview.postMessage(message)) {
-        return;
-      }
-      error = "The diagram panel is unavailable. Reopen it and try again.";
-    } catch (cause) {
-      error = `Could not contact the diagram panel: ${errorMessage(cause)}`;
-    }
-    // Reloads replay pending requests with the same ids. An older delivery must not cancel them.
-    if (panel !== this.panel || generation !== this.webviewGeneration) {
-      return;
-    }
-    if (message.type === "render") {
-      this.finishRender(message.requestId, { ok: false, kind: "unavailable", error });
-    } else if (message.type === "export") {
-      this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
-    } else if (message.type === "startPick") {
-      this.finishPick(message.pickId, { picked: false, reason: error });
     }
   }
 }
