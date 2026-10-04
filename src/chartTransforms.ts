@@ -14,8 +14,9 @@ function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
     case "contains":
       return typeof cell === "string" && typeof value === "string" && cell.includes(value);
     default:
-      if (typeof cell !== "number" || !Number.isFinite(cell) || typeof value !== "number")
+      if (typeof cell !== "number" || typeof value !== "number") {
         return false;
+      }
       switch (op) {
         case "lt":
           return cell < value;
@@ -115,17 +116,16 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   let count = 0;
   for (const row of table.rows) {
     const value = row[column];
-    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    if (typeof value !== "number") continue;
     minimum = Math.min(minimum, value);
     maximum = Math.max(maximum, value);
     count++;
   }
   const name = table.columns[column]?.name ?? "";
-  if (count === 0)
-    throw new Error(`The value column ${JSON.stringify(name)} holds no finite numbers to bin.`);
+  if (count === 0) {
+    throw new Error(`The value column ${JSON.stringify(name)} holds no numbers to bin.`);
+  }
   const bins = spec.bins ?? Math.min(50, Math.ceil(Math.sqrt(count)));
-  if (!Number.isInteger(bins) || bins < 1 || bins > 200)
-    throw new Error('Histogram "bins" must be an integer from 1 to 200.');
   const edges = [minimum];
   for (let i = 1; i < bins; i++) {
     // Subtraction can overflow for opposite signs; weighted interpolation remains finite.
@@ -156,7 +156,7 @@ export function buildHistogram(table: DataTable, { column, name, edges }: Histog
   let count = 0;
   for (const row of table.rows) {
     const value = row[column];
-    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    if (typeof value !== "number") continue;
     // A boundary belongs to the bin on its right, except the maximum belongs to the last bin.
     let low = 0;
     let high = edges.length;
@@ -189,6 +189,6 @@ export function buildHistogram(table: DataTable, { column, name, edges }: Histog
       yAxis: { type: "value", name: "count", min: 0, minInterval: 1 },
       series: [{ type: "bar", name: "count", barCategoryGap: "0%", barGap: "0%", data }],
     },
-    summary: `Charted ${count} observations of ${JSON.stringify(name)} in ${counts.length} histogram bins${skipped ? `; skipped ${skipped} rows without finite numeric values` : ""}.`,
+    summary: `Charted ${count} observations of ${JSON.stringify(name)} in ${counts.length} histogram bins${skipped ? `; skipped ${skipped} rows without a number` : ""}.`,
   };
 }

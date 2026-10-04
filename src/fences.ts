@@ -74,7 +74,7 @@ class Cursor {
 }
 
 /** An opening code fence: its marker, the first word of its info string and its indentation. */
-export interface OpeningFence {
+interface OpeningFence {
   fence: string;
   language: string;
   /** Columns from the start of the fence's container, which are removed from its content lines. */
@@ -200,7 +200,7 @@ function continuationPrefix(line: string, end: number): string {
 }
 
 /** How a line takes part in fenced code blocks. */
-export type FenceLine =
+type FenceLine =
   // The prefix is what the block's content lines start with.
   | { kind: "opening"; fence: OpeningFence; prefix: string }
   // The text is the line without its container markers and fence indentation.
@@ -485,7 +485,7 @@ export function findDiagramFences(text: string): DiagramFence[] {
 }
 
 /** A replacement of a block's content lines that reads back as the source that was written. */
-export interface FenceRewrite {
+interface FenceRewrite {
   start: number;
   end: number;
   text: string;

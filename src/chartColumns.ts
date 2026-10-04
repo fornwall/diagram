@@ -194,7 +194,7 @@ function shownValues(type: ChartType, labels: number, separator: boolean, times:
 }
 
 /** The axis that a chart's labels lie along: the y axis of a horizontal bar chart. */
-export function labelAxis(type: ChartType): "xAxis" | "yAxis" {
+function labelAxis(type: ChartType): "xAxis" | "yAxis" {
   return type === "horizontalBar" ? "yAxis" : "xAxis";
 }
 

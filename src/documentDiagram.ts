@@ -22,9 +22,7 @@ export function documentName({ uri }: DocumentBinding): string {
   return path.split("/").pop() || path;
 }
 
-export type WriteOutcome =
-  | { written: true; fence: DiagramFence }
-  | { written: false; reason: string };
+type WriteOutcome = { written: true; fence: DiagramFence } | { written: false; reason: string };
 
 /**
  * Replaces an unchanged fence's content with an undoable workspace edit, preserving fence markers,

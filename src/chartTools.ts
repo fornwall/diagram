@@ -7,7 +7,7 @@ import type { DiagramPanel } from "./panel";
 import { errorMessage, isPlainObject } from "./protocol";
 import { textResult } from "./tools";
 
-export interface InspectDataInput {
+interface InspectDataInput {
   data?: string;
   file?: string;
   command?: string;

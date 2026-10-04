@@ -54,7 +54,6 @@ export function buildFacetedChart(
       );
     }
   });
-  if (!groups.size) throw new Error("No rows remain to facet. Adjust the filters or data source.");
   const allFacets = facetTable(spec, table);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.

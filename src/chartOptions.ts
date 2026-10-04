@@ -4,7 +4,7 @@ import { type ChartSpec, quoteAll, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
 import { isPlainObject } from "./protocol";
 
-export const CONTROL_KEYS = [
+const CONTROL_KEYS = [
   "type",
   "labelColumn",
   "valueColumns",
@@ -18,7 +18,7 @@ export const CONTROL_KEYS = [
   "filters",
 ] as const satisfies readonly (keyof ChartSpec)[];
 
-export type ChartControls = Pick<ChartSpec, (typeof CONTROL_KEYS)[number]>;
+type ChartControls = Pick<ChartSpec, (typeof CONTROL_KEYS)[number]>;
 
 export interface ChartOptionsState {
   revision: number;

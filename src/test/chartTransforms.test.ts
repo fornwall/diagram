@@ -190,7 +190,7 @@ suite("chart transforms", () => {
           { header: true, columns: [{ name: "value", numeric: true }], rows: [[null]] },
           { valueColumns: ["value"] },
         ),
-      /no finite numbers/,
+      /holds no numbers to bin/,
     );
   });
 

@@ -51,7 +51,7 @@ export const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as 
 
 export type Aggregation = (typeof AGGREGATIONS)[number];
 
-export const FILTER_OPERATORS = ["eq", "neq", "lt", "lte", "gt", "gte", "contains"] as const;
+const FILTER_OPERATORS = ["eq", "neq", "lt", "lte", "gt", "gte", "contains"] as const;
 
 /** A predicate on parsed cells; all predicates must match before other chart transforms. */
 export interface ChartFilter {

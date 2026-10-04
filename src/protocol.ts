@@ -70,7 +70,7 @@ export interface RepeatedName {
 /** Mark colors: focus, red, green and blue, respectively. */
 export const MARK_KINDS = ["current", "problem", "good", "info"] as const;
 
-export type MarkKind = (typeof MARK_KINDS)[number];
+type MarkKind = (typeof MARK_KINDS)[number];
 
 export function isMarkKind(value: unknown): value is MarkKind {
   return MARK_KINDS.includes(value as MarkKind);

@@ -56,7 +56,7 @@ export type RenderOutcome =
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 
-export type AnnotateOutcome =
+type AnnotateOutcome =
   | {
       ok: true;
       annotation: Annotation;

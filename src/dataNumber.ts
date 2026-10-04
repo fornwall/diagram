@@ -26,7 +26,7 @@ const COMMA_NUMBER = new RegExp(
 );
 
 /** How a column writes its numbers, as told by {@link numberFormat}. */
-export interface NumberFormat {
+interface NumberFormat {
   /** "1,5" and "1.234,5" have a decimal comma. */
   decimalComma?: boolean;
   /** Sizes with a bare unit are in powers of 1000, as du --si prints "1.2M" beside "150k". */
