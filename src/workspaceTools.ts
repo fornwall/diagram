@@ -38,8 +38,19 @@ function checkCancelled(token: vscode.CancellationToken): void {
   if (token.isCancellationRequested) throw new vscode.CancellationError();
 }
 
-function objectInput(value: unknown): asserts value is Record<string, unknown> {
+/**
+ * The input without the null values some models send for omitted properties. Unknown properties
+ * are refused rather than ignored, as they are likely misnamed.
+ */
+function objectInput(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!isPlainObject(value)) throw new Error("Give the tool input as an object.");
+  const input = Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null));
+  const unknown = Object.keys(input).filter((key) => !keys.includes(key));
+  if (unknown.length > 0) {
+    const quote = (names: readonly string[]) => names.map((name) => `"${name}"`).join(", ");
+    throw new Error(`Unknown input ${quote(unknown)}; the inputs are ${quote(keys)}.`);
+  }
+  return input;
 }
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
@@ -310,9 +321,9 @@ export class FindWorkspaceFilesTool implements vscode.LanguageModelTool<FindInpu
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
       checkCancelled(token);
-      objectInput(options.input);
-      const max = integer(options.input.maxResults, 100, "maxResults", 200);
-      const glob = globInput(options.input.glob);
+      const input = objectInput(options.input, ["glob", "maxResults"]);
+      const max = integer(input.maxResults, 100, "maxResults", 200);
+      const glob = globInput(input.glob);
       const roots = folders();
       const check = boundary(roots, token);
       const found = await candidates(roots, glob, max, token);
@@ -362,8 +373,8 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
       checkCancelled(token);
-      objectInput(options.input);
-      const { query, caseSensitive } = options.input;
+      const input = objectInput(options.input, ["query", "glob", "caseSensitive", "maxResults"]);
+      const { query, caseSensitive } = input;
       if (typeof query !== "string" || !query || query.length > 500 || /[\r\n\0]/.test(query)) {
         throw new Error(
           'Give "query" as a nonempty, single-line literal string of at most 500 characters.',
@@ -372,8 +383,8 @@ export class SearchWorkspaceTextTool implements vscode.LanguageModelTool<SearchI
       if (caseSensitive !== undefined && typeof caseSensitive !== "boolean") {
         throw new Error('"caseSensitive" must be a boolean.');
       }
-      const max = integer(options.input.maxResults, 50, "maxResults", 100);
-      const glob = globInput(options.input.glob);
+      const max = integer(input.maxResults, 50, "maxResults", 100);
+      const glob = globInput(input.glob);
       const roots = folders();
       const check = boundary(roots, token);
       const { files, truncated: tooManyFiles } = await candidates(
@@ -505,17 +516,13 @@ export class ReadWorkspaceFileTool implements vscode.LanguageModelTool<ReadInput
   ): Promise<vscode.LanguageModelToolResult> {
     return result(async () => {
       checkCancelled(token);
-      objectInput(options.input);
-      const start = integer(options.input.startLine, 1, "startLine");
-      const requestedEnd = integer(
-        options.input.endLine,
-        start + DEFAULT_READ_LINES - 1,
-        "endLine",
-      );
+      const input = objectInput(options.input, ["file", "startLine", "endLine"]);
+      const start = integer(input.startLine, 1, "startLine");
+      const requestedEnd = integer(input.endLine, start + DEFAULT_READ_LINES - 1, "endLine");
       if (requestedEnd < start) throw new Error("endLine must not be less than startLine.");
       const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
       const roots = folders();
-      const uri = resolveWorkspaceFile(options.input.file, roots);
+      const uri = resolveWorkspaceFile(input.file, roots);
       const content = await readText(uri, boundary(roots, token), token);
       if ("error" in content) throw new Error(content.error);
       const { text } = content;

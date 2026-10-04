@@ -333,6 +333,14 @@ suite("workspace tools", () => {
     ]) {
       assert.match(await invoke(searcher, input as never), /^Error: /);
     }
+    assert.match(
+      await invoke(finder, { glob: `${relative}/code.ts`, maxResults: null } as never),
+      /code\.ts$/,
+    );
+    assert.strictEqual(
+      await invoke(finder, { pattern: "*.ts" } as never),
+      'Error: Unknown input "pattern"; the inputs are "glob", "maxResults".',
+    );
     for (const range of [
       { startLine: 0 },
       { startLine: 4, endLine: 3 },
