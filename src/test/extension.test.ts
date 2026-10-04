@@ -12,7 +12,9 @@ async function invoke(
     .join("");
 }
 
-suite("Extension", () => {
+suite("Extension", function () {
+  // The first render loads the webview, which can take a while.
+  this.timeout(10_000);
   suiteSetup(async () => {
     const extension = vscode.extensions.getExtension("fornwall.diagram");
     assert.ok(extension);
