@@ -44,6 +44,8 @@ export function findColumn(table: DataTable, name: string, role: string): number
 export interface Records {
   records: Cell[][];
   header?: boolean;
+  /** Whether they are CSV, which usually has a header even when all its columns hold text. */
+  csv?: boolean;
 }
 
 /**
@@ -77,10 +79,33 @@ export function isYear(cell: Cell | undefined): boolean {
 }
 
 /**
- * Whether the first row names the columns: it has text, and no numbers other than a run of years
- * (as in "region,2024,2025"), but some column below it holds numbers.
+ * Whether the first row names columns of text: none of its cells is empty or recurs in its column,
+ * in which some text does recur, as categories do ("city" above "Paris", "Rome" and "Paris").
  */
-function hasHeader(rows: Cell[][], counts: ColumnCounts[]): boolean {
+function namesCategories(rows: Cell[][]): boolean {
+  const [first = [], ...rest] = rows;
+  let recurs = false;
+  for (const [column, name] of first.entries()) {
+    if (name === null) return false;
+    const seen = new Set<Cell>();
+    for (const row of rest) {
+      const cell = row[column] ?? null;
+      if (cell === name) return false;
+      if (cell !== null) {
+        recurs ||= seen.has(cell);
+        seen.add(cell);
+      }
+    }
+  }
+  return recurs;
+}
+
+/**
+ * Whether the first row names the columns: it has text, and no numbers other than a run of years
+ * (as in "region,2024,2025"), but some column below it holds numbers. CSV of text only has a
+ * header if it {@link namesCategories}.
+ */
+function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolean {
   const first = rows[0];
   if (first === undefined || rows.length < 2 || !first.some((c) => typeof c === "string")) {
     return false;
@@ -103,7 +128,7 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[]): boolean {
       return false;
     }
   }
-  return counts.some(isNumeric);
+  return counts.some(isNumeric) || (csv && numbers.length === 0 && namesCategories(rows));
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
@@ -127,7 +152,7 @@ function columnNames(header: Cell[], width: number): string[] {
 }
 
 /** Builds a table from records, converting text to numbers where it is one. */
-function tableFromRecords({ records, header }: Records): DataTable {
+function tableFromRecords({ records, header, csv = false }: Records): DataTable {
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
@@ -162,7 +187,7 @@ function tableFromRecords({ records, header }: Records): DataTable {
     }
   }
   const cells = records;
-  const named = header ?? hasHeader(cells, counts);
+  const named = header ?? hasHeader(cells, counts, csv);
   const rows = named ? cells.slice(1) : cells;
   const columns = columnNames(named ? first : [], width).map((name, column) => {
     const count = counts[column] ?? { numbers: 0, others: 0, missing: false };

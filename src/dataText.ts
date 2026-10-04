@@ -454,7 +454,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
   if (format === "auto" || format === "csv") {
     const table = splitCsv(text, lines[0] ?? "", format === "csv");
     if (table !== undefined) {
-      return table;
+      return { ...table, csv: true };
     }
   }
   return tabular ?? splitWhitespace(lines, underlined);

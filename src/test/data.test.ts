@@ -935,6 +935,23 @@ suite("data", () => {
     ]);
   });
 
+  test("detects a CSV header above columns of categories", () => {
+    assert.deepStrictEqual(parse("name;city\nAlice;Paris\nBob;Rome\nCarl;Paris"), {
+      columns: ["name", "city"],
+      rows: [
+        ["Alice", "Paris"],
+        ["Bob", "Rome"],
+        ["Carl", "Paris"],
+      ],
+    });
+    // A first row that recurs in its column, or has an empty cell, is data.
+    for (const text of ["Rome,x\nParis,y\nRome,y", ",city\nAlice,Paris\nBob,Paris"]) {
+      assert.strictEqual(parseTable(text).header, false, text);
+    }
+    // Command output of text only rarely has a header.
+    assert.strictEqual(parseTable("Bob\tFix\nAlice\tAdd\nAlice\tTest").header, false);
+  });
+
   test("column inference includes the first data row and excludes inferred headers", () => {
     const cases = [
       { records: [[1], ["text"]], header: false, numeric: true, rows: [[1], ["text"]] },
