@@ -213,7 +213,7 @@ suite("markdownDiagrams", function () {
     } finally {
       vscode.window.showErrorMessage = showError;
     }
-    assert.match(error ?? "", /^Could not open .*deleted\.md: .+/);
+    assert.match(error ?? "", /^Could not open the diagram: \/\S+\/deleted\.md does not exist\.$/);
   });
 
   test("opening a diagram reports when the panel cannot display it", async () => {

@@ -5,7 +5,7 @@ import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { decodeText } from "./files";
+import { decodeText, fileError } from "./files";
 import { errorMessage, isPlainObject } from "./protocol";
 import { givenProperties, plural, unknownProperties } from "./text";
 import { textResult } from "./tools";
@@ -489,7 +489,9 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
     const roots = folders();
     const uri = resolveWorkspaceFile(input.file, roots);
-    const content = await readText(uri, boundary(roots, token), token);
+    const content = await readText(uri, boundary(roots, token), token).catch((error: unknown) => {
+      throw fileError(error, uri);
+    });
     if ("error" in content) throw new Error(content.error);
     const { text } = content;
     const lines: string[] = [];

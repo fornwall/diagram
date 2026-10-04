@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeText, resolveFile } from "./files";
+import { decodeText, fileError, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -83,42 +83,6 @@ export function prepareDataInvocation(
   return prepared;
 }
 
-/** Explains why the data file `file`, at `uri`, cannot be read, if `error` is a file system error. */
-function fileError(error: unknown, file: string, uri: vscode.Uri): unknown {
-  if (!(error instanceof vscode.FileSystemError)) {
-    return error;
-  }
-  const shown = uri.fsPath;
-  switch (error.code) {
-    case "FileNotFound": {
-      const folder = vscode.workspace.getWorkspaceFolder(uri);
-      const relative =
-        folder !== undefined && !path.isAbsolute(file) && !file.startsWith("~")
-          ? ` Relative paths are read from the workspace folder ${folder.name}.`
-          : "";
-      return new Error(`The file ${shown} does not exist.${relative} Check the path.`);
-    }
-    case "FileIsADirectory":
-      return new Error(
-        `${shown} is a directory, not a data file. To chart the files in it, use a command ` +
-          "such as du.",
-      );
-    case "FileNotADirectory":
-      return new Error(
-        `The path ${shown} goes through a file as if it were a folder. Check the path.`,
-      );
-    case "NoPermissions":
-      return new Error(
-        `You do not have permission to read ${shown}. Change its permissions, or give the data ` +
-          "another way.",
-      );
-    case "Unavailable":
-      return new Error(`${shown} cannot be reached right now. Try again once it is available.`);
-    default:
-      return new Error(`The file ${shown} could not be read: ${error.message}`);
-  }
-}
-
 export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
   const checkSize = (size: number): void => {
@@ -138,7 +102,14 @@ export async function readDataFile(file: string): Promise<string> {
     checkSize(stat.size);
     bytes = await vscode.workspace.fs.readFile(uri);
   } catch (error) {
-    throw fileError(error, file, uri);
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    throw fileError(error, uri, {
+      FileNotFound:
+        folder !== undefined && !path.isAbsolute(file) && !file.startsWith("~")
+          ? `Relative paths are read from the workspace folder ${folder.name}.`
+          : undefined,
+      FileIsADirectory: "To chart the files in it, use a command such as du.",
+    });
   }
   checkSize(bytes.byteLength);
   let text: string;

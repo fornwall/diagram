@@ -272,7 +272,7 @@ suite("documentDiagram", function () {
     const missing = vscode.Uri.file(path.join(dir, "gone.md")).toString();
     const outcome = await writeFence({ ...read, uri: missing }, "flowchart LR");
     assert.ok(!outcome.written);
-    assert.match(outcome.reason, /Could not open gone\.md/);
+    assert.match(outcome.reason, /^Could not write the diagram: \/\S+\/gone\.md does not exist\.$/);
   });
 
   test("writeFence does not overwrite a duplicate when the original block changes", async () => {

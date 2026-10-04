@@ -794,7 +794,10 @@ suite("panel", function () {
       await click("B");
       assert.strictEqual(asked.length, 2);
       assert.strictEqual(errors.length, 1);
-      assert.match(errors[0] ?? "", /^Could not open the code that "B" links to: /);
+      assert.strictEqual(
+        errors[0],
+        'Could not open the code that "B" links to: missing.txt does not exist.',
+      );
     } finally {
       vscode.window.showWarningMessage = warn;
       vscode.window.showErrorMessage = showError;

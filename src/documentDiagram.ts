@@ -6,6 +6,7 @@ import {
   rewriteFence,
   trimBlankLines,
 } from "./fences";
+import { openDocument } from "./files";
 import { diagramNoun, errorMessage } from "./protocol";
 
 /** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
@@ -44,9 +45,9 @@ export async function writeFence(
   }
   let document: vscode.TextDocument;
   try {
-    document = await vscode.workspace.openTextDocument(vscode.Uri.parse(binding.uri));
+    document = await openDocument(vscode.Uri.parse(binding.uri));
   } catch (error) {
-    return { written: false, reason: `Could not open ${name}: ${errorMessage(error)}` };
+    return { written: false, reason: `Could not write the ${noun}: ${errorMessage(error)}` };
   }
   if (isCurrent && !isCurrent()) {
     return {
@@ -133,10 +134,10 @@ export async function reportWriteFailure(binding: DocumentBinding, reason: strin
     return;
   }
   try {
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(binding.uri));
+    const document = await openDocument(vscode.Uri.parse(binding.uri));
     const line = new vscode.Position(binding.fence.openingLine, 0);
     await vscode.window.showTextDocument(document, { selection: new vscode.Range(line, line) });
   } catch (error) {
-    void vscode.window.showErrorMessage(`Could not open ${name}: ${errorMessage(error)}`);
+    void vscode.window.showErrorMessage(errorMessage(error));
   }
 }

@@ -7,6 +7,7 @@ import {
   isDiagramFence,
   relocateFence,
 } from "./fences";
+import { openDocument } from "./files";
 import type { DiagramPanel } from "./panel";
 import { diagramNoun, errorMessage } from "./protocol";
 
@@ -69,10 +70,10 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
 async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFence): Promise<void> {
   let document: vscode.TextDocument;
   try {
-    document = await vscode.workspace.openTextDocument(uri);
+    document = await openDocument(uri);
   } catch (error) {
     void vscode.window.showErrorMessage(
-      `Could not open ${vscode.workspace.asRelativePath(uri)}: ${errorMessage(error)}`,
+      `Could not open the ${diagramNoun(fence.language)}: ${errorMessage(error)}`,
     );
     return;
   }

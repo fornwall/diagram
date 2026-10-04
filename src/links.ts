@@ -1,7 +1,7 @@
 // Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
-import { resolveFile } from "./files";
+import { openDocument, resolveFile } from "./files";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 import { quote } from "./text";
 
@@ -167,7 +167,7 @@ export async function openLink(
     ) {
       return;
     }
-    const document = await vscode.workspace.openTextDocument(uri);
+    const document = await openDocument(uri);
     // The click made the diagram's tab group active, so show the code in another one, leaving the
     // diagram visible beside it.
     const elsewhere = vscode.window.tabGroups.all.find(

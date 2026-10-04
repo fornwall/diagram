@@ -400,6 +400,10 @@ suite("workspace tools", function () {
       await invoke(reader, { file: relative }),
       "Error: The path is a directory; give a text file.",
     );
+    assert.strictEqual(
+      await invoke(reader, { file: `${relative}/missing.ts` }),
+      `Error: ${relative}/missing.ts does not exist.`,
+    );
     for (const range of [
       { startLine: 0 },
       { startLine: 4, endLine: 3 },
