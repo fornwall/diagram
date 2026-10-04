@@ -25,6 +25,18 @@ export const CHART_TYPES = [
 
 export type ChartType = (typeof CHART_TYPES)[number];
 
+/** The charts of one series per value column against a category or time axis. */
+export const CARTESIAN_TYPES = [
+  "bar",
+  "horizontalBar",
+  "stackedBar",
+  "line",
+  "area",
+  "stackedArea",
+] as const satisfies readonly ChartType[];
+
+export type CartesianType = (typeof CARTESIAN_TYPES)[number];
+
 export const DATA_FORMATS = ["auto", "csv", "tsv", "json", "whitespace"] as const;
 
 export type DataFormat = (typeof DATA_FORMATS)[number];

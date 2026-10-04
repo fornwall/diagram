@@ -356,7 +356,7 @@ suite("chart facets", () => {
   test("validates facet types, names and group count instead of dropping groups", () => {
     assert.throws(
       () => build("service,ms\na,2", { type: "pie" }),
-      /Faceting is not supported.*clear facetColumn/,
+      /Faceting is not supported for pie charts.*leave out "facetColumn"/,
     );
     assert.throws(
       () => build("service,ms\na,2", { facetColumn: "unknown" }),

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle, isClosingFence, openingFence } from "./blocks";
 import { unlessCancelled } from "./cancellation";
+import { describeTable } from "./chartColumns";
 import {
   type ChartSpec,
   type ChartType,
@@ -9,7 +10,7 @@ import {
   quoteAll,
   validateChartSpec,
 } from "./chartSpec";
-import { buildChart, describeTable } from "./charts";
+import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import { nodeList } from "./describe";

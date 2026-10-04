@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import { time as echartsTime, init as initECharts } from "echarts";
 import * as vscode from "vscode";
+import { describeTable } from "../chartColumns";
 import {
   CHART_TYPES,
   type ChartSpec,
@@ -9,7 +10,7 @@ import {
   dataOrigin,
   validateChartSpec,
 } from "../chartSpec";
-import { buildChart, deepMerge, describeTable } from "../charts";
+import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { newPanel } from "./newPanel";
 
@@ -1099,7 +1100,7 @@ suite("charts", () => {
         const option = build(chart(type, { options: { [axis]: override } }), data);
         assert.deepStrictEqual(
           option.series[0].data,
-          dates.map((date) => (type === "horizontalBar" ? [3, date] : [date, 3])),
+          type === "scatter" ? dates.map((date) => [date, 3]) : [3, 3],
         );
         const rendered = initECharts(null, undefined, {
           renderer: "svg",
@@ -1126,16 +1127,20 @@ suite("charts", () => {
       const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
       for (const override of [{ type: "category" }, [{ type: "category" }]]) {
         const spec = chart(type, { options: { [axis]: override } });
-        const expected = [
-          ["2026-01-02", 3],
-          ["", 5],
-          ["2026-01-05", 7],
-        ];
-        assert.deepStrictEqual(
-          build(spec, data).series[0].data,
-          type === "horizontalBar" ? expected.map(([date, value]) => [value, date]) : expected,
-        );
-        assert.doesNotMatch(summary(spec, data), /without a date/);
+        const option = build(spec, data);
+        const dates = ["2026-01-02", "", "2026-01-05"];
+        if (type === "scatter") {
+          assert.deepStrictEqual(option.series[0].data, [
+            [dates[0], 3],
+            [dates[1], 5],
+            [dates[2], 7],
+          ]);
+        } else {
+          assert.deepStrictEqual(option.series[0].data, [3, 5, 7]);
+        }
+        assert.deepStrictEqual([option[axis]].flat()[0].data, dates);
+        // The dates are labels, so nothing is said about reading them as times.
+        assert.doesNotMatch(summary(spec, data), /without a date|time axis/);
       }
     }
   });
@@ -1500,6 +1505,10 @@ suite("charts", () => {
     });
     assert.deepStrictEqual(deepMerge({ s: [{ a: 1 }] }, { s: [{ b: 1 }, { c: 2 }] }), {
       s: [{ a: 1, b: 1 }, { c: 2 }],
+    });
+    // ECharts reads {"xAxis": {...}} as [{...}], so an array adjusts a single generated axis.
+    assert.deepStrictEqual(deepMerge({ xAxis: { a: 1 } }, { xAxis: [{ b: 1 }, { c: 2 }] }), {
+      xAxis: [{ a: 1, b: 1 }, { c: 2 }],
     });
   });
 

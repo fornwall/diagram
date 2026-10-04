@@ -1,20 +1,11 @@
 // Compose generated Cartesian charts into independently selectable small multiples.
-import type { ChartSpec } from "./chartSpec";
+import { CARTESIAN_TYPES, type ChartSpec, type ChartType } from "./chartSpec";
 import type { Chart } from "./charts";
 import { type Cell, type DataTable, findColumn } from "./data";
 import { errorMessage, isPlainObject } from "./protocol";
 
 type Option = Record<string, unknown>;
-const FACET_TYPES = new Set([
-  "bar",
-  "horizontalBar",
-  "stackedBar",
-  "line",
-  "area",
-  "stackedArea",
-  "scatter",
-  "histogram",
-]);
+const FACET_TYPES: readonly ChartType[] = [...CARTESIAN_TYPES, "scatter", "histogram"];
 const MAX_FACETS = 12;
 
 const objects = (value: unknown): Option[] =>
@@ -46,9 +37,9 @@ export function buildFacetedChart(
   table: DataTable,
   buildSingle: (spec: ChartSpec, table: DataTable, allFacets: DataTable) => Chart,
 ): Chart {
-  if (!FACET_TYPES.has(spec.type)) {
+  if (!FACET_TYPES.includes(spec.type)) {
     throw new Error(
-      `Faceting is not supported for ${spec.type}. Use bar, horizontalBar, stackedBar, line, area, stackedArea, scatter or histogram, or clear facetColumn.`,
+      `Faceting is not supported for ${spec.type} charts. Use one of ${FACET_TYPES.join(", ")}, or leave out "facetColumn".`,
     );
   }
   const index = findColumn(table, spec.facetColumn ?? "", "facet");
