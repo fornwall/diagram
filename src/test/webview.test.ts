@@ -106,6 +106,11 @@ suite("webview", function () {
     for (const source of sources) found.push(await renderError(source));
     return found;
   };
+  /** Renders the diagram, which must render. */
+  const draw = async (diagram: Partial<Diagram>) => {
+    const outcome = await render(diagram);
+    assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+  };
   /** Renders the Mermaid source, for the error it fails with. */
   const renderError = async (source: string): Promise<string | undefined> => {
     const outcome = await render({ source });
@@ -141,7 +146,7 @@ suite("webview", function () {
     })()`);
 
   test("skips superseded queued renders and their annotations", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    await draw({ source: "flowchart LR\n A --> B" });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         window.testRenderResults = [];
@@ -437,14 +442,10 @@ suite("webview", function () {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
     await showChartOptions(chart);
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), false);
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: '{"series":[{"type":"pie","data":[{"value":1,"name":"a"}]}]}',
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: '{"series":[{"type":"pie","data":[{"value":1,"name":"a"}]}]}',
+    });
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
     assert.strictEqual(panel.current?.chart, undefined);
   });
@@ -470,7 +471,7 @@ suite("webview", function () {
       window.testBodyObserver.observe(document.body, {childList: true});
     })()`);
     for (const source of Object.values(MERMAID)) {
-      assert.ok((await render({ source })).ok);
+      await draw({ source });
     }
     assert.ok(!(await render({ source: "flowchart TD\n  A@{ shape: nosuch }" })).ok);
     assert.deepStrictEqual(
@@ -490,7 +491,7 @@ suite("webview", function () {
           document.querySelector(".mermaid-layout").style.width = "";
           document.getElementById("view-source").click();
         })()`);
-        assert.ok((await render({ source: MERMAID.gantt })).ok);
+        await draw({ source: MERMAID.gantt });
         // The canvas fits the drawing in the frame after the one in which it sees its new size.
         await evaluate(`(async () => {
           document.getElementById("view-visual").click();
@@ -498,7 +499,7 @@ suite("webview", function () {
         })()`);
       } else {
         await evaluate(`document.getElementById("view-${view}").click()`);
-        assert.ok((await render({ source: MERMAID.gantt })).ok);
+        await draw({ source: MERMAID.gantt });
       }
       const { drawn, room, zoom } = (await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
@@ -521,7 +522,7 @@ suite("webview", function () {
       canvas.style.maxWidth = canvas.offsetWidth * 0.6 + "px";
     })()`;
     // Other diagrams are only scaled.
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.strictEqual(
       await evaluate(`(async () => {
         const svg = document.querySelector("#diagram svg");
@@ -533,7 +534,7 @@ suite("webview", function () {
       })()`),
       true,
     );
-    assert.ok((await render({ source: MERMAID.gantt })).ok);
+    await draw({ source: MERMAID.gantt });
     const result = await evaluate(`(async () => {
       const canvas = document.getElementById("canvas");
       const task = () => document.querySelector('#diagram rect.task[tabindex]');
@@ -568,7 +569,7 @@ suite("webview", function () {
   });
 
   test("scrolls past every side of a Mermaid drawing larger than the canvas", async () => {
-    assert.ok((await render({ source: "flowchart LR\n  A[Left] --> B[Middle] --> C[Right]" })).ok);
+    await draw({ source: "flowchart LR\n  A[Left] --> B[Middle] --> C[Right]" });
     const padded = await evaluate(`(async () => {
       for (let i = 0; i < 12; i++) document.getElementById("zoom-in").click();
       const canvas = document.getElementById("canvas");
@@ -602,7 +603,7 @@ suite("webview", function () {
       "kanban\n  todo[To do]\n    t1[Write the documentation for a feature]",
     ];
     for (const source of diagrams) {
-      assert.ok((await render({ source })).ok, source);
+      await draw({ source });
       const overflows = await evaluate(`(() => {
         const svg = document.querySelector("#diagram svg");
         const drawing = svg.getBoundingClientRect();
@@ -635,7 +636,7 @@ suite("webview", function () {
       "quadrantChart\n  A point with a long label near the edge: [0.98, 0.5]",
       "gantt\n  dateFormat YYYY-MM-DD\n  Task :2000-01-01, 7d",
     ]) {
-      assert.ok((await render({ source })).ok, source);
+      await draw({ source });
       const result = (await evaluate(`(async () => {
         const svg = document.querySelector("#diagram svg");
         const drawing = svg.getBoundingClientRect();
@@ -659,9 +660,7 @@ suite("webview", function () {
   });
 
   test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {
-    assert.ok(
-      (await render({ source: 'flowchart LR\n  A --> B\n  click A callback "A tooltip"' })).ok,
-    );
+    await draw({ source: 'flowchart LR\n  A --> B\n  click A callback "A tooltip"' });
     const colors = await evaluate(`(async () => {
       document.querySelector("#diagram g.node[title]").dispatchEvent(new MouseEvent("mouseover"));
       const tooltip = document.querySelector(".mermaidTooltip");
@@ -679,7 +678,7 @@ suite("webview", function () {
   });
 
   test("resizes the source pane to its limits and resets it with the keyboard", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         document.getElementById("view-split").click();
@@ -710,7 +709,7 @@ suite("webview", function () {
   });
 
   test("shows why an action is disabled on hover", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const button = document.getElementById("highlight-path");
@@ -747,7 +746,7 @@ suite("webview", function () {
 
   test("selection updates only the changed Mermaid nodes", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
-    assert.ok((await render({ source })).ok);
+    await draw({ source });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const diagram = document.getElementById("diagram");
@@ -774,7 +773,7 @@ suite("webview", function () {
 
   test("annotation updates touch only changed Mermaid marks", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
-    assert.ok((await render({ source })).ok);
+    await draw({ source });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const diagram = document.getElementById("diagram");
@@ -827,7 +826,7 @@ suite("webview", function () {
   });
 
   test("returns keyboard focus to visible content after clearing the selection", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const node = document.querySelector("#diagram .diagram-node[tabindex]");
@@ -857,7 +856,7 @@ suite("webview", function () {
   });
 
   test("reveals node picks without losing source edits and restores focus when finished", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         try {
@@ -896,7 +895,7 @@ suite("webview", function () {
 
   test("zooms at the pointer in proportion to Ctrl+scrolling", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    assert.ok((await render({ source: `flowchart LR\n  ${chain}` })).ok);
+    await draw({ source: `flowchart LR\n  ${chain}` });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
@@ -932,7 +931,7 @@ suite("webview", function () {
 
   test("keeps a zoom made while fitting the diagram to a resized panel is pending", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    assert.ok((await render({ source: `flowchart LR\n  ${chain}` })).ok);
+    await draw({ source: `flowchart LR\n  ${chain}` });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
@@ -957,7 +956,7 @@ suite("webview", function () {
   });
 
   test("ends panning when released outside the canvas or pointer capture is lost", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
@@ -1031,7 +1030,7 @@ suite("webview", function () {
   });
 
   test("keeps unapplied source edits across view changes and incoming diagrams", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    await draw({ source: "flowchart LR\n A --> B" });
     await evaluate(`(() => {
       document.getElementById("view-split").click();
       const source = document.getElementById("source");
@@ -1045,7 +1044,7 @@ suite("webview", function () {
       "flowchart LR\n A --> Draft",
     );
     await evaluate('document.getElementById("view-visual").click()');
-    assert.ok((await render({ source: "flowchart LR\n A --> New" })).ok);
+    await draw({ source: "flowchart LR\n A --> New" });
     await evaluate('document.getElementById("view-source").click()');
     assert.deepStrictEqual(
       await evaluate(`({
@@ -1065,7 +1064,7 @@ suite("webview", function () {
   test("reuses formatted source and only persists changed editor state", async () => {
     await evaluate('document.getElementById("view-visual").click()');
     const source = '{"series":[{"type":"pie","data":[3,7]}]}';
-    assert.ok((await render({ language: "echarts", source })).ok);
+    await draw({ language: "echarts", source });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const parse = JSON.parse;
@@ -1093,7 +1092,7 @@ suite("webview", function () {
       { parses: 1, viewWrites: 3, editWrites: 1, saved: true },
     );
     const incoming = '{"series":[{"type":"pie","data":[9,1]}]}';
-    assert.ok((await render({ language: "echarts", source: incoming })).ok);
+    await draw({ language: "echarts", source: incoming });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const stale = !document.getElementById("stale-note").hidden;
@@ -1108,7 +1107,7 @@ suite("webview", function () {
 
   test("acknowledges Apply when the edit matches the original unformatted chart source", async () => {
     const source = '{"series":[{"type":"pie","data":[1,2]}]}';
-    assert.ok((await render({ language: "echarts", source })).ok);
+    await draw({ language: "echarts", source });
     await evaluate(`(() => {
       document.getElementById("view-source").click();
       const input = document.getElementById("source");
@@ -1131,7 +1130,7 @@ suite("webview", function () {
   test("restores unapplied source edits after a webview reload", async () => {
     const original = "flowchart LR\n A --> Original";
     const draft = "flowchart LR\n A --> Draft";
-    assert.ok((await render({ source: original })).ok);
+    await draw({ source: original });
     await evaluate(`(() => {
       document.getElementById("view-split").click();
       const input = document.getElementById("source");
@@ -1154,7 +1153,7 @@ suite("webview", function () {
       { source: draft, stale: false, applyDisabled: false },
     );
     const incoming = "flowchart LR\n A --> Incoming";
-    assert.ok((await render({ source: incoming })).ok);
+    await draw({ source: incoming });
     assert.deepStrictEqual(
       await evaluate(`({
         source: document.getElementById("source").value,
@@ -1177,14 +1176,10 @@ suite("webview", function () {
   });
 
   test("exports chart dimensions while its rendering is hidden in Source view", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+    });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const chart = document.querySelector("#chart svg");
@@ -1219,10 +1214,7 @@ suite("webview", function () {
     };
     const paths: unknown[] = [];
     for (const animation of [true, false]) {
-      assert.ok(
-        (await render({ language: "echarts", source: JSON.stringify({ ...option, animation }) }))
-          .ok,
-      );
+      await draw({ language: "echarts", source: JSON.stringify({ ...option, animation }) });
       paths.push(
         await evaluate(`(async () => {
           ${DRAG_IMAGE}
@@ -1237,14 +1229,10 @@ suite("webview", function () {
   });
 
   test("exports the current chart size before the resize observer runs", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+    });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const chart = document.getElementById("chart");
@@ -1266,17 +1254,13 @@ suite("webview", function () {
   });
 
   test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A --> B" })).ok);
+    await draw({ source: "flowchart LR\n A --> B" });
     await evaluate('document.getElementById("view-source").click()');
     try {
-      assert.ok(
-        (
-          await render({
-            language: "echarts",
-            source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-          })
-        ).ok,
-      );
+      await draw({
+        language: "echarts",
+        source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+      });
       assert.strictEqual(
         await evaluate(`(() => {
           const svg = document.querySelector("#chart svg");
@@ -1304,14 +1288,10 @@ suite("webview", function () {
   });
 
   test("exports SVG when the browser cannot create a PNG", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+    });
     const download = await evaluate(`(async () => {
       const original = HTMLCanvasElement.prototype.toBlob;
       let failed = false;
@@ -1338,15 +1318,11 @@ suite("webview", function () {
   });
 
   test("keeps SVG export and rendering available while PNG decoding stalls", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source:
-            '{"animation": false, "series": [{"type": "pie", "data": [{"name": "Original", "value": 1}]}]}',
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source:
+        '{"animation": false, "series": [{"type": "pie", "data": [{"name": "Original", "value": 1}]}]}',
+    });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
       const original = HTMLImageElement.prototype.decode;
@@ -1388,7 +1364,7 @@ suite("webview", function () {
 
   test("exports Mermaid labels as SVG text despite diagram configuration", async () => {
     const exported = async (source: string) => {
-      assert.ok((await render({ source })).ok);
+      await draw({ source });
       return evaluate(`(async () => {
         ${DRAG_IMAGE}
         const svg = (await dragImage()).getData("image/svg+xml");
@@ -1423,7 +1399,7 @@ suite("webview", function () {
       "flowchart LR\n  A((Circle label)) --> B[Rectangle label]",
       'stateDiagram-v2\n  [*] --> Idle\n  state "A state with a long name" as Long\n  Idle --> Long',
     ]) {
-      assert.ok((await render({ source })).ok, source);
+      await draw({ source });
       const offCenter = await evaluate(`(async () => {
         ${DRAG_IMAGE}
         const host = document.createElement("div");
@@ -1450,7 +1426,7 @@ suite("webview", function () {
       '  B --> C["First<br>second"]',
       "  C --> D[\"1 &lt; 2 <span style='color: red'>red</span>\"]",
     ].join("\n");
-    assert.ok((await render({ source })).ok);
+    await draw({ source });
     const exported = await evaluate(`(async () => {
       ${DRAG_IMAGE}
       const image = (await dragImage()).getData("image/svg+xml");
@@ -1469,7 +1445,7 @@ suite("webview", function () {
 
   test("shows formulas whole, beyond the boxes Mermaid sizes to their line boxes", async () => {
     // Italic letters and limits draw beyond those boxes, which would clip them.
-    assert.ok((await render({ source: "sequenceDiagram\n  A->>B: $$\\sum_{i=1}^{n} x_i$$" })).ok);
+    await draw({ source: "sequenceDiagram\n  A->>B: $$\\sum_{i=1}^{n} x_i$$" });
     const overflow = await evaluate(`(async () => {
       const shown = getComputedStyle(document.querySelector("#diagram foreignObject")).overflow;
       ${DRAG_IMAGE}
@@ -1492,7 +1468,7 @@ suite("webview", function () {
       "sequenceDiagram\n  participant A as $$\\alpha_1$$\n  A->>B: $$\\int x$$",
     ];
     for (const source of sources) {
-      assert.ok((await render({ source })).ok, source);
+      await draw({ source });
       const formulas = await evaluate(`(async () => {
         const formulas = root => Array.from(root.querySelectorAll("math"), math => math.textContent).sort();
         const shown = formulas(document.querySelector("#diagram svg"));
@@ -1517,7 +1493,7 @@ suite("webview", function () {
   });
 
   test("keeps Mermaid image export separate from an incoming render", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A[Original label] --> B" })).ok);
+    await draw({ source: "flowchart LR\n A[Original label] --> B" });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const original = DOMParser.prototype.parseFromString;
@@ -1554,7 +1530,7 @@ suite("webview", function () {
   });
 
   test("moves the focus between Mermaid nodes with arrow keys from one tab stop", async () => {
-    assert.ok((await render({ source: "flowchart LR\n  A --> B\n  A --> C\n  C --> D" })).ok);
+    await draw({ source: "flowchart LR\n  A --> B\n  A --> C\n  C --> D" });
     const moves = (await evaluate(`(() => {
       const stops = () => Array.from(document.querySelectorAll('#diagram [tabindex="0"]'), e => e.dataset.diagramId);
       const press = (key) => {
@@ -1580,27 +1556,23 @@ suite("webview", function () {
   });
 
   test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
-    assert.ok((await render({ source: "flowchart LR\n  A --> B" })).ok);
+    await draw({ source: "flowchart LR\n  A --> B" });
     await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);
-    assert.ok((await render({ source: "flowchart LR\n  A --> B --> C" })).ok);
+    await draw({ source: "flowchart LR\n  A --> B --> C" });
     assert.strictEqual(
       await evaluate(`document.activeElement.getAttribute("data-diagram-id")`),
       "B",
     );
     await evaluate(`document.querySelector('#diagram [data-diagram-id="C"][tabindex]').focus()`);
-    assert.ok((await render({ source: "flowchart LR\n  A --> B" })).ok);
+    await draw({ source: "flowchart LR\n  A --> B" });
     assert.strictEqual(await evaluate(`document.activeElement.id`), "canvas");
   });
 
   test("keeps keyboard focus and selection on a Mermaid node when the theme redraws it", async () => {
-    assert.ok(
-      (
-        await render({
-          source: MERMAID["flowchart-v2"],
-          links: { A: { file: "src/parser.ts", line: 42 } },
-        })
-      ).ok,
-    );
+    await draw({
+      source: MERMAID["flowchart-v2"],
+      links: { A: { file: "src/parser.ts", line: 42 } },
+    });
     panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: true });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -1765,7 +1737,7 @@ suite("webview", function () {
       ["ishikawa-beta", "Problem"],
     ] as const) {
       const source = `---\ntitle: T\n---\n${header}\n\n  %% comment\n  \n  ${node}\n    Child`;
-      assert.ok((await render({ source })).ok, header);
+      await draw({ source });
       const text = (await evaluate(`document.querySelector("#diagram svg").textContent`)) as string;
       assert.match(text, /Child/, header);
     }
@@ -1810,18 +1782,14 @@ suite("webview", function () {
     };
     const chart = { language: "echarts", source: JSON.stringify(option) } as const;
     assert.deepStrictEqual(await render(chart), { ok: true, diagramType: "bar" });
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
-    assert.ok((await render(chart)).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
+    await draw(chart);
   });
 
   test("selects sequence footer participants by identity when their labels match", async () => {
-    assert.ok(
-      (
-        await render({
-          source: "sequenceDiagram\n participant A as Service\n actor B as Service\n A->>B: Hello",
-        })
-      ).ok,
-    );
+    await draw({
+      source: "sequenceDiagram\n participant A as Service\n actor B as Service\n A->>B: Hello",
+    });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         return [...document.querySelectorAll('#diagram .actor-bottom')].map(footer => {
@@ -1841,7 +1809,7 @@ suite("webview", function () {
   });
 
   test("reports the node ids it drew, and marks them on the diagram it already shows", async () => {
-    assert.ok((await render({ source: MERMAID["flowchart-v2"] })).ok);
+    await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual([...(panel.drawnIds ?? [])].sort(), ["A", "B"]);
     const marked = panel.annotate({
       marks: [
@@ -1856,12 +1824,12 @@ suite("webview", function () {
     // The diagram is still the one that was rendered, and it still renders and picks.
     assert.strictEqual(panel.current?.source, MERMAID["flowchart-v2"]);
     assert.strictEqual(panel.current?.error, undefined);
-    assert.ok((await render({ source: MERMAID.sequence })).ok);
+    await draw({ source: MERMAID.sequence });
     assert.deepStrictEqual([...(panel.drawnIds ?? [])].sort(), ["Alice", "Bob"]);
 
     // A chart's items are its data, which the panel does not name, so ids cannot be checked.
     const pie = '{"series": [{"type": "pie", "data": [1]}]}';
-    assert.ok((await render({ language: "echarts", source: pie })).ok);
+    await draw({ language: "echarts", source: pie });
     assert.strictEqual(panel.drawnIds, undefined);
     const chartMarks = panel.annotate({ marks: [{ id: "1", kind: "info" }], dim: true });
     assert.ok(chartMarks.ok);
@@ -1944,27 +1912,23 @@ suite("webview", function () {
   });
 
   test("selects and marks chart names with surrounding spaces without conflating them", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: JSON.stringify({
-            animation: false,
-            series: [
-              {
-                type: "pie",
-                data: [
-                  { name: "A", value: 1 },
-                  { name: " A ", value: 1 },
-                ],
-                itemStyle: { color: "#0000ff" },
-                emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
-              },
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        series: [
+          {
+            type: "pie",
+            data: [
+              { name: "A", value: 1 },
+              { name: " A ", value: 1 },
             ],
-          }),
-        })
-      ).ok,
-    );
+            itemStyle: { color: "#0000ff" },
+            emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+          },
+        ],
+      }),
+    });
     assert.strictEqual(
       await evaluate(`(() => {
         ${CLICK_CHART}
@@ -1978,26 +1942,22 @@ suite("webview", function () {
   });
 
   test("tells apart chart items of the same name when selecting and marking them", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: JSON.stringify({
-            animation: false,
-            xAxis: { type: "category", data: ["A", "B", "A"] },
-            yAxis: {},
-            series: [
-              {
-                type: "bar",
-                data: [1, 1, 1],
-                itemStyle: { color: "#0000ff" },
-                emphasis: { itemStyle: { color: "#ff0000" } },
-              },
-            ],
-          }),
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        xAxis: { type: "category", data: ["A", "B", "A"] },
+        yAxis: {},
+        series: [
+          {
+            type: "bar",
+            data: [1, 1, 1],
+            itemStyle: { color: "#0000ff" },
+            emphasis: { itemStyle: { color: "#ff0000" } },
+          },
+        ],
+      }),
+    });
     assert.strictEqual(
       await evaluate(`(() => {
         ${CLICK_CHART}
@@ -2024,50 +1984,42 @@ suite("webview", function () {
       [undefined, undefined],
       ["Sales", "Sales/EU"],
     ]) {
-      assert.ok(
-        (
-          await render({
-            language: "echarts",
-            source: JSON.stringify({
-              animation: false,
-              series: names.map((name, index) => ({
-                name,
-                type: "pie",
-                center: [index === 0 ? "25%" : "75%", "50%"],
-                radius: 30,
-                data: [{ name: "A", value: 1 }],
-                itemStyle: { color: "#0000ff" },
-                emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
-              })),
-            }),
-          })
-        ).ok,
-      );
+      await draw({
+        language: "echarts",
+        source: JSON.stringify({
+          animation: false,
+          series: names.map((name, index) => ({
+            name,
+            type: "pie",
+            center: [index === 0 ? "25%" : "75%", "50%"],
+            radius: 30,
+            data: [{ name: "A", value: 1 }],
+            itemStyle: { color: "#0000ff" },
+            emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+          })),
+        }),
+      });
       panel.annotate({ marks: [{ id: `${names[1] ?? "Series 2"}/A`, kind: "info" }], dim: false });
       assert.strictEqual(await redHalf(), "right", `${names[1] ?? "Unnamed"} series`);
     }
   });
 
   test("clears every selected chart item together", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: JSON.stringify({
-            animation: false,
-            series: [
-              {
-                type: "pie",
-                data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
-                itemStyle: { color: "#0000ff" },
-                select: { itemStyle: { color: "#ff0000" } },
-                emphasis: { disabled: true },
-              },
-            ],
-          }),
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        series: [
+          {
+            type: "pie",
+            data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
+            itemStyle: { color: "#0000ff" },
+            select: { itemStyle: { color: "#ff0000" } },
+            emphasis: { disabled: true },
+          },
+        ],
+      }),
+    });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CLICK_CHART}
@@ -2111,7 +2063,7 @@ suite("webview", function () {
     const shown: Record<string, unknown> = {};
     for (const [type, series] of Object.entries(charts)) {
       const source = JSON.stringify({ animation: false, series: [{ type, ...series }] });
-      assert.ok((await render({ language: "echarts", source })).ok);
+      await draw({ language: "echarts", source });
       shown[type] = await evaluate(`(async () => {
         const label = document.getElementById("selection-label");
         const svg = document.querySelector("#chart svg");
@@ -2172,7 +2124,7 @@ suite("webview", function () {
   });
 
   test("does not redraw a chart when a resize observation leaves its dimensions unchanged", async () => {
-    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
+    await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CHART_FITTED}
@@ -2212,7 +2164,7 @@ suite("webview", function () {
   });
 
   test("fits a chart drawn while its container briefly had another size or was hidden", async () => {
-    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
+    await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CHART_FITTED}
@@ -2258,7 +2210,7 @@ suite("webview", function () {
   });
 
   test("draws a chart once in the colors of a new theme", async () => {
-    assert.ok((await render({ language: "echarts", source: COUNTED_CHART })).ok);
+    await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
@@ -2279,24 +2231,20 @@ suite("webview", function () {
   });
 
   test("keeps a selected chart item selected through a theme change", async () => {
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: JSON.stringify({
-            animation: false,
-            series: [
-              {
-                type: "pie",
-                data: ["A", "B"].map((name) => ({ name, value: 1 })),
-                select: { itemStyle: { color: "#ff0000" } },
-                emphasis: { disabled: true },
-              },
-            ],
-          }),
-        })
-      ).ok,
-    );
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        series: [
+          {
+            type: "pie",
+            data: ["A", "B"].map((name) => ({ name, value: 1 })),
+            select: { itemStyle: { color: "#ff0000" } },
+            emphasis: { disabled: true },
+          },
+        ],
+      }),
+    });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const fills = () => [...document.querySelectorAll("#chart svg path")]
@@ -2323,15 +2271,8 @@ suite("webview", function () {
   });
 
   /** Renders a chart of the option, without animation. */
-  const renderChart = async (option: Record<string, unknown>) =>
-    assert.ok(
-      (
-        await render({
-          language: "echarts",
-          source: JSON.stringify({ animation: false, ...option }),
-        })
-      ).ok,
-    );
+  const renderChart = (option: Record<string, unknown>) =>
+    draw({ language: "echarts", source: JSON.stringify({ animation: false, ...option }) });
   const SALES = {
     xAxis: { type: "category", data: ["Mon", "Tue", "Wed"] },
     yAxis: {},
