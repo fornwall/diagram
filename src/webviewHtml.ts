@@ -31,11 +31,12 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   const nonce = crypto.randomUUID();
   // Mermaid injects <style> elements into the SVGs it generates, and ECharts styles its tooltips
   // inline, hence 'unsafe-inline' for styles. Scripts need the nonce; the chunks that the script
-  // imports inherit it. An ECharts option may be written as JavaScript, as a custom series needs a
-  // renderItem function, which the webview compiles with new Function, hence 'unsafe-eval'.
+  // imports inherit it, and ECharts is loaded with it. An ECharts option may be written as
+  // JavaScript, as a custom series needs a renderItem function, which the webview compiles with
+  // new Function, hence 'unsafe-eval'. The only images are the data URLs of exported drawings.
   const csp = [
     "default-src 'none'",
-    `img-src ${webview.cspSource} data:`,
+    "img-src data:",
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}' 'unsafe-eval'`,
     // Spelled out because form-action does not fall back to default-src.
