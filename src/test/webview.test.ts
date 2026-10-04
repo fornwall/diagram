@@ -75,6 +75,15 @@ const DRAG_IMAGE = `
     throw new Error("The image was not prepared.");
   };`;
 
+/** Webview code defining `until(done)`, which waits up to two seconds for `done()`, and returns it. */
+const UNTIL = `
+  const until = async (done) => {
+    for (let attempt = 0; attempt < 100 && !done(); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    return done();
+  };`;
+
 /** Webview code defining `clickChart(element, init)`, which clicks the middle of a chart's element. */
 const CLICK_CHART = `
   const clickChart = (element, init) => {
@@ -1273,12 +1282,9 @@ suite("webview", function () {
           document.getElementById("view-visual").click();
           const chart = document.getElementById("chart");
           const svg = chart.querySelector("svg");
-          for (let attempt = 0; attempt < 100; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-            if (chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
-              svg.height.baseVal.value === chart.clientHeight) return true;
-          }
-          return false;
+          ${UNTIL}
+          return until(() => chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
+            svg.height.baseVal.value === chart.clientHeight);
         })()`),
         true,
       );
@@ -1301,10 +1307,9 @@ suite("webview", function () {
       };
       try {
         ${DRAG_IMAGE}
+        ${UNTIL}
         await dragImage();
-        for (let attempt = 0; attempt < 100 && !failed; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
+        await until(() => failed);
         await new Promise(resolve => setTimeout(resolve));
         const dataTransfer = new DataTransfer();
         document.getElementById("drag-out")
@@ -1334,11 +1339,10 @@ suite("webview", function () {
         return pending.then(() => original.call(this));
       };
       const handle = document.getElementById("drag-out");
+      ${UNTIL}
       try {
         handle.dispatchEvent(new PointerEvent("pointerenter"));
-        for (let attempt = 0; !decoding && attempt < 100; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
+        await until(() => decoding);
         const dataTransfer = new DataTransfer();
         handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
         const svgAvailable = dataTransfer.getData("image/svg+xml").includes("Original");
@@ -1346,13 +1350,9 @@ suite("webview", function () {
           type: "render", language: "echarts", requestId: -1, title: "Incoming",
           source: JSON.stringify({animation: false, series: [{type: "pie", data: [{name: "Incoming", value: 1}]}]})
         }}));
-        for (let attempt = 0; attempt < 100; attempt++) {
-          if (document.querySelector("#chart svg")?.textContent.includes("Incoming")) {
-            return {svgAvailable, rendered: true};
-          }
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-        return {svgAvailable, rendered: false};
+        const rendered = await until(() =>
+          document.querySelector("#chart svg")?.textContent.includes("Incoming"));
+        return {svgAvailable, rendered};
       } finally {
         HTMLImageElement.prototype.decode = original;
         release();
@@ -1514,13 +1514,9 @@ suite("webview", function () {
             type: "render", language: "mermaid", requestId: -1,
             source: "flowchart LR\\n C[Incoming label] --> D", title: "Incoming"
           }}));
-          for (let attempt = 0; attempt < 100; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-            if (exported && document.querySelector("#diagram").textContent.includes("Incoming label")) {
-              return exported;
-            }
-          }
-          throw new Error("Concurrent image export and render did not finish.");
+          ${UNTIL}
+          await until(() => exported && document.querySelector("#diagram").textContent.includes("Incoming label"));
+          return exported;
         } finally {
           DOMParser.prototype.parseFromString = original;
         }
@@ -1582,18 +1578,19 @@ suite("webview", function () {
         const original = document.body.dataset.vscodeThemeId;
         document.body.dataset.vscodeThemeId = "test-theme-redraw";
         try {
-          for (let attempt = 0; attempt < 100; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-            if (!node.isConnected) return {
-              id: document.activeElement?.getAttribute("data-diagram-id"),
-              selected: document.activeElement?.classList.contains("diagram-selected"),
-              pressed: document.activeElement?.getAttribute("aria-pressed"),
-              marked: document.activeElement?.classList.contains("diagram-mark-info"),
-              link: document.activeElement?.querySelector("title.diagram-link")?.textContent,
-              tooltips: document.activeElement?.querySelectorAll("title.diagram-link").length
-            };
+          ${UNTIL}
+          if (!(await until(() => !node.isConnected))) {
+            throw new Error("The theme change did not redraw the diagram.");
           }
-          throw new Error("The theme change did not redraw the diagram.");
+          const focused = document.activeElement;
+          return {
+            id: focused?.getAttribute("data-diagram-id"),
+            selected: focused?.classList.contains("diagram-selected"),
+            pressed: focused?.getAttribute("aria-pressed"),
+            marked: focused?.classList.contains("diagram-mark-info"),
+            link: focused?.querySelector("title.diagram-link")?.textContent,
+            tooltips: focused?.querySelectorAll("title.diagram-link").length
+          };
         } finally {
           if (original === undefined) delete document.body.dataset.vscodeThemeId;
           else document.body.dataset.vscodeThemeId = original;
@@ -2027,15 +2024,12 @@ suite("webview", function () {
           clickChart(slice, {ctrlKey: true});
         }
         const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
-        const waitFor = async expected => {
-          for (let attempt = 0; attempt < 100 && count() !== expected; attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-          }
-          return count();
-        };
-        const selected = await waitFor(3);
+        ${UNTIL}
+        await until(() => count() === 3);
+        const selected = count();
         document.getElementById("clear-selection").click();
-        const cleared = await waitFor(0);
+        await until(() => count() === 0);
+        const cleared = count();
         return {selected, cleared, clearHidden: document.getElementById("clear-selection").hidden};
       })()`),
       { selected: 3, cleared: 0, clearHidden: true },
@@ -2249,18 +2243,14 @@ suite("webview", function () {
       await evaluate(`(async () => {
         const fills = () => [...document.querySelectorAll("#chart svg path")]
           .map(path => path.getAttribute("fill")).filter(fill => fill !== "none").sort();
-        const waitFor = async (done) => {
-          for (let attempt = 0; attempt < 100 && !done(); attempt++) {
-            await new Promise(resolve => setTimeout(resolve, 20));
-          }
-        };
+        ${UNTIL}
         ${CLICK_CHART}
         clickChart(document.querySelectorAll("#chart svg path")[1]);
-        await waitFor(() => fills().includes("#ff0000"));
+        await until(() => fills().includes("#ff0000"));
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "#123456");
         try {
-          await waitFor(() => fills().includes("#123456"));
+          await until(() => fills().includes("#123456"));
           return fills();
         } finally {
           root.removeProperty("--vscode-charts-blue");
@@ -2756,9 +2746,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
         const opened = document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
         ${redraw}
-        for (let attempt = 0; attempt < 100 && bob.isConnected; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
+        ${UNTIL}
+        await until(() => !bob.isConnected);
         ${restore}
         return {
           opened,
