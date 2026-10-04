@@ -124,10 +124,6 @@ suite("blocks", () => {
     );
   });
 
-  test("DiagramBlockFilter removes echarts blocks", () => {
-    assertFiltered('Sales:\n```echarts\n{"series": []}\n```\nDone.', "Sales:\nDone.");
-  });
-
   test("DiagramBlockFilter collects a long chart line streamed in small fragments", () => {
     const source = JSON.stringify({ series: [{ type: "line", data: Array(100_000).fill(42) }] });
     const markdown = `Chart:\n\`\`\`echarts\n${source}\n\`\`\`\nDone.`;
@@ -141,20 +137,10 @@ suite("blocks", () => {
     assert.deepStrictEqual(filter.diagrams, [{ language: "echarts", source }]);
   });
 
-  test("DiagramBlockFilter keeps other code blocks and inline mentions", () => {
-    const markdown =
-      "Use a ```mermaid``` block, e.g.:\n```ts\nconst x = 1;\n```\n  ```mermaidx\nkept\n";
-    assertFiltered(markdown, markdown);
-  });
-
   test("DiagramBlockFilter streams long prose before a diagram without losing text", () => {
     const prose = "Ordinary prose. ".repeat(50_000);
     const markdown = `${prose}\n\`\`\`mermaid\nflowchart LR\nA --> B\n\`\`\`\nDone.`;
     assert.strictEqual(filterInFragments(markdown, 100), `${prose}\nDone.`);
-  });
-
-  test("DiagramBlockFilter hides an unterminated block", () => {
-    assertFiltered("Drawing:\n```mermaid\nflowchart TD\n  A -->", "Drawing:\n");
   });
 
   test("DiagramBlockFilter streams text before the end of a line", () => {
@@ -169,6 +155,22 @@ suite("blocks", () => {
   test("DiagramBlockFilter follows CommonMark fences", () => {
     const cases: { markdown: string; source?: string; shown: string; unterminated?: true }[] = [
       { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
+      {
+        markdown: 'Sales:\n```echarts\n{"series": []}\n```\nDone.',
+        source: '{"series": []}',
+        shown: "Sales:\nDone.",
+      },
+      {
+        markdown: "Drawing:\n```mermaid\nflowchart TD\n  A -->",
+        shown: "Drawing:\n",
+        unterminated: true,
+      },
+      // Other code blocks, and mentions in a line of text.
+      {
+        markdown:
+          "Use a ```mermaid``` block, e.g.:\n```ts\nconst x = 1;\n```\n  ```mermaidx\nkept\n",
+        shown: "Use a ```mermaid``` block, e.g.:\n```ts\nconst x = 1;\n```\n  ```mermaidx\nkept\n",
+      },
       { markdown: "  ```mermaid  \nA\n  ```  \nB", source: "A", shown: "B" },
       { markdown: "```mermaid\r\nA\r\n```\r\nB", source: "A", shown: "B" },
       // Like CommonMark, a longer closing fence also ends the block.
