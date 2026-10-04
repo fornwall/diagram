@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
-import type { ExportFormat, ToWebview } from "../protocol";
+import type { ExportFormat, ExportResult, FromWebview, ToWebview } from "../protocol";
 import { type FakeWebview, newFakePanel, newPanel, showInFake } from "./newPanel";
 
 const diagram: Diagram = {
@@ -99,39 +99,100 @@ suite("native export", function () {
     }
   }
 
+  /** A fake page that draws everything, and exports the source it shows as an SVG image. */
+  async function exportingPanel() {
+    const fake = await newFakePanel();
+    const draw = fake.webview.answer;
+    fake.webview.answer = (message) =>
+      message.type === "export"
+        ? {
+            type: "exportImage",
+            requestId: message.requestId,
+            format: "svg",
+            data: `<svg>${fake.webview.render.source}</svg>`,
+          }
+        : draw?.(message);
+    return fake;
+  }
+
   test("cancels the picker and save dialog without writing", async () => {
-    assert.ok((await panel.render(diagram, "tool")).ok);
-    chosen = undefined;
-    await panel.exportDiagram();
-    assert.strictEqual(dialogs.length, 0);
-    chosen = "svg";
-    cancelSave = true;
-    await panel.exportDiagram();
-    assert.strictEqual(dialogs.length, 1);
-    assert.deepStrictEqual(fs.readdirSync(directory), []);
-    assert.deepStrictEqual(errors, []);
+    const { panel } = await exportingPanel();
+    try {
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      chosen = undefined;
+      await panel.exportDiagram();
+      assert.strictEqual(dialogs.length, 0);
+      chosen = "svg";
+      cancelSave = true;
+      await panel.exportDiagram();
+      assert.strictEqual(dialogs.length, 1);
+      assert.deepStrictEqual(fs.readdirSync(directory), []);
+      assert.deepStrictEqual(errors, []);
+    } finally {
+      panel.dispose();
+    }
   });
 
   test("rejects a diagram replaced while the picker is open", async () => {
-    assert.ok((await panel.render(diagram, "tool")).ok);
-    choose = async (items) => {
-      assert.ok((await panel.render(chart, "tool")).ok);
-      return items[0];
-    };
-    await panel.exportDiagram();
-    assert.strictEqual(dialogs.length, 0);
-    assert.match(errors[0] ?? "", /changed.*choosing a format/);
+    const { panel } = await exportingPanel();
+    try {
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      choose = async (items) => {
+        assert.ok((await panel.render(chart, "tool")).ok);
+        return items[0];
+      };
+      await panel.exportDiagram();
+      assert.strictEqual(dialogs.length, 0);
+      assert.match(errors[0] ?? "", /changed.*choosing a format/);
+    } finally {
+      panel.dispose();
+    }
   });
 
   test("keeps the captured image when the diagram changes during the save dialog", async () => {
-    assert.ok((await panel.render(diagram, "tool")).ok);
-    vscode.window.showSaveDialog = async () => {
-      assert.ok((await panel.render(chart, "tool")).ok);
-      return vscode.Uri.file(path.join(directory, "snapshot.svg"));
-    };
-    await panel.exportDiagram();
-    assert.deepStrictEqual(errors, []);
-    assert.match(fs.readFileSync(path.join(directory, "snapshot.svg"), "utf8"), /Done/);
+    const { panel } = await exportingPanel();
+    try {
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      vscode.window.showSaveDialog = async () => {
+        assert.ok((await panel.render(chart, "tool")).ok);
+        return vscode.Uri.file(path.join(directory, "snapshot.svg"));
+      };
+      await panel.exportDiagram();
+      assert.deepStrictEqual(errors, []);
+      assert.strictEqual(
+        fs.readFileSync(path.join(directory, "snapshot.svg"), "utf8"),
+        `<svg>${diagram.source}</svg>`,
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
+  test("reports an invalid PNG, or another format than the one chosen", async () => {
+    const { panel, webview } = await newFakePanel();
+    let exported: ExportResult | undefined;
+    const draw = webview.answer;
+    webview.answer = (message) =>
+      message.type === "export"
+        ? ({ ...exported, requestId: message.requestId } as FromWebview)
+        : draw?.(message);
+    try {
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      chosen = "png";
+      for (exported of [
+        { type: "exportImage", requestId: 0, format: "png", data: "data:image/jpeg;base64,AAAA" },
+        { type: "exportImage", requestId: 0, format: "svg", data: "<svg/>" },
+      ] as const) {
+        await panel.exportDiagram();
+      }
+      assert.deepStrictEqual(errors, [
+        "Could not export the diagram: The panel returned an invalid PNG image. Try exporting as SVG.",
+        "Could not export the diagram: The panel returned the wrong export format. Try again.",
+      ]);
+      assert.deepStrictEqual(dialogs, []);
+    } finally {
+      panel.dispose();
+    }
   });
 
   for (const action of ["replace", "reload", "close"] as const) {
