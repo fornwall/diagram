@@ -5,22 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
-import { newPanel } from "./newPanel";
-
-/** Waits until a webview tab has this label, as tabs are updated asynchronously. */
-async function webviewTab(label: string): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt++) {
-    const labels = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .filter((tab) => tab.input instanceof vscode.TabInputWebview)
-      .map((tab) => tab.label);
-    if (labels.includes(label)) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  assert.fail(`No webview tab is labelled "${label}"`);
-}
+import { newPanel, webviewTabs } from "./newPanel";
 
 suite("markdownDiagrams", function () {
   // Opening a diagram loads the panel's webview, which can take a while.
@@ -134,7 +119,7 @@ suite("markdownDiagrams", function () {
     const editor = await vscode.window.showTextDocument(document);
     editor.selection = new vscode.Selection(4, 0, 4, 0);
     await vscode.commands.executeCommand("diagram.openAtCursor");
-    await webviewTab("flowchart — flow.md");
+    await webviewTabs((labels) => labels.includes("flowchart — flow.md"));
     assert.ok(
       vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputWebview,
       "Opening a document diagram should focus its panel",

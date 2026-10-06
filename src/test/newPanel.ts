@@ -172,6 +172,20 @@ export async function newFakePanel(
   return { panel, webview: await showInFake(panel) };
 }
 
+/** The webview tabs, once their labels are as expected: tabs are updated asynchronously. */
+export async function webviewTabs(expected: (labels: string[]) => boolean): Promise<vscode.Tab[]> {
+  let labels: string[] = [];
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const tabs = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
+    labels = tabs.map((tab) => tab.label);
+    if (expected(labels)) return tabs;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`The webview tabs are labelled ${JSON.stringify(labels)}.`);
+}
+
 /** Shows the panel, returning the webview panel that it opens. */
 export function openWebviewPanel(panel: DiagramPanel, preserveFocus = false): vscode.WebviewPanel {
   const create = vscode.window.createWebviewPanel;

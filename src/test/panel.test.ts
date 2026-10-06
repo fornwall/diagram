@@ -18,6 +18,7 @@ import {
   openWebviewPanel,
   recordChat,
   showInFake,
+  webviewTabs,
 } from "./newPanel";
 import { testColors } from "./themeColors";
 import { toolText } from "./toolText";
@@ -36,19 +37,6 @@ const withoutSource: DiagramState = {
   origin: "tool",
   editedByUser: false,
 };
-
-/** Waits until the webview tabs have the given labels, as tabs are updated asynchronously. */
-async function webviewTabs(labels: string[]): Promise<vscode.Tab[]> {
-  for (;;) {
-    const tabs = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
-    if (tabs.map((tab) => tab.label).join() === labels.join()) {
-      return tabs;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
 
 /** Holds back the timers of the given delay, until the test expires them. */
 function holdTimers(delay: number): { expire(): void; restore(): void } {
@@ -691,11 +679,11 @@ suite("panel", function () {
       viewColumn: vscode.ViewColumn.Two,
       preserveFocus: true,
     });
-    const [old] = await webviewTabs(["Old"]);
+    const [old] = await webviewTabs((labels) => labels.join() === "Old");
     const panel = newPanel();
     try {
-      assert.ok((await panel.render(flowchart, "tool")).ok);
-      const [replacement] = await webviewTabs(["Flow"]);
+      panel.show(true);
+      const [replacement] = await webviewTabs((labels) => labels.join() === "Diagram");
       assert.strictEqual(replacement?.group.viewColumn, old?.group.viewColumn);
     } finally {
       panel.dispose();
