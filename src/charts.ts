@@ -133,7 +133,7 @@ function drawChart(type: RowChartType, reading: Reading): Record<string, unknown
 function summarize({ spec, table, columns, names }: Reading): string {
   const labels = columns.labels.map((index) => JSON.stringify(columnName(table, index)));
   const [first = "", second = ""] = labels;
-  const values = quoteAll(names);
+  const values = spec.aggregate === "count" ? "the number of rows" : quoteAll(names);
   const by = labels.length === 0 ? " by row number" : ` by ${labels.join(", ")}`;
   // Points and boxes that no column labels are not "by row number": nothing names them.
   const whenLabeled = labels.length === 0 ? "" : by;

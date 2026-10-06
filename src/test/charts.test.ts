@@ -1063,7 +1063,7 @@ suite("charts", () => {
     assert.deepStrictEqual(option.series[0].data, [3, 2]);
     assert.strictEqual(
       summary(spec, authors),
-      'Charted "rows" by "Column 1"; grouped 6 rows into 3 by "Column 1", counting the rows of ' +
+      'Charted the number of rows by "Column 1"; grouped 6 rows into 3 by "Column 1", counting the rows of ' +
         "each group; kept the first 2 of 3 rows.",
     );
     // A pie sums up the groups it has no room for, not the rows.
