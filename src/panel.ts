@@ -800,7 +800,8 @@ export class DiagramPanel implements vscode.Disposable {
       );
       return;
     }
-    this.chartOptionsVisible = !this.chartOptionsVisible;
+    // The command palette can run it with the panel hidden, which then shows the options.
+    this.chartOptionsVisible = !(this.chartOptionsVisible && this.webview.tab?.visible);
     this.show();
     this.sendChartOptions();
   }

@@ -68,6 +68,27 @@ suite("chart options lifecycle", function () {
     }
   });
 
+  test("Chart Options toggles the options of a shown panel, and shows them in a hidden one", async () => {
+    const { panel, webview } = await newFakePanel();
+    const visible = () => {
+      const options = webview.sent.findLast((message) => message.type === "chartOptions");
+      return options?.visible;
+    };
+    try {
+      await draw(panel, { type: "bar", data });
+      panel.toggleChartOptions();
+      assert.strictEqual(visible(), true);
+      panel.toggleChartOptions();
+      assert.strictEqual(visible(), false);
+      panel.toggleChartOptions();
+      (webview.panel as { visible: boolean }).visible = false;
+      panel.toggleChartOptions();
+      assert.strictEqual(visible(), true);
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("chart options report a stale form, and keep the chart when the new one fails", async () => {
     const { panel, webview } = await newFakePanel();
     const errors = () =>
