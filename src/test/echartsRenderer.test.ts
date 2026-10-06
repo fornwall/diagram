@@ -76,6 +76,21 @@ function relayout<T>(
 const item = (dataIndex: number) => ({ seriesIndex: 0, dataType: undefined, dataIndex });
 
 suite("echartsRenderer interactions", () => {
+  test("indents a one-line JSON option for editing without changing its values", () => {
+    const format = (source: string) => EChartsRenderer.prototype.formatForEditing(source);
+    const values =
+      '{"a": [], "b" :{}, "c":[1, {"d": "x\\"y, [z]: {}", "e": [true, null]}], "f": -1.5}';
+    assert.strictEqual(format(values), JSON.stringify(JSON.parse(values), null, 2));
+    // Parsing would round the integers beyond 2^53 and rewrite the numbers as JavaScript would.
+    assert.strictEqual(
+      format('{"id": 12345678901234567891, "ns": 1.50}'),
+      '{\n  "id": 12345678901234567891,\n  "ns": 1.50\n}',
+    );
+    for (const source of ["{a: 1}", '{"a": 1}\n', "{"]) {
+      assert.strictEqual(format(source), source);
+    }
+  });
+
   test("updates notes, kinds and order without revisiting chart graphics", () => {
     const { renderer, actions } = interactionRenderer();
     renderer.showMarks({

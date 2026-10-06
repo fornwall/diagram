@@ -225,11 +225,39 @@ export class EChartsRenderer implements Renderer {
       return source;
     }
     try {
-      return JSON.stringify(JSON.parse(source), null, 2);
+      JSON.parse(source);
     } catch {
       // Not JSON: an option written as JavaScript, or one with an error, stays as it is.
       return source;
     }
+    // Indent the tokens as JSON.stringify would, rather than writing out the parsed values, which
+    // would round integers beyond 2^53, such as IDs, in the source that the user edits and saves.
+    const tokens = source.match(/"(?:[^"\\]|\\.)*"|[{}[\],:]|[^\s"{}[\],:]+/g) ?? [];
+    let depth = 0;
+    const newLine = () => `\n${"  ".repeat(depth)}`;
+    return tokens
+      .map((token, index) => {
+        const opens = token === "{" || token === "[";
+        const closes = token === "}" || token === "]";
+        // Empty objects and arrays stay on one line.
+        if (
+          opens
+            ? /^[}\]]$/.test(tokens[index + 1] ?? "")
+            : closes && /^[{[]$/.test(tokens[index - 1] ?? "")
+        ) {
+          return token;
+        }
+        if (opens) {
+          depth++;
+          return token + newLine();
+        }
+        if (closes) {
+          depth--;
+          return newLine() + token;
+        }
+        return token === "," ? token + newLine() : token === ":" ? ": " : token;
+      })
+      .join("");
   }
 
   private createChart(
