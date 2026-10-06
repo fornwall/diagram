@@ -1138,6 +1138,12 @@ suite("data", () => {
     assert.strictEqual(parse(`a 1\n${"-".repeat(1_000_000)}x 2`).rows.length, 2);
   });
 
+  test("parses a line of many spaces below a line with pipes", () => {
+    const spaces = " ".repeat(1_000_000);
+    assert.strictEqual(parse(`a|b\n${spaces}x|1\ny|2`).rows.length, 2);
+    assert.strictEqual(parse(`a|b\n--|--${spaces}x|\ny|2`).rows.length, 2);
+  });
+
   test("parses a header with many spaces at the end", () => {
     assert.deepStrictEqual(parse(`name  size${" ".repeat(1_000_000)}\na     1\nb c   2`), {
       columns: ["name", "size"],

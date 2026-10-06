@@ -304,8 +304,12 @@ function splitPipes(lines: string[]): string[][] {
     });
 }
 
-/** A GFM delimiter row, as under the header of a Markdown table: "|---|:--:|" or "--|--". */
-const DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+/**
+ * A GFM delimiter row, as under the header of a Markdown table, trimmed: "|---|:--:|" or "--|--".
+ * Spaces are matched only beside pipes: two places for spaces next to each other would take
+ * quadratic time to match against a long line of spaces.
+ */
+const DELIMITER_ROW = /^\|?(?:[ \t]*:?-+:?[ \t]*\|)*[ \t]*:?-+:?[ \t]*\|?$/;
 
 /**
  * Finds Markdown tables among `lines`: a header row above a delimiter row with as many cells, and
@@ -319,7 +323,7 @@ function markdownTables(lines: string[]): { start: number; end: number }[] {
     if (
       PIPE.test(header) &&
       delimiter.includes("|") &&
-      DELIMITER_ROW.test(delimiter) &&
+      DELIMITER_ROW.test(delimiter.trim()) &&
       !RULE.test(header) &&
       splitPipes([header])[0]?.length === splitPipes([delimiter])[0]?.length
     ) {
