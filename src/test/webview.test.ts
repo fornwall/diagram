@@ -3011,4 +3011,46 @@ suite("webview renderer loading", function () {
       panel.dispose();
     }
   });
+
+  test("reports at once when ECharts does not load, and loads it next time", async () => {
+    const panel = newPanel();
+    try {
+      const { webview, evaluate } = instrumentWebview(panel);
+      // The page loads ECharts beside its first script, which this one, from nowhere, now is.
+      const extension = vscode.extensions.getExtension("fornwall.diagram");
+      assert.ok(extension);
+      const missing = webview.asWebviewUri(
+        vscode.Uri.joinPath(extension.extensionUri, "missing", "webview.js"),
+      );
+      const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
+      webview.html = webview.html.replace(
+        "<script",
+        `<script id="decoy" nonce="${nonce}" src="${missing.toString()}"></script><script`,
+      );
+      const pie: Diagram = {
+        language: "echarts",
+        source: '{"series": [{"type": "pie", "data": [1]}]}',
+        title: "Pie",
+      };
+      const started = Date.now();
+      const outcome = await panel.render(pie, "tool");
+      assert.ok(!outcome.ok && outcome.kind === "unavailable", JSON.stringify(outcome));
+      assert.match(
+        outcome.error,
+        /^Could not load the ECharts renderer: Cannot load ECharts from .*missing\/echarts\.js\. Reload the window/,
+      );
+      assert.ok(Date.now() - started < 5000);
+      // The failed script is gone, for the next chart to load it anew.
+      assert.strictEqual(
+        await evaluate(`document.querySelectorAll('script[src$="echarts.js"]').length`),
+        0,
+      );
+
+      await evaluate(`document.getElementById("decoy").remove()`);
+      const again = await panel.render(pie, "tool");
+      assert.ok(again.ok, again.ok ? undefined : again.error);
+    } finally {
+      panel.dispose();
+    }
+  });
 });

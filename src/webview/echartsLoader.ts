@@ -10,8 +10,17 @@ declare global {
 
 let loading: Promise<typeof EChartsLibrary> | undefined;
 
+/** Loads the library once, or again on the next call after it failed to load. */
 export function loadECharts(): Promise<typeof EChartsLibrary> {
-  loading ??= new Promise((resolve, reject) => {
+  loading ??= load().catch((error: unknown) => {
+    loading = undefined;
+    throw error;
+  });
+  return loading;
+}
+
+function load(): Promise<typeof EChartsLibrary> {
+  return new Promise((resolve, reject) => {
     if (globalThis.DiagramECharts) {
       resolve(globalThis.DiagramECharts);
       return;
@@ -25,12 +34,16 @@ export function loadECharts(): Promise<typeof EChartsLibrary> {
     const script = document.createElement("script");
     script.nonce = page.nonce;
     script.src = new URL("echarts.js", page.src).href;
+    const fail = (message: string) => {
+      // A script element runs at most once: the next try adds another.
+      script.remove();
+      reject(new Error(message));
+    };
     script.onload = () =>
       globalThis.DiagramECharts
         ? resolve(globalThis.DiagramECharts)
-        : reject(new Error(`ECharts did not load from ${script.src}.`));
-    script.onerror = () => reject(new Error(`Cannot load ECharts from ${script.src}.`));
+        : fail(`ECharts did not load from ${script.src}.`);
+    script.onerror = () => fail(`Cannot load ECharts from ${script.src}.`);
     document.head.append(script);
   });
-  return loading;
 }

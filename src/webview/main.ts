@@ -10,6 +10,7 @@ import {
 import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
+import { loadECharts } from "./echartsLoader";
 import { pngDataUrl } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { enablePanning } from "./pan";
@@ -125,7 +126,8 @@ const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
     return new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue);
   },
   echarts: async () => {
-    const { EChartsRenderer } = await import("./echartsRenderer");
+    // The library is a script of its own, without which there is no chart to draw.
+    const [{ EChartsRenderer }] = await Promise.all([import("./echartsRenderer"), loadECharts()]);
     return new EChartsRenderer(itemClicked, canvas);
   },
 };
