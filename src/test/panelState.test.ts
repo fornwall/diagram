@@ -11,12 +11,16 @@ const state: DiagramState = {
   editedByUser: false,
 };
 
-function memento(update: (value: unknown) => Thenable<void>, saved?: DiagramState) {
+function memento(update: (value: unknown) => Thenable<void>, saved?: unknown) {
   return {
     keys: () => [],
     get: () => saved,
     update: (_key: string, value: unknown) => update(value),
   } as unknown as vscode.Memento;
+}
+
+function load(saved: unknown): DiagramState | undefined {
+  return new StateStore(memento(async () => {}, saved)).load();
 }
 
 suite("panelState", () => {
@@ -56,6 +60,66 @@ suite("panelState", () => {
     assert.deepStrictEqual(loaded, state);
     if (loaded) await store.save(loaded);
     assert.strictEqual(writes, 0);
+  });
+
+  test("restores the states that older versions saved, leaving out what is no longer used", () => {
+    // The first versions drew only Mermaid, and saved no language.
+    const { language: _, ...first } = state;
+    assert.deepStrictEqual(load(first), state);
+    // Fences were saved with an indentation where they now have a prefix.
+    const fence = { language: "mermaid", source: state.source, openingLine: 2, lastLine: 4 };
+    assert.deepStrictEqual(
+      load({ ...state, document: { uri: "file:///a.md", fence: { ...fence, indent: "" } } }),
+      state,
+    );
+    const document = { uri: "file:///a.md", fence: { ...fence, prefix: "" } };
+    assert.deepStrictEqual(load({ ...state, document }), { ...state, document });
+    // Charts were saved without the presentation that tells manual styling apart, which a
+    // refresh would discard, so the option is kept without the chart it was generated from.
+    const chartState = { ...state, language: "echarts", source: '{"series": []}' };
+    const chart = { type: "pie", file: "sizes.tsv" };
+    assert.deepStrictEqual(load({ ...chartState, chart }), chartState);
+    const chartPresentation = { baseline: {}, dataHash: "x", edits: [] };
+    assert.deepStrictEqual(load({ ...chartState, chart, chartPresentation }), {
+      ...chartState,
+      chart,
+      chartPresentation,
+    });
+  });
+
+  test("restores what is valid of a damaged state, and nothing when there is nothing to show", () => {
+    const { source: _, ...withoutSource } = { ...state, language: "echarts" };
+    for (const saved of [
+      "flowchart LR",
+      [state],
+      { ...state, title: 1 },
+      { ...state, language: "graphviz" },
+      { ...state, source: 1 },
+      // A chart saved without its option can only be drawn again from its file or command.
+      { ...withoutSource, chart: { type: "pie", data: "a,1" } },
+      { ...withoutSource, chart: { type: "cake", file: "a" } },
+    ]) {
+      assert.strictEqual(load(saved), undefined, JSON.stringify(saved));
+    }
+    assert.deepStrictEqual(
+      load({
+        ...state,
+        origin: "agent",
+        editedByUser: "yes",
+        error: 1,
+        clickPrompt: null,
+        links: { A: { file: "a.ts", line: "1" } },
+        document: { uri: "file:///a.md", fence: { openingLine: -1 } },
+        chart: { type: "pie", file: "sizes.tsv" },
+      }),
+      state,
+    );
+    const chart = { type: "pie", file: "sizes.tsv" };
+    const chartPresentation = { baseline: {}, dataHash: "x", edits: [{}] };
+    assert.deepStrictEqual(load({ ...withoutSource, chart, chartPresentation }), {
+      ...withoutSource,
+      chart,
+    });
   });
 
   test("a large chart of a file is saved without its option, unless edited by hand", async () => {

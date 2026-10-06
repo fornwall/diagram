@@ -14,7 +14,7 @@ export interface WebviewHarness {
 
 /**
  * Shows the panel and instruments its page, without adding test commands to the shipped webview:
- * `readTestState()`, `testStateWrites` and `testRenderResults` (render request ids) become globals.
+ * `readTestState()`, `writeTestState(state)`, `testStateWrites` and `testRenderResults` (render request ids) become globals.
  */
 export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
   const { webview } = openWebviewPanel(panel);
@@ -27,6 +27,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
       acquireVsCodeApi = () => {
         const api = acquire();
         window.readTestState = () => api.getState();
+        window.writeTestState = (state) => api.setState(state);
         window.testStateWrites = 0;
         window.testRenderResults = [];
         const postMessage = (message) => {

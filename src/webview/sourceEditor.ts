@@ -1,9 +1,12 @@
 // The views (drawing, split, source) and the source editor, which keeps unapplied edits across
 // view changes, incoming diagrams and webview reloads.
 
+import { isPlainObject } from "../protocol";
 import type { Renderer } from "./renderer";
 
-export type ViewMode = "visual" | "split" | "source";
+const VIEW_MODES = ["visual", "split", "source"] as const;
+
+export type ViewMode = (typeof VIEW_MODES)[number];
 
 /** What a reload of the webview restores. */
 export interface EditorState {
@@ -74,9 +77,14 @@ export class SourceEditor {
     };
   }
 
-  restore({ view = "visual", editor }: EditorState): void {
-    this.view = view;
-    if (editor) {
+  /** Restores what {@link state} saved, ignoring values that another version of the page saved. */
+  restore({ view, editor }: Record<string, unknown>): void {
+    if (VIEW_MODES.includes(view as ViewMode)) this.view = view as ViewMode;
+    if (
+      isPlainObject(editor) &&
+      typeof editor.source === "string" &&
+      typeof editor.base === "string"
+    ) {
       this.elements.input.value = editor.source;
       this.editedFrom = editor.base;
       this.updateActions();

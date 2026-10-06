@@ -1,8 +1,13 @@
 // Persist the panel's diagram across window reloads and VS Code restarts.
 
 import * as vscode from "vscode";
+import type { ChartPresentation } from "./chartPresentation";
+import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import type { DocumentBinding } from "./documentDiagram";
+import { isDiagramFence } from "./fences";
+import type { NodeLinks } from "./links";
 import type { DiagramState } from "./panel";
-import { errorMessage } from "./protocol";
+import { errorMessage, isDiagramLanguage, isPlainObject } from "./protocol";
 
 const STATE_KEY = "diagram.state";
 /** Large generated chart options can be reloaded; manual edits must be kept. */
@@ -16,7 +21,7 @@ export class StateStore {
   constructor(private readonly memento: vscode.Memento) {}
 
   load(): DiagramState | undefined {
-    const state = this.memento.get<DiagramState>(STATE_KEY);
+    const state = restoredState(this.memento.get(STATE_KEY));
     if (state) this.lastSave = { state: new WeakRef(state), promise: Promise.resolve() };
     return state;
   }
@@ -54,4 +59,80 @@ export class StateStore {
     })();
     return saving.promise;
   }
+}
+
+/**
+ * The saved state, keeping what this version can use. A state saved by another version of the
+ * extension, or damaged, must not break the panel: the parts that do not fit are left out, and a
+ * state with nothing left to show is dropped.
+ */
+function restoredState(saved: unknown): DiagramState | undefined {
+  if (!isPlainObject(saved) || typeof saved.title !== "string") return undefined;
+  // The first versions drew only Mermaid, and did not save the language.
+  const language = saved.language ?? "mermaid";
+  if (!isDiagramLanguage(language)) return undefined;
+  const { origin, source } = saved;
+  const state: DiagramState = {
+    language,
+    title: saved.title,
+    origin: origin === "participant" || origin === "document" ? origin : "tool",
+    editedByUser: saved.editedByUser === true,
+  };
+  if (typeof source === "string") state.source = source;
+  if (typeof saved.error === "string") state.error = saved.error;
+  if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
+  if (isNodeLinks(saved.links)) state.links = saved.links;
+  if (isDocumentBinding(saved.document)) state.document = saved.document;
+  const chart = language === "echarts" ? chartSpec(saved.chart) : undefined;
+  const presentation = isChartPresentation(saved.chartPresentation)
+    ? saved.chartPresentation
+    : undefined;
+  // Without its presentation, a refresh could not tell manual styling from generated styling and
+  // would discard it, so the option is kept as it is, without the chart it was generated from.
+  if (chart && (presentation || state.source === undefined)) {
+    state.chart = chart;
+    if (presentation) state.chartPresentation = presentation;
+  }
+  // A large chart of a file or command is saved without its option, to be drawn again from them.
+  if (state.source === undefined && !state.chart?.file && !state.chart?.command) {
+    return undefined;
+  }
+  return state;
+}
+
+function chartSpec(value: unknown): ChartSpec | undefined {
+  try {
+    return validateChartSpec(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function isChartPresentation(value: unknown): value is ChartPresentation {
+  return (
+    isPlainObject(value) &&
+    isPlainObject(value.baseline) &&
+    typeof value.dataHash === "string" &&
+    Array.isArray(value.edits) &&
+    value.edits.every((edit) => isPlainObject(edit) && Array.isArray(edit.path)) &&
+    (value.blocked === undefined || typeof value.blocked === "string")
+  );
+}
+
+function isNodeLinks(value: unknown): value is NodeLinks {
+  return (
+    isPlainObject(value) &&
+    Object.values(value).every(
+      (link) =>
+        isPlainObject(link) &&
+        typeof link.file === "string" &&
+        (link.line === undefined || Number.isSafeInteger(link.line)) &&
+        (link.endLine === undefined || Number.isSafeInteger(link.endLine)),
+    )
+  );
+}
+
+/** Older versions saved fences with other properties, which a write to the document cannot use. */
+function isDocumentBinding(value: unknown): value is DocumentBinding {
+  return isPlainObject(value) && typeof value.uri === "string" && isDiagramFence(value.fence);
 }

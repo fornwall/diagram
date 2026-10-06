@@ -174,7 +174,7 @@ suite("tools", () => {
         );
       }
     }
-    assert.strictEqual(panel.current, flowchart);
+    assert.deepStrictEqual(panel.current, flowchart);
   });
 
   test("cancelled tools leave the diagram, its marks and the closed panel alone", async () => {
@@ -205,7 +205,7 @@ suite("tools", () => {
         );
       }
       assert.deepStrictEqual(calls, []);
-      assert.strictEqual(panel.current, flowchart);
+      assert.deepStrictEqual(panel.current, flowchart);
       assert.strictEqual(values.get("diagram.state"), flowchart);
     } finally {
       vscode.window.createWebviewPanel = create;
@@ -236,7 +236,7 @@ suite("tools", () => {
       await started.promise;
       cancellable.cancel();
       await assert.rejects(result, vscode.CancellationError);
-      assert.strictEqual(panel.current, flowchart);
+      assert.deepStrictEqual(panel.current, flowchart);
     } finally {
       data.resolve(new TextEncoder().encode("name,value\nA,1"));
       Object.defineProperty(vscode.workspace, "fs", descriptor);

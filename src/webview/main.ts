@@ -5,6 +5,7 @@ import {
   type DiagramNode,
   errorMessage,
   type FromWebview,
+  isPlainObject,
   type ToWebview,
 } from "../protocol";
 import type { ChartOptionsForm } from "./chartOptions";
@@ -26,7 +27,8 @@ interface State extends EditorState {
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
-  getState(): State | undefined;
+  /** What the page saved with setState, possibly a page of another version of the extension. */
+  getState(): unknown;
   setState(state: State): void;
 };
 
@@ -623,9 +625,9 @@ function saveState(): void {
   savedState = next;
 }
 const restored = vscode.getState();
-savedState = restored;
-askInput.value = restored?.draft ?? "";
-if (restored) editor.restore(restored);
+const saved = isPlainObject(restored) ? restored : {};
+askInput.value = typeof saved.draft === "string" ? saved.draft : "";
+editor.restore(saved);
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };

@@ -1252,6 +1252,26 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("a reload ignores saved values that the page does not use", async () => {
+    const source = "flowchart LR\n A --> B";
+    await draw({ source });
+    await evaluate(
+      'window.writeTestState({draft: 1, view: "both", editor: {source: "flowchart LR", base: 2}})',
+    );
+    await nextRender(() => {
+      webview.html += "\n<!-- Reload with a state of another shape. -->";
+    });
+    assert.deepStrictEqual(
+      await evaluate(`({
+        draft: document.getElementById("ask-input").value,
+        visual: document.getElementById("view-visual").getAttribute("aria-pressed"),
+        source: document.getElementById("source").value,
+        state: window.readTestState()
+      })`),
+      { draft: "", visual: "true", source: "", state: { draft: "", view: "visual" } },
+    );
+  });
+
   test("exports chart dimensions while its rendering is hidden in Source view", async () => {
     await draw({
       language: "echarts",
