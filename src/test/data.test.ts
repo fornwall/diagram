@@ -238,6 +238,14 @@ suite("data", () => {
       ["Brot", 1200],
     ]);
     assert.deepStrictEqual(parseNumber("5$"), { value: 5 });
+    // Abbreviated amounts of money, which are not sizes in bytes.
+    assert.deepStrictEqual(parse("company,revenue\na,$1.2B\nb,$350M\nc,-€12.5k\nd,$3T").rows, [
+      ["a", 1.2e9],
+      ["b", 350e6],
+      ["c", -12_500],
+      ["d", 3e12],
+    ]);
+    assert.deepStrictEqual(parseNumber("$2MB"), { value: 2e6, unit: "bytes" });
   });
 
   test("parses quoted numbers and newlines in CSV", () => {
