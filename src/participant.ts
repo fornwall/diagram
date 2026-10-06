@@ -73,21 +73,20 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       return;
     }
 
-    // Keep the default surface deliberate. Explicit external attachments are supported for
-    // drawing, but /explain only permits known read-only tools, even when others are attached.
+    // Drawing may also use the tools the user attached; /explain only the read-only tools.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
     // A model says whether it calls tools in capabilities.supportsToolCalling, which is not part
     // of the stable API. One that does not may reject a request with tools; it draws with a
     // diagram block instead.
     const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
     const callsTools = capabilities?.supportsToolCalling !== false;
-    const tools = vscode.lm.tools.filter(
-      (tool) =>
-        callsTools &&
-        (explain
-          ? READ_ONLY_TOOLS.has(tool.name)
-          : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name)),
-    );
+    const tools = callsTools
+      ? vscode.lm.tools.filter((tool) =>
+          explain
+            ? READ_ONLY_TOOLS.has(tool.name)
+            : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name),
+        )
+      : [];
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
     if (!callsTools && attachedNames.size > 0) {
       stream.markdown(
@@ -251,9 +250,9 @@ async function streamReply(
       if (calls.length > 0) {
         stream.markdown(`\n\nStopped tool use because ${budget.notRun}.`);
       }
-      // A successful tool render or manual edit remains authoritative, even when the model
-      // emits a fresh fence in its final reply. Re-rendering that fence would lose code links,
-      // chart data and presentation. A failed render may still be repaired by a fallback fence.
+      // A tool render or manual edit that succeeded wins over a diagram block the model writes
+      // after it, which would lose code links, chart data and styling. A block may still repair
+      // a failed render.
       const changed = panel.current !== initialState && !panel.current?.error;
       return !changed && panel.current === diagramState ? diagram : undefined;
     }
