@@ -25,6 +25,7 @@ export const WITH_DATABASE = new Set([
   "c4",
   "treemap",
   "packet",
+  "radar",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -76,6 +77,9 @@ export interface DiagramDb {
   getRoot?(): TreeItem;
   /** A packet diagram's fields, by row, a field that goes on in the next row split in two. */
   getPacket?(): { label: string }[][];
+  /** A radar chart's axes and curves, in the order it draws them. */
+  getAxes?(): { name: string; label: string }[];
+  getCurves?(): { name: string; label: string }[];
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -403,6 +407,17 @@ export function findNodes(
           text = text.nextElementSibling;
         }
       }
+    }
+  }
+
+  // Radar chart axes, by their labels, and curves, with their legend entries, numbered in the order
+  // of the database.
+  const axes = (db?.getAxes?.() ?? []).map(({ name, label }) => ({ id: uniqueId(name), label }));
+  addInOrder(svg.querySelectorAll("text.radarAxisLabel"), axes);
+  for (const [i, { name, label }] of (db?.getCurves?.() ?? []).entries()) {
+    const curve = { id: uniqueId(name), label };
+    for (const element of svg.querySelectorAll(`.radarCurve-${i}, g:has(> .radarLegendBox-${i})`)) {
+      add(element, curve);
     }
   }
 

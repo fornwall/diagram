@@ -2198,7 +2198,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the sections of treemaps and the fields of packets, which Mermaid draws without ids", async () => {
+  test("finds the items of treemaps, packets and radar charts, which Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2218,23 +2218,28 @@ suite("webview", function () {
         // The data goes on in the next row.
         'packet\n0-15: "Source Port"\n16-31: "Destination Port"\n32-39: "Reserved"\n40-47: "Reserved"\n48-79: "Data"',
         [
-          "Data: Data 48 63 Data 64 79",
-          "Destination Port: Destination Port 16 31",
-          "Reserved (2): Reserved 40 47",
-          "Reserved: Reserved 32 39",
-          "Source Port: Source Port 0 15",
+          "Data: <rect> Data 48 63 <rect> Data 64 79",
+          "Destination Port: <rect> Destination Port 16 31",
+          "Reserved (2): <rect> Reserved 40 47",
+          "Reserved: <rect> Reserved 32 39",
+          "Source Port: <rect> Source Port 0 15",
         ],
+      ],
+      [
+        'radar-beta\n  axis m["Math"], s["Science"]\n  axis e\n  curve a["Alice"]{85, 90, 80}\n  curve b{70, 75, 85}',
+        ["a: <path> Alice", "b: <path> b", "e: e", "m: Math", "s: Science"],
       ],
     ];
     for (const [source, items] of cases) {
       await draw({ source });
-      // Each item with the texts drawn for it.
+      // Each item with what is drawn for it: texts, and the kinds of the other elements.
       const found = await evaluate(`(() => {
         const texts = new Map();
         for (const element of document.querySelectorAll("#diagram [data-diagram-id]")) {
           const id = element.getAttribute("data-diagram-id");
           const drawn = element.matches("text") ? [element] : [...element.querySelectorAll("text")];
-          texts.set(id, [...(texts.get(id) ?? []), ...drawn.map(text => text.textContent.trim()).filter(Boolean)]);
+          const shown = drawn.map(text => text.textContent.trim()).filter(Boolean);
+          texts.set(id, [...(texts.get(id) ?? []), ...(shown.length ? shown : ["<" + element.tagName + ">"])]);
         }
         return [...texts].map(([id, drawn]) => id + ": " + drawn.join(" ")).sort();
       })()`);
