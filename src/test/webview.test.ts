@@ -499,6 +499,33 @@ suite("webview", function () {
     );
   });
 
+  test("shows each date on a Gantt chart's axis once, apart from the others, also in images", async () => {
+    // d3 ticks a week every 12 hours, and a narrow panel has no room for a date at each.
+    await evaluate(`document.getElementById("canvas").style.maxWidth = "400px"`);
+    try {
+      await draw({ source: MERMAID.gantt });
+      const dates = (await evaluate(`(async () => {
+        const shown = (svg) => [...svg.querySelectorAll("g.grid > g.tick > text")]
+          .filter(text => text.getAttribute("visibility") !== "hidden");
+        const labels = shown(document.querySelector("#diagram svg"));
+        const boxes = labels.map(text => text.getBoundingClientRect());
+        ${DRAG_IMAGE}
+        const image = (await dragImage()).getData("image/svg+xml");
+        return {
+          panel: labels.map(text => text.textContent),
+          apart: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
+          image: shown(new DOMParser().parseFromString(image, "image/svg+xml")).map(text => text.textContent),
+        };
+      })()`)) as { panel: string[]; apart: boolean; image: string[] };
+      assert.ok(dates.panel.length >= 2, dates.panel.join());
+      assert.strictEqual(new Set(dates.panel).size, dates.panel.length, dates.panel.join());
+      assert.ok(dates.apart, dates.panel.join());
+      assert.strictEqual(new Set(dates.image).size, dates.image.length, dates.image.join());
+    } finally {
+      await evaluate(`document.getElementById("canvas").style.maxWidth = ""`);
+    }
+  });
+
   test("draws Gantt charts at the width of the canvas they are shown in", async () => {
     for (const view of ["split", "visual", "source"]) {
       if (view === "source") {

@@ -112,6 +112,30 @@ function showAllText(svg: SVGSVGElement): void {
 }
 
 /**
+ * Hides the date labels on a Gantt chart's axes that repeat the date before or would overlap it.
+ * Unless the chart sets a tickInterval, Mermaid has d3 pick about ten ticks, such as one every 12
+ * hours for a week, which show each date twice and crowd a narrow panel. Their grid lines stay.
+ */
+function thinAxisLabels(svg: SVGSVGElement): void {
+  for (const axis of svg.querySelectorAll("g.grid")) {
+    const labels = Array.from(axis.querySelectorAll(":scope > g.tick > text"), (text) => ({
+      text,
+      box: text.getBoundingClientRect(),
+    }));
+    let shown: (typeof labels)[number] | undefined;
+    const hidden = labels.filter((label) => {
+      const crowded =
+        shown !== undefined &&
+        (label.text.textContent === shown.text.textContent ||
+          label.box.left < shown.box.right + label.box.height / 2);
+      if (!crowded) shown = label;
+      return crowded;
+    });
+    for (const { text } of hidden) text.setAttribute("visibility", "hidden");
+  }
+}
+
+/**
  * Centers the SVG text labels of nodes that Mermaid leaves starting at the left of their room.
  * Its label helper draws a text label from x = 0, for the diagram's CSS to center it, which only
  * flowchart CSS does. It places the label for text centered there: mind map circles, squares and
@@ -368,6 +392,7 @@ export class MermaidRenderer implements Renderer {
       if (result.diagramType === "sequence" && FORMULA.test(text)) {
         await drawParticipantFormulas(svg, db);
       }
+      if (result.diagramType === "gantt") thinAxisLabels(svg);
       showAllText(svg);
     }
     this.diagram.replaceChildren(...drawing.childNodes);
@@ -453,6 +478,7 @@ export class MermaidRenderer implements Renderer {
         await drawParticipantFormulas(parsed, await databaseOf(mermaid, text));
       }
       centerTextLabels(parsed);
+      if (diagramType === "gantt") thinAxisLabels(parsed);
       showAllText(parsed);
       const image = standaloneSvg(parsed, background);
       parsed.remove();
