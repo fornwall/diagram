@@ -7,6 +7,7 @@
 import type * as ECharts from "echarts/core";
 import { type ThemeColors, toCss } from "./colors";
 import {
+  actionDataType,
   type Box,
   type ChartItems,
   type ItemData,
@@ -58,19 +59,16 @@ export class ChartNavigation {
     // Series hidden by the legend, and items filtered out by data zoom, are not shown.
     modelOf(chart).eachSeries((series) => {
       for (const { data } of series.getAllData()) {
-        const dataType = data.dataType === "main" ? undefined : data.dataType;
-        const first = data.tree ? 1 : 0;
         // Categories run up a vertical axis, and the other way along an inverse one.
         const axis = series.getBaseAxis();
         const forward = axis?.inverse ? -1 : 1;
-        const along: Point = axis?.isHorizontal?.() === false ? [0, -forward] : [forward, 0];
         this.tracks.push({
           seriesIndex: series.componentIndex,
           type: series.subType,
           data,
-          dataType,
-          first,
-          along,
+          dataType: actionDataType(data.dataType),
+          first: data.tree ? 1 : 0,
+          along: axis?.isHorizontal?.() === false ? [0, -forward] : [forward, 0],
         });
       }
     });

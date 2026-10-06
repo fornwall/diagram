@@ -14,11 +14,14 @@ export interface ItemRef {
 }
 
 /**
- * The key of an item. Events and selectchanged name the one data of a tree, treemap or sunburst by
- * the type "main", which actions need not name: keys leave it out.
+ * The type of data as actions name it. Events and selectchanged name the one data of a tree,
+ * treemap or sunburst by the type "main", which actions need not name.
  */
+export const actionDataType = (dataType: string | undefined) =>
+  dataType === "main" ? undefined : dataType;
+
 export const itemKey = ({ seriesIndex, dataType, dataIndex }: ItemRef) =>
-  `${seriesIndex}:${dataType === "main" ? "" : (dataType ?? "")}:${dataIndex}`;
+  `${seriesIndex}:${actionDataType(dataType) ?? ""}:${dataIndex}`;
 
 export function parseItemKey(key: string): ItemRef {
   const [series, dataType, data] = key.split(":");
@@ -299,8 +302,7 @@ class SeriesItems {
       return {
         data,
         raw: all,
-        // Actions find the one data of a tree without its type, which ECharts calls "main".
-        dataType: data.dataType === "main" ? undefined : data.dataType,
+        dataType: actionDataType(data.dataType),
         first: data.tree ? 1 : 0,
         // The nodes of a tree come in depth-first order.
         end: roots[1]?.getRawIndex() ?? data.count(),
