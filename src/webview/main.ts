@@ -301,8 +301,8 @@ function showNeedsRefresh({
 
 // Renders one at a time, in order, so that a slow render cannot overtake a later one.
 let queue = Promise.resolve();
-// The host has already cancelled superseded requests. Do not spend time drawing them while
-// the newest request waits behind library loading, rendering or image preparation.
+// Counts render requests, so that a render that a later one superseded while it waited is skipped:
+// the host has already cancelled it.
 let renderRevision = 0;
 function enqueue(task: () => void | Promise<void>): void {
   queue = queue.then(task).catch((error: unknown) => console.error(error));
@@ -656,7 +656,7 @@ writeToButton.addEventListener("click", () => {
   if (current) post({ type: "writeToDocument", requestId: current.requestId });
 });
 
-/** Capture an image in the render queue; rasterization must not hold up later renders. */
+/** Exports the drawing from the render queue, but rasterizes a PNG outside it, not to hold it up. */
 async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
   const { requestId, renderRequestId, format } = message;
   const failed = (error: unknown) =>
