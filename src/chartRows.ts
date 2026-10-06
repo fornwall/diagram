@@ -3,7 +3,7 @@
 import { type Columns, chained, columnName, isCartesian, readsLevels } from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
-import type { Unit } from "./dataNumber";
+import { STATED_UNIT, type Unit } from "./dataNumber";
 import { plural, quoteAll } from "./text";
 
 /** The most levels of a row, as the hierarchy built from them is walked recursively. */
@@ -83,11 +83,10 @@ export function interpolate(left: number, right: number, fraction: number): numb
 }
 
 /**
- * The units whose values are shown in a multiple of them: what the values are, the multiples by
- * name and size from the smallest, and a multiple that a header may state, as kubectl's
- * "MEMORY(bytes)", "Size (KB)" or "Latency (ms)".
+ * The units whose values are shown in a multiple of them: what the values are, and the multiples
+ * by name and size from the smallest.
  */
-const SCALES: [Unit, { what: string; multiples: [string, number][]; stated: RegExp }][] = [
+const SCALES: [Unit, { what: string; multiples: [string, number][] }][] = [
   [
     "bytes",
     {
@@ -96,7 +95,6 @@ const SCALES: [Unit, { what: string; multiples: [string, number][]; stated: RegE
         name,
         1024 ** i,
       ]),
-      stated: /\s*\((?:[Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i)\)$/,
     },
   ],
   [
@@ -112,7 +110,6 @@ const SCALES: [Unit, { what: string; multiples: [string, number][]; stated: RegE
         ["h", 3600],
         ["d", 86400],
       ],
-      stated: /\s*\((?:[nuµm]?s|sec|seconds|min|h)\)$/,
     },
   ],
 ];
@@ -524,7 +521,7 @@ export function readRows(
   const counted = spec.aggregate === "count";
   const names = counted ? ["rows"] : valueIndices.map(name);
   const divisors = names.map(() => 1);
-  for (const [unit, { what, multiples, stated }] of counted ? [] : SCALES) {
+  for (const [unit, { what, multiples }] of counted ? [] : SCALES) {
     const scaled = valueIndices.flatMap((index, i) =>
       table.columns[index]?.unit === unit ? [i] : [],
     );
@@ -548,7 +545,7 @@ export function readRows(
     }
     // A name that states another multiple, as "Latency (ms)" over "1.2s", is corrected.
     for (const i of scaled) {
-      const unstated = names[i]?.replace(stated, "");
+      const unstated = names[i]?.replace(STATED_UNIT, "");
       if (size !== 1 || unstated !== names[i]) names[i] = `${unstated} (${multiple})`;
       divisors[i] = size;
     }

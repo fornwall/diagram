@@ -710,6 +710,25 @@ suite("data", () => {
     );
   });
 
+  test("reads plain numbers in the unit of sizes or durations that their column's name states", () => {
+    const read = (text: string) => {
+      const table = parseTable(text);
+      return [table.columns[1]?.unit, table.rows.map((row) => row[1])];
+    };
+    assert.deepStrictEqual(read("name,Size (KB)\na,12"), ["bytes", [12_000]]);
+    assert.deepStrictEqual(read("name,Memory [MiB]\na,2"), ["bytes", [2 * 1024 ** 2]]);
+    assert.deepStrictEqual(read("name,Size (B)\na,12"), ["bytes", [12]]);
+    assert.deepStrictEqual(read("name,Latency (ms)\na,1.5"), ["seconds", [0.0015]]);
+    assert.deepStrictEqual(read("name,Time (s)\na,12"), ["seconds", [12]]);
+    assert.deepStrictEqual(read("name,CPU time (min)\na,2"), ["seconds", [120]]);
+    // Values with their own unit keep it.
+    assert.deepStrictEqual(read("name,Latency (ms)\na,1.2s"), ["seconds", [1.2]]);
+    // Not billions, a plural, or meters.
+    for (const name of ["Revenue (B)", "File(s)", "Distance (m)"]) {
+      assert.deepStrictEqual(read(`name,${name}\na,12`), [undefined, [12]], name);
+    }
+  });
+
   test("reads the CPU of kubectl top in cores, not ages in minutes", () => {
     const pods = parseTable(
       [

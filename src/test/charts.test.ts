@@ -1516,6 +1516,10 @@ suite("charts", () => {
       "name,Size (KB),Total (of all)\na,2048K,3MiB\nb,1M,1MiB",
     );
     assert.deepStrictEqual(seriesNames(stated), ["Size (MiB)", "Total (of all) (MiB)"]);
+    // Plain numbers are in the unit that the name states.
+    const memory = build(chart("bar"), "name,Memory [MiB]\napi,512\nweb,2048");
+    assert.deepStrictEqual(seriesNames(memory), ["Memory (GiB)"]);
+    assert.deepStrictEqual(memory.series[0].data, [0.5, 2]);
     const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");
     assert.strictEqual(du.series[0].data[0], 1.5);
   });
@@ -1535,6 +1539,9 @@ suite("charts", () => {
     const stated = build(chart("bar"), "name,Latency (ms)\nparse,812ms\nrender,1.2s");
     assert.deepStrictEqual(seriesNames(stated), ["Latency (s)"]);
     assert.deepStrictEqual(stated.series[0].data, [0.812, 1.2]);
+    const plain = build(chart("bar"), "name,Latency (ms)\nparse,1.5\nrender,812\nexport,2400");
+    assert.deepStrictEqual(seriesNames(plain), ["Latency (s)"]);
+    assert.deepStrictEqual(plain.series[0].data, [0.0015, 0.812, 2.4]);
     const ages = build(chart("bar"), "NAME   AGE\napi    45m\nweb    3h12m");
     assert.deepStrictEqual(seriesNames(ages), ["AGE (h)"]);
     assert.deepStrictEqual(ages.series[0].data, [0.75, 3.2]);

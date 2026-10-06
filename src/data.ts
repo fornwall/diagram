@@ -4,7 +4,7 @@
 import type { DataFormat } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
-import { numberFormat, parseNumber, type Unit } from "./dataNumber";
+import { numberFormat, parseNumber, statedUnit, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
 import { quoteAll } from "./text";
 
@@ -207,9 +207,21 @@ function tableFromRecords(
       }
     }
     const found = [...(cellUnits[column] ?? [])];
+    // Plain numbers under a name that states their unit, as "Latency (ms)", are converted as if
+    // each had it, so that they are shown in the multiple that suits them.
+    const stated =
+      numeric && found.length === 0 && units?.[column] === undefined
+        ? statedUnit(name, formats[column] ?? {})
+        : undefined;
+    if (stated !== undefined) {
+      for (const row of rows) {
+        const cell = row[column];
+        if (typeof cell === "number") row[column] = cell * stated.size;
+      }
+    }
     const unit =
       found.length === 0
-        ? (units?.[column] ?? (name.includes("%") ? "%" : undefined))
+        ? (units?.[column] ?? stated?.unit ?? (name.includes("%") ? "%" : undefined))
         : found.length === 1
           ? found[0]
           : undefined;

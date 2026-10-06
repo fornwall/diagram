@@ -180,6 +180,46 @@ export function parseNumber(
 }
 
 /**
+ * A unit of sizes or durations that a column's name states after it, in parentheses or brackets,
+ * as kubectl's "MEMORY(bytes)", "Size (KB)", "Memory [MiB]" or "Latency (ms)". A single letter
+ * follows a space, as "Time (s)", since "File(s)" names a plural.
+ */
+export const STATED_UNIT =
+  /(?:\s*[([]([Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i|[nuµμm]s|sec|seconds|min)|\s+[([]([sh]))[)\]]$/;
+
+/** How the units of {@link STATED_UNIT} that a number does not take are written after one. */
+const STATED_ALIASES: Record<string, string> = {
+  bytes: "B",
+  Bytes: "B",
+  sec: "s",
+  seconds: "s",
+  min: "m",
+};
+
+/**
+ * The size in bytes or seconds of the unit that a column's `name` states, read as after a number
+ * in the column's `format`: "KB" is 1000 bytes, as "12KB" is, and "B" is bytes only in a column of
+ * sizes, but billions in "Revenue (B)".
+ */
+export function statedUnit(
+  name: string,
+  format: NumberFormat,
+): { unit: Unit; size: number } | undefined {
+  const [, long, short] = STATED_UNIT.exec(name) ?? [];
+  const stated = long ?? short;
+  if (stated === undefined) return undefined;
+  // As durations, so that "m" is a minute rather than a million or a thousandth of a core.
+  const one = parseNumber(`1${STATED_ALIASES[stated] ?? stated}`, {
+    ...format,
+    durations: true,
+    millicores: false,
+  });
+  return one?.unit === "bytes" || one?.unit === "seconds"
+    ? { unit: one.unit, size: one.value }
+    : undefined;
+}
+
+/**
  * How a column writes its numbers, from the cells below its header, if it has one, and from what
  * the data's source tells (`given`):
  * - in sizes, if some cell has a unit that only sizes have ("MB", "Ki", "G"), or the column's name
