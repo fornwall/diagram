@@ -17,6 +17,8 @@ const MAX_PNG_PIXELS = 16_000_000;
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 
+const HTML_LABEL_WITH_FALLBACK = "switch > foreignObject:not(:has(math))";
+
 /** Clones the drawing with a background, without panel interaction attributes or link targets. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;
@@ -46,9 +48,14 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   }
   // An HTML label with a text fallback (Mermaid's user journeys): keep the text, which every
   // application that reads SVG draws, unless the label is a formula, of which the text is TeX.
-  for (const element of svg.querySelectorAll("switch > foreignObject:not(:has(math))")) {
+  // Mermaid fills the text as it fills the box the label is in, so give it the label's color.
+  const labels = source.querySelectorAll(HTML_LABEL_WITH_FALLBACK);
+  svg.querySelectorAll(HTML_LABEL_WITH_FALLBACK).forEach((element, index) => {
+    const text = element.parentElement?.querySelector(":scope > text");
+    const shown = labels[index]?.querySelector("*:not(:has(*))");
+    if (text instanceof SVGElement && shown) text.style.fill = getComputedStyle(shown).color;
     element.remove();
-  }
+  });
   // Formulas draw beyond the boxes that Mermaid sizes to their line boxes, as in the panel.
   for (const element of svg.querySelectorAll("foreignObject")) {
     element.setAttribute("overflow", "visible");

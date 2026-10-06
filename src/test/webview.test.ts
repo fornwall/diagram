@@ -1454,6 +1454,31 @@ suite("webview", function () {
     assert.match(journey.text, /Brewtea/);
   });
 
+  test("exports text fallbacks of Mermaid labels in the colors of their labels", async () => {
+    await draw({ source: "journey\n  section Work\n    Brew tea: 5: Me" });
+    const colors = await evaluate(`(async () => {
+      const shown = document.querySelector("#diagram switch .label");
+      ${DRAG_IMAGE}
+      const host = document.createElement("div");
+      host.innerHTML = (await dragImage()).getData("image/svg+xml");
+      document.body.append(host);
+      try {
+        const text = Array.from(host.querySelectorAll("switch > text"))
+          .find(text => text.textContent === shown.textContent);
+        return {
+          label: getComputedStyle(shown).color,
+          text: getComputedStyle(text).fill,
+          box: getComputedStyle(text.closest("g").querySelector("rect")).fill,
+        };
+      } finally {
+        host.remove();
+      }
+    })()`);
+    const { label, text, box } = colors as Record<string, string>;
+    assert.strictEqual(text, label);
+    assert.notStrictEqual(text, box);
+  });
+
   test("centers exported Mermaid labels that Mermaid leaves to CSS", async () => {
     // Mermaid starts these labels at the middle of the node, or at the left of a state's least
     // width, for CSS that only flowcharts have.
