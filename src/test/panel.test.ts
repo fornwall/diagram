@@ -7,6 +7,7 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { linkTexts } from "../links";
 import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
+import type { ToWebview } from "../protocol";
 import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
 import { afterTest, recordMessages, replace } from "./afterTest";
@@ -213,40 +214,28 @@ suite("panel", function () {
     assert.ok((await second).ok);
   });
 
-  test("an unavailable render ends a waiting pick without blaming the source", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.deliver = (message) => message.type !== "render";
-    const rendering = panel.render(flowchart, "tool");
-    const picking = pick(panel);
-    const outcome = {
-      ok: false,
-      kind: "unavailable",
-      error: "The diagram panel is unavailable.",
-    };
-    assert.deepStrictEqual(await rendering, outcome);
-    assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
-    assert.strictEqual(panel.current?.error, undefined);
-  });
-
-  test("failed message delivery ends render and pick requests", async () => {
-    for (const rejected of [false, true]) {
-      const { panel, webview } = await newFakePanel();
-      webview.deliver = () => {
-        if (rejected) {
+  test("ends a render and a waiting pick that cannot reach the page, without blaming the source", async () => {
+    const unavailable = /^The diagram panel is unavailable\.$/;
+    for (const [failing, deliver, error] of [
+      ["renders", (message: ToWebview) => message.type !== "render", unavailable],
+      ["every message", () => false, unavailable],
+      [
+        "every message, throwing",
+        () => {
           throw new Error("Disconnected");
-        }
-        return false;
-      };
+        },
+        /Disconnected/,
+      ],
+    ] as const) {
+      const { panel, webview } = await newFakePanel();
+      webview.deliver = deliver;
       const rendering = panel.render(flowchart, "tool");
       const picking = pick(panel);
       const outcome = await rendering;
-      assert.ok(!outcome.ok && outcome.kind === "unavailable");
-      assert.match(
-        outcome.error,
-        rejected ? /Disconnected/ : /^The diagram panel is unavailable\.$/,
-      );
-      assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error });
-      assert.strictEqual(panel.current?.error, undefined);
+      assert.ok(!outcome.ok && outcome.kind === "unavailable", failing);
+      assert.match(outcome.error, error, failing);
+      assert.deepStrictEqual(await picking, { picked: false, reason: outcome.error }, failing);
+      assert.strictEqual(panel.current?.error, undefined, failing);
     }
   });
 
