@@ -126,7 +126,8 @@ function thirdPartyNotices(metafiles) {
       }
     }
   }
-  const sections = new Map();
+  // Packages with the same license text, such as most d3 modules, share one copy of it.
+  const packagesByText = new Map();
   for (const dir of packages) {
     const { name, version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
     const files = readdirSync(dir)
@@ -138,9 +139,15 @@ function thirdPartyNotices(metafiles) {
       files.push(...readdirSync(others).map((file) => join(others, file)));
     }
     if (files.length === 0) throw new Error(`${name} has no license file to include`);
-    const texts = files.map((file) => readFileSync(file, "utf8").trim());
-    sections.set(`${name} ${version}`, texts.join("\n\n"));
+    // Sorted, as directories list their files in no particular order.
+    const text = files
+      .sort()
+      .map((file) => readFileSync(file, "utf8").trim())
+      .join("\n\n");
+    packagesByText.set(text, [...(packagesByText.get(text) ?? []), `${name} ${version}`]);
   }
-  const text = [...sections].sort().map((section) => section.join("\n\n"));
-  return `@diagram includes the following third-party software.\n\n${text.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
+  const sections = [...packagesByText]
+    .map(([text, names]) => `${names.sort().join("\n")}\n\n${text}`)
+    .sort();
+  return `@diagram includes the following third-party software.\n\n${sections.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
 }
