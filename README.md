@@ -107,7 +107,7 @@ It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked ar
 | `filters` | Keep rows matching every predicate, before anything else. Example: `[{"column":"latency","op":"gte","value":100}]`. |
 | `facetColumn` | Split a bar, line, area or scatter chart or a histogram into a panel per value, at most 12. Grouping, sorting and limits apply within each panel. |
 | `facetColumns`, `facetScales` | Set 1–4 panels per row, and `"shared"` (default) or `"independent"` axis scales. |
-| `bins` | Histogram bins, 1–200. Defaults to the square root of the number of values, rounded up, at most 50. |
+| `bins` | Histogram bins of equal width, 1–200. By default, about √n bins, at most 50, of a round width: 1, 2 or 5 × 10ⁿ, and at least 1 for whole numbers. |
 
 A sankey with two label columns joins nodes of the same name, as in a list of graph edges, unless that would make flows run in a circle. With more, each stage has nodes of its own. A column with more than 30 nodes keeps the 29 largest and sums the rest as "Other".
 
