@@ -252,6 +252,10 @@ suite("data", () => {
       ],
       header: true,
     });
+    assert.deepStrictEqual(parse('a,b\n"x\ny","1,234"\r\nz,5', "csv").rows, [
+      ["x\ny", 1234],
+      ["z", 5],
+    ]);
   });
 
   test("detects quoted single-column CSV, preserving records and reading numeric values", () => {
@@ -294,14 +298,7 @@ suite("data", () => {
     assert.deepStrictEqual(parseNumber("$2MB"), { value: 2e6, unit: "bytes" });
   });
 
-  test("parses quoted numbers and newlines in CSV", () => {
-    assert.deepStrictEqual(parse('a,b\n"x\ny","1,234"\r\nz,5', "csv").rows, [
-      ["x\ny", 1234],
-      ["z", 5],
-    ]);
-  });
-
-  test("rule-looking lines inside quoted fields do not turn data into a header", () => {
+  test("keeps rules in quotes as data, also when they would make the line above a header", () => {
     for (const [format, delimiter] of [
       ["csv", ","],
       ["tsv", "\t"],
@@ -313,6 +310,12 @@ suite("data", () => {
         ["c", 3],
       ]);
     }
+    assert.deepStrictEqual(parse('"label"\n"---"\n"x"', "csv").rows, [["label"], ["---"], ["x"]]);
+    assert.deepStrictEqual(parse('a\tb\n"---"\t"---"\nx\ty', "tsv").rows, [
+      ["a", "b"],
+      ["---", "---"],
+      ["x", "y"],
+    ]);
   });
 
   test("strips a byte order mark before a quoted header", () => {
@@ -320,15 +323,6 @@ suite("data", () => {
       columns: ["name", "count"],
       rows: [["a", 1]],
     });
-  });
-
-  test("quoted rule-looking cells remain data", () => {
-    assert.deepStrictEqual(parse('"label"\n"---"\n"x"', "csv").rows, [["label"], ["---"], ["x"]]);
-    assert.deepStrictEqual(parse('a\tb\n"---"\t"---"\nx\ty', "tsv").rows, [
-      ["a", "b"],
-      ["---", "---"],
-      ["x", "y"],
-    ]);
   });
 
   test("parses CSV whose lines have different numbers of fields", () => {
@@ -1430,7 +1424,7 @@ suite("data", () => {
     });
   });
 
-  test("JSON Lines accepts all text line endings and reports the original error line", () => {
+  test("reads JSON Lines with any line endings, and says on which line of the text one fails", () => {
     for (const newline of ["\n", "\r\n", "\r"]) {
       assert.deepStrictEqual(parse(['{"n": 1}', "", '{"n": 2}'].join(newline)), {
         columns: ["n"],
@@ -1441,9 +1435,6 @@ suite("data", () => {
         /Line 3 of the JSON Lines/,
       );
     }
-  });
-
-  test("JSON Lines errors report the original line after blank lines", () => {
     assert.throws(() => parse('{"n": 1}\n\n{"n": 2}\n\n{"n": }'), /Line 5 of the JSON Lines/);
     assert.throws(() => parse('\n\n{"n": 1}\n\n{"n": }'), /Line 5 of the JSON Lines/);
   });
@@ -1577,11 +1568,8 @@ suite("data", () => {
     });
   });
 
-  test("names missing and duplicate header columns", () => {
+  test("names missing and duplicate header columns, without taking the names of others", () => {
     assert.deepStrictEqual(parse(",x,x\na,1,2").columns, ["Column 1", "x", "x (2)"]);
-  });
-
-  test("generated column names preserve explicit headers appearing later", () => {
     const table = parseTable(",x,x,x (2),Column 1\na,1,2,3,4");
     assert.deepStrictEqual(
       table.columns.map(({ name }) => name),
