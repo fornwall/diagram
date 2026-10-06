@@ -134,26 +134,33 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
   return checked > 0;
 }
 
-/** Sorts rows by their first value, empty values last. */
-function sortRows(rows: Row[], sort: ChartSpec["sort"], limit?: number): Row[] {
+/**
+ * Sorts rows by their first value, or by the total of their values when they stack, empty values
+ * last and equal ones in their order.
+ */
+function sortRows(rows: Row[], sort: ChartSpec["sort"], total: boolean, limit?: number): Row[] {
   if (sort === undefined) {
     return rows;
   }
   const direction = sort === "ascending" ? 1 : -1;
-  const compare = ({ values: [x = null] }: Row, { values: [y = null] }: Row): number => {
+  const keyed = rows.map((row, index) => ({
+    row,
+    index,
+    key: total ? rowTotal(row) : (row.values[0] ?? null),
+  }));
+  type Keyed = (typeof keyed)[number];
+  const order = (left: Keyed, right: Keyed): number => {
+    const { key: x } = left;
+    const { key: y } = right;
     if (x === null || y === null) {
-      return x === y ? 0 : x === null ? 1 : -1;
+      return x === y ? left.index - right.index : x === null ? 1 : -1;
     }
-    return (x - y) * direction;
+    return (x - y) * direction || left.index - right.index;
   };
-  // Small limits need only the best rows. Keep the worst retained row at the heap root,
-  // including its original index so ties keep the same order as a stable full sort.
+  // Small limits need only the best rows. Keep the worst retained row at the heap root.
   if (limit !== undefined && limit > 0 && limit < rows.length / 4) {
-    const heap: { row: Row; index: number }[] = [];
-    const order = (left: (typeof heap)[number], right: (typeof heap)[number]): number =>
-      compare(left.row, right.row) || left.index - right.index;
-    rows.forEach((row, index) => {
-      const candidate = { row, index };
+    const heap: Keyed[] = [];
+    for (const candidate of keyed) {
       if (heap.length < limit) {
         let at = heap.length;
         heap.push(candidate);
@@ -179,11 +186,19 @@ function sortRows(rows: Row[], sort: ChartSpec["sort"], limit?: number): Row[] {
         }
         heap[at] = candidate;
       }
-    });
+    }
     return heap.sort(order).map(({ row }) => row);
   }
-  // readRows owns these rows; sorting them cannot reorder the source table.
-  return rows.sort(compare);
+  return keyed.sort(order).map(({ row }) => row);
+}
+
+/** The sum of a row's values, or null without any. */
+function rowTotal({ values }: Row): number | null {
+  let total: number | null = null;
+  for (const value of values) {
+    if (value !== null) total = addValues(total ?? 0, value);
+  }
+  return total;
 }
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
@@ -424,7 +439,8 @@ export function readRows(
   }
   const beforeLimit = rows.length;
   const combineOther = type === "pie" || type === "doughnut";
-  rows = sortRows(rows, spec.sort, combineOther ? undefined : spec.limit);
+  const stacked = type === "stackedBar" || type === "stackedArea";
+  rows = sortRows(rows, spec.sort, stacked, combineOther ? undefined : spec.limit);
   if (spec.sort !== undefined && columns.timeAxis) {
     notes.push("sorted the rows by value rather than in time order, which a line runs back over");
   }

@@ -216,6 +216,25 @@ suite("charts", () => {
     assert.ok(option.series.every((s: Option) => s.type === "bar" && s.stack === "total"));
   });
 
+  test("stacked charts sort and limit by the total of the stack", () => {
+    const data = "team,bugs,features\na,9,0\nb,5,10\nc,1,2\nd,,7\ne,,";
+    for (const limit of [{}, { limit: 1 }]) {
+      const option = build(chart("stackedBar", { sort: "descending", ...limit }), data);
+      assert.deepStrictEqual(
+        option.xAxis.data,
+        ["b", "a", "d", "c", "e"].slice(0, "limit" in limit ? 1 : 5),
+      );
+    }
+    // Unstacked bars stand side by side, and sort by the first value column.
+    assert.deepStrictEqual(build(chart("bar", { sort: "descending" }), data).xAxis.data, [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
   test("line and area are lines, area with an area style", () => {
     // Only a line's value axis need not start at zero.
     assert.strictEqual(build(chart("line")).yAxis.scale, true);
@@ -1134,7 +1153,7 @@ suite("charts", () => {
   test("multiple time series preserve coordinates after sorting and limiting", () => {
     const data =
       "date,a,b\n2026-01-01T10:00:00.12+05:30,3,30\n2026-01-02T10:00:00.1-03:30,9,\n2026-01-03T10:00:00Z,1,10";
-    for (const type of ["line", "horizontalBar", "stackedArea"] as const) {
+    for (const type of ["line", "horizontalBar"] as const) {
       const option = build(
         chart(type, { valueColumns: ["a", "b"], sort: "descending", limit: 2 }),
         data,
@@ -1160,6 +1179,26 @@ suite("charts", () => {
           : expected,
       );
     }
+    // A stack sorts by its total.
+    const stacked = build(
+      chart("stackedArea", { valueColumns: ["a", "b"], sort: "descending", limit: 2 }),
+      data,
+    );
+    const first = Date.parse("2026-01-01T10:00:00.12+05:30");
+    const third = Date.parse("2026-01-03T10:00:00Z");
+    assert.deepStrictEqual(
+      stacked.series.map((series: Option) => series.data),
+      [
+        [
+          [first, 3],
+          [third, 1],
+        ],
+        [
+          [first, 30],
+          [third, 10],
+        ],
+      ],
+    );
   });
 
   test("a label column of dates becomes a time axis", () => {
