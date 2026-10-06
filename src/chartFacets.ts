@@ -141,7 +141,8 @@ export function buildFacetedChart(
       yAxis: yAxes,
       series,
       legend: { type: "scroll", bottom: 0, left: "center" },
-      tooltip: { trigger: spec.type === "scatter" ? "item" : "axis", confine: true },
+      // Panels of one type have the same tooltip, such as a histogram's; the webview adds others.
+      ...(panels[0]?.option.tooltip === undefined ? {} : { tooltip: panels[0].option.tooltip }),
     },
     summary: `Faceted by ${JSON.stringify(facetName)} into ${panels.length} panels with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
   };

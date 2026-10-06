@@ -372,6 +372,23 @@ suite("chart facets", () => {
     assert.ok(laidOut.xAxis.every((axis: Option) => axis.axisLabel.rotate > 0));
   });
 
+  test("panels keep the tooltip of their type", () => {
+    const data = "service,operation,ms\napi,read,2\nworker,read,30";
+    const tooltip = (spec: Partial<ChartSpec>) =>
+      (
+        layoutOption(build(data, spec), {
+          width: 600,
+          height: 500,
+          title: "",
+          colors,
+          reducedMotion: true,
+        }) as Option
+      ).tooltip;
+    assert.deepStrictEqual(tooltip({}).axisPointer, { type: "shadow" });
+    assert.strictEqual(tooltip({ type: "line" }).trigger, "axis");
+    assert.strictEqual(tooltip({ type: "histogram" }).formatter, "{b}<br/>{a}: {c}");
+  });
+
   test("validates facet types, names and group count instead of dropping groups", () => {
     assert.throws(
       () => build("service,ms\na,2", { type: "pie" }),
