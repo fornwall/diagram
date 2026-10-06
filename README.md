@@ -88,6 +88,8 @@ Commands need a trusted, nonvirtual workspace. They run with `/bin/sh` (`cmd.exe
 
 ECharts options with JavaScript code, such as callbacks or custom series, render only in a trusted workspace; plain object literals render anywhere. As such code could act as you in the panel, once the panel has run it, **Send to chat** and click prompts only fill in the chat input, and writing to a Markdown block, rerunning a chart's command and opening a web link ask first. After you decline once, the panel refuses such requests until it is closed.
 
+The panel loads images only from `data:` URLs, so a Mermaid image shape must embed its image.
+
 ## Chart data
 
 `diagram_chart` reads:
