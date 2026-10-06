@@ -18,7 +18,8 @@ interface InspectDataInput {
 }
 
 function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
-  if (!isPlainObject(input)) throw new Error("Data inspection input must be an object.");
+  if (!isPlainObject(input))
+    throw new Error('The input must be an object, e.g. {"file": "data.csv"}.');
   const given = givenProperties(input);
   const unknown = unknownProperties(given, ["data", "file", "command", "format", "sampleRows"]);
   if (unknown !== undefined) {
@@ -135,7 +136,7 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
       );
       return textResult(
         outcome.ok
-          ? `Updated the ${outcome.diagramType} chart using the loaded data, retaining supported presentation edits.${outcome.summary ? ` ${outcome.summary}` : ""} Revision: ${this.panel.revision}.`
+          ? `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""} Revision: ${this.panel.revision}.`
           : `The chart was not updated: ${outcome.error}`,
       );
     } catch (error) {

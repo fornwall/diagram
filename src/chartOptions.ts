@@ -63,7 +63,7 @@ export type ChartUpdateInput = Partial<Pick<ChartSpec, "type" | "title">> & {
 /** A partial update; source and advanced options cannot be replaced through this tool. */
 export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
   if (!isPlainObject(input)) {
-    throw new Error("Chart updates must be an object.");
+    throw new Error('The chart update must be an object, e.g. {"type": "line"}.');
   }
   const unknown = Object.keys(input).filter(
     (key) => key !== "revision" && !(UPDATE_KEYS as readonly string[]).includes(key),
