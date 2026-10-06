@@ -1442,7 +1442,10 @@ suite("webview", function () {
         };
         const move = (element, x, y) => element.dispatchEvent(new MouseEvent("mousemove",
           {bubbles: true, clientX: x, clientY: y}));
-        const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+        // ECharts handles the pointer at once, and draws what changed in the next frame.
+        const settle = async () => {
+          for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
+        };
         const marked = await until(faded);
         // Over the unmarked item C, then off it, into the empty corner of the chart.
         const box = item("#ff0000").getBoundingClientRect();
@@ -2759,34 +2762,40 @@ suite("webview", function () {
     );
   });
 
+  /** A bar chart whose layout turns its category labels to fit them in, as it does when narrow. */
+  const ROTATING_CHART = JSON.stringify({
+    animation: false,
+    xAxis: { type: "category", data: ["Alpha category", "Beta category"] },
+    yAxis: {},
+    series: [{ type: "bar", data: [1, 2] }],
+  });
+  /**
+   * Webview code defining `rotated()`, whether the chart's category labels are turned, and
+   * `rotatesAtOnce()`, whether they turn within a few frames: well before the layout that follows
+   * 150 ms after the size stops changing.
+   */
+  const ROTATED = `
+    const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
+      /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
+    const rotatesAtOnce = async () => {
+      for (let frame = 0; frame < 5 && !rotated(); frame++) await new Promise(requestAnimationFrame);
+      return rotated();
+    };`;
+
   test("lays a chart out for a new size at once, rather than only resizing it", async () => {
-    const categories = ["Alpha category", "Beta category"];
-    const source = JSON.stringify({
-      animation: false,
-      xAxis: { type: "category", data: categories },
-      yAxis: {},
-      series: [{ type: "bar", data: [1, 2] }],
-    });
-    await draw({ language: "echarts", source });
+    await draw({ language: "echarts", source: ROTATING_CHART });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CHART_FITTED}
+        ${ROTATED}
         const canvas = document.getElementById("canvas");
-        // Whether the layout turns the category labels to fit them in, as it does when narrow.
-        const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
-          /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
         await chartFitted();
         // After the size settled since the chart was drawn.
         await new Promise((resolve) => setTimeout(resolve, 200));
         const wide = rotated();
         Object.assign(canvas.style, {width: "250px", flex: "none"});
         try {
-          // Well before the layout that follows when the size keeps changing.
-          const started = performance.now();
-          while (!rotated() && performance.now() - started < 100) {
-            await new Promise(requestAnimationFrame);
-          }
-          return {wide, narrow: rotated()};
+          return {wide, narrow: await rotatesAtOnce()};
         } finally {
           Object.assign(canvas.style, {width: "", flex: ""});
           await chartFitted();
@@ -2797,19 +2806,12 @@ suite("webview", function () {
   });
 
   test("lays a chart out for a new size at once after an image was taken while resizing", async () => {
-    const source = JSON.stringify({
-      animation: false,
-      xAxis: { type: "category", data: ["Alpha category", "Beta category"] },
-      yAxis: {},
-      series: [{ type: "bar", data: [1, 2] }],
-    });
-    await draw({ language: "echarts", source });
+    await draw({ language: "echarts", source: ROTATING_CHART });
     assert.strictEqual(
       await evaluate(`(async () => {
         ${CHART_FITTED}
+        ${ROTATED}
         const canvas = document.getElementById("canvas");
-        const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
-          /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
         await chartFitted();
         await new Promise((resolve) => setTimeout(resolve, 200));
         try {
@@ -2820,11 +2822,7 @@ suite("webview", function () {
           document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
           await new Promise((resolve) => setTimeout(resolve, 200));
           canvas.style.width = "250px";
-          const started = performance.now();
-          while (!rotated() && performance.now() - started < 100) {
-            await new Promise(requestAnimationFrame);
-          }
-          return rotated();
+          return await rotatesAtOnce();
         } finally {
           Object.assign(canvas.style, {width: "", flex: ""});
           await chartFitted();
