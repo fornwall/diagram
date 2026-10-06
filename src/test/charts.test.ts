@@ -1549,6 +1549,10 @@ suite("charts", () => {
     const ages = build(chart("bar"), "NAME   AGE\napi    45m\nweb    3h12m");
     assert.deepStrictEqual(seriesNames(ages), ["AGE (h)"]);
     assert.deepStrictEqual(ages.series[0].data, [0.75, 3.2]);
+    // "(min)" names a minimum, so both columns are charted as they are.
+    const temperatures = build(chart("bar"), "city,Temp (min),Temp (max)\nOslo,-3,5\nRome,8,17");
+    assert.deepStrictEqual(seriesNames(temperatures), ["Temp (min)", "Temp (max)"]);
+    assert.deepStrictEqual(temperatures.series[0].data, [-3, 8]);
     // Counts of rows are not durations.
     const counted = build(chart("bar", { aggregate: "count" }), bench);
     assert.deepStrictEqual(counted.series[0].data, [1, 1, 1]);

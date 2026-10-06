@@ -719,14 +719,35 @@ suite("data", () => {
     assert.deepStrictEqual(read("name,Memory [MiB]\na,2"), ["bytes", [2 * 1024 ** 2]]);
     assert.deepStrictEqual(read("name,Size (B)\na,12"), ["bytes", [12]]);
     assert.deepStrictEqual(read("name,Latency (ms)\na,1.5"), ["seconds", [0.0015]]);
-    assert.deepStrictEqual(read("name,Time (s)\na,12"), ["seconds", [12]]);
-    assert.deepStrictEqual(read("name,CPU time (min)\na,2"), ["seconds", [120]]);
+    assert.deepStrictEqual(read("name,Latency (sec)\na,12"), ["seconds", [12]]);
+    // A single letter is a unit of time in a column named for durations.
+    assert.deepStrictEqual(read("name,Elapsed (s)\na,12"), ["seconds", [12]]);
+    assert.deepStrictEqual(read("name,Uptime (m)\na,2"), ["seconds", [120]]);
+    assert.deepStrictEqual(read("name,Age [h]\na,2"), ["seconds", [7200]]);
     // Values with their own unit keep it.
     assert.deepStrictEqual(read("name,Latency (ms)\na,1.2s"), ["seconds", [1.2]]);
-    // Not billions, a plural, or meters.
-    for (const name of ["Revenue (B)", "File(s)", "Distance (m)"]) {
+    // Not billions, a plural, meters, minima or units that only a column of durations has.
+    for (const name of [
+      "Revenue (B)",
+      "File(s)",
+      "Distance (m)",
+      "Temp (min)",
+      "Price (min)",
+      "Latency (min)",
+      "Time (s)",
+      "Height (h)",
+      "Width (d)",
+    ]) {
       assert.deepStrictEqual(read(`name,${name}\na,12`), [undefined, [12]], name);
     }
+    // Minima beside maxima are two columns of plain numbers.
+    const temperatures = parseTable("city,Temp (min),Temp (max)\nOslo,-3,5\nRome,8,17");
+    assert.deepStrictEqual(temperatures.columns, [
+      { name: "city", numeric: false },
+      { name: "Temp (min)", numeric: true },
+      { name: "Temp (max)", numeric: true },
+    ]);
+    assert.deepStrictEqual(temperatures.rows[0], ["Oslo", -3, 5]);
   });
 
   test("reads the CPU of kubectl top in cores, not ages in minutes", () => {

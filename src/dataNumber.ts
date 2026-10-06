@@ -185,32 +185,28 @@ export function parseNumber(
 
 /**
  * A unit of sizes or durations that a column's name states after it, in parentheses or brackets,
- * as kubectl's "MEMORY(bytes)", "Size (KB)", "Memory [MiB]" or "Latency (ms)". A single letter
- * follows a space, as "Time (s)", since "File(s)" names a plural.
+ * as kubectl's "MEMORY(bytes)", "Size (KB)", "Memory [MiB]" or "Latency (ms)", or a single letter
+ * after a space, as "Elapsed (s)" or "Age (h)", since "File(s)" names a plural. Not "min", which
+ * names a minimum far more often than minutes, as in "Temp (min)".
  */
 export const STATED_UNIT =
-  /(?:\s*[([]([Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i|[nuµμm]s|sec|seconds|min)|\s+[([]([sh]))[)\]]$/;
+  /(?:\s*[([]([Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i|[nuµμm]s|sec|seconds)|\s+[([]([smhd]))[)\]]$/;
 
 /** How the units of {@link STATED_UNIT} that a number does not take are written after one. */
-const STATED_ALIASES: Record<string, string> = {
-  bytes: "B",
-  Bytes: "B",
-  sec: "s",
-  seconds: "s",
-  min: "m",
-};
+const STATED_ALIASES: Record<string, string> = { bytes: "B", Bytes: "B", sec: "s", seconds: "s" };
 
 /**
  * The size in bytes or seconds of the unit that a column's `name` states, read as after a number
  * in the column's `format`: "KB" is 1000 bytes, as "12KB" is, and "B" is bytes only in a column of
- * sizes, but billions in "Revenue (B)".
+ * sizes, but billions in "Revenue (B)". A single letter is a unit of time only in a column named
+ * for durations, as "Elapsed (s)", since "Distance (m)" is in meters and "Score (s)" may name a plural.
  */
 export function statedUnit(
   name: string,
   format: NumberFormat,
 ): { unit: Unit; size: number } | undefined {
   const [, long, short] = STATED_UNIT.exec(name) ?? [];
-  const stated = long ?? short;
+  const stated = long ?? (format.durations ? short : undefined);
   if (stated === undefined) return undefined;
   // As durations, so that "m" is a minute rather than a million or a thousandth of a core.
   const one = parseNumber(`1${STATED_ALIASES[stated] ?? stated}`, {
