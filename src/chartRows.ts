@@ -121,8 +121,8 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
     const total = last[column];
     if (typeof total === "number") {
       let sum = 0;
-      for (const row of table.rows.slice(0, -1)) {
-        const value = row[column];
+      for (let i = 0; i < table.rows.length - 1; i++) {
+        const value = table.rows[i]?.[column];
         if (typeof value === "number") sum += value;
       }
       if (Math.abs(total - sum) > Math.abs(total) * 0.01) {
