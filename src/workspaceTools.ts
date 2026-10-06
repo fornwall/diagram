@@ -403,10 +403,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       token,
     );
     // A Unicode regexp keeps source offsets correct when case folding changes string length.
-    const needle = new RegExp(
-      query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      caseSensitive ? "gu" : "giu",
-    );
+    const needle = new RegExp(RegExp.escape(query), caseSensitive ? "gu" : "giu");
     const output: string[] = [];
     let matches = 0;
     let matchedFiles = 0;

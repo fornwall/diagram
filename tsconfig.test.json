@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "lib": ["es2024", "dom"],
+    "lib": ["es2025", "dom"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "verbatimModuleSyntax": false,

@@ -85,7 +85,7 @@ function explain(
   }
   const names = [...new Set([uri.toString(), uri.toString(true), uri.fsPath, uri.path])]
     .sort((a, b) => b.length - a.length)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    .map(RegExp.escape);
   const detail = message
     .replace(/^cannot open \S+\. Detail: /, "")
     .replace(new RegExp(`(?:, \\w+)? ?(['"]?)(?:${names.join("|")})\\1`, "g"), "")
