@@ -1275,6 +1275,24 @@ suite("webview", function () {
     assert.deepStrictEqual(paths[0], paths[1]);
   });
 
+  test("exports chart labels that are still fading in", async () => {
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animationDuration: 60_000,
+        series: [{ type: "pie", data: [{ name: "Fading label", value: 1 }] }],
+      }),
+    });
+    const labels = await evaluate(`(async () => {
+      ${DRAG_IMAGE}
+      const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+      const image = new DOMParser().parseFromString(svg, "image/svg+xml");
+      return [...image.querySelectorAll("text")].map(text =>
+        text.textContent + " " + (text.getAttribute("fill-opacity") ?? text.getAttribute("opacity") ?? 1));
+    })()`);
+    assert.deepStrictEqual(labels, ["Fading label 1"]);
+  });
+
   test("exports the current chart size before the resize observer runs", async () => {
     await draw({
       language: "echarts",

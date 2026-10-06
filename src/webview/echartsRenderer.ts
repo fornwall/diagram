@@ -15,6 +15,12 @@ import { type DiagramImage, standaloneSvg } from "./images";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { readThemeColors } from "./vscodeTheme";
 
+/** A zrender element, which can animate, and the group it is in. */
+interface Animated {
+  parent: Animated | null;
+  stopAnimation(scope: undefined, forwardToLast: boolean): unknown;
+}
+
 export class EChartsRenderer implements Renderer {
   readonly noun = "chart";
   readonly itemNoun = "chart item";
@@ -166,9 +172,18 @@ export class EChartsRenderer implements Renderer {
     if (!svg) {
       throw new Error("There is no chart to make an image of.");
     }
-    // Match ECharts' export preparation, keeping the DOM serializer for XML-safe attributes.
+    // ECharts' own export finishes the animations of what it draws, but labels fade in on the text
+    // element that holds their lines, and groups move as a whole: finish those too, or the labels
+    // of a chart exported as it appears are all but transparent.
     const drawing = this.chart.getZr();
-    for (const item of drawing.storage.getDisplayList()) item.stopAnimation(undefined, true);
+    const finished = new Set<object>();
+    for (const item of drawing.storage.getDisplayList(true)) {
+      for (let element: Animated | null = item; element && !finished.has(element); ) {
+        finished.add(element);
+        element.stopAnimation(undefined, true);
+        element = element.parent;
+      }
+    }
     drawing.refreshImmediately();
     return standaloneSvg(svg, background);
   }
