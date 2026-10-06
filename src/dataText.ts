@@ -284,11 +284,20 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
 
 /**
  * A line that tells the size of a table rather than holding data, as psql ("(2 rows)"), mysql
- * ("2 rows in set (0.00 sec)") and pandas ("[1000 rows x 3 columns]") print below it, and Polars
- * ("shape: (2, 3)") above it.
+ * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]") and DuckDB ("│ 1000 rows (40
+ * shown)  3 columns │") print below it, and Polars ("shape: (2, 3)") above it.
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \(\d+, \d+\))$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \(\d+, \d+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+
+/**
+ * Whether `line` stands for the rows that the output left out of a long table, as DuckDB prints
+ * "·", Polars "…" and pandas "..." in each column.
+ */
+function isElision(line: string): boolean {
+  const marks = line.split(/[\s|│┆]+/).filter(Boolean);
+  return marks.length > 0 && marks.every((mark) => /^(?:[·…]|\.{2,})$/.test(mark));
+}
 
 /**
  * A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM, or a
@@ -641,6 +650,15 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
           : `Only the Markdown table (${lines}) was read, not the text around it.`;
       return { ...splitText(all.slice(table.start, table.end).join("\n"), format), note };
     }
+  }
+  if (all.some(isElision)) {
+    // Left as empty lines, which are skipped, as errors count lines.
+    const shown = all.map((line) => (isElision(line) ? "" : line)).join("\n");
+    const total = all.find((line) => TABLE_SIZE.test(line))?.match(/([\d,]+) rows/)?.[1];
+    const note =
+      "Only the rows that the output shows were read, not those it left out" +
+      (total === undefined ? "." : ` of its ${total}.`);
+    return { ...splitText(shown, format), note };
   }
   const { lines, underlined } = withoutRules(
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),

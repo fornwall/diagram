@@ -956,6 +956,45 @@ suite("data", () => {
     });
   });
 
+  test("leaves out the rows that stand for rows left out of long output, and says so", () => {
+    const duckdb = parseTable(
+      [
+        "┌───────┬─────────┐",
+        "│   i   │    j    │",
+        "│ int64 │ varchar │",
+        "├───────┼─────────┤",
+        "│     0 │ a       │",
+        "│     · │ ·       │",
+        "│     · │ ·       │",
+        "│  9999 │ b       │",
+        "├───────┴─────────┤",
+        "│   10000 rows    │",
+        "│   (2 shown)     │",
+        "└─────────────────┘",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(duckdb.rows, [
+      [0, "a"],
+      [9999, "b"],
+    ]);
+    assert.strictEqual(
+      duckdb.note,
+      "Only the rows that the output shows were read, not those it left out of its 10000.",
+    );
+    // Without elided rows, DuckDB tells the size of a table of ten rows or more on one line.
+    const rows = Array.from({ length: 10 }, (_, i) => `│ ${i} │ x │`);
+    const footer = ["├───┴───┤", "│ 10 rows  2 columns │", "└───────┘"];
+    const ten = parseTable(["┌───┬───┐", "│ i │ j │", "├───┼───┤", ...rows, ...footer].join("\n"));
+    assert.strictEqual(ten.rows.length, 10);
+    assert.strictEqual(ten.note, undefined);
+    const pandas = parseTable("     a\n0    1\n..  ..\n999  2\n\n[1000 rows x 1 columns]");
+    assert.deepStrictEqual(pandas.rows, [
+      [0, 1],
+      [999, 2],
+    ]);
+    assert.match(pandas.note ?? "", /of its 1000\.$/);
+  });
+
   test("parses tables drawn with pipes, as in Markdown and by psql and mysql", () => {
     const expected = {
       columns: ["lang", "lines"],
