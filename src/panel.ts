@@ -747,7 +747,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   // Charts generated from data.
 
-  /** Inspection never refreshes a file or reruns a command. */
+  /** The chart's table, from its inline data if need be; never reads a file or runs a command. */
   get loadedChartData(): DataTable | undefined {
     const chart = this.state?.chart;
     if (!this.chartTable && chart?.data !== undefined) {
@@ -756,7 +756,7 @@ export class DiagramPanel implements vscode.Disposable {
     return this.chartTable;
   }
 
-  /** Change generated settings atomically using the retained table and manual styling. */
+  /** Changes the generated chart's settings, rebuilding it from the kept table and styling. */
   async updateChart(
     input: ChartUpdateInput,
     token: vscode.CancellationToken,
@@ -802,7 +802,7 @@ export class DiagramPanel implements vscode.Disposable {
     return { ...outcome, summary };
   }
 
-  /** Native editor action: opening options never reads a file or executes a command. */
+  /** Shows or hides Chart Options. Opening them never reads a file or runs a command. */
   toggleChartOptions(): void {
     if (!this.state?.chart) {
       void vscode.window.showInformationMessage(

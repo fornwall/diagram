@@ -176,8 +176,8 @@ async function candidates(
   const seen = new Set<string>();
   for (const root of roots) {
     throwIfCancelled(token);
-    // Passing an explicit exclude replaces files.exclude, so preserve both sets of settings.
-    // Conditional exclusions are conservatively excluded too: they must not leak into searches.
+    // An exclude passed to findFiles replaces files.exclude, so pass both settings. Conditional
+    // exclusions apply always, as an excluded file must not show up in results.
     const patterns = new Set(DEFAULT_EXCLUDES);
     for (const section of ["files", "search"]) {
       const excludes = vscode.workspace

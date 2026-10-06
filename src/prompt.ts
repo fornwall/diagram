@@ -238,9 +238,7 @@ export function escapeMarkdown(text: string): string {
   return text.replace(/[\\`*_~[\]<>&$]/g, "\\$&");
 }
 
-/**
- * Truncate tool results as needed, leaving half the reserve for later rounds.
- */
+/** Truncate tool results as needed, leaving half the reserve for later rounds. */
 export async function fitToolResults(
   model: vscode.LanguageModelChat,
   messages: readonly vscode.LanguageModelChatMessage[],

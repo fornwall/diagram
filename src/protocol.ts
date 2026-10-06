@@ -172,7 +172,7 @@ export type FromWebview =
       diagramType: string;
       /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
       nodeIds?: string[] | undefined;
-      /** Selectable edges or sequence messages, with authoritative endpoints. */
+      /** Selectable edges or sequence messages, with their endpoints as drawn. */
       relationships?: DiagramNode[] | undefined;
       repeatedNames?: RepeatedName[] | undefined;
       /** Parts of the source that the rendering leaves out. */
