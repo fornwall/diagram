@@ -13,7 +13,7 @@ suite("describeDiagram", () => {
   };
 
   test("keeps chart data and parameters available without repeating its origin", () => {
-    const description = describeDiagram(chart, []);
+    const description = describeDiagram(chart);
     assert.ok(description.includes(chart.source ?? ""));
     assert.ok(description.includes(JSON.stringify(chart.chart)));
     assert.strictEqual(description.match(/sales\.csv/g)?.length, 1);
@@ -21,7 +21,7 @@ suite("describeDiagram", () => {
   });
 
   test("manual chart edits are preserved rather than regenerated", () => {
-    const description = describeDiagram({ ...chart, editedByUser: true }, []);
+    const description = describeDiagram({ ...chart, editedByUser: true });
     assert.ok(description.includes(chart.source ?? ""));
     assert.match(description, /Preserve their edits/);
     assert.doesNotMatch(description, /call diagram_chart/);
@@ -29,10 +29,11 @@ suite("describeDiagram", () => {
 
   test("large inline data does not bypass the source limit or hide chart settings", () => {
     const data = "name,value\nPrivate row,42\n".repeat(10_000);
-    const description = describeDiagram(
-      { ...chart, source: data, chart: { type: "bar", data, aggregate: "sum" } },
-      [],
-    );
+    const description = describeDiagram({
+      ...chart,
+      source: data,
+      chart: { type: "bar", data, aggregate: "sum" },
+    });
     assert.ok(description.length < 1_000);
     assert.doesNotMatch(description, /Private row/);
     assert.match(description, /"aggregate":"sum"/);
@@ -49,13 +50,13 @@ suite("describeDiagram", () => {
       origin: "tool",
       editedByUser: false,
     };
-    const summary = describeDiagram(state, []);
+    const summary = describeDiagram(state);
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(summary, /too long to repeat in every request; diagram_getState gives it in full/);
-    assert.ok(describeDiagram(state, [], undefined, [], [], [], true).includes(source));
+    assert.ok(describeDiagram(state, { fullSource: true }).includes(source));
     // A generated chart is changed with the chart tools, not by rewriting its long option.
     const generated = { ...chart, source: `{"dataset":${"[1,2],".repeat(10_000)}}` };
-    const full = describeDiagram(generated, [], undefined, [], [], [], true);
+    const full = describeDiagram(generated, { fullSource: true });
     assert.match(full, /too long to show here/);
   });
 

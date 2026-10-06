@@ -23,18 +23,28 @@ import { quoteAll } from "./text";
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
 
-/**
- * Describes a diagram, how it is marked up and the user's interactions with it, for a language
- * model. `fullSource` gives a long source too, as {@link GET_STATE_TOOL} does.
- */
+/** What the panel knows of the drawing and of the user's interactions with it. */
+interface Drawing {
+  selection?: readonly DiagramNode[];
+  annotation?: Annotation | undefined;
+  relationships?: readonly DiagramNode[];
+  repeatedNames?: readonly RepeatedName[];
+  warnings?: readonly string[];
+  /** Gives a long source too, as {@link GET_STATE_TOOL} does. */
+  fullSource?: boolean;
+}
+
+/** Describes a diagram, its marks and the user's interactions with it, for a language model. */
 export function describeDiagram(
   state: DiagramState,
-  selection: readonly DiagramNode[],
-  annotation?: Annotation,
-  relationships: readonly DiagramNode[] = [],
-  repeatedNames: readonly RepeatedName[] = [],
-  warnings: readonly string[] = [],
-  fullSource = false,
+  {
+    selection = [],
+    annotation,
+    relationships = [],
+    repeatedNames = [],
+    warnings = [],
+    fullSource = false,
+  }: Drawing = {},
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [
