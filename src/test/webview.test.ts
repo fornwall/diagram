@@ -1977,6 +1977,15 @@ suite("webview", function () {
     }
   });
 
+  test("explains that the panel loads no images that a diagram links to", async () => {
+    assert.strictEqual(
+      await renderError(
+        'flowchart LR\n  A@{ img: "data:image/png;base64,", label: "A" }\n  B@{ img: "https://example.com/b.png" }',
+      ),
+      "Cannot load the image https://example.com/b.png: the panel loads no images, so give it as a data: URL.",
+    );
+  });
+
   test("explains charts that cannot render", async () => {
     const outcome = await render({
       language: "echarts",

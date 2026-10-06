@@ -450,6 +450,18 @@ export function describeError(error: unknown, source: string, type: () => string
   if (error.name === "YAMLException" && yaml.mark) {
     return yamlError(yaml as typeof yaml & { mark: object }, normalized);
   }
+  // Mermaid loads the image of an image shape to lay it out, which only a data: URL lets the panel.
+  if (error.name === "EncodingError") {
+    const url = Array.from(
+      normalized.matchAll(/\bimg:\s*["']?([^\s"',}]+)/g),
+      (match) => match[1],
+    ).find((url) => !url?.startsWith("data:"));
+    return new Error(
+      url
+        ? `Cannot load the image ${url}: the panel loads no images, so give it as a data: URL.`
+        : `An image in the diagram cannot be shown: ${error.message}`,
+    );
+  }
   const edgeLimit = /^Edge limit exceeded.* the limit is (\d+)/.exec(error.message);
   if (edgeLimit) {
     return new Error(
