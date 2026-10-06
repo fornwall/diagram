@@ -2102,6 +2102,18 @@ suite("webview", function () {
         ["api: API", "db: DB", "edge:L_web_db_0: Web → DB: queries", "store: store", "web: Web"],
       ],
       [
+        'C4Context\n  Person(u, "User")\n  System(s, "Shop")\n  System(m, "Mail")\n  Enterprise_Boundary(b, "Corp") {\n    System(d, "Data")\n  }\n  Rel(u, s, "Uses")\n  BiRel(s, m, "Sends")\n  Rel_Back(d, s, "Reads")\n  Rel(u, b, "Works at")',
+        [
+          "d: Data",
+          "edge:d → s: Shop → Data: Reads",
+          "edge:s → m: Shop ↔ Mail: Sends",
+          "edge:u → s: User → Shop: Uses",
+          "m: Mail",
+          "s: Shop",
+          "u: User",
+        ],
+      ],
+      [
         "sankey-beta\n  A,B,10\n  A,C,5",
         ["A: A", "B: B", "C: C", "edge:A → B: A → B: 10", "edge:A → C: A → C: 5"],
       ],

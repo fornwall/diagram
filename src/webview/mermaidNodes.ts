@@ -22,6 +22,7 @@ export const WITH_DATABASE = new Set([
   "gantt",
   "sankey",
   "architecture",
+  "c4",
 ]);
 
 export interface DiagramDb {
@@ -52,6 +53,8 @@ export interface DiagramDb {
     rhsInto?: boolean;
     title?: string;
   }[];
+  /** A C4 diagram's relationships, in the order it draws them. */
+  getRels?(): { from: string; to: string; label?: { text?: string } }[];
   /** A sankey diagram's nodes and flows, in the order it draws them. */
   getGraph?(): {
     nodes: { id: string }[];
@@ -487,6 +490,35 @@ function findRelationships(
         true,
       );
       add(bands[i] as Element, node);
+    }
+  }
+  // C4 relationships, one for each pair of ends, in the order of the database: a line, with an
+  // arrowhead at either end, followed by the texts of its label.
+  const rels = db?.getRels?.() ?? [];
+  const relLines = svg.querySelectorAll(
+    `:scope > g > :is(line, path):is([marker-end="url(#${idPrefix}arrowhead)"], [marker-start="url(#${idPrefix}arrowend)"])`,
+  );
+  if (relLines.length === rels.length) {
+    for (const [i, { from, to, label }] of rels.entries()) {
+      const line = relLines[i] as Element;
+      // Boundaries are no nodes to describe a relationship by.
+      if (!names.has(from) || !names.has(to)) continue;
+      const node = relation(
+        "edge",
+        `${from} → ${to}`,
+        from,
+        to,
+        label?.text ?? "",
+        line.hasAttribute("marker-start"),
+        line.hasAttribute("marker-end"),
+      );
+      const texts: Element[] = [];
+      for (let text = line.nextElementSibling; text && !text.matches("line, path"); ) {
+        texts.push(text);
+        text = text.nextElementSibling;
+      }
+      addLine(line, node);
+      for (const text of texts) add(text, node);
     }
   }
   // Architecture edges, which Mermaid draws in a group of their line, arrowheads and title, with
