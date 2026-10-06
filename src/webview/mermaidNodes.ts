@@ -209,11 +209,13 @@ export function findNodes(
   for (const element of svg.querySelectorAll(
     "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
   )) {
-    const label = nameOf(element);
-    if (!label) {
-      continue; // Start and end states, forks and joins.
-    }
     const domId = element.getAttribute("data-id") ?? withoutPrefix(element.id);
+    // A block diagram group without a label goes by its id, unless Mermaid made one up for it.
+    const group = element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId);
+    const label = nameOf(element) || (group ? domId : "");
+    if (!label) {
+      continue; // Start and end states, forks and joins, and groups without ids.
+    }
     const decorated = /^(?:flowchart|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
     const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
       ? uniqueId(label)
