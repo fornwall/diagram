@@ -85,12 +85,13 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
   if (!isPlainObject(value)) {
     return 'A mark must be an object, e.g. {"id": "pay", "mark": "problem"}.';
   }
-  const unknown = unknownProperties(value, MARK_KEYS);
+  const mark = givenProperties(value);
+  const unknown = unknownProperties(mark, MARK_KEYS);
   if (unknown !== undefined) {
     return unknown;
   }
   // Chart names are identities: "A" and " A " may name different data items.
-  const id = typeof value.id === "string" ? value.id : "";
+  const id = typeof mark.id === "string" ? mark.id : "";
   if (!id.trim()) {
     return '"id" must be the id of a node of the diagram, as a non-empty string.';
   }
@@ -98,18 +99,18 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return `${JSON.stringify(id)} is marked twice; give each node one mark.`;
   }
   marked.add(id);
-  const kind = value.mark ?? "current";
+  const kind = mark.mark ?? "current";
   if (!isMarkKind(kind)) {
     return `"mark" must be one of ${quoteAll(MARK_KINDS)}.`;
   }
-  if (value.note === undefined || value.note === null) {
+  if (mark.note === undefined) {
     return { id, kind };
   }
-  const problem = textProblem(value.note, "note");
+  const problem = textProblem(mark.note, "note");
   if (problem) {
     return problem;
   }
-  const note = (value.note as string).trim();
+  const note = (mark.note as string).trim();
   return note ? { id, kind, note } : { id, kind };
 }
 

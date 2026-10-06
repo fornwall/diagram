@@ -52,6 +52,10 @@ suite("annotations", () => {
     assert.deepStrictEqual(validateAnnotation({ marks: [] }), cleared);
     // Models send null for the properties they leave out.
     assert.deepStrictEqual(validateAnnotation({ marks: null, caption: null, dim: null }), cleared);
+    assert.deepStrictEqual(validateAnnotation({ marks: [{ id: "a", mark: null, note: null }] }), {
+      ...cleared,
+      marks: [{ id: "a", kind: "current" }],
+    });
     // A caption alone leaves nothing marked, and a blank one is no caption at all.
     assert.deepStrictEqual(validateAnnotation({ caption: "Look here" }), {
       ...cleared,
