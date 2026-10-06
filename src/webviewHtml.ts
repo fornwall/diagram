@@ -24,9 +24,9 @@ const IMAGE_ICON = icon(
 /** Loads the page into the webview, which may run scripts and load only the built files in dist. */
 export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): void {
   const dist = vscode.Uri.joinPath(extensionUri, "dist");
-  // Forms stay off: the only form here is handled in script and never submitted, while a
-  // submission is one of the few ways code in the webview could still send data anywhere.
-  webview.options = { enableScripts: true, enableForms: false, localResourceRoots: [dist] };
+  // Forms stay on, as without them the webview drops a submission before its submit event, which
+  // the page handles in script. The policy's form-action keeps a submission from going anywhere.
+  webview.options = { enableScripts: true, enableForms: true, localResourceRoots: [dist] };
   const asset = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(dist, name));
   const nonce = crypto.randomUUID();
   // Mermaid injects <style> elements into the SVGs it generates, and ECharts styles its tooltips

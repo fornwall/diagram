@@ -759,6 +759,38 @@ suite("webview", function () {
     );
   });
 
+  test("sends a message to chat from the button and from Enter", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    const execute = vscode.commands.executeCommand;
+    const asked: string[] = [];
+    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+      if (command !== "workbench.action.chat.open") return execute(command, ...args);
+      asked.push((args[0] as { query: string }).query);
+      return undefined;
+    }) as typeof execute;
+    try {
+      // The page submits the form as a user does, which a webview without forms would drop.
+      await evaluate(`(() => {
+        const input = document.getElementById("ask-input");
+        input.value = "From the button";
+        input.dispatchEvent(new Event("input"));
+        document.getElementById("ask-submit").click();
+        input.value = "From Enter";
+        input.dispatchEvent(new Event("input"));
+        document.getElementById("ask-form").requestSubmit();
+      })()`);
+      for (let attempt = 0; attempt < 100 && asked.length < 2; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.deepStrictEqual(asked, [
+        "Regarding the diagram: From the button",
+        "Regarding the diagram: From Enter",
+      ]);
+    } finally {
+      vscode.commands.executeCommand = execute;
+    }
+  });
+
   test("selection updates only the changed Mermaid nodes", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
     await draw({ source });
