@@ -61,7 +61,7 @@ export interface TreeNode {
 }
 
 /** A zrender element, with the bounding box of what it draws in its own coordinates. */
-export interface Graphic {
+interface Graphic {
   getBoundingRect(): Box & { clone(): Box & { applyTransform(matrix: number[]): void } };
   getComputedTransform(): number[] | null;
 }
