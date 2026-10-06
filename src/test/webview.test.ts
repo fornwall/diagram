@@ -2198,6 +2198,39 @@ suite("webview", function () {
     }
   });
 
+  test("finds the items of treemaps by their paths, in the order Mermaid draws them", async () => {
+    const cases: [string, string[]][] = [
+      [
+        // Mermaid draws the larger section first, and cuts a long title short.
+        'treemap-beta\n"Frontend services of the shop"\n  "Web": 6\n  "Other": 3\n"Backend"\n  "API": 30\n  "Other": 15\n  "Jobs"\n    "Mail": 1',
+        [
+          "Backend/API: API 30",
+          "Backend/Jobs/Mail: Mail 1",
+          "Backend/Jobs: Jobs 1",
+          "Backend/Other: Other 15",
+          "Backend: Backend 46",
+          "Frontend services of the shop/Other: Other 3",
+          "Frontend services of the shop/Web: Web 6",
+          "Frontend services of the shop: Frontend serv... 9",
+        ],
+      ],
+    ];
+    for (const [source, items] of cases) {
+      await draw({ source });
+      // Each item with the texts drawn for it.
+      const found = await evaluate(`(() => {
+        const texts = new Map();
+        for (const element of document.querySelectorAll("#diagram [data-diagram-id]")) {
+          const id = element.getAttribute("data-diagram-id");
+          const drawn = element.matches("text") ? [element] : [...element.querySelectorAll("text")];
+          texts.set(id, [...(texts.get(id) ?? []), ...drawn.map(text => text.textContent.trim()).filter(Boolean)]);
+        }
+        return [...texts].map(([id, drawn]) => id + ": " + drawn.join(" ")).sort();
+      })()`);
+      assert.deepStrictEqual(found, items, source);
+    }
+  });
+
   test("explains that the panel loads no images that a diagram links to", async () => {
     assert.strictEqual(
       await renderError(

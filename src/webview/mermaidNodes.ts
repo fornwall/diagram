@@ -23,7 +23,15 @@ export const WITH_DATABASE = new Set([
   "sankey",
   "architecture",
   "c4",
+  "treemap",
 ]);
+
+/** An item of a tree that Mermaid draws, below a root without a name. */
+interface TreeItem {
+  name: string;
+  value?: number;
+  children?: TreeItem[];
+}
 
 export interface DiagramDb {
   getData?(): {
@@ -63,6 +71,8 @@ export interface DiagramDb {
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
+  /** A treemap's sections and leaves. */
+  getRoot?(): TreeItem;
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -166,6 +176,19 @@ export function findNodes(
     next.set(name, n);
     named.add(id);
     return id;
+  };
+  /** The items of a tree in the order of the source, which go by their paths, as chart items do. */
+  const treeNodes = (root: TreeItem) => {
+    const nodes = new Map<TreeItem, DiagramNode>();
+    const visit = (item: TreeItem, path: string) => {
+      for (const child of item.children ?? []) {
+        const id = uniqueId(path + child.name);
+        nodes.set(child, { id, label: child.name });
+        visit(child, `${id}/`);
+      }
+    };
+    visit(root, "");
+    return nodes;
   };
 
   // Nodes, icon and image shapes among them, and groups (subgraphs, composite states, kanban
@@ -357,6 +380,42 @@ export function findNodes(
   for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
     const label = textOf(element);
     add(element, { id: uniqueId(label), label });
+  }
+
+  // Treemap sections and leaves, whose titles Mermaid may cut short. d3 lays them out with each
+  // section's items by their total values, largest first, and Mermaid draws the sections breadth
+  // first, after the hidden root, and then the leaves depth first.
+  const treemap = svg.querySelector(".treemapContainer") ? db?.getRoot?.() : undefined;
+  if (treemap) {
+    const nodes = treeNodes(treemap);
+    const totals = new Map<TreeItem, number>();
+    const sum = (item: TreeItem): number => {
+      const total = (item.children ?? []).reduce(
+        (value, child) => value + sum(child),
+        item.value ?? 0,
+      );
+      totals.set(item, total);
+      return total;
+    };
+    sum(treemap);
+    const children = (item: TreeItem) =>
+      (item.children ?? []).toSorted((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+    const isSection = (item: TreeItem) => !!item.children?.length;
+    const sections = children(treemap).filter(isSection);
+    for (let i = 0; i < sections.length; i++) {
+      sections.push(...children(sections[i] as TreeItem).filter(isSection));
+    }
+    const leaves: TreeItem[] = [];
+    const addLeaves = (item: TreeItem): void => {
+      for (const child of children(item)) {
+        if (isSection(child)) addLeaves(child);
+        else leaves.push(child);
+      }
+    };
+    addLeaves(treemap);
+    const node = (item: TreeItem) => nodes.get(item) as DiagramNode;
+    addInOrder(svg.querySelectorAll("g.treemapSection ~ g.treemapSection"), sections.map(node));
+    addInOrder(svg.querySelectorAll("g.treemapLeafGroup"), leaves.map(node));
   }
 
   const elements = new Map<string, Element[]>();
