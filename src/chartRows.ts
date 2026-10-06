@@ -172,13 +172,10 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
 /** Sorts rows by a key, empty keys last and equal ones in their order. */
 function sortRows(
   rows: Row[],
-  sort: ChartSpec["sort"],
+  sort: NonNullable<ChartSpec["sort"]>,
   key: (row: Row) => number | null,
   limit?: number,
 ): Row[] {
-  if (sort === undefined) {
-    return rows;
-  }
   const direction = sort === "ascending" ? 1 : -1;
   const keyed = rows.map((row, index) => ({ row, index, key: key(row) }));
   type Keyed = (typeof keyed)[number];
@@ -482,17 +479,19 @@ export function readRows(
   }
   const beforeLimit = rows.length;
   const combineOther = type === "pie" || type === "doughnut";
-  // A stack shows the total of its row, and a series per label of a second label column draws the
-  // rows of a first label together, so sort by the total of those rows.
-  const key =
-    isCartesian(type) && columns.labels.length >= 2
-      ? labelTotals(rows)
-      : type === "stackedBar" || type === "stackedArea"
-        ? rowTotal
-        : (row: Row) => row.values[0] ?? null;
-  rows = sortRows(rows, spec.sort, key, combineOther ? undefined : spec.limit);
-  if (spec.sort !== undefined && columns.timeAxis) {
-    notes.push("sorted the rows by value rather than in time order, which a line runs back over");
+  if (spec.sort !== undefined) {
+    // A stack shows the total of its row, and a series per label of a second label column draws
+    // the rows of a first label together, so sort by the total of those rows.
+    const key =
+      isCartesian(type) && columns.labels.length >= 2
+        ? labelTotals(rows)
+        : type === "stackedBar" || type === "stackedArea"
+          ? rowTotal
+          : (row: Row) => row.values[0] ?? null;
+    rows = sortRows(rows, spec.sort, key, combineOther ? undefined : spec.limit);
+    if (columns.timeAxis) {
+      notes.push("sorted the rows by value rather than in time order, which a line runs back over");
+    }
   }
   if (spec.limit !== undefined && beforeLimit > spec.limit) {
     if (combineOther) {
