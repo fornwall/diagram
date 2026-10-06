@@ -2,7 +2,14 @@
 
 import { columnName } from "./chartColumns";
 import { timeValue } from "./chartDates";
-import { addValues, label, noteRepeatedLabels, quantile, type Reading } from "./chartRows";
+import {
+  addValues,
+  label,
+  noteRepeatedLabels,
+  quantile,
+  type Reading,
+  type Row,
+} from "./chartRows";
 import type { CartesianType } from "./chartSpec";
 import { plural, quoteAll } from "./text";
 
@@ -300,30 +307,14 @@ export function boxplotOption({
   notes,
 }: Reading): Record<string, unknown> {
   const labeled = columns.labels.length > 0;
-  const grouped = new Map<string, number[]>();
-  if (!labeled) {
-    names.forEach((name, column) => {
-      grouped.set(
-        name,
-        rows.flatMap(({ values }) => {
-          const value = values[column];
-          return typeof value === "number" ? [value] : [];
-        }),
-      );
+  const numbers = (rows: Row[], column: number) =>
+    rows.flatMap(({ values }) => {
+      const value = values[column];
+      return typeof value === "number" ? [value] : [];
     });
-  } else {
-    for (const row of rows) {
-      const value = row.values[0];
-      if (typeof value === "number") {
-        const numbers = grouped.get(label(row));
-        if (numbers === undefined) {
-          grouped.set(label(row), [value]);
-        } else {
-          numbers.push(value);
-        }
-      }
-    }
-  }
+  const grouped: Map<string, number[]> = labeled
+    ? new Map([...Map.groupBy(rows, label)].map(([group, members]) => [group, numbers(members, 0)]))
+    : new Map(names.map((name, column) => [name, numbers(rows, column)]));
   const categories: string[] = [];
   const boxes: number[][] = [];
   const outliers: [string, number][] = [];
