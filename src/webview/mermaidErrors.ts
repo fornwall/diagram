@@ -401,13 +401,15 @@ function describe(source: string, start: number, end: number, expected?: string[
   const text = span.trim();
   let found = JSON.stringify(text.length > 30 ? `${text.slice(0, 30)}…` : text);
   if (!text) {
-    found = span
-      ? /(?:^|\n)$/.test(source.slice(0, start))
-        ? "indentation"
-        : "space"
-      : source.slice(start).trim()
-        ? "end of line"
-        : "end of the diagram";
+    // Spaces at the end of a line, or of the diagram, are not what the parser stopped at.
+    const rest = source.slice(start);
+    found = !rest.trim()
+      ? "end of the diagram"
+      : span && (rest.split("\n", 1)[0] as string).trim()
+        ? /(?:^|\n)$/.test(source.slice(0, start))
+          ? "indentation"
+          : "space"
+        : "end of line";
   }
   // A longer list is of every kind of statement, which does not help.
   const names = expected?.map((name) => (name === "EOF" ? "end of the diagram" : name)) ?? [];

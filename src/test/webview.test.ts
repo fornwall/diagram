@@ -1868,6 +1868,11 @@ suite("webview", function () {
         ["sankey", "A,B,10", "", 'B,C,"x'],
         "Parse error on line 11, column 7: unexpected end of the diagram",
       ],
+      // Spaces at the end are not what the parser stopped at.
+      [
+        ["block-beta", "  a b", "  a --> "],
+        "Parse error on line 10, column 8: unexpected end of the diagram; expected NODE_ID.",
+      ],
       [
         ["C4Context", '  Person(a, "A")', "  Rel(a,"],
         "Parse error on line 10, column 9: unexpected end of the diagram",
