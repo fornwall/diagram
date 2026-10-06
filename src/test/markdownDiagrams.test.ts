@@ -149,7 +149,6 @@ suite("markdownDiagrams", function () {
   });
 
   test("a stale CodeLens does not open a different nearby diagram", async () => {
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     const document = await vscode.workspace.openTextDocument({
       language: "markdown",
       content: "```mermaid\nflowchart TD\n```\n\n```mermaid\nsequenceDiagram\n```\n",
@@ -160,11 +159,11 @@ suite("markdownDiagrams", function () {
     // Leave the second diagram below the deleted block, as it could be in a live editor.
     edit.replace(document.uri, new vscode.Range(0, 0, 3, 0), "\n\n\n");
     assert.ok(await vscode.workspace.applyEdit(edit));
+    const warnings = recordMessages("showWarningMessage");
     await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
-    const diagrams = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
-    assert.deepStrictEqual(diagrams, []);
+    assert.deepStrictEqual(warnings, [
+      "This diagram block moved or was removed. Use its current Open in Diagram action.",
+    ]);
   });
 
   test("a CodeLens of a file that no longer exists says why it cannot open it", async () => {
