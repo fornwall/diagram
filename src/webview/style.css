@@ -88,7 +88,8 @@ button:enabled:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
-button:focus-visible {
+button:focus-visible,
+#diagram .diagram-node:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
@@ -148,11 +149,6 @@ header button:enabled:hover,
 header button:enabled:active,
 .drag-out:active {
   background: var(--vscode-toolbar-activeBackground);
-}
-
-header button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
 }
 
 .drag-out:active {
@@ -331,11 +327,6 @@ button.link:enabled:hover {
   background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
 }
 
-#splitter:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
 /* The handle only has panes to resize in the split view. */
 #panes:is(.view-visual, .view-source) #splitter {
   display: none;
@@ -382,6 +373,10 @@ textarea {
   color: var(--vscode-input-placeholderForeground);
 }
 
+/* Inside the element, as VS Code draws the focus of toolbar buttons and inputs. */
+header button:focus-visible,
+#splitter:focus-visible,
+#canvas:focus-visible,
 textarea:focus,
 input:focus,
 select:focus {
@@ -398,11 +393,6 @@ select:focus {
   /* A stable gutter keeps fitting a diagram to the width from toggling the scrollbar. */
   scrollbar-gutter: stable;
   padding: 16px;
-}
-
-#canvas:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
 }
 
 #panes.view-source #canvas {
@@ -455,11 +445,6 @@ select:focus {
 
 #diagram .diagram-node {
   cursor: pointer;
-}
-
-#diagram .diagram-node:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
 }
 
 /* A rendering larger than the panel is dragged around to scroll it; see pan.ts. */
