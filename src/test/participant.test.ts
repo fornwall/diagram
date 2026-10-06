@@ -544,6 +544,14 @@ suite("participant", () => {
     assert.doesNotMatch(prompt, /diagram_/);
     assert.match(shown, /^Fake cannot call tools, so the attached tools are left out\.\n\n/);
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
+    // Nor is it told that it has tools to explain a diagram with.
+    const explained = await ask([[text("It flows.")]], {
+      command: "explain",
+      capabilities: { supportsToolCalling: false },
+    });
+    const instructions = messageText(explained.sent[0]?.messages[0]);
+    assert.match(instructions, /^You are @diagram in VS Code\. Explain/);
+    assert.doesNotMatch(instructions, /the available tools/);
   });
 
   test("does not run tools that the model was not given", async () => {
