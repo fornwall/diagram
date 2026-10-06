@@ -302,11 +302,9 @@ export class MermaidRenderer implements Renderer {
               ? canvas.clientHeight
               : 1);
         const factor = WHEEL_ZOOM ** (-Math.max(-100, Math.min(100, pixels)) / 100);
-        if (wheel) {
-          wheel = { factor: wheel.factor * factor, x: event.clientX, y: event.clientY };
-          return;
-        }
-        wheel = { factor, x: event.clientX, y: event.clientY };
+        const pending = wheel !== undefined;
+        wheel = { factor: (wheel?.factor ?? 1) * factor, x: event.clientX, y: event.clientY };
+        if (pending) return;
         requestAnimationFrame(() => {
           if (wheel && this.displayedSource !== undefined) {
             this.zoomBy(wheel.factor, wheel.x, wheel.y);
