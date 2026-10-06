@@ -949,6 +949,16 @@ suite("participant", () => {
         attached ?? "",
         /attached-folder, which could not be read: it is a folder; list its files with diagram_findFiles and the glob "attached-folder\/\*\*"$/,
       );
+      // A model that calls no tools cannot list them, so the user is told it was left out.
+      const toolless = await ask([[text(valid)]], {
+        references: [{ id: "folder", value: folder }],
+        capabilities: { supportsToolCalling: false },
+      });
+      assert.match(
+        toolless.shown,
+        /^Left out attached-folder: it is a folder, whose files are not attached\.\n\n/,
+      );
+      assert.doesNotMatch(toolless.sent[0]?.messages.map(messageText).join("\n") ?? "", /diagram_/);
     } finally {
       await vscode.workspace.fs.delete(folder, { recursive: true });
     }

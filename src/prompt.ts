@@ -120,11 +120,11 @@ export async function promptMessages(
     ? EXPLAIN_INSTRUCTIONS
     : [ROLE, callsTools ? TOOL_USE : NO_TOOL_USE, WRITING].join("\n");
   const documents = new Map<string, Thenable<vscode.TextDocument>>();
-  const attachments = await readAttachments(request, documents, model);
+  const attachments = await readAttachments(request, documents, callsTools, model);
   throwIfCancelled(token);
   const images = attachments.filter((attachment) => "image" in attachment);
   const imageKeys = new Set(images.flatMap((image) => image.keys));
-  const exchanges = await pastExchanges(context.history, documents, imageKeys);
+  const exchanges = await pastExchanges(context.history, documents, callsTools, imageKeys);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -380,6 +380,7 @@ function sum(numbers: number[]): number {
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
+  callsTools: boolean,
   imageKeys: ReadonlySet<string>,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
@@ -390,7 +391,7 @@ async function pastExchanges(
       exchanges.push(exchange);
       // Later requests often refer to the files, selections and text attached to earlier ones.
       reads.push(
-        readAttachments(turn, documents, undefined, imageKeys).then((attachments) => {
+        readAttachments(turn, documents, callsTools, undefined, imageKeys).then((attachments) => {
           exchange.attachments = attachments.map((attachment) => attachmentText(attachment));
         }),
       );
@@ -425,6 +426,7 @@ async function pastExchanges(
 async function readAttachments(
   { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
   documents: Map<string, Thenable<vscode.TextDocument>>,
+  callsTools: boolean,
   model: vscode.LanguageModelChat | undefined,
   imageKeys: ReadonlySet<string> = new Set(),
 ): Promise<Attachment[]> {
@@ -432,7 +434,7 @@ async function readAttachments(
   const attachments = await Promise.all(
     references
       .toReversed()
-      .map((reference) => readAttachment(reference, documents, model, imageKeys)),
+      .map((reference) => readAttachment(reference, documents, callsTools, model, imageKeys)),
   );
   const unique = new Map<string, Attachment>();
   for (const attachment of attachments) {
@@ -469,6 +471,7 @@ function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH):
 async function readAttachment(
   { id, value, modelDescription }: vscode.ChatPromptReference,
   documents: Map<string, Thenable<vscode.TextDocument>>,
+  callsTools: boolean,
   model: vscode.LanguageModelChat | undefined,
   imageKeys: ReadonlySet<string>,
 ): Promise<Attachment | undefined> {
@@ -515,7 +518,7 @@ async function readAttachment(
   } catch (error) {
     // openDocument says why in a sentence that names the file.
     return (
-      (location ? undefined : await readFolder(name, uri)) ?? {
+      (location ? undefined : await readFolder(name, uri, callsTools)) ?? {
         name,
         error: errorMessage(error),
         named: true,
@@ -614,11 +617,21 @@ function contentKey(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-/** A folder, as attached with #folder, has no text, but the workspace tools can explore it. */
-async function readFolder(name: string, uri: vscode.Uri): Promise<Attachment | undefined> {
+/**
+ * A folder, as attached with #folder, has no text, but the workspace tools can explore it, when the
+ * model calls tools.
+ */
+async function readFolder(
+  name: string,
+  uri: vscode.Uri,
+  callsTools: boolean,
+): Promise<Attachment | undefined> {
   const stat = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch(() => undefined);
   if (!stat || !(stat.type & vscode.FileType.Directory)) {
     return undefined;
+  }
+  if (!callsTools) {
+    return { name, error: "it is a folder, whose files are not attached" };
   }
   const glob = filesGlob(uri);
   if (glob === undefined) {
