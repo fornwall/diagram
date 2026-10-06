@@ -570,7 +570,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
         tables.length > 1
           ? `The data has ${tables.length} Markdown tables; only the first (${lines}) was read.`
           : `Only the Markdown table (${lines}) was read, not the text around it.`;
-      return { ...splitText(all.slice(table.start, table.end).join("\n"), format), note };
+      const inner = splitText(all.slice(table.start, table.end).join("\n"), format);
+      // What the table itself left out, as rows of "...", is noted after it.
+      return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
     }
   }
   const elidedRows = all.some(isElision);

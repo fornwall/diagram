@@ -1253,6 +1253,12 @@ suite("data", () => {
       parseTable(`${answer}\n\n| a | b |\n|---|---|\n| y | 2 |`).note,
       "The data has 2 Markdown tables; only the first (lines 3\u20136) was read.",
     );
+    // Rows that the table left out are noted too.
+    assert.strictEqual(
+      parseTable("Top files:\n| file | lines |\n|---|---|\n| a | 1 |\n| ... | ... |").note,
+      "Only the Markdown table (lines 2\u20135) was read, not the text around it. Only the rows " +
+        "that the output shows were read, not those it left out.",
+    );
     // A table alone has no note, and a delimiter row needs as many cells as the header.
     assert.strictEqual(parseTable("| a | b |\n|---|---|\n| x | 1 |").note, undefined);
     assert.strictEqual(
