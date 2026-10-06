@@ -9,7 +9,10 @@ export class WebviewChannel implements vscode.Disposable {
   static readonly viewType = "diagram.panel";
 
   private panel: vscode.WebviewPanel | undefined;
-  /** Messages wait for the page's "ready"; each load of the page is a new generation. */
+  /**
+   * Messages sent before the page's "ready" are dropped, as the panel sends what the page needs
+   * once it is ready. Each load of the page is a new generation.
+   */
   private ready = false;
   private generation = 0;
 
