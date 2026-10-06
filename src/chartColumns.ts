@@ -1,7 +1,7 @@
 // Which columns of a table a chart reads, and in which role: given in the request, or inferred.
 
 import { dateFormat } from "./chartDates";
-import { CARTESIAN_TYPES, type ChartSpec, type ChartType } from "./chartSpec";
+import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
 import { plural, quoteAll } from "./text";
@@ -41,6 +41,11 @@ export function findColumns(
     );
   }
   return indices;
+}
+
+/** Whether a chart draws a series per value column, or per label of a second label column. */
+export function isCartesian(type: ChartType): type is CartesianType {
+  return (CARTESIAN_TYPES as readonly ChartType[]).includes(type);
 }
 
 /** Whether a chart reads its labels as the levels of a hierarchy or the stages of a flow. */
@@ -166,12 +171,12 @@ const COLUMN_COUNTS: Record<ChartType, { labels: number; values: number; needed:
   pie: { labels: 1, values: 1, needed: 1 },
   doughnut: { labels: 1, values: 1, needed: 1 },
   funnel: { labels: 1, values: 1, needed: 1 },
-  bar: { labels: 1, values: Infinity, needed: 1 },
-  horizontalBar: { labels: 1, values: Infinity, needed: 1 },
-  stackedBar: { labels: 1, values: Infinity, needed: 1 },
-  line: { labels: 1, values: Infinity, needed: 1 },
-  area: { labels: 1, values: Infinity, needed: 1 },
-  stackedArea: { labels: 1, values: Infinity, needed: 1 },
+  bar: { labels: 2, values: Infinity, needed: 1 },
+  horizontalBar: { labels: 2, values: Infinity, needed: 1 },
+  stackedBar: { labels: 2, values: Infinity, needed: 1 },
+  line: { labels: 2, values: Infinity, needed: 1 },
+  area: { labels: 2, values: Infinity, needed: 1 },
+  stackedArea: { labels: 2, values: Infinity, needed: 1 },
   scatter: { labels: 1, values: 2, needed: 2 },
   radar: { labels: 1, values: Infinity, needed: 2 },
   treemap: { labels: Infinity, values: 1, needed: 1 },
@@ -208,8 +213,9 @@ function columnCount(count: number, role: string): string {
 }
 
 /**
- * Sankey, heatmap and boxplot read one value column when labels identify each flow, cell or group;
- * otherwise they read one value column per target, heatmap column or box.
+ * Sankey, heatmap, boxplot and Cartesian charts read one value column when labels identify each
+ * flow, cell, group or series; otherwise they read one value column per target, heatmap column, box
+ * or series.
  */
 function shownValues(type: ChartType, labels: number, separator: boolean, times: boolean): number {
   switch (type) {
@@ -219,6 +225,12 @@ function shownValues(type: ChartType, labels: number, separator: boolean, times:
     case "sankey":
       return labels >= 2 || separator ? 1 : Infinity;
     case "heatmap":
+    case "bar":
+    case "horizontalBar":
+    case "stackedBar":
+    case "line":
+    case "area":
+    case "stackedArea":
       return labels >= 2 ? 1 : Infinity;
     case "boxplot":
       return labels >= 1 ? 1 : Infinity;
@@ -242,7 +254,9 @@ function categoryAxisOverride(spec: ChartSpec): boolean {
 function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): number[] {
   const most = COLUMN_COUNTS[spec.type].labels;
   if (spec.labelColumn === undefined) {
-    if (most > 1) {
+    // A Cartesian chart takes a second label column for its series only when given one: two text
+    // columns are as often a name and a description.
+    if (most > 1 && !isCartesian(spec.type)) {
       return defaultLabelColumns(table, most);
     }
     const single = defaultLabelColumn(table, spec.type === "scatter");
@@ -283,26 +297,32 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
         'them. Leave "limit" out, and select rows with "filters" instead.',
     );
   }
+  if (isCartesian(type) && labels.length >= 2 && spec.limit !== undefined) {
+    throw new Error(
+      `A series per label of ${JSON.stringify(name(labels[1] ?? 0))} draws every row, and ` +
+        '"limit" would leave out parts of the series. Leave "limit" out, and select rows with ' +
+        '"filters" instead.',
+    );
+  }
   const only = labels.length === 1 ? labels[0] : undefined;
-  const quotedOnly = JSON.stringify(name(only ?? 0));
 
   // A hierarchy and a flow read levels of their own from the paths in a single label column.
   const separator =
     only !== undefined && readsLevels(type) ? pathSeparator(table, only) : undefined;
   if (separator !== undefined) {
-    notes.push(`split ${quotedOnly} on ${JSON.stringify(separator)} into levels`);
+    notes.push(
+      `split ${JSON.stringify(name(only ?? 0))} on ${JSON.stringify(separator)} into levels`,
+    );
   }
 
   // Dates place points along an axis, with proportional spacing on a time axis.
-  const alongAxis = (CARTESIAN_TYPES as readonly ChartType[]).includes(type) || type === "scatter";
+  const axis = isCartesian(type) || type === "scatter" ? labels[0] : undefined;
   const times =
-    only !== undefined && alongAxis
-      ? dateFormat(table.rows.map((row) => String(row[only] ?? "")))
-      : undefined;
+    axis === undefined ? undefined : dateFormat(table.rows.map((row) => String(row[axis] ?? "")));
   const timeAxis = times !== undefined && !categoryAxisOverride(spec);
   if (timeAxis) {
     notes.push(
-      `read ${quotedOnly} as ${times} on a time axis; ` +
+      `read ${JSON.stringify(name(axis ?? 0))} as ${times} on a time axis; ` +
         `{"${labelAxis(type)}": {"type": "category"}} in "options" reads them as labels instead`,
     );
   }

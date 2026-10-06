@@ -77,8 +77,8 @@ export type ChartSpec = ChartData & {
   format?: DataFormat;
   /**
    * The column with the labels (categories, pie slice names, scatter point names), or several
-   * columns for the levels of a treemap or sunburst, the source and target of a sankey, or the
-   * rows and columns of a heatmap.
+   * columns for the levels of a treemap or sunburst, the source and target of a sankey, the rows
+   * and columns of a heatmap, or the categories of a Cartesian chart and a series per label.
    */
   labelColumn?: string | string[];
   /** The columns with the values, one series each. */

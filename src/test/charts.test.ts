@@ -11,6 +11,10 @@ const LANGUAGES = parseTable(
   ["language,files,lines", "ts,10,1200", "css,3,300", "md,5,150", "json,2,80"].join("\n"),
 );
 
+/** Rows in long format, a row per point of each series, with two rows for one point. */
+const LONG =
+  "month,region,sales\n2026-01,EU,5\n2026-01,US,7\n2026-02,EU,6\n2026-03,US,9\n2026-03,US,1";
+
 function chart(
   type: ChartType,
   extra: Partial<Omit<ChartSpec, "data" | "file" | "command">> = {},
@@ -292,6 +296,51 @@ suite("charts", () => {
 
   test("scatter needs two numeric columns", () => {
     assert.throws(() => build(chart("scatter", { valueColumns: ["files"] })), /two numeric/);
+  });
+
+  test("a second label column draws a series per label, as rows in long format give", () => {
+    const wide = (spec: ChartSpec, table = LONG) => {
+      const option = build(spec, table);
+      return {
+        x: option.xAxis.data,
+        series: option.series.map((s: Option) => [s.name, s.data]),
+      };
+    };
+    const categories = { options: { xAxis: { type: "category" } } };
+    assert.deepStrictEqual(
+      wide(chart("bar", { labelColumn: ["month", "region"], ...categories })),
+      {
+        x: ["2026-01", "2026-02", "2026-03"],
+        series: [
+          ["EU", [5, 6, null]],
+          ["US", [7, null, 10]],
+        ],
+      },
+    );
+    assert.match(
+      summary(chart("bar", { labelColumn: ["month", "region"], ...categories }), LONG),
+      /^Charted "sales" by "month", a series per label of "region"; added 1 row to the point of an earlier row with the same labels; "aggregate" combines them another way\.$/,
+    );
+    // On a time axis, a line runs through the times of its own series, while a stack needs a
+    // point at every time.
+    const line = build(chart("line", { labelColumn: ["month", "region"] }), LONG);
+    assert.deepStrictEqual(line.series[1].data, [
+      ["2026-01", 7],
+      ["2026-03", 10],
+    ]);
+    const stacked = build(chart("stackedArea", { labelColumn: ["month", "region"] }), LONG);
+    assert.deepStrictEqual(stacked.series[1].data[1], ["2026-02", null]);
+    // Without a second label column given, a second text column is not read as series.
+    assert.strictEqual(build(chart("bar"), "name,team,score\na,x,1\nb,y,2").series.length, 1);
+    assert.throws(
+      () => build(chart("bar", { labelColumn: ["month", "region"], limit: 2 }), LONG),
+      /"limit" would leave out parts of the series/,
+    );
+    const many = `month,region,sales\n${Array.from({ length: 51 }, (_, i) => `2026-01,r${i},1`).join("\n")}`;
+    assert.throws(
+      () => build(chart("bar", { labelColumn: ["month", "region"] }), many),
+      /51 series, more than the 50/,
+    );
   });
 
   test("stackedArea stacks its areas", () => {
@@ -1589,6 +1638,8 @@ suite("charts", () => {
         [chart("scatter"), dated],
         [chart("scatter", { aggregate: "count" }), dated],
         [chart("horizontalBar"), dated],
+        [chart("stackedArea", { labelColumn: ["month", "region"] }), LONG],
+        [chart("line", { labelColumn: ["month", "region"] }), LONG],
       ];
       for (const [spec, table] of charts) {
         const option = build(spec, table);

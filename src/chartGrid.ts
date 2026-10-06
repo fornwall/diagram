@@ -25,28 +25,105 @@ const FEW_POINTS = 30;
 const LARGE_BARS = 400;
 const LARGE_POINTS = 2000;
 
+/** More series than this cannot be told apart by their colors, nor found in their legend. */
+const MOST_SERIES = 50;
+
+/** A series of a Cartesian chart: a value, or none, for each point along the label axis. */
+interface Series {
+  name: string;
+  values: (number | null)[];
+}
+
+/**
+ * The points along the label axis, and a series per label of the second label column: the long
+ * format that a database query or a log gives, with a row per point of each series.
+ */
+function pivotSeries({ table, columns, rows, notes }: Reading): {
+  points: string[];
+  series: Series[];
+} {
+  const points = new Map<string, number>();
+  const names = new Set<string>();
+  for (const row of rows) {
+    if (!points.has(label(row))) points.set(label(row), points.size);
+    names.add(row.labels[1] ?? "");
+  }
+  if (names.size > MOST_SERIES) {
+    throw new Error(
+      `A series per label of ${JSON.stringify(columnName(table, columns.labels[1] ?? 0))} would ` +
+        `be ${names.size} series, more than the ${MOST_SERIES} that can be told apart. Select ` +
+        'fewer with "filters", or give "labelColumn" as a single column.',
+    );
+  }
+  const series = new Map(
+    [...names].map((name) => [
+      name,
+      { name, values: Array<number | null>(points.size).fill(null) },
+    ]),
+  );
+  let added = 0;
+  for (const row of rows) {
+    const value = row.values[0] ?? null;
+    const values = series.get(row.labels[1] ?? "")?.values;
+    const point = points.get(label(row));
+    if (value === null || values === undefined || point === undefined) continue;
+    const previous = values[point] ?? null;
+    if (previous === null) {
+      values[point] = value;
+    } else {
+      values[point] = addValues(previous, value);
+      added++;
+    }
+  }
+  noteAdded(notes, added, "point");
+  return { points: [...points.keys()], series: [...series.values()] };
+}
+
+/** Notes how many rows were added to an earlier row's point or cell, as rows of the same labels. */
+function noteAdded(notes: string[], added: number, item: string): void {
+  if (added > 0) {
+    notes.push(
+      `added ${plural(added, "row")} to the ${item} of an earlier row with the same labels; ` +
+        '"aggregate" combines them another way',
+    );
+  }
+}
+
 /**
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
 export function cartesianOption(type: CartesianType, reading: Reading): Record<string, unknown> {
   const { table, columns, names, rows } = reading;
-  if (!columns.timeAxis) {
-    noteRepeatedLabels(reading, "category", "categories");
+  const pivot = columns.labels.length >= 2;
+  let points: string[];
+  let series: Series[];
+  if (pivot) {
+    ({ points, series } = pivotSeries(reading));
+  } else {
+    if (!columns.timeAxis) {
+      noteRepeatedLabels(reading, "category", "categories");
+    }
+    points = rows.map(label);
+    series = names.map((name, column) => ({
+      name,
+      values: rows.map(({ values }) => values[column] ?? null),
+    }));
   }
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
-  // Every value series uses the same time coordinate; parse offsets and fractions once per row.
-  const times = columns.timeAxis ? rows.map((row) => timeValue(label(row))) : undefined;
+  // Every series uses the same time coordinate; parse offsets and fractions once per point.
+  const times = columns.timeAxis ? points.map(timeValue) : undefined;
+  // On a time axis, a series per label has points at its own times, and a line through them
+  // rather than a gap where another series has a point. A stack needs a point at every time.
+  const ownTimes = times !== undefined && pivot && CARTESIAN_SERIES[type].stack === undefined;
   const categoryAxis = {
     type: times === undefined ? "category" : "time",
-    ...(times === undefined
-      ? { data: rows.map(label), ...(line ? { boundaryGap: false } : {}) }
-      : {}),
+    ...(times === undefined ? { data: points, ...(line ? { boundaryGap: false } : {}) } : {}),
     // Put the first row at the top of a horizontal chart.
     ...(horizontal ? { inverse: true } : {}),
     // Keep labels at the edge when an axis through zero would cover negative values.
-    ...(rows.some(({ values }) => values.some((value) => value !== null && value < 0))
+    ...(series.some(({ values }) => values.some((value) => value !== null && value < 0))
       ? { axisLine: { onZero: false } }
       : {}),
   };
@@ -61,22 +138,22 @@ export function cartesianOption(type: CartesianType, reading: Reading): Record<s
   return {
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
-    series: names.map((name, column) => ({
+    series: series.map(({ name, values }) => ({
       ...CARTESIAN_SERIES[type],
       name,
-      ...(line && rows.length > FEW_POINTS ? { showSymbol: false } : {}),
+      ...(line && points.length > FEW_POINTS ? { showSymbol: false } : {}),
       // ECharts samples where points outnumber pixels. Sampling each series of a stack on its own
       // would misalign them, and it does not stack large bars.
-      ...(line && rows.length > FEW_POINTS && type !== "stackedArea" ? { sampling: "lttb" } : {}),
-      ...(rows.length >= LARGE_BARS && (type === "bar" || type === "horizontalBar")
+      ...(line && points.length > FEW_POINTS && type !== "stackedArea" ? { sampling: "lttb" } : {}),
+      ...(points.length >= LARGE_BARS && (type === "bar" || type === "horizontalBar")
         ? { large: true }
         : {}),
-      ...(names.length > 1 ? { emphasis: { focus: "series" } } : {}),
-      data: rows.map((row, index) => {
-        const value = row.values[column] ?? null;
-        if (times === undefined) return value;
+      ...(series.length > 1 ? { emphasis: { focus: "series" } } : {}),
+      data: values.flatMap((value, index) => {
+        if (times === undefined) return [value];
+        if (value === null && ownTimes) return [];
         const time = times[index];
-        return horizontal ? [value, time] : [time, value];
+        return [horizontal ? [value, time] : [time, value]];
       }),
     })),
   };
@@ -185,12 +262,7 @@ export function heatmapOption({
   if (data.length === 0) {
     throw new Error(`A heatmap needs numbers, but ${quoteAll(names)} holds none.`);
   }
-  if (summed > 0) {
-    notes.push(
-      `added ${plural(summed, "row")} to the cell of an earlier row with the same labels; ` +
-        '"aggregate" combines them another way',
-    );
-  }
+  noteAdded(notes, summed, "cell");
   if (empty > 0) {
     notes.push(`left out ${plural(empty, "cell")} without a value`);
   }

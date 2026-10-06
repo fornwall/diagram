@@ -214,7 +214,7 @@
                   "minItems": 1
                 }
               ],
-              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), or heatmap rows/columns. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
+              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), heatmap rows/columns, or the categories of a bar, line or area chart and a series per label of the second, for rows such as month,region,sales. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
             },
             "valueColumns": {
               "type": "array",
@@ -222,7 +222,7 @@
                 "type": "string"
               },
               "minItems": 1,
-              "description": "Value columns, one series each. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use only the first, scatter the first two (x, y); boxplot uses its raw numbers."
+              "description": "Value columns, one series each, or the first alone with a series per label. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use only the first, scatter the first two (x, y); boxplot uses its raw numbers."
             },
             "max": {
               "type": "number",

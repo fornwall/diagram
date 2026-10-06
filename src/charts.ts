@@ -163,7 +163,9 @@ function summarize({ spec, table, columns, names }: Reading): string {
     case "boxplot":
       return `Charted the spread of ${values}${whenLabeled}`;
     default:
-      return `Charted ${values}${by}`;
+      return labels.length >= 2
+        ? `Charted ${values} by ${first}, a series per label of ${second}`
+        : `Charted ${values}${by}`;
   }
 }
 
