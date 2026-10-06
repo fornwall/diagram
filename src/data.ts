@@ -223,6 +223,7 @@ function tableFromRecords(
  * 5. git diff --stat output, or a table drawn with pipes (Markdown, psql, mysql, sqlite3);
  * 6. CSV, with commas or semicolons;
  * 7. whitespace-separated columns, aligned under a header (docker ps, df, free) or not (du, wc).
+ * A first line such as "sep=;", as Excel writes, makes it CSV with the delimiter that it names.
  *
  * Numbers such as "1,234", "1,5" (in a column with decimal commas), "12%" and "1.5K" (see
  * {@link parseNumber} and {@link numberFormat}) become numbers, and empty cells null, as do

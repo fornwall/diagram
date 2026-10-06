@@ -297,6 +297,20 @@ suite("data", () => {
     assert.deepStrictEqual(parse("fruit;kg\napples;12\npears;3", "csv"), expected);
   });
 
+  test("reads the delimiter that a first sep= line names, as Excel writes it", () => {
+    for (const format of ["auto", "csv", "tsv"] as const) {
+      assert.deepStrictEqual(parse("﻿sep=;\r\nname;value\r\na;1,5\r\nb;2\r\n", format), {
+        columns: ["name", "value"],
+        rows: [
+          ["a", 1.5],
+          ["b", 2],
+        ],
+      });
+    }
+    assert.deepStrictEqual(parse("sep=|\nname|value\na,b|1").rows, [["a,b", 1]]);
+    assert.throws(() => parseTable('sep=,\na,b\n"x,1'), /starts on line 3 is not closed/);
+  });
+
   test("reports unclosed CSV quotes instead of falling back to whitespace", () => {
     for (const format of ["auto", "csv"] as const) {
       for (const delimiter of [",", ";"]) {

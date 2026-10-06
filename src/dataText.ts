@@ -583,6 +583,12 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
  * those that parseTable (in data.ts) lists.
  */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
+  // Excel writes and reads a first line such as "sep=;" that names the delimiter. It is left as an
+  // empty line, which is skipped, so that errors count lines as an editor does.
+  const declared = /^sep=([^\r\n])(?=\r|\n|$)/.exec(text);
+  if (declared?.[1] !== undefined) {
+    return { ...splitDelimited(text.slice(declared[0].length), declared[1]), csv: true };
+  }
   const all = text.split(/\r\n?|\n/);
   if (format === "auto") {
     // A Markdown table in a document or a chat answer, with text or more tables around it.
