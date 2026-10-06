@@ -69,8 +69,11 @@ export function quantile(sorted: number[], share: number): number {
   const at = (sorted.length - 1) * share;
   const below = Math.floor(at);
   const left = sorted[below] ?? 0;
-  const right = sorted[below + 1] ?? left;
-  const fraction = at - below;
+  return interpolate(left, sorted[below + 1] ?? left, at - below);
+}
+
+/** The number a fraction of the way from `left` to `right`. */
+export function interpolate(left: number, right: number, fraction: number): number {
   // Weighted interpolation avoids overflow when opposite signs make the difference infinite.
   const difference = right - left;
   return Number.isFinite(difference)

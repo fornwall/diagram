@@ -1,6 +1,7 @@
 // Host-side analytical transforms, keeping generated ECharts options as plain JSON.
 
 import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
+import { interpolate } from "./chartRows";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -193,12 +194,7 @@ function roundBins(
 function evenEdges(minimum: number, maximum: number, bins: number): number[] {
   const edges = [minimum];
   for (let i = 1; i < bins; i++) {
-    // Subtraction can overflow for opposite signs; weighted interpolation remains finite.
-    const fraction = i / bins;
-    const range = maximum - minimum;
-    const edge = Number.isFinite(range)
-      ? minimum + range * fraction
-      : minimum * (1 - fraction) + maximum * fraction;
+    const edge = interpolate(minimum, maximum, i / bins);
     if (edge > (edges.at(-1) ?? minimum) && edge < maximum) edges.push(edge);
   }
   if (maximum > minimum) edges.push(maximum);
