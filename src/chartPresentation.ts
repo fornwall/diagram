@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { ChartSpec } from "./chartSpec";
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
-import { isPlainObject } from "./protocol";
+import { errorMessage, isPlainObject } from "./protocol";
 
 type ObjectOption = Record<string, unknown>;
 type Path = (string | number)[];
@@ -63,7 +63,12 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
     if (!isPlainObject(value)) return value;
     return Object.fromEntries(
       Object.entries(value).flatMap(([key, item]) => {
-        if (UNSAFE_KEYS.has(key)) throw new Error("This source contains unsupported option keys.");
+        if (UNSAFE_KEYS.has(key)) {
+          const where = path.map((part) => (typeof part === "number" ? `[${part}]` : `.${part}`));
+          throw new Error(
+            `Refresh cannot preserve styling in a source with the key ${JSON.stringify(key)}${where.length ? ` in ${where.join("").slice(1)}` : ""}, which is not a chart option. Remove it.`,
+          );
+        }
         const location = [...path, key];
         const component = path[0];
         const structural =
@@ -120,8 +125,14 @@ export function captureChartPresentation(
   try {
     // Generated options are already JSON objects. Serializing and reparsing them here would
     // duplicate every data point just to discard the data from the styling baseline.
-    const option: unknown = typeof source === "string" ? JSON.parse(source) : source;
-    if (!isPlainObject(option)) throw new Error("The chart source must be a JSON option object.");
+    const option: unknown = typeof source === "string" ? parseJson(source) : source;
+    if (!isPlainObject(option)) {
+      const kind =
+        option === null ? "null" : Array.isArray(option) ? "an array" : `a ${typeof option}`;
+      throw new Error(
+        `Refresh can preserve styling only when the source is one JSON object of chart options, not ${kind}.`,
+      );
+    }
     const current = snapshot(option);
     if (!previous) return { ...current, edits: [] };
     if (current.dataHash !== previous.dataHash) {
@@ -135,11 +146,21 @@ export function captureChartPresentation(
       edits: differences(previous.baseline, current.baseline),
       blocked: undefined,
     };
-  } catch {
+  } catch (error) {
     return {
       ...(previous ?? { baseline: {}, dataHash: "", edits: [] }),
-      blocked: `Refresh can preserve styling only in JSON source; JavaScript callbacks and invalid JSON cannot be safely rebuilt. ${RECOVERY}`,
+      blocked: `${errorMessage(error)} ${RECOVERY}`,
     };
+  }
+}
+
+function parseJson(source: string): unknown {
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw new Error(
+      "Refresh can preserve styling only in JSON source; JavaScript callbacks and invalid JSON cannot be safely rebuilt.",
+    );
   }
 }
 

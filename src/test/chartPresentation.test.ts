@@ -309,6 +309,28 @@ suite("chart presentation", () => {
     );
   });
 
+  test("says which JSON cannot keep styling, rather than blaming callbacks", () => {
+    const baseline = captureChartPresentation(JSON.stringify(buildChart(spec, oldTable).option));
+    for (const [source, message] of [
+      ["[]", /only when the source is one JSON object of chart options, not an array\./],
+      ["null", /not null\./],
+      [
+        '{"__proto__": {"color": ["red"]}}',
+        /with the key "__proto__", which is not a chart option/,
+      ],
+      [
+        '{"series": [{"itemStyle": {"constructor": 1}}]}',
+        /the key "constructor" in series\[0\]\.itemStyle,/,
+      ],
+    ] as const) {
+      const blocked = captureChartPresentation(source, baseline).blocked ?? "";
+      assert.match(blocked, message);
+      assert.match(blocked, /Your source is kept\./);
+      assert.doesNotMatch(blocked, /JavaScript callbacks/);
+    }
+    assert.match(captureChartPresentation("[]").blocked ?? "", /not an array/);
+  });
+
   test("JSON key order is immaterial and null is preserved as an explicit option value", () => {
     const presentation = edited((option) => {
       option.series[0].itemStyle = { color: null };
