@@ -55,6 +55,8 @@ export interface TreeNode {
   parentNode?: TreeNode;
   children: TreeNode[];
   dataIndex: number;
+  /** Whether the node of a tree series shows its children, which a click on it toggles. */
+  isExpand: boolean;
   getRawIndex(): number;
 }
 
@@ -83,6 +85,11 @@ export interface SeriesModel {
   getBaseAxis(): { inverse: boolean; isHorizontal?(): boolean } | undefined;
   /** The data of each type, such as the nodes and edges of a graph, after filtering. */
   getAllData(): { data: ItemData }[];
+  /** Where the force layout of a graph left its nodes, by id, which a new layout goes on from. */
+  preservedPoints?: Record<string, number[]> | undefined;
+  /** The node that a treemap or sunburst is drilled down to, and a way to drill down. */
+  getViewRoot?(): TreeNode;
+  resetViewRoot?(node: TreeNode): void;
 }
 
 interface GlobalModel {

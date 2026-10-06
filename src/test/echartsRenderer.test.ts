@@ -1,6 +1,10 @@
 import * as assert from "node:assert";
+import { init as initECharts } from "echarts";
+import type * as ECharts from "echarts/core";
+import { modelOf } from "../webview/echartsItems";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { itemsOf, withChart } from "./echartsModel";
+import { testColors } from "./themeColors";
 
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
 function interactionRenderer() {
@@ -20,6 +24,53 @@ function interactionRenderer() {
     relayout: () => relayouts++,
   });
   return { renderer, actions, relayouts: () => relayouts };
+}
+
+/**
+ * Draws the option, changes the chart as a user would, and lays it out again for another width as
+ * a resize of the panel does, reading the chart before and after.
+ */
+function relayout<T>(
+  option: Record<string, unknown>,
+  change: (chart: ECharts.ECharts) => void,
+  read: (chart: ECharts.ECharts) => T,
+): [T, T] {
+  const chart = initECharts(null, undefined, {
+    renderer: "svg",
+    ssr: true,
+    width: 400,
+    height: 300,
+  });
+  const shown = chart as unknown as ECharts.ECharts;
+  const container = { clientWidth: 400, clientHeight: 300 };
+  const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
+  Object.assign(renderer, {
+    echarts: {},
+    chart,
+    container,
+    option,
+    title: "",
+    theme: { colors: testColors, echarts: {} },
+    annotation: { marks: [], dim: false },
+    selectedKeys: new Set(),
+    reducedMotion: { matches: true },
+    focus: { chartChanged: () => {} },
+  });
+  const apply = (relayout: boolean) =>
+    (renderer as unknown as { apply(animate: boolean, relayout: boolean): void }).apply(
+      false,
+      relayout,
+    );
+  try {
+    apply(false);
+    change(shown);
+    const before = read(shown);
+    container.clientWidth = 360;
+    apply(true);
+    return [before, read(shown)];
+  } finally {
+    chart.dispose();
+  }
 }
 
 const item = (dataIndex: number) => ({ seriesIndex: 0, dataType: undefined, dataIndex });
@@ -179,5 +230,56 @@ suite("echartsRenderer interactions", () => {
         }
       });
     }
+  });
+
+  test("keeps a force layout, a drilled-down treemap and expanded tree nodes in a new layout", () => {
+    const nodes = ["A", "B", "C", "D", "E"].map((name) => ({ name }));
+    const links = [
+      { source: "A", target: "B" },
+      { source: "B", target: "C" },
+      { source: "C", target: "D" },
+    ];
+    // Laid out at once rather than over frames, to read where the nodes end up.
+    const graph = { type: "graph", layout: "force", force: { layoutAnimation: false } };
+    const [placed, kept] = relayout(
+      { series: [{ ...graph, data: nodes, links }] },
+      () => {},
+      (chart) => ({ ...modelOf(chart).getSeriesByIndex(0)?.preservedPoints }),
+    );
+    // A force layout goes on from where it left the nodes, rather than from random places.
+    assert.deepStrictEqual(kept, placed);
+
+    const tree = {
+      name: "root",
+      children: [
+        { name: "a", children: [{ name: "a1", value: 1 }] },
+        { name: "b", value: 1 },
+      ],
+    };
+    const viewRoot = (chart: ECharts.ECharts) =>
+      modelOf(chart).getSeriesByIndex(0)?.getViewRoot?.().dataIndex;
+    for (const type of ["treemap", "sunburst"]) {
+      const [drilled, still] = relayout(
+        { series: [{ type, data: [tree] }] },
+        (chart) =>
+          chart.dispatchAction({ type: `${type}RootToNode`, seriesIndex: 0, targetNodeId: "a" }),
+        viewRoot,
+      );
+      assert.strictEqual(drilled, 2, type);
+      assert.strictEqual(still, drilled, type);
+    }
+
+    const expanded = (chart: ECharts.ECharts) => {
+      const data = modelOf(chart).getSeriesByIndex(0)?.getRawData();
+      return [1, 2].map((index) => data?.tree?.getNodeByDataIndex(index).isExpand);
+    };
+    const [toggled, same] = relayout(
+      { series: [{ type: "tree", data: [tree] }] },
+      (chart) =>
+        chart.dispatchAction({ type: "treeExpandAndCollapse", seriesIndex: 0, dataIndex: 2 }),
+      expanded,
+    );
+    assert.deepStrictEqual(toggled, [true, false]);
+    assert.deepStrictEqual(same, toggled);
   });
 });

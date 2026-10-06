@@ -5,7 +5,14 @@ import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { ChartFocus } from "./echartsFocus";
-import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
+import {
+  ChartItems,
+  type ItemRef,
+  itemKey,
+  modelOf,
+  parseItemKey,
+  type SeriesModel,
+} from "./echartsItems";
 import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
@@ -96,7 +103,6 @@ export class EChartsRenderer implements Renderer {
     this.container.setAttribute("aria-label", title.trim() || "Chart");
     this.selectedKeys = new Set();
     this.annotation = UNMARKED;
-    this.chartItems = undefined;
     try {
       this.apply(true);
     } catch (error) {
@@ -283,19 +289,29 @@ export class EChartsRenderer implements Renderer {
     if (this.blurring()) {
       focusHighlighted(option);
     }
-    if (relayout && this.chart) {
-      const chart = this.chart;
-      keepUserState(option, () => chart.getOption() as JsonObject);
+    const shown = relayout ? this.chart : undefined;
+    if (shown) {
+      keepUserState(option, () => shown.getOption() as JsonObject);
+    }
+    const restoreState = shown && modelState(shown);
+    if (themeChanged) {
+      // An instance draws in the theme it was made with, and setTheme would make a new model,
+      // without the state handed over below.
+      this.chart?.dispose();
+      this.chart = undefined;
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
-    if (themeChanged) {
-      // setTheme draws the chart again. Leave the option to it, so that it draws only once.
+    if (restoreState) {
+      // The state goes to the model of the option before it is laid out, and resize draws it.
       this.chart.setOption(option, { notMerge: true, lazyUpdate: true });
-      this.chart.setTheme(this.theme.echarts);
+      restoreState(this.chart);
+      this.chart.resize({ width, height });
     } else {
       this.chart.setOption(option, { notMerge: true });
     }
     this.laidOut = laidOut;
+    // The items name the data of the model of the previous option, which they would keep alive.
+    this.chartItems = undefined;
     this.shownSelected = [];
     this.syncSelection();
     this.highlightMarks();
@@ -440,4 +456,40 @@ export class EChartsRenderer implements Renderer {
       chart.dispatchAction({ type: "select", batch: added });
     }
   }
+}
+
+/**
+ * What the user changed in a shown chart that ECharts keeps in its model rather than its option,
+ * and a new option would start over from: where the force layout of a graph left its nodes, which
+ * it would place anew at random, the node a treemap or sunburst is drilled down to, and the nodes
+ * of a tree that are expanded. Returns how to hand it to the model of the same option laid out
+ * anew, before that is laid out.
+ */
+function modelState(chart: ECharts.ECharts): (chart: ECharts.ECharts) => void {
+  const restores: ((series: SeriesModel) => void)[] = [];
+  modelOf(chart).eachRawSeries((series) => {
+    const points = series.preservedPoints;
+    const viewRoot = series.getViewRoot?.().dataIndex;
+    const tree = series.subType === "tree" ? series.getRawData().tree : undefined;
+    const expanded: boolean[] = [];
+    if (tree) {
+      for (let index = 0, count = series.getRawData().count(); index < count; index++) {
+        expanded[index] = tree.getNodeByDataIndex(index).isExpand;
+      }
+    }
+    restores[series.componentIndex] = (next) => {
+      next.preservedPoints = points;
+      const nextTree = next.getRawData().tree;
+      if (viewRoot !== undefined && nextTree) {
+        next.resetViewRoot?.(nextTree.getNodeByDataIndex(viewRoot));
+      }
+      expanded.forEach((isExpand, index) => {
+        const node = nextTree?.getNodeByDataIndex(index);
+        if (node) node.isExpand = isExpand;
+      });
+    };
+  });
+  return (next) => {
+    modelOf(next).eachRawSeries((series) => restores[series.componentIndex]?.(series));
+  };
 }
