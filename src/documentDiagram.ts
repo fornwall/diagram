@@ -29,7 +29,7 @@ type WriteOutcome = { written: true; fence: DiagramFence } | { written: false; r
  * Replaces an unchanged fence's content with an undoable workspace edit, preserving fence markers,
  * block quote markers, indentation and line endings. Refuses ambiguous or changed blocks, and
  * source that would not read back unchanged. isCurrent guards against panel changes while opening
- * the document.
+ * the document. An edit that races with typing in the document is made again on what it holds now.
  */
 export async function writeFence(
   binding: DocumentBinding,
@@ -49,58 +49,74 @@ export async function writeFence(
   } catch (error) {
     return { written: false, reason: `Could not write the ${noun}: ${errorMessage(error)}` };
   }
-  if (isCurrent && !isCurrent()) {
-    return {
-      written: false,
-      reason: "The diagram changed before it could be written. Review it and write it again.",
-    };
-  }
   const changed = {
     written: false,
     reason: `The ${binding.fence.language} block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
   } as const;
-  const fence = relocateFence(findDocumentDiagramFences(document), binding.fence);
-  if (!fence) {
-    return changed;
-  }
-  if (fence.source === diagram) {
-    return { written: true, fence };
-  }
-  const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
-  // The scan read this text, so the replacement is located in the text rather than in VS Code's
-  // lines, whatever either makes of unusual line breaks.
-  const rewrite = rewriteFence(document.getText(), fence, diagram, eol);
-  if (!rewrite) {
-    return changed;
-  }
-  if (!("fence" in rewrite)) {
-    const line = diagram.split("\n")[rewrite.endingLine];
-    return {
-      written: false,
-      reason: `The ${noun} contains a closing Markdown fence on line ${rewrite.endingLine + 1}, ${JSON.stringify(line)}, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,
-    };
-  }
-  const range = new vscode.Range(
-    document.positionAt(rewrite.start),
-    document.positionAt(rewrite.end),
-  );
-  const edit = new vscode.WorkspaceEdit();
-  edit.replace(document.uri, range, rewrite.text);
-  try {
-    if (!(await vscode.workspace.applyEdit(edit))) {
+  for (let attempt = 1; ; attempt++) {
+    if (isCurrent && !isCurrent()) {
+      return {
+        written: false,
+        reason: "The diagram changed before it could be written. Review it and write it again.",
+      };
+    }
+    const fence = relocateFence(findDocumentDiagramFences(document), binding.fence);
+    if (!fence) {
+      return changed;
+    }
+    if (fence.source === diagram) {
+      return { written: true, fence };
+    }
+    const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+    // The scan read this text, so the replacement is located in the text rather than in VS Code's
+    // lines, whatever either makes of unusual line breaks.
+    const rewrite = rewriteFence(document.getText(), fence, diagram, eol);
+    if (!rewrite) {
+      return changed;
+    }
+    if (!("fence" in rewrite)) {
+      const line = diagram.split("\n")[rewrite.endingLine];
+      return {
+        written: false,
+        reason: `The ${noun} contains a closing Markdown fence on line ${rewrite.endingLine + 1}, ${JSON.stringify(line)}, so it was not written to ${name}. Use a longer fence around the block in the document and reopen it.`,
+      };
+    }
+    const range = new vscode.Range(
+      document.positionAt(rewrite.start),
+      document.positionAt(rewrite.end),
+    );
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(document.uri, range, rewrite.text);
+    const version = document.version;
+    try {
+      if (await vscode.workspace.applyEdit(edit)) {
+        return { written: true, fence: rewrite.fence };
+      }
+    } catch (error) {
+      return {
+        written: false,
+        reason: `Could not write the ${noun} to ${name}: ${errorMessage(error)}`,
+      };
+    }
+    if (document.version === version) {
       return {
         written: false,
         reason: `Could not write the ${noun} to ${name}: VS Code refused the edit. Check that the file is not read-only.`,
       };
     }
-  } catch (error) {
-    return {
-      written: false,
-      reason: `Could not write the ${noun} to ${name}: ${errorMessage(error)}`,
-    };
+    // VS Code refuses an edit of a document that changed after the edit was made, as when the user
+    // types meanwhile. Find the block again in what the document holds now.
+    if (attempt === MAX_WRITE_ATTEMPTS) {
+      return {
+        written: false,
+        reason: `Could not write the ${noun} to ${name}, as the file kept changing. Write it again.`,
+      };
+    }
   }
-  return { written: true, fence: rewrite.fence };
 }
+
+/** How often a write is tried while the document changes under it. */
+const MAX_WRITE_ATTEMPTS = 3;
 
 /**
  * Confirms writing to the original document a diagram that an agent replaced, or that JavaScript

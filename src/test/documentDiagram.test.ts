@@ -245,6 +245,46 @@ suite("documentDiagram", function () {
     }
   });
 
+  test("writeFence writes again when the user types while the edit is applied", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const read = binding(document);
+    const original = vscode.workspace.applyEdit;
+    let attempts = 0;
+    /** Types into the document before the first edit arrives, which VS Code then refuses. */
+    function typeFirst(line: number, text: string): void {
+      attempts = 0;
+      vscode.workspace.applyEdit = async (edit) => {
+        if (attempts++ > 0) {
+          return original(edit);
+        }
+        const typing = new vscode.WorkspaceEdit();
+        typing.insert(document.uri, new vscode.Position(line, 0), text);
+        assert.ok(await original(typing));
+        return false;
+      };
+    }
+    try {
+      typeFirst(0, "# Notes\n\n");
+      const outcome = await writeFence(read, "flowchart LR");
+      assert.ok(outcome.written);
+      assert.strictEqual(attempts, 2);
+      assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
+      assert.strictEqual(outcome.fence.openingLine, 2);
+
+      // Typing in the block itself leaves the block to the user.
+      typeFirst(4, "  A --> B\n");
+      const typedInBlock = await writeFence({ ...read, fence: outcome.fence }, "flowchart RL");
+      assert.ok(!typedInBlock.written);
+      assert.match(typedInBlock.reason, /has changed/);
+      assert.strictEqual(
+        document.getText(),
+        "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
+      );
+    } finally {
+      vscode.workspace.applyEdit = original;
+    }
+  });
+
   test("writeFence leaves a block that changed or is gone alone", async () => {
     const changed = await markdown("```mermaid\nflowchart TD\n```\n");
     const edited = binding(changed);
