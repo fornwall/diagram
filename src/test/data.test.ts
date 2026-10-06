@@ -234,6 +234,33 @@ suite("data", () => {
     ]);
   });
 
+  test("parses go test -bench output into a column for each measure", () => {
+    const table = parseTable(
+      [
+        "goos: linux",
+        "goarch: amd64",
+        "pkg: example.com/parse",
+        "cpu: AMD Ryzen 7 5800X 8-Core Processor",
+        "BenchmarkParse-16     \t  952141\t      1234 ns/op\t     560 B/op\t       7 allocs/op",
+        "BenchmarkRender-16    \t   41020\t     29071 ns/op\t   12.5 MB/s",
+        "PASS",
+        "ok  \texample.com/parse\t3.456s",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(table.columns, [
+      { name: "Benchmark", numeric: false },
+      { name: "Iterations", numeric: true },
+      { name: "time/op", numeric: true, unit: "seconds" },
+      { name: "B/op", numeric: true, unit: "bytes" },
+      { name: "allocs/op", numeric: true },
+      { name: "MB/s", numeric: true },
+    ]);
+    assert.deepStrictEqual(table.rows, [
+      ["BenchmarkParse-16", 952141, 1234e-9, 560, 7, null],
+      ["BenchmarkRender-16", 41020, 29071e-9, null, null, 12.5],
+    ]);
+  });
+
   test("parseNumber leaves other text alone", () => {
     for (const text of [
       "",

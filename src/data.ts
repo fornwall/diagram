@@ -231,7 +231,7 @@ const TERMINAL_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\
  * The format is the first of these that fits, from the most specific to the most general:
  * 1. JSON, or JSON Lines, if the text starts with "{", or with "[" and ends with "]";
  * 2. the first Markdown table, if there is text or another table around it;
- * 3. ls -l output;
+ * 3. ls -l or go test -bench output;
  * 4. TSV, if most lines have tabs, unless the first has none or an unclosed quote and CSV fits;
  * 5. git diff --stat output, or a table drawn with pipes (Markdown, psql, mysql, sqlite3);
  * 6. CSV, with commas or semicolons;

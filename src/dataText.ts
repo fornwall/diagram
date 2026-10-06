@@ -472,6 +472,35 @@ function splitLs(lines: string[]): Records | undefined {
   return { records: [header, ...files], header: true, units };
 }
 
+/** A result of go test -bench: a name, its iterations and measures ("1234 ns/op", "56 B/op"). */
+const GO_BENCHMARK = /^(Benchmark\S+)\s+(\d+)((?:\s+\d+(?:\.\d+)? \S+)+)\s*$/;
+
+/**
+ * Splits the output of go test -bench into a column for each measure, named by its unit, with the
+ * time per operation in seconds and the memory in bytes, leaving out the lines around the results
+ * ("goos: linux", "PASS"). Returns undefined unless every other line is a result.
+ */
+function splitGoBenchmarks(lines: string[]): Records | undefined {
+  const header = ["Benchmark", "Iterations"];
+  const records = [header];
+  for (const line of lines) {
+    const [, name = "", iterations = "", measures] = GO_BENCHMARK.exec(line) ?? [];
+    if (measures === undefined) {
+      if (/^(?:\w+: |PASS$|FAIL\b|ok\s)/.test(line)) continue;
+      return undefined;
+    }
+    const record = [name, iterations];
+    for (const [, value = "", unit = ""] of measures.matchAll(/(\S+) (\S+)/g)) {
+      const column = unit === "ns/op" ? "time/op" : unit;
+      if (!header.includes(column)) header.push(column);
+      record[header.indexOf(column)] = unit === "ns/op" ? `${value}ns` : value;
+    }
+    records.push(record);
+  }
+  const units = header.map((name): Unit | undefined => (name === "B/op" ? "bytes" : undefined));
+  return records.length > 1 ? { records, header: true, units } : undefined;
+}
+
 interface Token {
   text: string;
   start: number;
@@ -664,9 +693,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
   );
   if (format === "auto") {
-    const ls = splitLs(lines);
-    if (ls !== undefined) {
-      return ls;
+    const output = splitLs(lines) ?? splitGoBenchmarks(lines);
+    if (output !== undefined) {
+      return output;
     }
   }
   const tabs = lines.filter((line) => line.includes("\t")).length;
