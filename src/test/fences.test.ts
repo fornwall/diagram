@@ -351,6 +351,22 @@ suite("fences", () => {
     );
   });
 
+  test("rewriteFence keeps the blank lines around the source as they are", () => {
+    assert.strictEqual(
+      rewritten("```mermaid\n\nA\n  \n```\nAfter\n", "B\n\nC"),
+      "```mermaid\n\nB\n\nC\n  \n```\nAfter\n",
+    );
+    assert.strictEqual(
+      rewritten("> ```mermaid\r\n>\r\n> A\r\n>\r\n> ```\r\n", "B", "\r\n"),
+      "> ```mermaid\r\n>\r\n> B\r\n>\r\n> ```\r\n",
+    );
+    // Also at the end of a block that is never closed.
+    assert.strictEqual(rewritten("```mermaid\nA\n\t", "B\nC"), "```mermaid\nB\nC\n\t");
+    assert.strictEqual(rewritten("```mermaid\n\nA", "B\nC"), "```mermaid\n\nB\nC");
+    // A closing fence in the source is reported by its line in the source.
+    assert.strictEqual(rewritten("```mermaid\n\n\nA\n```\n", "B\nC\n```\nD"), 2);
+  });
+
   test("findDiagramFences and rewriteFence keep lines of no-break spaces around a diagram", () => {
     // Only lines of spaces and tabs are blank in Markdown.
     assert.deepStrictEqual(sources("```mermaid\n \t\n\u00a0\nA\n\u00a0\n\n```"), [

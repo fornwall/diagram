@@ -410,9 +410,12 @@ export class FenceScanner {
  * only spaces and tabs: a no-break space is content.
  */
 export function trimBlankLines(lines: readonly string[]): string {
-  const content = (line: string) => !/^[ \t]*$/.test(line);
-  const first = lines.findIndex(content);
-  return first === -1 ? "" : lines.slice(first, lines.findLastIndex(content) + 1).join("\n");
+  const first = lines.findIndex(isContent);
+  return first === -1 ? "" : lines.slice(first, lines.findLastIndex(isContent) + 1).join("\n");
+}
+
+function isContent(line: string): boolean {
+  return !/^[ \t]*$/.test(line);
 }
 
 /** A Markdown diagram with zero-based line positions for write-back. */
@@ -510,10 +513,34 @@ interface FenceRewrite {
   fence: DiagramFence;
 }
 
+/** The block in `text` that opens at a line, with the content lines of the given language. */
+function blockAt(text: string, language: string, openingLine: number): CodeBlock | undefined {
+  for (const block of codeBlocks(text, (found) => found === language)) {
+    if (block.openingLine >= openingLine) {
+      return block.openingLine === openingLine ? block : undefined;
+    }
+  }
+  return undefined;
+}
+
+/** The offset at which a line starts, counting lines from the one at `from`. */
+function lineOffset(text: string, lines: number, from = 0): number {
+  let offset = from;
+  for (let line = 0; line < lines; line++) {
+    const newline = text.indexOf("\n", offset);
+    if (newline === -1) {
+      return text.length;
+    }
+    offset = newline + 1;
+  }
+  return offset;
+}
+
 /**
- * Replaces the content of a block found in `text` with `source`, which has no blank lines around
- * it, writing every line behind the block's prefix. Returns the zero-based source line that would
- * end the block early, or undefined if the block would not read back as the source for another reason.
+ * Replaces the source of a block found in `text` with `source`, which has no blank lines around
+ * it, writing every line behind the block's prefix. The blank lines around the old source are
+ * kept, as the user laid them out. Returns the zero-based source line that would end the block
+ * early, or undefined if the block would not read back as the source for another reason.
  */
 export function rewriteFence(
   text: string,
@@ -521,43 +548,37 @@ export function rewriteFence(
   source: string,
   eol: string,
 ): FenceRewrite | { endingLine: number } | undefined {
+  const { language, openingLine } = fence;
+  const read = blockAt(text, language, openingLine);
+  if (read?.lastLine !== fence.lastLine) {
+    return undefined;
+  }
+  // The lines from the first to the last line of the old source.
+  const first = openingLine + 1 + read.lines.findIndex(isContent);
+  const last = openingLine + 1 + read.lines.findLastIndex(isContent);
+  const start = lineOffset(text, first);
+  const end = lineOffset(text, last + 1 - first, start);
   // Empty lines carry the prefix up to its last marker: a quoted empty line still needs its ">".
   const empty = fence.prefix.trimEnd();
   const lines = source.split("\n");
   const replacement = lines.map((line) => (line ? fence.prefix + line : empty)).join(eol);
-  let start = 0;
-  let end: number | undefined;
-  let newlines = 0;
-  for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) {
-    newlines++;
-    if (newlines === fence.openingLine + 1) {
-      start = index + 1;
-    } else if (newlines === fence.lastLine + 1) {
-      end = index + 1;
-      break;
-    }
+  // The old source's last line, which is not empty, has no line break to keep at the end of the text.
+  const replaced = text[end - 1] === "\n" ? replacement + eol : replacement;
+  const written = text.slice(0, start) + replaced + text.slice(end);
+  const lastLine = fence.lastLine + lines.length - (last + 1 - first);
+  const block = blockAt(written, language, openingLine);
+  if (block && block.lastLine < lastLine) {
+    return { endingLine: block.lastLine + 1 - first };
   }
-  // The last content line of a block that is never closed may have no line break to keep.
-  const replaced = end === undefined ? replacement : replacement + eol;
-  const written = text.slice(0, start) + replaced + text.slice(end ?? text.length);
-  const lastLine = fence.openingLine + lines.length;
-  for (const block of codeBlocks(written, (language) => language === fence.language)) {
-    if (block.openingLine < fence.openingLine) continue;
-    if (block.openingLine > fence.openingLine) break;
-    if (block.lastLine < lastLine) {
-      return { endingLine: block.lastLine - fence.openingLine };
-    }
-    if (block.lastLine === lastLine && block.lines.join("\n") === source) {
-      const { openingLine, prefix } = block;
-      return {
-        start,
-        end: end ?? text.length,
-        text: replaced,
-        fence: { language: fence.language, source, openingLine, lastLine, prefix },
-      };
-    }
+  if (block?.lastLine !== lastLine || trimBlankLines(block.lines) !== source) {
+    return undefined;
   }
-  return undefined;
+  return {
+    start,
+    end,
+    text: replaced,
+    fence: { language, source, openingLine, lastLine, prefix: block.prefix },
+  };
 }
 
 /** Open the enclosing fence, the next below the cursor, or the last in the document. */
