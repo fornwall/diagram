@@ -352,16 +352,15 @@ const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\||[\u2502\u2503\u2506\u2551]/;
 const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
 
 /**
- * Splits a table with "|" or "│" between cells, as in Markdown, printed by psql, mysql, sqlite3
- * and DuckDB, or by sqlite3 and psql -A without spaces. A leading and trailing pipe are optional.
+ * Splits a row of a table with "|" or "│" between cells, as in Markdown, printed by psql, mysql,
+ * sqlite3 and DuckDB, or by sqlite3 and psql -A without spaces. A leading and trailing pipe are
+ * optional.
  */
-function splitPipes(lines: string[]): string[][] {
-  return lines.map((line) => {
-    const cells = line.trim().split(PIPE);
-    if (cells.length > 1 && cells[0] === "") cells.shift();
-    if (cells.length > 1 && cells.at(-1) === "") cells.pop();
-    return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
-  });
+function pipeCells(line: string): string[] {
+  const cells = line.trim().split(PIPE);
+  if (cells.length > 1 && cells[0] === "") cells.shift();
+  if (cells.length > 1 && cells.at(-1) === "") cells.pop();
+  return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
 }
 
 /**
@@ -385,7 +384,7 @@ function markdownTables(lines: string[]): { start: number; end: number }[] {
       delimiter.includes("|") &&
       DELIMITER_ROW.test(delimiter.trim()) &&
       !RULE.test(header) &&
-      splitPipes([header])[0]?.length === splitPipes([delimiter])[0]?.length
+      pipeCells(header).length === pipeCells(delimiter).length
     ) {
       let end = i + 2;
       while (end < lines.length && PIPE.test(lines[end] ?? "")) end++;
@@ -622,7 +621,7 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
     if (diffStat !== undefined) {
       return diffStat;
     }
-    const records = splitPipes(lines);
+    const records = lines.map(pipeCells);
     const width = records[0]?.length ?? 0;
     // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
     // cells beyond it are left out.
