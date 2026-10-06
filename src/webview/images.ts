@@ -22,6 +22,83 @@ const NOT_IN_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
 const HTML_LABEL_WITH_FALLBACK = "switch > foreignObject:not(:has(math))";
 
+/**
+ * A computed value as applications that read SVG 1.1 also know it: they may not read a quoted
+ * url() or a transparent color, which would paint black.
+ */
+function portable(property: string, value: string): string {
+  if ((property === "fill" || property === "stroke") && value === "rgba(0, 0, 0, 0)") return "none";
+  return value.replace(/url\("(#[\w-]+)"\)/g, "url($1)");
+}
+
+/**
+ * Writes what the drawing's style sheets give each element into its style attribute, and leaves
+ * the sheets only the keyframes of its animations. Mermaid styles its drawings with rules such as
+ * `#id .node rect`, which applications that read SVG without a browser engine may ignore, misread
+ * or fail to parse, such as Illustrator, Figma, Office and older Inkscape: shapes come out black.
+ * Every one of them reads a style attribute. The drawing must be in the document to be styled.
+ *
+ * The root keeps no style, as standaloneSvg drops it: its children are given what it passes on.
+ */
+export function inlineStyleSheets(svg: SVGSVGElement): void {
+  // Style the drawing as it is drawn on its own, inheriting nothing from the panel, such as its
+  // font, which Mermaid draws in too: its rule for the font would otherwise seem to change nothing.
+  // Only its color stays, which standaloneSvg gives the image.
+  const isolated = document.createElement("div");
+  isolated.style.all = "initial";
+  isolated.style.color = getComputedStyle(svg).color;
+  svg.replaceWith(isolated);
+  // Moving a style element parses its sheet anew: read the sheets where they now are.
+  isolated.append(svg);
+  try {
+    const sheets = [...svg.querySelectorAll("style")].flatMap((style) => style.sheet ?? []);
+    const rules = sheets.flatMap((sheet) => [...sheet.cssRules]);
+    const declared = new Set<string>();
+    const onRoot = new Set<string>();
+    for (const rule of rules) {
+      if (!(rule instanceof CSSStyleRule)) continue;
+      // Custom properties are resolved where they are used.
+      const names = [...rule.style].filter((name) => !name.startsWith("--"));
+      for (const name of names) declared.add(name);
+      if (svg.matches(rule.selectorText)) for (const name of names) onRoot.add(name);
+    }
+    const properties = [...declared];
+    const elements = [
+      ...svg.querySelectorAll<SVGElement | HTMLElement | MathMLElement>(":not(style, title, desc)"),
+    ];
+    const styled = elements.map((element) => {
+      const style = getComputedStyle(element);
+      return properties.map((name) => style.getPropertyValue(name));
+    });
+    for (const sheet of sheets) sheet.disabled = true;
+    // In document order, so that each element inherits what its parent was given. What the root
+    // passes on, such as Mermaid's font size, must not come from where the image is put instead.
+    elements.forEach((element, index) => {
+      const style = getComputedStyle(element);
+      const child = element.parentNode === svg;
+      properties.forEach((name, at) => {
+        const value = styled[index]?.[at] ?? "";
+        if (style.getPropertyValue(name) !== value || (child && onRoot.has(name))) {
+          element.style.setProperty(name, portable(name, value));
+        }
+      });
+    });
+    // Keep the keyframes of animated edges.
+    const animated = new Set(
+      styled.flatMap((values) => values[properties.indexOf("animation-name")]?.split(", ") ?? []),
+    );
+    for (const style of svg.querySelectorAll("style")) {
+      const kept = [...(style.sheet?.cssRules ?? [])].filter(
+        (rule) => rule instanceof CSSKeyframesRule && animated.has(rule.name),
+      );
+      if (kept.length > 0) style.textContent = kept.map((rule) => rule.cssText).join("\n");
+      else style.remove();
+    }
+  } finally {
+    isolated.replaceWith(svg);
+  }
+}
+
 /** Clones the drawing with a background, without panel interaction attributes or link targets. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;

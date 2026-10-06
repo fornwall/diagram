@@ -3,7 +3,7 @@
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
-import { type DiagramImage, standaloneSvg } from "./images";
+import { type DiagramImage, inlineStyleSheets, standaloneSvg } from "./images";
 import { describeError, parsableSource } from "./mermaidErrors";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
@@ -480,6 +480,7 @@ export class MermaidRenderer implements Renderer {
       centerTextLabels(parsed);
       if (diagramType === "gantt") thinAxisLabels(parsed);
       showAllText(parsed);
+      inlineStyleSheets(parsed);
       const image = standaloneSvg(parsed, background);
       parsed.remove();
       return image;

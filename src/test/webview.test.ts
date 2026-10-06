@@ -1577,6 +1577,50 @@ suite("webview", function () {
     );
   });
 
+  test("exports Mermaid images that draw the same without their style sheets", async () => {
+    const sources = [
+      ...Object.values(MERMAID),
+      // Classes, styles of nodes and edges, and an animated edge, which keeps its keyframes.
+      `flowchart LR
+        A e1@--> B --> C
+        e1@{ animate: true }
+        classDef hot fill:#f96,stroke:#333,stroke-width:4px
+        class B hot
+        style C fill:#bbf,stroke-dasharray: 5 5
+        linkStyle 1 stroke:#ff3`,
+      // Hollow arrowheads, which Mermaid fills in a transparent color.
+      "classDiagram\n  Animal o-- Leg\n  Animal <|-- Duck",
+    ];
+    for (const source of sources) {
+      await draw({ source });
+      const drawn = (await evaluate(`(async () => {
+        ${DRAG_IMAGE}
+        const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+        const pixels = async (markup) => {
+          const image = new Image();
+          image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup);
+          await image.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          const context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0);
+          return context.getImageData(0, 0, canvas.width, canvas.height).data;
+        };
+        const styled = await pixels(svg);
+        const unstyled = await pixels(svg.replace(/<style[^]*?<\\/style>/g, ""));
+        return {
+          same: styled.every((value, index) => value === unstyled[index]),
+          // Such as a quoted url() or a transparent color, which not every application reads.
+          portable: !/url\\("|rgba\\(/.test(svg),
+          // A style sheet is left only for the keyframes of an animation.
+          keyframes: /<style>@keyframes/.test(svg) === svg.includes("animation-name"),
+        };
+      })()`)) as { same: boolean; portable: boolean; keyframes: boolean };
+      assert.deepStrictEqual(drawn, { same: true, portable: true, keyframes: true }, source);
+    }
+  });
+
   test("exports Mermaid labels as SVG text despite diagram configuration", async () => {
     const exported = async (source: string) => {
       await draw({ source });
