@@ -202,6 +202,17 @@ suite("blocks", () => {
       },
       // The end of a block quote ends a block in it.
       { markdown: "> ```mermaid\n> A\nEnd", source: "A", shown: "End" },
+      // A line that ends a code block by leaving its block quote or list item may open a diagram.
+      {
+        markdown: "> ```js\n> x\n```mermaid\nA\n```\nEnd",
+        source: "A",
+        shown: "> ```js\n> x\nEnd",
+      },
+      {
+        markdown: "- ```js\n  x\n\n  y\n```mermaid\nA\n```\n",
+        source: "A",
+        shown: "- ```js\n  x\n\n  y\n",
+      },
       // Indentation is spaces and tabs only.
       { markdown: "\u00a0```mermaid\nA\n```\n", shown: "\u00a0```mermaid\nA\n```\n" },
       // A diagram fence inside another code block is just code.

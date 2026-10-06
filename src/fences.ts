@@ -163,8 +163,16 @@ function continues(cursor: Cursor, container: Container): boolean {
     return false;
   }
   cursor.skip(container.width);
-  container.empty = false;
   return true;
+}
+
+/** Consumes the containers that a line continues, returning how many it continues. */
+function continued(cursor: Cursor, containers: readonly Container[]): number {
+  let matched = 0;
+  while (matched < containers.length && continues(cursor, containers[matched] as Container)) {
+    matched++;
+  }
+  return matched;
 }
 
 /**
@@ -261,15 +269,31 @@ export class FenceScanner {
     return this.code !== undefined;
   }
 
+  /**
+   * Whether a line that starts with this text is sure to belong to the open code block, as its
+   * content or closing fence, rather than end it by leaving the block's block quote or list item.
+   */
+  continuesCode(start: string): boolean {
+    const { containers } = this;
+    if (containers.length === 0) {
+      return true;
+    }
+    const cursor = new Cursor(start);
+    // Until a line has more than indentation, it may yet turn out to be blank or less indented.
+    return continued(cursor, containers) === containers.length && cursor.nonspace() < start.length;
+  }
+
   /** Reads the next line, without its line break. */
   next(text: string): FenceLine {
     const line = text.endsWith("\r") ? text.slice(0, -1) : text;
     const cursor = new Cursor(line);
     const { containers } = this;
-    let matched = 0;
-    for (const container of containers) {
-      if (!continues(cursor, container)) break;
-      matched++;
+    const matched = continued(cursor, containers);
+    if (cursor.nonspace() < line.length) {
+      // A list item that started with a blank line holds something now.
+      for (const container of containers.slice(0, matched)) {
+        if (container !== ">") container.empty = false;
+      }
     }
     const all = matched === containers.length;
     if (this.code) {

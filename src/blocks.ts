@@ -131,8 +131,9 @@ export class DiagramBlockFilter {
       start = newline + 1;
     }
     this.line += fragment.slice(start);
+    // A line that ends another code block, by leaving its block quote or list item, may open one.
     const hidden = this.scanner.inCode
-      ? this.diagram !== undefined
+      ? this.diagram !== undefined || (this.passed === 0 && !this.scanner.continuesCode(this.line))
       : this.passed === 0 && mayOpenDiagramBlock(this.line);
     if (!hidden) {
       // Once a line is visible, only inspect new text; rescanning a long streamed line is quadratic.
