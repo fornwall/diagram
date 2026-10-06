@@ -2290,6 +2290,21 @@ suite("webview", function () {
           "edge:Kettle → Power: <line> <line>",
         ],
       ],
+      [
+        'cynefin-beta\n  complex\n    "Discovery"\n    "Complex"\n  clear\n    "Payroll"\n  complex --> complicated : "Learn"\n  clear --> chaotic',
+        [
+          "Complex: Complex",
+          "Discovery: Discovery",
+          "Payroll: Payroll",
+          "chaotic: <rect> Chaotic",
+          "clear: <rect> Clear",
+          "complex: <rect> Complex",
+          "complicated: <rect> Complicated",
+          "confusion: <path> Confusion",
+          "edge:clear → chaotic: <path> <path>",
+          "edge:complex → complicated: <path> <path> Learn",
+        ],
+      ],
     ];
     for (const [source, items] of cases) {
       await draw({ source });

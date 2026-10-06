@@ -29,6 +29,7 @@ export const WITH_DATABASE = new Set([
   "treeView",
   "venn",
   "wardley",
+  "cynefin",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -94,6 +95,8 @@ export interface DiagramDb {
     links: { source: string; target: string; label?: string }[];
     pipelines: { nodeId: string; componentIds: string[] }[];
   };
+  /** A Cynefin diagram's transitions between domains. */
+  getTransitions?(): { from: string; to: string; label?: string }[];
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -271,6 +274,15 @@ export function findNodes(
     (wardley?.nodes ?? []).map(({ id, label }) => ({ id, label })),
   );
 
+  // Cynefin domains, by their names in the source: the four quadrants, then confusion in the
+  // middle, each a background and a label.
+  const domains = Array.from(svg.querySelectorAll("text.cynefinDomainLabel"), (title) => {
+    const label = textOf(title);
+    return { id: uniqueId(label.toLowerCase()), label };
+  });
+  addInOrder(svg.querySelectorAll("rect.cynefinDomain, path.cynefinConfusion"), domains);
+  addInOrder(svg.querySelectorAll("text.cynefinDomainLabel"), domains);
+
   // Footer copies retain the participant's name, even when several share a display label.
   const participants = new Map<string, DiagramNode>();
   for (const element of svg.querySelectorAll('[data-et="participant"]')) {
@@ -418,10 +430,10 @@ export function findNodes(
     addInOrder(svg.querySelectorAll(`g.bar-plot-${i} > rect`), bars);
   }
 
-  // Timeline periods and events, quadrant chart points, and the problems and causes of Ishikawa
-  // diagrams.
+  // Timeline periods and events, quadrant chart points, the problems and causes of Ishikawa
+  // diagrams, and the items of Cynefin domains, but for the count of those left out.
   for (const element of svg.querySelectorAll(
-    "g.timeline-node, g.data-point, g.ishikawa-head-group, g.ishikawa-label-group, g.ishikawa-sub-group",
+    "g.timeline-node, g.data-point, g.ishikawa-head-group, g.ishikawa-label-group, g.ishikawa-sub-group, g.cynefin-items > g:has(> rect.cynefinItem)",
   )) {
     const label = textOf(element);
     add(element, { id: uniqueId(label), label });
@@ -593,6 +605,31 @@ function findRelationships(
       relationship: { kind, source, target, direction },
     };
   };
+  /** Adds the lines of links in order, with the labels, in order, of the links that have one. */
+  const addLines = (
+    lines: NodeListOf<Element>,
+    labels: NodeListOf<Element>,
+    links: { source: string; target: string; label?: string | undefined }[],
+  ) => {
+    if (lines.length !== links.length) return;
+    let next = 0;
+    for (const [i, { source, target, label }] of links.entries()) {
+      const text = label ? labels[next++] : undefined;
+      if (!names.has(source) || !names.has(target)) continue;
+      const line = lines[i] as Element;
+      const node = relation(
+        "edge",
+        `${source} → ${target}`,
+        source,
+        target,
+        label ?? "",
+        line.hasAttribute("marker-start"),
+        line.hasAttribute("marker-end"),
+      );
+      addLine(line, node);
+      if (text) add(text, node);
+    }
+  };
   // Edges of flowcharts and class, state, ER and requirement diagrams, which Mermaid lays out
   // alike. Diamonds, lollipops, cardinalities and "contains" circles are not arrowheads.
   const arrowhead = (marker = "") =>
@@ -688,8 +725,8 @@ function findRelationships(
     }
   }
   // Wardley map links in the order of the database, but for those that Mermaid leaves out: to
-  // components that are not there, and from a pipeline's components to the pipeline. Lines,
-  // followed by the labels of those that have one.
+  // components that are not there, and from a pipeline's components to the pipeline. The labels
+  // follow all lines.
   const wardley = db?.getWardleyData?.();
   const components = new Set((wardley?.nodes ?? []).map(({ id }) => id));
   const pipelines = new Set(
@@ -701,26 +738,21 @@ function findRelationships(
     ({ source, target }) =>
       components.has(source) && components.has(target) && !pipelines.has(`${source} → ${target}`),
   );
-  const linkLines = svg.querySelectorAll("g.wardley-links > line");
-  const linkLabels = Array.from(svg.querySelectorAll("g.wardley-links > text"));
-  if (linkLines.length === links.length) {
-    for (const [i, { source, target, label }] of links.entries()) {
-      const text = label ? linkLabels.shift() : undefined;
-      if (!names.has(source) || !names.has(target)) continue;
-      const line = linkLines[i] as Element;
-      const node = relation(
-        "edge",
-        `${source} → ${target}`,
-        source,
-        target,
-        label ?? "",
-        line.hasAttribute("marker-start"),
-        line.hasAttribute("marker-end"),
-      );
-      addLine(line, node);
-      if (text) add(text, node);
-    }
-  }
+  addLines(
+    svg.querySelectorAll("g.wardley-links > line"),
+    svg.querySelectorAll("g.wardley-links > text"),
+    links,
+  );
+  // Cynefin transitions between domains: curves, each followed by its label if it has one.
+  addLines(
+    svg.querySelectorAll("path.cynefinArrowLine"),
+    svg.querySelectorAll("text.cynefinArrowLabel"),
+    (db?.getTransitions?.() ?? []).map(({ from, to, label }) => ({
+      source: from,
+      target: to,
+      label,
+    })),
+  );
   // Architecture edges, which Mermaid draws in a group of their line, arrowheads and title, with
   // an id from their ends, as for a flowchart edge without an id: one for each pair of ends.
   const architectureEdges = (db?.getEdges?.() ?? []).flatMap(({ lhsId, rhsId, ...edge }) =>
