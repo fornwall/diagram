@@ -6,7 +6,7 @@ async function invoke(name: string, input: object): Promise<string> {
   return toolText(await vscode.lm.invokeTool(name, { input, toolInvocationToken: undefined }));
 }
 
-suite("Extension", function () {
+suite("extension", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
   suiteSetup(async () => {
@@ -209,15 +209,16 @@ suite("Extension", function () {
   });
 
   test("exposes bounded workspace discovery and file reads through registered tools", async () => {
-    const files = await invoke("diagram_findFiles", { glob: "**/sizes.tsv" });
-    assert.match(files, /sizes\.tsv/);
+    assert.strictEqual(await invoke("diagram_findFiles", { glob: "**/sizes.tsv" }), "sizes.tsv");
     const contents = await invoke("diagram_readFile", {
       file: "sizes.tsv",
       startLine: 1,
       endLine: 2,
     });
-    assert.match(contents, /sizes\.tsv/);
-    assert.match(contents, /src/);
+    assert.match(
+      contents,
+      /^sizes\.tsv, lines 1-2 of \d+:\n1: src\t120\n2: test\t30\nContinue with startLine 3\.$/,
+    );
   });
 
   test("marks the diagram already shown, and clears the marks again", async () => {
