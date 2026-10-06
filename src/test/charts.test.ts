@@ -1344,6 +1344,13 @@ suite("charts", () => {
       ["2026-01-05", 5],
     ]);
     assert.match(summary(chart("scatter"), daily), /^Charted "ms" against "date"; read "date" as /);
+    // Unless it is given two value columns to plot against each other.
+    const xy = build(
+      chart("scatter", { valueColumns: ["ms", "cpu"] }),
+      "date,ms,cpu\n2026-01-02,3,1\n2026-01-05,5,2",
+    );
+    assert.strictEqual(xy.xAxis.type, "value");
+    assert.deepStrictEqual(xy.series[0].data[0], { name: "2026-01-02", value: [3, 1] });
     // Charts without an axis for the labels keep them as the names of their items.
     const pie = build(chart("pie"), daily);
     assert.deepStrictEqual(pie.series[0].data, [

@@ -315,8 +315,10 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     );
   }
 
-  // Dates place points along an axis, with proportional spacing on a time axis.
-  const axis = isCartesian(type) || type === "scatter" ? labels[0] : undefined;
+  // Dates place points along an axis, with proportional spacing on a time axis. A scatter chart
+  // given two value columns plots one against the other, and the dates name its points.
+  const xy = type === "scatter" && (spec.valueColumns?.length ?? 0) >= 2;
+  const axis = isCartesian(type) || (type === "scatter" && !xy) ? labels[0] : undefined;
   const times =
     axis === undefined ? undefined : dateFormat(table.rows.map((row) => String(row[axis] ?? "")));
   const timeAxis = times !== undefined && !categoryAxisOverride(spec);
