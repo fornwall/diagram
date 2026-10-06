@@ -8,7 +8,7 @@ import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
 import { afterTest } from "./afterTest";
 import { newPanel, openWebviewPanel, recordChat } from "./newPanel";
-import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
+import { DRAG_IMAGE, instrumentWebview, UNTIL, type WebviewHarness } from "./webviewHarness";
 
 const MERMAID = {
   "flowchart-v2": "flowchart LR\n  A[Parser] --> B[Checker]",
@@ -56,33 +56,6 @@ const CHART_FITTED = `
       await new Promise(requestAnimationFrame);
     }
     return fitted();
-  };`;
-
-/**
- * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
- * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
- */
-const DRAG_IMAGE = `
-  const dragImage = async (init) => {
-    const handle = document.getElementById("drag-out");
-    handle.dispatchEvent(new PointerEvent("pointerenter"));
-    if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
-    for (let attempt = 0; attempt < 100; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const dataTransfer = new DataTransfer();
-      handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-      if (dataTransfer.getData("image/svg+xml")) return dataTransfer;
-    }
-    throw new Error("The image was not prepared.");
-  };`;
-
-/** Webview code defining `until(done)`, which waits up to two seconds for `done()`, and returns it. */
-const UNTIL = `
-  const until = async (done) => {
-    for (let attempt = 0; attempt < 100 && !done(); attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-    return done();
   };`;
 
 /** Webview code defining `clickChart(element, init)`, which clicks the middle of a chart's element. */

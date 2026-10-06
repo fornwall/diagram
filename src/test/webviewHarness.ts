@@ -96,3 +96,30 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
 
   return { webview, evaluate, nextRender };
 }
+
+/**
+ * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
+ * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
+ */
+export const DRAG_IMAGE = `
+  const dragImage = async (init) => {
+    const handle = document.getElementById("drag-out");
+    handle.dispatchEvent(new PointerEvent("pointerenter"));
+    if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
+    for (let attempt = 0; attempt < 100; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const dataTransfer = new DataTransfer();
+      handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+      if (dataTransfer.getData("image/svg+xml")) return dataTransfer;
+    }
+    throw new Error("The image was not prepared.");
+  };`;
+
+/** Webview code defining `until(done)`, which waits up to two seconds for `done()`, and returns it. */
+export const UNTIL = `
+  const until = async (done) => {
+    for (let attempt = 0; attempt < 100 && !done(); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    return done();
+  };`;

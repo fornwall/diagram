@@ -4,7 +4,7 @@ import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import type { DiagramNode } from "../protocol";
 import { replace } from "./afterTest";
 import { newPanel } from "./newPanel";
-import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
+import { DRAG_IMAGE, instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
 suite("relationships", function () {
   // The first render loads the webview and the libraries, which can take a while.
@@ -29,7 +29,6 @@ suite("relationships", function () {
   const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
     panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
 
-  const selected = () => selection;
   const click = (selector: string, modifier = false) =>
     evaluate(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -57,16 +56,16 @@ suite("relationships", function () {
       ["edge:first", "edge:second", "edge:back"],
     );
     await click('.edgeLabel .label[data-id="first"]');
-    assert.deepStrictEqual(selected()[0]?.relationship, {
+    assert.deepStrictEqual(selection[0]?.relationship, {
       kind: "edge",
       source: "A_B",
       target: "B_C",
       direction: "forward",
     });
-    assert.match(selected()[0]?.label ?? "", /First/);
+    assert.match(selection[0]?.label ?? "", /First/);
     await click(node("edge:second"), true);
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ["edge:first", "edge:second"],
     );
     assert.match(panel.describeForModel() ?? "", /edge:first; edge; from: A_B; to: B_C/);
@@ -104,23 +103,23 @@ suite("relationships", function () {
     assert.notStrictEqual(ids[0], ids[1]);
     await click(".diagram-relationship-hit");
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       [ids[0]],
     );
     await evaluate(
       `document.querySelector(${JSON.stringify(node(ids[1] ?? ""))}).dispatchEvent(new KeyboardEvent('keydown', {key:' ',ctrlKey:true,bubbles:true}))`,
     );
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ids,
     );
     await click(node("A"), true);
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       [...ids, "A"],
     );
     await click(node("B"));
-    assert.deepStrictEqual(selected(), [{ id: "B", label: "B" }]);
+    assert.deepStrictEqual(selection, [{ id: "B", label: "B" }]);
   });
 
   test("selects repeated and self sequence messages with multiline labels and supports picking and marks", async () => {
@@ -139,7 +138,7 @@ suite("relationships", function () {
     assert.strictEqual(new Set(ids).size, 4);
     assert.ok(ids.every((id) => id.startsWith("message:i")));
     await click(node(ids[0] ?? ""));
-    assert.deepStrictEqual(selected()[0]?.relationship, {
+    assert.deepStrictEqual(selection[0]?.relationship, {
       kind: "message",
       source: "A",
       target: "A",
@@ -149,12 +148,12 @@ suite("relationships", function () {
       `document.querySelector(${JSON.stringify(node(ids[1] ?? ""))}).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}))`,
     );
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ids.slice(0, 2),
     );
     await click(`text.messageText[data-diagram-id="${ids[2]}"]`);
-    assert.strictEqual(selected()[0]?.id, ids[2]);
-    assert.match(selected()[0]?.label ?? "", /Reply again/);
+    assert.strictEqual(selection[0]?.id, ids[2]);
+    assert.match(selection[0]?.label ?? "", /Reply again/);
     assert.ok(panel.annotate({ marks: [{ id: ids[2] ?? "", kind: "current" }], dim: false }).ok);
     assert.match(panel.describeForModel() ?? "", /message; from: B; to: A/);
     const token = new vscode.CancellationTokenSource();
@@ -234,7 +233,7 @@ suite("relationships", function () {
     const id = drawnRelationships[0]?.id;
     await click(`[data-diagram-id="${id}"][tabindex]`);
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       [id],
     );
   });
@@ -253,7 +252,7 @@ suite("relationships", function () {
     assert.strictEqual(await evaluate('document.querySelector("#highlight-path").disabled'), false);
     await click("#highlight-path");
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ["A", "edge:first", "B", "edge:third", "D"],
     );
     assert.match(
@@ -264,7 +263,7 @@ suite("relationships", function () {
     await click(node("A"), true);
     await click("#highlight-path");
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ["D", "A"],
     );
     assert.match(
@@ -288,7 +287,7 @@ suite("relationships", function () {
     await click(node("A"), true);
     await click("#highlight-path");
     assert.deepStrictEqual(
-      selected().map((n) => n.id),
+      selection.map((n) => n.id),
       ["C", "edge:plain", "B", "edge:both", "A"],
     );
     assert.strictEqual(
@@ -307,16 +306,8 @@ suite("relationships", function () {
   test("keeps interaction hit targets and metadata out of SVG exports", async () => {
     assert.ok((await render({ source: "flowchart LR\n A edge@-->|Exported| B" })).ok);
     const svg = (await evaluate(`(async () => {
-      const handle = document.querySelector('#drag-out');
-      handle.dispatchEvent(new PointerEvent('pointerenter'));
-      for (let i = 0; i < 100; i++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        const dataTransfer = new DataTransfer();
-        handle.dispatchEvent(new DragEvent('dragstart', {dataTransfer}));
-        const svg = dataTransfer.getData('image/svg+xml');
-        if (svg) return svg;
-      }
-      throw new Error('No exported SVG');
+      ${DRAG_IMAGE}
+      return (await dragImage()).getData("image/svg+xml");
     })()`)) as string;
     assert.match(svg, /Exported/);
     assert.doesNotMatch(svg, /diagram-relationship-hit|data-diagram-id|aria-pressed/);
