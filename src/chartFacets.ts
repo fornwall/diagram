@@ -93,7 +93,7 @@ export function buildFacetedChart(
   const xAxes: Option[] = [];
   const yAxes: Option[] = [];
   const series: Option[] = [];
-  const seriesNames = new Set<string>();
+  const seriesIds = new Set<string>();
   panels.forEach((panel, i) => {
     const id = `facet:${panel.key}`;
     const left = 2 + ((i % columns) * 96) / columns;
@@ -117,16 +117,18 @@ export function buildFacetedChart(
     xAxes.push({ ...objects(panel.option.xAxis)[0], id, gridIndex: i });
     yAxes.push({ ...objects(panel.option.yAxis)[0], id, gridIndex: i });
     objects(panel.option.series).forEach((each, seriesIndex) => {
+      // ECharts colors series and lists them in the legend by name, so a measure keeps its name,
+      // color and legend entry in every panel. Selection tells the panels apart by series id.
       const name = String(each.name ?? `Series ${seriesIndex + 1}`);
-      const displayName = `${panel.name} · ${name}`;
-      let uniqueName = displayName;
+      const panelName = `${panel.name} · ${name}`;
+      let seriesId = panelName;
       let suffix = 2;
-      while (seriesNames.has(uniqueName)) uniqueName = `${displayName} (${suffix++})`;
-      seriesNames.add(uniqueName);
+      while (seriesIds.has(seriesId)) seriesId = `${panelName} (${suffix++})`;
+      seriesIds.add(seriesId);
       series.push({
         ...each,
-        id: `${id}:${JSON.stringify(name)}`,
-        name: uniqueName,
+        id: seriesId,
+        name,
         xAxisIndex: i,
         yAxisIndex: i,
         ...(each.stack === undefined ? {} : { stack: `${id}:${String(each.stack)}` }),

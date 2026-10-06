@@ -2,8 +2,9 @@ import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
+import { ChartItems } from "../webview/echartsItems";
 import { layoutOption } from "../webview/echartsLayout";
-import { withChart } from "./echartsModel";
+import { itemsOf, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
 
 // biome-ignore lint/suspicious/noExplicitAny: inspect plain JSON chart options in tests.
@@ -44,8 +45,11 @@ suite("chart facets", () => {
       ],
     );
     assert.deepStrictEqual(
-      option.series.map((series: Option) => series.name),
-      ["api · ms", "worker · ms"],
+      option.series.map((series: Option) => [series.id, series.name]),
+      [
+        ["api · ms", "ms"],
+        ["worker · ms", "ms"],
+      ],
     );
     assert.deepStrictEqual(
       option.series.map((series: Option) => series.xAxisIndex),
@@ -224,7 +228,7 @@ suite("chart facets", () => {
   test("infers columns globally and keeps byte units consistent", () => {
     const option = build("service,operation,size\napi,read,1 KiB\nworker,read,4 MiB");
     assert.deepStrictEqual(
-      option.series.map((series: Option) => series.name),
+      option.series.map((series: Option) => series.id),
       ["api · size (MiB)", "worker · size (MiB)"],
     );
     assert.deepStrictEqual(
@@ -271,7 +275,7 @@ suite("chart facets", () => {
       ["category", "category"],
     );
     assert.deepStrictEqual(
-      option.series.map((series: Option) => series.name),
+      option.series.map((series: Option) => series.id),
       ["api · size (KiB)", "worker · size (KiB)"],
     );
     assert.deepStrictEqual(
@@ -286,7 +290,7 @@ suite("chart facets", () => {
   test("excludes numeric facet fields from inferred measurements", () => {
     const option = build("service,operation,ms\n1,read,2\n2,read,30");
     assert.deepStrictEqual(
-      option.series.map((series: Option) => series.name),
+      option.series.map((series: Option) => series.id),
       ["1 · ms", "2 · ms"],
     );
   });
@@ -319,7 +323,7 @@ suite("chart facets", () => {
     const option = build(
       '[{"service":null,"operation":"read","ms":2},{"service":"(missing)","operation":"read","ms":3}]',
     );
-    assert.notStrictEqual(option.series[0].name, option.series[1].name);
+    assert.notStrictEqual(option.series[0].id, option.series[1].id);
     assert.notStrictEqual(option.title[0].id, option.title[1].id);
   });
 
@@ -327,12 +331,38 @@ suite("chart facets", () => {
     const missing = build(
       '[{"service":null,"operation":"read","ms":2},{"service":"(missing)","operation":"read","ms":3},{"service":"(missing value)","operation":"read","ms":4}]',
     );
-    assert.strictEqual(new Set(missing.series.map((series: Option) => series.name)).size, 3);
+    assert.strictEqual(new Set(missing.series.map((series: Option) => series.id)).size, 3);
     const delimiters = build("service,operation,c,b · c\na · b,read,2,3\na,read,4,5", {
       valueColumns: ["c", "b · c"],
     });
-    assert.strictEqual(new Set(delimiters.series.map((series: Option) => series.name)).size, 4);
     assert.strictEqual(new Set(delimiters.series.map((series: Option) => series.id)).size, 4);
+    const items = itemsOf(delimiters);
+    assert.deepStrictEqual(
+      delimiters.series.map((_: Option, i: number) => items.node(`${i}::0`)?.id),
+      ["a · b · c/read", "a · b · b · c/read", "a · c/read", "a · b · c (2)/read"],
+    );
+  });
+
+  test("a measure has one color and one legend entry, and selection tells its panels apart", () => {
+    const option = build("service,operation,a,b\napi,read,2,3\nworker,read,30,40", {
+      valueColumns: ["a", "b"],
+    });
+    withChart(option, (chart) => {
+      const colors = [0, 1, 2, 3].map((seriesIndex) => chart.getVisual({ seriesIndex }, "color"));
+      assert.strictEqual(colors[0], colors[2]);
+      assert.strictEqual(colors[1], colors[3]);
+      assert.notStrictEqual(colors[0], colors[1]);
+      const items = new ChartItems(chart);
+      assert.deepStrictEqual(
+        [0, 1, 2, 3].map((i) => items.node(`${i}::0`)?.id),
+        ["api · a/read", "api · b/read", "worker · a/read", "worker · b/read"],
+      );
+    });
+    // The legend lists the series' names once each, and hides a measure in every panel.
+    assert.deepStrictEqual(
+      option.series.map((series: Option) => series.name),
+      ["a", "b", "a", "b"],
+    );
   });
 
   test("histogram facets share bin boundaries including an empty numeric group", () => {

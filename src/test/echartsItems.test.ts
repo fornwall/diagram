@@ -42,6 +42,7 @@ suite("echartsItems", () => {
           methods(series, "SeriesModel", ["get", "getRawData", "getAllData", "getBaseAxis"]);
           assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");
           assert.strictEqual(typeof series.name, "string", "SeriesModel.name");
+          assert.ok(series.id.startsWith("\u0000"), "SeriesModel.id");
           assert.strictEqual(series.subType, option.series[0]?.type, "SeriesModel.subType");
           assert.strictEqual(model.getSeriesByIndex(0), series, "GlobalModel.getSeriesByIndex");
           const datas = series.getAllData().map(({ data }) => data);

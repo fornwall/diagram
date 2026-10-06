@@ -75,6 +75,8 @@ export interface Box {
 
 export interface SeriesModel {
   componentIndex: number;
+  /** The id of the series, or one that ECharts made up, which starts with "\0". */
+  id: string;
   /** The type of series, such as "tree". */
   subType: string;
   name: string;
@@ -169,11 +171,16 @@ export class ChartItems {
     const model = modelOf(chart);
     this.prefixed = model.getSeriesCount() > 1;
     const prefixes = new Set<string>();
+    const names = new Map<string, number>();
+    model.eachRawSeries(({ name }) => names.set(name, (names.get(name) ?? 0) + 1));
     model.eachRawSeries((series) => {
       const index = series.componentIndex;
       // ECharts names unnamed series "series\0<index>".
       let name =
         series.name && !series.name.includes("\u0000") ? series.name : `Series ${index + 1}`;
+      // Series that share a name, such as a measure in each panel of a faceted chart, go by their
+      // own ids when they have them.
+      if ((names.get(series.name) ?? 0) > 1 && !series.id.startsWith("\u0000")) name = series.id;
       if (prefixes.has(name)) name = `${name} (series ${index + 1})`;
       prefixes.add(name);
       const items = new SeriesItems(index, this.prefixed ? `${name}/` : "", series);
