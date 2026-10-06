@@ -3,6 +3,7 @@ import { time as echartsTime } from "echarts";
 import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
+import { afterTest } from "./afterTest";
 import { type Option, withChart } from "./echartsModel";
 import { newPanel } from "./newPanel";
 
@@ -1676,38 +1677,28 @@ suite("charts", () => {
     // The first render loads the webview and ECharts.
     this.timeout(20_000);
     const panel = newPanel();
-    try {
-      const negative = "k,x,y\na,-1,3\nb,2,-4\nc,3,5";
-      const single = "k,x,y\na,1,2";
-      const dated = "date,n\n2026-01-02,3\n2026-01-02,5";
-      const charts: (readonly [ChartSpec, DataTable | string])[] = [
-        ...CHART_TYPES.flatMap((type) =>
-          [LANGUAGES, negative, single].map((table) => [chart(type), table] as const),
-        ),
-        // Grouped and on a time axis.
-        [chart("bar", { aggregate: "count" }), dated],
-        [chart("line", { aggregate: "sum" }), dated],
-        [chart("scatter"), dated],
-        [chart("scatter", { aggregate: "count" }), dated],
-        [chart("horizontalBar"), dated],
-        [chart("stackedArea", { labelColumn: ["month", "region"] }), LONG],
-        [chart("line", { labelColumn: ["month", "region"] }), LONG],
-      ];
-      for (const [spec, table] of charts) {
-        const option = build(spec, table);
-        const source = JSON.stringify(option);
-        const outcome = await panel.render(
-          { language: "echarts", source, title: spec.type },
-          "tool",
-        );
-        assert.deepStrictEqual(
-          outcome,
-          { ok: true, diagramType: option.series[0].type },
-          spec.type,
-        );
-      }
-    } finally {
-      panel.dispose();
+    afterTest(() => panel.dispose());
+    const negative = "k,x,y\na,-1,3\nb,2,-4\nc,3,5";
+    const single = "k,x,y\na,1,2";
+    const dated = "date,n\n2026-01-02,3\n2026-01-02,5";
+    const charts: (readonly [ChartSpec, DataTable | string])[] = [
+      ...CHART_TYPES.flatMap((type) =>
+        [LANGUAGES, negative, single].map((table) => [chart(type), table] as const),
+      ),
+      // Grouped and on a time axis.
+      [chart("bar", { aggregate: "count" }), dated],
+      [chart("line", { aggregate: "sum" }), dated],
+      [chart("scatter"), dated],
+      [chart("scatter", { aggregate: "count" }), dated],
+      [chart("horizontalBar"), dated],
+      [chart("stackedArea", { labelColumn: ["month", "region"] }), LONG],
+      [chart("line", { labelColumn: ["month", "region"] }), LONG],
+    ];
+    for (const [spec, table] of charts) {
+      const option = build(spec, table);
+      const source = JSON.stringify(option);
+      const outcome = await panel.render({ language: "echarts", source, title: spec.type }, "tool");
+      assert.deepStrictEqual(outcome, { ok: true, diagramType: option.series[0].type }, spec.type);
     }
   });
 

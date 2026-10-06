@@ -6,6 +6,7 @@ import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
+import { afterTest } from "./afterTest";
 import { newPanel, openWebviewPanel, recordChat } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
@@ -3486,94 +3487,88 @@ suite("webview renderer loading", function () {
 
   test("reports at once when a renderer's code does not load", async () => {
     const panel = newPanel();
-    try {
-      const { webview, evaluate } = instrumentWebview(panel);
-      // Point the import of the Mermaid renderer's chunk at a file that does not exist.
-      const extension = vscode.extensions.getExtension("fornwall.diagram");
-      assert.ok(extension);
-      const chunks = vscode.Uri.joinPath(extension.extensionUri, "dist", "chunks");
-      const chunk = (await vscode.workspace.fs.readDirectory(chunks)).find(([name]) =>
-        /^mermaidRenderer-\w+\.js$/.test(name),
-      )?.[0];
-      assert.ok(chunk);
-      const url = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(chunks, name));
-      const imports = JSON.stringify({ imports: { [url(chunk).toString()]: url("missing.js") } });
-      const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
-      webview.html = webview.html.replace(
-        "<script",
-        `<script type="importmap" nonce="${nonce}">${imports}</script><script`,
-      );
+    afterTest(() => panel.dispose());
+    const { webview, evaluate } = instrumentWebview(panel);
+    // Point the import of the Mermaid renderer's chunk at a file that does not exist.
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const chunks = vscode.Uri.joinPath(extension.extensionUri, "dist", "chunks");
+    const chunk = (await vscode.workspace.fs.readDirectory(chunks)).find(([name]) =>
+      /^mermaidRenderer-\w+\.js$/.test(name),
+    )?.[0];
+    assert.ok(chunk);
+    const url = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(chunks, name));
+    const imports = JSON.stringify({ imports: { [url(chunk).toString()]: url("missing.js") } });
+    const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
+    webview.html = webview.html.replace(
+      "<script",
+      `<script type="importmap" nonce="${nonce}">${imports}</script><script`,
+    );
 
-      const flowchart: Diagram = {
-        language: "mermaid",
-        source: MERMAID["flowchart-v2"],
-        title: "Flow",
-      };
-      const started = Date.now();
-      const outcome = await panel.render(flowchart, "tool");
-      assert.ok(!outcome.ok && outcome.kind === "unavailable");
-      assert.match(
-        outcome.error,
-        /^Could not load the Mermaid renderer: .+\. Reload the window \(Developer: Reload Window\)\.$/,
-      );
-      assert.ok(Date.now() - started < 5000);
-      assert.strictEqual(
-        await evaluate(`document.getElementById("error").textContent`),
-        outcome.error,
-      );
+    const flowchart: Diagram = {
+      language: "mermaid",
+      source: MERMAID["flowchart-v2"],
+      title: "Flow",
+    };
+    const started = Date.now();
+    const outcome = await panel.render(flowchart, "tool");
+    assert.ok(!outcome.ok && outcome.kind === "unavailable");
+    assert.match(
+      outcome.error,
+      /^Could not load the Mermaid renderer: .+\. Reload the window \(Developer: Reload Window\)\.$/,
+    );
+    assert.ok(Date.now() - started < 5000);
+    assert.strictEqual(
+      await evaluate(`document.getElementById("error").textContent`),
+      outcome.error,
+    );
 
-      // The other renderer still loads, and the next diagram is answered at once too.
-      const chart = await panel.render(
-        { language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}', title: "Pie" },
-        "tool",
-      );
-      assert.ok(chart.ok, chart.ok ? undefined : chart.error);
-      const again = await panel.render(flowchart, "tool");
-      assert.ok(!again.ok && again.kind === "unavailable");
-    } finally {
-      panel.dispose();
-    }
+    // The other renderer still loads, and the next diagram is answered at once too.
+    const chart = await panel.render(
+      { language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}', title: "Pie" },
+      "tool",
+    );
+    assert.ok(chart.ok, chart.ok ? undefined : chart.error);
+    const again = await panel.render(flowchart, "tool");
+    assert.ok(!again.ok && again.kind === "unavailable");
   });
 
   test("reports at once when ECharts does not load, and loads it next time", async () => {
     const panel = newPanel();
-    try {
-      const { webview, evaluate } = instrumentWebview(panel);
-      // The page loads ECharts beside its first script, which this one, from nowhere, now is.
-      const extension = vscode.extensions.getExtension("fornwall.diagram");
-      assert.ok(extension);
-      const missing = webview.asWebviewUri(
-        vscode.Uri.joinPath(extension.extensionUri, "missing", "webview.js"),
-      );
-      const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
-      webview.html = webview.html.replace(
-        "<script",
-        `<script id="decoy" nonce="${nonce}" src="${missing.toString()}"></script><script`,
-      );
-      const pie: Diagram = {
-        language: "echarts",
-        source: '{"series": [{"type": "pie", "data": [1]}]}',
-        title: "Pie",
-      };
-      const started = Date.now();
-      const outcome = await panel.render(pie, "tool");
-      assert.ok(!outcome.ok && outcome.kind === "unavailable", JSON.stringify(outcome));
-      assert.match(
-        outcome.error,
-        /^Could not load the ECharts renderer: Cannot load ECharts from .*missing\/echarts\.js\. Reload the window/,
-      );
-      assert.ok(Date.now() - started < 5000);
-      // The failed script is gone, for the next chart to load it anew.
-      assert.strictEqual(
-        await evaluate(`document.querySelectorAll('script[src$="echarts.js"]').length`),
-        0,
-      );
+    afterTest(() => panel.dispose());
+    const { webview, evaluate } = instrumentWebview(panel);
+    // The page loads ECharts beside its first script, which this one, from nowhere, now is.
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const missing = webview.asWebviewUri(
+      vscode.Uri.joinPath(extension.extensionUri, "missing", "webview.js"),
+    );
+    const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
+    webview.html = webview.html.replace(
+      "<script",
+      `<script id="decoy" nonce="${nonce}" src="${missing.toString()}"></script><script`,
+    );
+    const pie: Diagram = {
+      language: "echarts",
+      source: '{"series": [{"type": "pie", "data": [1]}]}',
+      title: "Pie",
+    };
+    const started = Date.now();
+    const outcome = await panel.render(pie, "tool");
+    assert.ok(!outcome.ok && outcome.kind === "unavailable", JSON.stringify(outcome));
+    assert.match(
+      outcome.error,
+      /^Could not load the ECharts renderer: Cannot load ECharts from .*missing\/echarts\.js\. Reload the window/,
+    );
+    assert.ok(Date.now() - started < 5000);
+    // The failed script is gone, for the next chart to load it anew.
+    assert.strictEqual(
+      await evaluate(`document.querySelectorAll('script[src$="echarts.js"]').length`),
+      0,
+    );
 
-      await evaluate(`document.getElementById("decoy").remove()`);
-      const again = await panel.render(pie, "tool");
-      assert.ok(again.ok, again.ok ? undefined : again.error);
-    } finally {
-      panel.dispose();
-    }
+    await evaluate(`document.getElementById("decoy").remove()`);
+    const again = await panel.render(pie, "tool");
+    assert.ok(again.ok, again.ok ? undefined : again.error);
   });
 });
