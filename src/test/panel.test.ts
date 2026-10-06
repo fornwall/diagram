@@ -89,7 +89,7 @@ suite("panel", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
 
-  test("clickToAskQuery replaces {label}, or appends the label", () => {
+  test("asks about a clicked node by its label, in place of {label} or after the prompt", () => {
     assert.strictEqual(
       clickToAskQuery("Explain {label}, and how {label} is tested", "Parser"),
       "Explain Parser, and how Parser is tested",

@@ -6,7 +6,7 @@ import { linkSelection, linkText, linkTexts, validateLinks } from "../links";
 import { replace } from "./afterTest";
 
 suite("links", () => {
-  test("validateLinks accepts a file, a line and a range of lines", () => {
+  test("takes a file, a line or a range of lines as a node's link", () => {
     const { links, problems } = validateLinks(
       {
         cli: "src/cli.ts",
@@ -33,7 +33,7 @@ suite("links", () => {
     });
   });
 
-  test("validateLinks takes the files of virtual workspace folders by path", () => {
+  test("takes the files of virtual workspace folders by path", () => {
     const roots = ["one", "two"].map((name, index) => ({
       uri: vscode.Uri.parse(`vscode-vfs://github/owner/${name}`),
       name,
@@ -61,7 +61,7 @@ suite("links", () => {
     );
   });
 
-  test("validateLinks leaves out what is not a location, and says why", () => {
+  test("leaves out what is not a location, and says why", () => {
     const { links, problems } = validateLinks(
       {
         kept: "src/parser.ts#L1",
@@ -104,7 +104,7 @@ suite("links", () => {
     assert.ok(long.length > 0 && long.length < 120, long);
   });
 
-  test("validateLinks preserves node ids that name object properties", () => {
+  test("keeps node ids that name object properties", () => {
     const locations = JSON.parse(
       '{"__proto__": "src/parser.ts#L2", "constructor": "src/cli.ts", "toString": "src/main.ts"}',
     );
@@ -120,7 +120,7 @@ suite("links", () => {
     assert.deepStrictEqual(linkTexts(links), locations);
   });
 
-  test("validateLinks reports links that are not an object, or are for a chart", () => {
+  test("refuses links that are not an object, or are for a chart", () => {
     for (const value of ["src/parser.ts", ["src/parser.ts"], 42]) {
       assert.deepStrictEqual(validateLinks(value, "mermaid"), {
         problems: [
@@ -138,7 +138,7 @@ suite("links", () => {
     assert.deepStrictEqual(validateLinks({}, "mermaid"), { problems: [] });
   });
 
-  test("linkText writes a location the way the model gave it", () => {
+  test("writes a link the way the model gave it", () => {
     assert.strictEqual(linkText({ file: "src/cli.ts" }), "src/cli.ts");
     assert.strictEqual(linkText({ file: "src/cli.ts", line: 42 }), "src/cli.ts#L42");
     assert.strictEqual(
@@ -151,7 +151,7 @@ suite("links", () => {
     );
   });
 
-  test("linkSelection selects the linked lines, within the document", async () => {
+  test("selects a link's lines, within the document", async () => {
     const document = await vscode.workspace.openTextDocument({ content: "one\ntwo\nthree" });
     const selection = (lines: { line?: number; endLine?: number } = {}) => {
       const range = linkSelection({ file: "x", ...lines }, document);

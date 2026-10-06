@@ -336,7 +336,7 @@ suite("chart presentation", () => {
     assert.match(captureChartPresentation("[]").blocked ?? "", /source is an array/);
   });
 
-  test("JSON key order is immaterial and null is preserved as an explicit option value", () => {
+  test("ignores the order of JSON keys, and keeps null as an option value", () => {
     const presentation = edited((option) => {
       option.series[0].itemStyle = { color: null };
       option.series[0] = Object.fromEntries(Object.entries(option.series[0]).reverse());

@@ -192,7 +192,7 @@ suite("charts", () => {
     assert.strictEqual(build(chart("scatter"), "1,2\n3,4").xAxis.name, undefined);
   });
 
-  test("horizontalBar has an inverted category y axis", () => {
+  test("draws horizontal bars with the first category at the top of the y axis", () => {
     const option = build(chart("horizontalBar"));
     assert.strictEqual(option.xAxis.type, "value");
     assert.strictEqual(option.yAxis.type, "category");
@@ -208,7 +208,7 @@ suite("charts", () => {
     });
   });
 
-  test("stackedBar stacks its series", () => {
+  test("stacks the series of a stacked bar chart", () => {
     const option = build(chart("stackedBar"));
     assert.ok(option.series.every((s: Option) => s.type === "bar" && s.stack === "total"));
   });
@@ -373,7 +373,7 @@ suite("charts", () => {
     );
   });
 
-  test("stackedArea stacks its areas", () => {
+  test("stacks the areas of a stacked area chart", () => {
     const option = build(chart("stackedArea"));
     assert.strictEqual(option.xAxis.boundaryGap, false);
     // Areas show amounts by their length, which needs a value axis from zero.
@@ -1718,7 +1718,7 @@ suite("charts", () => {
     assert.ok(!("radius" in doughnut.series[0]));
   });
 
-  test("deepMerge merges objects, replaces arrays and values, and does not mutate", () => {
+  test("merges options into objects, replacing arrays and values, without changing either", () => {
     const target = { a: { b: 1, c: [1, 2] }, d: "x", list: [{ k: 1 }, { k: 2 }] };
     const source = { a: { b: null, c: [3] }, d: 5, list: [{ j: 1 }], e: null, f: { g: null } };
     const merged = deepMerge(target, source);
@@ -1737,7 +1737,7 @@ suite("charts", () => {
     assert.deepStrictEqual(source.a.c, [3]);
   });
 
-  test("deepMerge applies an object to every element of an array of objects", () => {
+  test("merges an object of options into every element of an array of objects", () => {
     assert.deepStrictEqual(deepMerge({ series: [{ a: 1 }, { a: 2 }] }, { series: { b: 3 } }), {
       series: [
         { a: 1, b: 3 },
@@ -1753,7 +1753,7 @@ suite("charts", () => {
     });
   });
 
-  test("deepMerge ignores prototype keys", () => {
+  test("merges no __proto__ key of the options into a prototype", () => {
     const merged = deepMerge({}, JSON.parse('{"__proto__": {"polluted": true}}'));
     assert.strictEqual((merged as { polluted?: boolean }).polluted, undefined);
     assert.strictEqual(({} as { polluted?: boolean }).polluted, undefined);

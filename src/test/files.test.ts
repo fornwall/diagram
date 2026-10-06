@@ -16,7 +16,7 @@ suite("files", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test("absoluteFile resolves a path on the file system of the folders that contain it", () => {
+  test("resolves an absolute path on the file system of the workspace folders that contain it", () => {
     const folder = (uri: string, index: number) => ({
       uri: vscode.Uri.parse(uri),
       name: uri,
@@ -43,7 +43,7 @@ suite("files", () => {
     assert.strictEqual(absolutePath(vscode.Uri.file(local), github), local);
   });
 
-  test("openDocument names the file once, workspace-relative where possible", async () => {
+  test("names a file it cannot open once, relative to the workspace where possible", async () => {
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);
     await assert.rejects(openDocument(vscode.Uri.joinPath(root.uri, "docs/gone.md")), {
@@ -108,7 +108,7 @@ suite("files", () => {
     }
   });
 
-  test("fileError explains Node.js file errors and returns other errors as they are", async () => {
+  test("explains Node.js file errors, and passes other errors on as they are", async () => {
     const missing = path.join(dir, "missing.md");
     const error = await fs.promises.realpath(missing).catch((e) => e);
     assert.strictEqual(

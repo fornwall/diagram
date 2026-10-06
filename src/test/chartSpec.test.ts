@@ -74,13 +74,13 @@ suite("chart spec", () => {
     assert.deepStrictEqual(schema.format.enum, DATA_FORMATS);
   });
 
-  test("dataOrigin says where the data comes from", () => {
+  test("says where a chart's data comes from", () => {
     assert.strictEqual(dataOrigin({ type: "pie", data: "a 1" }), "inline data");
     assert.strictEqual(dataOrigin({ type: "pie", file: "sales.csv" }), "file sales.csv");
     assert.strictEqual(dataOrigin({ type: "pie", command: "du -s *" }), "command `du -s *`");
   });
 
-  test("validateChartSpec accepts a valid spec", () => {
+  test("accepts a valid spec, leaving out empty properties and the click prompt", () => {
     const spec = {
       type: "pie",
       title: "Sizes",
@@ -104,7 +104,7 @@ suite("chart spec", () => {
     assert.deepStrictEqual(json, { type: "pie", data: '[{"name":"a","value":1}]' });
   });
 
-  test("validateChartSpec accepts several label columns and a maximum", () => {
+  test("accepts several label columns, a maximum and an aggregation", () => {
     const flows = { type: "sankey", data: "a,b,n", labelColumn: ["from", "to"] };
     assert.deepStrictEqual(validateChartSpec(flows), flows);
     const gauge = { type: "gauge", data: "n\n5", max: 100 };
@@ -129,7 +129,7 @@ suite("chart spec", () => {
     );
   });
 
-  test("validateChartSpec lists every problem", () => {
+  test("lists every problem of an invalid spec", () => {
     assert.throws(
       () =>
         validateChartSpec({

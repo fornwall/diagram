@@ -15,22 +15,22 @@ suite("blocks", () => {
     ]);
   });
 
-  test("codeFence uses a fence longer than any backticks in the text", () => {
+  test("fences text in more backticks than any run of them in it", () => {
     assert.strictEqual(codeFence("A --> B", "mermaid"), "```mermaid\nA --> B\n```");
     assert.strictEqual(codeFence('A["````"]'), '`````\nA["````"]\n`````');
   });
 
-  test("codeFence handles large sources with many backtick runs", () => {
+  test("fences a large source with many runs of backticks", () => {
     const source = `${"`x".repeat(200_000)}\n\`\`\`\`\`\``;
     assert.strictEqual(codeFence(source), `\`\`\`\`\`\`\`\n${source}\n\`\`\`\`\`\`\``);
   });
 
-  test("codeFence preserves whitespace in attached source and selections", () => {
+  test("keeps the whitespace of attached source and selections in their fence", () => {
     const source = "    if ready:\n        run()\n\n";
     assert.strictEqual(codeFence(source, "python"), `\`\`\`python\n${source}\n\`\`\``);
   });
 
-  test("guessTitle uses the frontmatter title", () => {
+  test("titles a diagram by its front matter", () => {
     assert.strictEqual(
       mermaidTitle('---\ntitle: "Login flow"\n---\nsequenceDiagram'),
       "Login flow",
@@ -46,7 +46,7 @@ suite("blocks", () => {
     assert.strictEqual(mermaidTitle("---\ntitle: James'\n---\nflowchart LR"), "James'");
   });
 
-  test("guessTitle uses a title statement", () => {
+  test("titles a diagram by its title statement", () => {
     assert.strictEqual(mermaidTitle('pie title Pets\n  "Dogs" : 386'), "Pets");
     assert.strictEqual(mermaidTitle("pie showData title Key elements"), "Key elements");
     assert.strictEqual(
@@ -61,19 +61,19 @@ suite("blocks", () => {
     );
   });
 
-  test("guessTitle ignores title lines in diagrams without title statements", () => {
+  test("ignores title lines in diagrams that have no title statement", () => {
     assert.strictEqual(mermaidTitle("flowchart LR\n  title Here --> B"), "flowchart");
     assert.strictEqual(mermaidTitle("mindmap\n  root\n    title Here"), "mindmap");
     assert.strictEqual(mermaidTitle("gantt\n  section title\n  title"), "gantt");
   });
 
-  test("guessTitle falls back to the diagram type", () => {
+  test("titles an untitled diagram by its type", () => {
     assert.strictEqual(mermaidTitle("%% comment\n\nflowchart LR\n  A --> B"), "flowchart");
     assert.strictEqual(mermaidTitle("---\nconfig:\n  theme: dark\n---\nerDiagram"), "erDiagram");
     assert.strictEqual(mermaidTitle(""), "Diagram");
   });
 
-  test("guessTitle uses the title of an ECharts option", () => {
+  test("titles a chart by the title of its ECharts option", () => {
     const chartTitle = (source: string) => guessTitle({ language: "echarts", source });
     assert.strictEqual(chartTitle('{"title": {"text": "Sales"}, "series": []}'), "Sales");
     assert.strictEqual(chartTitle('{"title": [{"text": "First"}]}'), "First");
@@ -106,14 +106,14 @@ suite("blocks", () => {
     }
   }
 
-  test("DiagramBlockFilter removes mermaid blocks however the text is split", () => {
+  test("removes diagram blocks from streamed text however it is split", () => {
     assertFiltered(
       "Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nIt has two steps.",
       "Here is the flow:\n\n\nIt has two steps.",
     );
   });
 
-  test("DiagramBlockFilter collects a long chart line streamed in small fragments", () => {
+  test("collects a long chart line streamed in small fragments", () => {
     const source = JSON.stringify({ series: [{ type: "line", data: Array(100_000).fill(42) }] });
     const markdown = `Chart:\n\`\`\`echarts\n${source}\n\`\`\`\nDone.`;
     const filter = new DiagramBlockFilter();
@@ -126,13 +126,13 @@ suite("blocks", () => {
     assert.deepStrictEqual(filter.diagrams, [{ language: "echarts", source }]);
   });
 
-  test("DiagramBlockFilter streams long prose before a diagram without losing text", () => {
+  test("streams long prose before a diagram without losing text", () => {
     const prose = "Ordinary prose. ".repeat(50_000);
     const markdown = `${prose}\n\`\`\`mermaid\nflowchart LR\nA --> B\n\`\`\`\nDone.`;
     assert.strictEqual(filterInFragments(markdown, 100), `${prose}\nDone.`);
   });
 
-  test("DiagramBlockFilter streams text before the end of a line", () => {
+  test("streams text before the end of its line", () => {
     const filter = new DiagramBlockFilter();
     assert.strictEqual(filter.push("Hello, wor"), "Hello, wor");
     assert.strictEqual(filter.push("ld\n``"), "ld\n");
@@ -141,7 +141,7 @@ suite("blocks", () => {
     assert.strictEqual(filter.flush(), "");
   });
 
-  test("DiagramBlockFilter follows CommonMark fences", () => {
+  test("finds diagram blocks in streamed text as CommonMark does", () => {
     const cases: { markdown: string; source?: string; shown: string; unterminated?: true }[] = [
       { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
       {

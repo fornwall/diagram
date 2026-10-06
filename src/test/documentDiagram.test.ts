@@ -81,7 +81,7 @@ suite("documentDiagram", function () {
           : { type: "rendered", requestId: message.requestId, diagramType: "flowchart" };
   }
 
-  test("writeFence keeps the fence markers and their indentation", async () => {
+  test("writes a diagram back keeping the fence markers and their indentation", async () => {
     const document = await markdown(
       "# Notes\n\n- The flow:\n\n  ````mermaid\n  flowchart TD\n    A --> B\n  ````\n\nAfter.\n",
     );
@@ -107,7 +107,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(grown.fence.lastLine, 7);
   });
 
-  test("writeFence keeps CRLF line endings and a missing final newline", async () => {
+  test("keeps CRLF line endings and a missing final newline", async () => {
     const crlf = await markdown("# Notes\r\n\r\n```mermaid\r\nflowchart TD\r\n```");
     assert.ok((await writeFence(binding(crlf), "flowchart LR")).written);
     assert.strictEqual(crlf.getText(), "# Notes\r\n\r\n```mermaid\r\nflowchart LR\r\n```");
@@ -118,7 +118,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(unclosed.getText(), "```mermaid\nflowchart LR\n  A --> B");
   });
 
-  test("writeFence writes a block in a block quote behind its markers", async () => {
+  test("writes a block in a block quote behind its markers", async () => {
     const before = "> [!NOTE]\r\n> ```mermaid\r\n> flowchart TD\r\n> ```\r\nAfter.\r\n";
     const document = await markdown(before);
     const read = binding(document);
@@ -136,7 +136,7 @@ suite("documentDiagram", function () {
     assert.match(rejected.reason, /closing Markdown fence on line 2, "```"/);
   });
 
-  test("writeFence normalizes lone carriage returns before checking fence boundaries", async () => {
+  test("reads lone carriage returns as line breaks before checking for a closing fence", async () => {
     const before = "```echarts\n{}\n```\nAfter.\n";
     const document = await markdown(before);
     const read = binding(document);
@@ -162,7 +162,7 @@ suite("documentDiagram", function () {
     );
   });
 
-  test("writeFence keeps whitespace-only lines as written", async () => {
+  test("keeps lines of only whitespace as written", async () => {
     // Editors leave indentation on otherwise empty lines, which must not become changes.
     const document = await markdown("- Sales:\n\n  ```echarts\n  {\n    \n  }\n  ```\n");
     const read = binding(document);
@@ -174,7 +174,7 @@ suite("documentDiagram", function () {
     );
   });
 
-  test("writeFence finds a block that moved in the document", async () => {
+  test("writes to a block that moved in the document", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     await edit(document, new vscode.Range(0, 0, 0, 0), "# Notes\n\n");
@@ -184,7 +184,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
   });
 
-  test("writeFence follows the block's current indentation", async () => {
+  test("follows the block's current indentation", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     await edit(
@@ -202,7 +202,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(outcome.fence.source, "flowchart LR\n  A --> B");
   });
 
-  test("writeFence refuses source that would close the Markdown block", async () => {
+  test("refuses a source that would close the Markdown block", async () => {
     for (const marker of ["```", "~~~"]) {
       const before = `${marker}echarts\n{}\n${marker}\nAfter.\n`;
       const document = await markdown(before);
@@ -226,7 +226,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(binding(indented).fence.source, nested);
   });
 
-  test("writeFence reports rejected workspace edits", async () => {
+  test("says when the workspace refuses the edit", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     replace(vscode.workspace, "applyEdit", async () => {
       throw new Error("The document is read-only");
@@ -241,7 +241,7 @@ suite("documentDiagram", function () {
     assert.match(refused.reason, /refused the edit\. Check that the file is not read-only\./);
   });
 
-  test("writeFence writes again when the user types while the edit is applied", async () => {
+  test("writes again when the user types while the edit is applied", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     const original = vscode.workspace.applyEdit;
@@ -274,7 +274,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
   });
 
-  test("writeFence leaves a block that changed or is gone alone", async () => {
+  test("leaves a block that changed or is gone alone", async () => {
     const changed = await markdown("```mermaid\nflowchart TD\n```\n");
     const edited = binding(changed);
     await edit(changed, new vscode.Range(1, 0, 1, 12), "flowchart LR");
@@ -290,7 +290,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(emptied.getText(), "");
   });
 
-  test("writeFence reports a document it cannot open and a source without a diagram", async () => {
+  test("says when it cannot open the document, or the source holds no diagram", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     const blank = await writeFence(read, "  \n\n");
@@ -304,7 +304,7 @@ suite("documentDiagram", function () {
     assert.match(outcome.reason, /^Could not write the diagram: \/\S+\/gone\.md does not exist\.$/);
   });
 
-  test("writeFence does not overwrite a duplicate when the original block changes", async () => {
+  test("does not overwrite a copy of the block when the block itself changed", async () => {
     const document = await markdown(
       "```mermaid\nflowchart TD\n```\n\n```mermaid\nflowchart TD\n```\n",
     );

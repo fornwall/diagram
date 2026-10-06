@@ -12,7 +12,7 @@ function problems(input: unknown): string {
 }
 
 suite("annotations", () => {
-  test("validateAnnotation takes the marks, their notes and how they read", () => {
+  test("takes the marks, their notes and how they read", () => {
     assert.deepStrictEqual(
       validateAnnotation({
         marks: [
@@ -46,7 +46,7 @@ suite("annotations", () => {
     ]);
   });
 
-  test("validateAnnotation reads an input without marks as clearing them", () => {
+  test("reads an input without marks as clearing them", () => {
     const cleared = { marks: [], caption: undefined, dim: false };
     assert.deepStrictEqual(validateAnnotation({}), cleared);
     assert.deepStrictEqual(validateAnnotation({ marks: [] }), cleared);
@@ -69,7 +69,7 @@ suite("annotations", () => {
     });
   });
 
-  test("validateAnnotation refuses an input a model has to correct", () => {
+  test("refuses an input that the model has to correct", () => {
     for (const value of [null, undefined, "pay", ["pay"], 42]) {
       assert.match(problems(value), /The marks must be given as an object/);
     }

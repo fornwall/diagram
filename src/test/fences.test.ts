@@ -70,7 +70,7 @@ suite("fences", () => {
     assert.deepStrictEqual(findDocumentDiagramFences(document), []);
   });
 
-  test("findDiagramFences finds mermaid and echarts blocks with their content lines", () => {
+  test("finds mermaid and echarts blocks with their content lines", () => {
     const markdown = [
       "# Notes",
       "",
@@ -96,7 +96,7 @@ suite("fences", () => {
     ]);
   });
 
-  test("findDiagramFences reads an info string with words after the language", () => {
+  test("reads an info string with words after the language", () => {
     assert.deepStrictEqual(sources("```mermaid title=Flow {highlight}\nflowchart TD\n```"), [
       '0-1 mermaid "": "flowchart TD"',
     ]);
@@ -107,7 +107,7 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("```\u00a0mermaid\nA\n```"), []);
   });
 
-  test("findDiagramFences handles longer fences and tilde fences", () => {
+  test("finds blocks with longer fences and tilde fences", () => {
     assert.deepStrictEqual(sources("````mermaid\n```\nflowchart TD\n```\n````"), [
       '0-3 mermaid "": "```\\nflowchart TD\\n```"',
     ]);
@@ -121,7 +121,7 @@ suite("fences", () => {
     ]);
   });
 
-  test("isClosingFence follows CommonMark: matching markers, indented less than 4 columns", () => {
+  test("closes a block only at its own marker, indented less than 4 columns", () => {
     const backticks = { fence: "````" };
     for (const line of ["````", "   ````` \r\n", "```` \t\n", "````\r"]) {
       assert.ok(isClosingFence(line, backticks), JSON.stringify(line));
@@ -145,7 +145,7 @@ suite("fences", () => {
     }
   });
 
-  test("findDiagramFences closes a block only at a fence indented by less than 4 columns", () => {
+  test("closes a block only at a fence indented by less than 4 columns", () => {
     // As in CommonMark, an indented fence is content, e.g. in a JavaScript template literal.
     assert.deepStrictEqual(sources("```echarts\n{}\n    ```\n```\n"), [
       '0-2 echarts "": "{}\\n    ```"',
@@ -160,7 +160,7 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("\u00a0```mermaid\nA\n```\n"), []);
   });
 
-  test("findDiagramFences skips fences in indented code, paragraphs and HTML blocks", () => {
+  test("skips fences in indented code, paragraphs and HTML blocks", () => {
     // Indented by 4 columns, outside a list item, a fence is indented code.
     assert.deepStrictEqual(sources("    ```mermaid\n    A\n    ```\n"), []);
     assert.deepStrictEqual(sources("\t```mermaid\n\tA\n\t```\n"), []);
@@ -183,7 +183,7 @@ suite("fences", () => {
     assert.deepStrictEqual(sources('<img src="flow.png">\n```mermaid\nA\n```\n'), []);
   });
 
-  test("findDiagramFences keeps the indentation of a fence in a list item", () => {
+  test("keeps the indentation of a fence in a list item", () => {
     const markdown = [
       "1. The flow:",
       "",
@@ -230,7 +230,7 @@ suite("fences", () => {
     ]);
   });
 
-  test("findDiagramFences finds blocks in block quotes, removing their markers", () => {
+  test("finds blocks in block quotes, removing their markers", () => {
     const note = [
       "> [!NOTE]",
       "> The flow:",
@@ -272,7 +272,7 @@ suite("fences", () => {
     ]);
   });
 
-  test("findDiagramFences takes a fence that is never closed to the end of the document", () => {
+  test("takes a fence that is never closed to the end of the document", () => {
     assert.deepStrictEqual(sources("```mermaid\nflowchart TD\n  A --> B\n"), [
       '0-2 mermaid "": "flowchart TD\\n  A --> B"',
     ]);
@@ -281,7 +281,7 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("```mermaid"), []);
   });
 
-  test("findDiagramFences skips other languages, their contents and empty blocks", () => {
+  test("skips other languages, their contents and empty blocks", () => {
     // A diagram fence inside another code block is code, not a diagram of its own.
     assert.deepStrictEqual(sources("````md\n```mermaid\nflowchart TD\n```\n````\n"), []);
     assert.deepStrictEqual(sources("```ts\nconst x = 1;\n```\n"), []);
@@ -291,13 +291,13 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("Use a ```mermaid``` block.\n"), []);
   });
 
-  test("findDiagramFences counts lines as VS Code does, whatever the line endings", () => {
+  test("counts lines as VS Code does, whatever the line endings", () => {
     assert.deepStrictEqual(sources("# Notes\r\n```mermaid\r\nflowchart TD\r\n```\r\n"), [
       '1-2 mermaid "": "flowchart TD"',
     ]);
   });
 
-  test("findDiagramFences skips long prose and code while preserving diagram positions", () => {
+  test("skips long prose and code, keeping the positions of diagrams", () => {
     const prose = "A paragraph with an inline ```mermaid marker.\n".repeat(10_000);
     const code = "````text\n```mermaid\nNot a diagram\n```\n````\n";
     assert.deepStrictEqual(findDiagramFences(`${prose}${code}  ~~~echarts\r\n  {}\r\n\r\n  ~~~`), [
@@ -311,7 +311,7 @@ suite("fences", () => {
     ]);
   });
 
-  test("rewriteFence writes every line behind the block's prefix", () => {
+  test("writes every line of a diagram behind its block's prefix", () => {
     assert.strictEqual(
       rewritten("Before\n```mermaid\nA\n```\nAfter\n", "B\n  C"),
       "Before\n```mermaid\nB\n  C\n```\nAfter\n",
@@ -351,7 +351,7 @@ suite("fences", () => {
     );
   });
 
-  test("rewriteFence keeps the blank lines around the source as they are", () => {
+  test("writes a diagram back keeping the blank lines around it", () => {
     assert.strictEqual(
       rewritten("```mermaid\n\nA\n  \n```\nAfter\n", "B\n\nC"),
       "```mermaid\n\nB\n\nC\n  \n```\nAfter\n",
@@ -367,7 +367,7 @@ suite("fences", () => {
     assert.strictEqual(rewritten("```mermaid\n\n\nA\n```\n", "B\nC\n```\nD"), 2);
   });
 
-  test("findDiagramFences and rewriteFence keep lines of no-break spaces around a diagram", () => {
+  test("keeps lines of no-break spaces around a diagram", () => {
     // Only lines of spaces and tabs are blank in Markdown.
     assert.deepStrictEqual(sources("```mermaid\n \t\n\u00a0\nA\n\u00a0\n\n```"), [
       '0-5 mermaid "": "\u00a0\\nA\\n\u00a0"',
@@ -378,7 +378,7 @@ suite("fences", () => {
     );
   });
 
-  test("rewriteFence reports the source line that would end the block", () => {
+  test("names the source line that would end the block", () => {
     assert.strictEqual(rewritten("```mermaid\nA\n```\n", "B\n```\nC"), 1);
     assert.strictEqual(rewritten("> ~~~mermaid\n> A\n> ~~~\n", "~~~~"), 0);
     // A fence indented by 4 columns in the block is content.
@@ -388,7 +388,7 @@ suite("fences", () => {
     );
   });
 
-  test("findDiagramFences does not mistake in-line separators for new document lines", () => {
+  test("does not take in-line separators for new lines of the document", () => {
     for (const separator of ["\r", "\u2028", "\u2029"]) {
       assert.deepStrictEqual(sources(`prose${separator}\`\`\`mermaid\nA\n\`\`\``), []);
       assert.deepStrictEqual(sources(`\`\`\`mermaid${separator}x\nA\n\`\`\``), [
@@ -400,7 +400,7 @@ suite("fences", () => {
     }
   });
 
-  test("fenceAt finds the fence at, below and above the cursor", () => {
+  test("finds the diagram at, below or above the cursor", () => {
     //         0     1            2   3     4            5   6
     const text = "a\n```mermaid\nA\n```\n```mermaid\nB\n```\nz\n";
     const fences = findDiagramFences(text);
@@ -411,7 +411,7 @@ suite("fences", () => {
     assert.strictEqual(fenceAt([], 0), undefined);
   });
 
-  test("relocateFence finds a fence that moved, and nothing when it changed", () => {
+  test("finds a block that moved, and nothing when it changed", () => {
     const read: DiagramFence = {
       language: "mermaid",
       source: "flowchart TD\n  A --> B",
@@ -431,7 +431,7 @@ suite("fences", () => {
     assert.strictEqual(relocateFence(other, read), undefined);
   });
 
-  test("relocateFence keeps an unchanged block but refuses ambiguous moved copies", () => {
+  test("keeps an unchanged block but refuses ambiguous moved copies", () => {
     const text = "```mermaid\nA\n```\n```mermaid\nA\n```\n```mermaid\nA\n```\n";
     const fences = findDiagramFences(text);
     const read = { language: "mermaid", source: "A", prefix: "" } as const;
@@ -440,7 +440,7 @@ suite("fences", () => {
     assert.deepStrictEqual([near(0), near(3), near(5), near(9)], [0, 3, undefined, undefined]);
   });
 
-  test("relocateFence does not substitute a duplicate for a block edited in place", () => {
+  test("does not take a duplicate for a block edited in place", () => {
     const original = "```mermaid\nA\n```\n```mermaid\nA\n```\n";
     const read = findDiagramFences(original)[0];
     assert.ok(read);
@@ -448,7 +448,7 @@ suite("fences", () => {
     assert.strictEqual(relocateFence(edited, read), undefined);
   });
 
-  test("isDiagramFence accepts only fences, as a command may be called with anything", () => {
+  test("accepts only diagram blocks as a command's argument", () => {
     const fence: DiagramFence = {
       language: "mermaid",
       source: "flowchart TD",
