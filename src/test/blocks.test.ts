@@ -1,29 +1,18 @@
 import * as assert from "node:assert";
-import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "../blocks";
-
-function lastDiagramBlock(markdown: string): DiagramBlock | undefined {
-  const filter = new DiagramBlockFilter();
-  filter.push(markdown);
-  filter.flush();
-  return filter.diagrams.at(-1);
-}
+import { codeFence, DiagramBlockFilter, guessTitle } from "../blocks";
 
 suite("blocks", () => {
-  test("lastDiagramBlock finds the last mermaid or echarts block", () => {
-    const mermaid =
-      "Here you go:\n```mermaid\nflowchart TD\n  A --> B\n```\n```ts\nconst x = 1;\n```\n";
-    assert.deepStrictEqual(lastDiagramBlock(mermaid), {
-      language: "mermaid",
-      source: "flowchart TD\n  A --> B",
-    });
-    assert.deepStrictEqual(lastDiagramBlock(`${mermaid}\`\`\`echarts  \n{"series": []}\n\`\`\``), {
-      language: "echarts",
-      source: '{"series": []}',
-    });
-  });
-
-  test("lastDiagramBlock ignores unterminated and empty blocks", () => {
-    assert.strictEqual(lastDiagramBlock("```mermaid\n```\n```mermaid\nflowchart"), undefined);
+  test("collects each mermaid and echarts block with its language, but no empty or unfinished one", () => {
+    const filter = new DiagramBlockFilter();
+    filter.push(
+      "Here you go:\n```mermaid\nflowchart TD\n  A --> B\n```\n```ts\nconst x = 1;\n```\n" +
+        '```echarts  \n{"series": []}\n```\n```mermaid\n```\n```mermaid\nflowchart',
+    );
+    filter.flush();
+    assert.deepStrictEqual(filter.diagrams, [
+      { language: "mermaid", source: "flowchart TD\n  A --> B" },
+      { language: "echarts", source: '{"series": []}' },
+    ]);
   });
 
   test("codeFence uses a fence longer than any backticks in the text", () => {
