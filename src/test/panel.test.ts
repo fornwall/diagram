@@ -139,60 +139,43 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.source, flowchart.source, "failed diagrams remain editable");
   });
 
-  test("explicitly showing the panel focuses it", async () => {
+  test("leaves the focus in the editor as an agent draws and marks, and takes it when shown", async () => {
     // Earlier suites dispose their panels asynchronously. Finish closing their tabs before this
     // test opens an editor, so a disappearing group cannot move it into the panel's column.
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     const document = await vscode.workspace.openTextDocument({ content: "Keep editing here" });
     const editor = await vscode.window.showTextDocument(document);
     const panel = newPanel();
-    try {
-      const opened = openWebviewPanel(panel, true);
-      assert.ok((await panel.render(flowchart, "tool")).ok);
-      assert.strictEqual(vscode.window.activeTextEditor, editor);
+    afterTest(() => panel.dispose());
+    const opened = openWebviewPanel(panel, true);
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    assert.strictEqual(vscode.window.activeTextEditor, editor);
+    assert.ok(opened.visible);
+    const reveal = opened.reveal;
+    let revealed = false;
+    opened.reveal = (...args) => {
+      revealed = true;
+      reveal.apply(opened, args);
+    };
+    assert.ok(panel.annotate({ marks: [], dim: false }).ok);
+    assert.ok(!revealed, "An annotation should not reveal a panel that is already visible");
+    assert.strictEqual(vscode.window.activeTextEditor, editor);
 
-      await new Promise<void>((resolve, reject) => {
-        const listener = opened.onDidChangeViewState(({ webviewPanel }) => {
-          if (webviewPanel.active) {
-            clearTimeout(timeout);
-            listener.dispose();
-            resolve();
-          }
-        });
-        const timeout = setTimeout(() => {
+    await new Promise<void>((resolve, reject) => {
+      const listener = opened.onDidChangeViewState(({ webviewPanel }) => {
+        if (webviewPanel.active) {
+          clearTimeout(timeout);
           listener.dispose();
-          reject(new Error("Show Panel did not activate the diagram"));
-        }, 5000);
-        panel.show();
+          resolve();
+        }
       });
-      assert.ok(opened.active, "Show Panel should focus the diagram");
-    } finally {
-      panel.dispose();
-    }
-  });
-
-  test("agent updates preserve editor focus without revealing an already visible panel", async () => {
-    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-    const document = await vscode.workspace.openTextDocument({ content: "Keep editing here" });
-    const editor = await vscode.window.showTextDocument(document);
-    const panel = newPanel();
-    try {
-      const opened = openWebviewPanel(panel, true);
-      assert.ok((await panel.render(flowchart, "tool")).ok);
-      assert.strictEqual(vscode.window.activeTextEditor, editor);
-      assert.ok(opened.visible);
-      const reveal = opened.reveal;
-      let revealed = false;
-      opened.reveal = (...args) => {
-        revealed = true;
-        reveal.apply(opened, args);
-      };
-      assert.ok(panel.annotate({ marks: [], dim: false }).ok);
-      assert.ok(!revealed, "An annotation should not reveal a panel that is already visible");
-      assert.strictEqual(vscode.window.activeTextEditor, editor);
-    } finally {
-      panel.dispose();
-    }
+      const timeout = setTimeout(() => {
+        listener.dispose();
+        reject(new Error("Show Panel did not activate the diagram"));
+      }, 5000);
+      panel.show();
+    });
+    assert.ok(opened.active, "Show Panel should focus the diagram");
   });
 
   test("isFromWebview accepts only well-formed messages", () => {
