@@ -234,6 +234,19 @@ function patchSeries(series: [string, unknown][], patch: unknown[], path: string
   return merged;
 }
 
+/** Whether ECharts shows the timeline steps in "options", which it does only with a timeline. */
+const showsSteps = (option: JsonObject) =>
+  asArray(baseOption(option).timeline).length > 0 || asArray(option.timeline).length > 0;
+
+const IGNORED_STEPS =
+  'The ECharts option has timeline steps in "options" but no "timeline" to show them, so ' +
+  'ECharts ignores them. To show them, add one, e.g. "timeline": {"data": ["2025", "2026"]}.';
+
+/** Tells a model which parts of its option ECharts ignores, though it draws the rest. */
+export function optionWarnings(option: JsonObject): string[] {
+  return optionPatches(option).steps.length > 0 && !showsSteps(option) ? [IGNORED_STEPS] : [];
+}
+
 /**
  * Checks the series that the chart draws: those of the base option, or with a timeline or media
  * queries, those of each step and query merged in, as the series may well be there alone. ECharts
@@ -242,17 +255,9 @@ function patchSeries(series: [string, unknown][], patch: unknown[], path: string
  */
 function validateSeries(option: JsonObject): void {
   const base = baseOption(option);
-  const { steps, media } = optionPatches(option);
-  if (
-    steps.length > 0 &&
-    asArray(base.timeline).length === 0 &&
-    asArray(option.timeline).length === 0
-  ) {
-    throw new Error(
-      'The ECharts option has timeline steps in "options" but no "timeline" to show them, so ' +
-        'ECharts ignores them. Add one, e.g. "timeline": {"data": ["2025", "2026"]}.',
-    );
-  }
+  const patches = optionPatches(option);
+  const steps = showsSteps(option) ? patches.steps : [];
+  const media = patches.media;
   const initial = {
     option: base,
     series: seriesOf(base).map((each, index): [string, unknown] => [`series[${index}]`, each]),
@@ -271,6 +276,8 @@ function validateSeries(option: JsonObject): void {
   ];
   if (drawn.length === 0) drawn.push(initial);
   if (drawn.every(({ series }) => series.length === 0)) {
+    // The series may be in steps that ECharts ignores.
+    if (patches.steps.length > steps.length) throw new Error(IGNORED_STEPS);
     throw new Error(
       'The ECharts option has no "series". Add at least one, e.g. "series": [{"type": "bar", ' +
         '"data": [5, 20, 36]}] with "xAxis": {"type": "category", "data": ["A", "B", "C"]} and ' +

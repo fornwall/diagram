@@ -1,7 +1,13 @@
 import * as assert from "node:assert";
 import { ComponentModel } from "echarts/core";
 import "../webview/echartsLibrary";
-import { type JsonObject, parseOption, SERIES_TYPES, seriesTypes } from "../webview/echartsOption";
+import {
+  type JsonObject,
+  optionWarnings,
+  parseOption,
+  SERIES_TYPES,
+  seriesTypes,
+} from "../webview/echartsOption";
 import { evaluateSource } from "../webview/optionSource";
 
 // ECharts' registry of series and component classes, which its typings leave out.
@@ -179,11 +185,25 @@ suite("echartsOption", () => {
       ),
       /^media\[1\]\.option\.series\[0\] has the unknown type "donut"/,
     );
-    // Without a timeline, ECharts ignores the steps.
+    // Without a timeline, ECharts ignores the steps, which is wrong only when nothing else draws.
     assert.match(
       errorOf(`{"options": [{"series": [${pie}]}]}`),
       /timeline steps in "options" but no "timeline"/,
     );
+  });
+
+  test("warns of timeline steps without a timeline, which ECharts ignores to draw the rest", () => {
+    const option = parseOption(
+      '{"series": [{"type": "pie", "data": [1]}], "options": [{"series": [{"type": "line"}]}]}',
+    );
+    assert.deepStrictEqual(optionWarnings(option), [
+      'The ECharts option has timeline steps in "options" but no "timeline" to show them, so ' +
+        'ECharts ignores them. To show them, add one, e.g. "timeline": {"data": ["2025", "2026"]}.',
+    ]);
+    const timeline = parseOption(
+      '{"timeline": {}, "series": [{"type": "pie", "data": [1]}], "options": [{"series": [{"data": [2]}]}]}',
+    );
+    assert.deepStrictEqual(optionWarnings(timeline), []);
   });
 
   test("explains missing and unknown series types", () => {

@@ -9,7 +9,7 @@ import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echa
 import { disableAnimation, focusHighlighted, layoutOption, toolWarnings } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
-import { type JsonObject, parseOption, seriesTypes } from "./echartsOption";
+import { type JsonObject, optionWarnings, parseOption, seriesTypes } from "./echartsOption";
 import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
@@ -142,7 +142,10 @@ export class EChartsRenderer implements Renderer {
   }
 
   warnings(): string[] {
-    return [...(this.option ? toolWarnings(this.option) : []), ...(this.items()?.warnings ?? [])];
+    return [
+      ...(this.option ? [...optionWarnings(this.option), ...toolWarnings(this.option)] : []),
+      ...(this.items()?.warnings ?? []),
+    ];
   }
 
   showMarks(annotation: Annotation): void {

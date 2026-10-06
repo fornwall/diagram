@@ -81,6 +81,17 @@ suite("Extension", function () {
     assert.doesNotMatch(await invoke("diagram_getState", {}), /Tree series/);
   });
 
+  test("draws a chart whose timeline steps ECharts ignores, and tells the agent", async () => {
+    const text = await invoke("diagram_render", {
+      source: JSON.stringify({
+        series: [{ type: "pie", data: [1] }],
+        options: [{ series: [{ data: [2] }] }],
+      }),
+      language: "echarts",
+    });
+    assert.match(text, /^Rendered .*timeline steps in "options" but no "timeline"/s);
+  });
+
   test("reports syntax errors back to the agent", async () => {
     const text = await invoke("diagram_render", { source: "flowchart TD\n  A --> --> B[" });
     assert.match(text, /failed to render/);
