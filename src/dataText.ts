@@ -42,18 +42,23 @@ function isRule(line: string, first: string | undefined): boolean {
   );
 }
 
+/** The rule between the header and the body of a table drawn with box-drawing characters. */
+const BOX_HEADER_RULE = /^\s*[\u251C\u255E]/;
+
 /**
- * Leaves out rules, and tells whether one is under the first line, making it a header. DuckDB
- * prints the types of its columns ("varchar") between their names and the rule below them, and
- * those are left out too.
+ * Leaves out rules, and tells whether one is under the first line, making it a header. DuckDB and
+ * Polars print the types of the columns ("varchar", "i64") below their names, above the rule
+ * between header and body ("├──┼──┤", "╞══╪══╡"), and those are left out too.
  */
 function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {
   const kept: string[] = [];
   let underlined = false;
+  let boxHeader = false;
   for (const line of lines) {
     if (isRule(line, kept.length === 1 ? kept[0] : undefined)) {
-      if (kept.length === 2 && !underlined && line.trimStart().startsWith("\u251C")) {
-        kept.pop();
+      if (!boxHeader && BOX_HEADER_RULE.test(line)) {
+        boxHeader = true;
+        kept.length = Math.min(kept.length, 1);
       }
       underlined ||= kept.length === 1;
     } else {
@@ -277,14 +282,17 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
   return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
 
+/** The line that Polars prints above a table: "shape: (3, 2)". */
+const POLARS_SHAPE = /^shape: \(\d+, \d+\)$/;
+
 /** The lines that psql and mysql print below a table. */
 const TABLE_FOOTER = /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*)$/;
 
 /**
  * A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM, or a
- * vertical line drawn with box-drawing characters ("│").
+ * vertical line drawn with box-drawing characters ("│", or "┆" between the columns of Polars).
  */
-const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\||[\u2502\u2503\u2551]/;
+const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\||[\u2502\u2503\u2506\u2551]/;
 
 /** Markdown emphasis or code around a whole cell, as in "**Total**" or "`12`". */
 const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
@@ -628,7 +636,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return { ...splitText(all.slice(table.start, table.end).join("\n"), format), note };
     }
   }
-  const { lines, underlined } = withoutRules(all.filter((line) => !isBlank(line)));
+  const { lines, underlined } = withoutRules(
+    all.filter((line) => !isBlank(line) && !POLARS_SHAPE.test(line)),
+  );
   if (format === "auto") {
     const ls = splitLs(lines);
     if (ls !== undefined) {

@@ -925,11 +925,12 @@ suite("data", () => {
       // sqlite3 and psql -A, without a rule.
       "lang|lines\nts|1200\ncss|300\n(2 rows)",
       // Drawn with box-drawing characters: by sqlite3 -box, psql with unicode lines, tabulate's
-      // fancy_grid, and DuckDB, which prints the columns' types below their names.
+      // fancy_grid, and DuckDB and Polars, which print the columns' types below their names.
       "┌──────┬───────┐\n│ lang │ lines │\n├──────┼───────┤\n│ ts   │ 1200  │\n│ css  │ 300   │\n└──────┴───────┘",
       " lang │ lines\n──────┼───────\n ts   │  1200\n css  │   300\n(2 rows)",
       "╒══════╤═══════╕\n│ lang │ lines │\n╞══════╪═══════╡\n│ ts   │  1200 │\n├──────┼───────┤\n│ css  │   300 │\n╘══════╧═══════╛",
       "┌─────────┬───────┐\n│  lang   │ lines │\n│ varchar │ int32 │\n├─────────┼───────┤\n│ ts      │  1200 │\n│ css     │   300 │\n└─────────┴───────┘",
+      "shape: (2, 2)\n┌──────┬───────┐\n│ lang ┆ lines │\n│ ---  ┆ ---   │\n│ str  ┆ i64   │\n╞══════╪═══════╡\n│ ts   ┆ 1200  │\n│ css  ┆ 300   │\n└──────┴───────┘",
     ]) {
       assert.deepStrictEqual(parse(table), expected, table);
     }
