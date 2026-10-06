@@ -172,7 +172,7 @@
                 "gauge",
                 "funnel"
               ],
-              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in equal-width bins; select one value column and omit labelColumn, aggregate, sort and limit."
+              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in bins; select one value column and omit labelColumn, aggregate, sort and limit."
             },
             "title": {
               "type": "string",
@@ -265,7 +265,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
-              "description": "Histogram bins; automatic by default."
+              "description": "Histogram bins, of equal width; by default about √n bins of a round width (1, 2 or 5 × 10^n, at least 1 for whole numbers)."
             },
             "facetColumn": {
               "type": "string",
