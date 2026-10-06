@@ -57,6 +57,14 @@ const EXPLAIN_INSTRUCTIONS = `You are @diagram in VS Code. Explain the current d
 const RESERVED_SHARE = 1 / 4;
 /** About the most tokens a message takes besides its text. */
 const MESSAGE_TOKENS = 4;
+/**
+ * The model's token counts of the texts in a request's messages, which each tool round adds to
+ * and counts again.
+ */
+const exactCounts = new WeakMap<
+  readonly vscode.LanguageModelChatMessage[],
+  Map<string, Promise<number>>
+>();
 
 /** An earlier request and its reply, which are given or left out together. */
 interface Exchange {
@@ -118,7 +126,8 @@ export async function promptMessages(
       exchange.reply + exchange.diagram,
     ]),
   ];
-  const tokens = tokenCounter(model, everything, budget, token);
+  const counts = new Map<string, Promise<number>>();
+  const tokens = tokenCounter(model, everything, budget, token, counts);
   const tooLarge = (what: string) =>
     `This request exceeds ${model.name}'s ${budget}-token input budget: ${what}. Shorten your message${current ? ", use /new to omit the current diagram" : ""} or choose a model with a larger context.`;
 
@@ -202,6 +211,7 @@ export async function promptMessages(
     ...(current ? [User(current)] : []),
     User(request.prompt),
   ];
+  exactCounts.set(messages, counts);
   return { messages, notice: leftOutNotice(attachments) };
 }
 
@@ -241,11 +251,14 @@ export async function fitToolResults(
   const parts = results.flatMap((result) =>
     result.content.filter((part) => part instanceof vscode.LanguageModelTextPart),
   );
+  const counts = exactCounts.get(messages) ?? new Map<string, Promise<number>>();
+  exactCounts.set(messages, counts);
   const tokens = tokenCounter(
     model,
     [...earlier, ...parts.map((part) => part.value)],
     budget,
     token,
+    counts,
   );
   const images = messages.flatMap((message) =>
     message.content.filter(
@@ -291,17 +304,18 @@ function partTexts(parts: readonly unknown[]): string[] {
 }
 
 /**
- * Cache token counts. When UTF-8 byte counts fit the budget, use them as conservative estimates
- * to avoid calls to the model's tokenizer.
+ * Cache token counts, the model's exact ones in `known`. When UTF-8 byte counts fit the budget,
+ * use them as conservative estimates to avoid calls to the model's tokenizer.
  */
 function tokenCounter(
   model: vscode.LanguageModelChat,
   texts: string[],
   budget: number,
   token: vscode.CancellationToken,
+  known = new Map<string, Promise<number>>(),
 ): (text: string) => Promise<number> {
   const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
-  const counts = new Map<string, Promise<number>>();
+  const counts = exact ? known : new Map<string, Promise<number>>();
   return (text) => {
     throwIfCancelled(token);
     let count = counts.get(text);

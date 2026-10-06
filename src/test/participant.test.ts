@@ -1215,6 +1215,32 @@ suite("participant", () => {
     assert.strictEqual(counted, 3);
   });
 
+  test("counts the messages of earlier tool rounds once", async () => {
+    // A short diagram, so that each round's tool result fits whole.
+    const input = { input: { source: "flowchart TD\n  A --> B" }, toolInvocationToken: undefined };
+    await vscode.lm.invokeTool("diagram_render", input);
+    const history = [
+      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Here it is.")],
+        { metadata: { language: "mermaid", source: "x".repeat(5_000) } },
+        "diagram.participant",
+      ),
+    ];
+    const call = () => [new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})];
+    const options = {
+      history,
+      maxInputTokens: 4_000,
+      toolReferences: [{ name: "diagram_getState" }],
+    };
+    const once = await ask([call(), [text("Hm.")]], options);
+    const thrice = await ask([call(), call(), call(), [text("Hm.")]], options);
+    assert.strictEqual(thrice.sent.length, 4);
+    // Each round calls the tool alike, so later rounds have no new text to count.
+    assert.ok(once.counted > 0);
+    assert.strictEqual(thrice.counted, once.counted);
+  });
+
   test("shortens the attachments that don't fit the model's input, and says so", async () => {
     const references = [
       { id: "long", value: "a".repeat(20_000) },
