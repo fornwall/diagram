@@ -74,7 +74,7 @@ function folders(): readonly vscode.WorkspaceFolder[] {
 /** Relative names use the first root; absolute paths and URIs disambiguate multiple roots. */
 export function resolveWorkspaceFile(
   file: unknown,
-  roots: readonly vscode.WorkspaceFolder[] = folders(),
+  roots: readonly vscode.WorkspaceFolder[],
 ): vscode.Uri {
   if (typeof file !== "string" || !file.trim() || file.includes("\0") || file.length > 4096) {
     throw new Error('Give "file" as a workspace file path or URI.');

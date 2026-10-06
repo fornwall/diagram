@@ -14,6 +14,7 @@ import {
   FIND_FILES_TOOL,
   GET_STATE_TOOL,
   isDiagramLanguage,
+  isPlainObject,
   PICK_NODES_TOOL,
   READ_FILE_TOOL,
   RENDER_TOOL,
@@ -312,7 +313,7 @@ function tokenCounter(
   texts: string[],
   budget: number,
   token: vscode.CancellationToken,
-  known = new Map<string, Promise<number>>(),
+  known: Map<string, Promise<number>>,
 ): (text: string) => Promise<number> {
   const exact = sum(texts.map((text) => MESSAGE_TOKENS + Buffer.byteLength(text))) > budget;
   const counts = exact ? known : new Map<string, Promise<number>>();
@@ -523,10 +524,10 @@ function imageData(
 ):
   | { mimeType: string; data: () => Thenable<Uint8Array>; reference: vscode.Uri | undefined }
   | undefined {
-  if (typeof value !== "object" || value === null) {
+  if (!isPlainObject(value)) {
     return undefined;
   }
-  const { mimeType, data, reference } = value as Record<string, unknown>;
+  const { mimeType, data, reference } = value;
   if (typeof mimeType !== "string" || typeof data !== "function") {
     return undefined;
   }

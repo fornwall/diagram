@@ -116,12 +116,12 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
     }
-    const { diagram, unknown } = parsed;
+    const { diagram, problems, unknown } = parsed;
     // A misnamed property, such as "clickprompt", would otherwise be lost without a word.
     const ignored = unknown ? `\n\n${unknown} Unknown properties are ignored.` : "";
-    const problems = [...parsed.problems];
-    if (diagram.links) {
-      const existing = await unlessCancelled(() => withoutMissingFiles(diagram.links ?? {}), token);
+    const { links } = diagram;
+    if (links) {
+      const existing = await unlessCancelled(() => withoutMissingFiles(links), token);
       diagram.links = existing.links;
       problems.push(...existing.problems);
     }
