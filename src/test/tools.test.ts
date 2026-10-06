@@ -92,6 +92,25 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_render draws despite a misnamed property, and names it", async () => {
+    const rendered: (string | undefined)[] = [];
+    panel.render = async (diagram) => {
+      rendered.push(diagram.clickPrompt);
+      return { ok: true, diagramType: "flowchart" };
+    };
+    const result = await new RenderDiagramTool(panel).invoke(
+      {
+        input: { source: "flowchart LR\n  A --> B", clickprompt: "Explain {label}", title: null },
+      } as never,
+      token,
+    );
+    assert.deepStrictEqual(rendered, [undefined]);
+    assert.match(
+      toolText(result),
+      /\n\nUnknown property "clickprompt"; the properties are "source", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.$/,
+    );
+  });
+
   test("diagram_chart blames its options for a chart that fails to render", async () => {
     panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
     const chart = async (input: object) =>

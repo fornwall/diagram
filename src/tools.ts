@@ -24,7 +24,7 @@ import {
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { plural, quoteAll } from "./text";
+import { givenProperties, plural, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
@@ -40,12 +40,28 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
-/** Invalid links are reported and omitted; invalid source prevents rendering. */
-function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: string[] } | string {
-  if (!isPlainObject(input) || typeof input.source !== "string") {
+const RENDER_KEYS = [
+  "source",
+  "language",
+  "title",
+  "clickPrompt",
+  "links",
+] as const satisfies readonly (keyof RenderInput)[];
+
+/**
+ * Invalid links and unknown properties are reported and left out; an invalid source prevents
+ * rendering.
+ */
+function parseRenderInput(
+  value: RenderInput,
+): { diagram: Diagram; problems: string[]; unknown: string | undefined } | string {
+  // Some models send null for the properties they leave out.
+  const input = isPlainObject(value) ? givenProperties(value) : {};
+  if (typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
   }
-  let { source, language } = input;
+  let source = input.source;
+  let language = input.language;
   // Models sometimes include a Markdown fence despite the schema. Use the same rules as chat.
   const trimmed = source.trim();
   const firstNewline = trimmed.indexOf("\n");
@@ -58,7 +74,6 @@ function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: str
   if (!source.trim()) {
     return 'Give "source", the complete diagram, as a string.';
   }
-  const { title, clickPrompt } = input;
   // Mermaid source never starts with "{", so a model that left out the language means ECharts.
   language ??= source.trimStart().startsWith("{") ? "echarts" : "mermaid";
   if (!isDiagramLanguage(language)) {
@@ -69,11 +84,12 @@ function parseRenderInput(input: RenderInput): { diagram: Diagram; problems: str
     diagram: {
       language,
       source,
-      title: nonBlank(title) ?? guessTitle({ language, source }),
-      clickPrompt: nonBlank(clickPrompt),
+      title: nonBlank(input.title) ?? guessTitle({ language, source }),
+      clickPrompt: nonBlank(input.clickPrompt),
       links,
     },
     problems,
+    unknown: unknownProperties(input, RENDER_KEYS),
   };
 }
 
@@ -100,7 +116,9 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
     }
-    const { diagram, problems } = parsed;
+    const { diagram, problems, unknown } = parsed;
+    // A misnamed property, such as "clickprompt", would otherwise be lost without a word.
+    const ignored = unknown ? `\n\n${unknown} Unknown properties are ignored.` : "";
     const outcome = await unlessCancelled(
       () => this.panel.render(diagram, "tool", options.toolInvocationToken),
       token,
@@ -111,7 +129,8 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
         `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
           this.panel.warnings.map((warning) => ` ${warning}`).join("") +
           leftOutLinks(problems) +
-          linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds),
+          linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds) +
+          ignored,
       );
     }
     const fix =
@@ -124,7 +143,9 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
         noun,
         RENDER_TOOL,
         `${fix} and call ${RENDER_TOOL} again with the complete corrected source.`,
-      ) + leftOutLinks(problems),
+      ) +
+        leftOutLinks(problems) +
+        ignored,
     );
   }
 }
