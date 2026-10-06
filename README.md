@@ -97,13 +97,13 @@ Terminal colors are ignored. Of a result that DuckDB, Polars or pandas shortened
 
 `1.5K` is 1500 and `$1.2B` is 1.2 billion, but in a column of sizes, such as `du -h` output or a column named `Size`, `1.5K` is 1536 bytes. Units such as `MiB` and `kB` always give bytes; bare units are powers of 1000 for commands run with `--si` or `df -H`. Durations such as `812ms` and `1h2m3s` become seconds, as do `45m` and `1:02:03` in a column named for durations, such as `Elapsed`. A unit in a header, as in `Size (KB)` or `Latency (ms)`, applies to the plain numbers below it. Charts show sizes and durations in the unit that suits the largest value.
 
-It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates (and `YYYY/MM/DD`) in a single label column on a time axis.
+It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates and times (and `YYYY/MM/DD`) of the first label column on a time axis.
 
 | Setting | Behavior |
 | --- | --- |
-| `labelColumn`, `valueColumns` | Choose columns by name, or omit to infer them. Several label columns are the levels of a treemap or sunburst, the stages of a sankey or the axes of a heatmap. A single label column of paths, such as `src/webview/main.ts`, gives them levels too. |
+| `labelColumn`, `valueColumns` | Choose columns by name, or omit to infer them. Given a second label column, bar, line and area charts draw a series per label of it from one value column, as for rows such as `month,region,sales`. Several label columns are the levels of a treemap or sunburst, the stages of a sankey or the axes of a heatmap; a single label column of paths, such as `src/webview/main.ts`, gives them levels too. |
 | `aggregate` | Combine rows with the same labels by `sum`, `mean`, `count`, `min`, `max` or `median`. Without it, repeated labels stay separate. |
-| `sort`, `limit` | Sort by the first value column, then keep the first rows. Pie and doughnut charts sum the rest as "Other". |
+| `sort`, `limit` | Sort by the first value column, the total of each stack or, with a series per label, the total of each label; then keep the first rows, except with a series per label. Pie and doughnut charts sum the rest as "Other". |
 | `filters` | Keep rows matching every predicate, before anything else. Example: `[{"column":"latency","op":"gte","value":100}]`. |
 | `facetColumn` | Split a bar, line, area or scatter chart or a histogram into a panel per value, at most 12. Grouping, sorting and limits apply within each panel. |
 | `facetColumns`, `facetScales` | Set 1–4 panels per row, and `"shared"` (default) or `"independent"` axis scales. |
