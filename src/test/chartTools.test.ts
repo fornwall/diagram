@@ -208,7 +208,10 @@ suite("chart agent tools", function () {
     edited.series[0].data[0] = 999;
     await webview.edit(JSON.stringify(edited));
     const manual = panel.current;
-    await assert.rejects(panel.updateChart({ limit: 2 }, token), /source|data|edit/i);
+    await assert.rejects(
+      panel.updateChart({ limit: 2 }, token),
+      /styling can't be kept, because the source changes the chart's data or structure/,
+    );
     assert.strictEqual(panel.current, manual);
   });
 
