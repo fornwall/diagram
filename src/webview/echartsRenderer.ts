@@ -260,6 +260,7 @@ export class EChartsRenderer implements Renderer {
     this.focus.hide();
     cancelAnimationFrame(this.resizeFrame);
     clearTimeout(this.relayoutTimer);
+    this.relayoutTimer = undefined;
     this.chart?.dispose();
     this.chart = undefined;
     this.chartItems = undefined;
@@ -286,6 +287,8 @@ export class EChartsRenderer implements Renderer {
     // Check layout inputs before copying the data. Retaining a serialized option would also
     // duplicate every data point in memory just to detect unchanged layouts.
     if (relayout && this.theme && laidOut === this.laidOut) {
+      // The chart may still have the size it was resized to meanwhile.
+      this.resizeChart();
       return;
     }
     const themeChanged = !this.theme && this.chart !== undefined;
@@ -392,11 +395,16 @@ export class EChartsRenderer implements Renderer {
   private scheduleRelayout(): void {
     cancelAnimationFrame(this.resizeFrame);
     this.resizeFrame = requestAnimationFrame(() => {
-      this.resizeChart();
-      // Layout decisions (legend position, label rotation, …) follow once resizing settles. They
-      // can be due without resizing, for a layout made for a size the container had briefly.
+      // A change of size, such as showing the chart again, is laid out at once, as only resizing
+      // a layout for another size can squeeze labels to a letter. While the size keeps changing,
+      // as when dragging the splitter, the chart is only resized, and laid out once that settles.
+      if (this.relayoutTimer === undefined) this.relayout();
+      else this.resizeChart();
       clearTimeout(this.relayoutTimer);
-      this.relayoutTimer = setTimeout(() => this.relayout(), 150);
+      this.relayoutTimer = setTimeout(() => {
+        this.relayoutTimer = undefined;
+        this.relayout();
+      }, 150);
     });
   }
 

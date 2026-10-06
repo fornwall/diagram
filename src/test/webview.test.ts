@@ -2492,6 +2492,43 @@ suite("webview", function () {
     );
   });
 
+  test("lays a chart out for a new size at once, rather than only resizing it", async () => {
+    const categories = ["Alpha category", "Beta category"];
+    const source = JSON.stringify({
+      animation: false,
+      xAxis: { type: "category", data: categories },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2] }],
+    });
+    await draw({ language: "echarts", source });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${CHART_FITTED}
+        const canvas = document.getElementById("canvas");
+        // Whether the layout turns the category labels to fit them in, as it does when narrow.
+        const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
+          /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
+        await chartFitted();
+        // After the size settled since the chart was drawn.
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        const wide = rotated();
+        Object.assign(canvas.style, {width: "250px", flex: "none"});
+        try {
+          // Well before the layout that follows when the size keeps changing.
+          const started = performance.now();
+          while (!rotated() && performance.now() - started < 100) {
+            await new Promise(requestAnimationFrame);
+          }
+          return {wide, narrow: rotated()};
+        } finally {
+          Object.assign(canvas.style, {width: "", flex: ""});
+          await chartFitted();
+        }
+      })()`),
+      { wide: false, narrow: true },
+    );
+  });
+
   test("fits a chart drawn while its container briefly had another size or was hidden", async () => {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(
