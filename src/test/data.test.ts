@@ -1399,6 +1399,7 @@ suite("data", () => {
         "Denmark,356.1,NULL,—,-",
         "Finland,#N/A,5.54,n/a,-",
         "Iceland,NaN,0.37,0.8%,-",
+        "Greenland,#VALUE!,0.06,#DIV/0!,#REF!",
       ].join("\n"),
     );
     assert.strictEqual(table.header, true);
@@ -1412,6 +1413,7 @@ suite("data", () => {
       ["Denmark", 356.1, null, null, "-"],
       ["Finland", null, 5.54, null, "-"],
       ["Iceland", null, 0.37, 0.8, "-"],
+      ["Greenland", null, 0.06, null, "#REF!"],
     ]);
     // Labels that look like markers stay labels.
     assert.deepStrictEqual(parse("plan,users\nNone,12\nPro,30\nNA,5").rows, [
