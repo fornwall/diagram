@@ -3,6 +3,7 @@
 import type { Cell, Records } from "./data";
 import { checkTableSize } from "./dataLimits";
 import { errorMessage, isPlainObject } from "./protocol";
+import { quoteAll } from "./text";
 
 function jsonCell(value: unknown): Cell {
   if (value === null || value === undefined) {
@@ -91,24 +92,47 @@ function recordsFromJsonArray(array: unknown[]): Records {
   );
 }
 
+/** The names of the plain values that an API's answer holds beside its data, about the answer. */
+const ENVELOPE_FIELDS = new Set(
+  "status ok success code message msg error version apiversion kind".split(" "),
+);
+
 /**
- * The object inside wrappers, which hold it beside plain values only, as in {"data": {"repo":
- * {...}}} or the Prometheus API's {"status": "success", "data": {...}}, however deeply they nest.
+ * The object inside wrappers, as in {"data": {"repo": {...}}}, however deeply they nest. One of
+ * them may also be an envelope, which holds it beside plain values: either about the answer, as
+ * the Prometheus API's {"status": "success", "data": {...}}, or about a map of records, as npm ls
+ * --json's {"name": "app", "dependencies": {"a": {...}}}. The note names what was left out.
  */
-function unwrap(json: unknown): unknown {
+function unwrap(json: unknown): { value: unknown; note?: string } {
   let value = json;
+  let note: string | undefined;
   for (;;) {
-    const values = isPlainObject(value) ? Object.values(value) : [];
-    const objects = values.filter(isPlainObject);
-    if (objects.length !== 1 || values.some(Array.isArray)) {
-      return value;
+    if (!isPlainObject(value)) break;
+    const entries = Object.entries(value);
+    const objects = entries.filter(([, item]) => isPlainObject(item));
+    const [name = "", inner] = objects[0] ?? [];
+    if (objects.length !== 1 || !isPlainObject(inner)) break;
+    if (entries.length > 1) {
+      const records = Object.values(inner);
+      const map = records.length > 0 && records.every(isPlainObject);
+      const beside = entries.flatMap(([key]) => (key === name ? [] : [key]));
+      if (
+        note !== undefined ||
+        entries.some(([, item]) => Array.isArray(item)) ||
+        !(map || beside.every((key) => ENVELOPE_FIELDS.has(key.toLowerCase())))
+      ) {
+        break;
+      }
+      note = `Only ${JSON.stringify(name)} was read, not ${quoteAll(beside)} beside it.`;
+      // A map of records is the data, however few records it has, rather than another wrapper.
+      if (map) return { value: inner, note };
     }
-    value = objects[0];
+    value = inner;
   }
+  return note === undefined ? { value } : { value, note };
 }
 
-function recordsFromJson(json: unknown): Records {
-  const value = unwrap(json);
+function recordsFromJson(value: unknown): Records {
   if (Array.isArray(value)) {
     return recordsFromJsonArray(value);
   }
@@ -209,5 +233,7 @@ export function parseJson(text: string): Records {
       throw new Error(`The data is not valid JSON: ${errorMessage(error)}.`);
     }
   }
-  return recordsFromJson(value);
+  const unwrapped = unwrap(value);
+  const records = recordsFromJson(unwrapped.value);
+  return unwrapped.note === undefined ? records : { ...records, note: unwrapped.note };
 }

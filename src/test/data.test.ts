@@ -1515,26 +1515,41 @@ suite("data", () => {
       parse('{"data": {"repo": {"issues": [{"title": "x", "author": {"login": "a"}}]}}}'),
       { columns: ["title", "author.login"], rows: [["x", "a"]] },
     );
-    // Beside plain values, as the Prometheus API and npm ls --json answer.
-    const prometheus = {
-      status: "success",
-      data: {
-        resultType: "vector",
-        result: [{ metric: { job: "api" }, value: [1735689600, "0.5"] }],
-      },
-    };
-    assert.deepStrictEqual(parse(JSON.stringify(prometheus)), {
-      columns: ["metric.job", "value"],
-      rows: [["api", '[1735689600,"0.5"]']],
-    });
-    const npm = { name: "app", dependencies: { a: { version: "1.0.0" }, b: { version: "2.1.0" } } };
-    assert.deepStrictEqual(parse(JSON.stringify(npm)), {
-      columns: ["name", "version"],
-      rows: [
-        ["a", "1.0.0"],
-        ["b", "2.1.0"],
-      ],
-    });
+    // In an envelope, beside plain values about the answer, as the Prometheus API answers.
+    const prometheus = parseTable(
+      JSON.stringify({
+        status: "success",
+        data: {
+          resultType: "vector",
+          result: [{ metric: { job: "api" }, value: [1735689600, "0.5"] }],
+        },
+      }),
+    );
+    assert.deepStrictEqual(prometheus.rows, [["api", '[1735689600,"0.5"]']]);
+    assert.strictEqual(prometheus.note, 'Only "data" was read, not "status" beside it.');
+    // Or beside plain values about a map of records, as npm ls --json answers, but only the
+    // outermost: the dependencies of a single dependency are not read in its place.
+    const npm = (dependencies: object) =>
+      parseTable(JSON.stringify({ version: "1.0.0", name: "app", dependencies }));
+    const two = npm({ a: { version: "1.0.0" }, b: { version: "2.1.0" } });
+    assert.deepStrictEqual(two.rows, [
+      ["a", "1.0.0"],
+      ["b", "2.1.0"],
+    ]);
+    assert.strictEqual(two.note, 'Only "dependencies" was read, not "version", "name" beside it.');
+    const one = npm({ a: { version: "1.0.0", dependencies: { b: { version: "2.1.0" } } } });
+    assert.deepStrictEqual(
+      one.columns.map((column) => column.name),
+      ["name", "version", "dependencies.b.version"],
+    );
+    assert.deepStrictEqual(one.rows, [["a", "1.0.0", "2.1.0"]]);
+    // A record with a nested object is not an envelope, as a single GitHub repository's owner.
+    for (const record of [
+      { id: 1, name: "x", stargazers_count: 10, owner: { login: "y", id: 2 } },
+      { cpu: 5, mem: 7, disk: { used: 1, free: 2 } },
+    ]) {
+      assert.throws(() => parse(JSON.stringify(record)), /The JSON object must map names/);
+    }
     assert.deepStrictEqual(parse('{"stats": {"ts": 120, "css": 30}}'), {
       columns: ["name", "value"],
       rows: [
