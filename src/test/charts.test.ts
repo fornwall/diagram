@@ -635,7 +635,10 @@ suite("charts", () => {
     // Rows that share a row and a column are summed up into one cell.
     const twice = `${sales}\nEU,jan,2`;
     assert.strictEqual(build(chart("heatmap"), twice).series[0].data[0][2], 3);
-    assert.match(summary(chart("heatmap"), twice), /summed up 1 row into cells that had a value/);
+    assert.match(
+      summary(chart("heatmap"), twice),
+      /added 1 row to the cell of an earlier row with the same labels; "aggregate" combines/,
+    );
   });
 
   test("heatmap of a numeric matrix uses the value columns as its columns", () => {

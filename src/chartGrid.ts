@@ -186,7 +186,10 @@ export function heatmapOption({
     throw new Error(`A heatmap needs numbers, but ${quoteAll(names)} holds none.`);
   }
   if (summed > 0) {
-    notes.push(`summed up ${plural(summed, "row")} into cells that had a value`);
+    notes.push(
+      `added ${plural(summed, "row")} to the cell of an earlier row with the same labels; ` +
+        '"aggregate" combines them another way',
+    );
   }
   if (empty > 0) {
     notes.push(`left out ${plural(empty, "cell")} without a value`);
