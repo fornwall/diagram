@@ -1,4 +1,4 @@
-// Self-contained SVG and PNG exports for dragging into other applications.
+// Self-contained SVG and PNG images of the drawing, to export or to drag into other applications.
 
 /** A rendering as an image, ready to leave the panel. */
 export interface DiagramImage {
