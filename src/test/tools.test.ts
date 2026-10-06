@@ -16,14 +16,12 @@ const flowchart: DiagramState = {
 suite("tools", () => {
   let panel: DiagramPanel;
   let values: Map<string, unknown>;
-  const cancellation = new vscode.CancellationTokenSource();
   const token = new vscode.CancellationTokenSource().token;
   setup(() => {
     values = new Map<string, unknown>([["diagram.state", flowchart]]);
     panel = newPanel(values);
   });
   teardown(() => panel.dispose());
-  suiteTeardown(() => cancellation.dispose());
 
   test("diagram_render reads a source starting with a brace as an ECharts option", () => {
     const tool = new RenderDiagramTool(panel);
@@ -178,6 +176,7 @@ suite("tools", () => {
   });
 
   test("cancelled tools leave the diagram, its marks and the closed panel alone", async () => {
+    const cancellation = new vscode.CancellationTokenSource();
     cancellation.cancel();
     const calls: string[] = [];
     panel.render = async () => {
@@ -209,6 +208,7 @@ suite("tools", () => {
       assert.strictEqual(values.get("diagram.state"), flowchart);
     } finally {
       vscode.window.createWebviewPanel = create;
+      cancellation.dispose();
     }
   });
 
