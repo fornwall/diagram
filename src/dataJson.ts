@@ -111,8 +111,7 @@ function readOnly(name: string, beside: string[]): string {
 function unwrap(json: unknown): { value: unknown; note?: string } {
   let value = json;
   let note: string | undefined;
-  for (;;) {
-    if (!isPlainObject(value)) break;
+  while (isPlainObject(value)) {
     const entries = Object.entries(value);
     const objects = entries.filter(([, item]) => isPlainObject(item));
     const [name = "", inner] = objects[0] ?? [];
