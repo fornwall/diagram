@@ -45,6 +45,10 @@ export function optionVariants(option: JsonObject): JsonObject[] {
   return [baseOption(option), ...[...steps, ...media].map(([, patch]) => patch)];
 }
 
+/** The series of the base option and of the options that patch it. */
+export const allSeries = (option: JsonObject): JsonObject[] =>
+  optionVariants(option).flatMap((variant) => asArray(variant.series));
+
 export const seriesOf = (option: JsonObject): unknown[] =>
   option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
 
@@ -435,8 +439,8 @@ function findJavaScript(
 
 /** The series types of the option, e.g. "bar, line". */
 export function seriesTypes(option: JsonObject): string {
-  const types = optionVariants(option)
-    .flatMap((each) => asArray(each.series))
-    .flatMap((each) => (typeof each.type === "string" ? [each.type] : []));
+  const types = allSeries(option).flatMap((each) =>
+    typeof each.type === "string" ? [each.type] : [],
+  );
   return Array.from(new Set(types)).join(", ");
 }

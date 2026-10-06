@@ -4,6 +4,7 @@
 import { isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
 import {
+  allSeries,
   asArray,
   baseOption,
   isCartesian,
@@ -238,12 +239,8 @@ function keepLastingTools(toolbox: JsonObject): void {
 
 export function disableAnimation(option: JsonObject): void {
   // Timeline and media options can override both global and per-series animation settings.
-  for (const variant of optionVariants(option)) {
-    variant.animation = false;
-    for (const series of asArray(variant.series)) {
-      series.animation = false;
-    }
-  }
+  for (const variant of optionVariants(option)) variant.animation = false;
+  for (const series of allSeries(option)) series.animation = false;
 }
 
 /**
@@ -252,12 +249,10 @@ export function disableAnimation(option: JsonObject): void {
  * focuses on it. Replaces a focus of the option's own for as long as the marks dim the chart.
  */
 export function focusHighlighted(option: JsonObject): void {
-  for (const variant of optionVariants(option)) {
-    for (const series of asArray(variant.series)) {
-      const emphasis = isPlainObject(series.emphasis) ? series.emphasis : {};
-      emphasis.focus = "self";
-      series.emphasis = emphasis;
-    }
+  for (const series of allSeries(option)) {
+    const emphasis = isPlainObject(series.emphasis) ? series.emphasis : {};
+    emphasis.focus = "self";
+    series.emphasis = emphasis;
   }
 }
 
