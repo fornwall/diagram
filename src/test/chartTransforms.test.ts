@@ -15,7 +15,7 @@ function build(data: string | DataTable, extra: Partial<ChartSpec> = {}): Option
 }
 
 suite("chart transforms", () => {
-  test("filters AND parsed cells with strict equality and string containment without mutation", () => {
+  test("keeps the rows that match every filter, comparing cells by type, without changing the table", () => {
     const table: DataTable = {
       header: true,
       columns: [
@@ -72,7 +72,7 @@ suite("chart transforms", () => {
     assert.deepStrictEqual(table, original);
   });
 
-  test("empty filters and unknown filter columns produce actionable errors", () => {
+  test("says how to fix filters that match no rows or name an unknown column", () => {
     const table = parseTable("name,value\na,1\nb,2");
     assert.throws(
       () => filterTable(table, [{ column: "missing", op: "eq", value: 1 }]),
@@ -203,7 +203,7 @@ suite("chart transforms", () => {
     assert.strictEqual(option.series[0].data[1].upper, 2);
   });
 
-  test("constant, single, tiny and extreme values produce finite edges and retain all counts", () => {
+  test("bins constant, single, tiny and extreme values into finite bins that count every value", () => {
     for (const values of [
       [5, 5, 5],
       [0],

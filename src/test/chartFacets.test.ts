@@ -383,7 +383,7 @@ suite("chart facets", () => {
     }
   });
 
-  test("multi-grid label fitting uses the panel width without changing explicit grid positions", () => {
+  test("rotates a panel's labels to fit its width, keeping the grids where the facets placed them", () => {
     const option = build(
       "service,operation,ms\napi,Read configuration,2\napi,Write configuration,3\nworker,Read configuration,30\nworker,Write configuration,40",
     );

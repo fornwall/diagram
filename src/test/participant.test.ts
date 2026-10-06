@@ -657,7 +657,7 @@ suite("participant", () => {
     assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
   });
 
-  test("supports extended exploration and stops after twelve tool rounds", async () => {
+  test("stops calling tools after twelve rounds, and says so", async () => {
     const calls = countToolCalls();
     const replies = Array.from({ length: 20 }, (_, i) => [
       new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
@@ -669,7 +669,7 @@ suite("participant", () => {
     assert.match(shown, /Stopped tool use.*tool round limit/);
   });
 
-  test("bounds batched tool calls and permits a final explanation", async () => {
+  test("runs at most 32 tool calls, then lets the model answer", async () => {
     const calls = countToolCalls();
     const batch = Array.from(
       { length: 40 },
@@ -720,7 +720,7 @@ suite("participant", () => {
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
   });
 
-  test("ordinary tool failures can be corrected in a later round", async () => {
+  test("gives the model a failed tool call's error to correct in the next round", async () => {
     const calls = countToolCalls((call) => {
       if (call === 1) throw new Error("Invalid input");
       return new vscode.LanguageModelToolResult([text("Read")]);
@@ -757,7 +757,7 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.source, source);
   });
 
-  test("required tool rounds run only the tool exposed in that round", async () => {
+  test("runs only the attached tool in the round that must call it", async () => {
     const call = new vscode.LanguageModelToolCallPart("1", "diagram_chart", {});
     const { sent } = await ask([[call], [text("Sorry.")]], {
       toolReferences: [{ name: "diagram_getState" }],

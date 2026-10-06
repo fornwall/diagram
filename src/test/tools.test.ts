@@ -24,7 +24,7 @@ suite("tools", () => {
   });
   teardown(() => panel.dispose());
 
-  test("diagram_render reads a source starting with a brace as an ECharts option", () => {
+  test("diagram_render says it renders a chart for a source that starts with a brace", () => {
     const tool = new RenderDiagramTool(panel);
     const message = (input: { source: string; language?: string }) =>
       tool.prepareInvocation({ input }).invocationMessage;

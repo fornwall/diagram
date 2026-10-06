@@ -389,7 +389,7 @@ suite("workspaceTools", function () {
     }
   });
 
-  test("validates malformed input and invalid line ranges", async () => {
+  test("rejects malformed input, and line ranges outside the file", async () => {
     for (const input of [
       null,
       [],

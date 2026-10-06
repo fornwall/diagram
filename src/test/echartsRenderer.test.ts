@@ -75,7 +75,7 @@ function relayout<T>(
 
 const item = (dataIndex: number) => ({ seriesIndex: 0, dataType: undefined, dataIndex });
 
-suite("echartsRenderer interactions", () => {
+suite("echartsRenderer", () => {
   test("indents a one-line JSON option for editing without changing its values", () => {
     const format = (source: string) => EChartsRenderer.prototype.formatForEditing(source);
     const values =
@@ -91,7 +91,7 @@ suite("echartsRenderer interactions", () => {
     }
   });
 
-  test("updates notes, kinds and order without revisiting chart graphics", () => {
+  test("dispatches nothing when only the notes, kinds or order of the marks change", () => {
     const { renderer, actions } = interactionRenderer();
     renderer.showMarks({
       marks: [
@@ -110,17 +110,9 @@ suite("echartsRenderer interactions", () => {
       dim: false,
     });
     assert.deepStrictEqual(actions, []);
-    renderer.showMarks({ marks: [{ id: "C", kind: "info" }], dim: false });
-    assert.deepStrictEqual(actions, [
-      { type: "downplay", batch: [item(1), item(0)] },
-      { type: "highlight", batch: [item(2)] },
-    ]);
-    actions.length = 0;
-    renderer.showMarks({ marks: [], dim: false });
-    assert.deepStrictEqual(actions, [{ type: "downplay", batch: [item(2)] }]);
   });
 
-  test("changing marks only downplays removed items while restoring retained emphasis", () => {
+  test("downplays only the items no longer marked, and highlights those still marked again", () => {
     const { renderer, actions } = interactionRenderer();
     const mark = (id: string) => ({ id, kind: "info" as const });
     renderer.showMarks({ marks: [mark("A"), mark("B")], dim: false });
@@ -157,7 +149,7 @@ suite("echartsRenderer interactions", () => {
     ]);
   });
 
-  test("changing dimming still relayouts unchanged marks", () => {
+  test("lays the chart out again when only the dimming changes", () => {
     const { renderer, relayouts } = interactionRenderer();
     const marks = [{ id: "A", kind: "info" as const }];
     renderer.showMarks({ marks, dim: false });

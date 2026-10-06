@@ -45,7 +45,7 @@ suite("relationships", function () {
       if (!(${expression})) throw new Error(${JSON.stringify(`Timed out waiting for ${expression}`)});
     })()`);
 
-  test("selects labeled and parallel edges with authoritative underscore endpoints and stable IDs", async () => {
+  test("selects labeled and parallel flowchart edges by their ids, with endpoints whose ids hold underscores", async () => {
     const source =
       "flowchart LR\n A_B[Origin] first@-->|First| B_C[Target]\n A_B second@--> B_C\n B_C back@--> A_B";
     assert.ok((await render({ source })).ok);
@@ -94,7 +94,7 @@ suite("relationships", function () {
     );
   });
 
-  test("selects unlabeled edges by their wide hit target and keyboard without changing node selection", async () => {
+  test("selects unlabeled edges by a wide hit target and with the keyboard, together with nodes", async () => {
     assert.ok((await render({ source: "flowchart LR\n A --> B\n A --> B" })).ok);
     const ids = (await evaluate(
       `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
@@ -122,7 +122,7 @@ suite("relationships", function () {
     assert.deepStrictEqual(selection, [{ id: "B", label: "B" }]);
   });
 
-  test("selects repeated and self sequence messages with multiline labels and supports picking and marks", async () => {
+  test("selects, picks and marks each sequence message, also repeated ones, ones to oneself and multiline ones", async () => {
     assert.ok(
       (
         await render({
@@ -238,7 +238,7 @@ suite("relationships", function () {
     );
   });
 
-  test("highlights a deterministic shortest path through cycles in selected direction and reports no path", async () => {
+  test("highlights the shortest path from the first selected node to the second, or says there is none", async () => {
     assert.ok(
       (
         await render({
