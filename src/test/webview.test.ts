@@ -2321,6 +2321,16 @@ suite("webview", function () {
         ],
       ],
       [
+        // Two fields of the same label, the second at the start of a row.
+        'packet\n0-15: "A"\n16-31: "Reserved"\n32-47: "Reserved"\n48-63: "B"',
+        [
+          "A: <rect> A 0 15",
+          "B: <rect> B 48 63",
+          "Reserved (2): <rect> Reserved 32 47",
+          "Reserved: <rect> Reserved 16 31",
+        ],
+      ],
+      [
         'radar-beta\n  axis m["Math"], s["Science"]\n  axis e\n  curve a["Alice"]{85, 90, 80}\n  curve b{70, 75, 85}',
         ["a: <path> Alice", "b: <path> b", "e: e", "m: Math", "s: Science"],
       ],

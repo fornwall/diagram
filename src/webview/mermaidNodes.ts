@@ -29,6 +29,14 @@ export const WITH_DATABASE = new Set([
   "cynefin",
 ]);
 
+/** A packet field, or a piece of one, from its first bit to its last. */
+interface PacketBlock {
+  start: number;
+  end: number;
+  bits: number;
+  label: string;
+}
+
 /** An item of a tree that Mermaid draws, below a root without a name. */
 interface TreeItem {
   name: string;
@@ -78,8 +86,8 @@ export interface DiagramDb {
   };
   /** A treemap's sections and leaves, or a tree view's folders and files. */
   getRoot?(): TreeItem;
-  /** A packet diagram's fields, by row, a field that goes on in the next row split in two. */
-  getPacket?(): { label: string }[][];
+  /** A packet diagram's fields, by row, a field that goes on in the next row in pieces. */
+  getPacket?(): PacketBlock[][];
   /** A radar chart's axes and curves, in the order it draws them. */
   getAxes?(): { name: string; label: string }[];
   getCurves?(): { name: string; label: string }[];
@@ -684,17 +692,25 @@ function railroad(f: Finder): void {
 
 /**
  * Packet fields, by their labels: a box, its label and its bit numbers each, in the order of the
- * database. The part of a field that goes on in the next row has the same label.
+ * database. A field that goes on in the next row is in pieces of the same label, which Mermaid
+ * counts a bit short (their bits are their end less their start), and whole fields not. So two
+ * fields of the same label that both go on in the next row, the second at the start of a row,
+ * look like one.
  */
 function packet(f: Finder): void {
   const rows = f.db?.getPacket?.() ?? [];
   const boxes = f.all("rect.packetBlock");
   if (boxes.length !== rows.flat().length) return;
+  const isPiece = ({ start, end, bits }: PacketBlock) => bits === end - start;
   let field: DiagramNode | undefined;
+  let last: PacketBlock | undefined;
   let i = 0;
   for (const row of rows) {
-    for (const [column, { label }] of row.entries()) {
-      if (!field || column > 0 || field.label !== label) field = f.named(label);
+    for (const [column, block] of row.entries()) {
+      const goesOn =
+        column === 0 && last && isPiece(last) && isPiece(block) && last.label === block.label;
+      if (!field || !goesOn) field = f.named(block.label);
+      last = block;
       const box = boxes[i++] as Element;
       f.add(box, field);
       for (let text = box.nextElementSibling; text?.matches("text"); ) {
