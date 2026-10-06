@@ -779,18 +779,10 @@ export class DiagramPanel implements vscode.Disposable {
           "and the new settings, or ask the user to press Refresh in the diagram panel.",
       );
     }
-    const rebuilt = rebuildChart(chart, table, state.chartPresentation);
+    const next = withRebuiltChart(state, chart, table, state.chartPresentation);
     this.webview.reveal(true);
     const outcome = await this.showChart(
-      {
-        ...state,
-        chart,
-        title: chart.title ?? state.title,
-        source: JSON.stringify(rebuilt.option, null, 2),
-        chartPresentation: rebuilt.presentation,
-        editedByUser: rebuilt.presentation.edits.length > 0,
-        origin: "tool",
-      },
+      { ...next, title: chart.title ?? state.title, origin: "tool" },
       table,
       "The chart changed before the user picked.",
       token,
@@ -881,19 +873,9 @@ export class DiagramPanel implements vscode.Disposable {
       }
       if (!table) throw new Error("Press Refresh to load the chart data first.");
       const chart = reset ? state.chart : withChartControls(state.chart, message.controls);
-      const { option, presentation } = rebuildChart(
-        chart,
-        table,
-        reset || message.replaceSource ? undefined : state.chartPresentation,
-      );
+      const kept = reset || message.replaceSource ? undefined : state.chartPresentation;
       const outcome = await this.showChart(
-        {
-          ...state,
-          chart,
-          chartPresentation: presentation,
-          source: JSON.stringify(option, null, 2),
-          editedByUser: presentation.edits.length > 0,
-        },
+        withRebuiltChart(state, chart, table, kept),
         table,
         "Chart options changed before the user picked.",
       );
@@ -929,14 +911,8 @@ export class DiagramPanel implements vscode.Disposable {
         return;
       }
       if (warning) void vscode.window.showWarningMessage(warning);
-      const rebuilt = rebuildChart(chart, table, presentation);
       const outcome = await this.showChart(
-        {
-          ...state,
-          source: JSON.stringify(rebuilt.option, null, 2),
-          chartPresentation: rebuilt.presentation,
-          editedByUser: rebuilt.presentation.edits.length > 0,
-        },
+        withRebuiltChart(state, chart, table, presentation),
         table,
         "The chart data was refreshed before the user picked.",
       );
@@ -1168,6 +1144,23 @@ export class DiagramPanel implements vscode.Disposable {
       this.post({ type: "clearSelection" });
     }
   }
+}
+
+/** The state with the chart rebuilt from the table, keeping the manual styling of presentation. */
+function withRebuiltChart(
+  state: DiagramState,
+  chart: ChartSpec,
+  table: DataTable,
+  presentation: ChartPresentation | undefined,
+): DiagramState {
+  const rebuilt = rebuildChart(chart, table, presentation);
+  return {
+    ...state,
+    chart,
+    source: JSON.stringify(rebuilt.option, null, 2),
+    chartPresentation: rebuilt.presentation,
+    editedByUser: rebuilt.presentation.edits.length > 0,
+  };
 }
 
 /** The outcome of a render that the panel did not show, which says nothing about its source. */
