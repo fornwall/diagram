@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import type { DiagramNode } from "../protocol";
+import { replace } from "./afterTest";
 import { newPanel } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
@@ -176,27 +177,25 @@ suite("relationships", function () {
       ).ok,
     );
     await click('[data-et="message"]');
-    const execute = vscode.commands.executeCommand;
     const asked = Promise.withResolvers<string>();
-    vscode.commands.executeCommand = (async (command: string, args: { query: string }) => {
+    replace(vscode.commands, "executeCommand", (async (
+      command: string,
+      args: { query: string },
+    ) => {
       assert.strictEqual(command, "workbench.action.chat.open");
       asked.resolve(args.query);
-    }) as typeof execute;
-    try {
-      await evaluate(`(() => {
-        // As a user does: a synthetic submit event would not show if the form could not submit.
-        const input = document.querySelector('#ask-input');
-        input.value = 'Add a timeout here';
-        input.dispatchEvent(new Event('input'));
-        document.querySelector('#ask-submit').click();
-      })()`);
-      const query = await asked.promise;
-      assert.match(query, /Client → Server: Retry/);
-      assert.match(query, /id: message:i\d+; message; from: A; to: B; direction: forward/);
-      assert.match(query, /Add a timeout here/);
-    } finally {
-      vscode.commands.executeCommand = execute;
-    }
+    }) as typeof vscode.commands.executeCommand);
+    await evaluate(`(() => {
+      // As a user does: a synthetic submit event would not show if the form could not submit.
+      const input = document.querySelector('#ask-input');
+      input.value = 'Add a timeout here';
+      input.dispatchEvent(new Event('input'));
+      document.querySelector('#ask-submit').click();
+    })()`);
+    const query = await asked.promise;
+    assert.match(query, /Client → Server: Retry/);
+    assert.match(query, /id: message:i\d+; message; from: A; to: B; direction: forward/);
+    assert.match(query, /Add a timeout here/);
   });
 
   test("selects the relationships of class, state, ER and requirement diagrams", async () => {

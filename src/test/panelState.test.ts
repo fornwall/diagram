@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import type { DiagramState } from "../panel";
 import { StateStore } from "../panelState";
+import { recordMessages } from "./afterTest";
 
 const state: DiagramState = {
   language: "mermaid",
@@ -25,32 +26,26 @@ function load(saved: unknown): DiagramState | undefined {
 
 suite("panelState", () => {
   test("unchanged saves share pending writes, retry failures and persist rollbacks", async () => {
-    const warning = vscode.window.showWarningMessage;
-    const warnings: string[] = [];
-    vscode.window.showWarningMessage = async (message: string) => void warnings.push(message);
+    const warnings = recordMessages("showWarningMessage");
     const pending = Promise.withResolvers<void>();
     let writes = 0;
     const store = new StateStore(
       memento(() => (++writes === 1 ? pending.promise : Promise.resolve())),
     );
-    try {
-      const saving = store.save(state);
-      assert.strictEqual(store.save(state), saving);
-      assert.strictEqual(writes, 1);
-      pending.reject(new Error("Storage is unavailable"));
-      await saving;
-      assert.match(warnings[0] ?? "", /Storage is unavailable/);
-      await store.save(state);
-      assert.strictEqual(writes, 2, "retry unchanged state after failed persistence");
-      await store.save(state);
-      assert.strictEqual(writes, 2);
-      await store.save({ ...state, title: "Replacement" });
-      await store.save(state);
-      assert.strictEqual(writes, 4, "rolling back a previously saved state must write it again");
-      assert.strictEqual(warnings.length, 1);
-    } finally {
-      vscode.window.showWarningMessage = warning;
-    }
+    const saving = store.save(state);
+    assert.strictEqual(store.save(state), saving);
+    assert.strictEqual(writes, 1);
+    pending.reject(new Error("Storage is unavailable"));
+    await saving;
+    assert.match(warnings[0] ?? "", /Storage is unavailable/);
+    await store.save(state);
+    assert.strictEqual(writes, 2, "retry unchanged state after failed persistence");
+    await store.save(state);
+    assert.strictEqual(writes, 2);
+    await store.save({ ...state, title: "Replacement" });
+    await store.save(state);
+    assert.strictEqual(writes, 4, "rolling back a previously saved state must write it again");
+    assert.strictEqual(warnings.length, 1);
   });
 
   test("restored state needs no save until changed", async () => {

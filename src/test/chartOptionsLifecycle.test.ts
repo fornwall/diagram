@@ -44,28 +44,24 @@ suite("chart options lifecycle", function () {
     const { panel, webview } = await newFakePanel();
     const { sent } = webview;
     webview.answer = undefined;
-    try {
-      const chart: ChartSpec = { type: "bar", data };
-      const source = JSON.stringify(buildChart(chart, parseTable(data)).option);
-      const rendering = panel.render(
-        { language: "echarts", title: "Loading", source, chart },
-        "tool",
-      );
-      panel.toggleChartOptions();
-      // The webview reloads before it answers; only its replay matters.
-      sent.length = 0;
-      await webview.receive({ type: "ready" });
-      const options = sent[0];
-      assert.ok(options?.type === "chartOptions");
-      assert.strictEqual(options.visible, true);
-      assert.strictEqual(options.state?.controls.type, "bar");
-      assert.strictEqual(options.state?.revision, panel.revision);
-      assert.strictEqual(sent[1]?.type, "render");
-      await webview.finishRender();
-      assert.ok((await rendering).ok);
-    } finally {
-      panel.dispose();
-    }
+    const chart: ChartSpec = { type: "bar", data };
+    const source = JSON.stringify(buildChart(chart, parseTable(data)).option);
+    const rendering = panel.render(
+      { language: "echarts", title: "Loading", source, chart },
+      "tool",
+    );
+    panel.toggleChartOptions();
+    // The webview reloads before it answers; only its replay matters.
+    sent.length = 0;
+    await webview.receive({ type: "ready" });
+    const options = sent[0];
+    assert.ok(options?.type === "chartOptions");
+    assert.strictEqual(options.visible, true);
+    assert.strictEqual(options.state?.controls.type, "bar");
+    assert.strictEqual(options.state?.revision, panel.revision);
+    assert.strictEqual(sent[1]?.type, "render");
+    await webview.finishRender();
+    assert.ok((await rendering).ok);
   });
 
   test("Chart Options toggles the options of a shown panel, and shows them in a hidden one", async () => {
@@ -74,19 +70,15 @@ suite("chart options lifecycle", function () {
       const options = webview.sent.findLast((message) => message.type === "chartOptions");
       return options?.visible;
     };
-    try {
-      await draw(panel, { type: "bar", data });
-      panel.toggleChartOptions();
-      assert.strictEqual(visible(), true);
-      panel.toggleChartOptions();
-      assert.strictEqual(visible(), false);
-      panel.toggleChartOptions();
-      (webview.panel as { visible: boolean }).visible = false;
-      panel.toggleChartOptions();
-      assert.strictEqual(visible(), true);
-    } finally {
-      panel.dispose();
-    }
+    await draw(panel, { type: "bar", data });
+    panel.toggleChartOptions();
+    assert.strictEqual(visible(), true);
+    panel.toggleChartOptions();
+    assert.strictEqual(visible(), false);
+    panel.toggleChartOptions();
+    (webview.panel as { visible: boolean }).visible = false;
+    panel.toggleChartOptions();
+    assert.strictEqual(visible(), true);
   });
 
   test("chart options report a stale form, and keep the chart when the new one fails", async () => {
@@ -95,53 +87,45 @@ suite("chart options lifecycle", function () {
       webview.sent.flatMap((message) =>
         message.type === "chartOptionsError" ? [message.message] : [],
       );
-    try {
-      const source = await draw(panel, { type: "bar", data });
-      const shown = panel.current;
-      await webview.receive({
-        type: "applyChartOptions",
-        revision: panel.revision - 1,
-        controls: { type: "line" },
-        replaceSource: false,
-      });
-      assert.deepStrictEqual(errors(), ["The chart changed. Reopen Chart Options and try again."]);
-      assert.strictEqual(panel.current, shown);
+    const source = await draw(panel, { type: "bar", data });
+    const shown = panel.current;
+    await webview.receive({
+      type: "applyChartOptions",
+      revision: panel.revision - 1,
+      controls: { type: "line" },
+      replaceSource: false,
+    });
+    assert.deepStrictEqual(errors(), ["The chart changed. Reopen Chart Options and try again."]);
+    assert.strictEqual(panel.current, shown);
 
-      webview.nextRender((render) =>
-        webview.receive({ type: "renderError", requestId: render.requestId, message: "Bad." }),
-      );
-      await applyOptions(panel, webview, { type: "applyChartOptions", controls: { type: "line" } });
-      assert.deepStrictEqual(errors().slice(1), [
-        "Could not apply the chart options: Bad. The previous chart is kept.",
-      ]);
-      assert.strictEqual(panel.current?.chart?.type, "bar");
-      assert.strictEqual(webview.render.source, source);
-    } finally {
-      panel.dispose();
-    }
+    webview.nextRender((render) =>
+      webview.receive({ type: "renderError", requestId: render.requestId, message: "Bad." }),
+    );
+    await applyOptions(panel, webview, { type: "applyChartOptions", controls: { type: "line" } });
+    assert.deepStrictEqual(errors().slice(1), [
+      "Could not apply the chart options: Bad. The previous chart is kept.",
+    ]);
+    assert.strictEqual(panel.current?.chart?.type, "bar");
+    assert.strictEqual(webview.render.source, source);
   });
 
   test("retained presentation edits remain manual after changing chart options", async () => {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
-    try {
-      const source = await draw(panel, { type: "bar", data });
-      const styled = JSON.parse(source);
-      styled.backgroundColor = "#123456";
-      await webview.edit(JSON.stringify(styled));
-      assert.strictEqual(panel.current?.editedByUser, true);
-      await applyOptions(panel, webview, {
-        type: "applyChartOptions",
-        controls: { type: "horizontalBar", sort: "descending" },
-      });
-      assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
-      assert.strictEqual(JSON.parse(panel.current?.source ?? "").backgroundColor, "#123456");
-      assert.ok(panel.current?.chartPresentation?.edits.length);
-      assert.strictEqual(panel.current?.editedByUser, true);
-      assert.strictEqual((values.get("diagram.state") as DiagramState).editedByUser, true);
-    } finally {
-      panel.dispose();
-    }
+    const source = await draw(panel, { type: "bar", data });
+    const styled = JSON.parse(source);
+    styled.backgroundColor = "#123456";
+    await webview.edit(JSON.stringify(styled));
+    assert.strictEqual(panel.current?.editedByUser, true);
+    await applyOptions(panel, webview, {
+      type: "applyChartOptions",
+      controls: { type: "horizontalBar", sort: "descending" },
+    });
+    assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
+    assert.strictEqual(JSON.parse(panel.current?.source ?? "").backgroundColor, "#123456");
+    assert.ok(panel.current?.chartPresentation?.edits.length);
+    assert.strictEqual(panel.current?.editedByUser, true);
+    assert.strictEqual((values.get("diagram.state") as DiagramState).editedByUser, true);
   });
 
   test("closing during reset rendering restores persisted source and the previous table cache", async () => {

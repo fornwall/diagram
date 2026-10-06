@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveFile } from "../files";
 import { linkSelection, linkText, linkTexts, validateLinks } from "../links";
+import { replace } from "./afterTest";
 
 suite("links", () => {
   test("validateLinks accepts a file, a line and a range of lines", () => {
@@ -33,37 +34,31 @@ suite("links", () => {
   });
 
   test("validateLinks takes the files of virtual workspace folders by path", () => {
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
-    assert.ok(descriptor);
     const roots = ["one", "two"].map((name, index) => ({
       uri: vscode.Uri.parse(`vscode-vfs://github/owner/${name}`),
       name,
       index,
     }));
-    Object.defineProperty(vscode.workspace, "workspaceFolders", { get: () => roots });
-    try {
-      const { links, problems } = validateLinks(
-        {
-          path: "/owner/two/src/b.ts#L3",
-          uri: "vscode-vfs://github/owner/two/src/c.ts#L4",
-          outside: "vscode-vfs://github/owner/three/d.ts",
-        },
-        "mermaid",
-      );
-      assert.deepStrictEqual(links, {
-        path: { file: "/owner/two/src/b.ts", line: 3 },
-        uri: { file: "/owner/two/src/c.ts", line: 4 },
-      });
-      assert.deepStrictEqual(problems, [
-        '"outside": "vscode-vfs://github/owner/three/d.ts" is a URL; give a path in the workspace instead.',
-      ]);
-      assert.strictEqual(
-        resolveFile("/owner/two/src/b.ts").toString(),
-        "vscode-vfs://github/owner/two/src/b.ts",
-      );
-    } finally {
-      Object.defineProperty(vscode.workspace, "workspaceFolders", descriptor);
-    }
+    replace(vscode.workspace, "workspaceFolders", roots);
+    const { links, problems } = validateLinks(
+      {
+        path: "/owner/two/src/b.ts#L3",
+        uri: "vscode-vfs://github/owner/two/src/c.ts#L4",
+        outside: "vscode-vfs://github/owner/three/d.ts",
+      },
+      "mermaid",
+    );
+    assert.deepStrictEqual(links, {
+      path: { file: "/owner/two/src/b.ts", line: 3 },
+      uri: { file: "/owner/two/src/c.ts", line: 4 },
+    });
+    assert.deepStrictEqual(problems, [
+      '"outside": "vscode-vfs://github/owner/three/d.ts" is a URL; give a path in the workspace instead.',
+    ]);
+    assert.strictEqual(
+      resolveFile("/owner/two/src/b.ts").toString(),
+      "vscode-vfs://github/owner/two/src/b.ts",
+    );
   });
 
   test("validateLinks leaves out what is not a location, and says why", () => {

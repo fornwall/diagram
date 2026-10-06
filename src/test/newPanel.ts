@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { DiagramPanel } from "../panel";
 import type { FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
+import { afterTest, replace } from "./afterTest";
 
 type Render = Extract<ToWebview, { type: "render" }>;
 
@@ -133,24 +134,18 @@ interface ChatRequest {
 }
 
 /**
- * Records the requests that the panel sends to chat instead of opening chat, until restored.
+ * Records the requests that the panel sends to chat instead of opening chat, until the test ends.
  * While `fail` is set, opening chat fails, as when chat is disabled.
  */
-export function recordChat(): { requests: ChatRequest[]; fail: boolean; restore(): void } {
+export function recordChat(): { requests: ChatRequest[]; fail: boolean } {
   const execute = vscode.commands.executeCommand;
-  const chat = {
-    requests: [] as ChatRequest[],
-    fail: false,
-    restore: () => {
-      vscode.commands.executeCommand = execute;
-    },
-  };
-  vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+  const chat = { requests: [] as ChatRequest[], fail: false };
+  replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
     if (command !== "workbench.action.chat.open") return execute(command, ...args);
     if (chat.fail) throw new Error("Chat is disabled.");
     chat.requests.push(args[0] as ChatRequest);
     return undefined;
-  }) as typeof execute;
+  }) as typeof execute);
   return chat;
 }
 
@@ -164,11 +159,12 @@ export async function showInFake(panel: DiagramPanel): Promise<FakeWebview> {
   return webview;
 }
 
-/** A new panel shown in a fake webview: see {@link FakeWebview}. */
+/** A new panel shown in a fake webview (see {@link FakeWebview}), disposed once the test ends. */
 export async function newFakePanel(
   state?: Map<string, unknown> | vscode.Memento,
 ): Promise<{ panel: DiagramPanel; webview: FakeWebview }> {
   const panel = newPanel(state);
+  afterTest(() => panel.dispose());
   return { panel, webview: await showInFake(panel) };
 }
 

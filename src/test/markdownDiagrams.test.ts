@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
+import { afterTest, recordMessages, replace } from "./afterTest";
 import { newPanel, webviewTabs } from "./newPanel";
 
 suite("markdownDiagrams", function () {
@@ -127,33 +128,24 @@ suite("markdownDiagrams", function () {
   });
 
   test("Open Diagram at Cursor says why there is nothing to open", async () => {
-    const information = vscode.window.showInformationMessage;
-    const messages: string[] = [];
-    vscode.window.showInformationMessage = async (message: string) => {
-      messages.push(message);
-      return undefined;
-    };
-    try {
-      for (const [language, content] of [
-        ["plaintext", "```mermaid\nflowchart TD\n```\n"],
-        ["markdown", "# Notes\n\n```ts\nconst x = 1;\n```\n"],
-      ] as const) {
-        const document = await vscode.workspace.openTextDocument({ language, content });
-        await vscode.window.showTextDocument(document);
-        await vscode.commands.executeCommand("diagram.openAtCursor");
-      }
-      assert.strictEqual(messages.length, 2);
-      assert.strictEqual(
-        messages[0],
-        "Open a Markdown file to open a diagram or chart that is written in it.",
-      );
-      assert.match(
-        messages[1] ?? "",
-        /^Untitled-\d+ holds no mermaid or echarts code block to open\.$/,
-      );
-    } finally {
-      vscode.window.showInformationMessage = information;
+    const messages = recordMessages("showInformationMessage");
+    for (const [language, content] of [
+      ["plaintext", "```mermaid\nflowchart TD\n```\n"],
+      ["markdown", "# Notes\n\n```ts\nconst x = 1;\n```\n"],
+    ] as const) {
+      const document = await vscode.workspace.openTextDocument({ language, content });
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand("diagram.openAtCursor");
     }
+    assert.strictEqual(messages.length, 2);
+    assert.strictEqual(
+      messages[0],
+      "Open a Markdown file to open a diagram or chart that is written in it.",
+    );
+    assert.match(
+      messages[1] ?? "",
+      /^Untitled-\d+ holds no mermaid or echarts code block to open\.$/,
+    );
   });
 
   test("a stale CodeLens does not open a different nearby diagram", async () => {
@@ -183,22 +175,17 @@ suite("markdownDiagrams", function () {
     const command = (await codeLenses(document))[0]?.command;
     assert.ok(command);
     const file = path.join(dir, "deleted.md");
-    const showError = vscode.window.showErrorMessage;
-    let error: string | undefined;
-    vscode.window.showErrorMessage = (async (message: string) => {
-      error = message;
-      return undefined;
-    }) as typeof showError;
-    try {
-      await vscode.commands.executeCommand(
-        command.command,
-        vscode.Uri.file(file),
-        command.arguments?.[1],
-      );
-    } finally {
-      vscode.window.showErrorMessage = showError;
-    }
-    assert.match(error ?? "", /^Could not open the diagram: \/\S+\/deleted\.md does not exist\.$/);
+    const errors = recordMessages("showErrorMessage");
+    await vscode.commands.executeCommand(
+      command.command,
+      vscode.Uri.file(file),
+      command.arguments?.[1],
+    );
+    assert.strictEqual(errors.length, 1);
+    assert.match(
+      errors[0] ?? "",
+      /^Could not open the diagram: \/\S+\/deleted\.md does not exist\.$/,
+    );
   });
 
   test("opening a diagram reports when the panel cannot display it", async () => {
@@ -209,32 +196,18 @@ suite("markdownDiagrams", function () {
     const command = (await codeLenses(document))[0]?.command;
     assert.ok(command);
     const panel = newPanel();
-    const register = vscode.commands.registerCommand;
-    const warn = vscode.window.showWarningMessage;
-    let registrations: vscode.Disposable[] = [];
+    afterTest(() => panel.dispose());
     const reason = "The diagram panel did not respond within 15 seconds.";
-    let warning: string | undefined;
-    panel.render = async () => ({
-      ok: false,
-      kind: "unavailable",
-      error: reason,
-    });
-    vscode.commands.registerCommand = (name, callback, thisArg) =>
-      register(`test.${name}`, callback, thisArg);
-    vscode.window.showWarningMessage = (async (message: string) => {
-      warning = message;
-      return undefined;
-    }) as typeof warn;
-    try {
-      registrations = registerMarkdownDiagrams(panel);
-      vscode.commands.registerCommand = register;
-      await vscode.commands.executeCommand(`test.${command.command}`, ...(command.arguments ?? []));
-      assert.strictEqual(warning, reason);
-    } finally {
-      vscode.commands.registerCommand = register;
-      vscode.window.showWarningMessage = warn;
-      vscode.Disposable.from(...registrations).dispose();
-      panel.dispose();
-    }
+    panel.render = async () => ({ ok: false, kind: "unavailable", error: reason });
+    // Registered under other names than the extension's own.
+    const register = vscode.commands.registerCommand;
+    replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>
+      register(`test.${name}`, callback, thisArg),
+    );
+    const registrations = registerMarkdownDiagrams(panel);
+    afterTest(() => vscode.Disposable.from(...registrations).dispose());
+    const warnings = recordMessages("showWarningMessage");
+    await vscode.commands.executeCommand(`test.${command.command}`, ...(command.arguments ?? []));
+    assert.deepStrictEqual(warnings, [reason]);
   });
 });

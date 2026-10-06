@@ -10,6 +10,7 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
+import { replace } from "./afterTest";
 import { toolText } from "./toolText";
 
 suite("workspace tools", function () {
@@ -101,9 +102,6 @@ suite("workspace tools", function () {
   });
 
   test("fills result limits across overlapping workspace roots", async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
-    assert.ok(descriptor);
-    const findFiles = vscode.workspace.findFiles;
     const nested = path.join(dir, "nested");
     await fs.mkdir(nested);
     const files = ["nested/a.ts", "nested/b.ts", "c.ts"].map((name) =>
@@ -115,26 +113,21 @@ suite("workspace tools", function () {
       name: path.basename(file),
       index,
     }));
-    Object.defineProperty(vscode.workspace, "workspaceFolders", { get: () => roots });
-    vscode.workspace.findFiles = async (include, _exclude, maxResults) => {
+    replace(vscode.workspace, "workspaceFolders", roots);
+    replace(vscode.workspace, "findFiles", async (include, _exclude, maxResults) => {
       assert.ok(include instanceof vscode.RelativePattern);
       const matches = include.baseUri.fsPath === nested ? files.slice(0, 2) : files;
       return matches.slice(0, maxResults);
-    };
-    try {
-      // Paths outside the first root are absolute, so that reading them is unambiguous.
-      assert.strictEqual(
-        await invoke(finder, { maxResults: 3 }),
-        ["a.ts", "b.ts", files[2]?.fsPath].join("\n"),
-      );
-      assert.strictEqual(
-        await invoke(finder, { maxResults: 2 }),
-        "a.ts\nb.ts\nShowing the first 2 files; narrow the glob to see more.",
-      );
-    } finally {
-      vscode.workspace.findFiles = findFiles;
-      Object.defineProperty(vscode.workspace, "workspaceFolders", descriptor);
-    }
+    });
+    // Paths outside the first root are absolute, so that reading them is unambiguous.
+    assert.strictEqual(
+      await invoke(finder, { maxResults: 3 }),
+      ["a.ts", "b.ts", files[2]?.fsPath].join("\n"),
+    );
+    assert.strictEqual(
+      await invoke(finder, { maxResults: 2 }),
+      "a.ts\nb.ts\nShowing the first 2 files; narrow the glob to see more.",
+    );
   });
 
   test("searches literal text with accurate lines and case control", async () => {

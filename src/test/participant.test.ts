@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
+import { afterTest, replace } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
@@ -130,12 +131,30 @@ async function ask(
   return { result: result || undefined, shown, sent, counted };
 }
 
+/**
+ * Counts the tools that the participant calls until the test ends, answering the nth call as
+ * `answer` says, by default with "Read".
+ */
+function countToolCalls(
+  answer: (call: number) => vscode.LanguageModelToolResult = () =>
+    new vscode.LanguageModelToolResult([text("Read")]),
+): { count: number } {
+  const calls = { count: 0 };
+  replace(vscode.lm, "invokeTool", async () => answer(++calls.count));
+  return calls;
+}
+
 /** The text of a message, including tool results. */
 function messageText(message: vscode.LanguageModelChatMessage | undefined): string {
   return (message?.content ?? [])
     .flatMap((part) => (part instanceof vscode.LanguageModelToolResultPart ? part.content : [part]))
     .map((part) => (part instanceof vscode.LanguageModelTextPart ? part.value : ""))
     .join("");
+}
+
+/** The texts of the attachments among the messages to a model. */
+function attachments(messages: vscode.LanguageModelChatMessage[] = []): string[] {
+  return messages.map(messageText).filter((message) => message.startsWith("Attached"));
 }
 
 suite("participant", () => {
@@ -151,7 +170,6 @@ suite("participant", () => {
         : { type: "renderError", requestId, message: error };
     };
   });
-  teardown(() => panel.dispose());
 
   test("a cancelled request does not contact the model", async () => {
     const cancellation = new vscode.CancellationTokenSource();
@@ -281,11 +299,10 @@ suite("participant", () => {
     const cancellation = new vscode.CancellationTokenSource();
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<vscode.LanguageModelToolResult>();
-    const invokeTool = vscode.lm.invokeTool;
-    vscode.lm.invokeTool = () => {
+    replace(vscode.lm, "invokeTool", () => {
       started.resolve();
       return resume.promise;
-    };
+    });
     try {
       const response = ask(
         [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
@@ -301,7 +318,6 @@ suite("participant", () => {
       assert.strictEqual(panel.current, undefined);
     } finally {
       resume.resolve(new vscode.LanguageModelToolResult([]));
-      vscode.lm.invokeTool = invokeTool;
       cancellation.dispose();
     }
   });
@@ -408,7 +424,6 @@ suite("participant", () => {
 
   for (const finalBlock of [false, true]) {
     test(`preserves a tool render ${finalBlock ? "despite a later diagram fence" : "in history"}`, async () => {
-      const invokeTool = vscode.lm.invokeTool;
       const toolInvocationToken = { requestId: "latest-diagram" } as never;
       const toolDiagram = {
         language: "mermaid",
@@ -416,33 +431,29 @@ suite("participant", () => {
         title: "Tool result",
         links: { Tool: { file: "src/tools.ts" } },
       } as const;
-      vscode.lm.invokeTool = async () => {
+      replace(vscode.lm, "invokeTool", async () => {
         assert.ok((await panel.render(toolDiagram, "tool", toolInvocationToken)).ok);
         return new vscode.LanguageModelToolResult([text("Rendered the diagram.")]);
-      };
-      try {
-        const { result, shown } = await ask(
+      });
+      const { result, shown } = await ask(
+        [
           [
-            [
-              text(valid),
-              new vscode.LanguageModelToolCallPart("1", "diagram_render", {
-                ...toolDiagram,
-                links: { Tool: "src/tools.ts" },
-              }),
-            ],
-            [text(finalBlock ? "```mermaid\nflowchart TD\n  Final --> Result\n```" : "Done.")],
+            text(valid),
+            new vscode.LanguageModelToolCallPart("1", "diagram_render", {
+              ...toolDiagram,
+              links: { Tool: "src/tools.ts" },
+            }),
           ],
-          { toolReferences: [{ name: "diagram_render" }], toolInvocationToken },
-        );
-        const source = toolDiagram.source;
-        assert.strictEqual(panel.current?.source, source);
-        assert.strictEqual(result?.metadata?.source, source);
-        assert.strictEqual(panel.current?.origin, "participant");
-        assert.deepStrictEqual(panel.current?.links, toolDiagram.links);
-        assert.doesNotMatch(shown, /flowchart/);
-      } finally {
-        vscode.lm.invokeTool = invokeTool;
-      }
+          [text(finalBlock ? "```mermaid\nflowchart TD\n  Final --> Result\n```" : "Done.")],
+        ],
+        { toolReferences: [{ name: "diagram_render" }], toolInvocationToken },
+      );
+      const source = toolDiagram.source;
+      assert.strictEqual(panel.current?.source, source);
+      assert.strictEqual(result?.metadata?.source, source);
+      assert.strictEqual(panel.current?.origin, "participant");
+      assert.deepStrictEqual(panel.current?.links, toolDiagram.links);
+      assert.doesNotMatch(shown, /flowchart/);
     });
   }
 
@@ -571,52 +582,42 @@ suite("participant", () => {
       configurable: true,
       get: () => available.map((tool) => ({ ...tool })),
     });
-    try {
-      const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
-      const { sent } = await ask([[call], [text("Done.")]], {
-        toolReferences: [{ name: "diagram_getState" }],
-      });
-      assert.deepStrictEqual(
-        sent[1]?.options.tools?.map((tool) => tool.name).sort(),
-        availableDefaults(),
-      );
-    } finally {
-      Object.defineProperty(vscode.lm, "tools", descriptor);
-    }
+    afterTest(() => Object.defineProperty(vscode.lm, "tools", descriptor));
+    const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
+    const { sent } = await ask([[call], [text("Done.")]], {
+      toolReferences: [{ name: "diagram_getState" }],
+    });
+    assert.deepStrictEqual(
+      sent[1]?.options.tools?.map((tool) => tool.name).sort(),
+      availableDefaults(),
+    );
   });
 
   test("offers all built-in tools by default and only explicitly attached external tools", async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
-    assert.ok(descriptor);
     const names = [...defaultTools, "external_attached", "external_unattached", "diagram_unknown"];
-    Object.defineProperty(vscode.lm, "tools", {
-      configurable: true,
-      get: () => names.map((name) => ({ name, description: name, inputSchema: {} })),
-    });
-    const invoke = vscode.lm.invokeTool;
-    vscode.lm.invokeTool = async () => new vscode.LanguageModelToolResult([text("Done")]);
-    try {
-      const regular = await ask([[text("Ready.")]]);
-      assert.deepStrictEqual(
-        regular.sent[0]?.options.tools?.map((tool) => tool.name).sort(),
-        defaultTools,
-      );
-      const attached = await ask(
-        [[new vscode.LanguageModelToolCallPart("1", "external_attached", {})], [text("Done.")]],
-        { toolReferences: [{ name: "external_attached" }] },
-      );
-      assert.deepStrictEqual(
-        attached.sent[0]?.options.tools?.map((tool) => tool.name),
-        ["external_attached"],
-      );
-      assert.deepStrictEqual(attached.sent[1]?.options.tools?.map((tool) => tool.name).sort(), [
-        ...defaultTools,
-        "external_attached",
-      ]);
-    } finally {
-      vscode.lm.invokeTool = invoke;
-      Object.defineProperty(vscode.lm, "tools", descriptor);
-    }
+    replace(
+      vscode.lm,
+      "tools",
+      names.map((name) => ({ name, description: name, inputSchema: {}, tags: [] })),
+    );
+    countToolCalls();
+    const regular = await ask([[text("Ready.")]]);
+    assert.deepStrictEqual(
+      regular.sent[0]?.options.tools?.map((tool) => tool.name).sort(),
+      defaultTools,
+    );
+    const attached = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "external_attached", {})], [text("Done.")]],
+      { toolReferences: [{ name: "external_attached" }] },
+    );
+    assert.deepStrictEqual(
+      attached.sent[0]?.options.tools?.map((tool) => tool.name),
+      ["external_attached"],
+    );
+    assert.deepStrictEqual(attached.sent[1]?.options.tools?.map((tool) => tool.name).sort(), [
+      ...defaultTools,
+      "external_attached",
+    ]);
   });
 
   test("/explain rejects mutating and unknown tools even when explicitly attached", async () => {
@@ -625,169 +626,118 @@ suite("participant", () => {
       "participant",
     );
     const before = panel.current;
-    const invoke = vscode.lm.invokeTool;
-    let invoked = 0;
-    vscode.lm.invokeTool = async () => {
-      invoked++;
-      return new vscode.LanguageModelToolResult([]);
-    };
-    try {
-      const { sent, result } = await ask(
+    const calls = countToolCalls();
+    const { sent, result } = await ask(
+      [
         [
-          [
-            "diagram_render",
-            "diagram_chart",
-            "diagram_updateChart",
-            "diagram_inspectData",
-            "diagram_annotate",
-            "diagram_pickNodes",
-            "external_tool",
-          ].map((name, i) => new vscode.LanguageModelToolCallPart(String(i), name, {})),
-          [text(valid)],
+          "diagram_render",
+          "diagram_chart",
+          "diagram_updateChart",
+          "diagram_inspectData",
+          "diagram_annotate",
+          "diagram_pickNodes",
+          "external_tool",
+        ].map((name, i) => new vscode.LanguageModelToolCallPart(String(i), name, {})),
+        [text(valid)],
+      ],
+      {
+        command: "explain",
+        toolReferences: [
+          { name: "diagram_render" },
+          { name: "diagram_chart" },
+          { name: "external_tool" },
         ],
-        {
-          command: "explain",
-          toolReferences: [
-            { name: "diagram_render" },
-            { name: "diagram_chart" },
-            { name: "external_tool" },
-          ],
-        },
-      );
-      assert.strictEqual(invoked, 0);
-      assert.strictEqual(panel.current, before);
-      assert.strictEqual(result, undefined);
-      assert.ok(sent[0]?.options.tools?.every((tool) => readOnlyTools.includes(tool.name)));
-      assert.strictEqual(sent[0]?.options.toolMode, undefined);
-      assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+      },
+    );
+    assert.strictEqual(calls.count, 0);
+    assert.strictEqual(panel.current, before);
+    assert.strictEqual(result, undefined);
+    assert.ok(sent[0]?.options.tools?.every((tool) => readOnlyTools.includes(tool.name)));
+    assert.strictEqual(sent[0]?.options.toolMode, undefined);
+    assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
   });
 
   test("supports extended exploration and stops after twelve tool rounds", async () => {
-    const invoke = vscode.lm.invokeTool;
-    let invoked = 0;
-    vscode.lm.invokeTool = async () => {
-      invoked++;
-      return new vscode.LanguageModelToolResult([text("Read")]);
-    };
-    try {
-      const replies = Array.from({ length: 20 }, (_, i) => [
-        new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-      ]);
-      const { sent, shown } = await ask(replies);
-      assert.strictEqual(invoked, 12);
-      assert.strictEqual(sent.length, 14);
-      assert.match(messageText(sent[13]?.messages.at(-1)), /tool round limit/);
-      assert.match(shown, /Stopped tool use.*tool round limit/);
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+    const calls = countToolCalls();
+    const replies = Array.from({ length: 20 }, (_, i) => [
+      new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+    ]);
+    const { sent, shown } = await ask(replies);
+    assert.strictEqual(calls.count, 12);
+    assert.strictEqual(sent.length, 14);
+    assert.match(messageText(sent[13]?.messages.at(-1)), /tool round limit/);
+    assert.match(shown, /Stopped tool use.*tool round limit/);
   });
 
   test("bounds batched tool calls and permits a final explanation", async () => {
-    const invoke = vscode.lm.invokeTool;
-    let invoked = 0;
-    vscode.lm.invokeTool = async () => {
-      invoked++;
-      return new vscode.LanguageModelToolResult([text("Read")]);
-    };
-    try {
-      const calls = Array.from(
-        { length: 40 },
-        (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-      );
-      const { sent, shown } = await ask([calls, [text("Exploration stopped.")]]);
-      assert.strictEqual(invoked, 32);
-      assert.strictEqual(sent.length, 2);
-      assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
-      assert.strictEqual(shown, "Exploration stopped.");
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+    const calls = countToolCalls();
+    const batch = Array.from(
+      { length: 40 },
+      (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+    );
+    const { sent, shown } = await ask([batch, [text("Exploration stopped.")]]);
+    assert.strictEqual(calls.count, 32);
+    assert.strictEqual(sent.length, 2);
+    assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
+    assert.strictEqual(shown, "Exploration stopped.");
   });
 
   for (const name of ["Canceled", "CancellationError", "AbortError"]) {
     test(`does not repeat a declined tool (${name}) in the batch or subsequent rounds`, async () => {
-      const invoke = vscode.lm.invokeTool;
-      let invoked = 0;
-      vscode.lm.invokeTool = async () => {
-        invoked++;
+      const calls = countToolCalls(() => {
         const error = new Error("Declined");
         error.name = name;
         throw error;
-      };
-      try {
-        const call = (id: string) =>
-          new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-        const { sent, shown } = await ask([
-          [call("1"), call("2")],
-          [call("3")],
-          [text("Unreachable")],
-        ]);
-        assert.strictEqual(invoked, 1);
-        assert.strictEqual(sent.length, 2);
-        assert.match(messageText(sent[1]?.messages.at(-1)), /user declined/);
-        assert.match(shown, /Stopped tool use.*user declined/);
-      } finally {
-        vscode.lm.invokeTool = invoke;
-      }
+      });
+      const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
+      const { sent, shown } = await ask([
+        [call("1"), call("2")],
+        [call("3")],
+        [text("Unreachable")],
+      ]);
+      assert.strictEqual(calls.count, 1);
+      assert.strictEqual(sent.length, 2);
+      assert.match(messageText(sent[1]?.messages.at(-1)), /user declined/);
+      assert.match(shown, /Stopped tool use.*user declined/);
     });
   }
 
   test("shares the tool budget with rendering repairs", async () => {
-    const invoke = vscode.lm.invokeTool;
-    let invoked = 0;
-    vscode.lm.invokeTool = async () => {
-      invoked++;
-      return new vscode.LanguageModelToolResult([text("Read")]);
-    };
-    try {
-      const calls = Array.from(
-        { length: 32 },
-        (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-      );
-      const { result, sent } = await ask([
-        calls,
-        [text(invalid)],
-        [new vscode.LanguageModelToolCallPart("repair", "diagram_getState", {})],
-        [text(valid)],
-      ]);
-      assert.strictEqual(invoked, 32);
-      assert.strictEqual(sent.length, 4);
-      assert.match(messageText(sent[3]?.messages.at(-1)), /tool call limit/);
-      assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+    const calls = countToolCalls();
+    const batch = Array.from(
+      { length: 32 },
+      (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
+    );
+    const { result, sent } = await ask([
+      batch,
+      [text(invalid)],
+      [new vscode.LanguageModelToolCallPart("repair", "diagram_getState", {})],
+      [text(valid)],
+    ]);
+    assert.strictEqual(calls.count, 32);
+    assert.strictEqual(sent.length, 4);
+    assert.match(messageText(sent[3]?.messages.at(-1)), /tool call limit/);
+    assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
   });
 
   test("ordinary tool failures can be corrected in a later round", async () => {
-    const invoke = vscode.lm.invokeTool;
-    let invoked = 0;
-    vscode.lm.invokeTool = async () => {
-      if (++invoked === 1) throw new Error("Invalid input");
+    const calls = countToolCalls((call) => {
+      if (call === 1) throw new Error("Invalid input");
       return new vscode.LanguageModelToolResult([text("Read")]);
-    };
-    try {
-      const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-      const { result, sent } = await ask([[call("1")], [call("2")], [text("Done.")]]);
-      assert.strictEqual(invoked, 2);
-      assert.match(messageText(sent[1]?.messages.at(-1)), /tool call failed: Invalid input/);
-      assert.strictEqual(result?.errorDetails, undefined);
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+    });
+    const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
+    const { result, sent } = await ask([[call("1")], [call("2")], [text("Done.")]]);
+    assert.strictEqual(calls.count, 2);
+    assert.match(messageText(sent[1]?.messages.at(-1)), /tool call failed: Invalid input/);
+    assert.strictEqual(result?.errorDetails, undefined);
   });
 
   test("adopts chart provenance instead of copying its rendered data into history", async () => {
-    const invoke = vscode.lm.invokeTool;
     const toolInvocationToken = { requestId: "chart-history" } as never;
     const chart = { data: "name,value\na,1\nb,2", type: "bar" } as const;
     const source =
       '{ "xAxis": { "data": ["a", "b"] }, "yAxis": {}, "series": [{ "type": "bar", "data": [1, 2] }] }';
-    vscode.lm.invokeTool = async () => {
+    replace(vscode.lm, "invokeTool", async () => {
       assert.ok(
         (
           await panel.render(
@@ -798,17 +748,13 @@ suite("participant", () => {
         ).ok,
       );
       return new vscode.LanguageModelToolResult([text("Rendered")]);
-    };
-    try {
-      const { result } = await ask(
-        [[new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)], [text(valid)]],
-        { toolInvocationToken },
-      );
-      assert.deepStrictEqual(result?.metadata, { chart });
-      assert.strictEqual(panel.current?.source, source);
-    } finally {
-      vscode.lm.invokeTool = invoke;
-    }
+    });
+    const { result } = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)], [text(valid)]],
+      { toolInvocationToken },
+    );
+    assert.deepStrictEqual(result?.metadata, { chart });
+    assert.strictEqual(panel.current?.source, source);
   });
 
   test("required tool rounds run only the tool exposed in that round", async () => {
@@ -870,7 +816,7 @@ suite("participant", () => {
       { id: "text", value: "some text", modelDescription: "The terminal selection" },
     ].reverse();
     const { sent } = await ask([[text("Hm.")]], { references });
-    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    const attached = attachments(sent[0]?.messages);
     assert.ok(
       attached?.[0]?.startsWith(
         `Attached by the user: ${vscode.workspace.asRelativePath(folder)}, which could not be read: `,
@@ -883,62 +829,42 @@ suite("participant", () => {
   });
 
   test("shares attachment reads across selections and history, rereading on each request", async () => {
-    const open = vscode.workspace.openTextDocument;
-    const document = await open({ content: "first\nsecond" });
+    const document = await vscode.workspace.openTextDocument({ content: "first\nsecond" });
     let reads = 0;
-    vscode.workspace.openTextDocument = async () => {
+    replace(vscode.workspace, "openTextDocument", (async () => {
       reads++;
       return document;
-    };
-    try {
-      const references = [
-        { id: "file", value: document.uri },
-        { id: "line", value: new vscode.Location(document.uri, new vscode.Range(1, 0, 1, 6)) },
-      ];
-      const history = [
-        new RequestTurn("Read it", undefined, references, "diagram.participant", []),
-      ];
-      for (let request = 1; request <= 2; request++) {
-        const { sent } = await ask([[text("Read.")]], { references, history });
-        assert.strictEqual(reads, request);
-        const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
-        assert.strictEqual(attached?.length, 2);
-        assert.ok(attached?.some((text) => text.endsWith("```\nsecond\n```")));
-        assert.ok(attached?.some((text) => text.endsWith("```\nfirst\nsecond\n```")));
-      }
-    } finally {
-      vscode.workspace.openTextDocument = open;
+    }) as typeof vscode.workspace.openTextDocument);
+    const references = [
+      { id: "file", value: document.uri },
+      { id: "line", value: new vscode.Location(document.uri, new vscode.Range(1, 0, 1, 6)) },
+    ];
+    const history = [new RequestTurn("Read it", undefined, references, "diagram.participant", [])];
+    for (let request = 1; request <= 2; request++) {
+      const { sent } = await ask([[text("Read.")]], { references, history });
+      assert.strictEqual(reads, request);
+      const attached = attachments(sent[0]?.messages);
+      assert.strictEqual(attached.length, 2);
+      assert.ok(attached.some((text) => text.endsWith("```\nsecond\n```")));
+      assert.ok(attached.some((text) => text.endsWith("```\nfirst\nsecond\n```")));
     }
   });
 
   test("shares failed attachment reads without caching them across requests", async () => {
-    const open = vscode.workspace.openTextDocument;
     let reads = 0;
-    vscode.workspace.openTextDocument = async () => {
+    replace(vscode.workspace, "openTextDocument", async () => {
       reads++;
       throw new Error("File unavailable");
-    };
-    try {
-      const references = [{ id: "file", value: vscode.Uri.file("/unavailable.csv") }];
-      const history = [
-        new RequestTurn("Read it", undefined, references, "diagram.participant", []),
-      ];
-      for (let request = 1; request <= 2; request++) {
-        const { result, sent } = await ask([[text("Unavailable.")]], {
-          references,
-          history,
-        });
-        assert.strictEqual(reads, request);
-        assert.strictEqual(result?.errorDetails, undefined);
-        const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
-        assert.strictEqual(attached?.length, 1);
-        assert.strictEqual(
-          attached?.[0],
-          "Attached by the user, but not read: /unavailable.csv does not exist.",
-        );
-      }
-    } finally {
-      vscode.workspace.openTextDocument = open;
+    });
+    const references = [{ id: "file", value: vscode.Uri.file("/unavailable.csv") }];
+    const history = [new RequestTurn("Read it", undefined, references, "diagram.participant", [])];
+    for (let request = 1; request <= 2; request++) {
+      const { result, sent } = await ask([[text("Unavailable.")]], { references, history });
+      assert.strictEqual(reads, request);
+      assert.strictEqual(result?.errorDetails, undefined);
+      assert.deepStrictEqual(attachments(sent[0]?.messages), [
+        "Attached by the user, but not read: /unavailable.csv does not exist.",
+      ]);
     }
   });
 
@@ -952,7 +878,7 @@ suite("participant", () => {
         references: [{ id: "folder", value: folder }],
       });
       assert.strictEqual(shown, "Exploring.");
-      const attached = sent[0]?.messages.map(messageText).find((m) => m.startsWith("Attached"));
+      const attached = attachments(sent[0]?.messages)[0];
       assert.match(
         attached ?? "",
         /attached-folder, which could not be read: it is a folder; list its files with diagram_findFiles and the glob "attached-folder\/\*\*"$/,
@@ -980,7 +906,7 @@ suite("participant", () => {
       ],
     });
     assert.strictEqual(result?.errorDetails, undefined);
-    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    const attached = attachments(sent[0]?.messages);
     assert.strictEqual(attached?.length, 2);
     // The error names the file once.
     assert.strictEqual(
@@ -1075,7 +1001,7 @@ suite("participant", () => {
       capabilities: { supportsImageToText: false },
     });
     assert.strictEqual(reads, 0);
-    const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+    const attached = attachments(sent[0]?.messages);
     assert.deepStrictEqual(attached, [
       "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
       "Attached by the user: image, which could not be read: Fake does not accept images. Choose a model that does, or describe the image in words.",
@@ -1110,7 +1036,7 @@ suite("participant", () => {
         history,
         references: [pasted([1, 2]), { id: "file", value: file }],
       });
-      const attached = sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Attached"));
+      const attached = attachments(sent[0]?.messages);
       assert.deepStrictEqual(attached, [
         "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
         "Attached by the user: again.png",

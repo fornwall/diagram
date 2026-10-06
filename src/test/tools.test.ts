@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
+import { afterTest, replace } from "./afterTest";
 import { newPanel } from "./newPanel";
 import { toolText } from "./toolText";
 
@@ -177,6 +178,7 @@ suite("tools", () => {
 
   test("cancelled tools leave the diagram, its marks and the closed panel alone", async () => {
     const cancellation = new vscode.CancellationTokenSource();
+    afterTest(() => cancellation.dispose());
     cancellation.cancel();
     const calls: string[] = [];
     panel.render = async () => {
@@ -188,59 +190,45 @@ suite("tools", () => {
       return { ok: false, reason: "Unexpected annotation" };
     };
     const create = vscode.window.createWebviewPanel;
-    vscode.window.createWebviewPanel = (...args) => {
+    replace(vscode.window, "createWebviewPanel", (...args) => {
       calls.push("open");
       return create(...args);
-    };
-    try {
-      for (const [tool, input] of [
-        [new RenderDiagramTool(panel), { source: "flowchart LR\n  C --> D" }],
-        [new ChartTool(panel), { type: "bar", data: "A,1\nB,2" }],
-        [new AnnotateDiagramTool(panel), { marks: ["A"] }],
-      ] as const) {
-        await assert.rejects(
-          async () => tool.invoke({ input } as never, cancellation.token),
-          vscode.CancellationError,
-        );
-      }
-      assert.deepStrictEqual(calls, []);
-      assert.deepStrictEqual(panel.current, flowchart);
-      assert.strictEqual(values.get("diagram.state"), flowchart);
-    } finally {
-      vscode.window.createWebviewPanel = create;
-      cancellation.dispose();
+    });
+    for (const [tool, input] of [
+      [new RenderDiagramTool(panel), { source: "flowchart LR\n  C --> D" }],
+      [new ChartTool(panel), { type: "bar", data: "A,1\nB,2" }],
+      [new AnnotateDiagramTool(panel), { marks: ["A"] }],
+    ] as const) {
+      await assert.rejects(
+        async () => tool.invoke({ input } as never, cancellation.token),
+        vscode.CancellationError,
+      );
     }
+    assert.deepStrictEqual(calls, []);
+    assert.deepStrictEqual(panel.current, flowchart);
+    assert.strictEqual(values.get("diagram.state"), flowchart);
   });
 
   test("cancelling a chart stops waiting for a file read", async () => {
     const cancellable = new vscode.CancellationTokenSource();
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.workspace, "fs");
-    assert.ok(descriptor);
+    afterTest(() => cancellable.dispose());
     const started = Promise.withResolvers<void>();
     const data = Promise.withResolvers<Uint8Array>();
-    Object.defineProperty(vscode.workspace, "fs", {
-      configurable: true,
-      value: {
-        ...vscode.workspace.fs,
-        readFile: () => {
-          started.resolve();
-          return data.promise;
-        },
+    afterTest(() => data.resolve(new TextEncoder().encode("name,value\nA,1")));
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: () => {
+        started.resolve();
+        return data.promise;
       },
     });
-    try {
-      const result = new ChartTool(panel).invoke(
-        { input: { type: "bar", file: "sizes.tsv" } } as never,
-        cancellable.token,
-      );
-      await started.promise;
-      cancellable.cancel();
-      await assert.rejects(result, vscode.CancellationError);
-      assert.deepStrictEqual(panel.current, flowchart);
-    } finally {
-      data.resolve(new TextEncoder().encode("name,value\nA,1"));
-      Object.defineProperty(vscode.workspace, "fs", descriptor);
-      cancellable.dispose();
-    }
+    const result = new ChartTool(panel).invoke(
+      { input: { type: "bar", file: "sizes.tsv" } } as never,
+      cancellable.token,
+    );
+    await started.promise;
+    cancellable.cancel();
+    await assert.rejects(result, vscode.CancellationError);
+    assert.deepStrictEqual(panel.current, flowchart);
   });
 });

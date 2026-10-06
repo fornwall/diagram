@@ -790,27 +790,23 @@ suite("webview", function () {
   test("sends a message to chat from the button and from Enter", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     const chat = recordChat();
-    try {
-      // The page submits the form as a user does, which a webview without forms would drop.
-      await evaluate(`(() => {
-        const input = document.getElementById("ask-input");
-        input.value = "From the button";
-        input.dispatchEvent(new Event("input"));
-        document.getElementById("ask-submit").click();
-        input.value = "From Enter";
-        input.dispatchEvent(new Event("input"));
-        document.getElementById("ask-form").requestSubmit();
-      })()`);
-      for (let attempt = 0; attempt < 100 && chat.requests.length < 2; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      assert.deepStrictEqual(
-        chat.requests.map((request) => request.query),
-        ["Regarding the diagram: From the button", "Regarding the diagram: From Enter"],
-      );
-    } finally {
-      chat.restore();
+    // The page submits the form as a user does, which a webview without forms would drop.
+    await evaluate(`(() => {
+      const input = document.getElementById("ask-input");
+      input.value = "From the button";
+      input.dispatchEvent(new Event("input"));
+      document.getElementById("ask-submit").click();
+      input.value = "From Enter";
+      input.dispatchEvent(new Event("input"));
+      document.getElementById("ask-form").requestSubmit();
+    })()`);
+    for (let attempt = 0; attempt < 100 && chat.requests.length < 2; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
+    assert.deepStrictEqual(
+      chat.requests.map((request) => request.query),
+      ["Regarding the diagram: From the button", "Regarding the diagram: From Enter"],
+    );
   });
 
   test("selection updates only the changed Mermaid nodes", async () => {
