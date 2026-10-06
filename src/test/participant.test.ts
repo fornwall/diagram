@@ -773,10 +773,8 @@ suite("participant", () => {
   });
 
   test("shortens tool results that don't fit the model's input, and says so", async () => {
-    // The tools show the extension's own panel.
     const source = `flowchart TD\n  A --> B\n%% ${"y".repeat(20_000)}`;
-    const input = { input: { source }, toolInvocationToken: undefined };
-    await vscode.lm.invokeTool("diagram_render", input);
+    countToolCalls(() => new vscode.LanguageModelToolResult([text(source)]));
     const maxInputTokens = 4_000;
     const { sent } = await ask(
       [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
@@ -1169,9 +1167,8 @@ suite("participant", () => {
   });
 
   test("counts the messages of earlier tool rounds once", async () => {
-    // A short diagram, so that each round's tool result fits whole.
-    const input = { input: { source: "flowchart TD\n  A --> B" }, toolInvocationToken: undefined };
-    await vscode.lm.invokeTool("diagram_render", input);
+    // A short result, so that each round's fits whole.
+    countToolCalls(() => new vscode.LanguageModelToolResult([text("flowchart TD\n  A --> B")]));
     const history = [
       new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
       new ResponseTurn(
