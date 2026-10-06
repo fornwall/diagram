@@ -86,7 +86,7 @@ export function interpolate(left: number, right: number, fraction: number): numb
  * The units whose values are shown in a multiple of them: what the values are, and the multiples
  * by name and size from the smallest.
  */
-const SCALES: [Unit, { what: string; multiples: [string, number][] }][] = [
+const SCALES = new Map<Unit, { what: string; multiples: [string, number][] }>([
   [
     "bytes",
     {
@@ -112,7 +112,7 @@ const SCALES: [Unit, { what: string; multiples: [string, number][] }][] = [
       ],
     },
   ],
-];
+]);
 
 /** The multiple to show values up to `max` in: the largest not above it, or the unit for none. */
 function multipleFor(multiples: [string, number][], max: number): number {
@@ -120,6 +120,38 @@ function multipleFor(multiples: [string, number][], max: number): number {
   while (i + 1 < multiples.length && max >= (multiples[i + 1]?.[1] ?? Infinity)) i++;
   while (i > 0 && max > 0 && max < (multiples[i]?.[1] ?? 0)) i--;
   return i;
+}
+
+/**
+ * The multiple of `unit` at `index` of its scale: its name, its size and, unless it is the unit
+ * itself, the note that values are shown in it.
+ */
+function multipleAt(unit: Unit, index: number): { multiple: string; size: number; note?: string } {
+  const { what = "", multiples = [] } = SCALES.get(unit) ?? {};
+  const [multiple = "", size = 1] = multiples[index] ?? [];
+  return { multiple, size, ...(size === 1 ? {} : { note: `showed ${what} in ${multiple}` }) };
+}
+
+/** A name for values shown in a multiple, corrected where it states another ("Latency (ms)"). */
+function nameIn(name: string, multiple: string, size: number): string {
+  const unstated = name.replace(STATED_UNIT, "");
+  return size !== 1 || unstated !== name ? `${unstated} (${multiple})` : name;
+}
+
+/**
+ * How a column's values are shown alone, as a histogram bins them: in the multiple of their unit
+ * that suits the largest, under a name that states it, or as they are.
+ */
+export function columnMultiple(
+  table: DataTable,
+  column: number,
+): { name: string; size: number; note?: string } {
+  const name = columnName(table, column);
+  const unit = table.columns[column]?.unit;
+  const index = unit === undefined ? undefined : tableMultiples(table, [column])[unit];
+  if (unit === undefined || index === undefined) return { name, size: 1 };
+  const { multiple, ...shown } = multipleAt(unit, index);
+  return { name: nameIn(name, multiple, shown.size), ...shown };
 }
 
 /** The multiple of each unit for the columns of that unit among `values`, over a whole table. */
@@ -520,7 +552,7 @@ export function readRows(
   const counted = spec.aggregate === "count";
   const names = counted ? ["rows"] : valueIndices.map(name);
   const divisors = names.map(() => 1);
-  for (const [unit, { what, multiples }] of counted ? [] : SCALES) {
+  for (const [unit, { multiples }] of counted ? [] : SCALES) {
     const scaled = valueIndices.flatMap((index, i) =>
       table.columns[index]?.unit === unit ? [i] : [],
     );
@@ -531,9 +563,10 @@ export function readRows(
         for (const i of scaled) largest = Math.max(largest, Math.abs(values[i] ?? 0));
       }
     }
-    const [multiple, size = 1] = multiples[shared?.[unit] ?? multipleFor(multiples, largest)] ?? [];
-    if (size !== 1) {
-      notes.push(`showed ${what} in ${multiple}`);
+    const index = shared?.[unit] ?? multipleFor(multiples, largest);
+    const { multiple, size, note } = multipleAt(unit, index);
+    if (note !== undefined) {
+      notes.push(note);
       // These value arrays were created above, so scale them without allocating another table.
       for (const { values } of rows) {
         for (const i of scaled) {
@@ -542,10 +575,8 @@ export function readRows(
         }
       }
     }
-    // A name that states another multiple, as "Latency (ms)" over "1.2s", is corrected.
     for (const i of scaled) {
-      const unstated = names[i]?.replace(STATED_UNIT, "");
-      if (size !== 1 || unstated !== names[i]) names[i] = `${unstated} (${multiple})`;
+      names[i] = nameIn(names[i] ?? "", multiple, size);
       divisors[i] = size;
     }
   }

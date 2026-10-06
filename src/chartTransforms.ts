@@ -1,10 +1,11 @@
 // Transforms of the raw rows: the filters of any chart, and the bins of a histogram.
 
 import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
-import { interpolate } from "./chartRows";
+import { columnMultiple, interpolate } from "./chartRows";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
+import { scale } from "./dataNumber";
 import { plural } from "./text";
 
 const COMPARE: Record<"lt" | "lte" | "gt" | "gte", (cell: number, value: number) => boolean> = {
@@ -80,7 +81,12 @@ function emptyingFilter(
 
 export interface HistogramPlan {
   column: number;
+  /** The column's name, which states the multiple of sizes or durations that the bins are in. */
   name: string;
+  /** The size of that multiple, as 0.001 seconds for "ms", or 1. */
+  size: number;
+  /** The note that the values are shown in a multiple, as "showed durations in ms". */
+  note?: string;
   /** Distinct finite bounds; constant observations have a single bound. */
   edges: number[];
   /** The name of each bin, e.g. "[0, 10)", or "7" for a bin of the whole number 7 alone. */
@@ -113,26 +119,30 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
         'split into columns as intended, set "format".',
     );
   }
+  // Sizes and durations are binned in the multiple that charts show them in.
+  const shown = columnMultiple(table, column);
   let minimum = Infinity;
   let maximum = -Infinity;
   let count = 0;
   let whole = true;
   for (const row of table.rows) {
-    const value = row[column];
-    if (typeof value !== "number") continue;
+    const cell = row[column];
+    if (typeof cell !== "number") continue;
+    const value = scale(cell, 1 / shown.size);
     minimum = Math.min(minimum, value);
     maximum = Math.max(maximum, value);
     whole &&= Number.isInteger(value);
     count++;
   }
-  const name = columnName(table, column);
   if (count === 0) {
-    throw new Error(`The value column ${JSON.stringify(name)} holds no numbers to bin.`);
+    throw new Error(
+      `The value column ${JSON.stringify(columnName(table, column))} holds no numbers to bin.`,
+    );
   }
   const bins = spec.bins ?? Math.min(MOST_BINS, Math.ceil(Math.sqrt(count)));
   if (spec.bins === undefined) {
     const round = roundBins(minimum, maximum, bins, whole);
-    if (round !== undefined) return { column, name, ...round };
+    if (round !== undefined) return { column, ...shown, ...round };
   }
   const edges = evenEdges(minimum, maximum, bins);
   const format = edgeFormat(edges);
@@ -142,7 +152,7 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
     const upper = edges[index + 1] ?? lower;
     return `[${format(lower)}, ${format(upper)}${index >= last ? "]" : ")"}`;
   });
-  return { column, name, edges, names };
+  return { column, ...shown, edges, names };
 }
 
 /** The most bins that automatic binning makes, from the square root of the observations. */
@@ -219,13 +229,14 @@ function edgeFormat(edges: number[]): (edge: number) => string {
 
 export function buildHistogram(
   table: DataTable,
-  { column, name, edges, names }: HistogramPlan,
+  { column, name, size, note, edges, names }: HistogramPlan,
 ): Chart {
   const counts = Array<number>(names.length).fill(0);
   let count = 0;
   for (const row of table.rows) {
-    const value = row[column];
-    if (typeof value !== "number") continue;
+    const cell = row[column];
+    if (typeof cell !== "number") continue;
+    const value = scale(cell, 1 / size);
     // A boundary belongs to the bin on its right, except the maximum belongs to the last bin.
     let low = 0;
     let high = edges.length;
@@ -258,6 +269,7 @@ export function buildHistogram(
     summary:
       `Charted ${plural(count, "observation")} of ${JSON.stringify(name)} in ` +
       `${plural(counts.length, "histogram bin")}` +
-      `${skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : ""}.`,
+      `${skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : ""}` +
+      `${note === undefined ? "" : `; ${note}`}.`,
   };
 }

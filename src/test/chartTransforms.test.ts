@@ -131,6 +131,20 @@ suite("chart transforms", () => {
     assert.strictEqual(option.series[0].data[1].upper, 2 / 3);
   });
 
+  test("histograms bin sizes and durations in the multiple that charts show them in", () => {
+    const latencies = `name,Latency (ms)\n${[3, 120, 250, 380, 499].map((ms, i) => `r${i},${ms}`).join("\n")}`;
+    const option = build(latencies, { bins: 2 });
+    assert.strictEqual(option.xAxis.name, "Latency (ms)");
+    assert.deepStrictEqual(option.xAxis.data, ["[3, 251)", "[251, 499]"]);
+    assert.match(
+      buildChart({ type: "histogram", data: "unused" }, parseTable(latencies)).summary,
+      /"Latency \(ms\)" in 3 histogram bins; showed durations in ms\.$/,
+    );
+    const sizes = build("file,Size (KB)\na,1500\nb,2500\nc,3000");
+    assert.strictEqual(sizes.xAxis.name, "Size (MiB)");
+    assert.deepStrictEqual(sizes.xAxis.data, ["[1, 2)", "[2, 3]"]);
+  });
+
   test("automatic histogram bins have a round width, and whole numbers a bin each", () => {
     const bins = (values: number[]) =>
       build(`value\n${values.join("\n")}`).series[0].data.map(
