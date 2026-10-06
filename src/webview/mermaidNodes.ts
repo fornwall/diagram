@@ -24,6 +24,7 @@ export const WITH_DATABASE = new Set([
   "architecture",
   "c4",
   "treemap",
+  "packet",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -73,6 +74,8 @@ export interface DiagramDb {
   };
   /** A treemap's sections and leaves. */
   getRoot?(): TreeItem;
+  /** A packet diagram's fields, by row, a field that goes on in the next row split in two. */
+  getPacket?(): { label: string }[][];
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -380,6 +383,27 @@ export function findNodes(
   for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
     const label = textOf(element);
     add(element, { id: uniqueId(label), label });
+  }
+
+  // Packet fields, by their labels: a box, its label and its bit numbers each, in the order of the
+  // database. The part of a field that goes on in the next row has the same label.
+  const rows = db?.getPacket?.() ?? [];
+  const boxes = svg.querySelectorAll("rect.packetBlock");
+  if (boxes.length === rows.flat().length) {
+    let field: DiagramNode | undefined;
+    let i = 0;
+    for (const row of rows) {
+      for (const [column, { label }] of row.entries()) {
+        if (column > 0 || field?.label !== label) field = { id: uniqueId(label), label };
+        const box = boxes[i++] as Element;
+        add(box, field);
+        let text = box.nextElementSibling;
+        while (text?.matches("text")) {
+          add(text, field);
+          text = text.nextElementSibling;
+        }
+      }
+    }
   }
 
   // Treemap sections and leaves, whose titles Mermaid may cut short. d3 lays them out with each

@@ -2198,7 +2198,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the items of treemaps by their paths, in the order Mermaid draws them", async () => {
+  test("finds the sections of treemaps and the fields of packets, which Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2212,6 +2212,17 @@ suite("webview", function () {
           "Frontend services of the shop/Other: Other 3",
           "Frontend services of the shop/Web: Web 6",
           "Frontend services of the shop: Frontend serv... 9",
+        ],
+      ],
+      [
+        // The data goes on in the next row.
+        'packet\n0-15: "Source Port"\n16-31: "Destination Port"\n32-39: "Reserved"\n40-47: "Reserved"\n48-79: "Data"',
+        [
+          "Data: Data 48 63 Data 64 79",
+          "Destination Port: Destination Port 16 31",
+          "Reserved (2): Reserved 40 47",
+          "Reserved: Reserved 32 39",
+          "Source Port: Source Port 0 15",
         ],
       ],
     ];
