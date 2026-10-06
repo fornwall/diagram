@@ -1507,6 +1507,36 @@ suite("webview", function () {
     }
   });
 
+  test("exports well-formed XML whatever the labels hold", async () => {
+    const drawings: [Partial<Diagram>, string][] = [
+      // HTML labels, which formulas keep, with a line break and a no-break space.
+      ['flowchart LR\n  A["$$x^2$$"] --> B["one<br>two&nbsp;three"]', "two three"],
+      ["sequenceDiagram\n  A->>B: $$x^2$$\n  B->>A: one<br/>two three", "two three"],
+      // Control characters, which XML does not allow even as references.
+      ['flowchart LR\n  A["one\u0001two"] --> B', "onetwo"],
+    ].map(([source, text]) => [{ source }, text] as [Partial<Diagram>, string]);
+    drawings.push([
+      {
+        language: "echarts",
+        source: '{"series": [{"type": "pie", "data": [{"name": "one\\u0001two", "value": 1}]}]}',
+      },
+      "onetwo",
+    ]);
+    for (const [drawing, text] of drawings) {
+      await draw(drawing);
+      const image = await evaluate(`(async () => {
+        ${DRAG_IMAGE}
+        const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+        const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+        return {
+          error: parsed.querySelector("parsererror")?.textContent ?? null,
+          text: parsed.documentElement.textContent.includes(${JSON.stringify(text)}),
+        };
+      })()`);
+      assert.deepStrictEqual(image, { error: null, text: true }, drawing.source);
+    }
+  });
+
   test("exports the text of HTML in Mermaid labels, without its tags", async () => {
     const source = [
       "flowchart LR",
@@ -1584,18 +1614,19 @@ suite("webview", function () {
     await draw({ source: "flowchart LR\n A[Original label] --> B" });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-        const original = DOMParser.prototype.parseFromString;
         let exported;
-        DOMParser.prototype.parseFromString = function (source, type) {
-          const parsed = original.call(this, source, type);
-          if (String(source).includes('id="diagram-image-') && type === "image/svg+xml") {
-            exported = {
-              htmlLabels: parsed.querySelectorAll("foreignObject").length,
-              originalLabel: parsed.documentElement.textContent.includes("Original label")
-            };
+        // The image is drawn where Mermaid lays out its drawings.
+        const observer = new MutationObserver(records => {
+          for (const svg of records.flatMap(record => [...record.addedNodes])) {
+            if (svg.id?.startsWith("diagram-image-")) {
+              exported = {
+                htmlLabels: svg.querySelectorAll("foreignObject").length,
+                originalLabel: svg.textContent.includes("Original label")
+              };
+            }
           }
-          return parsed;
-        };
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
         try {
           document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
           window.dispatchEvent(new MessageEvent("message", {data: {
@@ -1606,7 +1637,7 @@ suite("webview", function () {
           await until(() => exported && document.querySelector("#diagram").textContent.includes("Incoming label"));
           return exported;
         } finally {
-          DOMParser.prototype.parseFromString = original;
+          observer.disconnect();
         }
       })()`),
       { htmlLabels: 0, originalLabel: true },

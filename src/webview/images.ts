@@ -17,6 +17,9 @@ const MAX_PNG_PIXELS = 16_000_000;
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 
+/** What XML 1.0 does not allow in a document, not even as a character reference. */
+const NOT_IN_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
+
 const HTML_LABEL_WITH_FALLBACK = "switch > foreignObject:not(:has(math))";
 
 /** Clones the drawing with a background, without panel interaction attributes or link targets. */
@@ -77,7 +80,10 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   rect.setAttribute("fill", background);
   svg.prepend(rect);
 
-  return { svg: new XMLSerializer().serializeToString(svg), width, height };
+  // The serializer keeps characters that XML does not allow, such as control characters in labels,
+  // for which strict parsers, and browsers drawing the SVG as an image, refuse all of it.
+  const markup = new XMLSerializer().serializeToString(svg).replace(NOT_IN_XML, "");
+  return { svg: markup, width, height };
 }
 
 /** Percent encoding preserves Unicode labels without a Latin-1 base64 conversion. */

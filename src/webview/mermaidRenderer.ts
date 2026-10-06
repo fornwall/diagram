@@ -437,7 +437,11 @@ export class MermaidRenderer implements Renderer {
         text,
         layoutContainer(),
       );
-      const parsed = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+      // Read as the panel reads it: Mermaid writes HTML, which an XML parser rejects for the <br>
+      // or &nbsp; of an HTML label, or a control character in any label.
+      const drawing = document.createElement("div");
+      drawing.innerHTML = svg;
+      const parsed = drawing.firstElementChild;
       if (!(parsed instanceof SVGSVGElement)) {
         throw new Error("Mermaid did not produce an SVG to make an image of.");
       }
