@@ -45,11 +45,31 @@ suite("chart transforms", () => {
     assert.deepStrictEqual(filterTable(table, [{ column: "value", op: "eq", value: null }]).rows, [
       ["bar", null],
     ]);
-    for (const op of ["lt", "lte", "gt", "gte"] as const) {
-      const expected = op === "lt" || op === "lte" ? [["foo", 2]] : [["foo", 3]];
+    // At the bounds, which tell each comparison from the others.
+    for (const [op, value, expected] of [
+      ["lt", 3, [["foo", 2]]],
+      [
+        "lte",
+        3,
+        [
+          ["foo", 2],
+          ["foo", 3],
+        ],
+      ],
+      ["gt", 2, [["foo", 3]]],
+      [
+        "gte",
+        2,
+        [
+          ["foo", 2],
+          ["foo", 3],
+        ],
+      ],
+    ] as const) {
       assert.deepStrictEqual(
-        filterTable(table, [{ column: "value", op, value: 2.5 }]).rows,
+        filterTable(table, [{ column: "value", op, value }]).rows,
         expected,
+        op,
       );
     }
     assert.deepStrictEqual(table, original);
@@ -115,10 +135,12 @@ suite("chart transforms", () => {
       { name: "[0, 2]", value: 3, lower: 0, upper: 2 },
     ]);
     assert.strictEqual(option.series[0].barCategoryGap, "0%");
-    assert.match(
-      withChart(option, (chart) => chart.renderToSVGString(), { width: 600, height: 400 }),
-      /<svg/,
-    );
+    const svg = withChart(option, (chart) => chart.renderToSVGString(), {
+      width: 600,
+      height: 400,
+    });
+    assert.match(svg, />\[-2, 0\)</);
+    assert.match(svg, />\[0, 2\]</);
   });
 
   test("histograms round bin names and skip identifier columns by default", () => {
