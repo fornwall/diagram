@@ -403,7 +403,7 @@ function lsNumberName(files: string[][]): string {
   if (numbers.some((number) => !/^\d+$/.test(number))) return "Blocks";
   let sized = false;
   const holdSizes = files.every((file, i) => {
-    const size = parseNumber(file.at(-3) ?? "")?.value;
+    const size = parseNumber(file.at(-3) ?? "", { sizes: true })?.value;
     if (size === undefined) return true;
     sized = true;
     // Allowing for the rounding up to whole blocks of a file system, or for preallocation.
@@ -453,7 +453,13 @@ function splitLs(lines: string[]): Records | undefined {
   if (!groups) {
     for (const record of [header, ...files]) record.splice(count + 3, 1);
   }
-  const units = header.map((name): Unit | undefined => (name === "Size" ? "bytes" : undefined));
+  // Blocks are sizes too when printed with units, as by ls -sh.
+  const units = header.map((name, column): Unit | undefined =>
+    name === "Size" ||
+    (name === "Blocks" && files.some((file) => /[A-Za-z]$/.test(file[column] ?? "")))
+      ? "bytes"
+      : undefined,
+  );
   return { records: [header, ...files], header: true, units };
 }
 

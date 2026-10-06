@@ -144,17 +144,17 @@ suite("data", () => {
       ["1,234,567.5", 1234567.5],
       ["1e3", 1000],
       ["12.5%", 12.5, "%"],
-      ["0B", 0, "bytes"],
-      ["1.5K", 1536, "bytes"],
-      ["12M", 12 * 1024 ** 2, "bytes"],
+      ["1.5K", 1500],
+      ["150k", 150_000],
+      ["12M", 12e6],
+      ["1.2B", 1.2e9],
+      ["1.2bn", 1.2e9],
+      ["4T", 4e12],
       ["3G", 3 * 1024 ** 3, "bytes"],
-      ["4T", 4 * 1024 ** 4, "bytes"],
       ["2KiB", 2048, "bytes"],
       ["128Mi", 128 * 1024 ** 2, "bytes"],
-      ["1,500M", 1500 * 1024 ** 2, "bytes"],
       ["0Bi", 0, "bytes"],
       ["1.5kB", 1500, "bytes"],
-      ["150k", 150_000, "bytes"],
       ["187MB", 187e6, "bytes"],
       ["2GB", 2e9, "bytes"],
       ["$1,234.50", 1234.5],
@@ -164,6 +164,34 @@ suite("data", () => {
     for (const [text, value, unit] of cases) {
       assert.deepStrictEqual(parseNumber(text), unit === undefined ? { value } : { value, unit });
     }
+    // In a column of sizes, as du -h and ls -lh print them.
+    for (const [text, value] of [
+      ["0B", 0],
+      ["1.5K", 1536],
+      ["1,500M", 1500 * 1024 ** 2],
+      ["4T", 4 * 1024 ** 4],
+      ["150k", 150_000],
+    ] as const) {
+      assert.deepStrictEqual(parseNumber(text, { sizes: true }), { value, unit: "bytes" });
+    }
+  });
+
+  test("reads K, M and B as sizes in bytes only in columns of sizes", () => {
+    const table = parseTable("video,views,size\na,1.2K,1.2K\nb,3.4M,512M\nc,1.1B,2.1G");
+    assert.deepStrictEqual(table.rows, [
+      ["a", 1200, 1.2 * 1024],
+      ["b", 3.4e6, 512 * 1024 ** 2],
+      ["c", 1.1e9, 2.1 * 1024 ** 3],
+    ]);
+    assert.deepStrictEqual(
+      table.columns.map((column) => column.unit),
+      [undefined, undefined, "bytes"],
+    );
+    // A unit that only sizes have, a name of sizes, or no name at all, as du -h prints none.
+    assert.deepStrictEqual(parse("pod,usage\na,800M\nb,1.2G").rows[0], ["a", 800 * 1024 ** 2]);
+    assert.deepStrictEqual(parse("pod,memUsed\na,800M\nb,1.2K").rows[0], ["a", 800 * 1024 ** 2]);
+    assert.deepStrictEqual(parse("800M\ta\n1.2K\tb").rows[0], [800 * 1024 ** 2, "a"]);
+    assert.deepStrictEqual(parse("pod,members\na,800M\nb,1.2K").rows[0], ["a", 800e6]);
   });
 
   test("parseNumber leaves other text alone", () => {

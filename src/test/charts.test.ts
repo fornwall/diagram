@@ -1499,7 +1499,7 @@ suite("charts", () => {
     assert.deepStrictEqual(seriesNames(top), ["CPU(cores)", "MEMORY (GiB)"]);
     const stated = build(
       chart("bar", { valueColumns: ["Size (KB)", "Total (of all)"] }),
-      "name,Size (KB),Total (of all)\na,2048K,3M\nb,1M,1M",
+      "name,Size (KB),Total (of all)\na,2048K,3MiB\nb,1M,1MiB",
     );
     assert.deepStrictEqual(seriesNames(stated), ["Size (MiB)", "Total (of all) (MiB)"]);
     const du = build(chart("bar", { valueColumns: ["Column 1"] }), "1.5K\ta\n512\tb");

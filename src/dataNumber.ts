@@ -9,8 +9,19 @@ export type Unit = "%" | "bytes";
 /** A currency symbol, which comes before a number ("$5") or, in much of Europe, after it ("5 €"). */
 const CURRENCY = "[$€£¥]";
 
-/** A percent sign, a unit of bytes ("B", "K", "kB", "KiB", "Ki" and so on) or a currency. */
-const SUFFIX = `%|Bi?|[KMGTPEk](?:i?B|i)?|${CURRENCY}`;
+/**
+ * A percent sign, a multiplier ("K", "M", "B", "bn"), a unit of bytes ("B", "K", "kB", "KiB", "Ki"
+ * and so on) or a currency.
+ */
+const SUFFIX = `%|bn|Bi?|[KMGTPEk](?:i?B|i)?|${CURRENCY}`;
+
+/** Units that only sizes in bytes have: "KB", "KiB", "Ki", and "G", "P" and "E" without a "B". */
+const BYTE_SUFFIX = /^(?:[KMGTPEk]i?B|[KMGTPEk]i|Bi|[GPE])$/;
+
+/** The words of column names that hold sizes, as "Size", "MEMORY(bytes)" or df's "Avail". */
+const SIZE_WORDS = new Set(
+  "size bytes mem memory disk rss vsz used avail available free swap heap storage".split(" "),
+);
 
 /** A sign, which may be a typeset minus (−), and a currency symbol, as in "-$5". */
 const PREFIX = `([-+\u2212]?)(${CURRENCY}?)`;
@@ -32,6 +43,11 @@ const COMMA_NUMBER = new RegExp(
 interface NumberFormat {
   /** "1,5" and "1.234,5" have a decimal comma. */
   decimalComma?: boolean;
+  /**
+   * "1.2K" and "3M" are sizes in bytes, as du -h and ls -lh print them, rather than the thousands
+   * and millions of counts such as "1.2K views".
+   */
+  sizes?: boolean;
   /** Sizes with a bare unit are in powers of 1000, as du --si prints "1.2M" beside "150k". */
   si?: boolean;
   /** Spaces or apostrophes group thousands, as in "1 234,5" (French) or "1'234.5" (Swiss). */
@@ -63,10 +79,11 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
- * "$9.99", "9.99 €", "$3.4M", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of
- * 1024, as du -h and ls -lh print them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k"
- * (in units of 1000, as docker and du --si print them). The column's `format` tells how to read
- * "1,5", "1 234", "(5)", "1.2M" beside "150k" and "250m".
+ * "$9.99", "9.99 €", "12.5%" (as 12.5), thousands to trillions ("1.2K", "$3.4M", "1.5bn", "2T")
+ * and sizes in bytes: "3GiB", "128Mi" (in units of 1024), "1.2kB", "187MB" (in units of 1000, as
+ * docker prints them) or, in a column of `format.sizes`, "512B", "1.5K", "12M" (in units of 1024,
+ * as du -h and ls -lh print them, or of 1000 with `format.si`). The column's `format` also tells
+ * how to read "1,5", "1 234", "(5)" and "250m".
  */
 export function parseNumber(
   text: string,
@@ -102,13 +119,15 @@ export function parseNumber(
   if (suffix === undefined || CURRENCY.includes(suffix)) {
     return { value };
   }
-  // Amounts of money abbreviate thousands, millions, billions and trillions: "$3.4M", "$1.2B".
-  const magnitude = currency && suffix.length === 1 ? "KMBT".indexOf(suffix.toUpperCase()) : -1;
-  if (magnitude >= 0) {
-    return { value: value * 1000 ** (magnitude + 1) };
-  }
   if (suffix === "%") {
     return { value, unit: "%" };
+  }
+  // Counts and amounts of money abbreviate thousands, millions, billions and trillions: "1.2K
+  // views", "$3.4M", "$1.2B", "1.5bn".
+  const prefix = suffix.charAt(0).toUpperCase();
+  if (!BYTE_SUFFIX.test(suffix) && (!format.sizes || currency !== "" || suffix === "bn")) {
+    const scaled = value * 1000 ** ("KMBT".indexOf(prefix) + 1);
+    return Number.isFinite(scaled) ? { value: scaled } : undefined;
   }
   // Explicit binary units ("KiB", "Mi") are in powers of 1024, and SI units in powers of 1000:
   // "kB", "MB" as docker prints them, and "k" as coreutils' --si option does.
@@ -117,12 +136,16 @@ export function parseNumber(
     : suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) || format.si
       ? 1000
       : 1024;
-  const bytes = value * base ** "BKMGTPE".indexOf(suffix.charAt(0).toUpperCase());
+  const bytes = value * base ** "BKMGTPE".indexOf(prefix);
   return Number.isFinite(bytes) ? { value: bytes, unit: "bytes" } : undefined;
 }
 
 /**
- * How a column writes its numbers, from the cells below its header, if it has one:
+ * How a column writes its numbers, from the cells below its header, if it has one, and from what
+ * the data's source tells (`given`):
+ * - in sizes, if some cell has a unit that only sizes have ("MB", "Ki", "G"), or the column's name
+ *   is of sizes ("Size", "Used"), or it has no name, as du and sort -h print none, while counts
+ *   are named, as "views" or "stars" are;
  * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5") and none only
  *   with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
@@ -131,7 +154,18 @@ export function parseNumber(
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is.
  */
-export function numberFormat(records: Cell[][], column: number, header?: boolean): NumberFormat {
+export function numberFormat(
+  records: Cell[][],
+  column: number,
+  header: boolean | undefined,
+  given: NumberFormat,
+): NumberFormat {
+  const name = header === false ? undefined : records[0]?.[column];
+  let sizes =
+    given.sizes === true ||
+    typeof name !== "string" ||
+    parseNumber(name) !== undefined ||
+    name.split(/[^a-zA-Z]+|(?<=[a-z])(?=[A-Z])/).some((word) => SIZE_WORDS.has(word.toLowerCase()));
   let comma = false;
   let point = false;
   let lowerK = false;
@@ -157,6 +191,7 @@ export function numberFormat(records: Cell[][], column: number, header?: boolean
     if (grouping && (number || commaNumber)) grouped = true;
     else if (/\d[\s'\u2019]+\d/.test(cell)) ungrouped = true;
     if (!number && !commaNumber) continue;
+    sizes ||= BYTE_SUFFIX.test(/[a-zA-Z]+$/.exec(text)?.[0] ?? "");
     if (accounting) parenthesized = true;
     else if (/^[-\u2212]/.test(text)) minus = true;
     if (text.includes(",")) {
@@ -169,7 +204,8 @@ export function numberFormat(records: Cell[][], column: number, header?: boolean
   }
   return {
     decimalComma: comma && !point,
-    si: lowerK && !upperK,
+    sizes,
+    si: given.si === true || (lowerK && !upperK),
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),

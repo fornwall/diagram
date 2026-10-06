@@ -161,11 +161,9 @@ function tableFromRecords(
   // Not Math.max(...lengths), which overflows the stack for many records.
   const width = records.reduce((max, record) => Math.max(max, record.length), 0);
   checkTableSize(records.length, width);
-  const formats = Array.from({ length: width }, (_, column) => {
-    const format = numberFormat(records, column, header);
-    format.si ||= si;
-    return format;
-  });
+  const formats = Array.from({ length: width }, (_, column) =>
+    numberFormat(records, column, header, { sizes: si || units?.[column] === "bytes", si }),
+  );
   const cellUnits = Array.from({ length: width }, () => new Set<Unit>());
   // The cells below the first row, which is counted once it is known not to be the header.
   const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
