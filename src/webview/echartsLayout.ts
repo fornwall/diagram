@@ -3,7 +3,15 @@
 
 import { isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
-import { asArray, baseOption, isCartesian, type JsonObject, optionVariants } from "./echartsOption";
+import {
+  asArray,
+  baseOption,
+  isCartesian,
+  type JsonObject,
+  optionVariants,
+  seriesOf,
+  seriesPlaces,
+} from "./echartsOption";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
@@ -123,9 +131,35 @@ function cloneValue(value: unknown): unknown {
   return ArrayBuffer.isView(value) ? value : cloneOption(value);
 }
 
+/**
+ * Gives the base option the series that the chart starts with but that only the current timeline
+ * step or the default media option defines, as copies, for the layout to place, style and keep
+ * them as any other: what the step or query sets is still merged in over them. Series that only
+ * later steps add stay there, so as not to be shown from the start, as do series with an "id",
+ * which the series of other steps, with ids of their own, would no longer merge into.
+ */
+function adoptStartingSeries(option: JsonObject, base: JsonObject): void {
+  const steps: unknown[] = Array.isArray(option.options) ? option.options : [];
+  const step = steps[Number(asArray(base.timeline)[0]?.currentIndex ?? 0)];
+  const media = asArray(option.media).find((each) => each.query === undefined)?.option;
+  const series = [...seriesOf(base)];
+  for (const patch of [step, media]) {
+    if (!isPlainObject(patch)) continue;
+    const own = seriesOf(patch);
+    seriesPlaces(series, own).forEach((place, index) => {
+      const each = own[index];
+      if (place === series.length && isPlainObject(each) && each.id == null) {
+        series.push({ ...each });
+      }
+    });
+  }
+  if (series.length > seriesOf(base).length) base.series = series;
+}
+
 export function layoutOption(source: JsonObject, context: LayoutContext): JsonObject {
   const option = cloneOption(source);
   const base = baseOption(option);
+  adoptStartingSeries(option, base);
   const series = asArray(base.series);
   const cartesian = series.some(isCartesian);
   if (context.reducedMotion) {

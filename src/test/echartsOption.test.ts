@@ -166,6 +166,13 @@ suite("echartsOption", () => {
       errorOf(`{${timeline}, "options": [{"series": [{"data": [1]}]}]}`),
       /^options\[0\]\.series\[0\] has no "type"/,
     );
+    // ECharts merges each step into what the steps before it showed.
+    const steps = `"options": [{"series": [${pie}]}, {"series": [{"data": [2]}]}]`;
+    assert.strictEqual(seriesTypes(parseOption(`{${timeline}, ${steps}}`)), "pie");
+    assert.match(
+      errorOf(`{${timeline}, "options": [{"series": [${pie}]}, {"series": [{"type": "line"}]}]}`),
+      /^options\[1\]\.series\[0\] \(type "line"\) is drawn on the cartesian2d coordinate system/,
+    );
     assert.match(
       errorOf(
         `{"media": [{"option": {}}, {"query": {}, "option": {"series": [{"type": "donut"}]}}]}`,

@@ -19,22 +19,56 @@ export function baseOption(option: JsonObject): JsonObject {
   return isPlainObject(option.baseOption) ? option.baseOption : option;
 }
 
+type Patch = [path: string, patch: JsonObject];
+const isPatch = (patch: [string, unknown]): patch is Patch => isPlainObject(patch[1]);
+
 /** The options that a timeline's steps and media queries merge into the base option, by path. */
-function optionPatches(option: JsonObject): [string, JsonObject][] {
+function optionPatches(option: JsonObject): { steps: Patch[]; media: Patch[] } {
   const steps: unknown[] = Array.isArray(option.options) ? option.options : [];
   const media: unknown[] = Array.isArray(option.media) ? option.media : [];
-  return [
-    ...steps.map((step, index): [string, unknown] => [`options[${index}]`, step]),
-    ...media.map((each, index): [string, unknown] => [
-      `media[${index}].option`,
-      isPlainObject(each) ? each.option : undefined,
-    ]),
-  ].filter((patch): patch is [string, JsonObject] => isPlainObject(patch[1]));
+  return {
+    steps: steps
+      .map((step, index): [string, unknown] => [`options[${index}]`, step])
+      .filter(isPatch),
+    media: media
+      .map((each, index): [string, unknown] => [
+        `media[${index}].option`,
+        isPlainObject(each) ? each.option : undefined,
+      ])
+      .filter(isPatch),
+  };
 }
 
 /** The base option and the options that patch it, each of which can set e.g. series. */
 export function optionVariants(option: JsonObject): JsonObject[] {
-  return [baseOption(option), ...optionPatches(option).map(([, patch]) => patch)];
+  const { steps, media } = optionPatches(option);
+  return [baseOption(option), ...[...steps, ...media].map(([, patch]) => patch)];
+}
+
+export const seriesOf = (option: JsonObject): unknown[] =>
+  option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
+
+/**
+ * The place among the series of the base option that each series of a patch merges into, as
+ * ECharts matches them: by "id", then by "name", and the rest to the free places in order. A null
+ * is skipped rather than given a place.
+ */
+export function seriesPlaces(base: unknown[], patch: unknown[]): (number | undefined)[] {
+  const keyed = patch.map((each) => {
+    if (!isPlainObject(each)) return -1;
+    const key = each.id != null ? "id" : "name";
+    return each[key] == null
+      ? -1
+      : base.findIndex((existing) => isPlainObject(existing) && existing[key] === each[key]);
+  });
+  let free = 0;
+  return patch.map((each, index) => {
+    if (each == null) return undefined;
+    const place = keyed[index] ?? -1;
+    if (place >= 0) return place;
+    while (keyed.includes(free)) free++;
+    return free++;
+  });
 }
 
 /** The coordinate system that each series type is drawn on, unless the series sets another. */
@@ -176,32 +210,17 @@ export function parseOption(source: string): JsonObject {
   return option;
 }
 
-const seriesOf = (option: JsonObject): unknown[] =>
-  option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
-
-/**
- * The series of the base option, by path, once a patch has merged into them. ECharts matches each
- * series of the patch by "id", then by "name", and the rest to the free places in order.
- */
-function patchSeries(base: unknown[], patch: unknown[], path: string): [string, unknown][] {
-  const merged = base.map((each, index): [string, unknown] => [`series[${index}]`, each]);
-  const keyed = patch.map((each) => {
-    if (!isPlainObject(each)) return -1;
-    const key = each.id != null ? "id" : "name";
-    return each[key] == null
-      ? -1
-      : base.findIndex((existing) => isPlainObject(existing) && existing[key] === each[key]);
-  });
-  let free = 0;
-  patch.forEach((each, index) => {
-    // ECharts skips a null rather than giving it a place.
-    if (each == null) return;
-    let place = keyed[index] ?? -1;
-    if (place < 0) {
-      while (keyed.includes(free)) free++;
-      place = free++;
-    }
+/** The series by path, once the series of a patch have merged into them. */
+function patchSeries(series: [string, unknown][], patch: unknown[], path: string) {
+  const merged = [...series];
+  const places = seriesPlaces(
+    series.map(([, each]) => each),
+    patch,
+  );
+  places.forEach((place, index) => {
+    if (place === undefined) return;
     const existing = merged[place]?.[1];
+    const each = patch[index];
     merged[place] = [
       `${path}.series[${index}]`,
       isPlainObject(existing) && isPlainObject(each) ? { ...existing, ...each } : each,
@@ -212,13 +231,15 @@ function patchSeries(base: unknown[], patch: unknown[], path: string): [string, 
 
 /**
  * Checks the series that the chart draws: those of the base option, or with a timeline or media
- * queries, those of each step and query merged into it, as the series may well be there alone.
+ * queries, those of each step and query merged in, as the series may well be there alone. ECharts
+ * merges each step into what the chart shows, so they are merged in one after the other, and each
+ * media query into the base option.
  */
 function validateSeries(option: JsonObject): void {
   const base = baseOption(option);
-  const patches = optionPatches(option);
+  const { steps, media } = optionPatches(option);
   if (
-    asArray(option.options).length > 0 &&
+    steps.length > 0 &&
     asArray(base.timeline).length === 0 &&
     asArray(option.timeline).length === 0
   ) {
@@ -227,12 +248,23 @@ function validateSeries(option: JsonObject): void {
         'ECharts ignores them. Add one, e.g. "timeline": {"data": ["2025", "2026"]}.',
     );
   }
-  const drawn = patches.length
-    ? patches.map(([path, patch]) => ({
-        option: { ...base, ...patch },
-        series: patchSeries(seriesOf(base), seriesOf(patch), path),
-      }))
-    : [{ option: base, series: patchSeries(seriesOf(base), [], "") }];
+  const initial = {
+    option: base,
+    series: seriesOf(base).map((each, index): [string, unknown] => [`series[${index}]`, each]),
+  };
+  const merge = (from: typeof initial, [path, patch]: Patch) => ({
+    option: { ...from.option, ...patch },
+    series: patchSeries(from.series, seriesOf(patch), path),
+  });
+  let shown = initial;
+  const drawn = [
+    ...steps.map((step) => {
+      shown = merge(shown, step);
+      return shown;
+    }),
+    ...media.map((query) => merge(initial, query)),
+  ];
+  if (drawn.length === 0) drawn.push(initial);
   if (drawn.every(({ series }) => series.length === 0)) {
     throw new Error(
       'The ECharts option has no "series". Add at least one, e.g. "series": [{"type": "bar", ' +

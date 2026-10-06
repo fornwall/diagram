@@ -400,6 +400,35 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.tooltip, undefined);
   });
 
+  test("lays out the series that the timeline's current step or the media option starts with", () => {
+    const { series: _, ...axes } = bars();
+    const step = (data: number[]) => ({ series: [{ type: "bar", data }] });
+    const option = layout({
+      baseOption: { ...axes, timeline: { data: ["2025", "2026"], currentIndex: 1 } },
+      options: [step([1, 2]), step([3, 4]), { series: [{}, { type: "line" }] }],
+    });
+    const [series, ...later] = option.baseOption.series;
+    assert.deepStrictEqual(series.data, [3, 4]);
+    assert.deepStrictEqual(series.itemStyle.borderRadius, [4, 4, 0, 0]);
+    assert.strictEqual(series.selectedMode, "multiple");
+    assert.deepStrictEqual(option.baseOption.tooltip.axisPointer, { type: "shadow" });
+    // Series that later steps add stay there, as do those with an id.
+    assert.deepStrictEqual(later, []);
+    const withId = {
+      baseOption: { ...axes, timeline: {} },
+      options: [{ series: [{ id: "a", type: "bar" }] }],
+    };
+    assert.strictEqual(layout(withId).baseOption.series, undefined);
+    const media = layout({
+      media: [
+        { query: { maxWidth: 300 }, option: {} },
+        { option: { series: { type: "pie", data: [1] } } },
+      ],
+    });
+    assert.strictEqual(media.series[0].selectedMode, "multiple");
+    assert.strictEqual(media.tooltip.trigger, "item");
+  });
+
   test("keeps the chart and legend clear of a timeline", () => {
     const named = [
       { type: "bar", name: "One", data: [1, 2] },
