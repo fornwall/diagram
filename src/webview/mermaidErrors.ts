@@ -419,12 +419,12 @@ function describe(source: string, start: number, end: number, expected?: string[
 
 /** Describes an error of js-yaml, in Mermaid's front matter or a node's metadata. */
 function yamlError(
-  error: Error & { reason?: string; mark: { buffer?: string; position: number } },
+  error: Error & { reason?: string },
+  { buffer = "", position: at }: { buffer?: string; position: number },
   normalized: string,
 ): Error {
   const reason = error.reason ?? error.message.split("\n", 1)[0];
   // Mermaid wraps metadata on one line in braces; js-yaml adds a final line break.
-  const { buffer = "", position: at } = error.mark;
   const inline = buffer.startsWith("{\n") && buffer.endsWith("\n}\n");
   const yaml = inline ? buffer.slice(2, -3) : buffer.replace(/\n$/, "");
   const start = yaml ? normalized.indexOf(yaml) : -1;
@@ -448,9 +448,9 @@ export function describeError(error: unknown, source: string, type: () => string
     return unknownTypeError(error.message);
   }
   const normalized = source.replace(/\r\n?/g, "\n");
-  const yaml = error as Error & { mark?: { buffer?: string; position: number } };
-  if (error.name === "YAMLException" && yaml.mark) {
-    return yamlError(yaml as typeof yaml & { mark: object }, normalized);
+  const { mark } = error as { mark?: { buffer?: string; position: number } };
+  if (error.name === "YAMLException" && mark) {
+    return yamlError(error, mark, normalized);
   }
   // Mermaid loads the image of an image shape to lay it out, which only a data: URL lets the panel.
   if (error.name === "EncodingError") {
