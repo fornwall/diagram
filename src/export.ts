@@ -26,6 +26,7 @@ export async function exportDrawing(
   capture: (format: ExportFormat) => Promise<ExportResult>,
   extensionUri: vscode.Uri,
 ): Promise<void> {
+  const noun = diagramNoun(drawing.language);
   try {
     const formats: (vscode.QuickPickItem & { format: ExportFormat })[] = [
       { label: "PNG image", description: ".png", format: "png" },
@@ -39,7 +40,7 @@ export async function exportDrawing(
       });
     }
     const choice = await vscode.window.showQuickPick(formats, {
-      title: "Export Diagram",
+      title: noun === "chart" ? "Export Chart" : "Export Diagram",
       placeHolder: "Choose an export format",
     });
     if (!choice) return;
@@ -70,10 +71,7 @@ export async function exportDrawing(
     const target = await vscode.window.showSaveDialog({
       title: `Export ${choice.label}`,
       saveLabel: "Export",
-      defaultUri: vscode.Uri.joinPath(
-        folder,
-        `${safeFileName(drawing.title, diagramNoun(drawing.language))}.${format}`,
-      ),
+      defaultUri: vscode.Uri.joinPath(folder, `${safeFileName(drawing.title, noun)}.${format}`),
       filters: { [choice.label]: [format] },
     });
     if (!target) return;
@@ -81,7 +79,7 @@ export async function exportDrawing(
     lastFolder = vscode.Uri.joinPath(target, "..");
     if (format === "html") void offerToOpen(target);
   } catch (error) {
-    void vscode.window.showErrorMessage(`Could not export the diagram: ${errorMessage(error)}`);
+    void vscode.window.showErrorMessage(`Could not export the ${noun}: ${errorMessage(error)}`);
   }
 }
 

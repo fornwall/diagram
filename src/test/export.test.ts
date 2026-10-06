@@ -38,6 +38,7 @@ suite("native export", function () {
   let panel: DiagramPanel;
   let directory: string;
   let offered: Choice[];
+  let pickerTitles: (string | undefined)[];
   let dialogs: vscode.SaveDialogOptions[];
   let errors: string[];
   let chosen: ExportFormat | undefined;
@@ -52,13 +53,15 @@ suite("native export", function () {
     panel = newPanel();
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-export-test-"));
     offered = [];
+    pickerTitles = [];
     dialogs = [];
     errors = [];
     chosen = "svg";
     cancelSave = false;
     choose = undefined;
-    vscode.window.showQuickPick = (async (items: Choice[]) => {
+    vscode.window.showQuickPick = (async (items: Choice[], options?: vscode.QuickPickOptions) => {
       offered = items;
+      pickerTitles.push(options?.title);
       return choose ? choose(items) : items.find((item) => item.format === chosen);
     }) as unknown as typeof quickPick;
     vscode.window.showSaveDialog = async (options) => {
@@ -167,18 +170,31 @@ suite("native export", function () {
     }
   });
 
-  test("names an untitled drawing after what it is", async () => {
+  test("says whether it exports a diagram or a chart, and names an untitled one so", async () => {
     const { panel } = await exportingPanel();
     try {
       for (const drawing of [diagram, chart]) {
         assert.ok((await panel.render({ ...drawing, title: " / " }, "tool")).ok);
         await panel.exportDiagram();
+        // The page answers with SVG, which is not the PNG asked for.
+        chosen = "png";
+        await panel.exportDiagram();
+        chosen = "svg";
       }
-      assert.deepStrictEqual(errors, []);
+      assert.deepStrictEqual(pickerTitles, [
+        "Export Diagram",
+        "Export Diagram",
+        "Export Chart",
+        "Export Chart",
+      ]);
       assert.deepStrictEqual(
         dialogs.map((dialog) => dialog.defaultUri?.path.split("/").pop()),
         ["diagram.svg", "chart.svg"],
       );
+      assert.deepStrictEqual(errors, [
+        "Could not export the diagram: The panel returned the wrong export format. Try again.",
+        "Could not export the chart: The panel returned the wrong export format. Try again.",
+      ]);
     } finally {
       panel.dispose();
     }
