@@ -121,8 +121,11 @@ export interface Page extends WebviewHarness {
 }
 
 /**
- * The page that the webview suites share, as loading a page takes a while, and as a new page
- * opened after the Mermaid suite's ran its timers only once a second, for a reason not found.
+ * The page that the webview suites share, as loading a page takes a while, and as a page opened
+ * within about a second of closing another often runs its timers only once a second, as do VS
+ * Code's frames around it: Chromium throttles the frames as if hidden, though they draw and see
+ * themselves visible, until the panel is hidden and shown. Polling the page with setTimeout then
+ * takes a second a step. Neither the page's content nor its code matter: an empty page does it.
  */
 let shared: { panel: DiagramPanel; harness: WebviewHarness } | undefined;
 // At the top level, this runs after the tests of every suite.
