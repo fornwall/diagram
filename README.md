@@ -43,6 +43,8 @@ Chart Options uses the loaded data without rerunning commands. After VS Code res
 
 Diagrams follow your VS Code theme. Agents can mark items with notes, for example to walk you through a diagram.
 
+Charts leave out the toolbox's chart type switch, box zoom and brush, as laying the chart out again on a resize would undo them, and show its data view read-only.
+
 ## Edit Markdown diagrams
 
 Click **Open in Diagram** above a `mermaid` or `echarts` code block, including blocks in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or the editor context menu. Set `diagram.codeLens.enabled` to `false` to hide **Open in Diagram**.
@@ -57,7 +59,7 @@ Any chat agent can use these tools; `@diagram` includes them by default. Attach 
 
 | Tool | Reference | Purpose |
 | --- | --- | --- |
-| `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks and custom series. Reports render errors. |
+| `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks, custom series and timelines. Reports render errors. |
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
