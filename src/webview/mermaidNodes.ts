@@ -28,6 +28,7 @@ export const WITH_DATABASE = new Set([
   "radar",
   "treeView",
   "venn",
+  "wardley",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -87,6 +88,12 @@ export interface DiagramDb {
   /** A Venn diagram's sets and their overlaps, and the texts in them, with their sets sorted. */
   getSubsetData?(): { sets: string[]; label?: string }[];
   getTextData?(): { sets: string[]; id: string; label?: string }[];
+  /** A Wardley map's components and links, and the components of its pipelines. */
+  getWardleyData?(): {
+    nodes: { id: string; label: string }[];
+    links: { source: string; target: string; label?: string }[];
+    pipelines: { nodeId: string; componentIds: string[] }[];
+  };
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -256,6 +263,13 @@ export function findNodes(
   for (const label of [":not([class])", ".sankey-label-bg", ".sankey-label-fg"]) {
     addInOrder(svg.querySelectorAll(`:scope > g.node-labels > text${label}`), sankeyNodes);
   }
+
+  // Wardley map anchors and components, in the order of the database.
+  const wardley = db?.getWardleyData?.();
+  addInOrder(
+    svg.querySelectorAll("g.wardley-node"),
+    (wardley?.nodes ?? []).map(({ id, label }) => ({ id, label })),
+  );
 
   // Footer copies retain the participant's name, even when several share a display label.
   const participants = new Map<string, DiagramNode>();
@@ -671,6 +685,40 @@ function findRelationships(
       }
       addLine(line, node);
       for (const text of texts) add(text, node);
+    }
+  }
+  // Wardley map links in the order of the database, but for those that Mermaid leaves out: to
+  // components that are not there, and from a pipeline's components to the pipeline. Lines,
+  // followed by the labels of those that have one.
+  const wardley = db?.getWardleyData?.();
+  const components = new Set((wardley?.nodes ?? []).map(({ id }) => id));
+  const pipelines = new Set(
+    (wardley?.pipelines ?? []).flatMap(({ nodeId, componentIds }) =>
+      componentIds.map((id) => `${id} → ${nodeId}`),
+    ),
+  );
+  const links = (wardley?.links ?? []).filter(
+    ({ source, target }) =>
+      components.has(source) && components.has(target) && !pipelines.has(`${source} → ${target}`),
+  );
+  const linkLines = svg.querySelectorAll("g.wardley-links > line");
+  const linkLabels = Array.from(svg.querySelectorAll("g.wardley-links > text"));
+  if (linkLines.length === links.length) {
+    for (const [i, { source, target, label }] of links.entries()) {
+      const text = label ? linkLabels.shift() : undefined;
+      if (!names.has(source) || !names.has(target)) continue;
+      const line = linkLines[i] as Element;
+      const node = relation(
+        "edge",
+        `${source} → ${target}`,
+        source,
+        target,
+        label ?? "",
+        line.hasAttribute("marker-start"),
+        line.hasAttribute("marker-end"),
+      );
+      addLine(line, node);
+      if (text) add(text, node);
     }
   }
   // Architecture edges, which Mermaid draws in a group of their line, arrowheads and title, with

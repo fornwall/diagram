@@ -2276,6 +2276,20 @@ suite("webview", function () {
         'venn-beta\n  set A["Design"]\n  set B["Code"]\n  set C\n  union B,A["UX"]\n    text t1["Alice"]\n  union B,C',
         ["A,B: UX", "A: Design", "B,C: <g>", "B: Code", "C: C", "t1: <foreignObject>"],
       ],
+      [
+        // Mermaid draws no link from a pipeline's component to the pipeline.
+        "wardley-beta\n  anchor Business [0.95, 0.63]\n  component Cup of Tea [0.79, 0.61]\n  component Kettle [0.43, 0.35]\n  component Power [0.1, 0.7]\n  pipeline Kettle {\n    component Electric [0.6]\n  }\n  Business -> Cup of Tea\n  Cup of Tea -> Kettle; heats\n  Electric -> Kettle\n  Kettle +> Power",
+        [
+          "Business: Business",
+          "Cup of Tea: Cup of Tea",
+          "Kettle: Kettle",
+          "Kettle_Electric: Electric",
+          "Power: Power",
+          "edge:Business → Cup of Tea: <line> <line>",
+          "edge:Cup of Tea → Kettle: <line> <line> heats",
+          "edge:Kettle → Power: <line> <line>",
+        ],
+      ],
     ];
     for (const [source, items] of cases) {
       await draw({ source });
