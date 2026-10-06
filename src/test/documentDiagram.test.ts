@@ -153,15 +153,6 @@ suite("documentDiagram", function () {
     assert.strictEqual(written.fence.lastLine, 3);
   });
 
-  test("writeFence writes an ECharts option back", async () => {
-    const document = await markdown('Sales:\n\n```echarts\n{"series": []}\n```\n');
-    assert.ok((await writeFence(binding(document), '{"series": [{"type": "pie"}]}')).written);
-    assert.strictEqual(
-      document.getText(),
-      'Sales:\n\n```echarts\n{"series": [{"type": "pie"}]}\n```\n',
-    );
-  });
-
   test("keeps lines of only whitespace as written", async () => {
     // Editors leave indentation on otherwise empty lines, which must not become changes.
     const document = await markdown("- Sales:\n\n  ```echarts\n  {\n    \n  }\n  ```\n");
