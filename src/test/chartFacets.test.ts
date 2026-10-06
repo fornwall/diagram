@@ -245,6 +245,20 @@ suite("chart facets", () => {
     }
   });
 
+  test("says what the filters kept before the panels rather than within the last one", () => {
+    const data = "service,operation,ms\napi,read,2\napi,write,5\nworker,read,30";
+    const { summary } = buildChart(
+      {
+        type: "bar",
+        data,
+        facetColumn: "service",
+        filters: [{ column: "ms", op: "gt", value: 2 }],
+      },
+      parseTable(data),
+    );
+    assert.match(summary, /^The filters kept 2 of 3 rows\. Faceted by "service" into 2 panels/);
+  });
+
   test("recomputes shared inference and byte units for each chart request", () => {
     const data = "service,date,size\napi,2026-01-01,1 KiB\nworker,2026-01-02,4 MiB";
     const table = parseTable(data);

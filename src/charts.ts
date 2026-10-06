@@ -10,7 +10,7 @@ import type { ChartSpec, ChartType } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import type { DataTable } from "./data";
 import { isPlainObject } from "./protocol";
-import { quoteAll } from "./text";
+import { plural, quoteAll } from "./text";
 
 export interface Chart {
   /** The ECharts option, as plain JSON that leaves colors, fonts and layout to the webview. */
@@ -42,13 +42,13 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     spec.facetColumn === undefined
       ? single(spec, filtered)
       : buildFacetedChart(spec, filtered, single);
-  const removed = table.rows.length - filtered.rows.length;
+  // Filtering comes first, so it is said first, rather than within the last facet's summary.
   return {
     option: spec.options === undefined ? chart.option : deepMerge(chart.option, spec.options),
     summary:
-      removed === 0
+      filtered === table
         ? chart.summary
-        : `${chart.summary.slice(0, -1)}; filters kept ${filtered.rows.length} of ${table.rows.length} rows.`,
+        : `The filters kept ${filtered.rows.length} of ${plural(table.rows.length, "row")}. ${chart.summary}`,
   };
 }
 
