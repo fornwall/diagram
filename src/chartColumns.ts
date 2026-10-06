@@ -393,7 +393,8 @@ function describeColumn(table: DataTable, column: number): string {
   if (!numeric) {
     return "text";
   }
-  const kind = unit === undefined ? "numbers" : unit === "%" ? "percentages" : unit;
+  // Sizes and durations were converted, as "Latency (ms)" to seconds, which filters compare.
+  const kind = unit === undefined ? "numbers" : unit === "%" ? "percentages" : `in ${unit}`;
   // Charts leave out text cells in numeric columns.
   const texts = table.rows.flatMap((row) => (typeof row[column] === "string" ? [row[column]] : []));
   if (texts.length === 0) {
@@ -406,7 +407,7 @@ function describeColumn(table: DataTable, column: number): string {
   return `${kind}, ${plural(texts.length, "text cell")}: ${examples.join(", ")}`;
 }
 
-/** E.g. `"dir" (text), "size" (bytes)`. */
+/** E.g. `"dir" (text), "size" (in bytes)`. */
 export function describeColumns(table: DataTable): string {
   return table.columns
     .map((column, i) => `${JSON.stringify(column.name)} (${describeColumn(table, i)})`)
@@ -414,7 +415,21 @@ export function describeColumns(table: DataTable): string {
 }
 
 /**
- * Summarizes a table for a language model: `42 rows; columns: "dir" (text), "size" (bytes)`,
+ * Which columns hold sizes in bytes or durations in seconds, as "filters" and "max" give them, e.g.
+ * `"Latency (ms)" is in seconds.`, or undefined if none does.
+ */
+export function describeUnits({ columns }: DataTable): string | undefined {
+  const clauses = (["bytes", "seconds"] as const).flatMap((unit) => {
+    const names = columns.flatMap((column) => (column.unit === unit ? [column.name] : []));
+    return names.length === 0
+      ? []
+      : [`${quoteAll(names)} ${names.length === 1 ? "is" : "are"} in ${unit}`];
+  });
+  return clauses.length === 0 ? undefined : `${clauses.join("; ")}.`;
+}
+
+/**
+ * Summarizes a table for a language model: `42 rows; columns: "dir" (text), "size" (in bytes)`,
  * followed by the first rows as JSON arrays.
  */
 export function describeTable(table: DataTable): string {

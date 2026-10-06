@@ -855,6 +855,10 @@ suite("charts", () => {
       build(chart("gauge", { max: 50 }), "metric,n\nlatency,12").series[0].max,
       50,
     );
+    // "max" is in seconds, whatever multiple the durations are shown in.
+    const latency = chart("gauge", { max: 0.5 });
+    assert.strictEqual(build(latency, "metric,Latency (ms)\np99,120").series[0].max, 500);
+    assert.match(summary(latency, "metric,Latency (ms)\np99,120"), /to 500, from "max" in seconds/);
     const balance = "month,balance\njan,-3";
     assert.strictEqual(build(chart("gauge"), balance).series[0].min, -3);
     assert.match(summary(chart("gauge"), balance), /scaled it from -3 to 1, rounded up/);
@@ -1676,7 +1680,7 @@ suite("charts", () => {
     assert.strictEqual(
       describeTable(table),
       [
-        '6 rows; columns: "dir" (text), "size" (bytes), "share" (percentages), "note" (empty)',
+        '6 rows; columns: "dir" (text), "size" (in bytes), "share" (percentages), "note" (empty)',
         "First 5 rows:",
         '["a",1024,1,null]',
         '["b",2,2,null]',

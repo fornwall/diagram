@@ -202,12 +202,19 @@ export class DiagramPanel implements vscode.Disposable {
     callsTools?: boolean;
   } = {}): string | undefined {
     if (!this.state) return undefined;
+    let chartTable: DataTable | undefined;
+    try {
+      chartTable = this.state.chart && this.loadedChartData;
+    } catch {
+      // Inline data that no longer parses has no units to tell.
+    }
     const description = describeDiagram(this.state, {
       selection: this.selection,
       annotation: this.annotation,
       relationships: this.relationships,
       repeatedNames: this.repeatedNames,
       warnings: this.renderWarnings,
+      chartTable,
       fullSource,
       callsTools,
     });

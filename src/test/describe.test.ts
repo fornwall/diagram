@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { parseTable } from "../data";
 import { describeChartParameters, describeDiagram } from "../describe";
 import type { DiagramState } from "../panel";
 
@@ -18,6 +19,18 @@ suite("describeDiagram", () => {
     assert.ok(description.includes(JSON.stringify(chart.chart)));
     assert.strictEqual(description.match(/sales\.csv/g)?.length, 1);
     assert.match(description, /use diagram_updateChart with the loaded data/);
+  });
+
+  test("tells the units that sizes and durations were converted to", () => {
+    const table = parseTable("name,Latency (ms),Size (KB),Wait,share\na,1.5,2,3s,5%");
+    assert.match(
+      describeDiagram(chart, { chartTable: table }),
+      /\n"Size \(KB\)" is in bytes; "Latency \(ms\)", "Wait" are in seconds\.\n/,
+    );
+    assert.doesNotMatch(
+      describeDiagram(chart, { chartTable: parseTable("name,share\na,5%") }),
+      / is in /,
+    );
   });
 
   test("manual chart edits are preserved rather than regenerated", () => {

@@ -68,6 +68,11 @@ function emptyingFilter(
     if (!numeric && typeof value === "number") {
       return `${kept}; the column holds text, so compare with ${JSON.stringify(String(value))}`;
     }
+    // A value in the unit that the name states, as 200 for "Latency (ms)", misses the seconds.
+    const unit = table.columns[index]?.unit;
+    if (typeof value === "number" && (unit === "bytes" || unit === "seconds")) {
+      return `${kept}; the column is in ${unit}`;
+    }
     return kept;
   }
   return "together they match no row";

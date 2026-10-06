@@ -86,6 +86,14 @@ suite("chart transforms", () => {
         ]),
       /"name" eq "b" matches none of the remaining 1 rows\./,
     );
+    // A value in the unit that the name states, rather than the one the column was converted to.
+    assert.throws(
+      () =>
+        filterTable(parseTable("name,Latency (ms)\na,150\nb,250"), [
+          { column: "Latency (ms)", op: "gt", value: 200 },
+        ]),
+      /"Latency \(ms\)" gt 200 matches none of the 2 rows; the column is in seconds\./,
+    );
   });
 
   test("filters precede aggregation, sorting and limiting", () => {

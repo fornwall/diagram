@@ -2,6 +2,8 @@
 // did with it.
 
 import { codeFence } from "./blocks";
+import { describeUnits } from "./chartColumns";
+import type { DataTable } from "./data";
 import { documentName } from "./documentDiagram";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
@@ -30,6 +32,8 @@ interface Drawing {
   relationships?: readonly DiagramNode[];
   repeatedNames?: readonly RepeatedName[];
   warnings?: readonly string[];
+  /** The generated chart's data, if loaded, for the units that filters and "max" are given in. */
+  chartTable?: DataTable | undefined;
   /** Gives a long source too, as {@link GET_STATE_TOOL} does. */
   fullSource?: boolean;
   /** Whether the model can call {@link GET_STATE_TOOL} for a long source left out. */
@@ -45,6 +49,7 @@ export function describeDiagram(
     relationships = [],
     repeatedNames = [],
     warnings = [],
+    chartTable,
     fullSource = false,
     callsTools = true,
   }: Drawing = {},
@@ -61,6 +66,8 @@ export function describeDiagram(
     lines.push(
       `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
     );
+    const units = chartTable && describeUnits(chartTable);
+    if (units) lines.push(units);
     if (state.chartPresentation?.blocked) {
       lines.push(state.chartPresentation.blocked);
     } else if (state.chartPresentation?.edits.length) {

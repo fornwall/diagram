@@ -109,7 +109,8 @@ export function gaugeOption({
   const name = names[0] ?? "";
   const max = maxima[0];
   const valueColumn = columns.values[0];
-  const percent = valueColumn !== undefined && table.columns[valueColumn]?.unit === "%";
+  const unit = valueColumn === undefined ? undefined : table.columns[valueColumn]?.unit;
+  const percent = unit === "%";
   const shown = rows.find(({ values }) => typeof values[0] === "number");
   const value = shown?.values[0];
   if (shown === undefined || typeof value !== "number") {
@@ -129,7 +130,8 @@ export function gaugeOption({
       : value;
   const [top, reason] =
     max !== undefined
-      ? [max, "as given"]
+      ? // Of sizes and durations, "max" is in bytes or seconds, not the multiple shown.
+        [max, unit === "bytes" || unit === "seconds" ? `from "max" in ${unit}` : "as given"]
       : percent
         ? [100, "as the values are percentages"]
         : total > value
