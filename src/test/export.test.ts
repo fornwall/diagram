@@ -155,6 +155,18 @@ suite("native export", function () {
     }
   });
 
+  test("suggests the folder of the last export", async () => {
+    const { panel } = await exportingPanel();
+    try {
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      await panel.exportDiagram();
+      await panel.exportDiagram();
+      assert.strictEqual(dialogs[1]?.defaultUri?.fsPath, path.join(directory, "Export test.svg"));
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("rejects a diagram replaced while the picker is open", async () => {
     const { panel } = await exportingPanel();
     try {

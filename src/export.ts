@@ -13,6 +13,9 @@ import { savedChartHtml } from "./savedChart";
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
 
+/** Where the last export went, where the next one is likely to go too. */
+let lastFolder: vscode.Uri | undefined;
+
 /**
  * Asks for a format, captures the drawing in it and saves it where the user chooses. capture asks
  * the webview for the drawing, and throws if it changed while the user was choosing.
@@ -61,7 +64,8 @@ export async function exportDrawing(
     } else {
       throw new Error("The panel returned the wrong export format. Try again.");
     }
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
+    const folder =
+      lastFolder ?? vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
     const target = await vscode.window.showSaveDialog({
       title: `Export ${choice.label}`,
       saveLabel: "Export",
@@ -73,6 +77,7 @@ export async function exportDrawing(
     });
     if (!target) return;
     await vscode.workspace.fs.writeFile(target, bytes);
+    lastFolder = vscode.Uri.joinPath(target, "..");
     if (format === "html") void offerToOpen(target);
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not export the diagram: ${errorMessage(error)}`);
