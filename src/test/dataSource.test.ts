@@ -3,7 +3,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { commandEnvironment, loadTable, readDataFile, runCommand } from "../dataSource";
+import {
+  commandEnvironment,
+  loadTable,
+  printsSiSizes,
+  readDataFile,
+  runCommand,
+} from "../dataSource";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -72,6 +78,18 @@ suite("dataSource", () => {
       const df = "df() { printf 'Filesystem Size\\n/dev/sda1 500G\\n'; }; ";
       assert.deepStrictEqual(await sizes(`${df}df -TH /`), [500e9]);
       assert.deepStrictEqual(await sizes(`${df}df -h /`), [500 * 1024 ** 3]);
+    });
+
+    test("tells sizes in powers of 1000 from the options of commands, in linear time", () => {
+      for (const command of ["du --si .", "du -s --si=x", "/bin/df -h -TH /", "x;df -a -H"]) {
+        assert.strictEqual(printsSiSizes(command), true, command);
+      }
+      for (const command of ["du --size", "x--si", "df -h /", "df / -H", "mydf -H", "df - -H"]) {
+        assert.strictEqual(printsSiSizes(command), false, command);
+      }
+      const start = Date.now();
+      assert.strictEqual(printsSiSizes("-df ".repeat(20_000)), false);
+      assert.ok(Date.now() - start < 500);
     });
 
     test("keeps the output of a failed command, with a warning", async () => {

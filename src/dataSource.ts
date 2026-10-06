@@ -20,8 +20,6 @@ const COMMAND_TIMEOUT_MS = 60_000;
  */
 const EXIT_GRACE_MS = 200;
 const STDERR_TAIL = 2000;
-/** The options of du, df, ls and free that print sizes in powers of 1000: --si, and df's -H. */
-const SI_OPTIONS = /(?:^|\s)--si\b|\bdf(?:\s+-\S+)*\s+-[a-zA-Z]*H/;
 
 /** The locale categories that LC_ALL sets, other than LC_NUMERIC. */
 const LOCALE_CATEGORIES = [
@@ -54,6 +52,20 @@ export function commandEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   }
   result.LC_NUMERIC = "C";
   return result;
+}
+
+/**
+ * Whether a command prints sizes in powers of 1000, as du, df, ls and free do with --si, and df
+ * with -H among its options. Word by word, since a regular expression for the options after "df"
+ * takes quadratic time on "-df -df -df…".
+ */
+export function printsSiSizes(command: string): boolean {
+  let afterDf = false;
+  for (const word of command.split(/\s+/)) {
+    if (/^--si\b/.test(word) || (afterDf && /^-[a-zA-Z]*H/.test(word))) return true;
+    afterDf = /\bdf$/.test(word) || (afterDf && /^-./.test(word));
+  }
+  return false;
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -304,6 +316,6 @@ export async function loadTable(
     ({ output: text, warning } = await runCommand(spec.command, token));
   }
   throwIfCancelled(token);
-  const si = spec.command !== undefined && SI_OPTIONS.test(spec.command);
+  const si = spec.command !== undefined && printsSiSizes(spec.command);
   return { table: parseTable(text, spec.format, si), ...(warning ? { warning } : {}) };
 }
