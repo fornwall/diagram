@@ -124,10 +124,53 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
   if (blob?.type !== "image/png") {
     throw new Error("The browser could not create a PNG at this image size.");
   }
+  const png = await withResolution(blob, scale);
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(reader.error ?? new Error("Could not read the PNG image."));
-    reader.readAsDataURL(blob);
+    reader.readAsDataURL(png);
   });
+}
+
+/** The end of the signature and the header chunk, which every PNG starts with. */
+const PNG_HEADER_END = 33;
+
+/**
+ * Adds a pHYs chunk to a PNG that has none, saying that `scale` pixels make a CSS pixel, 1/96 of an
+ * inch. Word processors, presentations and macOS Preview then show an image that is twice as
+ * sharp as the drawing at the drawing's size instead of twice as large.
+ */
+async function withResolution(png: Blob, scale: number): Promise<Blob> {
+  const bytes = new Uint8Array(await png.arrayBuffer());
+  const type = (start: number) => String.fromCharCode(...bytes.subarray(start, start + 4));
+  if (type(12) !== "IHDR") return png;
+  // Chunks: a length, a type, the data and a CRC. pHYs is allowed once, before the image data.
+  const lengths = new DataView(bytes.buffer);
+  for (let at = 8; at + 8 <= bytes.length && type(at + 4) !== "IDAT"; ) {
+    if (type(at + 4) === "pHYs") return png;
+    at += 12 + lengths.getUint32(at);
+  }
+  const chunk = new Uint8Array(21);
+  const view = new DataView(chunk.buffer);
+  const pixelsPerMeter = Math.round((scale * 96) / 0.0254);
+  view.setUint32(0, 9);
+  chunk.set([0x70, 0x48, 0x59, 0x73], 4);
+  view.setUint32(8, pixelsPerMeter);
+  view.setUint32(12, pixelsPerMeter);
+  chunk[16] = 1; // The unit is the meter.
+  view.setUint32(17, crc32(chunk.subarray(4, 17)));
+  return new Blob([bytes.subarray(0, PNG_HEADER_END), chunk, bytes.subarray(PNG_HEADER_END)], {
+    type: "image/png",
+  });
+}
+
+/** The CRC-32 that ends a PNG chunk, computed over its type and data. */
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }

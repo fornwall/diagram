@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ExportResult, FromWebview, ToWebview } from "../protocol";
@@ -18,6 +19,19 @@ const chart: Diagram = {
   source: '{"series":[{"type":"pie","data":[{"name":"Export label","value":3}]}]}',
 };
 type Choice = vscode.QuickPickItem & { format: ExportFormat };
+
+/** The chunks of a PNG after its signature, each of which must end in its CRC. */
+function pngChunks(png: Buffer): { type: string; data: Buffer }[] {
+  const chunks = [];
+  for (let at = 8; at < png.length; ) {
+    const length = png.readUInt32BE(at);
+    const typed = png.subarray(at + 4, at + 8 + length);
+    assert.strictEqual(png.readUInt32BE(at + 8 + length), zlib.crc32(typed));
+    chunks.push({ type: typed.subarray(0, 4).toString("latin1"), data: typed.subarray(4) });
+    at += 12 + length;
+  }
+  return chunks;
+}
 
 suite("native export", function () {
   this.timeout(20_000);
@@ -90,7 +104,15 @@ suite("native export", function () {
             bytes.subarray(0, 8),
             Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
           );
-          assert.ok(bytes.readUInt32BE(16) > 0 && bytes.readUInt32BE(20) > 0);
+          const chunks = pngChunks(bytes);
+          assert.deepStrictEqual(
+            chunks.filter((chunk) => chunk.type !== "IDAT").map((chunk) => chunk.type),
+            ["IHDR", "pHYs", "IEND"],
+          );
+          const [header, resolution] = chunks;
+          assert.ok(header && header.data.readUInt32BE(0) > 0 && header.data.readUInt32BE(4) > 0);
+          // Two pixels per CSS pixel, at 96 CSS pixels per inch, in pixels per meter.
+          assert.deepStrictEqual(resolution?.data, Buffer.from([0, 0, 29, 135, 0, 0, 29, 135, 1]));
         } else {
           assert.match(bytes.toString(), /Export[\s\S]*label/);
           assert.match(bytes.toString(), format === "svg" ? /<svg/ : /<!doctype html>/i);
