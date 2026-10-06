@@ -121,7 +121,7 @@ Histograms count one numeric value column; omit `labelColumn`, `aggregate`, `sor
 - Tables: 1,000,000 cells, including headers and empty cells. Treemaps, sunbursts and sankeys: 100 levels.
 - Mermaid sources: 50,000 characters.
 - Attachments to `@diagram`: 50,000 characters each, and less if the model's context requires it.
-- Workspace tools: 1 MiB per file and 500 lines per read. A search scans at most 1,000 files and 16 MiB. Results are bounded and report truncation.
+- Workspace tools: reads of files up to 16 MiB, 500 lines at a time. A search skips files over 1 MiB and scans at most 1,000 files and 16 MiB. Results are bounded and report truncation.
 - A chart of a file or command with a very large option is not kept when VS Code restarts; press **Refresh** to draw it again.
 
 Summarize larger datasets before charting them.
