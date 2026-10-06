@@ -2737,6 +2737,44 @@ suite("webview", function () {
     );
   });
 
+  test("lays a chart out for a new size at once after an image was taken while resizing", async () => {
+    const source = JSON.stringify({
+      animation: false,
+      xAxis: { type: "category", data: ["Alpha category", "Beta category"] },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2] }],
+    });
+    await draw({ language: "echarts", source });
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        ${CHART_FITTED}
+        const canvas = document.getElementById("canvas");
+        const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
+          /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
+        await chartFitted();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        try {
+          // An image taken while waiting for a new size to settle, which it lays the chart out
+          // for, ends the wait: the next size is again laid out at once.
+          Object.assign(canvas.style, {width: "600px", flex: "none"});
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          canvas.style.width = "250px";
+          const started = performance.now();
+          while (!rotated() && performance.now() - started < 100) {
+            await new Promise(requestAnimationFrame);
+          }
+          return rotated();
+        } finally {
+          Object.assign(canvas.style, {width: "", flex: ""});
+          await chartFitted();
+        }
+      })()`),
+      true,
+    );
+  });
+
   test("fits a chart drawn while its container briefly had another size or was hidden", async () => {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(

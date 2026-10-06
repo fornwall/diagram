@@ -187,6 +187,7 @@ export class EChartsRenderer implements Renderer {
     this.resizeChart();
     this.apply(false, true);
     clearTimeout(this.relayoutTimer);
+    this.relayoutTimer = undefined;
     const svg = this.container.querySelector("svg");
     if (!svg) {
       throw new Error("There is no chart to make an image of.");
