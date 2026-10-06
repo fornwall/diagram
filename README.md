@@ -21,19 +21,21 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 
 | Action | How |
 | --- | --- |
-| Select | Click a node, edge, sequence message or chart item; Ctrl/Cmd+click or Shift+click adds to the selection. If the item has a link, or the agent set a click prompt, a plain click opens the link or asks in chat instead. Clicking a treemap or sunburst item also zooms into it. |
+| Select | Click an item, such as a node, edge, sequence message or chart item; Ctrl/Cmd+click or Shift+click adds to the selection. If the item has a link, or the agent set a click prompt, a plain click opens the link or asks in chat instead. Clicking a treemap or sunburst item also zooms into it. |
 | Keyboard | Tab to the drawing, move with the arrow keys (Home/End: first/last) and press Enter or Space to click. In charts, the arrow keys along the category axis follow a series and the others change series; pie slices go round, trees go to parent/child (←/→) and siblings (↑/↓), and scatter, graph and sankey items to the nearest one. |
 | Highlight a path | Select two flowchart nodes in order (start, then destination), then **Highlight Path**. Selects a shortest path, including its edges. |
 | Ask | **Send to chat** asks about your selection, addressed to the agent that drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
 | Edit | Show the source with the view buttons at the top right. **Apply** (Ctrl/Cmd+Enter) renders your edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. Errors show their line and column. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
-| Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to change a chart made from data. |
+| Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to change a chart made from data. Enter in a field applies the options. |
 | Refresh | Reload file or command data, keeping styling made in the JSON source. Manual changes to the data, structure or JavaScript of the source must be reverted or reset first. |
 | Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. |
-| Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. Images keep the theme and drop links; Mermaid images also drop the selection and marks. |
+| Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
 | Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive, label link or sequence diagram actor `link`. An actor with several `links` offers a menu. VS Code asks before opening an untrusted website. |
 | Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
+
+Images keep the theme and drop links; Mermaid images also drop the selection and marks. A PNG has up to twice the drawing's resolution and records it, so documents show it at the drawing's size. Mermaid SVGs put their styles on each element, as apps such as Figma and Office need.
 
 Chart Options uses the loaded data without rerunning commands. After VS Code restarts, press **Refresh** to load file or command data again; charts of inline data stay configurable. **Reset styling** removes manual presentation changes, reloading data if needed. To discard source edits that Chart Options cannot keep, check **Replace manual source edits** first.
 
