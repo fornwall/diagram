@@ -73,6 +73,22 @@ suite("describeDiagram", () => {
     assert.match(full, /too long to show here/);
   });
 
+  test("a model that calls no tools is told of the drawing, but of no tool", () => {
+    const edge = { kind: "edge", source: "A", target: "B", direction: "forward" } as const;
+    const drawing = {
+      relationships: [{ id: "L_A_B", label: "A → B", relationship: edge }],
+      repeatedNames: [{ name: "Sales", ids: ["Sales", "Sales/1"], count: 2 }],
+      annotation: { marks: [{ id: "A", kind: "problem" as const }], dim: false },
+    };
+    const state = { ...chart, links: { A: { file: "src/a.ts", line: 3 } } };
+    assert.match(describeDiagram(state, drawing), /diagram_annotate.*\n.*diagram_annotate/);
+    const described = describeDiagram(state, { ...drawing, callsTools: false });
+    assert.doesNotMatch(described, /diagram_/);
+    assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
+    assert.match(described, /Selectable relationships: "A → B" \(id: L_A_B; edge/);
+    assert.match(described, /Marked chart items: A \(problem\)\./);
+  });
+
   test("oversized chart options are omitted from model context", () => {
     const description = describeChartParameters({
       type: "bar",

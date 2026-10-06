@@ -36,7 +36,7 @@ interface Drawing {
   chartTable?: DataTable | undefined;
   /** Gives a long source too, as {@link GET_STATE_TOOL} does. */
   fullSource?: boolean;
-  /** Whether the model can call {@link GET_STATE_TOOL} for a long source left out. */
+  /** Whether the model calls tools, and so is told which ones to call. */
   callsTools?: boolean;
 }
 
@@ -61,7 +61,8 @@ export function describeDiagram(
     describeSource(state, fullSource, callsTools),
     "",
   ];
-  if (state.chart) {
+  // A model that calls no tools can still change a generated chart's option as a whole.
+  if (state.chart && callsTools) {
     const refresh = state.chart.file !== undefined || state.chart.command !== undefined;
     lines.push(
       `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
@@ -82,7 +83,8 @@ export function describeDiagram(
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
   if (links.length > 0) {
     lines.push(
-      `Code links: ${links.join(", ")}. Pass them to ${RENDER_TOOL} when changing the diagram.`,
+      `Code links: ${links.join(", ")}.` +
+        (callsTools ? ` Pass them to ${RENDER_TOOL} when changing the diagram.` : ""),
     );
   }
   if (state.document) {
@@ -99,10 +101,10 @@ export function describeDiagram(
   lines.push(...warnings);
   if (relationships.length > 0) {
     lines.push(
-      `Selectable relationships (use these exact ids for ${ANNOTATE_TOOL}): ${nodeList(relationships)}.`,
+      `Selectable relationships${callsTools ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${nodeList(relationships)}.`,
     );
   }
-  if (repeatedNames.length > 0) {
+  if (repeatedNames.length > 0 && callsTools) {
     lines.push(
       `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
     );
@@ -110,7 +112,7 @@ export function describeDiagram(
   const parts = selection.some((node) => node.relationship)
     ? "items"
     : `${nodeNoun(state.language)}s`;
-  const marked = describeMarks(annotation, parts);
+  const marked = describeMarks(annotation, parts, callsTools);
   if (marked) {
     lines.push(marked);
   }
@@ -135,7 +137,11 @@ export function describeChartParameters(chart: unknown): string {
 }
 
 /** What the user is looking at on the diagram, as the last call to the annotate tool left it. */
-function describeMarks(annotation: Annotation | undefined, parts: string): string | undefined {
+function describeMarks(
+  annotation: Annotation | undefined,
+  parts: string,
+  callsTools: boolean,
+): string | undefined {
   if (!annotation || (annotation.marks.length === 0 && annotation.caption === undefined)) {
     return undefined;
   }
@@ -151,7 +157,9 @@ function describeMarks(annotation: Annotation | undefined, parts: string): strin
     lines.push(
       `Marked ${parts}: ${listed.join(", ")}.` +
         (dim ? " Everything else is faded." : "") +
-        ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`,
+        (callsTools
+          ? ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
+          : ""),
     );
   }
   return lines.join("\n");
