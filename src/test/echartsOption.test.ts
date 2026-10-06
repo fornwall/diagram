@@ -455,7 +455,22 @@ suite("echartsOption", () => {
       assert.match(errorOf(source), expected, source);
     }
     // Where a start of the source cut short fails alike, the error cannot be located.
-    assert.doesNotMatch(errorOf('{a: x => x, b: "open}'), /\(line/);
+    assert.doesNotMatch(errorOf("{a: (p) => /open, b: 1}"), /\(line/);
+  });
+
+  test("locates a token the engine cannot read, such as a string left open after a function", () => {
+    const cases: [string, RegExp][] = [
+      ['{a: x => x, b: "open}', /Invalid or unexpected token \(line 1, column 16\)/],
+      [
+        "{\n  a: (p) => p.name + 'x', /* a 'comment\n  that goes on */ b: 'open,\n  c: 1,\n}",
+        /Invalid or unexpected token \(line 3, column 22\)/,
+      ],
+      ["{a: (p) => p.name, b: “quoted”}", /Invalid or unexpected token \(line 1, column 23\)/],
+      ["{a: (p) => '\\x4' + p}", /Invalid hexadecimal escape sequence \(line 1, column 13\)/],
+    ];
+    for (const [source, expected] of cases) {
+      assert.match(errorOf(source), expected, source);
+    }
   });
 
   test("blames what a JavaScript option throws, not its syntax", () => {

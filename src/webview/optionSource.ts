@@ -142,15 +142,24 @@ function describeThrown(text: string, error: unknown): string {
 
 /**
  * The errors that the engine also gives a source cut short in the middle of a token, such as a
- * string, and the error of the reserved word that the search below ends each start of the source
- * with: the search cannot tell where these are.
+ * string, which the search by lines below can tell where they are, as a line cannot end inside
+ * such a token.
  */
-const CUT_SHORT_ERRORS = new Set([
+const LINE_TOKEN_ERRORS = new Set([
   "Invalid or unexpected token",
-  "Unterminated template literal",
-  "Invalid regular expression: missing /",
   "Invalid Unicode escape sequence",
   "Invalid hexadecimal escape sequence",
+]);
+
+/**
+ * The errors that the engine also gives a source cut short in the middle of a template literal,
+ * which may go on over lines, or of a regular expression, which the end of comment that the search
+ * by lines ends each start with may begin, and the error of the reserved word that the searches
+ * end each start with: the searches cannot tell where these are.
+ */
+const CUT_SHORT_ERRORS = new Set([
+  "Unterminated template literal",
+  "Invalid regular expression: missing /",
   "Unexpected reserved word",
 ]);
 
@@ -162,15 +171,18 @@ const CUT_SHORT_ERRORS = new Set([
  * starts from where the source goes beyond literals, as it holds no error before that.
  */
 function syntaxErrorAt(text: string, from: number, message: string): number | undefined {
-  if (CUT_SHORT_ERRORS.has(message)) return undefined;
-  const failsAlike = (end: number) => {
+  const failsAlike = (end: number, ending = "enum") => {
     try {
-      new Function(`"use strict"; return ([\n${text.slice(0, end)}\nenum`);
+      new Function(`"use strict"; return ([\n${text.slice(0, end)}\n${ending}`);
       return false;
     } catch (error) {
       return errorMessage(error) === message;
     }
   };
+  if (LINE_TOKEN_ERRORS.has(message)) {
+    return tokenErrorAt(text, from, (end) => failsAlike(end, "*/enum"));
+  }
+  if (CUT_SHORT_ERRORS.has(message)) return undefined;
   let low = from;
   let high = text.length;
   if (!failsAlike(high)) return undefined;
@@ -190,6 +202,40 @@ function syntaxErrorAt(text: string, from: number, message: string): number | un
     position--;
   }
   return position;
+}
+
+/**
+ * Where a token that the engine cannot read starts, such as a string left open. A start of the
+ * source cut short inside any string fails alike, so search by lines, with which strings end, and
+ * end each start with the end of a comment too, for one cut short inside a comment to compile.
+ * The token is on the first line whose end fails alike, right after the last start of that line
+ * that does not, which is searched for back from its end, up to a length that keeps it quick.
+ */
+function tokenErrorAt(
+  text: string,
+  from: number,
+  failsAlike: (end: number) => boolean,
+): number | undefined {
+  const lineEnds: number[] = [];
+  for (let end = text.indexOf("\n", from); end >= 0; end = text.indexOf("\n", end + 1)) {
+    lineEnds.push(end);
+  }
+  lineEnds.push(text.length);
+  let low = 0;
+  let high = lineEnds.length - 1;
+  if (!failsAlike(text.length)) return undefined;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (failsAlike(lineEnds[middle] ?? text.length)) high = middle;
+    else low = middle + 1;
+  }
+  const lineEnd = lineEnds[high] ?? text.length;
+  const lineStart = Math.max(from, text.lastIndexOf("\n", lineEnd - 1) + 1);
+  for (let end = lineEnd - 1; end >= Math.max(lineStart, lineEnd - 500); end--) {
+    // An escape that the engine cannot read starts at its backslash.
+    if (!failsAlike(end)) return text[end - 1] === "\\" ? end - 1 : end;
+  }
+  return undefined;
 }
 
 function lineAndColumn(text: string, position: number) {
