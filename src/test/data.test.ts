@@ -910,6 +910,16 @@ suite("data", () => {
     );
   });
 
+  test("leaves out the size of a data frame that pandas prints below it", () => {
+    assert.deepStrictEqual(parse("   a  b\n0  1  x\n1  2  y\n\n[2 rows x 2 columns]\n"), {
+      columns: ["Column 1", "a", "b"],
+      rows: [
+        [0, 1, "x"],
+        [1, 2, "y"],
+      ],
+    });
+  });
+
   test("parses tables drawn with pipes, as in Markdown and by psql and mysql", () => {
     const expected = {
       columns: ["lang", "lines"],

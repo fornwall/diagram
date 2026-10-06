@@ -282,11 +282,13 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
   return best?.table ?? (strict ? splitDelimited(text, ",") : undefined);
 }
 
-/** The line that Polars prints above a table: "shape: (3, 2)". */
-const POLARS_SHAPE = /^shape: \(\d+, \d+\)$/;
-
-/** The lines that psql and mysql print below a table. */
-const TABLE_FOOTER = /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*)$/;
+/**
+ * A line that tells the size of a table rather than holding data, as psql ("(2 rows)"), mysql
+ * ("2 rows in set (0.00 sec)") and pandas ("[1000 rows x 3 columns]") print below it, and Polars
+ * ("shape: (2, 3)") above it.
+ */
+const TABLE_SIZE =
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \(\d+, \d+\))$/;
 
 /**
  * A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM, or a
@@ -302,14 +304,12 @@ const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
  * and DuckDB, or by sqlite3 and psql -A without spaces. A leading and trailing pipe are optional.
  */
 function splitPipes(lines: string[]): string[][] {
-  return lines
-    .filter((line) => !TABLE_FOOTER.test(line))
-    .map((line) => {
-      const cells = line.trim().split(PIPE);
-      if (cells.length > 1 && cells[0] === "") cells.shift();
-      if (cells.length > 1 && cells.at(-1) === "") cells.pop();
-      return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
-    });
+  return lines.map((line) => {
+    const cells = line.trim().split(PIPE);
+    if (cells.length > 1 && cells[0] === "") cells.shift();
+    if (cells.length > 1 && cells.at(-1) === "") cells.pop();
+    return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
+  });
 }
 
 /**
@@ -637,7 +637,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     }
   }
   const { lines, underlined } = withoutRules(
-    all.filter((line) => !isBlank(line) && !POLARS_SHAPE.test(line)),
+    all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
   );
   if (format === "auto") {
     const ls = splitLs(lines);
