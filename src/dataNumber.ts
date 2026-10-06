@@ -184,6 +184,16 @@ export function parseNumber(
 }
 
 /**
+ * `value` times `factor`. A power of two, as 1024, scales exactly, and any other factor to 15
+ * significant digits, which leaves out the noise of binary fractions, so that 700 ms is 0.7 seconds
+ * rather than 0.7000000000000001, and 0.7 seconds is 700 ms rather than 699.9999999999999.
+ */
+export function scale(value: number, factor: number): number {
+  const scaled = value * factor;
+  return Number.isInteger(Math.log2(factor)) ? scaled : Number(scaled.toPrecision(15));
+}
+
+/**
  * A unit of sizes or durations that a column's name states after it, in parentheses or brackets,
  * as kubectl's "MEMORY(bytes)", "Size (KB)", "Memory [MiB]" or "Latency (ms)", or a single letter
  * after a space, as "Elapsed (s)" or "Age (h)", since "File(s)" names a plural. Not "min", which

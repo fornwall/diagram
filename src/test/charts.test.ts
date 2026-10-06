@@ -859,6 +859,8 @@ suite("charts", () => {
     const latency = chart("gauge", { max: 0.5 });
     assert.strictEqual(build(latency, "metric,Latency (ms)\np99,120").series[0].max, 500);
     assert.match(summary(latency, "metric,Latency (ms)\np99,120"), /to 500, from "max" in seconds/);
+    const exact = chart("gauge", { max: 0.7 });
+    assert.strictEqual(build(exact, "metric,Latency (ms)\np99,120").series[0].max, 700);
     const balance = "month,balance\njan,-3";
     assert.strictEqual(build(chart("gauge"), balance).series[0].min, -3);
     assert.match(summary(chart("gauge"), balance), /scaled it from -3 to 1, rounded up/);
@@ -1549,6 +1551,11 @@ suite("charts", () => {
     const ages = build(chart("bar"), "NAME   AGE\napi    45m\nweb    3h12m");
     assert.deepStrictEqual(seriesNames(ages), ["AGE (h)"]);
     assert.deepStrictEqual(ages.series[0].data, [0.75, 3.2]);
+    // Without the noise of 0.7 / 0.001 or 3.3e-6 / 1e-6.
+    const exact = build(chart("bar"), "name,Latency\na,700ms\nb,350ms");
+    assert.deepStrictEqual(exact.series[0].data, [700, 350]);
+    const micro = build(chart("bar"), "name,Latency\na,3.3µs\nb,1.2µs");
+    assert.deepStrictEqual(micro.series[0].data, [3.3, 1.2]);
     // "(min)" names a minimum, so both columns are charted as they are.
     const temperatures = build(chart("bar"), "city,Temp (min),Temp (max)\nOslo,-3,5\nRome,8,17");
     assert.deepStrictEqual(seriesNames(temperatures), ["Temp (min)", "Temp (max)"]);

@@ -719,6 +719,8 @@ suite("data", () => {
     assert.deepStrictEqual(read("name,Memory [MiB]\na,2"), ["bytes", [2 * 1024 ** 2]]);
     assert.deepStrictEqual(read("name,Size (B)\na,12"), ["bytes", [12]]);
     assert.deepStrictEqual(read("name,Latency (ms)\na,1.5"), ["seconds", [0.0015]]);
+    // Without the noise of 700 * 0.001.
+    assert.deepStrictEqual(read("name,Latency (ms)\na,700"), ["seconds", [0.7]]);
     assert.deepStrictEqual(read("name,Latency (sec)\na,12"), ["seconds", [12]]);
     // A single letter is a unit of time in a column named for durations.
     assert.deepStrictEqual(read("name,Elapsed (s)\na,12"), ["seconds", [12]]);

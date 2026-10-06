@@ -3,7 +3,7 @@
 import { type Columns, chained, columnName, isCartesian, readsLevels } from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
-import { STATED_UNIT, type Unit } from "./dataNumber";
+import { STATED_UNIT, scale, type Unit } from "./dataNumber";
 import { plural, quoteAll } from "./text";
 
 /** The most levels of a row, as the hierarchy built from them is walked recursively. */
@@ -538,7 +538,7 @@ export function readRows(
       for (const { values } of rows) {
         for (const i of scaled) {
           const value = values[i];
-          if (value !== null && value !== undefined) values[i] = value / size;
+          if (value !== null && value !== undefined) values[i] = scale(value, 1 / size);
         }
       }
     }
@@ -550,6 +550,6 @@ export function readRows(
     }
   }
   const max = spec.max;
-  const maxima = max === undefined ? [] : divisors.map((divisor) => max / divisor);
+  const maxima = max === undefined ? [] : divisors.map((divisor) => scale(max, 1 / divisor));
   return { rows, names, maxima };
 }

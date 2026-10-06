@@ -4,7 +4,7 @@
 import type { DataFormat } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
-import { numberFormat, parseNumber, statedUnit, type Unit } from "./dataNumber";
+import { numberFormat, parseNumber, scale, statedUnit, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
 import { quoteAll } from "./text";
 
@@ -213,7 +213,7 @@ function tableFromRecords(
     if (stated !== undefined) {
       for (const row of rows) {
         const cell = row[column];
-        if (typeof cell === "number") row[column] = cell * stated.size;
+        if (typeof cell === "number") row[column] = scale(cell, stated.size);
       }
     }
     const unit =
