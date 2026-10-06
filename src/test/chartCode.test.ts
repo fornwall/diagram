@@ -131,6 +131,39 @@ suite("chart code in the panel", function () {
     }
   });
 
+  test("knows that the page ran chart code that was trusted while it waited to render", async () => {
+    const trust = Object.getOwnPropertyDescriptor(vscode.workspace, "isTrusted");
+    assert.ok(trust);
+    const execute = vscode.commands.executeCommand;
+    const partial: boolean[] = [];
+    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+      if (command !== "workbench.action.chat.open") return execute(command, ...args);
+      partial.push((args[0] as { isPartialQuery: boolean }).isPartialQuery);
+      return undefined;
+    }) as typeof execute;
+    const { panel, webview } = await newFakePanel();
+    try {
+      Object.defineProperty(vscode.workspace, "isTrusted", {
+        get: () => false,
+        configurable: true,
+      });
+      const answer = webview.answer;
+      webview.answer = undefined;
+      const rendering = renderChart(panel, codeChart);
+      // Granting trust reloads the page, which then renders the chart with its code.
+      Object.defineProperty(vscode.workspace, "isTrusted", trust);
+      webview.answer = answer;
+      await webview.receive({ type: "ready" });
+      assert.ok((await rendering).ok);
+      await webview.receive({ type: "ask", text: "Why?", nodes: [] });
+      assert.deepStrictEqual(partial, [true]);
+    } finally {
+      Object.defineProperty(vscode.workspace, "isTrusted", trust);
+      vscode.commands.executeCommand = execute;
+      panel.dispose();
+    }
+  });
+
   test("asks before writing to a document once the page ran chart code", async () => {
     const file = path.join(dir, "notes.md");
     fs.writeFileSync(file, "```mermaid\nflowchart TD\n```\n");

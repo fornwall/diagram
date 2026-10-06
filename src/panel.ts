@@ -279,6 +279,16 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Sends a message to the webview, ending the request it makes if it does not arrive. */
   private post(message: ToWebview): void {
+    // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
+    // A render that waits when trust is granted is sent again, to a page that can.
+    if (
+      message.type === "render" &&
+      message.language === "echarts" &&
+      vscode.workspace.isTrusted &&
+      runsCode(message.source)
+    ) {
+      this.pageRanCode = true;
+    }
     void this.webview.post(message).then((error) => {
       if (error === undefined) {
         return;
@@ -446,10 +456,6 @@ export class DiagramPanel implements vscode.Disposable {
       writeTo: state.document && documentName(state.document),
     } as const;
     this.sourceRequestId = message.requestId;
-    // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
-    if (state.language === "echarts" && vscode.workspace.isTrusted && runsCode(source)) {
-      this.pageRanCode = true;
-    }
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.store.save(state);
     const result = await new Promise<RenderOutcome>((resolve) => {
