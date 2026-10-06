@@ -13,9 +13,10 @@ function isBlank(line: string): boolean {
 
 /**
  * A rule: a line of dashes, as under the header of Markdown ("|---|--:|"), psql ("----+----"),
- * pip list and PowerShell tables, or of "=", as around tokei's.
+ * pip list and PowerShell tables, of "=", as around tokei's, or of box-drawing characters, as
+ * around those of DuckDB and sqlite3 -box ("├──┼──┤").
  */
-const RULE = /^(?=[^-=]*[-=])[\s|+:=-]+$/;
+const RULE = /^(?=[^-=\u2500-\u257F]*[-=\u2500-\u257F])[\s|+:=\u2500-\u257F-]+$/;
 
 /** A line of single dashes, which may be missing values ("-  -") rather than a rule. */
 const SINGLE_DASHES = /^\s*-(?:\s+-)*\s*$/;
@@ -41,12 +42,19 @@ function isRule(line: string, first: string | undefined): boolean {
   );
 }
 
-/** Leaves out rules, and tells whether one is under the first line, making it a header. */
+/**
+ * Leaves out rules, and tells whether one is under the first line, making it a header. DuckDB
+ * prints the types of its columns ("varchar") between their names and the rule below them, and
+ * those are left out too.
+ */
 function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {
   const kept: string[] = [];
   let underlined = false;
   for (const line of lines) {
     if (isRule(line, kept.length === 1 ? kept[0] : undefined)) {
+      if (kept.length === 2 && !underlined && line.trimStart().startsWith("\u251C")) {
+        kept.pop();
+      }
       underlined ||= kept.length === 1;
     } else {
       kept.push(line);
@@ -272,15 +280,18 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
 /** The lines that psql and mysql print below a table. */
 const TABLE_FOOTER = /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*)$/;
 
-/** A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM. */
-const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\|/;
+/**
+ * A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM, or a
+ * vertical line drawn with box-drawing characters ("│").
+ */
+const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\||[\u2502\u2503\u2551]/;
 
 /** Markdown emphasis or code around a whole cell, as in "**Total**" or "`12`". */
 const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
 
 /**
- * Splits a table with "|" between cells, as in Markdown, printed by psql and mysql, or by sqlite3
- * and psql -A without spaces. A leading and trailing pipe are optional.
+ * Splits a table with "|" or "│" between cells, as in Markdown, printed by psql, mysql, sqlite3
+ * and DuckDB, or by sqlite3 and psql -A without spaces. A leading and trailing pipe are optional.
  */
 function splitPipes(lines: string[]): string[][] {
   return lines
@@ -634,7 +645,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return table;
     }
   }
-  if (format === "auto" && lines[0]?.includes("|")) {
+  if (format === "auto" && PIPE.test(lines[0] ?? "")) {
     const diffStat = splitDiffStat(lines);
     if (diffStat !== undefined) {
       return diffStat;
