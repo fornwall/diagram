@@ -184,8 +184,11 @@ suite("relationships", function () {
     }) as typeof execute;
     try {
       await evaluate(`(() => {
-        document.querySelector('#ask-input').value = 'Add a timeout here';
-        document.querySelector('#ask-form').dispatchEvent(new Event('submit', {bubbles:true,cancelable:true}));
+        // As a user does: a synthetic submit event would not show if the form could not submit.
+        const input = document.querySelector('#ask-input');
+        input.value = 'Add a timeout here';
+        input.dispatchEvent(new Event('input'));
+        document.querySelector('#ask-submit').click();
       })()`);
       const query = await asked.promise;
       assert.match(query, /Client → Server: Retry/);
