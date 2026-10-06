@@ -1,6 +1,6 @@
 // The small, editable part of a chart request, changed in the Chart Options form or by
 // diagram_updateChart. Data and advanced styling stay on the host.
-import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, type ChartType, FACET_TYPES, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
 import { isPlainObject } from "./protocol";
 import { quoteAll, unknownProperties } from "./text";
@@ -87,5 +87,20 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
     throw new Error('"type" and "title" cannot be cleared with null.');
   }
   const { revision: _, ...changes } = input;
-  return validateChartSpec({ ...spec, ...changes });
+  const result: Record<string, unknown> = { ...spec, ...changes };
+  if (typeof changes.type === "string" && changes.type !== spec.type) {
+    // As the Chart Options form does, a new type drops the settings it cannot use, unless given.
+    for (const key of unusableSettings(changes.type as ChartType)) {
+      if (!Object.hasOwn(changes, key)) delete result[key];
+    }
+  }
+  return validateChartSpec(result);
+}
+
+/** The chart settings that a type of chart cannot use. */
+function unusableSettings(type: ChartType): UpdateKey[] {
+  const keys: UpdateKey[] =
+    type === "histogram" ? ["labelColumn", "aggregate", "sort", "limit"] : ["bins"];
+  if (!FACET_TYPES.includes(type)) keys.push("facetColumn", "facetColumns", "facetScales");
+  return keys;
 }

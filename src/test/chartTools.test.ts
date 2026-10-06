@@ -136,6 +136,26 @@ suite("chart agent tools", function () {
     );
   });
 
+  test("a new chart type drops the settings it cannot use, unless they are given", () => {
+    const bar: ChartSpec = {
+      type: "bar",
+      data,
+      labelColumn: "name",
+      sort: "descending",
+      limit: 3,
+      facetColumn: "group",
+    };
+    const histogram = updatedChartSpec(bar, { type: "histogram" });
+    for (const key of ["labelColumn", "sort", "limit"]) {
+      assert.ok(!Object.hasOwn(histogram, key), key);
+    }
+    assert.strictEqual(histogram.facetColumn, "group");
+    const pie = updatedChartSpec({ ...histogram, bins: 10 }, { type: "pie" });
+    assert.ok(!Object.hasOwn(pie, "bins"));
+    assert.ok(!Object.hasOwn(pie, "facetColumn"));
+    assert.strictEqual(updatedChartSpec(bar, { type: "histogram", limit: 2 }).limit, 2);
+  });
+
   test("inspection reports inferred schema, nulls and bounded samples", () => {
     const table = parseTable("name,amount\na,1\nb,NULL\nc,3");
     const report = JSON.parse(inspectTable(table, 2));
