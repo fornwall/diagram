@@ -1281,6 +1281,26 @@ suite("data", () => {
       parse('{"data": {"repo": {"issues": [{"title": "x", "author": {"login": "a"}}]}}}'),
       { columns: ["title", "author.login"], rows: [["x", "a"]] },
     );
+    // Beside plain values, as the Prometheus API and npm ls --json answer.
+    const prometheus = {
+      status: "success",
+      data: {
+        resultType: "vector",
+        result: [{ metric: { job: "api" }, value: [1735689600, "0.5"] }],
+      },
+    };
+    assert.deepStrictEqual(parse(JSON.stringify(prometheus)), {
+      columns: ["metric.job", "value"],
+      rows: [["api", '[1735689600,"0.5"]']],
+    });
+    const npm = { name: "app", dependencies: { a: { version: "1.0.0" }, b: { version: "2.1.0" } } };
+    assert.deepStrictEqual(parse(JSON.stringify(npm)), {
+      columns: ["name", "version"],
+      rows: [
+        ["a", "1.0.0"],
+        ["b", "2.1.0"],
+      ],
+    });
     assert.deepStrictEqual(parse('{"stats": {"ts": 120, "css": 30}}'), {
       columns: ["name", "value"],
       rows: [

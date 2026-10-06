@@ -91,15 +91,19 @@ function recordsFromJsonArray(array: unknown[]): Records {
   );
 }
 
-/** The object inside wrappers, as in {"data": {"repo": {...}}}, however deeply they nest. */
+/**
+ * The object inside wrappers, which hold it beside plain values only, as in {"data": {"repo":
+ * {...}}} or the Prometheus API's {"status": "success", "data": {...}}, however deeply they nest.
+ */
 function unwrap(json: unknown): unknown {
   let value = json;
   for (;;) {
     const values = isPlainObject(value) ? Object.values(value) : [];
-    if (values.length !== 1 || !isPlainObject(values[0])) {
+    const objects = values.filter(isPlainObject);
+    if (objects.length !== 1 || values.some(Array.isArray)) {
       return value;
     }
-    value = values[0];
+    value = objects[0];
   }
 }
 
