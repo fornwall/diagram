@@ -402,6 +402,22 @@ suite("chart facets", () => {
     assert.ok(laidOut.xAxis.every((axis: Option) => axis.axisLabel.rotate > 0));
   });
 
+  test("panel titles are cut short at the width of their panel", () => {
+    const data = "service,operation,ms\napi,read,2\nworker,read,30";
+    const widths = (facetColumns: number) =>
+      (
+        layoutOption(build(data, { facetColumns }), {
+          width: 1000,
+          height: 500,
+          title: "",
+          colors,
+          reducedMotion: true,
+        }) as Option
+      ).title.map((title: Option) => Math.round(title.textStyle.width));
+    assert.deepStrictEqual(widths(1), [904, 904]);
+    assert.deepStrictEqual(widths(2), [424, 424]);
+  });
+
   test("panels keep the tooltip of their type", () => {
     const data = "service,operation,ms\napi,read,2\nworker,read,30";
     const tooltip = (spec: Partial<ChartSpec>) =>

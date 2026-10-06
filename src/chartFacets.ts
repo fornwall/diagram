@@ -112,7 +112,8 @@ export function buildFacetedChart(
       text: `${facetName} = ${panel.name}`,
       left: `${left}%`,
       top: `${top}%`,
-      textStyle: { fontSize: 13, overflow: "truncate", width: 180 },
+      // The webview truncates the title to the width of the panel's grid, of the same id.
+      textStyle: { fontSize: 13 },
     });
     xAxes.push({ ...objects(panel.option.xAxis)[0], id, gridIndex: i });
     yAxes.push({ ...objects(panel.option.yAxis)[0], id, gridIndex: i });

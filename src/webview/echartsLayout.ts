@@ -218,6 +218,14 @@ function hideRepeatedTitle(base: JsonObject, header: string): void {
   }
 }
 
+/** A length in pixels, or a percentage of the chart's width. */
+const pixels = (value: unknown, width: number): number | undefined =>
+  typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d+(?:\.\d+)?%$/.test(value)
+      ? (Number.parseFloat(value) * width) / 100
+      : undefined;
+
 /** Places the components around the plot, and fits the grid and series into the space left. */
 function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size: Size): void {
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
@@ -236,10 +244,13 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
       const height = 10 + (title.text ? 22 : 0) + (title.subtext ? 18 : 0);
       reserved[side] = Math.max(reserved[side], height);
     }
-    // A title wider than the panel is cut short rather than cut off.
+    // A title wider than the panel, or than the grid it names, such as a facet's, is cut short
+    // rather than cut off.
+    const grid = asArray(base.grid).find((grid) => title.id !== undefined && grid.id === title.id);
+    const titleWidth = (pixels(grid?.width, size.width) ?? size.width) - 16;
     for (const key of ["textStyle", "subtextStyle"]) {
       const style = isPlainObject(title[key]) ? title[key] : {};
-      style.width ??= size.width - 16;
+      style.width ??= titleWidth;
       style.overflow ??= "truncate";
       title[key] = style;
     }
@@ -407,14 +418,9 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   const panelWidth = (axis: JsonObject): number => {
     if (grids.length <= 1) return plotWidth;
     const grid = grids[typeof axis.gridIndex === "number" ? axis.gridIndex : 0];
-    const pixels = (value: unknown): number | undefined =>
-      typeof value === "number"
-        ? value
-        : typeof value === "string" && /^\d+(?:\.\d+)?%$/.test(value)
-          ? (Number.parseFloat(value) * width) / 100
-          : undefined;
     const available =
-      pixels(grid?.width) ?? width - (pixels(grid?.left) ?? 0) - (pixels(grid?.right) ?? 0);
+      pixels(grid?.width, width) ??
+      width - (pixels(grid?.left, width) ?? 0) - (pixels(grid?.right, width) ?? 0);
     return Math.max(40, available - 50);
   };
   for (const axis of asArray(base.xAxis)) {
