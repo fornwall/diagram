@@ -10,6 +10,7 @@ suite("PNG export", () => {
     let encoded: Blob | null = new Blob(["png"], { type: "image/png" });
     let readError = false;
     let contextAvailable = true;
+    let decodable = true;
     let imageSource = "";
     let encodedSize = [0, 0];
     const canvas = {
@@ -29,7 +30,11 @@ suite("PNG export", () => {
           imageSource = value;
         }
         decode() {
-          return Promise.resolve();
+          return decodable
+            ? Promise.resolve()
+            : Promise.reject(
+                new DOMException("The source image cannot be decoded.", "EncodingError"),
+              );
         }
       },
     });
@@ -78,6 +83,9 @@ suite("PNG export", () => {
       contextAvailable = false;
       await assert.rejects(pngDataUrl(image), /did not provide a canvas/);
       assert.deepStrictEqual([canvas.width, canvas.height], [0, 0]);
+      assert.strictEqual(imageSource, "");
+      decodable = false;
+      await assert.rejects(pngDataUrl(image), /could not read the SVG image to draw the PNG from/);
       assert.strictEqual(imageSource, "");
     } finally {
       for (const [key, descriptor] of [

@@ -100,7 +100,10 @@ export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<
   let blob: Blob | null;
   try {
     image.src = svgDataUrl(svg);
-    await image.decode();
+    // Its only error, an EncodingError, says that "the source image cannot be decoded".
+    await image.decode().catch(() => {
+      throw new Error("The browser could not read the SVG image to draw the PNG from.");
+    });
     canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.floor(width * scale));
     canvas.height = Math.max(1, Math.floor(height * scale));
