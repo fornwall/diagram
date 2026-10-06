@@ -935,6 +935,41 @@ suite("webview", function () {
     );
   });
 
+  test("zooms with Ctrl/Cmd and +, - and 0, and fits a new diagram but not a revision", async () => {
+    const zoom = () => evaluate(`document.getElementById("zoom-reset").textContent`);
+    /** Presses the key, with Cmd on macOS or Ctrl elsewhere, for whether VS Code saw it. */
+    const press = (key: string, modifier = true) =>
+      evaluate(`(() => {
+        const mac = navigator.userAgent.includes("Mac");
+        const event = new KeyboardEvent("keydown", {key: ${JSON.stringify(key)},
+          metaKey: ${modifier} && mac, ctrlKey: ${modifier} && !mac, bubbles: true, cancelable: true});
+        let forwarded = false;
+        const listener = () => { forwarded = true; };
+        window.addEventListener("keydown", listener);
+        document.getElementById("canvas").dispatchEvent(event);
+        window.removeEventListener("keydown", listener);
+        return {prevented: event.defaultPrevented, forwarded};
+      })()`);
+    const source = MERMAID["flowchart-v2"];
+    await draw({ source, title: "Zoom" });
+    assert.strictEqual(await zoom(), "100%");
+    assert.deepStrictEqual(await press("="), { prevented: true, forwarded: false });
+    assert.strictEqual(await zoom(), "125%");
+    assert.deepStrictEqual(await press("-", false), { prevented: false, forwarded: true });
+    assert.strictEqual(await zoom(), "125%");
+    await press("-");
+    assert.strictEqual(await zoom(), "100%");
+    await press("+");
+    await press("0");
+    assert.strictEqual(await zoom(), "100%", "0 fits the diagram to the panel again.");
+
+    await press("+");
+    await draw({ source: `${source}\n  B --> C`, title: "Zoom" });
+    assert.strictEqual(await zoom(), "125%", "A revision keeps the zoom.");
+    await draw({ source, title: "Another" });
+    assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
+  });
+
   test("zooms at the pointer in proportion to Ctrl+scrolling", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
     await draw({ source: `flowchart LR\n  ${chain}` });

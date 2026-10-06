@@ -33,7 +33,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 | Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. Images keep the theme and drop links; Mermaid images also drop the selection and marks. |
 | Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive, label link or sequence diagram actor `link`. An actor with several `links` offers a menu. VS Code asks before opening an untrusted website. |
-| Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd+scroll and dragging. Charts fit the panel. |
+| Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
 
 Chart Options uses the loaded data without rerunning commands. After VS Code restarts, press **Refresh** to load file or command data again; charts of inline data stay configurable. **Reset styling** removes manual presentation changes, reloading data if needed. To discard source edits that Chart Options cannot keep, check **Replace manual source edits** first.
 

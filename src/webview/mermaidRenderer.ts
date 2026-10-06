@@ -621,6 +621,10 @@ export class MermaidRenderer implements Renderer {
       after.top + ((anchorY - before.top) * after.height) / before.height - anchorY;
   }
 
+  fitToPanel(): void {
+    this.fitting = true;
+  }
+
   /** Toggles between fitting the panel and the actual size. */
   zoomReset(): void {
     if (this.fitting && this.zoom !== 1) {

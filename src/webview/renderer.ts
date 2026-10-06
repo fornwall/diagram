@@ -58,6 +58,8 @@ export interface Renderer {
   /** Zooming, for renderers that do not fit the panel by themselves. */
   zoomBy?(factor: number): void;
   zoomReset?(): void;
+  /** Fits the next drawing to the panel, dropping a zoom chosen for the previous diagram. */
+  fitToPanel?(): void;
 }
 
 /** Initial or cleared annotations. */

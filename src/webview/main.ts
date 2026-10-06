@@ -150,6 +150,8 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
 }
 /** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
+/** The language, title and document of the last diagram rendered, which a revision keeps. */
+let renderedIdentity: string | undefined;
 
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
@@ -193,6 +195,10 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
   }
   current = { language, renderer, requestId };
+  // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
+  const identity = JSON.stringify([language, message.title, message.writeTo]);
+  if (identity !== renderedIdentity) renderer.fitToPanel?.();
+  renderedIdentity = identity;
   editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
   closeLinkMenu();
@@ -690,8 +696,35 @@ function transientHint(text: string): void {
 
 // Zoom (Mermaid only; charts fit the panel).
 
-zoomInButton.addEventListener("click", () => active?.zoomBy?.(1.25));
-zoomOutButton.addEventListener("click", () => active?.zoomBy?.(1 / 1.25));
-zoomResetButton.addEventListener("click", () => active?.zoomReset?.());
+const zoomIn = () => active?.zoomBy?.(1.25);
+const zoomOut = () => active?.zoomBy?.(1 / 1.25);
+const zoomReset = () => active?.zoomReset?.();
+zoomInButton.addEventListener("click", zoomIn);
+zoomOutButton.addEventListener("click", zoomOut);
+zoomResetButton.addEventListener("click", zoomReset);
+
+// Cmd (macOS) or Ctrl with +, - and 0, as in browsers, while the panel has the focus. VS Code sees
+// every key the page does, so the event stops in the capture phase, before VS Code's listener on
+// the window passes it on to zoom the window or focus the side bar as well.
+const ZOOM_KEYS: Partial<Record<string, () => void>> = {
+  "=": zoomIn,
+  "+": zoomIn,
+  "-": zoomOut,
+  "0": zoomReset,
+};
+const isMac = navigator.userAgent.includes("Mac");
+window.addEventListener(
+  "keydown",
+  (event) => {
+    const zoom = ZOOM_KEYS[event.key];
+    const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (zoom && primary && !event.altKey && active?.zoomBy) {
+      event.preventDefault();
+      event.stopPropagation();
+      zoom();
+    }
+  },
+  { capture: true },
+);
 
 post({ type: "ready" });
