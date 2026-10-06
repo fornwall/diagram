@@ -62,6 +62,8 @@ export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title || "Chart")}</title>
 <style>
+/* Scrollbars and controls, such as those of a toolbox's data view, in the theme's light or dark. */
+html { color-scheme: ${colors.dark ? "dark" : "light"}; }
 html, body { height: 100%; margin: 0; }
 body {
   display: flex;
