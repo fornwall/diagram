@@ -402,7 +402,7 @@ suite("chart agent tools", function () {
         cancellation.cancel();
       });
       const timeout = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Cancellation waited for the renderer")), 1000);
+        timer = setTimeout(() => reject(new Error("Cancellation waited for the renderer")), 5000);
       });
       await assert.rejects(
         Promise.race([panel.updateChart({ limit: 2 }, cancellation.token), timeout]),

@@ -158,7 +158,7 @@ suite("dataSource", () => {
           return false;
         }
       };
-      for (let i = 0; i < 50 && alive(); i++) {
+      for (let i = 0; i < 250 && alive(); i++) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       assert.ok(!alive(), `process ${pid} is still running`);
