@@ -52,7 +52,7 @@ suite("extension", function () {
     }
   });
 
-  test("renders a valid diagram", async () => {
+  test("renders a diagram through the registered tool, which getState then describes", async () => {
     const text = await invoke("diagram_render", {
       source: "flowchart TD\n  A[Start] --> B{Valid?}\n  B -->|yes| C[Done]",
       title: "Test flow",

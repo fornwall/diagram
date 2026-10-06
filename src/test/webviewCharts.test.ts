@@ -148,7 +148,7 @@ suite("ECharts in the webview", function () {
     }
   });
 
-  test("explains charts that cannot render", async () => {
+  test("reports a chart option it cannot draw as invalid, with the reason", async () => {
     const outcome = await render({
       language: "echarts",
       source: '{"series": [{"type": "map"}]}',
@@ -659,7 +659,7 @@ suite("ECharts in the webview", function () {
     );
   });
 
-  test("moves the focus round pie slices, through trees and along sankey flows", async () => {
+  test("announces pie slices, tree nodes and sankey flows as the focus moves", async () => {
     const charts: [Record<string, unknown>, string[]][] = [
       [
         {
@@ -787,7 +787,7 @@ suite("ECharts in the webview", function () {
     );
   });
 
-  test("recovers from invalid chart components and renders an explicit graph view", async () => {
+  test("draws a graph in the view coordinate system after a chart that failed", async () => {
     const invalid = await render({
       language: "echarts",
       source: '{"xAxis": null, "yAxis": {}, "series": [{"type": "bar", "data": [1]}]}',
