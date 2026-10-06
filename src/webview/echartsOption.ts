@@ -251,7 +251,7 @@ export function optionWarnings(option: JsonObject): string[] {
  * Checks the series that the chart draws: those of the base option, or with a timeline or media
  * queries, those of each step and query merged in, as the series may well be there alone. ECharts
  * merges each step into what the chart shows, so they are merged in one after the other, and each
- * media query into the base option.
+ * media query into what the chart shows then: the base option, or each step.
  */
 function validateSeries(option: JsonObject): void {
   const base = baseOption(option);
@@ -267,14 +267,16 @@ function validateSeries(option: JsonObject): void {
     series: patchSeries(from.series, seriesOf(patch), path),
   });
   let shown = initial;
-  const drawn = [
-    ...steps.map((step) => {
-      shown = merge(shown, step);
-      return shown;
-    }),
-    ...media.map((query) => merge(initial, query)),
-  ];
-  if (drawn.length === 0) drawn.push(initial);
+  const states =
+    steps.length > 0
+      ? steps.map((step) => {
+          shown = merge(shown, step);
+          return shown;
+        })
+      : [initial];
+  const queried = states.flatMap((state) => media.map((query) => merge(state, query)));
+  // Without steps, the series may be in the media queries alone.
+  const drawn = steps.length > 0 || media.length === 0 ? [...states, ...queried] : queried;
   if (drawn.every(({ series }) => series.length === 0)) {
     // The series may be in steps that ECharts ignores.
     if (patches.steps.length > steps.length) throw new Error(IGNORED_STEPS);

@@ -185,6 +185,14 @@ suite("echartsOption", () => {
       ),
       /^media\[1\]\.option\.series\[0\] has the unknown type "donut"/,
     );
+    // A media query merges into what each step shows.
+    const narrow = (patch: string) => `"media": [{"option": {"series": [${patch}]}}]`;
+    const option = parseOption(`{${timeline}, ${steps}, ${narrow('{"radius": "50%"}')}}`);
+    assert.strictEqual(seriesTypes(option), "pie");
+    assert.match(
+      errorOf(`{${timeline}, ${steps}, ${narrow('{"type": "line"}')}}`),
+      /^media\[0\]\.option\.series\[0\] \(type "line"\) is drawn on the cartesian2d coordinate system/,
+    );
     // Without a timeline, ECharts ignores the steps, which is wrong only when nothing else draws.
     assert.match(
       errorOf(`{"options": [{"series": [${pie}]}]}`),
