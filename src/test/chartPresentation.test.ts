@@ -70,7 +70,10 @@ suite("chart presentation", () => {
     const first = option.series[0]?.data[0];
     assert.ok(first);
     first.value[0] = 99;
-    assert.match(captureChartPresentation(JSON.stringify(option), baseline).blocked ?? "", /data/);
+    assert.match(
+      captureChartPresentation(JSON.stringify(option), baseline).blocked ?? "",
+      /can't be kept, because the source changes the chart's data/,
+    );
   });
 
   test("applying multiple styling edits leaves reusable inputs and earlier results unchanged", () => {
@@ -300,7 +303,10 @@ suite("chart presentation", () => {
       '(()=>{throw new Error("executed")})()',
       baseline,
     );
-    assert.match(presentation.blocked ?? "", /JavaScript callbacks/);
+    assert.match(
+      presentation.blocked ?? "",
+      /because the source is not JSON.*JavaScript callbacks/,
+    );
     assert.throws(() => rebuildChart(spec, newTable, presentation), /JavaScript callbacks/);
     assert.strictEqual(
       captureChartPresentation(JSON.stringify(buildChart(spec, oldTable).option), presentation)
@@ -312,11 +318,11 @@ suite("chart presentation", () => {
   test("says which JSON cannot keep styling, rather than blaming callbacks", () => {
     const baseline = captureChartPresentation(JSON.stringify(buildChart(spec, oldTable).option));
     for (const [source, message] of [
-      ["[]", /only when the source is one JSON object of chart options, not an array\./],
-      ["null", /not null\./],
+      ["[]", /because the source is an array, not one JSON object of chart options\./],
+      ["null", /because the source is null,/],
       [
         '{"__proto__": {"color": ["red"]}}',
-        /with the key "__proto__", which is not a chart option/,
+        /because the source has the key "__proto__", which is not a chart option/,
       ],
       [
         '{"series": [{"itemStyle": {"constructor": 1}}]}',
@@ -326,9 +332,9 @@ suite("chart presentation", () => {
       const blocked = captureChartPresentation(source, baseline).blocked ?? "";
       assert.match(blocked, message);
       assert.match(blocked, /Your source is kept\./);
-      assert.doesNotMatch(blocked, /JavaScript callbacks/);
+      assert.doesNotMatch(blocked, /JavaScript callbacks|Refresh/);
     }
-    assert.match(captureChartPresentation("[]").blocked ?? "", /not an array/);
+    assert.match(captureChartPresentation("[]").blocked ?? "", /source is an array/);
   });
 
   test("JSON key order is immaterial and null is preserved as an explicit option value", () => {

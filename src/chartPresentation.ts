@@ -22,8 +22,11 @@ export interface ChartPresentation {
   blocked?: string | undefined;
 }
 
-const RECOVERY =
-  "Your source is kept. Revert these source changes, or use Reset Styling in Chart Options to return to the generated chart.";
+/** Refresh, Chart Options, diagram_updateChart and diagram_getState all show this message. */
+function blocked(reason: string): string {
+  return `Your chart styling can't be kept, because ${reason}. Your source is kept. Revert these source changes, or use Reset Styling in Chart Options to return to the generated chart.`;
+}
+
 const DATA_KEYS = new Set([
   "data",
   "dataset",
@@ -66,7 +69,7 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
         if (UNSAFE_KEYS.has(key)) {
           const where = path.map((part) => (typeof part === "number" ? `[${part}]` : `.${part}`));
           throw new Error(
-            `Refresh cannot preserve styling in a source with the key ${JSON.stringify(key)}${where.length ? ` in ${where.join("").slice(1)}` : ""}, which is not a chart option. Remove it.`,
+            `the source has the key ${JSON.stringify(key)}${where.length ? ` in ${where.join("").slice(1)}` : ""}, which is not a chart option. Remove it`,
           );
         }
         const location = [...path, key];
@@ -129,16 +132,14 @@ export function captureChartPresentation(
     if (!isPlainObject(option)) {
       const kind =
         option === null ? "null" : Array.isArray(option) ? "an array" : `a ${typeof option}`;
-      throw new Error(
-        `Refresh can preserve styling only when the source is one JSON object of chart options, not ${kind}.`,
-      );
+      throw new Error(`the source is ${kind}, not one JSON object of chart options`);
     }
     const current = snapshot(option);
     if (!previous) return { ...current, edits: [] };
     if (current.dataHash !== previous.dataHash) {
       return {
         ...previous,
-        blocked: `Refresh cannot preserve changes to chart data or structure. ${RECOVERY}`,
+        blocked: blocked("the source changes the chart's data or structure"),
       };
     }
     return {
@@ -149,7 +150,7 @@ export function captureChartPresentation(
   } catch (error) {
     return {
       ...(previous ?? { baseline: {}, dataHash: "", edits: [] }),
-      blocked: `${errorMessage(error)} ${RECOVERY}`,
+      blocked: blocked(errorMessage(error)),
     };
   }
 }
@@ -159,7 +160,7 @@ function parseJson(source: string): unknown {
     return JSON.parse(source);
   } catch {
     throw new Error(
-      "Refresh can preserve styling only in JSON source; JavaScript callbacks and invalid JSON cannot be safely rebuilt.",
+      "the source is not JSON, and JavaScript callbacks or invalid JSON cannot be safely rebuilt",
     );
   }
 }
