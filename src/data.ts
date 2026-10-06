@@ -108,14 +108,20 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolea
     return false;
   }
   if (numbers.length > 0) {
-    // Years as column names come in order, and a single one is of recent times, as in
-    // "region,2024", unlike data such as "apples,1500".
+    // Years as column names come in order. A single one is of recent times, above numbers of
+    // another order of magnitude, as in "region,2024" above "North,10", unlike data such as
+    // "apples,1500", or "Jan,2034" above "Feb,1840".
     const ascending = numbers.every((year, i) => i === 0 || year > (numbers[i - 1] ?? year));
     const descending = numbers.every((year, i) => i === 0 || year < (numbers[i - 1] ?? year));
+    const column = first.findIndex((cell) => typeof cell === "number");
+    const year = numbers[0] ?? 0;
+    const apart = (cell: Cell | undefined) =>
+      typeof cell !== "number" || Math.abs(cell) * 10 < year || Math.abs(cell) > year * 10;
     if (
       !numbers.every(isYear) ||
       !(ascending || descending) ||
-      (numbers.length === 1 && numbers.some((year) => Math.abs(year - 2000) > 100))
+      (numbers.length === 1 &&
+        (Math.abs(year - 2000) > 100 || !rows.every((row, i) => i === 0 || apart(row[column]))))
     ) {
       return false;
     }

@@ -1687,12 +1687,30 @@ suite("data", () => {
     });
     // As pandas writes a pivot table, with an empty corner.
     assert.deepStrictEqual(parse(",2024,2025\nNorth,10,14").columns, ["Column 1", "2024", "2025"]);
-    // A single year of recent times, above other numbers.
+    assert.deepStrictEqual(parse("country,2020,2021,2022\nNorway,5.4,5.4,5.5").columns, [
+      "country",
+      "2020",
+      "2021",
+      "2022",
+    ]);
+    // A single year of recent times, above numbers of another order of magnitude.
     assert.deepStrictEqual(parse("region,2024\nNorth,10\nSouth,20"), {
       columns: ["region", "2024"],
       rows: [
         ["North", 10],
         ["South", 20],
+      ],
+    });
+    assert.deepStrictEqual(parse("region,2024\nNorth,45000\nSouth,-38000").columns, [
+      "region",
+      "2024",
+    ]);
+    assert.deepStrictEqual(parse("Jan,2034\nFeb,1840\nMar,950"), {
+      columns: ["Column 1", "Column 2"],
+      rows: [
+        ["Jan", 2034],
+        ["Feb", 1840],
+        ["Mar", 950],
       ],
     });
     assert.deepStrictEqual(parse("Alice,1990\nBob,1985").columns, ["Column 1", "Column 2"]);
