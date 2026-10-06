@@ -414,6 +414,35 @@ suite("workspace tools", function () {
     }
   });
 
+  test("say in chat what they look for, whatever the input", () => {
+    const message = <T>(tool: vscode.LanguageModelTool<T>, input: unknown) =>
+      tool.prepareInvocation?.({ input: input as T }, source.token);
+    assert.deepStrictEqual(
+      [
+        message(finder, { glob: "src/**" }),
+        message(searcher, { query: "parse(", glob: "**/*.ts" }),
+        message(searcher, { query: "parse(" }),
+        message(reader, { file: "src/a.ts", startLine: 10, endLine: 40 }),
+        message(reader, { file: "src/a.ts", startLine: 10 }),
+      ].map((prepared) => (prepared as vscode.PreparedToolInvocation).invocationMessage),
+      [
+        'Finding workspace files matching "src/**"',
+        'Searching files matching "**/*.ts" for "parse("',
+        'Searching the workspace for "parse("',
+        'Reading "src/a.ts", lines 10-40',
+        'Reading "src/a.ts" from line 10',
+      ],
+    );
+    for (const input of [null, 42, { glob: 7, query: [], file: {} }]) {
+      assert.deepStrictEqual(
+        [finder, searcher, reader].map(
+          (tool) => (message(tool, input) as vscode.PreparedToolInvocation).invocationMessage,
+        ),
+        ["Finding workspace files", "Searching workspace text", "Reading a workspace file"],
+      );
+    }
+  });
+
   test("propagates cancellation before inspecting files", async () => {
     const cancelled = new vscode.CancellationTokenSource();
     cancelled.cancel();

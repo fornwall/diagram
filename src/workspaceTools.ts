@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { decodeText, fileError } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
-import { givenProperties, plural, unknownProperties } from "./text";
+import { givenProperties, plural, quote, unknownProperties } from "./text";
 import { textResult } from "./tools";
 
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -270,17 +270,17 @@ async function readText(
  * input and failures to the model.
  */
 abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
-  constructor(
-    private readonly message: string,
-    private readonly keys: readonly string[],
-  ) {}
+  constructor(private readonly keys: readonly string[]) {}
 
-  prepareInvocation(): vscode.PreparedToolInvocation {
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<unknown>,
+  ): vscode.PreparedToolInvocation {
+    const invocationMessage = this.message(isPlainObject(options.input) ? options.input : {});
     if (vscode.workspace.isTrusted) {
-      return { invocationMessage: this.message };
+      return { invocationMessage };
     }
     return {
-      invocationMessage: this.message,
+      invocationMessage,
       confirmationMessages: {
         title: "Read workspace files?",
         message: "Allow the diagram agent to read files in this untrusted workspace?",
@@ -301,15 +301,28 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
     }
   }
 
+  /** What the chat shows while the tool runs, from its input as the model gave it. */
+  protected abstract message(input: Record<string, unknown>): string;
+
   protected abstract run(
     input: Record<string, unknown>,
     token: vscode.CancellationToken,
   ): Promise<string>;
 }
 
+/** A string input as the chat shows it, if the model gave one. */
+function shown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? quote(value, 80) : undefined;
+}
+
 export class FindWorkspaceFilesTool extends WorkspaceTool {
   constructor() {
-    super("Finding workspace files", ["glob", "maxResults"]);
+    super(["glob", "maxResults"]);
+  }
+
+  protected message({ glob }: Record<string, unknown>) {
+    const pattern = shown(glob);
+    return pattern ? `Finding workspace files matching ${pattern}` : "Finding workspace files";
   }
 
   protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
@@ -354,7 +367,14 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
 
 export class SearchWorkspaceTextTool extends WorkspaceTool {
   constructor() {
-    super("Searching workspace text", ["query", "glob", "caseSensitive", "maxResults"]);
+    super(["query", "glob", "caseSensitive", "maxResults"]);
+  }
+
+  protected message({ query, glob }: Record<string, unknown>) {
+    const text = shown(query);
+    const pattern = shown(glob);
+    if (!text) return "Searching workspace text";
+    return `Searching ${pattern ? `files matching ${pattern}` : "the workspace"} for ${text}`;
   }
 
   protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
@@ -486,7 +506,19 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
 
 export class ReadWorkspaceFileTool extends WorkspaceTool {
   constructor() {
-    super("Reading workspace file lines", ["file", "startLine", "endLine"]);
+    super(["file", "startLine", "endLine"]);
+  }
+
+  protected message({ file, startLine, endLine }: Record<string, unknown>) {
+    const name = shown(file);
+    if (!name) return "Reading a workspace file";
+    const lines =
+      typeof startLine === "number" && typeof endLine === "number"
+        ? `, lines ${startLine}-${endLine}`
+        : typeof startLine === "number"
+          ? ` from line ${startLine}`
+          : "";
+    return `Reading ${name}${lines}`;
   }
 
   protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
