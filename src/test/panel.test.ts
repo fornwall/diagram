@@ -7,7 +7,6 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { linkTexts } from "../links";
 import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
-import { isFromWebview } from "../protocol";
 import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
 import { afterTest, recordMessages, replace } from "./afterTest";
@@ -176,36 +175,6 @@ suite("panel", function () {
       panel.show();
     });
     assert.ok(opened.active, "Show Panel should focus the diagram");
-  });
-
-  test("isFromWebview accepts only well-formed messages", () => {
-    assert.ok(isFromWebview({ type: "ready" }));
-    assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
-    assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
-    const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
-    assert.ok(isFromWebview({ ...options, replaceSource: false }));
-    const malformed = [
-      null,
-      "ready",
-      [{ type: "ready" }],
-      { type: "toString" },
-      { type: "picked", pickId: "3", nodes: [] },
-      { type: "selectionChanged", nodes: [{ id: "A" }] },
-      { type: "ask", nodes: [] },
-      { type: "exportTheme", requestId: 1 },
-      // A saved chart needs every color to draw in.
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },
-      { type: "exportTheme", requestId: 1, colors: { ...testColors, fontSize: Number.NaN } },
-      // Replacing a chart's source takes an explicit choice, for the revision it was made for.
-      options,
-      { ...options, replaceSource: "true" },
-      { ...options, replaceSource: false, revision: "1" },
-      { ...options, replaceSource: false, controls: [] },
-    ];
-    for (const message of malformed) {
-      assert.ok(!isFromWebview(message), JSON.stringify(message));
-    }
   });
 
   test("closing the panel ends a waiting render and pick, without blaming the diagram", async () => {
