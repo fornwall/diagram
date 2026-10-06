@@ -5,7 +5,7 @@ import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
 import { plural, quoteAll } from "./text";
 
-/** Bounds prefix construction and recursive hierarchy traversal in both the host and renderer. */
+/** The most levels of a row, as the hierarchy built from them is walked recursively. */
 const MAX_LEVELS = 100;
 
 export interface Row {
@@ -206,6 +206,7 @@ function rowTotal({ values }: Row): number | null {
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
 function withoutNests(rows: Row[]): Row[] {
+  // A tree of the parent paths, rather than a set of every prefix serialized.
   interface Path extends Map<string, Path> {}
   const roots: Path = new Map();
   for (const { labels } of rows) {
@@ -221,7 +222,6 @@ function withoutNests(rows: Row[]): Row[] {
     }
   }
   if (roots.size === 0) return rows;
-  // Store only parent paths, without copying and serializing every prefix or retaining leaves.
   return rows.filter(({ labels }) => {
     if (labels.length === 0) return true;
     let path = roots;

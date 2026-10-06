@@ -160,7 +160,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
     );
   }
   const { clickPrompt: _, ...input } = givenProperties(value);
-  // And JSON data as JSON rather than as text, which reads the same.
+  // JSON data may be given as JSON rather than as text.
   if (Array.isArray(input.data) || isPlainObject(input.data)) {
     input.data = JSON.stringify(input.data);
   }

@@ -1,4 +1,4 @@
-// Host-side analytical transforms, keeping generated ECharts options as plain JSON.
+// Transforms of the raw rows: the filters of any chart, and the bins of a histogram.
 
 import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
 import { interpolate } from "./chartRows";

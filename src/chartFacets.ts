@@ -1,4 +1,4 @@
-// Compose generated Cartesian charts into independently selectable small multiples.
+// Small multiples: a chart per value of a facet column, as the panels of one ECharts option.
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
