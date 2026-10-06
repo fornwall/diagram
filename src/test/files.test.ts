@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { fileError, openDocument } from "../files";
+import { absoluteFile, absolutePath, fileError, openDocument } from "../files";
 
 suite("files", () => {
   let dir: string;
@@ -14,6 +14,33 @@ suite("files", () => {
 
   suiteTeardown(() => {
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("absoluteFile resolves a path on the file system of the folders that contain it", () => {
+    const folder = (uri: string, index: number) => ({
+      uri: vscode.Uri.parse(uri),
+      name: uri,
+      index,
+    });
+    const github = [
+      folder("vscode-vfs://github/owner/one", 0),
+      folder("vscode-vfs://github/owner/two", 1),
+    ];
+    for (const file of ["/owner/one/src/a.ts", "/owner/two/b.ts"]) {
+      const uri = absoluteFile(file, github);
+      assert.strictEqual(uri.toString(), `vscode-vfs://github${file}`);
+      assert.strictEqual(absolutePath(uri, github), file);
+    }
+    // A path that no folder contains, or that folders on two file systems do, is on this computer.
+    const local = path.join(path.sep, "owner", "three", "c.ts");
+    assert.strictEqual(absoluteFile(local, github).scheme, "file");
+    const both = [...github, folder("memory:/owner/one", 2)];
+    assert.strictEqual(absoluteFile("/owner/one/src/a.ts", both).scheme, "file");
+    assert.strictEqual(
+      absolutePath(vscode.Uri.parse("vscode-vfs://github/owner/one/src/a.ts"), both),
+      undefined,
+    );
+    assert.strictEqual(absolutePath(vscode.Uri.file(local), github), local);
   });
 
   test("openDocument names the file once, workspace-relative where possible", async () => {

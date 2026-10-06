@@ -5,7 +5,7 @@ import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { decodeText, fileError } from "./files";
+import { absoluteFile, absolutePath, contains, decodeText, fileError, withinPath } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { givenProperties, plural, quote, unknownProperties } from "./text";
 import { textResult } from "./tools";
@@ -71,27 +71,6 @@ function folders(): readonly vscode.WorkspaceFolder[] {
   return roots;
 }
 
-function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
-  return (
-    // Providers may run on Windows even when this extension host does not.
-    (uri.scheme === "file" || !uri.path.includes("\\")) &&
-    !uri.path.split("/").some((part) => part === "." || part === "..") &&
-    root.scheme === uri.scheme &&
-    root.authority === uri.authority &&
-    (root.scheme === "file"
-      ? withinPath(root.fsPath, uri.fsPath)
-      : uri.path === root.path || uri.path.startsWith(`${root.path.replace(/\/$/, "")}/`))
-  );
-}
-
-function withinPath(root: string, file: string): boolean {
-  const relative = path.relative(root, file);
-  return (
-    relative === "" ||
-    (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
-  );
-}
-
 /** Relative names use the first root; absolute paths and URIs disambiguate multiple roots. */
 export function resolveWorkspaceFile(
   file: unknown,
@@ -103,7 +82,7 @@ export function resolveWorkspaceFile(
   const firstRoot = roots[0];
   if (!firstRoot) throw new Error("Open a workspace folder first.");
   const uri = path.isAbsolute(file)
-    ? vscode.Uri.file(file)
+    ? absoluteFile(file, roots)
     : /^[a-zA-Z][\w+.-]*:/.test(file)
       ? vscode.Uri.parse(file, true)
       : vscode.Uri.joinPath(firstRoot.uri, file);
@@ -125,7 +104,7 @@ export function filesGlob(folder: vscode.Uri): string | undefined {
 
 /**
  * How a result names a file, as {@link resolveWorkspaceFile} and code links accept it: relative to
- * the first workspace folder when inside it, else absolute.
+ * the first workspace folder when inside it, else absolute, or as a URI when no path names it.
  */
 function displayPath(uri: vscode.Uri, roots: readonly vscode.WorkspaceFolder[]): string {
   const first = roots[0]?.uri;
@@ -136,7 +115,7 @@ function displayPath(uri: vscode.Uri, roots: readonly vscode.WorkspaceFolder[]):
         : uri.path.slice(first.path.replace(/\/$/, "").length + 1);
     if (relative) return relative;
   }
-  return uri.scheme === "file" ? uri.fsPath : uri.toString();
+  return absolutePath(uri, roots) ?? uri.toString();
 }
 
 /**

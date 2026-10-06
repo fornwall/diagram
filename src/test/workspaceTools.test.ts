@@ -314,6 +314,19 @@ suite("workspace tools", function () {
     );
   });
 
+  test("resolves absolute paths in virtual workspace roots", () => {
+    const roots = ["one", "two"].map((name, index) => ({
+      uri: vscode.Uri.parse(`vscode-vfs://github/owner/${name}`),
+      name,
+      index,
+    }));
+    assert.strictEqual(
+      resolveWorkspaceFile("/owner/two/src/b.ts", roots).toString(),
+      "vscode-vfs://github/owner/two/src/b.ts",
+    );
+    assert.throws(() => resolveWorkspaceFile("/owner/three/c.ts", roots), /inside/);
+  });
+
   test("rejects traversal in virtual URIs, including encoded dot segments", () => {
     const roots = [{ uri: vscode.Uri.parse("memory:/root/"), name: "virtual", index: 0 }];
     assert.strictEqual(resolveWorkspaceFile("memory:/root/code.ts", roots).path, "/root/code.ts");

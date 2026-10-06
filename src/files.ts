@@ -6,8 +6,68 @@ import * as vscode from "vscode";
 import { errorMessage } from "./protocol";
 
 /**
+ * Whether `uri` is `root` or inside it, on the same file system. A path with "." or ".." segments
+ * is never inside, as it could lead out of the root.
+ */
+export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
+  return (
+    // Providers may run on Windows even when this extension host does not.
+    (uri.scheme === "file" || !uri.path.includes("\\")) &&
+    !uri.path.split("/").some((part) => part === "." || part === "..") &&
+    root.scheme === uri.scheme &&
+    root.authority === uri.authority &&
+    (root.scheme === "file"
+      ? withinPath(root.fsPath, uri.fsPath)
+      : uri.path === root.path || uri.path.startsWith(`${root.path.replace(/\/$/, "")}/`))
+  );
+}
+
+export function withinPath(root: string, file: string): boolean {
+  const relative = path.relative(root, file);
+  return (
+    relative === "" ||
+    (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+/**
+ * Resolves an absolute path on the file system of the workspace folders that contain it, such as
+ * that of a GitHub repository opened with Remote Repositories, when they are all on one. Other
+ * paths are on this computer.
+ */
+export function absoluteFile(
+  file: string,
+  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): vscode.Uri {
+  const local = vscode.Uri.file(file);
+  const inside = new Map<string, vscode.Uri>();
+  for (const { uri: root } of roots) {
+    // A URI with an authority needs a path that starts with "/".
+    const uri =
+      root.scheme === "file" ? local : file.startsWith("/") ? root.with({ path: file }) : undefined;
+    if (uri && contains(root, uri)) {
+      inside.set(uri.toString(), uri);
+    }
+  }
+  const [only, ...others] = inside.values();
+  return only && others.length === 0 ? only : local;
+}
+
+/** The absolute path that names `uri`, as {@link absoluteFile} resolves it back, if one does. */
+export function absolutePath(
+  uri: vscode.Uri,
+  roots?: readonly vscode.WorkspaceFolder[],
+): string | undefined {
+  if (uri.scheme === "file") {
+    return uri.fsPath;
+  }
+  return absoluteFile(uri.path, roots).toString() === uri.toString() ? uri.path : undefined;
+}
+
+/**
  * Resolves a path as given in a chart spec or a node link: "~" and "~/…" relative to the home
- * directory, absolute paths as they are, and other paths relative to the first workspace folder.
+ * directory, absolute paths as {@link absoluteFile} does, and other paths relative to the first
+ * workspace folder.
  *
  * @throws Error when the path is relative but no workspace folder is open.
  */
@@ -16,7 +76,7 @@ export function resolveFile(file: string): vscode.Uri {
     return vscode.Uri.file(path.join(os.homedir(), file.slice(1)));
   }
   if (path.isAbsolute(file)) {
-    return vscode.Uri.file(file);
+    return absoluteFile(file);
   }
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (folder === undefined) {

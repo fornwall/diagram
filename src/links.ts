@@ -1,7 +1,7 @@
 // Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
-import { fileError, openDocument, resolveFile } from "./files";
+import { absolutePath, fileError, openDocument, resolveFile } from "./files";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 import { quote } from "./text";
 
@@ -118,12 +118,14 @@ function parseLink(location: unknown): NodeLink | string {
   if (/:\d+(?::\d+)?$/.test(file)) {
     return `${quote(text)} gives its line after a colon; write it as "#L42" or "#L42-L80".`;
   }
-  // A model may copy a file URI, whose path is percent-encoded, e.g. from a Markdown link.
+  // A model may copy a file URI, whose path is percent-encoded, e.g. from a Markdown link, or that
+  // of a file in a virtual workspace folder.
   if (/^[a-z][a-z\d+.-]+:\/\//i.test(file)) {
-    if (!/^file:/i.test(file)) {
+    const absolute = absolutePath(vscode.Uri.parse(file));
+    if (absolute === undefined) {
       return `${quote(text)} is a URL; give a path in the workspace instead.`;
     }
-    file = vscode.Uri.parse(file).fsPath;
+    file = absolute;
   }
   let line: number | undefined;
   let endLine: number | undefined;
@@ -197,7 +199,10 @@ export async function openLink(
       !(await confirm(async () => {
         const open = await vscode.window.showWarningMessage(
           `Open the file that "${label}" links to?`,
-          { modal: true, detail: `${uri.fsPath}\n\nThe diagram's links were written by a model.` },
+          {
+            modal: true,
+            detail: `${uri.scheme === "file" ? uri.fsPath : uri.toString(true)}\n\nThe diagram's links were written by a model.`,
+          },
           "Open",
         );
         return open !== undefined;
