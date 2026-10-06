@@ -242,9 +242,9 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     const { records } = table;
     const width = mode(records.map((record) => record.length));
     const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
-    // Lines may have fewer or more fields than the header, as with cloc --csv.
     const singleColumn =
       quotedColumn && candidateError === undefined && width === 1 && matching === records.length;
+    // Lines may have fewer or more fields than the header, as with cloc --csv.
     if (
       (width < 2 && !singleColumn) ||
       (matching < records.length * 0.8 && records.some((r) => r.length < 2))
@@ -257,11 +257,10 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       quoteError ??= candidateError;
       continue;
     }
-    // On ties, as for "a;1,5", prefer semicolons: a comma is more likely a decimal comma than a
-    // semicolon is part of a field.
     const uniform = matching === records.length ? 1 : 0;
-    // A numeric table such as "1,5;2,5" has more commas than semicolons. Splitting at those commas
-    // would turn its decimal numbers into separate columns, including text like "5;2".
+    // Semicolons, tried last, win ties, as for "a;1,5": a comma is more likely a decimal comma than
+    // a semicolon is part of a field. They also win over more columns split at commas when every
+    // field is a number with a decimal comma, as in "1,5;2,5".
     if (
       best === undefined ||
       uniform > best.uniform ||
