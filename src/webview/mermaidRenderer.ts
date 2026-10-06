@@ -433,7 +433,10 @@ export class MermaidRenderer implements Renderer {
     );
     try {
       const { svg, diagramType } = await mermaid.render(
-        `diagram-image-${++this.renderCounter}`,
+        // Mermaid scopes the styles and arrowheads of the drawing by this id. Unlike a count, a
+        // random one does not repeat in an image from another session, which a document or design
+        // that holds both would otherwise draw with the styles and arrowheads of the first.
+        `diagram-image-${crypto.randomUUID().slice(0, 8)}`,
         text,
         layoutContainer(),
       );

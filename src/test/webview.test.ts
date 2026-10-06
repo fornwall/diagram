@@ -1610,6 +1610,27 @@ suite("webview", function () {
     }
   });
 
+  test("gives each Mermaid image its own ids, which its styles and arrowheads go by", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    const ids = (await evaluate(`(async () => {
+      ${DRAG_IMAGE}
+      const ids = [];
+      for (const attempt of [1, 2]) {
+        const svg = (await dragImage()).getData("image/svg+xml");
+        const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+        const id = image.id;
+        const references = [...svg.matchAll(/url\\(#([^)]+)\\)/g)].map(match => match[1]);
+        ids.push({id, scoped: references.length > 0 && references.every(name => name.startsWith(id))});
+      }
+      return ids;
+    })()`)) as { id: string; scoped: boolean }[];
+    assert.deepStrictEqual(
+      ids.map(({ scoped }) => scoped),
+      [true, true],
+    );
+    assert.notStrictEqual(ids[0]?.id, ids[1]?.id);
+  });
+
   test("keeps Mermaid image export separate from an incoming render", async () => {
     await draw({ source: "flowchart LR\n A[Original label] --> B" });
     assert.deepStrictEqual(
