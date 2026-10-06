@@ -524,6 +524,19 @@ suite("participant", () => {
     );
   });
 
+  test("gives a model that cannot call tools none, and draws its diagram block", async () => {
+    const { sent, shown, result } = await ask([[text(`Here it is:\n${valid}`)]], {
+      capabilities: { supportsToolCalling: false },
+      toolReferences: [{ name: "diagram_getState" }],
+    });
+    assert.deepStrictEqual(
+      sent.map(({ options }) => [options.tools, options.toolMode]),
+      [[[], undefined]],
+    );
+    assert.match(shown, /^Fake cannot call tools, so the attached tools are left out\.\n\n/);
+    assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
+  });
+
   test("does not run tools that the model was not given", async () => {
     const call = new vscode.LanguageModelToolCallPart("1", "unknown_external_tool", {});
     const { sent } = await ask([[call], [text("Sorry.")]]);

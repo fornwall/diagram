@@ -76,12 +76,24 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     // Keep the default surface deliberate. Explicit external attachments are supported for
     // drawing, but /explain only permits known read-only tools, even when others are attached.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
-    const tools = vscode.lm.tools.filter((tool) =>
-      explain
-        ? READ_ONLY_TOOLS.has(tool.name)
-        : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name),
+    // A model says whether it calls tools in capabilities.supportsToolCalling, which is not part
+    // of the stable API. One that does not may reject a request with tools; it draws with a
+    // diagram block instead.
+    const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
+    const callsTools = capabilities?.supportsToolCalling !== false;
+    const tools = vscode.lm.tools.filter(
+      (tool) =>
+        callsTools &&
+        (explain
+          ? READ_ONLY_TOOLS.has(tool.name)
+          : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name)),
     );
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
+    if (!callsTools && attachedNames.size > 0) {
+      stream.markdown(
+        `${escapeMarkdown(request.model.name)} cannot call tools, so the attached tools are left out.\n\n`,
+      );
+    }
 
     try {
       const prompt = await unlessCancelled(
