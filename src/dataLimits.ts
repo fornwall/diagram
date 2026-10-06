@@ -1,4 +1,6 @@
-// Bound the rectangular table, including empty cells introduced by ragged input.
+// Bounding the size of tables, so that too much data fails with advice, not by exhausting memory.
+
+/** The most cells that a table may have, counting those that short rows leave empty. */
 export const MAX_CELLS = 1_000_000;
 
 export class TableSizeError extends Error {}
