@@ -40,6 +40,25 @@ suite("describeDiagram", () => {
     assert.match(description, /diagram_inspectData/);
   });
 
+  test("a long Mermaid source is left out of requests, but given in full when asked for", () => {
+    const source = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
+    const state: DiagramState = {
+      language: "mermaid",
+      source,
+      title: "Flow",
+      origin: "tool",
+      editedByUser: false,
+    };
+    const summary = describeDiagram(state, []);
+    assert.doesNotMatch(summary, /A --> B/);
+    assert.match(summary, /too long to repeat in every request; diagram_getState gives it in full/);
+    assert.ok(describeDiagram(state, [], undefined, [], [], [], true).includes(source));
+    // A generated chart is changed with the chart tools, not by rewriting its long option.
+    const generated = { ...chart, source: `{"dataset":${"[1,2],".repeat(10_000)}}` };
+    const full = describeDiagram(generated, [], undefined, [], [], [], true);
+    assert.match(full, /too long to show here/);
+  });
+
   test("oversized chart options are omitted from model context", () => {
     const description = describeChartParameters({
       type: "bar",

@@ -248,8 +248,10 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
   }
 
   invoke(): vscode.LanguageModelToolResult {
+    // A source too long to repeat in every chat request is given in full here, as a model has to
+    // read it to change it. The participant shortens tool results that do not fit its budget.
     return textResult(
-      this.panel.describeForModel() ??
+      this.panel.describeForModel(true) ??
         `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
     );
   }

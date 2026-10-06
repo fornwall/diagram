@@ -189,11 +189,14 @@ export class DiagramPanel implements vscode.Disposable {
     return this.renderWarnings;
   }
 
-  /** Describes the current diagram and the user's interactions with it, for a language model. */
-  describeForModel(): string | undefined {
+  /**
+   * Describes the current diagram and the user's interactions with it, for a language model;
+   * see {@link describeDiagram} for `fullSource`.
+   */
+  describeForModel(fullSource = false): string | undefined {
     return (
       this.state &&
-      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships, this.repeatedNames, this.renderWarnings)}`
+      `Revision: ${this.renderVersion}.\n\n${describeDiagram(this.state, this.selection, this.annotation, this.relationships, this.repeatedNames, this.renderWarnings, fullSource)}`
     );
   }
 

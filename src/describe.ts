@@ -10,6 +10,7 @@ import {
   type Annotation,
   CHART_TOOL,
   type DiagramNode,
+  GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   isPlainObject,
   nodeNoun,
@@ -19,10 +20,13 @@ import {
 } from "./protocol";
 import { quoteAll } from "./text";
 
-/** Longer diagram sources are left out of the description. */
+/** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
 
-/** Describes a diagram, how it is marked up and the user's interactions with it, for a language model. */
+/**
+ * Describes a diagram, how it is marked up and the user's interactions with it, for a language
+ * model. `fullSource` gives a long source too, as {@link GET_STATE_TOOL} does.
+ */
 export function describeDiagram(
   state: DiagramState,
   selection: readonly DiagramNode[],
@@ -30,9 +34,15 @@ export function describeDiagram(
   relationships: readonly DiagramNode[] = [],
   repeatedNames: readonly RepeatedName[] = [],
   warnings: readonly string[] = [],
+  fullSource = false,
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
-  const lines = [`Current ${what}: ${JSON.stringify(state.title)}`, "", describeSource(state), ""];
+  const lines = [
+    `Current ${what}: ${JSON.stringify(state.title)}`,
+    "",
+    describeSource(state, fullSource),
+    "",
+  ];
   if (state.chart) {
     const refresh = state.chart.file !== undefined || state.chart.command !== undefined;
     lines.push(
@@ -127,14 +137,21 @@ function describeMarks(annotation: Annotation | undefined, parts: string): strin
   return lines.join("\n");
 }
 
-function describeSource({ source, language }: DiagramState): string {
+/**
+ * A long source is left out of every chat request, but given in full when `full`, as a model has to
+ * read a source to change it. A chart generated from a large file or command output is the
+ * exception: it can be too large for the model's context, and the chart tools change it instead.
+ */
+function describeSource({ source, language, chart }: DiagramState, full: boolean): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
-  // A chart of a large file or command output can be too large for the model's context.
-  return source.length <= MAX_SOURCE_LENGTH
-    ? codeFence(source, language)
-    : `(The source is ${source.length} characters long, too long to show here.)`;
+  if (source.length <= MAX_SOURCE_LENGTH || (full && !chart)) {
+    return codeFence(source, language);
+  }
+  return chart
+    ? `(The source is ${source.length} characters long, too long to show here.)`
+    : `(The source is ${source.length} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
 }
 
 /** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
