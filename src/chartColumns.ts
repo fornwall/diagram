@@ -346,9 +346,14 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   const most = shownValues(type, labels.length, separator !== undefined, times !== undefined);
   const values = columns.slice(0, most);
   if (given !== undefined && values.length < columns.length) {
+    // A bar chart shows any number of value columns, but a series per label only one.
+    const shows =
+      isCartesian(type) && labels.length >= 2
+        ? `a series per label of ${JSON.stringify(name(labels[1]))}`
+        : `a ${type} chart`;
     notes.push(
-      `left out ${quoteAll(columns.slice(values.length).map(name))}, as a ${type} chart ` +
-        `shows ${columnCount(most, "value")}`,
+      `left out ${quoteAll(columns.slice(values.length).map(name))}, as ${shows} shows ` +
+        columnCount(most, "value"),
     );
   }
   if (values.length === 0) {

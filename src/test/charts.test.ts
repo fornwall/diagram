@@ -340,6 +340,14 @@ suite("charts", () => {
       summary(chart("bar", { labelColumn: ["month", "region"], ...categories }), LONG),
       /^Charted "sales" by "month", a series per label of "region"; added 1 row to the point of an earlier row with the same labels; "aggregate" combines them another way\.$/,
     );
+    // A bar chart shows several value columns, but a series per label shows one.
+    assert.match(
+      summary(
+        chart("bar", { labelColumn: ["month", "region"], valueColumns: ["sales", "cost"] }),
+        "month,region,sales,cost\nJan,EU,5,1\nJan,US,7,2",
+      ),
+      /left out "cost", as a series per label of "region" shows one value column/,
+    );
     // On a time axis, a line runs through the times of its own series, while a stack needs a
     // point at every time.
     const line = build(chart("line", { labelColumn: ["month", "region"] }), LONG);
