@@ -398,7 +398,7 @@ suite("workspace tools", function () {
     );
     assert.strictEqual(
       await invoke(reader, { file: relative }),
-      `Error: ${relative} is a folder, not a file. List its files with diagram_findFiles.`,
+      `Error: ${relative} is a folder, not a file. List its files with diagram_findFiles and the glob "${relative}/**".`,
     );
     assert.strictEqual(
       await invoke(reader, { file: `${relative}/missing.ts` }),

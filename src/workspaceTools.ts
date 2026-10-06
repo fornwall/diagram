@@ -111,6 +111,14 @@ export function resolveWorkspaceFile(
   return uri;
 }
 
+/** The glob that lists a folder's files with diagram_findFiles, if it is in the workspace. */
+export function filesGlob(folder: vscode.Uri): string | undefined {
+  const root = vscode.workspace.getWorkspaceFolder(folder)?.uri.path.replace(/\/$/, "");
+  if (root === undefined) return undefined;
+  const relative = folder.path.slice(root.length + 1);
+  return relative ? `${relative}/**` : "**";
+}
+
 /**
  * How a result names a file, as {@link resolveWorkspaceFile} and code links accept it: relative to
  * the first workspace folder when inside it, else absolute.
@@ -491,7 +499,9 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const roots = folders();
     const uri = resolveWorkspaceFile(input.file, roots);
     const content = await readText(uri, boundary(roots, token), token).catch((error: unknown) => {
-      throw fileError(error, uri, { FileIsADirectory: `List its files with ${FIND_FILES_TOOL}.` });
+      throw fileError(error, uri, {
+        FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri)}".`,
+      });
     });
     if ("error" in content) throw new Error(content.error);
     const { text } = content;

@@ -19,6 +19,7 @@ import {
   RENDER_TOOL,
   SEARCH_TEXT_TOOL,
 } from "./protocol";
+import { filesGlob } from "./workspaceTools";
 
 /** Attached files are truncated to this many characters. */
 const MAX_ATTACHMENT_LENGTH = 50_000;
@@ -595,14 +596,13 @@ async function readFolder(name: string, uri: vscode.Uri): Promise<Attachment | u
   if (!stat || !(stat.type & vscode.FileType.Directory)) {
     return undefined;
   }
-  const root = vscode.workspace.getWorkspaceFolder(uri)?.uri.path.replace(/\/$/, "");
-  if (root === undefined) {
+  const glob = filesGlob(uri);
+  if (glob === undefined) {
     return { name, error: "it is a folder outside the workspace" };
   }
-  const relative = uri.path.slice(root.length + 1);
   return {
     name,
-    error: `it is a folder; list its files with ${FIND_FILES_TOOL} and the glob "${relative ? `${relative}/**` : "**"}"`,
+    error: `it is a folder; list its files with ${FIND_FILES_TOOL} and the glob "${glob}"`,
     explorable: true,
   };
 }
