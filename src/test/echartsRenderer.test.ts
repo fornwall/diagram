@@ -3,7 +3,7 @@ import { init as initECharts } from "echarts";
 import type * as ECharts from "echarts/core";
 import { modelOf } from "../webview/echartsItems";
 import { EChartsRenderer } from "../webview/echartsRenderer";
-import { itemsOf, withChart } from "./echartsModel";
+import { item, itemsOf, withChart } from "./echartsModel";
 import { testColors } from "./themeColors";
 
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
@@ -72,8 +72,6 @@ function relayout<T>(
     chart.dispose();
   }
 }
-
-const item = (dataIndex: number) => ({ seriesIndex: 0, dataType: undefined, dataIndex });
 
 suite("echartsRenderer", () => {
   test("indents a one-line JSON option for editing without changing its values", () => {
@@ -176,9 +174,7 @@ suite("echartsRenderer", () => {
       }),
     });
     renderer.showMarks({ marks: [{ id: "Yes (q2)", kind: "info" }], dim: false });
-    assert.deepStrictEqual(actions, [
-      { type: "highlight", batch: [{ seriesIndex: 0, dataType: "node", dataIndex: 2 }] },
-    ]);
+    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(2, 0, "node")] }]);
   });
 
   test("coalesces selection updates and selects only the latest items", async () => {
@@ -187,15 +183,11 @@ suite("echartsRenderer", () => {
     renderer.showSelection(new Set(["0::2"]));
     assert.deepStrictEqual(actions, []);
     await Promise.resolve();
-    assert.deepStrictEqual(actions, [
-      { type: "select", batch: [{ seriesIndex: 0, dataType: undefined, dataIndex: 2 }] },
-    ]);
+    assert.deepStrictEqual(actions, [{ type: "select", batch: [item(2)] }]);
     actions.length = 0;
     renderer.showSelection(new Set(["0::3"]));
     await Promise.resolve();
-    assert.deepStrictEqual(actions, [
-      { type: "select", batch: [{ seriesIndex: 0, dataType: undefined, dataIndex: 3 }] },
-    ]);
+    assert.deepStrictEqual(actions, [{ type: "select", batch: [item(3)] }]);
   });
 
   test("takes a click on a treemap's root or breadcrumb, or a sunburst's root, to navigate", () => {

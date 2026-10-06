@@ -1,12 +1,6 @@
 import * as assert from "node:assert";
 import { modelOf } from "../webview/echartsItems";
-import { itemsOf, withChart } from "./echartsModel";
-
-const item = (dataIndex: number, seriesIndex = 0, dataType?: string) => ({
-  seriesIndex,
-  dataType,
-  dataIndex,
-});
+import { item, itemsOf, withChart } from "./echartsModel";
 
 suite("echartsItems", () => {
   test("reads the parts of ECharts' private model that it relies on", () => {

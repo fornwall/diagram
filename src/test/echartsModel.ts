@@ -38,3 +38,10 @@ export function layout(option: JsonObject, context: Partial<LayoutContext> = {})
     ...context,
   });
 }
+
+/** An item as ECharts' actions, such as highlight, name it. */
+export const item = (dataIndex: number, seriesIndex = 0, dataType?: string) => ({
+  seriesIndex,
+  dataType,
+  dataIndex,
+});
