@@ -10,8 +10,9 @@ import {
 } from "../webview/echartsOption";
 
 // ECharts' registry of series and component classes, which its typings leave out.
-const registry = ComponentModel as unknown as { getClass(main: string, sub: string): unknown };
-const hasSeries = (type: string) => registry.getClass("series", type) !== undefined;
+const registry = ComponentModel as unknown as {
+  getClassesByMainType(main: string): { type: string }[];
+};
 
 const BAR = '"xAxis": {"type": "category", "data": ["A"]}, "yAxis": {}';
 
@@ -140,12 +141,13 @@ suite("echartsOption", () => {
   });
 
   test("accepts exactly the series types that the panel's ECharts has", () => {
-    for (const type of SERIES_TYPES) {
-      assert.ok(hasSeries(type), type);
-    }
-    // A custom series needs a renderItem function, which a JavaScript source can express.
-    assert.ok(SERIES_TYPES.includes("custom"));
-    assert.ok(!hasSeries("map"));
+    const registered = registry
+      .getClassesByMainType("series")
+      .map((series) => series.type.replace(/^series\./, ""))
+      // Such as __base_bar__, which bar and pictorialBar extend.
+      .filter((type) => !type.startsWith("__"));
+    // Map is left out, as the panel has no map data.
+    assert.deepStrictEqual([...SERIES_TYPES].sort(), registered.sort());
   });
 
   test("rejects series that the panel has no data for", () => {
