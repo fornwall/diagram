@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
-import type { DiagramPanel } from "../panel";
-import { openWebviewPanel } from "./newPanel";
+import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
+import { newPanel, openWebviewPanel } from "./newPanel";
 
 /** Access to the DOM of a panel's webview, for tests that drive the actual page. */
 export interface WebviewHarness {
@@ -10,6 +10,8 @@ export interface WebviewHarness {
   evaluate(expression: string): Promise<unknown>;
   /** Runs the action and waits for the webview to report the outcome of the next render. */
   nextRender(action: () => unknown): Promise<void>;
+  /** Whether the webview is still open, which a panel that another panel opens is not. */
+  readonly open: boolean;
 }
 
 /**
@@ -17,7 +19,12 @@ export interface WebviewHarness {
  * `readTestState()`, `writeTestState(state)`, `testStateWrites` and `testRenderResults` (render request ids) become globals.
  */
 export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
-  const { webview } = openWebviewPanel(panel);
+  const opened = openWebviewPanel(panel);
+  const { webview } = opened;
+  let open = true;
+  opened.onDidDispose(() => {
+    open = false;
+  });
   const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
   assert.ok(nonce);
   webview.html = webview.html.replace(
@@ -94,8 +101,83 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
     });
   }
 
-  return { webview, evaluate, nextRender };
+  return {
+    webview,
+    evaluate,
+    nextRender,
+    get open() {
+      return open;
+    },
+  };
 }
+
+/** The page that the tests of a suite draw in, as an agent does, which they share. */
+export interface Page extends WebviewHarness {
+  readonly panel: DiagramPanel;
+  /** Renders the diagram, a Mermaid one unless it says otherwise, as a tool does. */
+  render(diagram: Partial<Diagram>): Promise<RenderOutcome>;
+  /** Renders the diagram, which must render. */
+  draw(diagram: Partial<Diagram>): Promise<void>;
+}
+
+/**
+ * The page that the webview suites share, as loading a page takes a while, and as a new page
+ * opened after the Mermaid suite's ran its timers only once a second, for a reason not found.
+ */
+let shared: { panel: DiagramPanel; harness: WebviewHarness } | undefined;
+// At the top level, this runs after the tests of every suite.
+suiteTeardown(() => shared?.panel.dispose());
+
+/**
+ * The page for the tests of the suite: the one that the webview suites share, opened again if a
+ * suite in between opened a panel of its own, which closes it.
+ */
+export function suitePage(): Page {
+  suiteSetup(() => {
+    if (shared?.harness.open) return;
+    const panel = newPanel();
+    shared = { panel, harness: instrumentWebview(panel) };
+  });
+  const page = () => {
+    assert.ok(shared, "The page opens before the tests of the suite.");
+    return shared;
+  };
+  const render = (diagram: Partial<Diagram>) =>
+    page().panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
+  return {
+    get panel() {
+      return page().panel;
+    },
+    get webview() {
+      return page().harness.webview;
+    },
+    get open() {
+      return page().harness.open;
+    },
+    evaluate: (expression) => page().harness.evaluate(expression),
+    nextRender: (action) => page().harness.nextRender(action),
+    render,
+    draw: async (diagram) => {
+      const outcome = await render(diagram);
+      assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+    },
+  };
+}
+
+/** Mermaid diagrams of the common types, by the type that Mermaid detects. */
+export const MERMAID = {
+  "flowchart-v2": "flowchart LR\n  A[Parser] --> B[Checker]",
+  sequence: "sequenceDiagram\n  Alice->>Bob: Hello",
+  classDiagram: "classDiagram\n  class Parser {\n    +parse() Ast\n  }",
+  er: "erDiagram\n  CUSTOMER ||--o{ ORDER : places",
+  gantt: "gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d",
+  mindmap: "mindmap\n  root((Plan))\n    Research",
+  timeline: "timeline\n  2025 : Started\n  2026 : Shipped",
+  journey: "journey\n  section Work\n    Make tea: 5: Me",
+  pie: 'pie\n  "Dogs" : 386\n  "Rats" : 2',
+  gitGraph: 'gitGraph\n  commit id: "init"\n  branch develop\n  commit tag: "v1"',
+  xychart: "xychart\n  x-axis [jan, feb]\n  bar [10, 50]\n  line [15, 45]",
+};
 
 /**
  * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
