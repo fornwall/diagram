@@ -10,10 +10,10 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
-import { replace } from "./afterTest";
+import { afterTest, replace } from "./afterTest";
 import { toolText } from "./toolText";
 
-suite("workspace tools", function () {
+suite("workspaceTools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
   this.timeout(10_000);
   let dir: string;
@@ -28,6 +28,22 @@ suite("workspace tools", function () {
     const result = await tool.invoke({ input, toolInvocationToken: undefined }, token);
     assert.ok(result);
     return toolText(result);
+  }
+
+  /** Writes a file into the test folder, to be removed once the test ends. */
+  async function writeFile(name: string, contents: string | Buffer): Promise<string> {
+    const file = path.join(dir, name);
+    await fs.writeFile(file, contents);
+    afterTest(() => fs.rm(file, { force: true }));
+    return file;
+  }
+
+  /** Makes a folder or a symbolic link in the test folder, to be removed once the test ends. */
+  async function make(name: string, linkTo?: string): Promise<string> {
+    const file = path.join(dir, name);
+    await (linkTo === undefined ? fs.mkdir(file) : fs.symlink(linkTo, file));
+    afterTest(() => fs.rm(file, { recursive: true, force: true }));
+    return file;
   }
 
   suiteSetup(async () => {
@@ -93,8 +109,7 @@ suite("workspace tools", function () {
   });
 
   test("reads at most 500 lines and says where to continue", async () => {
-    const file = path.join(dir, "pages.txt");
-    await fs.writeFile(file, "line\n".repeat(600));
+    const file = await writeFile("pages.txt", "line\n".repeat(600));
     const page = (await invoke(reader, { file, startLine: 2, endLine: 1000 })).split("\n");
     assert.strictEqual(page[0], `${relative}/pages.txt, lines 2-501 of 601:`);
     assert.strictEqual(page.length, 502);
@@ -102,12 +117,11 @@ suite("workspace tools", function () {
   });
 
   test("fills result limits across overlapping workspace roots", async () => {
-    const nested = path.join(dir, "nested");
-    await fs.mkdir(nested);
+    const nested = await make("nested");
     const files = ["nested/a.ts", "nested/b.ts", "c.ts"].map((name) =>
       vscode.Uri.file(path.join(dir, name)),
     );
-    for (const uri of files) await fs.writeFile(uri.fsPath, "text");
+    for (const name of ["nested/a.ts", "nested/b.ts", "c.ts"]) await writeFile(name, "text");
     const roots = [nested, dir].map((file, index) => ({
       uri: vscode.Uri.file(file),
       name: path.basename(file),
@@ -148,8 +162,10 @@ suite("workspace tools", function () {
   });
 
   test("keeps line and preview boundaries across mixed line endings and repeated matches", async () => {
-    const file = path.join(dir, "mixed-lines.txt");
-    await fs.writeFile(file, "first\r\nNeedle Needle\rskip\n\nNeedle end\r\nNeedle");
+    const file = await writeFile(
+      "mixed-lines.txt",
+      "first\r\nNeedle Needle\rskip\n\nNeedle end\r\nNeedle",
+    );
     const result = await invoke(searcher, { query: "Needle", glob: `${relative}/mixed-lines.txt` });
     assert.deepStrictEqual(result.split("\n").slice(2), [
       "  2: Needle Needle",
@@ -163,8 +179,7 @@ suite("workspace tools", function () {
   });
 
   test("bounds results in files with many short lines and preserves trailing empty lines", async () => {
-    const file = path.join(dir, "many-lines.txt");
-    await fs.writeFile(file, `${"x\n".repeat(100_000)}Needle\n`);
+    const file = await writeFile("many-lines.txt", `${"x\n".repeat(100_000)}Needle\n`);
     const search = await invoke(searcher, { query: "Needle", glob: `${relative}/many-lines.txt` });
     assert.match(search, /\n {2}100001: Needle$/);
     assert.strictEqual(
@@ -190,41 +205,31 @@ suite("workspace tools", function () {
     });
     assert.match(limited, /^1 match in 1 file .* Incomplete: .*\n.*\n {2}2: [^\n]+$/);
     const full = await invoke(searcher, { query: "missing", glob: `${relative}/*` });
-    assert.match(full, /^No matches \(searched \d+ files; skipped [2-9] files: binary/);
+    assert.match(full, /^No matches \(searched \d+ files; skipped 2 files: binary/);
     assert.match(await invoke(reader, { file: path.join(dir, "binary.bin") }), /^Error: Binary/);
     assert.strictEqual(
       await invoke(reader, { file: path.join(dir, "large.txt"), endLine: 1 }),
       `${relative}/large.txt, lines 1-1 of 1:\n1: ${"X".repeat(1000)}… (1048577 characters)\nLines longer than 1000 characters are cut.`,
     );
-    const huge = path.join(dir, "huge.txt");
-    await fs.writeFile(huge, "X".repeat(16 * 1024 * 1024 + 1));
-    try {
-      assert.strictEqual(
-        await invoke(reader, { file: huge }),
-        "Error: The file exceeds the 16 MiB text limit.",
-      );
-    } finally {
-      await fs.rm(huge);
-    }
+    const huge = await writeFile("huge.txt", "X".repeat(16 * 1024 * 1024 + 1));
+    assert.strictEqual(
+      await invoke(reader, { file: huge }),
+      "Error: The file exceeds the 16 MiB text limit.",
+    );
   });
 
   test("charges binary and invalid text against the total scan byte limit", async () => {
-    const budgetDir = path.join(dir, "budget");
-    await fs.mkdir(budgetDir);
-    try {
-      for (let i = 0; i < 17; i++) {
-        await fs.writeFile(
-          path.join(budgetDir, `${i}.bin`),
-          Buffer.alloc(1024 * 1024, i % 2 ? 0xff : 0),
-        );
-      }
-      assert.strictEqual(
-        await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` }),
-        "No matches (searched 0 files; skipped 16 files: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+    const budgetDir = await make("budget");
+    for (let i = 0; i < 17; i++) {
+      await fs.writeFile(
+        path.join(budgetDir, `${i}.bin`),
+        Buffer.alloc(1024 * 1024, i % 2 ? 0xff : 0),
       );
-    } finally {
-      await fs.rm(budgetDir, { recursive: true, force: true });
     }
+    assert.strictEqual(
+      await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` }),
+      "No matches (searched 0 files; skipped 16 files: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+    );
   });
 
   test("bounds long line output while keeping search matches visible", async () => {
@@ -237,8 +242,7 @@ suite("workspace tools", function () {
 
   test("reads and searches unsaved editor changes", async () => {
     // Plain text, as opening a TypeScript file would start TypeScript's language features.
-    const file = path.join(dir, "dirty.txt");
-    await fs.writeFile(file, "saved text");
+    const file = await writeFile("dirty.txt", "saved text");
     const document = await vscode.workspace.openTextDocument(file);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(document.uri, new vscode.Position(0, 0), "unsaved Needle\n");
@@ -262,8 +266,7 @@ suite("workspace tools", function () {
     );
     assert.match(await invoke(reader, { file: "../../../etc/passwd" }), /inside an open workspace/);
     if (process.platform === "win32") this.skip();
-    const link = path.join(dir, "external.txt");
-    await fs.symlink(path.join(outside, "secret.txt"), link);
+    const link = await make("external.txt", path.join(outside, "secret.txt"));
     assert.match(await invoke(reader, { file: link }), /symbolic link outside/);
     const search = await invoke(searcher, {
       query: "external secret",
@@ -274,15 +277,13 @@ suite("workspace tools", function () {
       await invoke(finder, { glob: `${relative}/external.txt` }),
       "Left out 1 file linked outside the workspace.",
     );
-    const parentLink = path.join(dir, "external-dir");
-    await fs.symlink(outside, parentLink);
+    const parentLink = await make("external-dir", outside);
     assert.match(
       await invoke(reader, { file: path.join(parentLink, "secret.txt") }),
       /symbolic link outside/,
     );
     // Links within the workspace can be read.
-    const inside = path.join(dir, "inside-link.ts");
-    await fs.symlink(path.join(dir, "code.ts"), inside);
+    const inside = await make("inside-link.ts", path.join(dir, "code.ts"));
     assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
   });
 
