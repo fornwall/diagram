@@ -1,6 +1,6 @@
 // The rows a chart draws: labeled, without totals or parent rows, grouped, sorted and limited.
 
-import { type Columns, chained, columnName, readsLevels } from "./chartColumns";
+import { type Columns, chained, columnName, isCartesian, readsLevels } from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
 import type { Unit } from "./dataNumber";
@@ -172,20 +172,18 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
   return checked > 0;
 }
 
-/**
- * Sorts rows by their first value, or by the total of their values when they stack, empty values
- * last and equal ones in their order.
- */
-function sortRows(rows: Row[], sort: ChartSpec["sort"], total: boolean, limit?: number): Row[] {
+/** Sorts rows by a key, empty keys last and equal ones in their order. */
+function sortRows(
+  rows: Row[],
+  sort: ChartSpec["sort"],
+  key: (row: Row) => number | null,
+  limit?: number,
+): Row[] {
   if (sort === undefined) {
     return rows;
   }
   const direction = sort === "ascending" ? 1 : -1;
-  const keyed = rows.map((row, index) => ({
-    row,
-    index,
-    key: total ? rowTotal(row) : (row.values[0] ?? null),
-  }));
+  const keyed = rows.map((row, index) => ({ row, index, key: key(row) }));
   type Keyed = (typeof keyed)[number];
   const order = (left: Keyed, right: Keyed): number => {
     const { key: x } = left;
@@ -237,6 +235,16 @@ function rowTotal({ values }: Row): number | null {
     if (value !== null) total = addValues(total ?? 0, value);
   }
   return total;
+}
+
+/** Keys rows by the total of the first values of the rows with their first label. */
+function labelTotals(rows: Row[]): (row: Row) => number | null {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const value = row.values[0] ?? null;
+    if (value !== null) totals.set(label(row), addValues(totals.get(label(row)) ?? 0, value));
+  }
+  return (row) => totals.get(label(row)) ?? null;
 }
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
@@ -477,8 +485,15 @@ export function readRows(
   }
   const beforeLimit = rows.length;
   const combineOther = type === "pie" || type === "doughnut";
-  const stacked = type === "stackedBar" || type === "stackedArea";
-  rows = sortRows(rows, spec.sort, stacked, combineOther ? undefined : spec.limit);
+  // A stack shows the total of its row, and a series per label of a second label column draws the
+  // rows of a first label together, so sort by the total of those rows.
+  const key =
+    isCartesian(type) && columns.labels.length >= 2
+      ? labelTotals(rows)
+      : type === "stackedBar" || type === "stackedArea"
+        ? rowTotal
+        : (row: Row) => row.values[0] ?? null;
+  rows = sortRows(rows, spec.sort, key, combineOther ? undefined : spec.limit);
   if (spec.sort !== undefined && columns.timeAxis) {
     notes.push("sorted the rows by value rather than in time order, which a line runs back over");
   }

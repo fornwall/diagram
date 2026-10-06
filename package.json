@@ -246,7 +246,7 @@
                 "ascending",
                 "descending"
               ],
-              "description": "Sorts the rows by the first value column, or by their total in stacked charts, after grouping."
+              "description": "Sorts the rows by the first value column, or by their total in stacked charts, after grouping. With a series per label of a second label column, sorts the labels of the first by their total."
             },
             "limit": {
               "type": "integer",

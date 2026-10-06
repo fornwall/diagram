@@ -349,6 +349,12 @@ suite("charts", () => {
     ]);
     const stacked = build(chart("stackedArea", { labelColumn: ["month", "region"] }), LONG);
     assert.deepStrictEqual(stacked.series[1].data[1], ["2026-02", null]);
+    // The labels sort by their total, though Jan has the single largest value, stacked or not.
+    const totals = "month,region,sales\nJan,EU,10\nJan,US,2\nFeb,EU,8\nFeb,US,7\nMar,US,1";
+    for (const type of ["stackedBar", "bar"] as const) {
+      const sorted = chart(type, { labelColumn: ["month", "region"], sort: "descending" });
+      assert.deepStrictEqual(build(sorted, totals).xAxis.data, ["Feb", "Jan", "Mar"]);
+    }
     // Without a second label column given, a second text column is not read as series.
     assert.strictEqual(build(chart("bar"), "name,team,score\na,x,1\nb,y,2").series.length, 1);
     assert.throws(

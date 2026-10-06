@@ -94,7 +94,10 @@ export type ChartSpec = ChartData & {
    * value column needed.
    */
   aggregate?: Aggregation;
-  /** Sorts rows by the first value column, or by their total in a stacked chart. */
+  /**
+   * Sorts rows by the first value column, or by their total in a stacked chart. With a series per
+   * label of a second label column, sorts the labels of the first by their total.
+   */
   sort?: (typeof SORT_ORDERS)[number];
   /** Keeps only the first rows (after sorting); a pie chart sums the rest up as "Other". */
   limit?: number;
