@@ -6,7 +6,7 @@ import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
-import { newPanel, openWebviewPanel } from "./newPanel";
+import { newPanel, openWebviewPanel, recordChat } from "./newPanel";
 import { instrumentWebview, type WebviewHarness } from "./webviewHarness";
 
 const MERMAID = {
@@ -761,13 +761,7 @@ suite("webview", function () {
 
   test("sends a message to chat from the button and from Enter", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
-    const execute = vscode.commands.executeCommand;
-    const asked: string[] = [];
-    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
-      if (command !== "workbench.action.chat.open") return execute(command, ...args);
-      asked.push((args[0] as { query: string }).query);
-      return undefined;
-    }) as typeof execute;
+    const chat = recordChat();
     try {
       // The page submits the form as a user does, which a webview without forms would drop.
       await evaluate(`(() => {
@@ -779,15 +773,15 @@ suite("webview", function () {
         input.dispatchEvent(new Event("input"));
         document.getElementById("ask-form").requestSubmit();
       })()`);
-      for (let attempt = 0; attempt < 100 && asked.length < 2; attempt++) {
+      for (let attempt = 0; attempt < 100 && chat.requests.length < 2; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      assert.deepStrictEqual(asked, [
-        "Regarding the diagram: From the button",
-        "Regarding the diagram: From Enter",
-      ]);
+      assert.deepStrictEqual(
+        chat.requests.map((request) => request.query),
+        ["Regarding the diagram: From the button", "Regarding the diagram: From Enter"],
+      );
     } finally {
-      vscode.commands.executeCommand = execute;
+      chat.restore();
     }
   });
 

@@ -16,6 +16,7 @@ import {
   newFakePanel,
   newPanel,
   openWebviewPanel,
+  recordChat,
   showInFake,
 } from "./newPanel";
 import { testColors } from "./themeColors";
@@ -1360,17 +1361,9 @@ suite("panel", function () {
 
   test("asks @diagram about the diagrams it drew, and keeps the selection if chat fails", async () => {
     const { panel, webview } = await newFakePanel();
-    const execute = vscode.commands.executeCommand;
+    const chat = recordChat();
     const showError = vscode.window.showErrorMessage;
-    const queries: string[] = [];
     const errors: string[] = [];
-    let chatFails = false;
-    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
-      if (command !== "workbench.action.chat.open") return execute(command, ...args);
-      if (chatFails) throw new Error("Chat is disabled.");
-      queries.push((args[0] as { query: string }).query);
-      return undefined;
-    }) as typeof execute;
     vscode.window.showErrorMessage = async (message: string) => {
       errors.push(message);
       return undefined;
@@ -1381,10 +1374,10 @@ suite("panel", function () {
         assert.ok((await panel.render(flowchart, origin)).ok);
         await ask();
       }
-      assert.deepStrictEqual(queries, [
-        "Regarding the diagram: Why?",
-        "@diagram Regarding the diagram: Why?",
-      ]);
+      assert.deepStrictEqual(
+        chat.requests.map((request) => request.query),
+        ["Regarding the diagram: Why?", "@diagram Regarding the diagram: Why?"],
+      );
       const nodes = [{ id: "A", label: "Parser" }];
       await webview.receive({
         type: "selectionChanged",
@@ -1392,13 +1385,13 @@ suite("panel", function () {
         nodes,
       });
       webview.sent.length = 0;
-      chatFails = true;
+      chat.fail = true;
       await ask();
       assert.deepStrictEqual(errors, ["Could not send the request to chat: Chat is disabled."]);
       assert.deepStrictEqual(webview.sent, []);
       assert.match(panel.describeForModel() ?? "", /selected these nodes in the panel: "Parser"/);
     } finally {
-      vscode.commands.executeCommand = execute;
+      chat.restore();
       vscode.window.showErrorMessage = showError;
       panel.dispose();
     }

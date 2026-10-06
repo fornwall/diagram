@@ -125,6 +125,35 @@ export class FakeWebview {
   }
 }
 
+/** A request that the panel sends to chat. */
+interface ChatRequest {
+  query: string;
+  /** Whether the request only fills in the chat input, for the user to send. */
+  isPartialQuery: boolean;
+}
+
+/**
+ * Records the requests that the panel sends to chat instead of opening chat, until restored.
+ * While `fail` is set, opening chat fails, as when chat is disabled.
+ */
+export function recordChat(): { requests: ChatRequest[]; fail: boolean; restore(): void } {
+  const execute = vscode.commands.executeCommand;
+  const chat = {
+    requests: [] as ChatRequest[],
+    fail: false,
+    restore: () => {
+      vscode.commands.executeCommand = execute;
+    },
+  };
+  vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
+    if (command !== "workbench.action.chat.open") return execute(command, ...args);
+    if (chat.fail) throw new Error("Chat is disabled.");
+    chat.requests.push(args[0] as ChatRequest);
+    return undefined;
+  }) as typeof execute;
+  return chat;
+}
+
 /** Shows the panel in a fake webview that is ready, with any diagram it has drawn. */
 export async function showInFake(panel: DiagramPanel): Promise<FakeWebview> {
   const webview = new FakeWebview();

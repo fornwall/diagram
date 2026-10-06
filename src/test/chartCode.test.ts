@@ -12,7 +12,7 @@ import { parseTable } from "../data";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel } from "../panel";
 import { runsCode } from "../webview/optionSource";
-import { type FakeWebview, newFakePanel } from "./newPanel";
+import { type FakeWebview, newFakePanel, recordChat } from "./newPanel";
 
 const flowchart = "flowchart LR\n  A[Parser] --> B[Checker]";
 const codeChart = '{series: [{type: "pie", data: [1]}], tooltip: {formatter: (item) => item.name}}';
@@ -56,27 +56,26 @@ suite("chart code in the panel", function () {
   });
 
   test("leaves chat requests for the user to send once the page ran chart code", async () => {
-    const execute = vscode.commands.executeCommand;
-    const requests: string[] = [];
-    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
-      if (command !== "workbench.action.chat.open") return execute(command, ...args);
-      const { query, isPartialQuery } = args[0] as { query: string; isPartialQuery: boolean };
-      requests.push(`${isPartialQuery ? "fill" : "send"}: ${query}`);
-      return undefined;
-    }) as typeof execute;
+    const chat = recordChat();
+    const requests = () =>
+      chat.requests.map(
+        ({ query, isPartialQuery }) => `${isPartialQuery ? "fill" : "send"}: ${query}`,
+      );
     const { panel, webview } = await newFakePanel();
     const click = () => webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
     const ask = () => webview.receive({ type: "ask", text: "Why?", nodes: [] });
-    try {
-      const clickPrompt = "Explain {label}";
+    const clickPrompt = "Explain {label}";
+    const drawFlowchart = async (on: DiagramPanel) =>
       assert.ok(
         (
-          await panel.render(
+          await on.render(
             { language: "mermaid", source: flowchart, title: "Flow", clickPrompt },
             "tool",
           )
         ).ok,
       );
+    try {
+      await drawFlowchart(panel);
       await click();
       // A chart of literals runs no code, even when written as a JavaScript object literal.
       assert.ok((await renderChart(panel, "{series: [{type: 'pie', data: [1]}]}")).ok);
@@ -84,63 +83,38 @@ suite("chart code in the panel", function () {
       assert.ok((await renderChart(panel, codeChart)).ok);
       await ask();
       // The code stays in the page for the diagrams that follow.
-      assert.ok(
-        (
-          await panel.render(
-            { language: "mermaid", source: flowchart, title: "Flow", clickPrompt },
-            "tool",
-          )
-        ).ok,
-      );
+      await drawFlowchart(panel);
       await click();
       await webview.receive({ type: "ready" });
       await ask();
-      assert.deepStrictEqual(requests, [
+      assert.deepStrictEqual(requests(), [
         "send: Explain Parser",
         "send: Regarding the chart: Why?",
         "fill: Regarding the chart: Why?",
         "fill: Explain Parser",
         "fill: Regarding the diagram: Why?",
       ]);
-    } finally {
-      vscode.commands.executeCommand = execute;
       panel.dispose();
-    }
 
-    // A new panel's page holds no code.
-    const fresh = await newFakePanel();
-    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
-      if (command !== "workbench.action.chat.open") return execute(command, ...args);
-      requests.push(`${(args[0] as { isPartialQuery: boolean }).isPartialQuery ? "fill" : "send"}`);
-      return undefined;
-    }) as typeof execute;
-    try {
-      assert.ok(
-        (
-          await fresh.panel.render(
-            { language: "mermaid", source: flowchart, title: "Flow" },
-            "tool",
-          )
-        ).ok,
-      );
-      await fresh.webview.receive({ type: "ask", text: "Why?", nodes: [] });
-      assert.strictEqual(requests.at(-1), "send");
+      // A new panel's page holds no code.
+      const fresh = await newFakePanel();
+      try {
+        await drawFlowchart(fresh.panel);
+        await fresh.webview.receive({ type: "ask", text: "Why?", nodes: [] });
+        assert.strictEqual(requests().at(-1), "send: Regarding the diagram: Why?");
+      } finally {
+        fresh.panel.dispose();
+      }
     } finally {
-      vscode.commands.executeCommand = execute;
-      fresh.panel.dispose();
+      chat.restore();
+      panel.dispose();
     }
   });
 
   test("knows that the page ran chart code that was trusted while it waited to render", async () => {
     const trust = Object.getOwnPropertyDescriptor(vscode.workspace, "isTrusted");
     assert.ok(trust);
-    const execute = vscode.commands.executeCommand;
-    const partial: boolean[] = [];
-    vscode.commands.executeCommand = (async (command: string, ...args: unknown[]) => {
-      if (command !== "workbench.action.chat.open") return execute(command, ...args);
-      partial.push((args[0] as { isPartialQuery: boolean }).isPartialQuery);
-      return undefined;
-    }) as typeof execute;
+    const chat = recordChat();
     const { panel, webview } = await newFakePanel();
     try {
       Object.defineProperty(vscode.workspace, "isTrusted", {
@@ -156,10 +130,13 @@ suite("chart code in the panel", function () {
       await webview.receive({ type: "ready" });
       assert.ok((await rendering).ok);
       await webview.receive({ type: "ask", text: "Why?", nodes: [] });
-      assert.deepStrictEqual(partial, [true]);
+      assert.deepStrictEqual(
+        chat.requests.map((request) => request.isPartialQuery),
+        [true],
+      );
     } finally {
       Object.defineProperty(vscode.workspace, "isTrusted", trust);
-      vscode.commands.executeCommand = execute;
+      chat.restore();
       panel.dispose();
     }
   });
