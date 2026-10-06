@@ -10,9 +10,13 @@ import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { givenProperties, plural, quote, unknownProperties } from "./text";
 import { textResult } from "./tools";
 
-const MAX_FILE_BYTES = 1024 * 1024;
+const MIB = 1024 * 1024;
+/** Searches skip larger files, which are rarely source code. */
+const MAX_SEARCHED_BYTES = MIB;
+/** A read returns only a page of lines, so it may read larger files than a search. */
+const MAX_READ_BYTES = 16 * MIB;
 const MAX_SCANNED_FILES = 1000;
-const MAX_SCANNED_BYTES = 16 * MAX_FILE_BYTES;
+const MAX_SCANNED_BYTES = 16 * MIB;
 const MAX_OUTPUT_CHARS = 40_000;
 const MAX_LINE_CHARS = 1000;
 /** How much of a long line to show before a search match. */
@@ -235,27 +239,28 @@ async function readText(
   uri: vscode.Uri,
   check: (uri: vscode.Uri) => Promise<void>,
   token: vscode.CancellationToken,
+  maxBytes: number,
 ): Promise<FileText> {
   await check(uri);
   const open = vscode.workspace.textDocuments.find(
     (document) => document.uri.toString() === uri.toString() && !document.isClosed,
   );
-  const tooLarge = "The file exceeds the 1 MiB text limit.";
+  const tooLarge = `The file exceeds the ${maxBytes / MIB} MiB text limit.`;
   const binary = "Binary files are not supported.";
   if (open?.isDirty) {
     const text = open.getText();
     const bytes = Buffer.byteLength(text);
-    if (bytes > MAX_FILE_BYTES) return { bytes: 0, error: tooLarge };
+    if (bytes > maxBytes) return { bytes: 0, error: tooLarge };
     return text.includes("\0") ? { bytes, error: binary } : { bytes, text, unsaved: true };
   }
   const stat = await unlessCancelled(async () => vscode.workspace.fs.stat(uri), token);
   if (stat.type & vscode.FileType.Directory) {
     throw vscode.FileSystemError.FileIsADirectory(uri);
   }
-  if (stat.size > MAX_FILE_BYTES) return { bytes: 0, error: tooLarge };
+  if (stat.size > maxBytes) return { bytes: 0, error: tooLarge };
   const content = await unlessCancelled(async () => vscode.workspace.fs.readFile(uri), token);
   const bytes = content.byteLength;
-  if (bytes > MAX_FILE_BYTES) return { bytes, error: tooLarge };
+  if (bytes > maxBytes) return { bytes, error: tooLarge };
   let text: string;
   try {
     text = decodeText(content);
@@ -414,7 +419,9 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     const read = (index: number) => {
       const uri = files[index];
       if (uri && !reads[index]) {
-        reads[index] = readText(uri, check, token).catch((failure: unknown) => ({ failure }));
+        reads[index] = readText(uri, check, token, MAX_SEARCHED_BYTES).catch(
+          (failure: unknown) => ({ failure }),
+        );
       }
     };
     search: for (const [index, uri] of files.entries()) {
@@ -530,11 +537,13 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
     const roots = folders();
     const uri = resolveWorkspaceFile(input.file, roots);
-    const content = await readText(uri, boundary(roots, token), token).catch((error: unknown) => {
-      throw fileError(error, uri, {
-        FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri)}".`,
-      });
-    });
+    const content = await readText(uri, boundary(roots, token), token, MAX_READ_BYTES).catch(
+      (error: unknown) => {
+        throw fileError(error, uri, {
+          FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri)}".`,
+        });
+      },
+    );
     if ("error" in content) throw new Error(content.error);
     const { text } = content;
     const lines: string[] = [];

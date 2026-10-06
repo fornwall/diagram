@@ -199,7 +199,20 @@ suite("workspace tools", function () {
     const full = await invoke(searcher, { query: "missing", glob: `${relative}/*` });
     assert.match(full, /^No matches \(searched \d+ files; skipped [2-9] files: binary/);
     assert.match(await invoke(reader, { file: path.join(dir, "binary.bin") }), /^Error: Binary/);
-    assert.match(await invoke(reader, { file: path.join(dir, "large.txt") }), /^Error: .*1 MiB/);
+    assert.strictEqual(
+      await invoke(reader, { file: path.join(dir, "large.txt"), endLine: 1 }),
+      `${relative}/large.txt, lines 1-1 of 1:\n1: ${"X".repeat(1000)}… (1048577 characters)\nLines longer than 1000 characters are cut.`,
+    );
+    const huge = path.join(dir, "huge.txt");
+    await fs.writeFile(huge, "X".repeat(16 * 1024 * 1024 + 1));
+    try {
+      assert.strictEqual(
+        await invoke(reader, { file: huge }),
+        "Error: The file exceeds the 16 MiB text limit.",
+      );
+    } finally {
+      await fs.rm(huge);
+    }
   });
 
   test("charges binary and invalid text against the total scan byte limit", async () => {
