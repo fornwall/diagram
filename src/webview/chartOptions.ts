@@ -1,5 +1,11 @@
-import type { ChartOptionsState } from "../chartOptions";
-import { AGGREGATIONS, CHART_TYPES, type ChartFilter, FACET_TYPES } from "../chartSpec";
+import { type ChartOptionsState, unusableSettings } from "../chartOptions";
+import {
+  AGGREGATIONS,
+  CHART_TYPES,
+  type ChartFilter,
+  type ChartType,
+  FACET_TYPES,
+} from "../chartSpec";
 import type { FromWebview } from "../protocol";
 
 function button(text: string, className = "secondary"): HTMLButtonElement {
@@ -113,18 +119,19 @@ export class ChartOptionsForm {
     }
     this.filters.parentElement?.classList.add("chart-filter-field");
     this.type.addEventListener("change", () => {
-      if (this.type.value === "histogram") {
-        this.fillColumns(this.labels, []);
-        this.aggregate.value = "";
-        this.sort.value = "";
-        this.limit.value = "";
-      } else {
-        this.bins.value = "";
-      }
-      if (!this.canFacet()) {
-        this.facet.value = "";
-        this.facetColumns.value = "";
-        this.facetScales.value = "";
+      const { aggregate, sort, limit, bins, facet, facetColumns, facetScales } = this;
+      const fields = {
+        aggregate,
+        sort,
+        limit,
+        bins,
+        facetColumns,
+        facetScales,
+        facetColumn: facet,
+      };
+      for (const key of unusableSettings(this.type.value as ChartType)) {
+        if (key === "labelColumn") this.fillColumns(this.labels, []);
+        else fields[key].value = "";
       }
       this.updateAvailability();
     });

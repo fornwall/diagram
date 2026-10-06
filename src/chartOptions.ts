@@ -97,10 +97,13 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
   return validateChartSpec(result);
 }
 
-/** The chart settings that a type of chart cannot use. */
-function unusableSettings(type: ChartType): UpdateKey[] {
-  const keys: UpdateKey[] =
-    type === "histogram" ? ["labelColumn", "aggregate", "sort", "limit"] : ["bins"];
-  if (!FACET_TYPES.includes(type)) keys.push("facetColumn", "facetColumns", "facetScales");
-  return keys;
+/** The chart settings that a type of chart cannot use, which the Chart Options form clears too. */
+export function unusableSettings(type: ChartType) {
+  const keys =
+    type === "histogram"
+      ? (["labelColumn", "aggregate", "sort", "limit"] as const)
+      : (["bins"] as const);
+  return FACET_TYPES.includes(type)
+    ? keys
+    : ([...keys, "facetColumn", "facetColumns", "facetScales"] as const);
 }
