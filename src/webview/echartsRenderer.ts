@@ -179,26 +179,25 @@ export class EChartsRenderer implements Renderer {
     this.relayout();
   }
 
-  /** Complete pending animations before exporting, so an early export includes every item. */
+  /**
+   * An image of the chart as laid out for its current size, with its animations finished, so that
+   * an early export includes every item, and without what the pointer and the toolbox add to it.
+   */
   async toImage(background: string): Promise<DiagramImage> {
     if (!this.chart) throw new Error("There is no chart to make an image of.");
-    // Export can precede the resize observer or its debounced layout after changing views.
-    // Finish both now; hidden charts keep the dimensions of their last visible rendering.
-    this.resizeChart();
+    // Export can precede the resize observer or its debounced layout after changing views: lay out
+    // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
+    // dimensions of their last visible rendering.
     this.apply(false, true);
-    clearTimeout(this.relayoutTimer);
-    this.relayoutTimer = undefined;
+    this.cancelRelayout();
     const svg = this.container.querySelector("svg");
-    if (!svg) {
-      throw new Error("There is no chart to make an image of.");
-    }
+    if (!svg) throw new Error("There is no chart to make an image of.");
     // The pointer can still rest on the chart, as when the image is exported from the context menu
     // with the keyboard: leave out the axis pointer and the emphasis it shows, as if it had left.
     // Downplaying everything clears the marks too, so highlight them again.
     this.chart.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
-    this.chart.dispatchAction({ type: "downplay" });
-    this.hasHighlights = false;
-    this.highlightMarks();
+    this.chart.dispatchAction({ type: "downplay" }, { silent: true });
+    this.highlightMarked();
     const drawing = this.chart.getZr();
     // ECharts applies the states on its next frame: run it now.
     drawing.animation.trigger("frame");
@@ -313,8 +312,7 @@ export class EChartsRenderer implements Renderer {
   private disposeChart(): void {
     this.focus.hide();
     cancelAnimationFrame(this.resizeFrame);
-    clearTimeout(this.relayoutTimer);
-    this.relayoutTimer = undefined;
+    this.cancelRelayout();
     this.chart?.dispose();
     this.chart = undefined;
     this.chartItems = undefined;
@@ -466,6 +464,12 @@ export class EChartsRenderer implements Renderer {
         this.relayout();
       }, 150);
     });
+  }
+
+  /** Cancels the layout due once the size settles, so that the next change of size lays out at once. */
+  private cancelRelayout(): void {
+    clearTimeout(this.relayoutTimer);
+    this.relayoutTimer = undefined;
   }
 
   private resizeChart(): void {
