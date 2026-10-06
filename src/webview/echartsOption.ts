@@ -265,6 +265,8 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
   }
 }
 
+const isObject = (value: unknown): value is object => value !== null && typeof value === "object";
+
 /**
  * Finds callbacks written as strings, which ECharts draws as the text they are, and objects that
  * contain themselves, which a JavaScript source can build and no chart can be drawn from. A
@@ -278,7 +280,7 @@ function findJavaScript(
   inside: WeakSet<object>,
   checkCallbacks = true,
 ): void {
-  if (value === null || typeof value !== "object" || ArrayBuffer.isView(value)) {
+  if (!isObject(value) || ArrayBuffer.isView(value)) {
     return;
   }
   if (inside.has(value)) {
@@ -290,8 +292,9 @@ function findJavaScript(
   inside.add(value);
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      // Primitive data points cannot contain callbacks; avoid building paths for large datasets.
-      if (item !== null && typeof item === "object") {
+      // Primitive data points, alone or as [x, y], cannot contain callbacks: skip building paths
+      // for large datasets.
+      if (isObject(item) && !(Array.isArray(item) && !item.some(isObject))) {
         findJavaScript(item, `${path}[${index}]`, inside, checkCallbacks);
       }
     });
@@ -307,7 +310,7 @@ function findJavaScript(
     const item = value[key];
     const callback =
       checkCallbacks && typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
-    if (!callback && (item === null || typeof item !== "object")) {
+    if (!callback && !isObject(item)) {
       continue;
     }
     const itemPath = path === "option" ? key : `${path}.${key}`;
