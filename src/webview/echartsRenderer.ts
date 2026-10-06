@@ -5,24 +5,12 @@ import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { ChartFocus } from "./echartsFocus";
-import {
-  ChartItems,
-  type ItemRef,
-  itemKey,
-  modelOf,
-  parseItemKey,
-  type SeriesModel,
-} from "./echartsItems";
-import {
-  disableAnimation,
-  focusHighlighted,
-  keepUserState,
-  layoutOption,
-  toolWarnings,
-} from "./echartsLayout";
+import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
+import { disableAnimation, focusHighlighted, layoutOption, toolWarnings } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
 import { type JsonObject, parseOption, seriesTypes } from "./echartsOption";
+import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
 import { type DiagramImage, standaloneSvg } from "./images";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
@@ -549,40 +537,4 @@ export class EChartsRenderer implements Renderer {
       chart.dispatchAction({ type: "select", batch: added });
     }
   }
-}
-
-/**
- * What the user changed in a shown chart that ECharts keeps in its model rather than its option,
- * and a new option would start over from: where the force layout of a graph left its nodes, which
- * it would place anew at random, the node a treemap or sunburst is drilled down to, and the nodes
- * of a tree that are expanded. Returns how to hand it to the model of the same option laid out
- * anew, before that is laid out.
- */
-function modelState(chart: ECharts.ECharts): (chart: ECharts.ECharts) => void {
-  const restores: ((series: SeriesModel) => void)[] = [];
-  modelOf(chart).eachRawSeries((series) => {
-    const points = series.preservedPoints;
-    const viewRoot = series.getViewRoot?.().dataIndex;
-    const tree = series.subType === "tree" ? series.getRawData().tree : undefined;
-    const expanded: boolean[] = [];
-    if (tree) {
-      for (let index = 0, count = series.getRawData().count(); index < count; index++) {
-        expanded[index] = tree.getNodeByDataIndex(index).isExpand;
-      }
-    }
-    restores[series.componentIndex] = (next) => {
-      next.preservedPoints = points;
-      const nextTree = next.getRawData().tree;
-      if (viewRoot !== undefined && nextTree) {
-        next.resetViewRoot?.(nextTree.getNodeByDataIndex(viewRoot));
-      }
-      expanded.forEach((isExpand, index) => {
-        const node = nextTree?.getNodeByDataIndex(index);
-        if (node) node.isExpand = isExpand;
-      });
-    };
-  });
-  return (next) => {
-    modelOf(next).eachRawSeries((series) => restores[series.componentIndex]?.(series));
-  };
 }

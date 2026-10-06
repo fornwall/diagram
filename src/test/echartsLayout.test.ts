@@ -1,11 +1,7 @@
 import * as assert from "node:assert";
-import {
-  keepUserState,
-  type LayoutContext,
-  layoutOption,
-  toolWarnings,
-} from "../webview/echartsLayout";
+import { type LayoutContext, layoutOption, toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
+import { keepUserState } from "../webview/echartsState";
 import { testColors as colors } from "./themeColors";
 
 // biome-ignore lint/suspicious/noExplicitAny: test access to the untyped option
