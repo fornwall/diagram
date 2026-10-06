@@ -1470,6 +1470,8 @@ suite("webview", function () {
       await draw({
         language: "echarts",
         source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+        // Which names the file after what it is.
+        title: "",
       });
       const download = (await evaluate(`(async () => {
         const original = HTMLCanvasElement.prototype.toBlob;
@@ -1491,7 +1493,7 @@ suite("webview", function () {
           HTMLCanvasElement.prototype.toBlob = original;
         }
       })()`)) as { url: string; hint: string };
-      assert.match(download.url, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
+      assert.match(download.url, /^image\/svg\+xml:chart\.svg:data:image\/svg\+xml/);
       assert.strictEqual(download.hint, hint);
     });
   }

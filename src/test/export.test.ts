@@ -167,6 +167,23 @@ suite("native export", function () {
     }
   });
 
+  test("names an untitled drawing after what it is", async () => {
+    const { panel } = await exportingPanel();
+    try {
+      for (const drawing of [diagram, chart]) {
+        assert.ok((await panel.render({ ...drawing, title: " / " }, "tool")).ok);
+        await panel.exportDiagram();
+      }
+      assert.deepStrictEqual(errors, []);
+      assert.deepStrictEqual(
+        dialogs.map((dialog) => dialog.defaultUri?.path.split("/").pop()),
+        ["diagram.svg", "chart.svg"],
+      );
+    } finally {
+      panel.dispose();
+    }
+  });
+
   test("rejects a diagram replaced while the picker is open", async () => {
     const { panel } = await exportingPanel();
     try {

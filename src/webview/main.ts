@@ -88,6 +88,7 @@ const forgetDragImage = enableDragOut(dragOutHandle, {
   },
   enqueue,
   title: () => titleElement.textContent?.trim() ?? "",
+  noun: () => active?.noun ?? "diagram",
   hint: transientHint,
 });
 

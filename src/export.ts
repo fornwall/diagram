@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as vscode from "vscode";
 import {
   type DiagramLanguage,
+  diagramNoun,
   type ExportFormat,
   type ExportResult,
   errorMessage,
@@ -71,7 +72,7 @@ export async function exportDrawing(
       saveLabel: "Export",
       defaultUri: vscode.Uri.joinPath(
         folder,
-        `${safeFileName(drawing.title, "diagram")}.${format}`,
+        `${safeFileName(drawing.title, diagramNoun(drawing.language))}.${format}`,
       ),
       filters: { [choice.label]: [format] },
     });

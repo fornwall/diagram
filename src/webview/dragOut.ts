@@ -22,6 +22,8 @@ interface DragOutOptions {
   enqueue(task: () => Promise<void>): void;
   /** The title, which names the file. */
   title(): string;
+  /** What the drawing is, such as a chart, which names the file when it has no title. */
+  noun(): string;
   hint(text: string): void;
 }
 
@@ -90,7 +92,7 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
     }
     const { image, png, pngError, preview } = ready;
     const title = options.title();
-    const name = safeFileName(title, "diagram");
+    const name = safeFileName(title, options.noun());
     const svg = svgDataUrl(image.svg);
     // A file the drop target downloads from the data URL. This is what an application that takes
     // dropped files, such as a chat window, reads; the type it asks for decides the rest.
