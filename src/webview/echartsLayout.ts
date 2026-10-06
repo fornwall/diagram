@@ -146,7 +146,28 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
   styleSeries(series, asArray(base.yAxis), context.colors);
   addInteraction(base, series, cartesian, context.colors);
+  for (const toolbox of asArray(base.toolbox)) {
+    keepLastingTools(toolbox);
+  }
   return option;
+}
+
+/**
+ * The toolbox features that change the chart in ways its option does not hold, such as switching
+ * between bars and lines: the next layout, as on a resize, would undo them.
+ */
+const PASSING_TOOLS = new Set(["magicType", "dataZoom", "brush"]);
+
+/** Leaves out the toolbox features whose changes would be undone, and lets the data view only show the data. */
+function keepLastingTools(toolbox: JsonObject): void {
+  if (!isPlainObject(toolbox.feature)) return;
+  const feature: JsonObject = {};
+  for (const [name, settings] of Object.entries(toolbox.feature)) {
+    if (PASSING_TOOLS.has(name)) continue;
+    feature[name] =
+      name === "dataView" && isPlainObject(settings) ? { ...settings, readOnly: true } : settings;
+  }
+  toolbox.feature = feature;
 }
 
 /** Timeline and media options can override both global and per-series animation settings, hence all. */

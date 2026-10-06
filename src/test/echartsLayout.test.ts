@@ -25,6 +25,24 @@ const bars = (extra: Option = {}): Option => ({
 });
 
 suite("echartsLayout", () => {
+  test("leaves out the toolbox features that a new layout would undo", () => {
+    const feature = {
+      saveAsImage: {},
+      dataView: { lang: ["Data"] },
+      magicType: { type: ["line", "bar"] },
+      dataZoom: {},
+      brush: {},
+      restore: {},
+    };
+    const source = bars({ toolbox: { feature } });
+    assert.deepStrictEqual(layout(source).toolbox.feature, {
+      saveAsImage: {},
+      dataView: { lang: ["Data"], readOnly: true },
+      restore: {},
+    });
+    assert.ok(source.toolbox.feature.magicType);
+  });
+
   test("leaves the source option untouched", () => {
     const source = bars();
     const copy = structuredClone(source);
