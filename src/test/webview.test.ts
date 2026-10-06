@@ -2202,9 +2202,14 @@ suite("webview", function () {
       series: [{ type: "bar", data: [1, 2] }],
     };
     const chart = { language: "echarts", source: JSON.stringify(option) } as const;
-    assert.deepStrictEqual(await render(chart), { ok: true, diagramType: "bar" });
+    const shown = () =>
+      evaluate(`["diagram", "chart"].filter(id => document.getElementById(id)?.hidden === false)`);
     await draw({ source: MERMAID["flowchart-v2"] });
-    await draw(chart);
+    assert.deepStrictEqual(await shown(), ["diagram"]);
+    assert.deepStrictEqual(await render(chart), { ok: true, diagramType: "bar" });
+    assert.deepStrictEqual(await shown(), ["chart"]);
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(await shown(), ["diagram"]);
   });
 
   test("selects sequence footer participants by identity when their labels match", async () => {
