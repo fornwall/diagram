@@ -88,12 +88,14 @@ ECharts options with JavaScript code, such as callbacks or custom series, render
 
 `diagram_chart` reads:
 
-- CSV (comma or semicolon) and TSV
+- CSV (comma, semicolon or the delimiter of an Excel `sep=` line) and TSV
 - JSON (nested objects become dotted columns such as `cpu.user`) and JSON Lines
-- Markdown tables, also within text, and other pipe tables such as `psql`, `mysql` and `sqlite3` output
-- Whitespace-separated output such as `du`, `wc -l`, `ls -l`, `df`, `free`, `docker ps`, `kubectl top` and `git diff --stat`
+- Markdown tables, also within text, and tables drawn with pipes or box-drawing characters, such as `psql`, `mysql`, `sqlite3`, DuckDB and Polars output
+- Whitespace-separated output such as `du`, `wc -l`, `ls -l`, `df`, `free`, `docker ps`, `kubectl`, `git diff --stat`, `go test -bench` and pandas data frames
 
-Sizes such as `1.5K` or `2 MiB` become bytes, in powers of 1000 for commands run with `--si` or `df -H`.
+Terminal colors are ignored. Of a result that DuckDB, Polars or pandas shortened, only the rows and columns shown are read.
+
+`1.5K` is 1500 and `$1.2B` is 1.2 billion, but in a column of sizes, such as `du -h` output or a column named `Size`, `1.5K` is 1536 bytes. Units such as `MiB` and `kB` always give bytes; bare units are powers of 1000 for commands run with `--si` or `df -H`. Durations such as `812ms` and `1h2m3s` become seconds, as do `45m` and `1:02:03` in a column named for durations, such as `Elapsed`. A unit in a header, as in `Size (KB)` or `Latency (ms)`, applies to the plain numbers below it. Charts show sizes and durations in the unit that suits the largest value.
 
 It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates (and `YYYY/MM/DD`) in a single label column on a time axis.
 
@@ -111,7 +113,7 @@ A sankey with two label columns joins nodes of the same name, as in a list of gr
 
 A final total row that matches the sum of the rows above it is left out, as are parent rows of a hierarchy, such as the directory totals of `du -a`.
 
-Filters compare parsed cells: cells that look like numbers are numbers. `eq` and `neq` compare value and type, and `null` matches empty cells. `lt`, `lte`, `gt` and `gte` take a number; `contains` matches text, case-sensitively. Compare in the input's units, such as bytes for sizes. Use at most 50 filters; `[]` clears them.
+Filters compare parsed cells: cells that look like numbers are numbers. `eq` and `neq` compare value and type, and `null` matches empty cells. `lt`, `lte`, `gt` and `gte` take a number; `contains` matches text, case-sensitively. Compare sizes in bytes and durations in seconds. Use at most 50 filters; `[]` clears them.
 
 Histograms count one numeric value column; omit `labelColumn`, `aggregate`, `sort` and `limit`. A bin includes its lower bound, and only the last bin its upper bound. Faceted histograms share bin boundaries, even with independent scales.
 
