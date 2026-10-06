@@ -180,7 +180,7 @@ suite("data", () => {
       "12X",
       "NaN",
       "$",
-      "5$",
+      "5 $ 5",
     ]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
@@ -232,6 +232,12 @@ suite("data", () => {
       ],
     });
     assert.deepStrictEqual(parse("item;price\nsoup;€4,50").rows, [["soup", 4.5]]);
+    // Much of Europe writes the currency after the number.
+    assert.deepStrictEqual(parse("Artikel;Preis\nSuppe;4,50 €\nBrot;1.200,00 €").rows, [
+      ["Suppe", 4.5],
+      ["Brot", 1200],
+    ]);
+    assert.deepStrictEqual(parseNumber("5$"), { value: 5 });
   });
 
   test("parses quoted numbers and newlines in CSV", () => {

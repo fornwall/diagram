@@ -6,11 +6,14 @@ import type { Cell } from "./data";
 /** What a column's numbers measure, as written in the data ("12%", "1.5G") or its name ("%CPU"). */
 export type Unit = "%" | "bytes";
 
-/** A percent sign, or a unit of bytes: "B", "K", "kB", "KiB", "Ki" and so on. */
-const SUFFIX = "%|Bi?|[KMGTPEk](?:i?B|i)?";
+/** A currency symbol, which comes before a number ("$5") or, in much of Europe, after it ("5 €"). */
+const CURRENCY = "[$€£¥]";
+
+/** A percent sign, a unit of bytes ("B", "K", "kB", "KiB", "Ki" and so on) or a currency. */
+const SUFFIX = `%|Bi?|[KMGTPEk](?:i?B|i)?|${CURRENCY}`;
 
 /** A sign, which may be a typeset minus (−), and a currency symbol, as in "-$5". */
-const PREFIX = "([-+\u2212]?)[$€£¥]?";
+const PREFIX = `([-+\u2212]?)${CURRENCY}?`;
 
 /** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
@@ -60,10 +63,10 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
- * "$9.99", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of 1024, as du -h
- * and ls -lh print them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k" (in units of
- * 1000, as docker and du --si print them). The column's `format` tells how to read "1,5",
- * "1 234", "(5)", "1.2M" beside "150k" and "250m".
+ * "$9.99", "9.99 €", "12.5%" (as 12.5) and sizes in bytes: "512B", "1.5K", "12M" (in units of
+ * 1024, as du -h and ls -lh print them), "3GiB", "128Mi" (1024 too) or "1.2kB", "187MB", "150k"
+ * (in units of 1000, as docker and du --si print them). The column's `format` tells how to read
+ * "1,5", "1 234", "(5)", "1.2M" beside "150k" and "250m".
  */
 export function parseNumber(
   text: string,
@@ -95,7 +98,8 @@ export function parseNumber(
   if (!Number.isFinite(value)) {
     return undefined;
   }
-  if (suffix === undefined) {
+  // A currency symbol, of those in CURRENCY, says nothing of the number.
+  if (suffix === undefined || CURRENCY.includes(suffix)) {
     return { value };
   }
   if (suffix === "%") {
