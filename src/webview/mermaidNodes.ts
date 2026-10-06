@@ -399,10 +399,20 @@ export function findNodes(
     addInOrder(svg.querySelectorAll(`g.bar-plot-${i} > rect`), bars);
   }
 
-  // Timeline periods and events, and quadrant chart points.
-  for (const element of svg.querySelectorAll("g.timeline-node, g.data-point")) {
+  // Timeline periods and events, quadrant chart points, and the problems and causes of Ishikawa
+  // diagrams.
+  for (const element of svg.querySelectorAll(
+    "g.timeline-node, g.data-point, g.ishikawa-head-group, g.ishikawa-label-group, g.ishikawa-sub-group",
+  )) {
     const label = textOf(element);
     add(element, { id: uniqueId(label), label });
+  }
+
+  // Railroad diagram rules, by their names, which Mermaid draws followed by " =".
+  for (const rule of svg.querySelectorAll("g.railroad-rule")) {
+    const name = rule.querySelector(".railroad-rule-name");
+    const label = name && textOf(name).replace(/ =$/, "");
+    if (label) add(rule, { id: uniqueId(label), label });
   }
 
   // Packet fields, by their labels: a box, its label and its bit numbers each, in the order of the

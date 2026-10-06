@@ -2200,7 +2200,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the items of treemaps, packets, radar charts, C4 boundaries and block groups, which Mermaid draws without ids", async () => {
+  test("finds the items of treemaps, packets, radar charts, C4 boundaries, block groups, Ishikawa and railroad diagrams, which Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2246,6 +2246,21 @@ suite("webview", function () {
         // Mermaid makes up an id for the second group.
         'block-beta\n  block:grp\n    c["C"] d\n  end\n  block\n    e\n  end',
         ["c: <g>", "d: <g>", "e: <g>", "grp: <g>"],
+      ],
+      [
+        "ishikawa-beta\n  Blur\n    Camera\n      Out of focus\n      Training\n    User\n      Training",
+        [
+          "Blur: Blur",
+          "Camera: Camera",
+          "Out of focus: Out of focus",
+          "Training (2): Training",
+          "Training: Training",
+          "User: User",
+        ],
+      ],
+      [
+        'railroad-ebnf-beta\n  expr = term , { "+" , term } ;\n  term = "x" ;',
+        ["expr: term + term expr =", "term: x term ="],
       ],
     ];
     for (const [source, items] of cases) {
