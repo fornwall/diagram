@@ -14,7 +14,7 @@ function build(data: string | DataTable, extra: Partial<ChartSpec> = {}): Option
   return result.option;
 }
 
-suite("chart transforms", () => {
+suite("chartTransforms", () => {
   test("keeps the rows that match every filter, comparing cells by type, without changing the table", () => {
     const table: DataTable = {
       header: true,

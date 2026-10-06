@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { CHART_TYPES, DATA_FORMATS, dataOrigin, validateChartSpec } from "../chartSpec";
 
-suite("chart spec", () => {
+suite("chartSpec", () => {
   const source = { type: "histogram", data: "service,latency\na,5\nb,12" };
 
   test("validates facets, histogram bins and typed filters", () => {

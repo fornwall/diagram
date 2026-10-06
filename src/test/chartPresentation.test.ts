@@ -15,7 +15,7 @@ function edited(change: (option: Option) => void, chart = spec) {
   return captureChartPresentation(JSON.stringify(option), baseline);
 }
 
-suite("chart presentation", () => {
+suite("chartPresentation", () => {
   test("captures generated options without retaining their data or mutable styling", () => {
     const option = buildChart(spec, oldTable).option as Option;
     option.series[0].label = { show: true };

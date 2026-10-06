@@ -14,7 +14,7 @@ function build(data: string, spec: Partial<ChartSpec> = {}): Option {
   return chart.option;
 }
 
-suite("chart facets", () => {
+suite("chartFacets", () => {
   test("shares category order without changing the values' categories", () => {
     const option = build(
       "service,operation,ms\napi,read,2\napi,write,5\nworker,write,30\nworker,delete,8",

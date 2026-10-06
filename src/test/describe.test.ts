@@ -3,7 +3,7 @@ import { parseTable } from "../data";
 import { describeChartParameters, describeDiagram } from "../describe";
 import type { DiagramState } from "../panel";
 
-suite("describeDiagram", () => {
+suite("describe", () => {
   const chart: DiagramState = {
     language: "echarts",
     source: '{"series":[{"type":"pie","data":[{"name":"Sales","value":42}]}]}',

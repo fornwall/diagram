@@ -36,7 +36,7 @@ async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }
   return source;
 }
 
-suite("chart agent tools", function () {
+suite("chartTools", function () {
   this.timeout(10_000);
 
   test("analysis updates reuse the full cached table and retain the prior chart on invalid filters", async () => {
