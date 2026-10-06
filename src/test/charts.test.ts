@@ -1506,6 +1506,29 @@ suite("charts", () => {
     assert.strictEqual(du.series[0].data[0], 1.5);
   });
 
+  test("durations are shown in a unit that suits them", () => {
+    const bench = "name,Latency\nparse,812ms\nrender,120ms\ncache,450µs";
+    const option = build(chart("bar"), bench);
+    assert.deepStrictEqual(seriesNames(option), ["Latency (ms)"]);
+    assert.deepStrictEqual(
+      option.series[0].data.map((value: number) => Math.round(value * 1000) / 1000),
+      [812, 120, 0.45],
+    );
+    assert.strictEqual(
+      summary(chart("bar"), bench),
+      'Charted "Latency (ms)" by "name"; showed durations in ms.',
+    );
+    const stated = build(chart("bar"), "name,Latency (ms)\nparse,812ms\nrender,1.2s");
+    assert.deepStrictEqual(seriesNames(stated), ["Latency (s)"]);
+    assert.deepStrictEqual(stated.series[0].data, [0.812, 1.2]);
+    const ages = build(chart("bar"), "NAME   AGE\napi    45m\nweb    3h12m");
+    assert.deepStrictEqual(seriesNames(ages), ["AGE (h)"]);
+    assert.deepStrictEqual(ages.series[0].data, [0.75, 3.2]);
+    // Counts of rows are not durations.
+    const counted = build(chart("bar", { aggregate: "count" }), bench);
+    assert.deepStrictEqual(counted.series[0].data, [1, 1, 1]);
+  });
+
   test("sorting, limiting and byte scaling preserve reusable source tables", () => {
     const table = parseTable("name,size,count\nsmall,512B,1\nlarge,2KiB,3\nmedium,1KiB,2");
     const original = structuredClone(table);

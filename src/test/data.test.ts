@@ -194,6 +194,46 @@ suite("data", () => {
     assert.deepStrictEqual(parse("pod,members\na,800M\nb,1.2K").rows[0], ["a", 800e6]);
   });
 
+  test("reads durations in seconds, as Go, kubectl and time print them", () => {
+    for (const [text, value] of [
+      ["5.123s", 5.123],
+      ["812ms", 0.812],
+      ["812 ms", 0.812],
+      ["1.5µs", 1.5e-6],
+      ["1.5us", 1.5e-6],
+      ["1234ns", 1234e-9],
+      ["0m1.234s", 1.234],
+      ["1h2m3s", 3723],
+      ["3h12m", 11_520],
+      ["2d5h", 190_800],
+    ] as const) {
+      assert.deepStrictEqual(parseNumber(text), { value, unit: "seconds" }, text);
+    }
+    // A single unit of minutes, hours or days, or a clock, only in a column of durations.
+    for (const text of ["5m", "3h", "2d", "1:02:03"]) {
+      assert.strictEqual(parseNumber(text), undefined, text);
+    }
+    const pods = parseTable(
+      "NAME   READY   AGE\napi    1/1     45m\nweb    1/1     3h12m\ndb     1/1     2d",
+    );
+    assert.deepStrictEqual(
+      pods.rows.map((row) => row[2]),
+      [2700, 11_520, 172_800],
+    );
+    assert.deepStrictEqual(pods.columns[2], { name: "AGE", numeric: true, unit: "seconds" });
+    const runs = parse("run,elapsed\na,1:02:03.5\nb,3:45\nc,1-00:00:00");
+    assert.deepStrictEqual(
+      runs.rows.map((row) => row[1]),
+      [3723.5, 225, 86_400],
+    );
+    // The time of day in another column stays text.
+    assert.deepStrictEqual(parse("event,at,people\nstandup,09:30,8\nlunch,12:00,20").rows[0], [
+      "standup",
+      "09:30",
+      8,
+    ]);
+  });
+
   test("parseNumber leaves other text alone", () => {
     for (const text of [
       "",
@@ -626,7 +666,7 @@ suite("data", () => {
     );
   });
 
-  test("reads the CPU of kubectl top in cores, and leaves ages in minutes as text", () => {
+  test("reads the CPU of kubectl top in cores, not ages in minutes", () => {
     const pods = parseTable(
       [
         "NAME                     CPU(cores)   MEMORY(bytes)",
@@ -666,7 +706,7 @@ suite("data", () => {
         "\n",
       ),
     );
-    assert.deepStrictEqual(ages.rows, [["web-1", "1/1", "Running", 0, "5m"]]);
+    assert.deepStrictEqual(ages.rows, [["web-1", "1/1", "Running", 0, 300]]);
   });
 
   test("parses TSV, keeping spaces in fields", () => {

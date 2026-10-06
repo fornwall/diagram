@@ -388,7 +388,7 @@ function describeColumn(table: DataTable, column: number): string {
   if (!numeric) {
     return "text";
   }
-  const kind = unit === "bytes" ? "bytes" : unit === "%" ? "percentages" : "numbers";
+  const kind = unit === undefined ? "numbers" : unit === "%" ? "percentages" : unit;
   // Charts leave out text cells in numeric columns.
   const texts = table.rows.flatMap((row) => (typeof row[column] === "string" ? [row[column]] : []));
   if (texts.length === 0) {

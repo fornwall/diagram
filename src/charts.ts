@@ -5,10 +5,11 @@ import { buildFacetedChart } from "./chartFacets";
 import { boxplotOption, cartesianOption, heatmapOption, scatterOption } from "./chartGrid";
 import { hierarchyOption, sankeyOption } from "./chartHierarchy";
 import { funnelOption, gaugeOption, pieOption, radarOption } from "./chartItems";
-import { type Reading, readRows, tableBytePower } from "./chartRows";
+import { type Reading, readRows, tableMultiples } from "./chartRows";
 import type { ChartSpec, ChartType } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import type { DataTable } from "./data";
+import type { Unit } from "./dataNumber";
 import { isPlainObject } from "./protocol";
 import { plural, quoteAll } from "./text";
 
@@ -52,11 +53,11 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
   };
 }
 
-/** What every facet reads alike: the columns, the notes about them and the unit of sizes. */
+/** What every facet reads alike: the columns, the notes about them and the multiples of units. */
 interface ChartPlan {
   columns: Columns;
   notes: string[];
-  bytePower?: number | undefined;
+  multiples?: Partial<Record<Unit, number>> | undefined;
 }
 
 /** Infer the shared columns and units once, rather than rescanning all rows for every facet. */
@@ -66,7 +67,7 @@ function planChart(spec: ChartSpec, table: DataTable, faceted: boolean): ChartPl
   return {
     columns,
     notes,
-    bytePower: faceted ? tableBytePower(table, columns.values) : undefined,
+    multiples: faceted ? tableMultiples(table, columns.values) : undefined,
   };
 }
 
@@ -87,7 +88,7 @@ function buildSingleChart(
     table,
     columns,
     notes,
-    ...readRows(spec, table, columns, notes, plan.bytePower),
+    ...readRows(spec, table, columns, notes, plan.multiples),
   };
   const option = drawChart(type, reading);
   return {

@@ -226,7 +226,7 @@
             },
             "max": {
               "type": "number",
-              "description": "The top of a gauge's scale, or of every radar axis, in input units (bytes for sizes). Inferred when left out."
+              "description": "The top of a gauge's scale, or of every radar axis, in input units (bytes for sizes, seconds for durations). Inferred when left out."
             },
             "aggregate": {
               "type": "string",
@@ -323,7 +323,7 @@
                 ],
                 "additionalProperties": false
               },
-              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units, e.g. bytes for sizes. An empty array clears filters."
+              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units: bytes for sizes, seconds for durations. An empty array clears filters."
             }
           },
           "required": [

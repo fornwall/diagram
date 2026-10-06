@@ -3,6 +3,7 @@
 import { type Columns, chained, columnName, readsLevels } from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
+import type { Unit } from "./dataNumber";
 import { plural, quoteAll } from "./text";
 
 /** The most levels of a row, as the hierarchy built from them is walked recursively. */
@@ -19,7 +20,7 @@ export interface Reading {
   spec: ChartSpec;
   table: DataTable;
   columns: Columns;
-  /** The value columns' names, carrying the unit that sizes in bytes are shown in. */
+  /** The value columns' names, with the multiple of bytes or seconds that they are shown in. */
   names: string[];
   /** Explicit axis maxima converted to the same units as the values. */
   maxima: number[];
@@ -81,30 +82,64 @@ export function interpolate(left: number, right: number, fraction: number): numb
     : left * (1 - fraction) + right * fraction;
 }
 
-const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
-/** A unit of bytes that a header states, as kubectl's "MEMORY(bytes)" or "Size (KB)". */
-const STATED_BYTE_UNIT = /\s*\((?:[Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i)\)$/;
+/**
+ * The units whose values are shown in a multiple of them: what the values are, the multiples by
+ * name and size from the smallest, and a multiple that a header may state, as kubectl's
+ * "MEMORY(bytes)", "Size (KB)" or "Latency (ms)".
+ */
+const SCALES: [Unit, { what: string; multiples: [string, number][]; stated: RegExp }][] = [
+  [
+    "bytes",
+    {
+      what: "sizes",
+      multiples: ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"].map((name, i) => [
+        name,
+        1024 ** i,
+      ]),
+      stated: /\s*\((?:[Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i)\)$/,
+    },
+  ],
+  [
+    "seconds",
+    {
+      what: "durations",
+      multiples: [
+        ["ns", 1e-9],
+        ["µs", 1e-6],
+        ["ms", 1e-3],
+        ["s", 1],
+        ["min", 60],
+        ["h", 3600],
+        ["d", 86400],
+      ],
+      stated: /\s*\((?:[nuµm]?s|sec|seconds|min|h)\)$/,
+    },
+  ],
+];
 
-/** The power of 1024 to show sizes up to `max` bytes in. */
-function bytePower(max: number): number {
-  let power = 0;
-  while (power < BYTE_UNITS.length - 1 && max >= 1024 ** (power + 1)) {
-    power++;
-  }
-  return power;
+/** The multiple to show values up to `max` in: the largest not above it, or the unit for none. */
+function multipleFor(multiples: [string, number][], max: number): number {
+  let i = multiples.findIndex(([, size]) => size === 1);
+  while (i + 1 < multiples.length && max >= (multiples[i + 1]?.[1] ?? Infinity)) i++;
+  while (i > 0 && max > 0 && max < (multiples[i]?.[1] ?? 0)) i--;
+  return i;
 }
 
-/** The power of 1024 for the byte columns among `values`, over every row of a table. */
-export function tableBytePower(table: DataTable, values: number[]): number {
-  let largest = 0;
-  for (const column of values) {
-    if (table.columns[column]?.unit !== "bytes") continue;
-    for (const row of table.rows) {
-      const value = row[column];
-      if (typeof value === "number") largest = Math.max(largest, Math.abs(value));
+/** The multiple of each unit for the columns of that unit among `values`, over a whole table. */
+export function tableMultiples(table: DataTable, values: number[]): Partial<Record<Unit, number>> {
+  const shared: Partial<Record<Unit, number>> = {};
+  for (const [unit, { multiples }] of SCALES) {
+    let largest = 0;
+    for (const column of values) {
+      if (table.columns[column]?.unit !== unit) continue;
+      for (const row of table.rows) {
+        const value = row[column];
+        if (typeof value === "number") largest = Math.max(largest, Math.abs(value));
+      }
     }
+    shared[unit] = multipleFor(multiples, largest);
   }
-  return bytePower(largest);
+  return shared;
 }
 
 /** Recognize a named totals row only when its values match the preceding sums within 1%. */
@@ -347,15 +382,15 @@ function rowLabels(
 
 /**
  * Remove totals and parent rows, aggregate, then discard unusable rows, sort and limit.
- * Group before limiting so "the 10 largest" selects groups. Scale byte values and axis names
- * together, by `sharedBytePower` when facets must agree on the unit.
+ * Group before limiting so "the 10 largest" selects groups. Scale sizes, durations and axis names
+ * together, by the `shared` multiples of their units when facets must agree on them.
  */
 export function readRows(
   spec: ChartSpec,
   table: DataTable,
   columns: Columns,
   notes: string[],
-  sharedBytePower?: number,
+  shared?: Partial<Record<Unit, number>>,
 ): Pick<Reading, "rows" | "names" | "maxima"> {
   const { type } = spec;
   const valueIndices = columns.values;
@@ -469,37 +504,41 @@ export function readRows(
     }
   }
 
-  // Sizes in bytes are shown in the unit that suits the largest.
-  const bytes = valueIndices.map((index) => table.columns[index]?.unit === "bytes");
-  const byteIndices = bytes.flatMap((byte, index) => (byte ? [index] : []));
-  let largest = 0;
-  if (sharedBytePower === undefined) {
-    for (const { values } of rows) {
-      for (const index of byteIndices) {
-        largest = Math.max(largest, Math.abs(values[index] ?? 0));
+  // Sizes and durations are shown in the multiple of their unit that suits the largest, and counts
+  // of rows as they are.
+  const counted = spec.aggregate === "count";
+  const names = counted ? ["rows"] : valueIndices.map(name);
+  const divisors = names.map(() => 1);
+  for (const [unit, { what, multiples, stated }] of counted ? [] : SCALES) {
+    const scaled = valueIndices.flatMap((index, i) =>
+      table.columns[index]?.unit === unit ? [i] : [],
+    );
+    if (scaled.length === 0) continue;
+    let largest = 0;
+    if (shared === undefined) {
+      for (const { values } of rows) {
+        for (const i of scaled) largest = Math.max(largest, Math.abs(values[i] ?? 0));
       }
     }
-  }
-  const power = sharedBytePower ?? bytePower(largest);
-  const divisor = 1024 ** power;
-  if (power > 0) {
-    notes.push(`showed sizes in ${BYTE_UNITS[power]}`);
-    // These value arrays were created above, so scale them without allocating another table.
-    for (const { values } of rows) {
-      for (const index of byteIndices) {
-        const value = values[index];
-        if (value !== null && value !== undefined) values[index] = value / divisor;
+    const [multiple, size = 1] = multiples[shared?.[unit] ?? multipleFor(multiples, largest)] ?? [];
+    if (size !== 1) {
+      notes.push(`showed ${what} in ${multiple}`);
+      // These value arrays were created above, so scale them without allocating another table.
+      for (const { values } of rows) {
+        for (const i of scaled) {
+          const value = values[i];
+          if (value !== null && value !== undefined) values[i] = value / size;
+        }
       }
     }
+    // A name that states another multiple, as "Latency (ms)" over "1.2s", is corrected.
+    for (const i of scaled) {
+      const unstated = names[i]?.replace(stated, "");
+      if (size !== 1 || unstated !== names[i]) names[i] = `${unstated} (${multiple})`;
+      divisors[i] = size;
+    }
   }
-  const unit = power > 0 ? ` (${BYTE_UNITS[power]})` : "";
-  const names =
-    spec.aggregate === "count"
-      ? ["rows"]
-      : valueIndices.map((index, i) =>
-          bytes[i] && unit ? name(index).replace(STATED_BYTE_UNIT, "") + unit : name(index),
-        );
   const max = spec.max;
-  const maxima = max === undefined ? [] : names.map((_, i) => (bytes[i] ? max / divisor : max));
+  const maxima = max === undefined ? [] : divisors.map((divisor) => max / divisor);
   return { rows, names, maxima };
 }
