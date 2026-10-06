@@ -21,6 +21,7 @@ export const WITH_DATABASE = new Set([
   "sequence",
   "gantt",
   "sankey",
+  "architecture",
 ]);
 
 export interface DiagramDb {
@@ -43,6 +44,14 @@ export interface DiagramDb {
   getLinks?(): Map<string, unknown> | unknown[];
   /** A sequence diagram's actors, by id, with their labels and links by name. */
   getActors?(): Map<string, { description?: string; links?: Record<string, unknown> | null }>;
+  /** An architecture diagram's edges, with whether they have an arrowhead into either end. */
+  getEdges?(): {
+    lhsId?: string;
+    rhsId?: string;
+    lhsInto?: boolean;
+    rhsInto?: boolean;
+    title?: string;
+  }[];
   /** A sankey diagram's nodes and flows, in the order it draws them. */
   getGraph?(): {
     nodes: { id: string }[];
@@ -218,7 +227,7 @@ export function findNodes(
     }
   }
 
-  findRelationships(svg, db, nodeIds, byElement, add);
+  findRelationships(svg, idPrefix, db, nodeIds, byElement, add);
 
   // Gantt tasks: a bar and a label with ids derived from the task id.
   for (const bar of svg.querySelectorAll("rect.task")) {
@@ -364,6 +373,7 @@ export function findNodes(
  */
 function findRelationships(
   svg: SVGSVGElement,
+  idPrefix: string,
   db: DiagramDb | undefined,
   nodeIds: ReadonlyMap<string, string>,
   found: ReadonlyMap<Element, DiagramNode>,
@@ -478,6 +488,27 @@ function findRelationships(
       );
       add(bands[i] as Element, node);
     }
+  }
+  // Architecture edges, which Mermaid draws in a group of their line, arrowheads and title, with
+  // an id from their ends, as for a flowchart edge without an id: one for each pair of ends.
+  const architectureEdges = (db?.getEdges?.() ?? []).flatMap(({ lhsId, rhsId, ...edge }) =>
+    lhsId === undefined || rhsId === undefined ? [] : [{ ...edge, lhsId, rhsId }],
+  );
+  const pairs = new Map<string, number>();
+  for (const { lhsId, rhsId } of architectureEdges) {
+    const id = `L_${lhsId}_${rhsId}_0`;
+    pairs.set(id, (pairs.get(id) ?? 0) + 1);
+  }
+  for (const { lhsId, rhsId, lhsInto, rhsInto, title } of architectureEdges) {
+    const id = `L_${lhsId}_${rhsId}_0`;
+    const line = svg.querySelector(`path.edge[id="${CSS.escape(idPrefix + id)}"]`);
+    // Junctions are no nodes to describe an edge by.
+    if (!line || pairs.get(id) !== 1 || !names.has(lhsId) || !names.has(rhsId)) continue;
+    const node = relation("edge", id, lhsId, rhsId, title ?? "", !!lhsInto, !!rhsInto);
+    // The line first, to take the focus for the keyboard.
+    const parts = Array.from(line.parentElement?.children ?? []).filter((part) => part !== line);
+    addLine(line, node);
+    for (const part of parts) add(part, node);
   }
   if (db?.getMessages) {
     const messages = new Map(db.getMessages().map((message) => [`i${message.id}`, message]));

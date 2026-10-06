@@ -2071,8 +2071,8 @@ suite("webview", function () {
         ["A: User", "B: Photo", "edge:L_A_B_0: User → Photo"],
       ],
       [
-        "architecture-beta\n  group api(cloud)[API]\n  group db(database)\n  service web(server)[Web] in api",
-        ["api: API", "db: db", "web: Web"],
+        "architecture-beta\n  group api(cloud)[API]\n  group store(database)\n  service web(server)[Web] in api\n  service db(database)[DB] in store\n  junction j\n  web:R -[queries]-> L:db\n  db:B -- T:j",
+        ["api: API", "db: DB", "edge:L_web_db_0: Web → DB: queries", "store: store", "web: Web"],
       ],
       [
         "sankey-beta\n  A,B,10\n  A,C,5",
