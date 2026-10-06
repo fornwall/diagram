@@ -18,6 +18,9 @@ function isScalar(value: unknown): boolean {
   return !isPlainObject(value) && !Array.isArray(value);
 }
 
+/** How many levels of nested objects become columns; deeper ones stay JSON text. */
+const MAX_DEPTH = 10;
+
 /**
  * The fields of an object, with those of nested objects under dotted names as pandas'
  * json_normalize gives them: {"cpu": {"user": 1}} has the field "cpu.user".
@@ -27,10 +30,11 @@ function flatten(
   prefix = "",
   // Without a prototype, so that a "__proto__" field is set like any other.
   fields: Record<string, unknown> = Object.create(null),
+  depth = 1,
 ): Record<string, unknown> {
   for (const [key, value] of Object.entries(object)) {
-    if (isPlainObject(value) && Object.keys(value).length > 0) {
-      flatten(value, `${prefix}${key}.`, fields);
+    if (isPlainObject(value) && Object.keys(value).length > 0 && depth < MAX_DEPTH) {
+      flatten(value, `${prefix}${key}.`, fields, depth + 1);
     } else {
       fields[`${prefix}${key}`] ??= value;
     }
@@ -87,7 +91,20 @@ function recordsFromJsonArray(array: unknown[]): Records {
   );
 }
 
-function recordsFromJson(value: unknown): Records {
+/** The object inside wrappers, as in {"data": {"repo": {...}}}, however deeply they nest. */
+function unwrap(json: unknown): unknown {
+  let value = json;
+  for (;;) {
+    const values = isPlainObject(value) ? Object.values(value) : [];
+    if (values.length !== 1 || !isPlainObject(values[0])) {
+      return value;
+    }
+    value = values[0];
+  }
+}
+
+function recordsFromJson(json: unknown): Records {
+  const value = unwrap(json);
   if (Array.isArray(value)) {
     return recordsFromJsonArray(value);
   }
@@ -98,10 +115,6 @@ function recordsFromJson(value: unknown): Records {
   const columns = Object.values(value);
   if (names.length === 0) {
     throw new Error("The JSON object is empty.");
-  }
-  // A wrapper, as in {"data": {"items": [...]}}.
-  if (columns.length === 1 && isPlainObject(columns[0])) {
-    return recordsFromJson(columns[0]);
   }
   const length = Array.isArray(columns[0]) ? columns[0].length : 0;
   if (

@@ -1263,6 +1263,16 @@ suite("data", () => {
     });
   });
 
+  test("parses deeply nested JSON objects without running out of stack", () => {
+    const nested = (depth: number, inner: string) =>
+      `${'{"a":'.repeat(depth)}${inner}${"}".repeat(depth)}`;
+    assert.deepStrictEqual(parse(nested(100_000, '{"x": 1, "y": 2}')).columns, ["name", "value"]);
+    // Objects deeper than ten levels stay JSON text.
+    const table = parse(`[${nested(100_000, "1")}]`);
+    assert.deepStrictEqual(table.columns, [Array(10).fill("a").join(".")]);
+    assert.strictEqual(table.rows[0]?.[0], nested(99_990, "1"));
+  });
+
   test("parses a JSON object mapping names to objects", () => {
     assert.deepStrictEqual(parse('{"2023": {"a": 1, "b": 2}, "2024": {"a": 3, "b": 4}}'), {
       columns: ["name", "a", "b"],
