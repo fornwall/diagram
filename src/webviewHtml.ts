@@ -90,8 +90,8 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       <textarea id="source" spellcheck="false" aria-label="Diagram source"></textarea>
       <p id="stale-note" class="note" hidden>The diagram changed since you started editing. Apply replaces it with your version.</p>
       <div class="actions">
-        <button id="apply" title="Render your version (Ctrl/Cmd+Enter)">Apply</button>
-        <button id="revert" class="secondary" title="Discard your changes">Revert</button>
+        <button id="apply" disabled title="Render your version (Ctrl/Cmd+Enter)">Apply</button>
+        <button id="revert" class="secondary" disabled title="Discard your changes">Revert</button>
       </div>
     </section>
     <div id="splitter" role="separator" tabindex="0" aria-label="Resize the source editor" aria-controls="editor" aria-valuemin="15" aria-valuemax="85" title="Resize source editor (arrow keys); Enter to reset"></div>
