@@ -1952,6 +1952,31 @@ suite("webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
+  test("finds icon and image shapes, architecture groups, and sankey nodes and flows", async () => {
+    const pixel =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const cases: [string, string[]][] = [
+      [
+        `flowchart LR\n  A@{ icon: "fa:user", label: "User" } --> B@{ img: "${pixel}", label: "Photo" }`,
+        ["A: User", "B: Photo", "edge:L_A_B_0: User → Photo"],
+      ],
+      [
+        "architecture-beta\n  group api(cloud)[API]\n  group db(database)\n  service web(server)[Web] in api",
+        ["api: API", "db: db", "web: Web"],
+      ],
+      [
+        "sankey-beta\n  A,B,10\n  A,C,5",
+        ["A: A", "B: B", "C: C", "edge:A → B: A → B: 10", "edge:A → C: A → C: 5"],
+      ],
+    ];
+    for (const [source, nodes] of cases) {
+      await draw({ source });
+      const found = await evaluate(`[...document.querySelectorAll("#diagram [role=button]")]
+        .map(node => node.getAttribute("data-diagram-id") + ": " + node.getAttribute("aria-label")).sort()`);
+      assert.deepStrictEqual(found, nodes, source);
+    }
+  });
+
   test("explains charts that cannot render", async () => {
     const outcome = await render({
       language: "echarts",

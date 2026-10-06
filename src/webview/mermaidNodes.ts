@@ -20,6 +20,7 @@ export const WITH_DATABASE = new Set([
   "requirement",
   "sequence",
   "gantt",
+  "sankey",
 ]);
 
 export interface DiagramDb {
@@ -38,10 +39,15 @@ export interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
-  /** A Gantt chart's task links, by task id. */
-  getLinks?(): Map<string, unknown>;
+  /** A Gantt chart's task links, by task id; a sankey diagram's flows, as an array. */
+  getLinks?(): Map<string, unknown> | unknown[];
   /** A sequence diagram's actors, by id, with their labels and links by name. */
   getActors?(): Map<string, { description?: string; links?: Record<string, unknown> | null }>;
+  /** A sankey diagram's nodes and flows, in the order it draws them. */
+  getGraph?(): {
+    nodes: { id: string }[];
+    links: { source: string; target: string; value: number }[];
+  };
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
@@ -150,13 +156,14 @@ export function findNodes(
     return id;
   };
 
-  // Nodes and groups (subgraphs, composite states, kanban columns, architecture services, …).
-  // Their element ids are the source ids, some decorated like "flowchart-A-0". Mermaid makes up
-  // the ids of mind map nodes ("node_0"), notes ("note0", "state-A----note-2") and subgraphs
-  // titled with spaces and no id ("subGraph0"), so those go by their names.
+  // Nodes, icon and image shapes among them, and groups (subgraphs, composite states, kanban
+  // columns, architecture services, …). Their element ids are the source ids, some decorated like
+  // "flowchart-A-0". Mermaid makes up the ids of mind map nodes ("node_0"), notes ("note0",
+  // "state-A----note-2") and subgraphs titled with spaces and no id ("subGraph0"), so those go by
+  // their names.
   const nodeIds = new Map<string, string>();
   for (const element of svg.querySelectorAll(
-    "g.node, g.rough-node, g.cluster, g.statediagram-cluster, g.architecture-service",
+    "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
   )) {
     const label = nameOf(element);
     if (!label) {
@@ -169,6 +176,22 @@ export function findNodes(
       : (decorated?.[1] ?? decorated?.[2] ?? domId);
     nodeIds.set(domId, id);
     add(element, { id, label });
+  }
+
+  // Architecture groups: a box, followed by a group of its icon and title.
+  for (const box of svg.querySelectorAll("g.architecture-groups > rect.node-bkg")) {
+    const id = withoutPrefix(box.id).replace(/^group-/, "");
+    const title = box.nextElementSibling?.matches("g") ? box.nextElementSibling : undefined;
+    const node = { id, label: (title && textOf(title)) || id };
+    add(box, node);
+    if (title) add(title, node);
+  }
+
+  // Sankey nodes: a bar and a label each (two in the outlined style), in the order of the database.
+  const sankeyNodes = (db?.getGraph?.().nodes ?? []).map(({ id }) => ({ id, label: id }));
+  addInOrder(svg.querySelectorAll(":scope > g.nodes > g.node"), sankeyNodes);
+  for (const label of [":not([class])", ".sankey-label-bg", ".sankey-label-fg"]) {
+    addInOrder(svg.querySelectorAll(`:scope > g.node-labels > text${label}`), sankeyNodes);
   }
 
   // Footer copies retain the participant's name, even when several share a display label.
@@ -439,6 +462,23 @@ function findRelationships(
       if (label) add(label, node);
     }
   }
+  // Sankey flows, in the order of the database.
+  const flows = db?.getGraph?.().links ?? [];
+  const bands = svg.querySelectorAll(":scope > g.links > g.link > path");
+  if (bands.length === flows.length) {
+    for (const [i, { source, target, value }] of flows.entries()) {
+      const node = relation(
+        "edge",
+        `${source} → ${target}`,
+        source,
+        target,
+        `${value}`,
+        false,
+        true,
+      );
+      add(bands[i] as Element, node);
+    }
+  }
   if (db?.getMessages) {
     const messages = new Map(db.getMessages().map((message) => [`i${message.id}`, message]));
     for (const line of svg.querySelectorAll('[data-et="message"][data-id]')) {
@@ -494,7 +534,8 @@ function linksOf(
     }
   }
   // A Gantt chart draws none, but keeps them by task id. (A state diagram keeps objects there.)
-  for (const [id, url] of db?.getLinks?.() ?? []) {
+  const taskLinks = db?.getLinks?.();
+  for (const [id, url] of taskLinks instanceof Map ? taskLinks : []) {
     const target = toLink(url);
     if (target && ids.has(id)) links.set(id, [target]);
   }
