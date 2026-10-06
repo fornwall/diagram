@@ -1063,7 +1063,7 @@ suite("data", () => {
     ]);
     assert.strictEqual(
       duckdb.note,
-      "Only the rows that the output shows were read, not those it left out of its 10000.",
+      "Only the rows that the output shows were read, not those it left out of its 10000 rows.",
     );
     // Without elided rows, DuckDB tells the size of a table of ten rows or more on one line.
     const rows = Array.from({ length: 10 }, (_, i) => `│ ${i} │ x │`);
@@ -1076,7 +1076,82 @@ suite("data", () => {
       [0, 1],
       [999, 2],
     ]);
-    assert.match(pandas.note ?? "", /of its 1000\.$/);
+    assert.match(pandas.note ?? "", /of its 1000 rows\.$/);
+    // Polars writes a thousand as "1_000".
+    const polars = parseTable(
+      [
+        "shape: (1_000, 1)",
+        "┌─────┐",
+        "│ a   │",
+        "│ --- │",
+        "│ i64 │",
+        "╞═════╡",
+        "│ 0   │",
+        "│ …   │",
+        "│ 999 │",
+        "└─────┘",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(polars.rows, [[0], [999]]);
+    assert.match(polars.note ?? "", /of its 1,000 rows\.$/);
+  });
+
+  test("leaves out the column that stands for columns left out of wide output, and says so", () => {
+    const expected = {
+      columns: [
+        { name: "a", numeric: true },
+        { name: "z", numeric: true },
+      ],
+      rows: [
+        [1, 3],
+        [4, 6],
+      ],
+      header: true,
+      note: "Only the columns that the output shows were read, not those it left out of its 30 columns.",
+    };
+    const duckdb = [
+      "┌───────┬───┬───────┐",
+      "│   a   │ … │   z   │",
+      "│ int32 │   │ int32 │",
+      "├───────┼───┼───────┤",
+      "│     1 │ … │     3 │",
+      "│     4 │ … │     6 │",
+      "├───────┴───┴───────┤",
+      "│ 2 rows  30 columns (2 shown) │",
+      "└──────────────────────────────┘",
+    ];
+    const polars = [
+      "shape: (2, 30)",
+      "┌─────┬───┬─────┐",
+      "│ a   ┆ … ┆ z   │",
+      "│ --- ┆   ┆ --- │",
+      "│ i64 ┆   ┆ i64 │",
+      "╞═════╪═══╪═════╡",
+      "│ 1   ┆ … ┆ 3   │",
+      "│ 4   ┆ … ┆ 6   │",
+      "└─────┴───┴─────┘",
+    ];
+    for (const lines of [duckdb, polars]) {
+      assert.deepStrictEqual(parseTable(lines.join("\n")), expected, lines.join("\n"));
+    }
+    const pandas = parseTable(
+      [
+        "      a  ...  z",
+        "0     1  ...  3",
+        "..   ..  ...  ..",
+        "999   4  ...  6",
+        "",
+        "[1000 rows x 30 columns]",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(pandas.rows, [
+      [0, 1, 3],
+      [999, 4, 6],
+    ]);
+    assert.strictEqual(
+      pandas.note,
+      "Only the rows and columns that the output shows were read, not those it left out of its 1000 rows and 30 columns.",
+    );
   });
 
   test("parses tables drawn with pipes, as in Markdown and by psql and mysql", () => {

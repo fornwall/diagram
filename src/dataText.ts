@@ -2,7 +2,7 @@
 // command output.
 
 import type { DataFormat } from "./chartSpec";
-import type { Records } from "./data";
+import type { Cell, Records } from "./data";
 import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
 import { parseNumber, type Unit } from "./dataNumber";
 import { quote } from "./text";
@@ -285,18 +285,60 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
 /**
  * A line that tells the size of a table rather than holding data, as psql ("(2 rows)"), mysql
  * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]") and DuckDB ("│ 1000 rows (40
- * shown)  3 columns │") print below it, and Polars ("shape: (2, 3)") above it.
+ * shown)  3 columns │") print below it, and Polars ("shape: (1_000, 3)") above it.
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \(\d+, \d+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \([\d_]+, [\d_]+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
 
-/**
- * Whether `line` stands for the rows that the output left out of a long table, as DuckDB prints
- * "·", Polars "…" and pandas "..." in each column.
- */
+/** What DuckDB ("·"), Polars ("…") and pandas ("...") print for the rows or columns they left out. */
+const ELISION = /^(?:[·…]|\.{2,})$/;
+
+/** Whether `line` stands for the rows that the output left out of a long table, in each column. */
 function isElision(line: string): boolean {
   const marks = line.split(/[\s|│┆]+/).filter(Boolean);
-  return marks.length > 0 && marks.every((mark) => /^(?:[·…]|\.{2,})$/.test(mark));
+  return marks.length > 0 && marks.every((mark) => ELISION.test(mark));
+}
+
+/**
+ * The columns that stand for those the output left out of a wide table: under a mark in the
+ * header, they have marks or nothing.
+ */
+function elidedColumns(records: Cell[][]): Set<number> {
+  const mark = (cell: Cell | undefined) => typeof cell === "string" && ELISION.test(cell.trim());
+  const elided = new Set<number>();
+  for (const [column, name] of (records[0] ?? []).entries()) {
+    if (
+      mark(name) &&
+      records.every((record) => {
+        const cell = record[column] ?? null;
+        return cell === null || String(cell).trim() === "" || mark(cell);
+      })
+    ) {
+      elided.add(column);
+    }
+  }
+  return elided;
+}
+
+/**
+ * Says that only the rows or columns that the output shows were read, with how many it has in all
+ * if a line of {@link TABLE_SIZE} among `lines` tells.
+ */
+function elisionNote(lines: string[], rows: boolean, columns: boolean): string {
+  // Polars writes "1_000" for a thousand.
+  const size = (lines.find((line) => TABLE_SIZE.test(line)) ?? "").replaceAll("_", ",");
+  const [, shapeRows, shapeColumns] = /\(([\d,]+), ([\d,]+)\)/.exec(size) ?? [];
+  const rowCount = shapeRows ?? /([\d,]+) rows/.exec(size)?.[1];
+  const columnCount = shapeColumns ?? /([\d,]+) columns/.exec(size)?.[1];
+  const totals = [
+    rows && rowCount !== undefined && `${rowCount} rows`,
+    columns && columnCount !== undefined && `${columnCount} columns`,
+  ].filter(Boolean);
+  const left = [rows && "rows", columns && "columns"].filter(Boolean).join(" and ");
+  return (
+    `Only the ${left} that the output shows were read, not those it left out` +
+    (totals.length === 0 ? "." : ` of its ${totals.join(" and ")}.`)
+  );
 }
 
 /**
@@ -687,15 +729,25 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return { ...splitText(all.slice(table.start, table.end).join("\n"), format), note };
     }
   }
-  if (all.some(isElision)) {
-    // Left as empty lines, which are skipped, as errors count lines.
-    const shown = all.map((line) => (isElision(line) ? "" : line)).join("\n");
-    const total = all.find((line) => TABLE_SIZE.test(line))?.match(/([\d,]+) rows/)?.[1];
-    const note =
-      "Only the rows that the output shows were read, not those it left out" +
-      (total === undefined ? "." : ` of its ${total}.`);
-    return { ...splitText(shown, format), note };
+  const elidedRows = all.some(isElision);
+  // Left as empty lines, which are skipped, as errors count lines.
+  const shown = elidedRows ? all.map((line) => (isElision(line) ? "" : line)) : all;
+  const table = splitShown(elidedRows ? shown.join("\n") : text, shown, format);
+  const elided = elidedColumns(table.records);
+  if (!elidedRows && elided.size === 0) {
+    return table;
   }
+  const kept = (_: unknown, column: number) => !elided.has(column);
+  return {
+    ...table,
+    records: table.records.map((record) => record.filter(kept)),
+    ...(table.units === undefined ? {} : { units: table.units.filter(kept) }),
+    note: elisionNote(all, elidedRows, elided.size > 0),
+  };
+}
+
+/** Splits text without the rows that the output left out, given as `all` its lines. */
+function splitShown(text: string, all: string[], format: Exclude<DataFormat, "json">): Records {
   const { lines, underlined } = withoutRules(
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
   );
