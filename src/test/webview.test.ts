@@ -2200,7 +2200,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the items of treemaps, packets, radar charts, C4 boundaries, block groups, Ishikawa and railroad diagrams, which Mermaid draws without ids", async () => {
+  test("finds the items of treemaps, packets, radar charts, C4 boundaries, block groups, and Ishikawa, railroad and tree view diagrams, which Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2261,6 +2261,16 @@ suite("webview", function () {
       [
         'railroad-ebnf-beta\n  expr = term , { "+" , term } ;\n  term = "x" ;',
         ["expr: term + term expr =", "term: x term ="],
+      ],
+      [
+        "treeView-beta\n  src\n    index.ts\n    lib\n      index.ts\n  package.json",
+        [
+          "package.json: package.json",
+          "src/index.ts: index.ts",
+          "src/lib/index.ts: index.ts",
+          "src/lib: lib",
+          "src: src",
+        ],
       ],
     ];
     for (const [source, items] of cases) {

@@ -26,6 +26,7 @@ export const WITH_DATABASE = new Set([
   "treemap",
   "packet",
   "radar",
+  "treeView",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -75,7 +76,7 @@ export interface DiagramDb {
   getXYChartData?(): {
     plots: { type: "bar" | "line"; title: string; data: [string, number][] }[];
   };
-  /** A treemap's sections and leaves. */
+  /** A treemap's sections and leaves, or a tree view's folders and files. */
   getRoot?(): TreeItem;
   /** A packet diagram's fields, by row, a field that goes on in the next row split in two. */
   getPacket?(): { label: string }[][];
@@ -446,6 +447,10 @@ export function findNodes(
       add(element, curve);
     }
   }
+
+  // Tree view items, which Mermaid draws in the order of the source, after a root of its own.
+  const tree = svg.querySelector("g.tree-view") ? db?.getRoot?.() : undefined;
+  if (tree) addInOrder(svg.querySelectorAll("g.tree-view > g ~ g"), [...treeNodes(tree).values()]);
 
   // Treemap sections and leaves, whose titles Mermaid may cut short. d3 lays them out with each
   // section's items by their total values, largest first, and Mermaid draws the sections breadth
