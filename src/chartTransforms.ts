@@ -4,6 +4,7 @@ import { columnName, defaultValueColumns, describeColumns, findColumn } from "./
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
+import { plural } from "./text";
 
 const COMPARE: Record<"lt" | "lte" | "gt" | "gte", (cell: number, value: number) => boolean> = {
   lt: (cell, value) => cell < value,
@@ -76,6 +77,8 @@ export interface HistogramPlan {
   name: string;
   /** Distinct finite bounds; constant observations have a single bound. */
   edges: number[];
+  /** The name of each bin, e.g. "[0, 10)", or "7" for a bin of the whole number 7 alone. */
+  names: string[];
 }
 
 /** Use one set of bin edges for all facets, including facets without numeric observations. */
@@ -107,18 +110,87 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   let minimum = Infinity;
   let maximum = -Infinity;
   let count = 0;
+  let whole = true;
   for (const row of table.rows) {
     const value = row[column];
     if (typeof value !== "number") continue;
     minimum = Math.min(minimum, value);
     maximum = Math.max(maximum, value);
+    whole &&= Number.isInteger(value);
     count++;
   }
   const name = columnName(table, column);
   if (count === 0) {
     throw new Error(`The value column ${JSON.stringify(name)} holds no numbers to bin.`);
   }
-  const bins = spec.bins ?? Math.min(50, Math.ceil(Math.sqrt(count)));
+  const bins = spec.bins ?? Math.min(MOST_BINS, Math.ceil(Math.sqrt(count)));
+  if (spec.bins === undefined) {
+    const round = roundBins(minimum, maximum, bins, whole);
+    if (round !== undefined) return { column, name, ...round };
+  }
+  const edges = evenEdges(minimum, maximum, bins);
+  const format = edgeFormat(edges);
+  const last = edges.length - 2;
+  // The maximum belongs to the last bin, which holds its upper bound.
+  const names = edges.slice(0, Math.max(1, edges.length - 1)).map((lower, index) => {
+    const upper = edges[index + 1] ?? lower;
+    return `[${format(lower)}, ${format(upper)}${index >= last ? "]" : ")"}`;
+  });
+  return { column, name, edges, names };
+}
+
+/** The most bins that automatic binning makes, from the square root of the observations. */
+const MOST_BINS = 50;
+
+/**
+ * About `bins` bins of a round width, 1, 2 or 5 times a power of ten, as people bin by hand and as
+ * d3 and Vega-Lite do. Whole numbers get bins at least 1 wide, each holding the whole numbers from
+ * its lower edge, so that no bin falls between two of them. Undefined where the numbers are too
+ * large or too close together for round edges.
+ */
+function roundBins(
+  minimum: number,
+  maximum: number,
+  bins: number,
+  whole: boolean,
+): Pick<HistogramPlan, "edges" | "names"> | undefined {
+  const width = (maximum - minimum) / bins;
+  let step = 1;
+  if (width > 0 && Number.isFinite(width)) {
+    const power = 10 ** Math.floor(Math.log10(width));
+    // The tolerance allows for rounding in the logarithm and the power, as for a width of 0.3.
+    step =
+      [1, 2, 5].map((factor) => factor * power).find((round) => round >= width * 0.999999) ??
+      10 * power;
+  } else if (!whole) {
+    return undefined;
+  }
+  if (whole) step = Math.max(1, step);
+  // Multiples of a fraction's inverse, 3 / 10 for 0.3, are exact where 3 * 0.1 is not.
+  const inverse = step < 1 ? Math.round(1 / step) : undefined;
+  const at = (value: number) => (inverse === undefined ? value / step : value * inverse);
+  const first = Math.floor(at(minimum));
+  // A bin of whole numbers ends before the next whole number, so the last one after the maximum.
+  const end = whole ? Math.floor(at(maximum)) + 1 : Math.ceil(at(maximum));
+  if (!Number.isSafeInteger(first) || !Number.isSafeInteger(end) || end - first > 2 * bins + 2) {
+    return undefined;
+  }
+  const edges = Array.from({ length: end - first + 1 }, (_, i) =>
+    inverse === undefined ? (first + i) * step : (first + i) / inverse,
+  );
+  if (!edges.every((edge, i) => Number.isFinite(edge) && !(edge <= (edges[i - 1] ?? -Infinity)))) {
+    return undefined;
+  }
+  const names = edges.slice(0, -1).map((lower, i) => {
+    const upper = edges[i + 1] ?? lower;
+    if (whole) return step === 1 ? String(lower) : `[${lower}, ${upper})`;
+    return `[${lower}, ${upper}${i === edges.length - 2 ? "]" : ")"}`;
+  });
+  return { edges, names };
+}
+
+/** Edges that split the range of the observations into `bins` bins of equal width. */
+function evenEdges(minimum: number, maximum: number, bins: number): number[] {
   const edges = [minimum];
   for (let i = 1; i < bins; i++) {
     // Subtraction can overflow for opposite signs; weighted interpolation remains finite.
@@ -130,7 +202,7 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
     if (edge > (edges.at(-1) ?? minimum) && edge < maximum) edges.push(edge);
   }
   if (maximum > minimum) edges.push(maximum);
-  return { column, name, edges };
+  return edges;
 }
 
 /**
@@ -144,8 +216,11 @@ function edgeFormat(edges: number[]): (edge: number) => string {
   return (edge) => String(Number(edge.toFixed(decimals)));
 }
 
-export function buildHistogram(table: DataTable, { column, name, edges }: HistogramPlan): Chart {
-  const counts = Array<number>(Math.max(1, edges.length - 1)).fill(0);
+export function buildHistogram(
+  table: DataTable,
+  { column, name, edges, names }: HistogramPlan,
+): Chart {
+  const counts = Array<number>(names.length).fill(0);
   let count = 0;
   for (const row of table.rows) {
     const value = row[column];
@@ -162,12 +237,9 @@ export function buildHistogram(table: DataTable, { column, name, edges }: Histog
     counts[index] = (counts[index] ?? 0) + 1;
     count++;
   }
-  const format = edgeFormat(edges);
   const data = counts.map((value, index) => {
     const lower = edges[index] ?? 0;
-    const upper = edges[index + 1] ?? lower;
-    const last = index === counts.length - 1;
-    return { name: `[${format(lower)}, ${format(upper)}${last ? "]" : ")"}`, value, lower, upper };
+    return { name: names[index] ?? "", value, lower, upper: edges[index + 1] ?? lower };
   });
   const skipped = table.rows.length - count;
   return {
@@ -182,6 +254,9 @@ export function buildHistogram(table: DataTable, { column, name, edges }: Histog
       yAxis: { type: "value", name: "count", min: 0, minInterval: 1 },
       series: [{ type: "bar", name: "count", barCategoryGap: "0%", barGap: "0%", data }],
     },
-    summary: `Charted ${count} observations of ${JSON.stringify(name)} in ${counts.length} histogram bins${skipped ? `; skipped ${skipped} rows without a number` : ""}.`,
+    summary:
+      `Charted ${plural(count, "observation")} of ${JSON.stringify(name)} in ` +
+      `${plural(counts.length, "histogram bin")}` +
+      `${skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : ""}.`,
   };
 }

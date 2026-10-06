@@ -123,6 +123,33 @@ suite("chart transforms", () => {
     assert.strictEqual(option.series[0].data[1].upper, 2 / 3);
   });
 
+  test("automatic histogram bins have a round width, and whole numbers a bin each", () => {
+    const bins = (values: number[]) =>
+      build(`value\n${values.join("\n")}`).series[0].data.map(
+        (bin: Option) => `${bin.name}: ${bin.value}`,
+      );
+    // Ratings from 1 to 5, which bins 0.4 wide would split into five bins and five empty ones.
+    assert.deepStrictEqual(bins(Array.from({ length: 100 }, (_, i) => 1 + (i % 5))), [
+      "1: 20",
+      "2: 20",
+      "3: 20",
+      "4: 20",
+      "5: 20",
+    ]);
+    assert.deepStrictEqual(bins([18, 22, 25, 31, 35, 39, 40, 44, 52, 58, 61, 64, 77, 87, 90, 93]), [
+      "[0, 20): 1",
+      "[20, 40): 5",
+      "[40, 60): 4",
+      "[60, 80): 3",
+      "[80, 100): 3",
+    ]);
+    assert.deepStrictEqual(bins([0.12, 0.5, 0.31, 0.9]), ["[0, 0.5): 2", "[0.5, 1]: 2"]);
+    assert.match(
+      buildChart({ type: "histogram", data: "unused" }, parseTable("value\n7")).summary,
+      /^Charted 1 observation of "value" in 1 histogram bin\.$/,
+    );
+  });
+
   test("filters precede histogram edge selection and missing values are excluded", () => {
     const option = build("name,value\na,0\nb,1\nc,2\nd,100\ne,", {
       bins: 2,
