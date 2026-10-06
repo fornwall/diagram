@@ -1,5 +1,6 @@
-// Checks ECharts options for mistakes that ECharts would silently render as nothing, with
-// actionable errors.
+// Reads ECharts options, the parts of them that timeline steps and media queries patch included,
+// and checks them for mistakes that ECharts would silently render as nothing, with actionable
+// errors.
 
 import { isPlainObject } from "../protocol";
 import { evaluateSource, isFunctionAt } from "./optionSource";

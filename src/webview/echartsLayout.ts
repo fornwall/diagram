@@ -82,21 +82,19 @@ const DATA_KEYS = new Set(["data", "nodes", "links", "edges", "source"]);
 /**
  * Copies option settings, so that the layout can fill in what it needs while leaving the option
  * it was given untouched: the renderer keeps that one and lays it out again on a resize. Not
- * structuredClone, which throws on an option written as JavaScript, as that holds functions (a
- * custom series' renderItem, a formatter, …).
+ * structuredClone, which throws on the functions of an option written as JavaScript, such as a
+ * custom series' renderItem or a formatter.
  *
- * Settings accepted by isPlainObject are copied, as that is what every writer here reaches its
- * targets through, so that no object a layout writes to is still one of the caller's. A copy is a
- * plain object of every enumerable property, inherited ones included, as a series written with a
- * prototype of its own keeps its type and its styles that way; a date is copied as a date and a
- * typed array is left as it is, both keeping their value where properties cannot carry it.
- * Functions and data payloads are carried over by reference. Copying every object-valued point,
- * dataset row or hierarchy node would make even a resize allocate the entire dataset again.
- * Other arrays are only copied when they hold objects or arrays; no array is written in place.
+ * What isPlainObject accepts is copied, as every writer here reaches its targets through it, so
+ * that no object the layout writes to is still the caller's. Functions and data payloads are
+ * carried over by reference: copying every point, dataset row or hierarchy node would make each
+ * resize allocate the whole dataset again. Other arrays are copied only when they hold objects or
+ * arrays; none is written in place.
  */
 function cloneOption(option: JsonObject): JsonObject {
   const copy: JsonObject = {};
-  // for...in rather than Object.entries, to copy what the option inherits as well.
+  // for...in rather than Object.entries, to copy what the option inherits as well: a series
+  // written with a prototype of its own keeps its type and its styles that way.
   for (const key in option) {
     const value = DATA_KEYS.has(key) ? option[key] : cloneValue(option[key]);
     if (key === "__proto__") {
