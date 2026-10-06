@@ -1,5 +1,15 @@
 // Recognizing unambiguous calendar dates for chart time axes.
 
+const DATE = String.raw`\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])`;
+
+/**
+ * An ISO date and time, perhaps with a fraction of a second and a time zone, which git log
+ * --date=iso writes after a space ("2025-10-04 14:02:33 +0200").
+ */
+const DATE_TIME = new RegExp(
+  String.raw`^(${DATE})[T ]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?) ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?$`,
+);
+
 /**
  * The date shapes that a column of labels is read as times in, with the name reported for each.
  * Only shapes that cannot be read any other way are here: "01/02/2026" is the second of January in
@@ -7,12 +17,8 @@
  * categories, so both stay labels. The parts are bounded, so "2026-13-01" is no date either.
  */
 const DATE_FORMATS: { name: string; pattern: RegExp }[] = [
-  {
-    name: "ISO date-times",
-    pattern:
-      /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])[T ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)?$/,
-  },
-  { name: "ISO dates", pattern: /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/ },
+  { name: "ISO date-times", pattern: DATE_TIME },
+  { name: "ISO dates", pattern: new RegExp(`^${DATE}$`) },
   { name: "ISO months", pattern: /^\d{4}-(?:0[1-9]|1[0-2])$/ },
   {
     name: "dates written YYYY/MM/DD",
@@ -47,10 +53,16 @@ export function dateFormat(labels: string[]): string | undefined {
   )?.name;
 }
 
-/** ECharts ignores offset minutes and reads short fractions as milliseconds, so normalize them. */
+/**
+ * A date as ECharts reads it on a time axis. ECharts ignores offset minutes and reads short
+ * fractions as milliseconds, so zoned times become milliseconds since the epoch, and unzoned ones
+ * keep three digits of fraction.
+ */
 export function timeValue(date: string): string | number {
-  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(date)) {
-    return Date.parse(date.replace(" ", "T"));
+  const [, day, time, zone] = DATE_TIME.exec(date) ?? [];
+  if (zone !== undefined) {
+    // Date.parse reads "+02:00" and "+0200", but neither "+02" nor a space before the zone.
+    return Date.parse(`${day}T${time}${zone.length === 3 ? `${zone}:00` : zone}`);
   }
   // Keep unzoned times local to the chart viewer and express their fraction in milliseconds.
   return date.replace(
