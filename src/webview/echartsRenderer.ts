@@ -28,6 +28,11 @@ interface Animated {
   stopAnimation(scope: undefined, forwardToLast: boolean): unknown;
 }
 
+/** The type of component, such as "toolbox", that ECharts draws in the group, if any. */
+function componentOf(group: object): string | undefined {
+  return (group as { __ecComponentInfo?: { mainType: string } | null }).__ecComponentInfo?.mainType;
+}
+
 export class EChartsRenderer implements Renderer {
   readonly noun = "chart";
   readonly itemNoun = "chart item";
@@ -190,8 +195,18 @@ export class EChartsRenderer implements Renderer {
         element = element.parent;
       }
     }
-    drawing.refreshImmediately();
-    return standaloneSvg(svg, background);
+    // Leave out the toolbox, as ECharts does from its own images: its buttons do nothing there.
+    const toolboxes = drawing.storage
+      .getRoots()
+      .filter((root) => !root.ignore && componentOf(root) === "toolbox");
+    for (const toolbox of toolboxes) toolbox.ignore = true;
+    try {
+      drawing.refreshImmediately();
+      return standaloneSvg(svg, background);
+    } finally {
+      for (const toolbox of toolboxes) toolbox.ignore = false;
+      if (toolboxes.length > 0) drawing.refresh();
+    }
   }
 
   formatForEditing(source: string): string {

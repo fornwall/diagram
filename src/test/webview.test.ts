@@ -1323,6 +1323,34 @@ suite("webview", function () {
     assert.deepStrictEqual(labels, ["Fading label 1"]);
   });
 
+  test("leaves the toolbox out of chart images, but not out of the panel", async () => {
+    const chart = {
+      animation: false,
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2] }],
+    };
+    const drawn = [];
+    for (const toolbox of [undefined, { feature: { saveAsImage: {}, restore: {} } }]) {
+      await draw({ language: "echarts", source: JSON.stringify({ ...chart, toolbox }) });
+      drawn.push(
+        await evaluate(`(async () => {
+          ${DRAG_IMAGE}
+          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const image = new DOMParser().parseFromString(svg, "image/svg+xml");
+          await new Promise(requestAnimationFrame);
+          return {
+            image: image.querySelectorAll("path").length,
+            panel: document.querySelectorAll("#chart svg path").length,
+          };
+        })()`),
+      );
+    }
+    const [plain, withToolbox] = drawn as { image: number; panel: number }[];
+    assert.strictEqual(withToolbox?.image, plain?.image);
+    assert.ok((withToolbox?.panel ?? 0) > (plain?.panel ?? 0));
+  });
+
   test("exports the current chart size before the resize observer runs", async () => {
     await draw({
       language: "echarts",
