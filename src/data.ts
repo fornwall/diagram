@@ -41,10 +41,11 @@ export interface Records {
 
 /**
  * Text that marks a missing value, as spreadsheets ("#N/A"), databases ("NULL"), pandas ("NaN",
- * "None", "<NA>") and command output ("-", "--") write it. Like an empty cell it neither makes a
- * column numeric nor keeps it from being so, but outside numeric columns it stays, as a label.
+ * "None", "<NA>"), kubectl ("<none>", "<unknown>") and command output ("-", "--") write it. Like an
+ * empty cell it neither makes a column numeric nor keeps it from being so, but outside numeric
+ * columns it stays, as a label.
  */
-const MISSING = /^(?:-+|[\u2013\u2014]|#?n\/a|na|<na>|nan|null|none)$/i;
+const MISSING = /^(?:-+|[\u2013\u2014]|#?n\/a|na|<(?:na|none|unknown)>|nan|null|none)$/i;
 
 interface ColumnCounts {
   numbers: number;

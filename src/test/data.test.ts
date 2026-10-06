@@ -615,6 +615,16 @@ suite("data", () => {
       ].join("\n"),
     );
     assert.deepStrictEqual(nodes.rows, [["node-1", 0.312, 7, 5120 * 1024 ** 2, 32]]);
+    // A node without metrics.
+    const unknown = parseTable(
+      [
+        "NAME     CPU(cores)   CPU(%)      MEMORY(bytes)   MEMORY(%)",
+        "node-1   312m         7%          5120Mi          32%",
+        "node-2   <unknown>    <unknown>   <unknown>       <unknown>",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(unknown.rows[1], ["node-2", null, null, null, null]);
+    assert.ok(unknown.columns.slice(1).every((column) => column.numeric));
     const ages = parse(
       ["NAME    READY   STATUS    RESTARTS   AGE", "web-1   1/1     Running   0          5m"].join(
         "\n",
