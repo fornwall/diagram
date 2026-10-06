@@ -12,6 +12,9 @@ export type Unit = "%" | "bytes" | "seconds";
 /** A currency symbol, which comes before a number ("$5") or, in much of Europe, after it ("5 €"). */
 const CURRENCY = "[$€£¥]";
 
+/** A sign, which may be a typeset minus (−). */
+const SIGN = "[-+\u2212]";
+
 /**
  * A percent sign, a multiplier ("K", "M", "B", "bn"), a unit of bytes ("B", "K", "kB", "KiB", "Ki"
  * and so on) or a currency.
@@ -55,8 +58,8 @@ function parseDuration(text: string, durations = false): number | undefined {
   return minutes * 60 + Number(s ?? 0) / (PER_SECOND[unit] ?? 1);
 }
 
-/** A sign, which may be a typeset minus (−), and a currency symbol, as in "-$5". */
-const PREFIX = `([-+\u2212]?)(${CURRENCY}?)`;
+/** A sign and a currency symbol, as in "-$5". */
+const PREFIX = `(${SIGN}?)(${CURRENCY}?)`;
 
 /** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
@@ -93,8 +96,9 @@ interface NumberFormat {
 }
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
-const GROUPS =
-  /^([-+\u2212]?[$€£¥]?)(\d{1,3}([ \u00A0\u2009\u202F'\u2019])\d{3}(?:\3\d{3})*)(?!\d)/;
+const GROUPS = new RegExp(
+  String.raw`^(${SIGN}?${CURRENCY}?)(\d{1,3}([ \u00A0\u2009\u202F'\u2019])\d{3}(?:\3\d{3})*)(?!\d)`,
+);
 
 /** Leaves out the spaces or apostrophes that group the leading digits of `text` by thousands. */
 function ungroup(text: string): string {
@@ -106,7 +110,7 @@ function ungroup(text: string): string {
 }
 
 /** A number in parentheses, perhaps after a currency symbol, as accounting writes negatives. */
-const ACCOUNTING = /^([$€£¥]?)\(([$€£¥]?[\d.].*)\)$/;
+const ACCOUNTING = new RegExp(String.raw`^(${CURRENCY}?)\((${CURRENCY}?[\d.].*)\)$`);
 
 /** kubectl's restart counts: "2 (3h ago)". */
 const SINCE = /^(\d+) \([^()]+ ago\)$/;
