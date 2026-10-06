@@ -37,6 +37,7 @@ suite("echartsItems", () => {
           "eachRawSeries",
           "eachSeries",
         ]);
+        assert.ok(Array.isArray(model.option.series), "GlobalModel.option");
         model.eachRawSeries((series) => {
           methods(series, "SeriesModel", ["get", "getRawData", "getAllData", "getBaseAxis"]);
           assert.strictEqual(series.componentIndex, 0, "SeriesModel.componentIndex");

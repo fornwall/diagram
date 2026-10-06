@@ -93,6 +93,11 @@ export interface SeriesModel {
 }
 
 interface GlobalModel {
+  /**
+   * The option as shown, with what the user changed in it, such as a legend's selection, which
+   * `getOption()` returns a deep copy of, data and all.
+   */
+  option: Record<string, unknown>;
   getSeriesCount(): number;
   getSeriesByIndex(index: number): SeriesModel | undefined;
   eachRawSeries(callback: (series: SeriesModel) => void): void;

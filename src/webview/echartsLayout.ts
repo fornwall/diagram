@@ -597,27 +597,17 @@ const USER_STATE: Record<string, string[]> = {
 /** The series that keep the center and zoom that the user pans and zooms them to in their option. */
 const ROAM_SERIES = ["graph", "tree", "sankey"];
 
-/** Preserves controls across layouts without copying chart data when there are no controls. */
-export function keepUserState(option: JsonObject, readShown: () => JsonObject): void {
+/** Carries what the user changed in the shown option, such as a legend's selection, over to a new layout of it. */
+export function keepUserState(option: JsonObject, shown: JsonObject): void {
   const base = baseOption(option);
-  // ECharts' getOption deep-copies every data point, even when only control state is needed.
-  const roaming = asArray(base.series)
-    .map((series, index) => ({ series, index }))
-    .filter(({ series }) => series.roam && ROAM_SERIES.includes(String(series.type)));
-  if (
-    roaming.length === 0 &&
-    ![...Object.keys(USER_STATE), "dataZoom"].some((key) => asArray(base[key]).length > 0)
-  ) {
-    return;
-  }
-  const shown = readShown();
   const shownSeries = asArray(shown.series);
-  for (const { series, index } of roaming) {
+  asArray(base.series).forEach((series, index) => {
+    if (!series.roam || !ROAM_SERIES.includes(String(series.type))) return;
     const current = shownSeries[index];
     for (const key of ["center", "zoom"]) {
       if (current?.[key] !== undefined) series[key] = current[key];
     }
-  }
+  });
   for (const [component, keys] of Object.entries(USER_STATE)) {
     const shownComponents = asArray(shown[component]);
     asArray(base[component]).forEach((each, index) => {

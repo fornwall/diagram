@@ -306,7 +306,7 @@ export class EChartsRenderer implements Renderer {
     }
     const shown = relayout ? this.chart : undefined;
     if (shown) {
-      keepUserState(option, () => shown.getOption() as JsonObject);
+      keepUserState(option, modelOf(shown).option);
     }
     const restoreState = shown && modelState(shown);
     if (themeChanged) {

@@ -401,10 +401,10 @@ suite("echartsLayout", () => {
     const option: Option = layout(
       bars({ legend: {}, dataZoom: [{ type: "inside", startValue: 2, endValue: 5 }] }),
     );
-    keepUserState(option, () => ({
+    keepUserState(option, {
       legend: [{ selected: { One: false }, scrollDataIndex: 3 }],
       dataZoom: [{ start: 10, end: 40, startValue: 1, endValue: 4 }],
-    }));
+    });
     assert.deepStrictEqual(option.legend.selected, { One: false });
     assert.strictEqual(option.legend.scrollDataIndex, 3);
     assert.deepStrictEqual(option.dataZoom, [{ type: "inside", start: 10, end: 40 }]);
@@ -415,10 +415,10 @@ suite("echartsLayout", () => {
       baseOption: { ...bars(), timeline: { data: ["2025", "2026"] }, visualMap: {} },
       options: [{}, {}],
     });
-    keepUserState(option, () => ({
+    keepUserState(option, {
       timeline: [{ currentIndex: 1 }],
       visualMap: [{ range: [2, 5] }],
-    }));
+    });
     assert.strictEqual(option.baseOption.timeline.currentIndex, 1);
     assert.deepStrictEqual(option.baseOption.visualMap.range, [2, 5]);
     assert.strictEqual(option.baseOption.visualMap.selected, undefined);
@@ -433,28 +433,19 @@ suite("echartsLayout", () => {
         { type: "tree", roam: true, data: [{ name: "C" }] },
       ],
     });
-    keepUserState(option, () => ({
+    keepUserState(option, {
       series: [
         { center: [100, 100] },
         { center: [40, 60], zoom: 2.5 },
         { center: [20, 30], zoom: 3 },
         { center: [10, 10], zoom: 4 },
       ],
-    }));
+    });
     assert.strictEqual(option.series[3].zoom, 4);
     assert.deepStrictEqual(option.series[0].center, ["25%", "50%"]);
     assert.deepStrictEqual(option.series[1].center, [40, 60]);
     assert.strictEqual(option.series[1].zoom, 2.5);
     assert.strictEqual(option.series[2].center, undefined);
     assert.strictEqual(option.series[2].zoom, undefined);
-  });
-
-  test("does not copy displayed chart data when there is no control state to preserve", () => {
-    for (const controls of [{}, { legend: [], dataZoom: [], visualMap: [], timeline: [] }]) {
-      const option = layout(bars(controls));
-      keepUserState(option, () => {
-        assert.fail("A chart without controls does not need getOption().");
-      });
-    }
   });
 });

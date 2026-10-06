@@ -282,4 +282,26 @@ suite("echartsRenderer interactions", () => {
     assert.deepStrictEqual(toggled, [true, false]);
     assert.deepStrictEqual(same, toggled);
   });
+
+  test("keeps the legend selection and zoom that the user changed in a new layout", () => {
+    const option = {
+      xAxis: { type: "category", data: ["a", "b", "c", "d"] },
+      yAxis: {},
+      dataZoom: [{ type: "inside", startValue: 1, endValue: 2 }],
+      series: ["One", "Two"].map((name) => ({ type: "bar", name, data: [1, 2, 3, 4] })),
+    };
+    const [changed, kept] = relayout(
+      option,
+      (chart) => {
+        chart.dispatchAction({ type: "legendUnSelect", name: "Two" });
+        chart.dispatchAction({ type: "dataZoom", start: 25, end: 75 });
+      },
+      (chart) => {
+        const { legend, dataZoom } = chart.getOption() as Record<string, Record<string, unknown>[]>;
+        return { selected: legend?.[0]?.selected, start: dataZoom?.[0]?.start };
+      },
+    );
+    assert.deepStrictEqual(changed, { selected: { One: true, Two: false }, start: 25 });
+    assert.deepStrictEqual(kept, changed);
+  });
 });
