@@ -213,7 +213,7 @@ export class DiagramPanel implements vscode.Disposable {
     toolInvocationToken?: unknown,
     chartTable?: DataTable,
   ): Promise<RenderOutcome> {
-    this.toolRequestId = requestId(toolInvocationToken);
+    this.toolRequestId = chatRequestId(toolInvocationToken);
     // Keep document bindings across agent replacements; a later Apply requires confirmation.
     const previousBinding = this.state?.document;
     const document =
@@ -242,7 +242,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Adopts a tool render only if it belongs to this participant request. */
   adopt(toolInvocationToken: unknown): Readonly<DiagramState> | undefined {
-    const id = requestId(toolInvocationToken);
+    const id = chatRequestId(toolInvocationToken);
     if (!this.state || id === undefined || id !== this.toolRequestId) {
       return undefined;
     }
@@ -798,7 +798,7 @@ export class DiagramPanel implements vscode.Disposable {
     );
     throwIfCancelled(token);
     if (!outcome.ok) return outcome;
-    this.toolRequestId = requestId(toolInvocationToken);
+    this.toolRequestId = chatRequestId(toolInvocationToken);
     return { ...outcome, summary };
   }
 
@@ -1201,6 +1201,6 @@ export function clickToAskQuery(clickPrompt: string, label: string): string {
  * The id of the chat request that a tool invocation token is for. The token is opaque, and a tool
  * is given a copy of the one passed to vscode.lm.invokeTool, so tokens are compared by this id.
  */
-function requestId(toolInvocationToken: unknown): unknown {
+function chatRequestId(toolInvocationToken: unknown): unknown {
   return isPlainObject(toolInvocationToken) ? toolInvocationToken.requestId : undefined;
 }
