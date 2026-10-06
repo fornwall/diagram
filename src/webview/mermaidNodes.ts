@@ -722,8 +722,8 @@ function packet(f: Finder): void {
 }
 
 /**
- * Radar chart axes, by their labels, and curves, with their legend entries, numbered in the order
- * of the database.
+ * Radar chart axes and curves, which go by their names in the source, not their labels: the curves
+ * with their legend entries, which Mermaid numbers in the order of the database.
  */
 function radar(f: Finder): void {
   const axes = (f.db?.getAxes?.() ?? []).map(({ name, label }) => f.named(label, name));
