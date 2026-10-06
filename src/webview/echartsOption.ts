@@ -172,7 +172,7 @@ export function parseOption(source: string): JsonObject {
     );
   }
   validateSeries(option);
-  findJavaScript(option, "option", new WeakSet());
+  findJavaScript(option, [], []);
   return option;
 }
 
@@ -335,65 +335,70 @@ function checkSeries(each: unknown, path: string, base: JsonObject): void {
 
 const isObject = (value: unknown): value is object => value !== null && typeof value === "object";
 
+/** A path such as "series[0].label", from its keys. */
+const pathOf = (keys: (string | number)[]) =>
+  keys
+    .map((key, index) => (typeof key === "number" ? `[${key}]` : index ? `.${key}` : key))
+    .join("");
+
 /**
  * Finds callbacks written as strings, which ECharts draws as the text they are, and objects that
  * contain themselves, which a JavaScript source can build and no chart can be drawn from. A
  * function itself is fine anywhere, as the source may be JavaScript. "inside" holds the objects
  * the walk is inside, which is what a cycle leads back to, rather than every object it has seen,
- * as the same value may well be used in several places.
+ * as the same value may well be used in several places, and "keys" the way to the value. Both are
+ * stacks, which are several times faster than a set or a path built for each of a million data
+ * points, and the path is built only for an error.
  */
 function findJavaScript(
   value: unknown,
-  path: string,
-  inside: WeakSet<object>,
+  keys: (string | number)[],
+  inside: object[],
   checkCallbacks = true,
 ): void {
   if (!isObject(value) || ArrayBuffer.isView(value)) {
     return;
   }
-  if (inside.has(value)) {
+  if (inside.includes(value)) {
     throw new Error(
-      `${path} refers back to an object that contains it, and a chart cannot be drawn from a ` +
-        "cycle. Write out the value that each place needs instead of referring back.",
+      `${pathOf(keys)} refers back to an object that contains it, and a chart cannot be drawn ` +
+        "from a cycle. Write out the value that each place needs instead of referring back.",
     );
   }
-  inside.add(value);
+  inside.push(value);
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      // Primitive data points, alone or as [x, y], cannot contain callbacks: skip building paths
-      // for large datasets.
+      // Primitive data points, alone or as [x, y], cannot contain callbacks.
       if (isObject(item) && !(Array.isArray(item) && !item.some(isObject))) {
-        findJavaScript(item, `${path}[${index}]`, inside, checkCallbacks);
+        keys.push(index);
+        findJavaScript(item, keys, inside, checkCallbacks);
+        keys.pop();
       }
     });
-    inside.delete(value);
-    return;
-  }
-  if (!isPlainObject(value)) {
-    inside.delete(value);
-    return;
-  }
-  // Layout copies inherited properties too, so validate the same values it will copy.
-  for (const key in value) {
-    const item = value[key];
-    const callback =
-      checkCallbacks && typeof item === "string" && CALLBACK_KEYS.has(key) && isFunctionAt(item);
-    if (!callback && !isObject(item)) {
-      continue;
+  } else if (isPlainObject(value)) {
+    // Layout copies inherited properties too, so validate the same values it will copy.
+    for (const key in value) {
+      const item = value[key];
+      keys.push(key);
+      if (
+        checkCallbacks &&
+        typeof item === "string" &&
+        CALLBACK_KEYS.has(key) &&
+        isFunctionAt(item)
+      ) {
+        throw new Error(
+          `${pathOf(keys)} is JavaScript code in a string, which ECharts draws as that text. ` +
+            "Write it as a function, as the option itself may be written as JavaScript, or for a " +
+            'simple formatter use a string template such as "{b}: {c}" (name and value) or ' +
+            '"{d}%" (pie percentage).',
+        );
+      }
+      // Dataset columns and transform configuration hold data, not callback options.
+      findJavaScript(item, keys, inside, checkCallbacks && key !== "dataset");
+      keys.pop();
     }
-    const itemPath = path === "option" ? key : `${path}.${key}`;
-    if (callback) {
-      throw new Error(
-        `${itemPath} is JavaScript code in a string, which ECharts draws as that text. Write it ` +
-          "as a function, as the option itself may be written as JavaScript, or for a simple " +
-          'formatter use a string template such as "{b}: {c}" (name and value) or "{d}%" ' +
-          "(pie percentage).",
-      );
-    }
-    // Dataset columns and transform configuration hold data, not callback options.
-    findJavaScript(item, itemPath, inside, checkCallbacks && key !== "dataset");
   }
-  inside.delete(value);
+  inside.pop();
 }
 
 /** The series types of the option, e.g. "bar, line". */
