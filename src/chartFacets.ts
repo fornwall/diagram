@@ -1,6 +1,6 @@
 // Compose generated Cartesian charts into independently selectable small multiples.
 
-import { columnName, findColumn } from "./chartColumns";
+import { columnName, findColumn, findColumns } from "./chartColumns";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -15,8 +15,8 @@ const objects = (value: unknown): Option[] =>
 
 /** Exclude the facet column from inference, unless it is also a label or value column. */
 function facetTable(spec: ChartSpec, table: DataTable, index: number): DataTable {
-  const labels = [spec.labelColumn ?? []].flat().map((name) => findColumn(table, name, "label"));
-  const values = (spec.valueColumns ?? []).map((name) => findColumn(table, name, "value"));
+  const labels = findColumns(table, [spec.labelColumn ?? []].flat(), "labelColumn");
+  const values = findColumns(table, spec.valueColumns ?? [], "valueColumns");
   if (labels.includes(index) || values.includes(index)) return table;
   return {
     ...table,

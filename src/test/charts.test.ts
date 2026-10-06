@@ -1492,6 +1492,19 @@ suite("charts", () => {
     assert.throws(() => build(chart("pie", { labelColumn: "lang" })), /Unknown label column/);
   });
 
+  test("a column named twice is refused rather than drawn twice", () => {
+    for (const facet of [{}, { facetColumn: "language" }]) {
+      assert.throws(
+        () => build(chart("bar", { valueColumns: ["lines", " LINES"], ...facet })),
+        /"valueColumns" names the column "lines" twice/,
+      );
+    }
+    assert.throws(
+      () => build(chart("sankey", { labelColumn: ["language", "language"] })),
+      /"labelColumn" names the column "language" twice/,
+    );
+  });
+
   test("throws when there is nothing numeric to chart", () => {
     assert.throws(() => build(chart("bar"), "a,b\nx,y"), /No column holds numbers/);
     assert.throws(

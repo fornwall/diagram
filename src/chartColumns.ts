@@ -25,6 +25,24 @@ export function findColumn(table: DataTable, name: string, role: string): number
   return index;
 }
 
+/** Finds the columns that a property names, each of which it may name once. */
+export function findColumns(
+  table: DataTable,
+  names: string[],
+  key: "labelColumn" | "valueColumns",
+): number[] {
+  const role = key === "labelColumn" ? "label" : "value";
+  const indices = names.map((name) => findColumn(table, name, role));
+  const repeated = indices.find((index, i) => indices.indexOf(index) !== i);
+  if (repeated !== undefined) {
+    throw new Error(
+      `"${key}" names the column ${JSON.stringify(columnName(table, repeated))} twice. Give each ` +
+        "column once.",
+    );
+  }
+  return indices;
+}
+
 /** Whether a chart reads its labels as the levels of a hierarchy or the stages of a flow. */
 export function readsLevels(type: ChartType): boolean {
   return type === "treemap" || type === "sunburst" || type === "sankey";
@@ -230,7 +248,7 @@ function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): n
     const single = defaultLabelColumn(table, spec.type === "scatter");
     return single === undefined ? [] : [single];
   }
-  const given = [spec.labelColumn].flat().map((column) => findColumn(table, column, "label"));
+  const given = findColumns(table, [spec.labelColumn].flat(), "labelColumn");
   const labels = given.slice(0, most);
   if (labels.length < given.length) {
     notes.push(
@@ -289,7 +307,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     );
   }
 
-  const given = spec.valueColumns?.map((column) => findColumn(table, column, "value"));
+  const given = spec.valueColumns && findColumns(table, spec.valueColumns, "valueColumns");
   const needed = type === "scatter" && times !== undefined ? 1 : COLUMN_COUNTS[type].needed;
   if (spec.aggregate === "count") {
     // Counting rows gives one number per group, which a chart of two values cannot use.
