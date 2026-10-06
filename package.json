@@ -214,7 +214,7 @@
                   "minItems": 1
                 }
               ],
-              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), or heatmap rows/columns. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. Bar, line, area and scatter charts use ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") as a time axis with proportional spacing. Ambiguous dates (\"01/02/2026\") and plain years remain labels."
+              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), or heatmap rows/columns. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
             },
             "valueColumns": {
               "type": "array",
@@ -226,7 +226,7 @@
             },
             "max": {
               "type": "number",
-              "description": "The top of a gauge's scale, or of every axis of a radar chart, in input units (bytes for sizes). Inferred when left out: a gauge goes to 100 for percentages, to the column's total, or to a round number above its value; a radar axis to its largest value."
+              "description": "The top of a gauge's scale, or of every radar axis, in input units (bytes for sizes). Inferred when left out."
             },
             "aggregate": {
               "type": "string",
