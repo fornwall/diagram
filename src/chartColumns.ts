@@ -6,8 +6,8 @@ import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject } from "./protocol";
 import { plural, quoteAll } from "./text";
 
-export function columnName(table: DataTable, index: number): string {
-  return table.columns[index]?.name ?? "";
+export function columnName(table: DataTable, index: number | undefined): string {
+  return index === undefined ? "" : (table.columns[index]?.name ?? "");
 }
 
 /** Finds a column by its exact name, then ignoring case and surrounding spaces. */
@@ -276,7 +276,7 @@ function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): n
 /** Resolve explicit or inferred columns, recording omissions and inferred paths or dates. */
 export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Columns {
   const { type } = spec;
-  const name = (index: number) => columnName(table, index);
+  const name = (index: number | undefined) => columnName(table, index);
   const labels = readLabelColumns(spec, table, notes);
   if (type === "sankey" && labels.length === 0) {
     throw new Error(
@@ -299,7 +299,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   }
   if (isCartesian(type) && labels.length >= 2 && spec.limit !== undefined) {
     throw new Error(
-      `A series per label of ${JSON.stringify(name(labels[1] ?? 0))} draws every row, and ` +
+      `A series per label of ${JSON.stringify(name(labels[1]))} draws every row, and ` +
         '"limit" would leave out parts of the series. Leave "limit" out, and select rows with ' +
         '"filters" instead.',
     );
@@ -310,9 +310,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   const separator =
     only !== undefined && readsLevels(type) ? pathSeparator(table, only) : undefined;
   if (separator !== undefined) {
-    notes.push(
-      `split ${JSON.stringify(name(only ?? 0))} on ${JSON.stringify(separator)} into levels`,
-    );
+    notes.push(`split ${JSON.stringify(name(only))} on ${JSON.stringify(separator)} into levels`);
   }
 
   // Dates place points along an axis, with proportional spacing on a time axis. A scatter chart
@@ -324,7 +322,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   const timeAxis = times !== undefined && !categoryAxisOverride(spec);
   if (timeAxis) {
     notes.push(
-      `read ${JSON.stringify(name(axis ?? 0))} as ${times} on a time axis; ` +
+      `read ${JSON.stringify(name(axis))} as ${times} on a time axis; ` +
         `{"${labelAxis(type)}": {"type": "category"}} in "options" reads them as labels instead`,
     );
   }
@@ -369,7 +367,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     }
   }
   if (values.length < needed) {
-    const one = JSON.stringify(name(values[0] ?? 0));
+    const one = JSON.stringify(name(values[0]));
     throw new Error(
       type === "scatter"
         ? `A scatter chart needs two numeric columns (x and y), but there is only ${one}.`
