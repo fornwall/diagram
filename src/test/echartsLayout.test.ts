@@ -1,5 +1,10 @@
 import * as assert from "node:assert";
-import { keepUserState, type LayoutContext, layoutOption } from "../webview/echartsLayout";
+import {
+  keepUserState,
+  type LayoutContext,
+  layoutOption,
+  toolWarnings,
+} from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
 import { testColors as colors } from "./themeColors";
 
@@ -41,6 +46,22 @@ suite("echartsLayout", () => {
       restore: {},
     });
     assert.ok(source.toolbox.feature.magicType);
+    // A model that asked for them hears why they are not there, and what to use instead.
+    assert.deepStrictEqual(toolWarnings(source), [
+      'The panel leaves the toolbox features "magicType", "dataZoom", "brush" out of the chart, ' +
+        "as it lays the chart out again whenever its size changes, which would undo what they " +
+        "change: instead, render each chart type as a chart of its own, and zoom with a " +
+        '"dataZoom" component of type "inside" or "slider".',
+    ]);
+    assert.deepStrictEqual(toolWarnings(bars({ toolbox: { feature: { dataView: {} } } })), []);
+    assert.match(
+      toolWarnings(bars({ toolbox: { feature: { dataView: { readOnly: false } } } })).join(),
+      /^The panel shows the toolbox's data view read-only/,
+    );
+    assert.match(
+      toolWarnings({ baseOption: bars({ toolbox: [{ feature: { brush: {} } }] }) }).join(),
+      /toolbox feature "brush" out of the chart, .* undo what it changes\.$/,
+    );
   });
 
   test("leaves the source option untouched", () => {

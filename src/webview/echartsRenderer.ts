@@ -13,7 +13,13 @@ import {
   parseItemKey,
   type SeriesModel,
 } from "./echartsItems";
-import { disableAnimation, focusHighlighted, keepUserState, layoutOption } from "./echartsLayout";
+import {
+  disableAnimation,
+  focusHighlighted,
+  keepUserState,
+  layoutOption,
+  toolWarnings,
+} from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
 import { type JsonObject, parseOption, seriesTypes } from "./echartsOption";
@@ -148,7 +154,7 @@ export class EChartsRenderer implements Renderer {
   }
 
   warnings(): string[] {
-    return this.items()?.warnings ?? [];
+    return [...(this.option ? toolWarnings(this.option) : []), ...(this.items()?.warnings ?? [])];
   }
 
   showMarks(annotation: Annotation): void {

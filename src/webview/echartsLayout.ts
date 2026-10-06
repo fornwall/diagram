@@ -188,16 +188,48 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
 
 /**
  * The toolbox features that change the chart in ways its option does not hold, such as switching
- * between bars and lines: the next layout, as on a resize, would undo them.
+ * between bars and lines: the next layout, as on a resize, would undo them. Each comes with what
+ * to use instead, if anything.
  */
-const PASSING_TOOLS = new Set(["magicType", "dataZoom", "brush"]);
+const PASSING_TOOLS: Record<string, string | undefined> = {
+  magicType: "render each chart type as a chart of its own",
+  dataZoom: 'zoom with a "dataZoom" component of type "inside" or "slider"',
+  brush: undefined,
+};
+
+/** Tells a model which toolbox features it asked for the panel leaves out, and why. */
+export function toolWarnings(option: JsonObject): string[] {
+  const features = asArray(baseOption(option).toolbox).flatMap((toolbox) =>
+    isPlainObject(toolbox.feature) ? [toolbox.feature] : [],
+  );
+  const editable = features.some((feature) => asArray(feature.dataView)[0]?.readOnly === false)
+    ? [
+        "The panel shows the toolbox's data view read-only, as it lays the chart out again " +
+          "whenever its size changes, which would undo an edit of the data.",
+      ]
+    : [];
+  const left = new Set(
+    features.flatMap((feature) =>
+      Object.keys(feature).filter((name) => Object.hasOwn(PASSING_TOOLS, name)),
+    ),
+  );
+  if (left.size === 0) return editable;
+  const names = [...left].map((name) => `"${name}"`);
+  const instead = [...left].flatMap((name) => PASSING_TOOLS[name] ?? []);
+  return [
+    ...editable,
+    `The panel leaves the toolbox feature${names.length > 1 ? "s" : ""} ${names.join(", ")} out ` +
+      "of the chart, as it lays the chart out again whenever its size changes, which would undo " +
+      `what ${names.length > 1 ? "they change" : "it changes"}${instead.length > 0 ? `: instead, ${instead.join(", and ")}` : ""}.`,
+  ];
+}
 
 /** Leaves out the toolbox features whose changes would be undone, and lets the data view only show the data. */
 function keepLastingTools(toolbox: JsonObject): void {
   if (!isPlainObject(toolbox.feature)) return;
   const feature: JsonObject = {};
   for (const [name, settings] of Object.entries(toolbox.feature)) {
-    if (PASSING_TOOLS.has(name)) continue;
+    if (Object.hasOwn(PASSING_TOOLS, name)) continue;
     feature[name] =
       name === "dataView" && isPlainObject(settings) ? { ...settings, readOnly: true } : settings;
   }
