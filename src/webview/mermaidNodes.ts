@@ -65,6 +65,8 @@ export interface DiagramDb {
   }[];
   /** A C4 diagram's relationships, in the order it draws them. */
   getRels?(): { from: string; to: string; label?: { text?: string } }[];
+  /** A C4 diagram's boundaries in the boundary with the alias, the whole diagram being "global". */
+  getBoundaries?(parent: string): { alias: string; label: { text: string } }[];
   /** A sankey diagram's nodes and flows, in the order it draws them. */
   getGraph?(): {
     nodes: { id: string }[];
@@ -219,6 +221,18 @@ export function findNodes(
     nodeIds.set(domId, id);
     add(element, { id, label });
   }
+
+  // C4 boundaries, groups of a box and its texts, which Mermaid draws without ids: inner ones before
+  // outer ones, and none for the diagram as a whole.
+  const boundaries: DiagramNode[] = [];
+  const addBoundaries = (parent: string) => {
+    for (const { alias, label } of db?.getBoundaries?.(parent) ?? []) {
+      addBoundaries(alias);
+      if (alias !== "global") boundaries.push({ id: alias, label: label.text });
+    }
+  };
+  addBoundaries("");
+  addInOrder(svg.querySelectorAll(":scope > g:has(> rect:first-child)"), boundaries);
 
   // Architecture groups: a box, followed by a group of its icon and title.
   for (const box of svg.querySelectorAll("g.architecture-groups > rect.node-bkg")) {
@@ -599,7 +613,7 @@ function findRelationships(
   if (relLines.length === rels.length) {
     for (const [i, { from, to, label }] of rels.entries()) {
       const line = relLines[i] as Element;
-      // Boundaries are no nodes to describe a relationship by.
+      // An end that was not found, such as a boundary drawn unlike above, cannot describe it.
       if (!names.has(from) || !names.has(to)) continue;
       const node = relation(
         "edge",

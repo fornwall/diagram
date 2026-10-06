@@ -2176,9 +2176,11 @@ suite("webview", function () {
       [
         'C4Context\n  Person(u, "User")\n  System(s, "Shop")\n  System(m, "Mail")\n  Enterprise_Boundary(b, "Corp") {\n    System(d, "Data")\n  }\n  Rel(u, s, "Uses")\n  BiRel(s, m, "Sends")\n  Rel_Back(d, s, "Reads")\n  Rel(u, b, "Works at")',
         [
+          "b: Corp",
           "d: Data",
           "edge:d → s: Shop → Data: Reads",
           "edge:s → m: Shop ↔ Mail: Sends",
+          "edge:u → b: User → Corp: Works at",
           "edge:u → s: User → Shop: Uses",
           "m: Mail",
           "s: Shop",
@@ -2198,7 +2200,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the items of treemaps, packets and radar charts, which Mermaid draws without ids", async () => {
+  test("finds the items of treemaps, packets, radar charts and C4 boundaries, which Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2228,6 +2230,17 @@ suite("webview", function () {
       [
         'radar-beta\n  axis m["Math"], s["Science"]\n  axis e\n  curve a["Alice"]{85, 90, 80}\n  curve b{70, 75, 85}',
         ["a: <path> Alice", "b: <path> b", "e: e", "m: Math", "s: Science"],
+      ],
+      [
+        'C4Context\n  Enterprise_Boundary(corp, "Corp") {\n    System_Boundary(core, "Core") {\n      System(s, "Shop")\n    }\n    System(d, "Data")\n  }\n  Boundary(ext, "External", "cloud") {\n    System(m, "Mail")\n  }',
+        [
+          "core: Core [SYSTEM]",
+          "corp: Corp [ENTERPRISE]",
+          "d: Data [Software System]",
+          "ext: External [cloud]",
+          "m: Mail [Software System]",
+          "s: Shop [Software System]",
+        ],
       ],
     ];
     for (const [source, items] of cases) {
