@@ -51,9 +51,10 @@ function parseDuration(text: string, durations = false): number | undefined {
   const [, d, h, m, s, unit = "s"] =
     DURATION.exec(text) ?? (durations ? CLOCK.exec(text) : null) ?? [];
   const parts = [d, h, m, s].filter((part) => part !== undefined).length;
-  // Alone, "5m" may be millions or meters, and "3h" or "2d" other things, except in a column of
-  // durations, as kubectl's AGE.
-  if (parts === 0 || (parts === 1 && s === undefined && !durations)) return undefined;
+  // Alone, "5m" may be millions or meters, "3h" or "2d" other things and "1980s" a decade, except in
+  // a column of durations, as kubectl's AGE. Commands write durations that long in minutes.
+  const alone = s === undefined || (unit === "s" && /^[1-9]\d{3}$/.test(s));
+  if (parts === 0 || (parts === 1 && alone && !durations)) return undefined;
   const minutes = (Number(d ?? 0) * 24 + Number(h ?? 0)) * 60 + Number(m ?? 0);
   return minutes * 60 + Number(s ?? 0) / (PER_SECOND[unit] ?? 1);
 }

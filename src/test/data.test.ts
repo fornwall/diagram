@@ -209,10 +209,22 @@ suite("data", () => {
     ] as const) {
       assert.deepStrictEqual(parseNumber(text), { value, unit: "seconds" }, text);
     }
-    // A single unit of minutes, hours or days, or a clock, only in a column of durations.
-    for (const text of ["5m", "3h", "2d", "1:02:03"]) {
+    // A single unit of minutes, hours or days, a clock, or whole seconds that read as a decade,
+    // only in a column of durations.
+    for (const text of ["5m", "3h", "2d", "1:02:03", "1980s"]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
+    assert.deepStrictEqual(parse("decade,count\n1980s,5\n1990s,7"), {
+      columns: ["decade", "count"],
+      rows: [
+        ["1980s", 5],
+        ["1990s", 7],
+      ],
+    });
+    assert.deepStrictEqual(
+      parse("run,elapsed\na,1200s\nb,45s").rows.map((row) => row[1]),
+      [1200, 45],
+    );
     const pods = parseTable(
       "NAME   READY   AGE\napi    1/1     45m\nweb    1/1     3h12m\ndb     1/1     2d",
     );
