@@ -175,7 +175,9 @@ suite("dataSource", () => {
     }
     const large = path.join(dir, "large.csv");
     fs.writeFileSync(large, Buffer.alloc(10 * 1024 * 1024 + 1));
-    await assert.rejects(readDataFile(large), /is larger than the 10 MiB limit/);
+    await assert.rejects(readDataFile(large), {
+      message: `The file ${large} is larger than the 10 MiB limit. Use a command that summarizes it instead.`,
+    });
   });
 
   test("reads UTF-16 files with a byte order mark", async () => {

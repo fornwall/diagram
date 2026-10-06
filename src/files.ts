@@ -125,9 +125,19 @@ const NODE_CODES: Record<string, FileErrorCode> = {
 };
 
 /**
- * Says in one sentence why `uri` could not be read, naming it once, workspace-relative where
- * possible, followed by the hint for the error's code, if any. An unknown error is told by its
- * message, without the file names that VS Code and Node.js repeat in it.
+ * How messages name a file: relative to its workspace folder, else by its path, or by its URI
+ * outside the workspace in a virtual file system, where a path alone does not tell which file.
+ */
+export function fileName(uri: vscode.Uri): string {
+  return uri.scheme === "file" || vscode.workspace.getWorkspaceFolder(uri)
+    ? vscode.workspace.asRelativePath(uri)
+    : uri.toString(true);
+}
+
+/**
+ * Says in one sentence why `uri` could not be read, naming it once by {@link fileName}, followed by
+ * the hint for the error's code, if any. An unknown error is told by its message, without the file
+ * names that VS Code and Node.js repeat in it.
  */
 function explain(
   code: string | undefined,
@@ -135,10 +145,7 @@ function explain(
   uri: vscode.Uri,
   hints: Partial<Record<FileErrorCode, string | undefined>> = {},
 ): Error {
-  const name =
-    uri.scheme === "file" || vscode.workspace.getWorkspaceFolder(uri)
-      ? vscode.workspace.asRelativePath(uri)
-      : uri.toString(true);
+  const name = fileName(uri);
   if (code !== undefined && code in EXPLANATIONS) {
     const hint = hints[code as FileErrorCode];
     return new Error(EXPLANATIONS[code as FileErrorCode](name) + (hint ? ` ${hint}` : ""));

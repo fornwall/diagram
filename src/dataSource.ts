@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeText, fileError, resolveFile } from "./files";
+import { decodeText, fileError, fileName, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -73,7 +73,7 @@ export function prepareDataInvocation(
       const uri = resolveFile(spec.file);
       if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
-        message.appendCodeblock(uri.scheme === "file" ? uri.fsPath : uri.toString(), "text");
+        message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };
       }
     } catch {
@@ -88,7 +88,7 @@ export async function readDataFile(file: string): Promise<string> {
   const checkSize = (size: number): void => {
     if (size > MAX_BYTES) {
       throw new Error(
-        `The file ${uri.fsPath} is larger than the ${MAX_MIB} MiB limit. ` +
+        `The file ${fileName(uri)} is larger than the ${MAX_MIB} MiB limit. ` +
           "Use a command that summarizes it instead.",
       );
     }
@@ -121,7 +121,7 @@ export async function readDataFile(file: string): Promise<string> {
   }
   if (text.includes("\0")) {
     throw new Error(
-      `The file ${uri.fsPath} is not a text file (it may be a spreadsheet). ` +
+      `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +
         "Save its data as CSV, or use a command that prints it.",
     );
   }
