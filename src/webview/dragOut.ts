@@ -18,6 +18,8 @@ interface Prepared {
 interface DragOutOptions {
   /** How to make an image of the drawing as shown, if it can be one. */
   imageMaker(): (() => Promise<DiagramImage>) | undefined;
+  /** Whether the drawing can change without the panel saying so, which a prepared image misses. */
+  changesInPlace(): boolean;
   /** Runs a task in the render queue: Mermaid rendering and images both configure Mermaid. */
   enqueue(task: () => Promise<void>): void;
   /** The title, which names the file. */
@@ -72,8 +74,9 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
   };
 
   handle.addEventListener("pointerenter", () => {
-    // Chart interactions and resizing can change its SVG without changing its source.
-    forget();
+    // Take a chart again, which its interactions and resizing change in place. Keep any other
+    // image until the drawing or theme changes: a large Mermaid diagram takes a while to draw.
+    if (options.changesInPlace()) forget();
     prepare();
   });
   handle.addEventListener("pointerdown", (event) => {

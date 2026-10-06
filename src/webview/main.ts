@@ -86,6 +86,7 @@ const forgetDragImage = enableDragOut(dragOutHandle, {
     const toImage = active?.toImage?.bind(active);
     return toImage && (() => toImage(imageBackground()));
   },
+  changesInPlace: () => active?.changesInPlace === true,
   enqueue,
   title: () => titleElement.textContent?.trim() ?? "",
   noun: () => active?.noun ?? "diagram",

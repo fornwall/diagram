@@ -1724,24 +1724,55 @@ suite("webview", function () {
   });
 
   test("gives each Mermaid image its own ids, which its styles and arrowheads go by", async () => {
-    await draw({ source: "flowchart LR\n A --> B" });
-    const ids = (await evaluate(`(async () => {
-      ${DRAG_IMAGE}
-      const ids = [];
-      for (const attempt of [1, 2]) {
-        const svg = (await dragImage()).getData("image/svg+xml");
-        const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
-        const id = image.id;
-        const references = [...svg.matchAll(/url\\(#([^)]+)\\)/g)].map(match => match[1]);
-        ids.push({id, scoped: references.length > 0 && references.every(name => name.startsWith(id))});
-      }
-      return ids;
-    })()`)) as { id: string; scoped: boolean }[];
+    const ids: { id: string; scoped: boolean }[] = [];
+    // Drawn again, as the same diagram in another session would be.
+    for (const _ of [1, 2]) {
+      await draw({ source: "flowchart LR\n A --> B" });
+      const svg = (await evaluate(`(async () => {
+        ${DRAG_IMAGE}
+        return (await dragImage()).getData("image/svg+xml");
+      })()`)) as string;
+      const id = /<svg[^>]* id="([^"]+)"/.exec(svg)?.[1] ?? "";
+      const references = [...svg.matchAll(/url\(#([^)]+)\)/g)].map((match) => match[1] ?? "");
+      ids.push({
+        id,
+        scoped: references.length > 0 && references.every((name) => name.startsWith(id)),
+      });
+    }
     assert.deepStrictEqual(
       ids.map(({ scoped }) => scoped),
       [true, true],
     );
     assert.notStrictEqual(ids[0]?.id, ids[1]?.id);
+  });
+
+  test("keeps a prepared Mermaid image across hovers, but takes a chart's again", async () => {
+    const images = [];
+    for (const diagram of [
+      { source: "flowchart LR\n A[Kept] --> B" },
+      { language: "echarts" as const, source: '{"series": [{"type": "pie", "data": [1, 2]}]}' },
+    ]) {
+      await draw(diagram);
+      images.push(
+        await evaluate(`(async () => {
+          const original = XMLSerializer.prototype.serializeToString;
+          let images = 0;
+          XMLSerializer.prototype.serializeToString = function (node) {
+            if (node.localName === "svg") images++;
+            return original.call(this, node);
+          };
+          try {
+            ${DRAG_IMAGE}
+            await dragImage();
+            await dragImage();
+            return images;
+          } finally {
+            XMLSerializer.prototype.serializeToString = original;
+          }
+        })()`),
+      );
+    }
+    assert.deepStrictEqual(images, [1, 2]);
   });
 
   test("keeps Mermaid image export separate from an incoming render", async () => {

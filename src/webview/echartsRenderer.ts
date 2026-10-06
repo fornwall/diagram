@@ -37,6 +37,8 @@ export class EChartsRenderer implements Renderer {
   readonly noun = "chart";
   readonly itemNoun = "chart item";
   readonly sourceName = "ECharts option (JSON or JavaScript)";
+  // Legends, zooming, the toolbox and resizing redraw the chart without a new option.
+  readonly changesInPlace = true;
 
   /** The chart's tab stop, around the element that ECharts draws in. */
   private readonly container: HTMLElement;

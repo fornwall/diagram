@@ -51,6 +51,8 @@ export interface Renderer {
   readonly hasWebLinks?: boolean;
   /** Exports a self-contained image on the given background. */
   toImage?(background: string): Promise<DiagramImage>;
+  /** Whether the image can change while the source, theme and marks stay, as a chart's does. */
+  readonly changesInPlace?: boolean;
   /** Renders the current diagram again with the current VS Code theme. */
   themeChanged(): Promise<void>;
   /** The source as shown in the source editor, if not as it is. */
