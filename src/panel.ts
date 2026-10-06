@@ -191,9 +191,16 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `fullSource` gives a long source too.
+   * `fullSource` gives a long source too, and without `callsTools` the model is not told to call a
+   * tool for it.
    */
-  describeForModel(fullSource = false): string | undefined {
+  describeForModel({
+    fullSource = false,
+    callsTools = true,
+  }: {
+    fullSource?: boolean;
+    callsTools?: boolean;
+  } = {}): string | undefined {
     if (!this.state) return undefined;
     const description = describeDiagram(this.state, {
       selection: this.selection,
@@ -202,6 +209,7 @@ export class DiagramPanel implements vscode.Disposable {
       repeatedNames: this.repeatedNames,
       warnings: this.renderWarnings,
       fullSource,
+      callsTools,
     });
     return `Revision: ${this.renderVersion}.\n\n${description}`;
   }

@@ -32,6 +32,8 @@ interface Drawing {
   warnings?: readonly string[];
   /** Gives a long source too, as {@link GET_STATE_TOOL} does. */
   fullSource?: boolean;
+  /** Whether the model can call {@link GET_STATE_TOOL} for a long source left out. */
+  callsTools?: boolean;
 }
 
 /** Describes a diagram, its marks and the user's interactions with it, for a language model. */
@@ -44,13 +46,14 @@ export function describeDiagram(
     repeatedNames = [],
     warnings = [],
     fullSource = false,
+    callsTools = true,
   }: Drawing = {},
 ): string {
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, fullSource),
+    describeSource(state, fullSource, callsTools),
     "",
   ];
   if (state.chart) {
@@ -151,15 +154,20 @@ function describeMarks(annotation: Annotation | undefined, parts: string): strin
  * A long source is left out of every chat request, but given in full when `full`, as a model has to
  * read a source to change it. A chart generated from a large file or command output is the
  * exception: it can be too large for the model's context, and the chart tools change it instead.
+ * A model that calls no tools is not told to read it with {@link GET_STATE_TOOL}.
  */
-function describeSource({ source, language, chart }: DiagramState, full: boolean): string {
+function describeSource(
+  { source, language, chart }: DiagramState,
+  full: boolean,
+  callsTools: boolean,
+): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
   if (source.length <= MAX_SOURCE_LENGTH || (full && !chart)) {
     return codeFence(source, language);
   }
-  return chart
+  return chart || !callsTools
     ? `(The source is ${source.length} characters long, too long to show here.)`
     : `(The source is ${source.length} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
 }

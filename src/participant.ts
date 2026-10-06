@@ -67,7 +67,13 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     }
 
     const explain = request.command === "explain";
-    const current = request.command === "new" ? undefined : panel.describeForModel();
+
+    // A model says whether it calls tools in capabilities.supportsToolCalling, which is not part
+    // of the stable API. One that does not may reject a request with tools; it draws with a
+    // diagram block instead.
+    const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
+    const callsTools = capabilities?.supportsToolCalling !== false;
+    const current = request.command === "new" ? undefined : panel.describeForModel({ callsTools });
     if (explain && !current) {
       stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");
       return;
@@ -75,11 +81,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     // Drawing may also use the tools the user attached; /explain only the read-only tools.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
-    // A model says whether it calls tools in capabilities.supportsToolCalling, which is not part
-    // of the stable API. One that does not may reject a request with tools; it draws with a
-    // diagram block instead.
-    const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
-    const callsTools = capabilities?.supportsToolCalling !== false;
     const tools = callsTools
       ? vscode.lm.tools.filter((tool) =>
           explain
@@ -96,7 +97,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     try {
       const prompt = await unlessCancelled(
-        () => promptMessages(request, context, explain, current, token),
+        () => promptMessages(request, context, explain, callsTools, current, token),
         token,
       );
       if (typeof prompt === "string") {

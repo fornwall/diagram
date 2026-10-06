@@ -525,6 +525,11 @@ suite("participant", () => {
   });
 
   test("gives a model that cannot call tools none, and draws its diagram block", async () => {
+    // The source is too long to give, and the model cannot call a tool for it either.
+    const long = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
+    assert.ok(
+      (await panel.render({ language: "mermaid", source: long, title: "Long" }, "tool")).ok,
+    );
     const { sent, shown, result } = await ask([[text(`Here it is:\n${valid}`)]], {
       capabilities: { supportsToolCalling: false },
       toolReferences: [{ name: "diagram_getState" }],
@@ -533,6 +538,10 @@ suite("participant", () => {
       sent.map(({ options }) => [options.tools, options.toolMode]),
       [[[], undefined]],
     );
+    const prompt = sent[0]?.messages.map(messageText).join("\n") ?? "";
+    assert.match(prompt, /Reply with one complete diagram in a mermaid or echarts code block/);
+    assert.match(prompt, /The source is \d+ characters long, too long to show here\./);
+    assert.doesNotMatch(prompt, /diagram_/);
     assert.match(shown, /^Fake cannot call tools, so the attached tools are left out\.\n\n/);
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
   });
