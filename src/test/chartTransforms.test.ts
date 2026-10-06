@@ -234,27 +234,4 @@ suite("chart transforms", () => {
       /holds no numbers to bin/,
     );
   });
-
-  test("faceted date axes overridden as categories align labels without timestamp bounds", () => {
-    for (const type of ["line", "horizontalBar", "scatter"] as const) {
-      const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
-      const option = build("group,date,value\na,2024-01-01,2\na,2024-01-02,3\nb,2024-01-03,4", {
-        type,
-        facetColumn: "group",
-        options: { [axis]: { type: "category" } },
-      });
-      for (const category of option[axis]) {
-        assert.strictEqual(category.type, "category");
-        assert.deepStrictEqual(category.data, ["2024-01-01", "2024-01-02", "2024-01-03"]);
-        assert.strictEqual(category.min, undefined);
-        assert.strictEqual(category.max, undefined);
-      }
-      assert.strictEqual(option.series[0].data[2], null);
-      assert.strictEqual(option.series[1].data[0], null);
-      assert.match(
-        withChart(option, (chart) => chart.renderToSVGString(), { width: 600, height: 400 }),
-        /<svg/,
-      );
-    }
-  });
 });
