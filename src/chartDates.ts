@@ -1,6 +1,8 @@
 // Recognizing unambiguous calendar dates for chart time axes.
 
-const DATE = String.raw`\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])`;
+const MONTH = "(?:0[1-9]|1[0-2])";
+const DAY = String.raw`(?:0[1-9]|[12]\d|3[01])`;
+const DATE = String.raw`\d{4}-${MONTH}-${DAY}`;
 
 /**
  * An ISO date and time, perhaps with a fraction of a second and a time zone, which git log
@@ -19,11 +21,8 @@ const DATE_TIME = new RegExp(
 const DATE_FORMATS: { name: string; pattern: RegExp }[] = [
   { name: "ISO date-times", pattern: DATE_TIME },
   { name: "ISO dates", pattern: new RegExp(`^${DATE}$`) },
-  { name: "ISO months", pattern: /^\d{4}-(?:0[1-9]|1[0-2])$/ },
-  {
-    name: "dates written YYYY/MM/DD",
-    pattern: /^\d{4}\/(?:0[1-9]|1[0-2])\/(?:0[1-9]|[12]\d|3[01])$/,
-  },
+  { name: "ISO months", pattern: new RegExp(String.raw`^\d{4}-${MONTH}$`) },
+  { name: "dates written YYYY/MM/DD", pattern: new RegExp(String.raw`^\d{4}/${MONTH}/${DAY}$`) },
 ];
 
 /**
