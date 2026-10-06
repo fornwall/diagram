@@ -1,12 +1,5 @@
 **
-!dist/extension.js
-!dist/webview.js
-!dist/echarts.js
-!dist/standalone.js
-!dist/standalone.css
-!dist/chunks/*.js
-!dist/webview.css
-!dist/THIRD_PARTY_NOTICES.txt
+!dist/**
 !images/icon.png
 !package.json
 !README.md
