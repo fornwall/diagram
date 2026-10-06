@@ -439,7 +439,7 @@
             },
             "caption": {
               "type": "string",
-              "description": "One line shown above the diagram, e.g. \"Step 2 of 3: the request is retried here\".",
+              "description": "One line shown above the diagram, only for context the marks and labels do not show, e.g. \"Step 2 of 3: the request is retried here\".",
               "maxLength": 120
             },
             "dim": {
