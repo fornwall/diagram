@@ -210,7 +210,8 @@ suite("webview", function () {
       document.getElementById("chart-option-aggregation").value = "sum";
       document.getElementById("chart-option-sort").value = "descending";
       document.getElementById("chart-option-row").value = "1";
-      document.querySelector("#chart-options .actions button").click();
+      // What Enter in a field does: click the form's default button.
+      document.querySelector("#chart-options form button:default").click();
     })()`),
     );
     assert.strictEqual(panel.current?.chart?.command, chart.command);

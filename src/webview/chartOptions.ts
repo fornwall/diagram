@@ -153,10 +153,13 @@ export class ChartOptionsForm {
     actions.append(this.apply, this.reset);
     const form = document.createElement("form");
     form.append(this.fields, this.replaceLabel, this.error, actions);
-    // Native submission is blocked because the webview disables forms.
-    const apply = (event: Event): void => {
+    // Apply is the form's submit button, for Enter in a field to apply the options too. They go
+    // to the extension rather than anywhere the form would send them.
+    this.apply.type = "submit";
+    form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!this.state || !form.reportValidity()) return;
+      // The browser has checked the fields before it submits.
+      if (!this.state) return;
       const labels = this.selected(this.labels);
       const values = this.selected(this.values);
       this.error.hidden = true;
@@ -182,9 +185,7 @@ export class ChartOptionsForm {
         },
         replaceSource: this.replace.checked,
       });
-    };
-    this.apply.addEventListener("click", apply);
-    form.addEventListener("submit", apply);
+    });
     container.append(header, this.status, form);
     container.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
