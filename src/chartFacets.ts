@@ -45,18 +45,12 @@ export function buildFacetedChart(
   }
   const index = findColumn(table, spec.facetColumn ?? "", "facet");
   const facetName = columnName(table, index);
-  const groups = new Map<Cell, number[]>();
-  table.rows.forEach((row, rowIndex) => {
-    const value = row[index] ?? null;
-    const indices = groups.get(value) ?? [];
-    indices.push(rowIndex);
-    groups.set(value, indices);
-    if (groups.size > MAX_FACETS) {
-      throw new Error(
-        `The facet column ${JSON.stringify(facetName)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
-      );
-    }
-  });
+  const groups = Map.groupBy(table.rows.keys(), (row): Cell => table.rows[row]?.[index] ?? null);
+  if (groups.size > MAX_FACETS) {
+    throw new Error(
+      `The facet column ${JSON.stringify(facetName)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
+    );
+  }
   const allFacets = facetTable(spec, table, index);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.
