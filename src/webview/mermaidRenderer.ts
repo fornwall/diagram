@@ -667,8 +667,14 @@ export class MermaidRenderer implements Renderer {
   private prepareSvg(svgId: string, db: DiagramDb | undefined): void {
     this.shown = nothingShown();
     const svg = this.diagram.querySelector("svg");
-    this.drawn = svg ? findNodes(svg, `${svgId}-`, db) : NOTHING_DRAWN;
+    this.drawn = NOTHING_DRAWN;
     if (!svg) return;
+    try {
+      this.drawn = findNodes(svg, `${svgId}-`, db);
+    } catch (error) {
+      // A drawing unlike what findNodes expects is still worth showing, if without its nodes.
+      console.error(error);
+    }
     // Keep the tab stop on the same node in a new version of the drawing.
     const stops = svg.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
     const stop =
