@@ -64,22 +64,30 @@ suite("tools", () => {
       { ok: false, kind: "invalid", error: "Parse error" },
       { ok: false, kind: "unavailable", error: "The diagram panel is unavailable." },
     ];
-    panel.render = async () => outcomes.shift() ?? assert.fail("Rendered too often");
+    const linked: unknown[] = [];
+    panel.render = async ({ links }) => {
+      linked.push(links);
+      return outcomes.shift() ?? assert.fail("Rendered too often");
+    };
     const render = async () =>
       toolText(
         await new RenderDiagramTool(panel).invoke(
           {
-            input: { source: "flowchart LR\n  A --> B", links: { A: "a.ts#L1", B: "b.ts:2" } },
+            input: {
+              source: "flowchart LR\n  A --> B",
+              links: { A: "sizes.tsv#L1", B: "b.ts:2", C: "made-up.ts" },
+            },
           } as never,
           token,
         ),
       );
     const leftOut =
-      '\n\nThese links were left out:\n- "B": "b.ts:2" gives its line after a colon; write it as "#L42"';
+      '\n\nThese links were left out:\n- "B": "b.ts:2" gives its line after a colon; write it as "#L42" or "#L42-L80".\n- "C": made-up.ts does not exist.\n';
     const drawn = await render();
     assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel next to the chat\./);
     assert.ok(drawn.includes(leftOut), drawn);
     assert.match(drawn, /Call diagram_render again with the links corrected to add them\.$/);
+    assert.deepStrictEqual(linked, [{ A: { file: "sizes.tsv", line: 1 } }]);
     const invalid = await render();
     assert.match(
       invalid,

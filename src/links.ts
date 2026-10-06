@@ -1,7 +1,7 @@
 // Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
-import { openDocument, resolveFile } from "./files";
+import { fileError, openDocument, resolveFile } from "./files";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 import { quote } from "./text";
 
@@ -61,6 +61,44 @@ export function validateLinks(
     }
   }
   return links.length > 0 ? { links: Object.fromEntries(links), problems } : { problems };
+}
+
+/**
+ * Leaves out the links to files that do not exist, which a model may make up, saying why for each.
+ * Other file system errors, such as one that a later click may not meet, keep the link.
+ */
+export async function withoutMissingFiles(
+  links: NodeLinks,
+): Promise<{ links?: NodeLinks; problems: string[] }> {
+  const checks = new Map<string, Promise<string | undefined>>();
+  const missing = (file: string) => {
+    let check = checks.get(file);
+    if (!check) {
+      const uri = resolveFile(file);
+      check = Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+        () => undefined,
+        (error: unknown) =>
+          error instanceof vscode.FileSystemError && error.code === "FileNotFound"
+            ? errorMessage(fileError(error, uri))
+            : undefined,
+      );
+      checks.set(file, check);
+    }
+    return check;
+  };
+  const entries = Object.entries(links);
+  const found = await Promise.all(entries.map(([, link]) => missing(link.file)));
+  const kept: [string, NodeLink][] = [];
+  const problems: string[] = [];
+  for (const [index, [id, link]] of entries.entries()) {
+    const problem = found[index];
+    if (problem) {
+      problems.push(`${JSON.stringify(id)}: ${problem}`);
+    } else {
+      kept.push([id, link]);
+    }
+  }
+  return kept.length > 0 ? { links: Object.fromEntries(kept), problems } : { problems };
 }
 
 function parseLink(location: unknown): NodeLink | string {

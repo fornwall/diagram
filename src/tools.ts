@@ -9,7 +9,7 @@ import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import { nodeList, repeatedList } from "./describe";
 import { isClosingFence, openingFence } from "./fences";
-import { LINK_SYNTAX, validateLinks } from "./links";
+import { LINK_SYNTAX, validateLinks, withoutMissingFiles } from "./links";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import {
   ANNOTATE_TOOL,
@@ -116,9 +116,15 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
     }
-    const { diagram, problems, unknown } = parsed;
+    const { diagram, unknown } = parsed;
     // A misnamed property, such as "clickprompt", would otherwise be lost without a word.
     const ignored = unknown ? `\n\n${unknown} Unknown properties are ignored.` : "";
+    const problems = [...parsed.problems];
+    if (diagram.links) {
+      const existing = await unlessCancelled(() => withoutMissingFiles(diagram.links ?? {}), token);
+      diagram.links = existing.links;
+      problems.push(...existing.problems);
+    }
     const outcome = await unlessCancelled(
       () => this.panel.render(diagram, "tool", options.toolInvocationToken),
       token,
