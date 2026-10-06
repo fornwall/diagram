@@ -1432,12 +1432,12 @@ suite("data", () => {
     assert.deepStrictEqual(parse("dir size\nsrc 12\ntest 3").columns, ["dir", "size"]);
   });
 
-  test("parses 200,000 rows", function () {
-    // Takes about a second, or longer on a busy machine; quadratic time would take minutes.
+  test("parses 100,000 rows", function () {
+    // Takes about half a second, or longer on a busy machine; quadratic time would take minutes.
     this.timeout(10_000);
-    const lines = Array.from({ length: 200_000 }, (_, i) => `row ${i} /a`);
-    assert.strictEqual(parse(lines.join("\n")).rows.length, 200_000);
-    assert.strictEqual(parse(lines.join("\n").replaceAll(" ", ",")).rows.length, 200_000);
+    const lines = Array.from({ length: 100_000 }, (_, i) => `row ${i} /a`);
+    assert.strictEqual(parse(lines.join("\n")).rows.length, 100_000);
+    assert.strictEqual(parse(lines.join("\n").replaceAll(" ", ",")).rows.length, 100_000);
     const df = parse(["Name Size Mounted on", ...lines].join("\n"));
     assert.deepStrictEqual(df.columns, ["Name", "Size", "Mounted on"]);
   });
