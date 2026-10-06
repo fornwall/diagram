@@ -3,6 +3,9 @@
 import { errorMessage, safeFileName } from "../protocol";
 import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
 
+/** Chromium does not load a URL longer than this, which the file to drop is downloaded from. */
+const MAX_URL_LENGTH = 2 * 1024 * 1024;
+
 interface Prepared {
   image?: DiagramImage;
   png?: string;
@@ -88,21 +91,28 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
     const { image, png, pngError, preview } = ready;
     const title = options.title();
     const name = safeFileName(title, "diagram");
-    const svg = svgRequested || !png;
-    if (!svgRequested && !png) {
-      options.hint(
-        pngError
-          ? `Dragging the drawing as SVG, as the PNG failed: ${pngError}`
-          : "The PNG is not ready yet. Dragging the drawing as SVG instead.",
-      );
-    }
-    dataTransfer.effectAllowed = "copy";
+    const svg = svgDataUrl(image.svg);
     // A file the drop target downloads from the data URL. This is what an application that takes
     // dropped files, such as a chat window, reads; the type it asks for decides the rest.
-    dataTransfer.setData(
-      "DownloadURL",
-      svg ? `image/svg+xml:${name}.svg:${svgDataUrl(image.svg)}` : `image/png:${name}.png:${png}`,
-    );
+    let file: string | undefined;
+    if (!svgRequested && png && png.length <= MAX_URL_LENGTH) {
+      file = `image/png:${name}.png:${png}`;
+    } else if (svg.length <= MAX_URL_LENGTH) {
+      file = `image/svg+xml:${name}.svg:${svg}`;
+      if (!svgRequested) {
+        options.hint(
+          png
+            ? "The PNG is too large to drop as a file. Dragging the drawing as SVG instead."
+            : pngError
+              ? `Dragging the drawing as SVG, as the PNG failed: ${pngError}`
+              : "The PNG is not ready yet. Dragging the drawing as SVG instead.",
+        );
+      }
+    } else {
+      options.hint("The image is too large to drop as a file. Use Export to save it instead.");
+    }
+    dataTransfer.effectAllowed = "copy";
+    if (file) dataTransfer.setData("DownloadURL", file);
     // For a target that takes rich text instead of a file, and one that prefers vector over pixels.
     if (png) {
       const element = document.createElement("img");

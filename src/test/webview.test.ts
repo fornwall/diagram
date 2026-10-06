@@ -1349,42 +1349,47 @@ suite("webview", function () {
     }
   });
 
-  test("drags SVG and says why when the browser cannot create a PNG", async () => {
-    await draw({
-      language: "echarts",
-      source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-    });
-    const download = (await evaluate(`(async () => {
-      const original = HTMLCanvasElement.prototype.toBlob;
-      let failed = false;
-      HTMLCanvasElement.prototype.toBlob = (callback) => {
-        failed = true;
-        callback(null);
-      };
-      try {
-        ${DRAG_IMAGE}
-        ${UNTIL}
-        // Without Shift, which an earlier drag may have held, to ask for a PNG.
-        await dragImage({shiftKey: false});
-        await until(() => failed);
-        await new Promise(resolve => setTimeout(resolve));
-        const dataTransfer = new DataTransfer();
-        document.getElementById("drag-out")
-          .dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        return {
-          url: dataTransfer.getData("DownloadURL"),
-          hint: document.getElementById("selection-label").textContent,
-        };
-      } finally {
-        HTMLCanvasElement.prototype.toBlob = original;
-      }
-    })()`)) as { url: string; hint: string };
-    assert.match(download.url, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
-    assert.strictEqual(
-      download.hint,
+  const svgDrags = {
+    "the browser cannot create a PNG": [
+      "null",
       "Dragging the drawing as SVG, as the PNG failed: The browser could not create a PNG at this image size.",
-    );
-  });
+    ],
+    // Chromium does not download a file to drop from a data URL of over 2 MB.
+    "the PNG is too large to drop": [
+      'new Blob([new Uint8Array(1_600_000)], {type: "image/png"})',
+      "The PNG is too large to drop as a file. Dragging the drawing as SVG instead.",
+    ],
+  };
+  for (const [name, [blob, hint]] of Object.entries(svgDrags)) {
+    test(`drags SVG and says why when ${name}`, async () => {
+      await draw({
+        language: "echarts",
+        source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+      });
+      const download = (await evaluate(`(async () => {
+        const original = HTMLCanvasElement.prototype.toBlob;
+        HTMLCanvasElement.prototype.toBlob = (callback) => callback(${blob});
+        const label = document.getElementById("selection-label");
+        try {
+          ${DRAG_IMAGE}
+          ${UNTIL}
+          // Without Shift, which an earlier drag may have held, to ask for a PNG.
+          let dataTransfer = await dragImage({shiftKey: false});
+          await until(() => {
+            dataTransfer = new DataTransfer();
+            document.getElementById("drag-out")
+              .dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+            return label.textContent === ${JSON.stringify(hint)};
+          });
+          return {url: dataTransfer.getData("DownloadURL"), hint: label.textContent};
+        } finally {
+          HTMLCanvasElement.prototype.toBlob = original;
+        }
+      })()`)) as { url: string; hint: string };
+      assert.match(download.url, /^image\/svg\+xml:Test\.svg:data:image\/svg\+xml/);
+      assert.strictEqual(download.hint, hint);
+    });
+  }
 
   test("keeps SVG export and rendering available while PNG decoding stalls", async () => {
     await draw({
