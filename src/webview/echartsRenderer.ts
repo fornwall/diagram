@@ -185,10 +185,19 @@ export class EChartsRenderer implements Renderer {
     if (!svg) {
       throw new Error("There is no chart to make an image of.");
     }
+    // The pointer can still rest on the chart, as when the image is exported from the context menu
+    // with the keyboard: leave out the axis pointer and the emphasis it shows, as if it had left.
+    // Downplaying everything clears the marks too, so highlight them again.
+    this.chart.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
+    this.chart.dispatchAction({ type: "downplay" });
+    this.hasHighlights = false;
+    this.highlightMarks();
+    const drawing = this.chart.getZr();
+    // ECharts applies the states on its next frame: run it now.
+    drawing.animation.trigger("frame");
     // ECharts' own export finishes the animations of what it draws, but labels fade in on the text
     // element that holds their lines, and groups move as a whole: finish those too, or the labels
     // of a chart exported as it appears are all but transparent.
-    const drawing = this.chart.getZr();
     const finished = new Set<object>();
     for (const item of drawing.storage.getDisplayList(true)) {
       for (let element: Animated | null = item; element && !finished.has(element); ) {

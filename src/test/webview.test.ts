@@ -1370,6 +1370,45 @@ suite("webview", function () {
     assert.deepStrictEqual(labels, ["Fading label 1"]);
   });
 
+  test("leaves out of chart images what the pointer shows on the chart", async () => {
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+        xAxis: { type: "category", data: ["A", "B"] },
+        yAxis: {},
+        series: [
+          {
+            type: "bar",
+            data: [10, 20],
+            itemStyle: { color: "#0000ff" },
+            emphasis: { itemStyle: { color: "#ff0000" } },
+          },
+        ],
+      }),
+    });
+    panel.annotate(validateAnnotation({ marks: [{ id: "A" }] }));
+    const images = await evaluate(`(async () => {
+      ${DRAG_IMAGE}
+      ${UNTIL}
+      // What is drawn, without the ids that ECharts numbers anew in each drawing.
+      const image = async () => (await dragImage({shiftKey: true})).getData("image/svg+xml")
+        .replace(/ (id|clip-path)="[^"]*"/g, "");
+      const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+      const marked = await until(() => red() === 1);
+      const before = await image();
+      // As when exporting from the context menu by keyboard, with the pointer left on the chart.
+      const bar = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[0];
+      const box = bar.getBoundingClientRect();
+      bar.dispatchEvent(new MouseEvent("mousemove", {bubbles: true,
+        clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}));
+      const hovered = await until(() => red() === 2);
+      return {marked, hovered, same: (await image()) === before};
+    })()`);
+    assert.deepStrictEqual(images, { marked: true, hovered: true, same: true });
+  });
+
   test("leaves the toolbox out of chart images, but not out of the panel", async () => {
     const chart = {
       animation: false,
