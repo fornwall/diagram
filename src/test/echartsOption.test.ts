@@ -391,10 +391,34 @@ suite("echartsOption", () => {
     );
   });
 
-  test("leaves errors beyond literal syntax, such as inside a function, to the engine", () => {
+  test("locates errors beyond literal syntax, such as inside a function, as the engine finds them", () => {
     const message = errorOf("{renderItem: (p) => { return {a: 1,, b: 2}; }}");
-    assert.match(message, /neither valid JSON nor a valid JavaScript object literal: Unexpected/);
-    assert.match(message, /as JSON or as JavaScript when a callback needs a function/);
+    assert.match(
+      message,
+      /neither valid JSON nor a valid JavaScript object literal: Unexpected token ',' \(line 1, column 36\)\. Write it as one object/,
+    );
+    assert.match(message, /\n1 \| \{renderItem: .*\n {2}\| {36}\^$/);
+    const cases: [string, RegExp][] = [
+      ["{a: p => p.x.., b: 1}", /Unexpected token '\.' \(line 1, column 14\)/],
+      ["{a: (p) => p.name, b: {c: d e}}", /Unexpected identifier 'e' \(line 1, column 29\)/],
+      [
+        "{a: x => { let y = 08; }}",
+        /leading zeros are not allowed in strict mode \(line 1, column 20\)\./,
+      ],
+      ["{a: x => {\n  return x\n}}}", /Unexpected token '}' \(line 3, column 3\)/],
+    ];
+    for (const [source, expected] of cases) {
+      assert.match(errorOf(source), expected, source);
+    }
+    // Where a start of the source cut short fails alike, the error cannot be located.
+    assert.doesNotMatch(errorOf('{a: x => x, b: "open}'), /\(line/);
+  });
+
+  test("blames what a JavaScript option throws, not its syntax", () => {
+    assert.match(
+      errorOf('{a: x => x, b: JSON.parse("{")}'),
+      /^The ECharts option threw while being evaluated as JavaScript: .*JSON.*\(line 1, column 21\)\./,
+    );
   });
 
   test("locates what throws while a JavaScript option is evaluated", () => {

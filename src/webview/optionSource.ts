@@ -23,10 +23,21 @@ export function evaluateSource(source: string): unknown {
   if (Array.isArray(scanned)) {
     values = scanned;
   } else {
+    let evaluate: () => unknown[];
     try {
-      values = (new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[])();
+      evaluate = new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[];
     } catch (error) {
       throw new Error(describeError(source, error, scanned));
+    }
+    try {
+      values = evaluate();
+    } catch (error) {
+      // A mistake the scanner found, such as a code fence or "True", may still compile as code.
+      throw new Error(
+        scanned instanceof SourceError
+          ? describeError(source, error, scanned)
+          : describeThrown(source, error),
+      );
     }
   }
   if (values.length === 1) {
@@ -75,14 +86,15 @@ function scan(text: string): unknown[] | SourceError | Code | undefined {
  */
 const LINES_BEFORE_SOURCE = 3;
 
-/** Describes why a source neither parses as JSON nor evaluates as JavaScript. */
+/** Describes why a source neither parses as JSON nor compiles as JavaScript. */
 function describeError(
   text: string,
   error: unknown,
   found: SourceError | Code | undefined,
 ): string {
   if (found instanceof SourceError) {
-    return `The ECharts option could not be parsed: ${found.message}${located(text, found.position)}`;
+    const { at, excerpt } = located(text, found.position);
+    return `The ECharts option could not be parsed: ${found.message}${at}.${excerpt}`;
   }
   // What the content security policy throws instead of evaluating code.
   if (error instanceof EvalError) {
@@ -93,18 +105,25 @@ function describeError(
     if (!found) {
       return `The ECharts option is nested too deeply to read other than as JavaScript code, ${trust}`;
     }
-    const where = located(text, found.position);
-    const end = where.indexOf(".");
-    return `The ECharts option has JavaScript code${where.slice(0, end)}, ${trust}${where.slice(end + 1)}`;
+    const { at, excerpt } = located(text, found.position);
+    return `The ECharts option has JavaScript code${at}, ${trust}${excerpt}`;
   }
-  if (error instanceof SyntaxError) {
-    // The engine reports no position for a syntax error in new Function.
-    return (
-      "The ECharts option is neither valid JSON nor a valid JavaScript object literal: " +
-      `${errorMessage(error)}. Write it as one object, as JSON or as JavaScript when a callback ` +
-      "needs a function."
-    );
-  }
+  const message = errorMessage(error);
+  const position =
+    found && error instanceof SyntaxError
+      ? syntaxErrorAt(text, found.position, message)
+      : undefined;
+  const { at, excerpt } =
+    position === undefined ? { at: "", excerpt: "" } : located(text, position);
+  return (
+    `The ECharts option is neither valid JSON nor a valid JavaScript object literal: ${message.replace(/\.$/, "")}` +
+    `${at}. Write it as one object, as JSON or as JavaScript when a callback needs a function.` +
+    excerpt
+  );
+}
+
+/** Describes what a JavaScript option threw while it was evaluated, and where. */
+function describeThrown(text: string, error: unknown): string {
   const match = error instanceof Error ? /<anonymous>:(\d+):(\d+)\)/.exec(error.stack ?? "") : null;
   const position = match
     ? offsetOf(text, Number(match[1]) - LINES_BEFORE_SOURCE, Number(match[2]))
@@ -116,12 +135,61 @@ function describeError(
         '"x2": 0, "y2": 1, "colorStops": [{"offset": 0, "color": "…"}, ...]}.'
       : "";
   const message = `The ECharts option threw while being evaluated as JavaScript: ${errorMessage(error)}`;
-  if (position === undefined) {
-    return `${message}.${hint}`;
+  const { at, excerpt } =
+    position === undefined ? { at: "", excerpt: "" } : located(text, position);
+  return `${message}${at}.${hint}${excerpt}`;
+}
+
+/**
+ * The errors that the engine also gives a source cut short in the middle of a token, such as a
+ * string, and the error of the reserved word that the search below ends each start of the source
+ * with: the search cannot tell where these are.
+ */
+const CUT_SHORT_ERRORS = new Set([
+  "Invalid or unexpected token",
+  "Unterminated template literal",
+  "Invalid regular expression: missing /",
+  "Invalid Unicode escape sequence",
+  "Invalid hexadecimal escape sequence",
+  "Unexpected reserved word",
+]);
+
+/**
+ * Where the engine finds a syntax error, which it does not say for a function it compiles: where
+ * the shortest start of the source that it rejects with the same error ends, as one that ends
+ * before the error is only incomplete. The start is ended with a reserved word, which it cannot be
+ * continued by, for the engine not to read the end of the function as part of it. The search
+ * starts from where the source goes beyond literals, as it holds no error before that.
+ */
+function syntaxErrorAt(text: string, from: number, message: string): number | undefined {
+  if (CUT_SHORT_ERRORS.has(message)) return undefined;
+  const failsAlike = (end: number) => {
+    try {
+      new Function(`"use strict"; return ([\n${text.slice(0, end)}\nenum`);
+      return false;
+    } catch (error) {
+      return errorMessage(error) === message;
+    }
+  };
+  let low = from;
+  let high = text.length;
+  if (!failsAlike(high)) return undefined;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (failsAlike(middle)) high = middle;
+    else low = middle + 1;
   }
-  const where = located(text, position);
-  const lineBreak = where.indexOf("\n");
-  return `${message}${where.slice(0, lineBreak)}${hint}${where.slice(lineBreak)}`;
+  // The search ends after the first character that makes the error, such as the "}" of an
+  // "Unexpected token '}'": point at the start of the word or number it is part of.
+  let position = Math.max(0, high - 1);
+  while (
+    position > from &&
+    /[\w$]/.test(text.charAt(position - 1)) &&
+    /[\w$]/.test(text.charAt(position))
+  ) {
+    position--;
+  }
+  return position;
 }
 
 function lineAndColumn(text: string, position: number) {
@@ -133,10 +201,13 @@ function lineAndColumn(text: string, position: number) {
   };
 }
 
-/** " (line L, column C)." and, on the next lines, the source line with a caret under the position. */
-function located(text: string, position: number): string {
+/** " (line L, column C)", and on the next lines the source line with a caret under the position. */
+function located(text: string, position: number): { at: string; excerpt: string } {
   const { lineStart, line, column } = lineAndColumn(text, position);
-  return ` (line ${line}, column ${column}).\n${excerpt(text, position, lineStart, line)}`;
+  return {
+    at: ` (line ${line}, column ${column})`,
+    excerpt: `\n${excerpt(text, position, lineStart, line)}`,
+  };
 }
 
 /** The offset of a 1-based line and column, if the source has them. */
