@@ -97,6 +97,11 @@ const ENVELOPE_FIELDS = new Set(
   "status ok success code message msg error version apiversion kind".split(" "),
 );
 
+/** Notes that only the field `name` of an object was read, not the fields `beside` it. */
+function readOnly(name: string, beside: string[]): string {
+  return `Only ${JSON.stringify(name)} was read, not ${quoteAll(beside)} beside it.`;
+}
+
 /**
  * The object inside wrappers, as in {"data": {"repo": {...}}}, however deeply they nest. One of
  * them may also be an envelope, which holds it beside plain values: either about the answer, as
@@ -123,7 +128,7 @@ function unwrap(json: unknown): { value: unknown; note?: string } {
       ) {
         break;
       }
-      note = `Only ${JSON.stringify(name)} was read, not ${quoteAll(beside)} beside it.`;
+      note = readOnly(name, beside);
       // A map of records is the data, however few records it has, rather than another wrapper.
       if (map) return { value: inner, note };
     }
@@ -163,11 +168,16 @@ function recordsFromJson(value: unknown): Records {
     };
   }
   // Rows wrapped in an object: {"items": [...], "errors": [], "count": 2}.
-  const arrays = columns.filter(Array.isArray);
-  const nonEmpty = arrays.filter((array) => array.length > 0);
-  const rows = arrays.length === 1 ? arrays[0] : nonEmpty.length === 1 ? nonEmpty[0] : undefined;
+  const arrays = Object.entries(value).filter((entry): entry is [string, unknown[]] =>
+    Array.isArray(entry[1]),
+  );
+  const nonEmpty = arrays.filter(([, array]) => array.length > 0);
+  const [name = "", rows] =
+    (arrays.length === 1 ? arrays[0] : nonEmpty.length === 1 ? nonEmpty[0] : undefined) ?? [];
   if (rows !== undefined) {
-    return recordsFromJsonArray(rows);
+    const records = recordsFromJsonArray(rows);
+    const beside = names.filter((key) => key !== name);
+    return beside.length === 0 ? records : { ...records, note: readOnly(name, beside) };
   }
   if (columns.every(isScalar)) {
     checkTableSize(names.length + 1, 2);
@@ -235,5 +245,7 @@ export function parseJson(text: string): Records {
   }
   const unwrapped = unwrap(value);
   const records = recordsFromJson(unwrapped.value);
-  return unwrapped.note === undefined ? records : { ...records, note: unwrapped.note };
+  // The envelope's note comes first, as in {"status": "ok", "data": {"items": [...], "count": 2}}.
+  const notes = [unwrapped.note, records.note].filter((note) => note !== undefined);
+  return notes.length === 0 ? records : { ...records, note: notes.join(" ") };
 }

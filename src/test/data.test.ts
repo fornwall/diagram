@@ -1507,6 +1507,16 @@ suite("data", () => {
     const rows = { columns: ["k", "v"], rows: [["a", 1]] };
     assert.deepStrictEqual(parse('{"data": [{"k": "a", "v": 1}], "total": 1}'), rows);
     assert.deepStrictEqual(parse('{"items": [{"k": "a", "v": 1}], "errors": []}'), rows);
+    // What was left out beside the rows is noted, after what an envelope left out.
+    assert.strictEqual(
+      parseTable('{"items": [{"k": "a"}], "count": 1}').note,
+      'Only "items" was read, not "count" beside it.',
+    );
+    assert.strictEqual(
+      parseTable('{"status": "ok", "data": {"items": [{"k": "a"}], "count": 1}}').note,
+      'Only "data" was read, not "status" beside it. Only "items" was read, not "count" beside it.',
+    );
+    assert.strictEqual(parseTable('{"items": [{"k": "a"}]}').note, undefined);
     assert.deepStrictEqual(parse('{"label": ["a", "b"], "count": [1, 2]}'), {
       columns: ["label", "count"],
       rows: [
@@ -1545,7 +1555,10 @@ suite("data", () => {
       }),
     );
     assert.deepStrictEqual(prometheus.rows, [["api", '[1735689600,"0.5"]']]);
-    assert.strictEqual(prometheus.note, 'Only "data" was read, not "status" beside it.');
+    assert.strictEqual(
+      prometheus.note,
+      'Only "data" was read, not "status" beside it. Only "result" was read, not "resultType" beside it.',
+    );
     // Or beside plain values about a map of records, as npm ls --json answers, but only the
     // outermost: the dependencies of a single dependency are not read in its place.
     const npm = (dependencies: object) =>
