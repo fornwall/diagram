@@ -259,6 +259,23 @@ suite("data", () => {
       ["BenchmarkParse-16", 952141, 1234e-9, 560, 7, null],
       ["BenchmarkRender-16", 41020, 29071e-9, null, null, 12.5],
     ]);
+    // With -v, and with what the benchmarks logged.
+    const logged = parseTable(
+      [
+        "BenchmarkParse",
+        "BenchmarkParse-16     \t  952141\t      1234 ns/op",
+        "--- BENCH: BenchmarkParse-16",
+        "    parse_test.go:12: warm cache",
+        "        and a second line",
+        "BenchmarkRender",
+        "BenchmarkRender-16    \t   41020\t     29071 ns/op",
+        "PASS",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(logged.rows, [
+      ["BenchmarkParse-16", 952141, 1234e-9],
+      ["BenchmarkRender-16", 41020, 29071e-9],
+    ]);
   });
 
   test("parseNumber leaves other text alone", () => {

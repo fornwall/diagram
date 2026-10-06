@@ -476,9 +476,16 @@ function splitLs(lines: string[]): Records | undefined {
 const GO_BENCHMARK = /^(Benchmark\S+)\s+(\d+)((?:\s+\d+(?:\.\d+)? \S+)+)\s*$/;
 
 /**
+ * A line of go test -bench around the results: a heading ("goos: linux"), the end of the run
+ * ("PASS", "ok"), the name that -v prints before each result, or what a benchmark logged, under
+ * "--- BENCH:" and indented ("    parse_test.go:12: warm cache").
+ */
+const GO_BENCHMARK_OTHER = /^(?:\w+: |PASS$|FAIL\b|ok\s|Benchmark\S+$|--- \w+: |\s)/;
+
+/**
  * Splits the output of go test -bench into a column for each measure, named by its unit, with the
- * time per operation in seconds and the memory in bytes, leaving out the lines around the results
- * ("goos: linux", "PASS"). Returns undefined unless every other line is a result.
+ * time per operation in seconds and the memory in bytes, leaving out the other lines of the run.
+ * Returns undefined unless every other line is one of those.
  */
 function splitGoBenchmarks(lines: string[]): Records | undefined {
   const header = ["Benchmark", "Iterations"];
@@ -486,7 +493,7 @@ function splitGoBenchmarks(lines: string[]): Records | undefined {
   for (const line of lines) {
     const [, name = "", iterations = "", measures] = GO_BENCHMARK.exec(line) ?? [];
     if (measures === undefined) {
-      if (/^(?:\w+: |PASS$|FAIL\b|ok\s)/.test(line)) continue;
+      if (GO_BENCHMARK_OTHER.test(line)) continue;
       return undefined;
     }
     const record = [name, iterations];
