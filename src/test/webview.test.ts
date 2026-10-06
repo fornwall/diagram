@@ -2200,7 +2200,7 @@ suite("webview", function () {
     }
   });
 
-  test("finds the items of treemaps, packets, radar charts, C4 boundaries, block groups, and Ishikawa, railroad and tree view diagrams, which Mermaid draws without ids", async () => {
+  test("finds the items of treemaps, packets, radar charts, C4 boundaries, block groups and other diagrams that Mermaid draws without ids", async () => {
     const cases: [string, string[]][] = [
       [
         // Mermaid draws the larger section first, and cuts a long title short.
@@ -2271,6 +2271,10 @@ suite("webview", function () {
           "src/lib: lib",
           "src: src",
         ],
+      ],
+      [
+        'venn-beta\n  set A["Design"]\n  set B["Code"]\n  set C\n  union B,A["UX"]\n    text t1["Alice"]\n  union B,C',
+        ["A,B: UX", "A: Design", "B,C: <g>", "B: Code", "C: C", "t1: <foreignObject>"],
       ],
     ];
     for (const [source, items] of cases) {

@@ -27,6 +27,7 @@ export const WITH_DATABASE = new Set([
   "packet",
   "radar",
   "treeView",
+  "venn",
 ]);
 
 /** An item of a tree that Mermaid draws, below a root without a name. */
@@ -83,6 +84,9 @@ export interface DiagramDb {
   /** A radar chart's axes and curves, in the order it draws them. */
   getAxes?(): { name: string; label: string }[];
   getCurves?(): { name: string; label: string }[];
+  /** A Venn diagram's sets and their overlaps, and the texts in them, with their sets sorted. */
+  getSubsetData?(): { sets: string[]; label?: string }[];
+  getTextData?(): { sets: string[]; id: string; label?: string }[];
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -447,6 +451,25 @@ export function findNodes(
       add(element, curve);
     }
   }
+
+  // Venn diagram sets and the overlaps in the source, which go by their sets, as in "A,B", and are
+  // drawn with them joined by "_". Mermaid draws other overlaps too, and the texts in the order of
+  // the first text in each area.
+  const areas = new Map(
+    (db?.getSubsetData?.() ?? []).map(({ sets, label }) => [
+      sets.join("_"),
+      { id: uniqueId(sets.join(",")), label: label ?? sets.join(" ∩ ") },
+    ]),
+  );
+  for (const area of svg.querySelectorAll("g.venn-area")) {
+    const node = areas.get(area.getAttribute("data-venn-sets") ?? "");
+    if (node) add(area, node);
+  }
+  const texts = Map.groupBy(db?.getTextData?.() ?? [], ({ sets }) => sets.join(","));
+  addInOrder(
+    svg.querySelectorAll("foreignObject.venn-text-node-fo"),
+    [...texts.values()].flat().map(({ id, label }) => ({ id: uniqueId(id), label: label ?? id })),
+  );
 
   // Tree view items, which Mermaid draws in the order of the source, after a root of its own.
   const tree = svg.querySelector("g.tree-view") ? db?.getRoot?.() : undefined;
