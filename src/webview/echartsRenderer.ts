@@ -297,6 +297,16 @@ export class EChartsRenderer implements Renderer {
     chart.on("selectchanged", (event) => {
       this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
     });
+    // ECharts takes the blur off the whole chart for any other highlight or downplay, such as the
+    // axis pointer's, and when the pointer leaves an item it emphasized, which would end the
+    // dimming around the marks until they change: blur the rest again. The marks' own actions are
+    // silent, and ECharts handles the pointer leaving first, as it listened first.
+    const restoreMarks = () => {
+      if (this.blurring()) this.highlightMarked();
+    };
+    chart.on("highlight", restoreMarks);
+    chart.on("downplay", restoreMarks);
+    chart.getZr().on("mouseout", restoreMarks);
     return chart;
   }
 
@@ -403,20 +413,26 @@ export class EChartsRenderer implements Renderer {
         const current = new Set(this.annotation.marks.map(({ id }) => id));
         const removed = items([...previousIds].filter((id) => !current.has(id)));
         if (removed.length > 0) {
-          chart.dispatchAction({ type: "downplay", batch: removed });
+          chart.dispatchAction({ type: "downplay", batch: removed }, { silent: true });
         }
       } else {
-        chart.dispatchAction({ type: "downplay" });
+        chart.dispatchAction({ type: "downplay" }, { silent: true });
       }
     }
     // Downplay clears ECharts' blur state, including any focus set by the source option itself.
     // Restore the remaining marks together, while only downplaying the removed items' graphics.
-    const batch = items(this.annotation.marks.map(({ id }) => id));
+    this.highlightMarked();
+    this.hasHighlights = this.annotation.marks.length > 0;
+  }
+
+  /** Highlights the marked items, which blurs the rest of the chart while it is dimmed. */
+  private highlightMarked(): void {
+    const items = this.items();
+    const batch = this.annotation.marks.flatMap(({ id }) => items?.find(id) ?? []);
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
-      chart.dispatchAction({ type: "highlight", batch });
+      this.chart?.dispatchAction({ type: "highlight", batch }, { silent: true });
     }
-    this.hasHighlights = this.annotation.marks.length > 0;
   }
 
   /** The items of the chart, by key, id and name. */

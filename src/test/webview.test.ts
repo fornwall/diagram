@@ -1409,6 +1409,55 @@ suite("webview", function () {
     assert.deepStrictEqual(images, { marked: true, hovered: true, same: true });
   });
 
+  test("keeps the chart dimmed around its marks while the pointer hovers items and leaves", async () => {
+    const colors = ["#0000ff", "#00ff00", "#ff0000"];
+    const data = ["A", "B", "C"].map((name, index) => ({
+      name,
+      value: 10,
+      itemStyle: { color: colors[index] },
+    }));
+    // A bar chart's axis pointer highlights and downplays items as the pointer moves; a pie's
+    // items take the emphasis themselves.
+    const charts = [
+      {
+        xAxis: { type: "category", data: ["A", "B", "C"] },
+        yAxis: {},
+        series: [{ type: "bar", data }],
+      },
+      { series: [{ type: "pie", data }] },
+    ];
+    for (const chart of charts) {
+      await draw({ language: "echarts", source: JSON.stringify({ animation: false, ...chart }) });
+      panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: true });
+      const dimmed = await evaluate(`(async () => {
+        ${UNTIL}
+        const item = (color) => document.querySelector('#chart svg path[fill="' + color + '"]');
+        // How opaque each item is drawn: those that are not marked fade.
+        const faded = () => {
+          const [marked, ...rest] = ${JSON.stringify(colors)}.map((color) => {
+            const path = item(color);
+            return Number(path?.getAttribute("fill-opacity") ?? path?.getAttribute("opacity") ?? 1);
+          });
+          return marked === 1 && rest.every((opacity) => opacity < 1);
+        };
+        const move = (element, x, y) => element.dispatchEvent(new MouseEvent("mousemove",
+          {bubbles: true, clientX: x, clientY: y}));
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+        const marked = await until(faded);
+        // Over the unmarked item C, then off it, into the empty corner of the chart.
+        const box = item("#ff0000").getBoundingClientRect();
+        move(item("#ff0000"), box.x + box.width / 2, box.y + box.height / 2);
+        await settle();
+        const svg = document.querySelector("#chart svg");
+        const corner = svg.getBoundingClientRect();
+        move(svg, corner.x + 2, corner.y + 2);
+        await settle();
+        return {marked, left: faded()};
+      })()`);
+      assert.deepStrictEqual(dimmed, { marked: true, left: true }, chart.series[0]?.type);
+    }
+  });
+
   test("leaves the toolbox out of chart images, but not out of the panel", async () => {
     const chart = {
       animation: false,
