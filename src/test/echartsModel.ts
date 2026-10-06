@@ -1,6 +1,12 @@
 import { init as initECharts } from "echarts";
 import type * as ECharts from "echarts/core";
 import { ChartItems } from "../webview/echartsItems";
+import { type LayoutContext, layoutOption } from "../webview/echartsLayout";
+import type { JsonObject } from "../webview/echartsOption";
+import { testColors } from "./themeColors";
+
+// biome-ignore lint/suspicious/noExplicitAny: tests read into the untyped options of ECharts
+export type Option = Record<string, any>;
 
 /** Reads a chart of the option as ECharts lays it out, without a browser. */
 export function withChart<T>(
@@ -20,3 +26,15 @@ export function withChart<T>(
 /** The items of an option as ECharts lays them out. */
 export const itemsOf = (option: Record<string, unknown>) =>
   withChart(option, (chart) => new ChartItems(chart));
+
+/** The option as the panel lays it out, by default at 800 × 500 in the test colors. */
+export function layout(option: JsonObject, context: Partial<LayoutContext> = {}): Option {
+  return layoutOption(option, {
+    width: 800,
+    height: 500,
+    title: "",
+    colors: testColors,
+    reducedMotion: false,
+    ...context,
+  });
+}

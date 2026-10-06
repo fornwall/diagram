@@ -3,10 +3,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { filterTable } from "../chartTransforms";
 import { type DataTable, parseTable } from "../data";
-import { withChart } from "./echartsModel";
-
-// biome-ignore lint/suspicious/noExplicitAny: inspecting generated ECharts JSON
-type Option = Record<string, any>;
+import { type Option, withChart } from "./echartsModel";
 
 function build(data: string | DataTable, extra: Partial<ChartSpec> = {}): Option {
   const result = buildChart(

@@ -3,7 +3,7 @@ import { time as echartsTime } from "echarts";
 import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
-import { withChart } from "./echartsModel";
+import { type Option, withChart } from "./echartsModel";
 import { newPanel } from "./newPanel";
 
 const LANGUAGES = parseTable(
@@ -20,9 +20,6 @@ function chart(
 ): ChartSpec {
   return { type, data: "unused", ...extra };
 }
-
-// biome-ignore lint/suspicious/noExplicitAny: test access to the untyped option
-type Option = Record<string, any>;
 
 function build(spec: ChartSpec, table: DataTable | string = LANGUAGES): Option {
   const { option } = buildChart(spec, typeof table === "string" ? parseTable(table) : table);

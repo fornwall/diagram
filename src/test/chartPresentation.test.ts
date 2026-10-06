@@ -3,9 +3,8 @@ import { captureChartPresentation, rebuildChart } from "../chartPresentation";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
+import type { Option } from "./echartsModel";
 
-// biome-ignore lint/suspicious/noExplicitAny: ECharts options have an open schema.
-type Option = Record<string, any>;
 const spec: ChartSpec = { type: "bar", data: "unused" };
 const oldTable = parseTable("name,sales,cost\nA,2,1\nB,4,3");
 const newTable = parseTable("name,sales,cost\nC,20,10\nD,40,30");

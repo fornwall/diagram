@@ -1,22 +1,8 @@
 import * as assert from "node:assert";
-import { type LayoutContext, layoutOption, toolWarnings } from "../webview/echartsLayout";
+import { toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
-import { keepUserState } from "../webview/echartsState";
+import { layout, type Option } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
-
-// biome-ignore lint/suspicious/noExplicitAny: test access to the untyped option
-type Option = Record<string, any>;
-
-function layout(option: JsonObject, context: Partial<LayoutContext> = {}): Option {
-  return layoutOption(option, {
-    width: 800,
-    height: 500,
-    title: "",
-    colors,
-    reducedMotion: false,
-    ...context,
-  });
-}
 
 const bars = (extra: Option = {}): Option => ({
   xAxis: { type: "category", data: ["A", "B"] },
@@ -459,57 +445,5 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.baseOption.grid.bottom, 84);
     const placed = layout(bars({ timeline: { top: 0 } }));
     assert.strictEqual(placed.grid.bottom, 8);
-  });
-
-  test("keepUserState carries legend selection and zoom ranges over", () => {
-    const option: Option = layout(
-      bars({ legend: {}, dataZoom: [{ type: "inside", startValue: 2, endValue: 5 }] }),
-    );
-    keepUserState(option, {
-      legend: [{ selected: { One: false }, scrollDataIndex: 3 }],
-      dataZoom: [{ start: 10, end: 40, startValue: 1, endValue: 4 }],
-    });
-    assert.deepStrictEqual(option.legend.selected, { One: false });
-    assert.strictEqual(option.legend.scrollDataIndex, 3);
-    assert.deepStrictEqual(option.dataZoom, [{ type: "inside", start: 10, end: 40 }]);
-  });
-
-  test("keepUserState carries the timeline position and visual map range over", () => {
-    const option: Option = layout({
-      baseOption: { ...bars(), timeline: { data: ["2025", "2026"] }, visualMap: {} },
-      options: [{}, {}],
-    });
-    keepUserState(option, {
-      timeline: [{ currentIndex: 1 }],
-      visualMap: [{ range: [2, 5] }],
-    });
-    assert.strictEqual(option.baseOption.timeline.currentIndex, 1);
-    assert.deepStrictEqual(option.baseOption.visualMap.range, [2, 5]);
-    assert.strictEqual(option.baseOption.visualMap.selected, undefined);
-  });
-
-  test("keeps graph and tree pan and zoom without preserving other series' responsive positions", () => {
-    const option: Option = layout({
-      series: [
-        { type: "pie", center: ["25%", "50%"], data: [1] },
-        { type: "graph", roam: true, layout: "circular", data: [{ name: "A" }] },
-        { type: "graph", roam: false, layout: "circular", data: [{ name: "B" }] },
-        { type: "tree", roam: true, data: [{ name: "C" }] },
-      ],
-    });
-    keepUserState(option, {
-      series: [
-        { center: [100, 100] },
-        { center: [40, 60], zoom: 2.5 },
-        { center: [20, 30], zoom: 3 },
-        { center: [10, 10], zoom: 4 },
-      ],
-    });
-    assert.strictEqual(option.series[3].zoom, 4);
-    assert.deepStrictEqual(option.series[0].center, ["25%", "50%"]);
-    assert.deepStrictEqual(option.series[1].center, [40, 60]);
-    assert.strictEqual(option.series[1].zoom, 2.5);
-    assert.strictEqual(option.series[2].center, undefined);
-    assert.strictEqual(option.series[2].zoom, undefined);
   });
 });

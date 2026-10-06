@@ -3,12 +3,8 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
-import { layoutOption } from "../webview/echartsLayout";
-import { itemsOf, withChart } from "./echartsModel";
-import { testColors as colors } from "./themeColors";
+import { itemsOf, layout, type Option, withChart } from "./echartsModel";
 
-// biome-ignore lint/suspicious/noExplicitAny: inspect plain JSON chart options in tests.
-type Option = Record<string, any>;
 function build(data: string, spec: Partial<ChartSpec> = {}): Option {
   const chart = buildChart(
     { type: "bar", data, facetColumn: "service", ...spec } as ChartSpec,
@@ -391,13 +387,7 @@ suite("chart facets", () => {
     const option = build(
       "service,operation,ms\napi,Read configuration,2\napi,Write configuration,3\nworker,Read configuration,30\nworker,Write configuration,40",
     );
-    const laidOut = layoutOption(option, {
-      width: 600,
-      height: 500,
-      title: "My chart",
-      colors,
-      reducedMotion: true,
-    }) as Option;
+    const laidOut = layout(option, { width: 600, title: "My chart" });
     assert.deepStrictEqual(laidOut.grid, option.grid);
     assert.ok(laidOut.xAxis.every((axis: Option) => axis.axisLabel.rotate > 0));
   });
@@ -405,31 +395,16 @@ suite("chart facets", () => {
   test("panel titles are cut short at the width of their panel", () => {
     const data = "service,operation,ms\napi,read,2\nworker,read,30";
     const widths = (facetColumns: number) =>
-      (
-        layoutOption(build(data, { facetColumns }), {
-          width: 1000,
-          height: 500,
-          title: "",
-          colors,
-          reducedMotion: true,
-        }) as Option
-      ).title.map((title: Option) => Math.round(title.textStyle.width));
+      layout(build(data, { facetColumns }), { width: 1000 }).title.map((title: Option) =>
+        Math.round(title.textStyle.width),
+      );
     assert.deepStrictEqual(widths(1), [904, 904]);
     assert.deepStrictEqual(widths(2), [424, 424]);
   });
 
   test("panels keep the tooltip of their type", () => {
     const data = "service,operation,ms\napi,read,2\nworker,read,30";
-    const tooltip = (spec: Partial<ChartSpec>) =>
-      (
-        layoutOption(build(data, spec), {
-          width: 600,
-          height: 500,
-          title: "",
-          colors,
-          reducedMotion: true,
-        }) as Option
-      ).tooltip;
+    const tooltip = (spec: Partial<ChartSpec>) => layout(build(data, spec), { width: 600 }).tooltip;
     assert.deepStrictEqual(tooltip({}).axisPointer, { type: "shadow" });
     assert.strictEqual(tooltip({ type: "line" }).trigger, "axis");
     assert.strictEqual(tooltip({ type: "histogram" }).formatter, "{b}<br/>{a}: {c}");
@@ -460,13 +435,7 @@ suite("chart facets", () => {
     });
     assert.strictEqual(option.grid[0].left, "8%");
     assert.strictEqual(option.yAxis[0].max, 100);
-    const laidOut = layoutOption(option, {
-      width: 400,
-      height: 500,
-      title: "My chart",
-      colors,
-      reducedMotion: true,
-    }) as Option;
+    const laidOut = layout(option, { width: 400, title: "My chart" });
     assert.deepStrictEqual(laidOut.grid, option.grid);
     assert.strictEqual(laidOut.title[0].text, "service = api");
     assert.strictEqual(laidOut.title[0].textStyle.fontSize, 17);
