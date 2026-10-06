@@ -3,7 +3,7 @@
 
 import { isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
-import { asArray, baseOption, isCartesian, type JsonObject } from "./echartsOption";
+import { asArray, baseOption, isCartesian, type JsonObject, optionVariants } from "./echartsOption";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
@@ -170,16 +170,8 @@ function keepLastingTools(toolbox: JsonObject): void {
   toolbox.feature = feature;
 }
 
-/** Timeline and media options can override both global and per-series animation settings, hence all. */
-function optionVariants(option: JsonObject): JsonObject[] {
-  return [
-    baseOption(option),
-    ...asArray(option.options),
-    ...asArray(option.media).flatMap((media) => asArray(media.option)),
-  ];
-}
-
 export function disableAnimation(option: JsonObject): void {
+  // Timeline and media options can override both global and per-series animation settings.
   for (const variant of optionVariants(option)) {
     variant.animation = false;
     for (const series of asArray(variant.series)) {

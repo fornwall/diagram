@@ -19,6 +19,24 @@ export function baseOption(option: JsonObject): JsonObject {
   return isPlainObject(option.baseOption) ? option.baseOption : option;
 }
 
+/** The options that a timeline's steps and media queries merge into the base option, by path. */
+function optionPatches(option: JsonObject): [string, JsonObject][] {
+  const steps: unknown[] = Array.isArray(option.options) ? option.options : [];
+  const media: unknown[] = Array.isArray(option.media) ? option.media : [];
+  return [
+    ...steps.map((step, index): [string, unknown] => [`options[${index}]`, step]),
+    ...media.map((each, index): [string, unknown] => [
+      `media[${index}].option`,
+      isPlainObject(each) ? each.option : undefined,
+    ]),
+  ].filter((patch): patch is [string, JsonObject] => isPlainObject(patch[1]));
+}
+
+/** The base option and the options that patch it, each of which can set e.g. series. */
+export function optionVariants(option: JsonObject): JsonObject[] {
+  return [baseOption(option), ...optionPatches(option).map(([, patch]) => patch)];
+}
+
 /** The coordinate system that each series type is drawn on, unless the series sets another. */
 const DEFAULT_COORDINATE_SYSTEMS: Record<string, string> = {
   line: "cartesian2d",
@@ -153,48 +171,98 @@ export function parseOption(source: string): JsonObject {
         `JavaScript object literal, not ${describe(option)}.`,
     );
   }
-  validateSeries(baseOption(option));
+  validateSeries(option);
   findJavaScript(option, "option", new WeakSet());
   return option;
 }
 
-/** Checks the series of the base option; timeline options only patch them. */
-function validateSeries(base: JsonObject): void {
-  const series: unknown[] = Array.isArray(base.series)
-    ? base.series
-    : base.series === undefined
-      ? []
-      : [base.series];
-  if (series.length === 0) {
+const seriesOf = (option: JsonObject): unknown[] =>
+  option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
+
+/**
+ * The series of the base option, by path, once a patch has merged into them. ECharts matches each
+ * series of the patch by "id", then by "name", and the rest to the free places in order.
+ */
+function patchSeries(base: unknown[], patch: unknown[], path: string): [string, unknown][] {
+  const merged = base.map((each, index): [string, unknown] => [`series[${index}]`, each]);
+  const keyed = patch.map((each) => {
+    if (!isPlainObject(each)) return -1;
+    const key = each.id != null ? "id" : "name";
+    return each[key] == null
+      ? -1
+      : base.findIndex((existing) => isPlainObject(existing) && existing[key] === each[key]);
+  });
+  let free = 0;
+  patch.forEach((each, index) => {
+    // ECharts skips a null rather than giving it a place.
+    if (each == null) return;
+    let place = keyed[index] ?? -1;
+    if (place < 0) {
+      while (keyed.includes(free)) free++;
+      place = free++;
+    }
+    const existing = merged[place]?.[1];
+    merged[place] = [
+      `${path}.series[${index}]`,
+      isPlainObject(existing) && isPlainObject(each) ? { ...existing, ...each } : each,
+    ];
+  });
+  return merged;
+}
+
+/**
+ * Checks the series that the chart draws: those of the base option, or with a timeline or media
+ * queries, those of each step and query merged into it, as the series may well be there alone.
+ */
+function validateSeries(option: JsonObject): void {
+  const base = baseOption(option);
+  const patches = optionPatches(option);
+  if (
+    asArray(option.options).length > 0 &&
+    asArray(base.timeline).length === 0 &&
+    asArray(option.timeline).length === 0
+  ) {
+    throw new Error(
+      'The ECharts option has timeline steps in "options" but no "timeline" to show them, so ' +
+        'ECharts ignores them. Add one, e.g. "timeline": {"data": ["2025", "2026"]}.',
+    );
+  }
+  const drawn = patches.length
+    ? patches.map(([path, patch]) => ({
+        option: { ...base, ...patch },
+        series: patchSeries(seriesOf(base), seriesOf(patch), path),
+      }))
+    : [{ option: base, series: patchSeries(seriesOf(base), [], "") }];
+  if (drawn.every(({ series }) => series.length === 0)) {
     throw new Error(
       'The ECharts option has no "series". Add at least one, e.g. "series": [{"type": "bar", ' +
         '"data": [5, 20, 36]}] with "xAxis": {"type": "category", "data": ["A", "B", "C"]} and ' +
         '"yAxis": {"type": "value"}.',
     );
   }
-  series.forEach((each, index) => {
-    checkSeries(each, index, base);
-  });
-  if (base.geo !== undefined) {
-    throw new Error(
-      'The "geo" component is not available in the diagram panel, as it has no map data. ' +
-        "Use another chart type.",
-    );
+  for (const { option: merged, series } of drawn) {
+    for (const [path, each] of series) {
+      checkSeries(each, path, merged);
+    }
+    if (merged.geo !== undefined) {
+      throw new Error(
+        'The "geo" component is not available in the diagram panel, as it has no map data. ' +
+          "Use another chart type.",
+      );
+    }
   }
 }
 
 /** Checks that a series has a type the panel has, and what it needs to draw anything. */
-function checkSeries(each: unknown, index: number, base: JsonObject): void {
+function checkSeries(each: unknown, path: string, base: JsonObject): void {
   if (!isPlainObject(each)) {
     throw new Error(
-      `series[${index}] must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(each)}.`,
+      `${path} must be an object such as {"type": "bar", "data": [5, 20, 36]}, not ${describe(each)}.`,
     );
   }
   const type = each.type;
   if (typeof type !== "string" || !type) {
-    throw new Error(
-      `series[${index}] has no "type". Set it to one of: ${SERIES_TYPES.join(", ")}.`,
-    );
+    throw new Error(`${path} has no "type". Set it to one of: ${SERIES_TYPES.join(", ")}.`);
   }
   if (!SERIES_TYPES.includes(type)) {
     const sameName = SERIES_TYPES.find((known) => known.toLowerCase() === type.toLowerCase());
@@ -203,14 +271,14 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
       : TYPE_HINTS[type.toLowerCase()];
     const problem = type === "map" ? "unsupported" : "unknown";
     throw new Error(
-      `series[${index}] has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
+      `${path} has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
         `Valid types: ${SERIES_TYPES.join(", ")}.`,
     );
   }
   const system = coordinateSystem(each);
   if (system === "geo" || system === "bmap") {
     throw new Error(
-      `series[${index}] (type "${type}") is drawn on a map${each.coordinateSystem ? "" : " by default"}, ` +
+      `${path} (type "${type}") is drawn on a map${each.coordinateSystem ? "" : " by default"}, ` +
         'but the panel has no map data; set "coordinateSystem": "cartesian2d" and add "xAxis" and "yAxis".',
     );
   }
@@ -221,7 +289,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
     !Object.hasOwn(COORDINATE_COMPONENTS, system)
   ) {
     throw new Error(
-      `series[${index}] has the unknown coordinate system "${system}". ` +
+      `${path} has the unknown coordinate system "${system}". ` +
         `Use one of: ${Object.keys(COORDINATE_COMPONENTS).join(", ")}, view, none.`,
     );
   }
@@ -229,14 +297,14 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
   if (components?.needs.some((name) => asArray(base[name]).length === 0)) {
     const needs = components.needs.map((name) => `"${name}"`);
     throw new Error(
-      `series[${index}] (type "${type}") is drawn on the ${system} coordinate system and needs ` +
+      `${path} (type "${type}") is drawn on the ${system} coordinate system and needs ` +
         `${needs.length > 1 ? `${needs.slice(0, -1).join(", ")} and ${needs.at(-1)}` : needs[0]}, ` +
         `e.g. ${components.example}.`,
     );
   }
   if (type === "custom" && typeof each.renderItem !== "function") {
     throw new Error(
-      `series[${index}] is a "custom" series, which draws nothing without a "renderItem" ` +
+      `${path} is a "custom" series, which draws nothing without a "renderItem" ` +
         "function. Write the option as a JavaScript object literal rather than JSON, e.g. " +
         '"renderItem": (params, api) => {const [x, y] = api.coord([api.value(0), api.value(1)]); ' +
         'return {type: "circle", shape: {cx: x, cy: y, r: 6}, style: api.style()};}.',
@@ -244,7 +312,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
   }
   if (type === "heatmap" && asArray(base.visualMap).length === 0) {
     throw new Error(
-      `series[${index}] is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
+      `${path} is a "heatmap" series and needs a "visualMap" to color its cells, e.g. ` +
         '"visualMap": {"min": 0, "max": 10}.',
     );
   }
@@ -259,7 +327,7 @@ function checkSeries(each: unknown, index: number, base: JsonObject): void {
     )
   ) {
     throw new Error(
-      `series[${index}] is a "graph" series without "layout", whose nodes need "x" and "y" to be ` +
+      `${path} is a "graph" series without "layout", whose nodes need "x" and "y" to be ` +
         'drawn; set "layout": "force" or "circular" to place them automatically.',
     );
   }
@@ -330,7 +398,7 @@ function findJavaScript(
 
 /** The series types of the option, e.g. "bar, line". */
 export function seriesTypes(option: JsonObject): string {
-  const types = [baseOption(option), ...asArray(option.options)]
+  const types = optionVariants(option)
     .flatMap((each) => asArray(each.series))
     .flatMap((each) => (typeof each.type === "string" ? [each.type] : []));
   return Array.from(new Set(types)).join(", ");

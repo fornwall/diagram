@@ -129,10 +129,54 @@ suite("echartsOption", () => {
 
   test("checks the series of a timeline's base option", () => {
     const option = parseOption(
-      '{"baseOption": {"series": {"type": "pie"}}, "options": [{"series": [{"type": "funnel"}]}]}',
+      '{"baseOption": {"timeline": {}, "series": {"type": "pie"}}, "options": [{"series": [{"type": "funnel"}]}]}',
     );
     assert.strictEqual(seriesTypes(option), "pie, funnel");
     assert.match(errorOf('{"baseOption": {}, "series": [{"type": "pie"}]}'), /no "series"/);
+  });
+
+  test("checks the series where timeline steps and media queries have them", () => {
+    const timeline = '"timeline": {"data": ["2025", "2026"]}';
+    const pie = '{"type": "pie", "data": [1]}';
+    // The series may be in the steps or queries alone, and ECharts draws them.
+    for (const source of [
+      `{"baseOption": {${timeline}}, "options": [{"series": [${pie}]}, {"series": [${pie}]}]}`,
+      `{${timeline}, "options": [{"series": ${pie}}]}`,
+      `{"media": [{"option": {"series": [${pie}]}}]}`,
+      `{"baseOption": {}, "media": [{"query": {"maxWidth": 500}, "option": {"series": [${pie}]}}]}`,
+    ]) {
+      assert.strictEqual(seriesTypes(parseOption(source)), "pie", source);
+    }
+    // A step patches the series of the base option, matched by id, by name, then in order.
+    const base =
+      '{"type": "pie", "name": "A"}, {"type": "custom", "coordinateSystem": "none", "name": "B"}';
+    assert.match(
+      errorOf(
+        `{"baseOption": {${timeline}, "series": [${base}]}, "options": [{"series": [{"name": "B"}, {"type": "bar"}]}]}`,
+      ),
+      /^options\[0\]\.series\[1\] \(type "bar"\) is drawn on the cartesian2d coordinate system/,
+    );
+    assert.match(
+      errorOf(
+        `{"baseOption": {${timeline}, "series": [${base}]}, "options": [{"series": [{"data": [1]}, {"name": "A"}]}]}`,
+      ),
+      /^options\[0\]\.series\[0\] is a "custom" series/,
+    );
+    assert.match(
+      errorOf(`{${timeline}, "options": [{"series": [{"data": [1]}]}]}`),
+      /^options\[0\]\.series\[0\] has no "type"/,
+    );
+    assert.match(
+      errorOf(
+        `{"media": [{"option": {}}, {"query": {}, "option": {"series": [{"type": "donut"}]}}]}`,
+      ),
+      /^media\[1\]\.option\.series\[0\] has the unknown type "donut"/,
+    );
+    // Without a timeline, ECharts ignores the steps.
+    assert.match(
+      errorOf(`{"options": [{"series": [${pie}]}]}`),
+      /timeline steps in "options" but no "timeline"/,
+    );
   });
 
   test("explains missing and unknown series types", () => {
