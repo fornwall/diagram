@@ -752,7 +752,7 @@ export class DiagramPanel implements vscode.Disposable {
     input: ChartUpdateInput,
     token: vscode.CancellationToken,
     toolInvocationToken?: unknown,
-  ): Promise<RenderOutcome> {
+  ): Promise<RenderOutcome & { summary?: string }> {
     throwIfCancelled(token);
     const state = this.state;
     if (!state?.chart) {
@@ -779,7 +779,7 @@ export class DiagramPanel implements vscode.Disposable {
           "and the new settings, or ask the user to press Refresh in the diagram panel.",
       );
     }
-    const next = withRebuiltChart(state, chart, table, state.chartPresentation);
+    const { state: next, summary } = withRebuiltChart(state, chart, table, state.chartPresentation);
     this.webview.reveal(true);
     const outcome = await this.showChart(
       { ...next, title: chart.title ?? state.title, origin: "tool" },
@@ -788,8 +788,9 @@ export class DiagramPanel implements vscode.Disposable {
       token,
     );
     throwIfCancelled(token);
-    if (outcome.ok) this.toolRequestId = requestId(toolInvocationToken);
-    return outcome;
+    if (!outcome.ok) return outcome;
+    this.toolRequestId = requestId(toolInvocationToken);
+    return { ...outcome, summary };
   }
 
   /** Native editor action: opening options never reads a file or executes a command. */
@@ -876,7 +877,7 @@ export class DiagramPanel implements vscode.Disposable {
       const chart = reset ? state.chart : withChartControls(state.chart, message.controls);
       const kept = reset || message.replaceSource ? undefined : state.chartPresentation;
       const outcome = await this.showChart(
-        withRebuiltChart(state, chart, table, kept),
+        withRebuiltChart(state, chart, table, kept).state,
         table,
         "Chart options changed before the user picked.",
       );
@@ -913,7 +914,7 @@ export class DiagramPanel implements vscode.Disposable {
       }
       if (warning) void vscode.window.showWarningMessage(warning);
       const outcome = await this.showChart(
-        withRebuiltChart(state, chart, table, presentation),
+        withRebuiltChart(state, chart, table, presentation).state,
         table,
         "The chart data was refreshed before the user picked.",
       );
@@ -1153,14 +1154,17 @@ function withRebuiltChart(
   chart: ChartSpec,
   table: DataTable,
   presentation: ChartPresentation | undefined,
-): DiagramState {
+): { state: DiagramState; summary: string } {
   const rebuilt = rebuildChart(chart, table, presentation);
   return {
-    ...state,
-    chart,
-    source: JSON.stringify(rebuilt.option, null, 2),
-    chartPresentation: rebuilt.presentation,
-    editedByUser: rebuilt.presentation.edits.length > 0,
+    state: {
+      ...state,
+      chart,
+      source: JSON.stringify(rebuilt.option, null, 2),
+      chartPresentation: rebuilt.presentation,
+      editedByUser: rebuilt.presentation.edits.length > 0,
+    },
+    summary: rebuilt.summary,
   };
 }
 

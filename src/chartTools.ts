@@ -135,7 +135,7 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
       );
       return textResult(
         outcome.ok
-          ? `Updated the ${outcome.diagramType} chart using the loaded data, retaining supported presentation edits. Revision: ${this.panel.revision}.`
+          ? `Updated the ${outcome.diagramType} chart using the loaded data, retaining supported presentation edits.${outcome.summary ? ` ${outcome.summary}` : ""} Revision: ${this.panel.revision}.`
           : `The chart was not updated: ${outcome.error}`,
       );
     } catch (error) {

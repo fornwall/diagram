@@ -182,6 +182,11 @@ suite("Extension", function () {
       limit: 2,
     });
     assert.match(changed, /^Updated the bar chart using the loaded data/);
+    // The model learns how the data was read, as from diagram_chart.
+    assert.match(
+      changed,
+      /Charted "sales" by "region"; kept the first 2 of 3 rows\. Revision: \d+\.$/,
+    );
     const after = await invoke("diagram_getState", {});
     assert.match(after, /"type":"horizontalBar"/);
     assert.match(after, /"limit":2/);
