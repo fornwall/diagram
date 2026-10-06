@@ -88,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Show a Mermaid diagram (structure and flow: flowchart, sequence, class, state, ER, Gantt, mind map, etc.) or an Apache ECharts 6 chart (language \"echarts\") in the panel beside chat, replacing the current one. Users can select its items and send follow-ups. Returns the diagram type, or the render error to fix. To chart a file, command output or table, use diagram_chart.",
+        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one. Users can select its items and send follow-ups. Returns the diagram type, or the render error to fix. To chart a file, command output or table, use diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal; no code fence or diff. JavaScript allows callbacks wherever ECharts takes them (formatter, renderItem, symbolSize, labelLayout, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or as a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
             },
             "language": {
               "type": "string",
@@ -265,7 +265,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
-              "description": "Number of equal-width histogram bins. Omit for automatic binning (square root of sample count, at most 50). Constant data uses one bin. Histogram only; use one value column and omit labelColumn, aggregate, sort and limit."
+              "description": "Histogram bins; automatic by default."
             },
             "facetColumn": {
               "type": "string",
@@ -276,7 +276,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 4,
-              "description": "Number of facet panels per row (1\u20134). Omit for automatic arrangement. Use with facetColumn."
+              "description": "Facet panels per row; automatic by default."
             },
             "facetScales": {
               "type": "string",
@@ -284,7 +284,7 @@
                 "shared",
                 "independent"
               ],
-              "description": "Axis domains across facet panels; defaults to shared for comparable values. Independent scales fit each panel separately. Histogram bin boundaries are shared across panels in either mode."
+              "description": "Whether facet panels share axis ranges (default) or fit each its own."
             },
             "filters": {
               "type": "array",
@@ -339,7 +339,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the diagram or chart as the panel shows it now: source, revision, chart parameters, code links, render error, user edits, marks and selected items, plus the ids and endpoints of selectable edges and sequence messages, and the ids of chart items that share a name. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
+        "modelDescription": "Read the panel's current diagram or chart: source, revision, chart parameters, code links, render error, user edits, marks, selected items, and the ids of selectable edges, sequence messages and same-named chart items. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
         "tags": [
           "diagram",
           "mermaid",
