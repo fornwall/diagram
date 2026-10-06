@@ -405,11 +405,10 @@ export class EChartsRenderer implements Renderer {
     if (!chart) {
       return;
     }
-    const items = (ids: Iterable<string>) => [...ids].flatMap((id) => this.items()?.find(id) ?? []);
     if (this.hasHighlights) {
       if (previousIds) {
         const current = new Set(this.annotation.marks.map(({ id }) => id));
-        const removed = items([...previousIds].filter((id) => !current.has(id)));
+        const removed = this.find([...previousIds].filter((id) => !current.has(id)));
         if (removed.length > 0) {
           chart.dispatchAction({ type: "downplay", batch: removed }, { silent: true });
         }
@@ -425,12 +424,17 @@ export class EChartsRenderer implements Renderer {
 
   /** Highlights the marked items, which blurs the rest of the chart while it is dimmed. */
   private highlightMarked(): void {
-    const items = this.items();
-    const batch = this.annotation.marks.flatMap(({ id }) => items?.find(id) ?? []);
+    const batch = this.find(this.annotation.marks.map(({ id }) => id));
     if (batch.length > 0) {
       // One action, so that ECharts works out what to blur once, around all of the marks.
       this.chart?.dispatchAction({ type: "highlight", batch }, { silent: true });
     }
+  }
+
+  /** The items that go by the ids. */
+  private find(ids: string[]): ItemRef[] {
+    const items = this.items();
+    return ids.flatMap((id) => items?.find(id) ?? []);
   }
 
   /** The items of the chart, by key, id and name. */
