@@ -1453,6 +1453,9 @@ suite("data", () => {
       Array.from({ length: count }, (_, i) => `${prefix}${i}`).join(" ");
     const table = parse(`${words(60_000, "h")}\n${words(30_000, "")}`);
     assert.strictEqual(table.rows.length, 1);
+    // The last column takes the words left over.
+    assert.strictEqual(table.columns.length, 30_000);
+    assert.ok(table.columns[29_999]?.startsWith("h29999 h30000 "));
   });
 
   test("parses a long line that almost is a rule", () => {
