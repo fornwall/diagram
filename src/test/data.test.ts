@@ -1107,6 +1107,22 @@ suite("data", () => {
     assert.deepStrictEqual(table.columns[1], { name: "PID", numeric: true });
   });
 
+  test("leaves out the colors and links of terminal output", () => {
+    const link = (url: string, text: string) => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+    assert.deepStrictEqual(
+      parse(
+        `\x1b[1mdir\x1b[0m  \x1b[1;4msize\x1b[m\n${link("file:///src", "src")}   \x1b[38;5;2m12\x1b[0m\ntest  3`,
+      ),
+      {
+        columns: ["dir", "size"],
+        rows: [
+          ["src", 12],
+          ["test", 3],
+        ],
+      },
+    );
+  });
+
   test("uses a header for whitespace output with numeric columns", () => {
     assert.deepStrictEqual(parse("dir size\nsrc 12\ntest 3").columns, ["dir", "size"]);
   });

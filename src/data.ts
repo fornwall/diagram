@@ -216,6 +216,14 @@ function tableFromRecords(
 }
 
 /**
+ * A terminal's escape sequence: a control sequence, as for colors ("\x1b[32m"), or an operating
+ * system command, as for links ("\x1b]8;;https://…\x1b\\"). Commands print them when forced to,
+ * as with FORCE_COLOR or --color=always.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: escape sequences start with ESC.
+const TERMINAL_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?)/g;
+
+/**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
  * The format is the first of these that fits, from the most specific to the most general:
  * 1. JSON, or JSON Lines, if the text starts with "{", or with "[" and ends with "]";
@@ -236,7 +244,7 @@ function tableFromRecords(
  * @throws Error when the text is empty or cannot be parsed in the given format.
  */
 export function parseTable(text: string, format: DataFormat = "auto", si = false): DataTable {
-  const content = text.replace(/^\uFEFF/, "");
+  const content = text.replace(/^\uFEFF/, "").replace(TERMINAL_ESCAPE, "");
   const trimmed = content.trim();
   if (trimmed === "") {
     throw new Error(
