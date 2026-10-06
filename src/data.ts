@@ -104,10 +104,7 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolea
     return false;
   }
   const numbers = first.filter((cell) => typeof cell === "number");
-  if (
-    numbers.length === 0 &&
-    first.every((cell) => cell === null || (typeof cell === "string" && MISSING.test(cell)))
-  ) {
+  if (first.every((cell) => cell === null || (typeof cell === "string" && MISSING.test(cell)))) {
     return false;
   }
   if (numbers.length > 0) {
