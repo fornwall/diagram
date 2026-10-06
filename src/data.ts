@@ -94,7 +94,7 @@ function namesCategories(rows: Cell[][]): boolean {
 }
 
 /**
- * Whether the first row names the columns: it has text or a run of years, and no other numbers
+ * Whether the first row names the columns: it has text or years in order, and no other numbers
  * (as in "region,2024,2025", or ",2024,2025" as pandas writes a pivot table), and some column
  * below it holds numbers. CSV of text only has a header if it {@link namesCategories}.
  */
@@ -111,10 +111,15 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolea
     return false;
   }
   if (numbers.length > 0) {
-    // Years as column names come in order, unlike data such as "apples,1500" or "Alice,1990".
+    // Years as column names come in order, and a single one is of recent times, as in
+    // "region,2024", unlike data such as "apples,1500".
     const ascending = numbers.every((year, i) => i === 0 || year > (numbers[i - 1] ?? year));
     const descending = numbers.every((year, i) => i === 0 || year < (numbers[i - 1] ?? year));
-    if (numbers.length < 2 || !numbers.every(isYear) || !(ascending || descending)) {
+    if (
+      !numbers.every(isYear) ||
+      !(ascending || descending) ||
+      (numbers.length === 1 && numbers.some((year) => Math.abs(year - 2000) > 100))
+    ) {
       return false;
     }
     // A year above more years is data.
