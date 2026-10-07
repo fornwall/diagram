@@ -327,6 +327,10 @@ suite("workspaceTools", function () {
       resolveWorkspaceFile("src/a.ts", roots).fsPath,
       path.resolve("/one/src/a.ts"),
     );
+    // A colon makes a URI only before "/", as in "file:/", and not after a drive letter.
+    for (const file of ["a:b.md", "notes:2024.md"]) {
+      assert.strictEqual(resolveWorkspaceFile(file, roots).fsPath, path.resolve("/one", file));
+    }
     assert.strictEqual(
       resolveWorkspaceFile(path.resolve("/two/b.ts"), roots).fsPath,
       path.resolve("/two/b.ts"),

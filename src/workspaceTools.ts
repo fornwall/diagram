@@ -72,7 +72,10 @@ function folders(): readonly vscode.WorkspaceFolder[] {
   return roots;
 }
 
-/** Relative names use the first root; absolute paths and URIs disambiguate multiple roots. */
+/**
+ * Relative names use the first root; absolute paths and URIs disambiguate multiple roots. A URI's
+ * scheme is followed by "/", which tells it from a file named "a:b.md" or a drive letter.
+ */
 export function resolveWorkspaceFile(
   file: unknown,
   roots: readonly vscode.WorkspaceFolder[],
@@ -84,7 +87,7 @@ export function resolveWorkspaceFile(
   if (!firstRoot) throw new Error("Open a workspace folder first.");
   const uri = path.isAbsolute(file)
     ? absoluteFile(file, roots)
-    : /^[a-zA-Z][\w+.-]*:/.test(file)
+    : /^[a-zA-Z][\w+.-]+:\//.test(file)
       ? vscode.Uri.parse(file, true)
       : vscode.Uri.joinPath(firstRoot.uri, file);
   if (uri.query || uri.fragment || !roots.some((root) => contains(root.uri, uri))) {
