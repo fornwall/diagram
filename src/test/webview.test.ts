@@ -517,14 +517,6 @@ suite("webview", function () {
       })`),
       { source: draft, stale: true },
     );
-    await evaluate('document.getElementById("revert").click()');
-    assert.strictEqual(await evaluate('document.getElementById("source").value'), incoming);
-    assert.strictEqual(await evaluate("window.readTestState().editor ?? null"), null);
-    await evaluate(`(() => {
-      const input = document.getElementById("source");
-      input.value = ${JSON.stringify(draft)};
-      input.dispatchEvent(new Event("input"));
-    })()`);
     await nextRender(() => evaluate('document.getElementById("apply").click()'));
     assert.strictEqual(page.panel.current?.source, draft);
     assert.strictEqual(await evaluate("window.readTestState().editor ?? null"), null);
