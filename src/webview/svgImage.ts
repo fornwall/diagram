@@ -3,6 +3,10 @@
 
 import type { DiagramImage } from "./images";
 
+export const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+/** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
+export const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 
@@ -91,8 +95,8 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
 /** Clones the drawing with a background, without panel interaction attributes or link targets. */
 export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;
-  svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  svg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+  svg.setAttribute("xmlns", SVG_NAMESPACE);
+  svg.setAttribute("xmlns:xlink", XLINK_NAMESPACE);
   // The panel sizes the rendering with CSS, which the image is read without.
   svg.removeAttribute("style");
   svg.removeAttribute("class");
@@ -138,7 +142,7 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
     for (const name of ["href", "xlink:href", "data-href", "target"]) link.removeAttribute(name);
   }
 
-  const rect = svg.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect");
+  const rect = svg.ownerDocument.createElementNS(SVG_NAMESPACE, "rect");
   rect.setAttribute("x", String(box?.x ?? 0));
   rect.setAttribute("y", String(box?.y ?? 0));
   rect.setAttribute("width", String(width));

@@ -15,7 +15,7 @@ import {
   type WebLink,
   withModifier,
 } from "./renderer";
-import { inlineStyleSheets, standaloneSvg } from "./svgImage";
+import { inlineStyleSheets, SVG_NAMESPACE, standaloneSvg, XLINK_NAMESPACE } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -44,11 +44,6 @@ const MAX_TEXT_SIZE = 50_000;
 const FORMULA = /\$\$(.*?)\$\$/;
 /** How Mermaid has KaTeX draw a formula. */
 const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
-
-/** The namespace of the <title> elements that show where a linked node leads. */
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-/** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
-const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
 /**
  * Mermaid's dark theme colors mind maps, timelines, pies and kanban columns almost black. Use
