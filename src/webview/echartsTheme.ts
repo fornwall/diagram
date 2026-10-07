@@ -85,7 +85,8 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
         borderWidth: 1,
       },
     },
-    // ECharts themes the axes of every coordinate system, polar and parallel ones too, by type.
+    // ECharts themes the axes of every coordinate system, polar and parallel ones too, by type:
+    // echartsLayout.ts draws the axis lines that this hides outside a grid.
     categoryAxis: { ...axis, axisTick: { ...axisTick, alignWithLabel: true } },
     valueAxis,
     logAxis: valueAxis,

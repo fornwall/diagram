@@ -178,6 +178,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     layOut(base, series, cartesian, { width, height, compact, charWidth });
   }
   styleSeries(series, asArray(base.yAxis), context.colors);
+  showAxisLines(base);
   addInteraction(base, series, cartesian, context.colors);
   // A timeline step or media query can set a toolbox of its own too.
   for (const toolbox of optionVariants(option).flatMap((variant) => asArray(variant.toolbox))) {
@@ -636,6 +637,28 @@ function styleSeries(series: JsonObject[], yAxes: JsonObject[], colors: ThemeCol
       if (area.opacity === undefined && area.color === undefined) {
         // A wash rather than a block, unless stacked areas need to read as bands.
         area.opacity = each.stack !== undefined ? 0.55 : 0.15;
+      }
+    }
+  }
+}
+
+/**
+ * Draws the axis line and ticks of the axes outside a grid, which the theme hides on value axes,
+ * as ECharts themes axes by type alone: a polar chart would lose its outer circle, and parallel
+ * coordinates and a single axis their axes. A parallel axis takes what its parallel component
+ * sets for all of them.
+ */
+function showAxisLines(base: JsonObject): void {
+  const parallels = asArray(base.parallel);
+  for (const key of ["angleAxis", "parallelAxis", "singleAxis"]) {
+    for (const axis of asArray(base[key])) {
+      const parallel = key === "parallelAxis" ? parallels[Number(axis.parallelIndex ?? 0)] : {};
+      const defaults = parallel?.parallelAxisDefault;
+      for (const part of ["axisLine", "axisTick"]) {
+        const settings = isPlainObject(axis[part]) ? axis[part] : {};
+        const shared = isPlainObject(defaults) ? defaults[part] : undefined;
+        settings.show ??= (isPlainObject(shared) ? shared.show : undefined) ?? true;
+        axis[part] = settings;
       }
     }
   }

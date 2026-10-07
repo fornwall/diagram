@@ -415,6 +415,24 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(option.aria, { enabled: true });
   });
 
+  test("draws the axis lines that the theme hides on value axes outside a grid", () => {
+    const option = layout({
+      polar: {},
+      angleAxis: { type: "value", axisTick: { show: false } },
+      radiusAxis: {},
+      parallel: [{}, { parallelAxisDefault: { axisLine: { show: false } } }],
+      parallelAxis: [{ dim: 0 }, { dim: 1, parallelIndex: 1 }],
+      series: [{ type: "bar", coordinateSystem: "polar", data: [1] }],
+    });
+    assert.deepStrictEqual(option.angleAxis.axisLine, { show: true });
+    assert.deepStrictEqual(option.angleAxis.axisTick, { show: false });
+    assert.strictEqual(option.radiusAxis.axisLine, undefined);
+    assert.deepStrictEqual(
+      option.parallelAxis.map((axis: Option) => axis.axisLine.show),
+      [true, false],
+    );
+  });
+
   test("lays out the base option of a timeline", () => {
     const option = layout({ baseOption: bars(), options: [{ series: [{ data: [3, 4] }] }] });
     assert.strictEqual(option.baseOption.tooltip.trigger, "axis");
