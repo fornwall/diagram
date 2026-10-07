@@ -377,7 +377,7 @@ suite("Mermaid in the webview", function () {
         const mark = async (marks, dim = false) => {
           changed.clear();
           visits = 0;
-          window.dispatchEvent(new MessageEvent("message", {data: {type: "annotate", marks, dim}}));
+          receive({type: "annotate", marks, dim});
           await new Promise(resolve => setTimeout(resolve, 0));
           markVisits.push(visits);
           return [...changed].sort();
@@ -1115,9 +1115,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         click(node("B").querySelector("a"), {ctrlKey: true});
         shown.selected = [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
           .map(element => element.getAttribute("data-diagram-id"));
-        window.dispatchEvent(new MessageEvent("message", {data: {
-          type: "startPick", pickId: 90001, prompt: "Pick a node", multiple: false
-        }}));
+        receive({type: "startPick", pickId: 90001, prompt: "Pick a node", multiple: false});
         click(node("A"));
         shown.picked = document.getElementById("pick").hidden;
         click(node("A"));

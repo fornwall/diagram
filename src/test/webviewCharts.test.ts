@@ -499,8 +499,8 @@ suite("ECharts in the webview", function () {
         ${CHART_FITTED}
         const chart = document.getElementById("chart");
         const results = window.testRenderResults;
-        const send = (requestId, source) => window.dispatchEvent(new MessageEvent("message",
-          {data: {type: "render", requestId, language: "echarts", source, title: "Test"}}));
+        const send = (requestId, source) =>
+          receive({type: "render", requestId, language: "echarts", source, title: "Test"});
         let request = 900010;
         // Draws a new chart in place of one that failed, which hid the chart, between the same
         // two frames, while its container has another size: ResizeObserver, which compares sizes

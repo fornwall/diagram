@@ -241,10 +241,10 @@ suite("images in the webview", function () {
         const dataTransfer = new DataTransfer();
         handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
         const svgAvailable = dataTransfer.getData("image/svg+xml").includes("Original");
-        window.dispatchEvent(new MessageEvent("message", {data: {
+        receive({
           type: "render", language: "echarts", requestId: -1, title: "Incoming",
           source: JSON.stringify({animation: false, series: [{type: "pie", data: [{name: "Incoming", value: 1}]}]})
-        }}));
+        });
         const rendered = await until(() =>
           document.querySelector("#chart svg")?.textContent.includes("Incoming"));
         return {svgAvailable, rendered};
@@ -568,10 +568,10 @@ suite("images in the webview", function () {
         observer.observe(document.body, {childList: true, subtree: true});
         try {
           document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
-          window.dispatchEvent(new MessageEvent("message", {data: {
+          receive({
             type: "render", language: "mermaid", requestId: -1,
             source: "flowchart LR\\n C[Incoming label] --> D", title: "Incoming"
-          }}));
+          });
           ${UNTIL}
           await until(() => exported && document.querySelector("#diagram").textContent.includes("Incoming label"));
           return exported;

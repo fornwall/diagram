@@ -17,15 +17,14 @@ suite("webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         window.testRenderResults = [];
-        const send = data => window.dispatchEvent(new MessageEvent("message", {data}));
-        send({type: "render", requestId: 900001, language: "mermaid",
+        receive({type: "render", requestId: 900001, language: "mermaid",
           source: "invalid obsolete diagram", title: "Obsolete"});
-        send({type: "annotate", marks: [], dim: false, caption: "Obsolete annotation"});
-        send({type: "render", requestId: 900002, language: "mermaid",
+        receive({type: "annotate", marks: [], dim: false, caption: "Obsolete annotation"});
+        receive({type: "render", requestId: 900002, language: "mermaid",
           source: "flowchart LR\\n C --> D", title: "Intermediate"});
-        send({type: "render", requestId: 900003, language: "mermaid",
+        receive({type: "render", requestId: 900003, language: "mermaid",
           source: "flowchart LR\\n E --> F", title: "Latest"});
-        send({type: "annotate", marks: [], dim: false, caption: "Latest annotation"});
+        receive({type: "annotate", marks: [], dim: false, caption: "Latest annotation"});
         for (let i = 0; i < 200; i++) {
           await new Promise(resolve => setTimeout(resolve, 10));
           if (document.getElementById("annotation-caption").textContent === "Latest annotation") {
@@ -171,9 +170,7 @@ suite("webview", function () {
               const draft = source.value + "\\n%% Unapplied edit";
               source.value = draft;
               source.dispatchEvent(new Event("input"));
-              window.dispatchEvent(new MessageEvent("message", {data: {
-                type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true
-              }}));
+              receive({type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true});
               const canvas = document.getElementById("canvas");
               const visible = canvas.getBoundingClientRect().height > 0;
               const focused = document.activeElement === canvas &&
@@ -591,8 +588,8 @@ suite("webview", function () {
       await evaluate(`(async () => {
         window.testRenderResults = [];
         const source = "flowchart LR\\n C --> D";
-        window.dispatchEvent(new MessageEvent("message", {data: {type: "render", requestId: 900004,
-          language: "mermaid", source, title: "Hanging", notDrawn: "It may hang the panel."}}));
+        receive({type: "render", requestId: 900004,
+          language: "mermaid", source, title: "Hanging", notDrawn: "It may hang the panel."});
         for (let i = 0; i < 200 && window.testRenderResults.length === 0; i++) {
           await new Promise(resolve => setTimeout(resolve, 10));
         }
@@ -676,7 +673,7 @@ suite("webview", function () {
         });
         ${UNTIL}
         const annotate = async (caption) => {
-          window.dispatchEvent(new MessageEvent("message", {data: {type: "annotate", marks: [], dim: false, caption}}));
+          receive({type: "annotate", marks: [], dim: false, caption});
           await until(() => document.getElementById("annotation-caption").hidden === (caption === undefined));
           return shown();
         };
