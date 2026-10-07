@@ -6,7 +6,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState } from "../panel";
-import { afterTest, suiteTempDir } from "./afterTest";
+import { afterTest, recordMessages, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2";
@@ -24,6 +24,11 @@ async function draw(panel: DiagramPanel, spec: ChartSpec, table = parseTable(dat
     ).ok,
   );
   return source;
+}
+
+/** Agrees to read a data file outside the workspace again, returning the questions asked. */
+function agreeToRead(): string[] {
+  return recordMessages("showWarningMessage", () => "Read");
 }
 
 /** Changes the chart options in the panel, as the webview's Chart Options form does. */
@@ -138,6 +143,7 @@ suite("chart options lifecycle", function () {
     // A restored chart of a file: Reset must load a new transient table before rendering.
     const { panel, webview } = await newFakePanel(values);
     const previous = panel.current;
+    agreeToRead();
     webview.nextRender(() => panel.dispose());
     await applyOptions(panel, webview, { type: "resetChartStyling" });
     assert.strictEqual(panel.current, previous);
@@ -183,8 +189,10 @@ suite("chart options lifecycle", function () {
     const table = parseTable(data);
     const source = await draw(panel, { type: "bar", file }, table);
     const previous = panel.current;
+    const asked = agreeToRead();
     webview.nextRender(() => panel.dispose());
     await webview.receive({ type: "refresh" });
+    assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
     assert.strictEqual(panel.current, previous);
     assert.strictEqual(panel.loadedChartData, table);
     assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
@@ -220,6 +228,7 @@ suite("chart options lifecycle", function () {
     );
     // The first reset was rejected before trying to read this still-missing file.
     fs.writeFileSync(file, "name,amount\na,41\nb,42");
+    agreeToRead();
     await applyOptions(panel, webview, { type: "resetChartStyling", replaceSource: true });
     const expected = JSON.stringify(
       buildChart(chart, parseTable("name,amount\na,41\nb,42")).option,

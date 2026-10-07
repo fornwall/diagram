@@ -82,7 +82,7 @@ Both rendering tools take a `clickPrompt`, such as `"Explain {label} in more det
 
 ## Data access and security
 
-VS Code asks before running a command, reading a data file outside the workspace, or opening a linked file outside it. In an untrusted workspace, it also asks before the workspace tools and data-file reads, and before opening any linked file.
+VS Code asks before running a command, reading a data file outside the workspace (also each time **Refresh** reads it again), or opening a linked file outside it. In an untrusted workspace, it also asks before the workspace tools and data-file reads, and before opening any linked file.
 
 Commands need a trusted, nonvirtual workspace. They run with `/bin/sh` (`cmd.exe` on Windows) in the first workspace folder, or in your home directory if no folder is open. Relative paths resolve from the first workspace folder.
 

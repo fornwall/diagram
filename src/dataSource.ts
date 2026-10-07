@@ -72,7 +72,22 @@ export function printsSiSizes(command: string): boolean {
  * The data files, by their path as given, last let through without asking as they were inside the
  * workspace, which is checked again when they are read, as a link may have changed meanwhile.
  */
-const unasked = new Set<string>();
+const unaskedFiles = new Set<string>();
+
+/** Whether reading a data file asks the user first, as for one outside the workspace. */
+export function readAsks(uri: vscode.Uri): boolean {
+  return !vscode.workspace.isTrusted || !inWorkspace(uri);
+}
+
+/**
+ * For a tool invoked with `spec`, what {@link loadTable} takes if its data file was let through
+ * without asking when the invocation was prepared, which this answers once.
+ */
+export function toolUnasked(spec: ChartSpec): { retry: string } | undefined {
+  return spec.file !== undefined && unaskedFiles.delete(spec.file)
+    ? { retry: "Call the tool again to ask." }
+    : undefined;
+}
 
 /** Shared consent for tools that expose file contents or command output to the model. */
 export function prepareDataInvocation(
@@ -89,13 +104,13 @@ export function prepareDataInvocation(
   } else if (spec?.file) {
     try {
       const uri = resolveFile(spec.file);
-      unasked.delete(spec.file);
-      if (!vscode.workspace.isTrusted || !inWorkspace(uri)) {
+      unaskedFiles.delete(spec.file);
+      if (readAsks(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
         message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };
       } else {
-        unasked.add(spec.file);
+        unaskedFiles.add(spec.file);
       }
     } catch {
       // Invalid paths are reported when the tool is invoked.
@@ -127,12 +142,16 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
   return false;
 }
 
-export async function readDataFile(file: string): Promise<string> {
+/**
+ * Reads a data file. One that the user was not asked about is read only while it is inside the
+ * workspace, checked right before, else `retry` follows the error to tell how to be asked.
+ */
+export async function readDataFile(file: string, unasked?: { retry: string }): Promise<string> {
   const uri = resolveFile(file);
-  if (unasked.delete(file) && !inWorkspace(uri)) {
+  if (unasked && readAsks(uri)) {
     throw new Error(
       `The file ${fileName(uri)} now leads out of the workspace, so it was not read without ` +
-        "asking the user. Call the tool again to ask.",
+        `asking the user. ${unasked.retry}`,
     );
   }
   const checkSize = (size: number): void => {
@@ -337,6 +356,9 @@ export async function runCommand(
  * Loads and parses a chart's data: `spec.data`, the file `spec.file` or the output of
  * `spec.command`.
  *
+ * `unasked` is given when the user was not asked about reading `spec.file`; see
+ * {@link readDataFile}.
+ *
  * @returns The table, and a warning when a command failed but printed data anyway.
  * @throws Error explaining why the data could not be loaded or parsed, or
  *   vscode.CancellationError.
@@ -344,6 +366,7 @@ export async function runCommand(
 export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
+  unasked?: { retry: string },
 ): Promise<{ table: DataTable; warning?: string }> {
   throwIfCancelled(token);
   let text: string;
@@ -351,7 +374,7 @@ export async function loadTable(
   if (spec.data !== undefined) {
     text = spec.data;
   } else if (spec.file !== undefined) {
-    text = await unlessCancelled(() => readDataFile(spec.file), token);
+    text = await unlessCancelled(() => readDataFile(spec.file, unasked), token);
   } else {
     ({ output: text, warning } = await runCommand(spec.command, token));
   }

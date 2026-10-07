@@ -167,7 +167,7 @@ suite("chartTools", function () {
   test("inspection reads a file that it did not ask about only if it is still inside", async () => {
     const file = path.join(tempDir("diagram-inspect-"), "data.csv");
     fs.writeFileSync(file, data);
-    const { panel } = await harness();
+    const { panel, webview } = await harness();
     const tool = new InspectDataTool(panel);
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);
@@ -175,7 +175,10 @@ suite("chartTools", function () {
     fs.symlinkSync("sizes.tsv", link);
     afterTest(() => fs.rmSync(link));
     const input = { file: path.basename(link) };
+    await draw(panel, { type: "pie", ...input });
     assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
+    // A refresh of a chart of the file meanwhile leaves the check to the tool.
+    await webview.receive({ type: "refresh" });
     fs.rmSync(link);
     fs.symlinkSync(file, link);
     assert.strictEqual(

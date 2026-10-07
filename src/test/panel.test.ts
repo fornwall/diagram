@@ -9,7 +9,14 @@ import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } f
 import type { ToWebview } from "../protocol";
 import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
-import { afterTest, cancellationSource, recordMessages, replace, tempDir } from "./afterTest";
+import {
+  afterTest,
+  cancellationSource,
+  recordFilePaths,
+  recordMessages,
+  replace,
+  tempDir,
+} from "./afterTest";
 import {
   FakeWebview,
   memento,
@@ -803,6 +810,67 @@ suite("panel", function () {
     await Promise.all([refreshing, webview.edit(pie("B"))]);
     assert.strictEqual(panel.current?.source, pie("B"));
     assert.ok(panel.current?.editedByUser);
+  });
+
+  /**
+   * A chart of a link in the workspace to its sizes.tsv, which `swap()` leads to a file outside
+   * instead, of the item "Out".
+   */
+  async function linkedChart() {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const outside = path.join(tempDir("diagram-refresh-"), "data.csv");
+    fs.writeFileSync(outside, "name,value\nOut,7");
+    const link = path.join(root.uri.fsPath, "diagram-refresh-link.tsv");
+    fs.symlinkSync("sizes.tsv", link);
+    afterTest(() => fs.rmSync(link));
+    const { panel, webview } = await newFakePanel();
+    const chart = { type: "pie", file: path.basename(link) } as const;
+    const diagram = { language: "echarts", source: PIE, title: "Sizes", chart } as const;
+    assert.ok((await panel.render(diagram, "tool")).ok);
+    const swap = () => {
+      fs.rmSync(link);
+      fs.symlinkSync(outside, link);
+    };
+    return { panel, webview, outside, swap };
+  }
+
+  test("a refresh asks before reading a chart's file that now leads out of the workspace", async () => {
+    const { panel, webview, outside, swap } = await linkedChart();
+    let answer: string | undefined;
+    const asked = recordMessages("showWarningMessage", () => answer);
+    await webview.receive({ type: "refresh" });
+    const inside = panel.current?.source;
+    assert.match(inside ?? "", /src/);
+    assert.deepStrictEqual(asked, []);
+
+    swap();
+    const paths = recordFilePaths();
+    await webview.receive({ type: "refresh" });
+    assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
+    assert.strictEqual(panel.current?.source, inside);
+    assert.ok(!paths.includes(outside), "the file outside was touched");
+
+    answer = "Read";
+    await webview.receive({ type: "refresh" });
+    assert.match(panel.current?.source ?? "", /Out/);
+  });
+
+  test("a refresh does not read a chart's file that leads out of the workspace once checked", async () => {
+    const { panel, webview, outside, swap } = await linkedChart();
+    const errors = recordMessages("showErrorMessage");
+    const resume = holdProgress();
+    const refreshing = webview.receive({ type: "refresh" });
+    swap();
+    const paths = recordFilePaths();
+    resume();
+    await refreshing;
+    assert.strictEqual(panel.current?.source, PIE);
+    assert.ok(!paths.includes(outside), "the file outside was touched");
+    assert.deepStrictEqual(errors, [
+      "Could not refresh the chart: The file diagram-refresh-link.tsv now leads out of the " +
+        "workspace, so it was not read without asking the user. Try again to be asked.",
+    ]);
   });
 
   for (const action of ["edit and revert", "close and reopen"]) {

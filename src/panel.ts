@@ -14,7 +14,7 @@ import {
 } from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { loadTable } from "./dataSource";
+import { loadTable, readAsks } from "./dataSource";
 import { describeDiagram, nodeList } from "./describe";
 import {
   confirmWrite,
@@ -24,6 +24,7 @@ import {
   writeFence,
 } from "./documentDiagram";
 import { exportDrawing } from "./export";
+import { fileName, resolveFile } from "./files";
 import { linkTexts, type NodeLink, type NodeLinks, openLink, openUrl } from "./links";
 import { StateStore } from "./panelState";
 import {
@@ -963,14 +964,11 @@ export class DiagramPanel implements vscode.Disposable {
       const reset = message.type === "resetChartStyling";
       let table = this.chartTable;
       if (!table && reset) {
-        if (!(await this.confirmReload(state.chart))) return;
-        const loaded = await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Window,
-            title: "Resetting chart styling and reloading data",
-          },
-          (_progress, token) => loadTable(state.chart as ChartSpec, token),
+        const loaded = await this.reloadTable(
+          state.chart,
+          "Resetting chart styling and reloading data",
         );
+        if (!loaded) return;
         if (message.revision !== this.shownRevision || this.webview.tab !== tab || !tab) return;
         table = loaded.table;
         if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);
@@ -1004,11 +1002,9 @@ export class DiagramPanel implements vscode.Disposable {
     this.refreshing = true;
     try {
       assertChartPresentation(presentation);
-      if (!(await this.confirmReload(chart))) return;
-      const { table, warning } = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
-        (_progress, token) => loadTable(chart, token),
-      );
+      const loaded = await this.reloadTable(chart, "Refreshing chart");
+      if (!loaded) return;
+      const { table, warning } = loaded;
       // Any intervening change wins, even if an edit restored the same source.
       const state = this.state;
       if (this.shownRevision !== revision || this.webview.tab !== tab || !tab || !state) {
@@ -1033,22 +1029,45 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Whether to reload the chart's data, which reruns its command: once chart code could have
-   * pressed Refresh, the user is asked first.
+   * Loads the chart's data again, asking first, as its first load did, before reading a data file
+   * outside the workspace, and, once chart code could have pressed Refresh, before rerunning its
+   * command.
+   *
+   * @returns undefined if the user declined.
    */
-  private async confirmReload(chart: ChartSpec): Promise<boolean> {
-    if (!chart.command || !this.pageRanCode) return true;
-    return this.confirmForPage(async () => {
-      const run = await vscode.window.showWarningMessage(
-        "Run the chart's command again to reload its data?",
-        {
-          modal: true,
-          detail: `${chart.command}\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had.`,
-        },
-        "Run",
-      );
-      return run !== undefined;
-    });
+  private async reloadTable(
+    chart: ChartSpec,
+    title: string,
+  ): Promise<Awaited<ReturnType<typeof loadTable>> | undefined> {
+    const code = this.pageRanCode
+      ? "\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had."
+      : "";
+    const confirm = (message: string, detail: string, action: string) =>
+      this.confirmForPage(async () => {
+        const options = { modal: true, detail: `${detail}${code}` };
+        return (await vscode.window.showWarningMessage(message, options, action)) !== undefined;
+      });
+    let unasked: { retry: string } | undefined;
+    if (chart.file !== undefined) {
+      let uri: vscode.Uri | undefined;
+      try {
+        uri = resolveFile(chart.file);
+      } catch {
+        // Reported when loading.
+      }
+      if (uri && readAsks(uri)) {
+        if (!(await confirm("Read the chart's data file again?", fileName(uri), "Read"))) return;
+      } else {
+        unasked = { retry: "Try again to be asked." };
+      }
+    } else if (chart.command !== undefined && code) {
+      const message = "Run the chart's command again to reload its data?";
+      if (!(await confirm(message, chart.command, "Run"))) return;
+    }
+    return vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title },
+      (_progress, token) => loadTable(chart, token, unasked),
+    );
   }
 
   /**

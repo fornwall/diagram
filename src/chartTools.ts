@@ -7,7 +7,7 @@ import type { ChartUpdateInput } from "./chartOptions";
 import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
-import { loadTable, prepareDataInvocation } from "./dataSource";
+import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { DiagramPanel } from "./panel";
 import { CHART_TOOL, errorMessage, RENDER_TOOL, UPDATE_CHART_TOOL } from "./protocol";
 import { toolInput } from "./text";
@@ -41,7 +41,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     let description: string | undefined;
     try {
       spec = validateChartSpec(options.input);
-      const { table, warning } = await loadTable(spec, token);
+      const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
       chartTable = table;
       description = `The data was read as: ${describeTable(table)}`;
       const { option, summary } = buildChart(spec, table);
@@ -180,7 +180,7 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
       throwIfCancelled(token);
       const { spec, sampleRows } = inspection(options.input);
       const { table, warning } = spec
-        ? await loadTable(spec, token)
+        ? await loadTable(spec, token, toolUnasked(spec))
         : { table: this.panel.loadedChartData };
       if (!table) {
         throw new Error(
