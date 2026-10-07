@@ -1154,8 +1154,10 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
   const actorLinks = `sequenceDiagram
   participant Alice
   participant Bob
+  participant Carol
   link Alice: Dashboard @ https://example.com/dash
   links Bob: {"Wiki": "https://example.com/wiki", "Repo": "https://example.com/repo"}
+  links Carol: {"Wiki": "https://example.com/wiki", "Repo": "https://example.com/repo", "Docs": "https://example.com/docs"}
   Alice->>Bob: hi`;
 
   test("opens an actor's link, or offers a menu of its links", async () => {
@@ -1175,7 +1177,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         const focused = () =>
           document.activeElement.getAttribute("data-diagram-id") ?? document.activeElement.textContent;
         const shown = {
-          tooltips: ["Alice", "Bob"].map(id => node(id).querySelector("title.diagram-link")?.textContent),
+          tooltips: ["Alice", "Bob", "Carol"].map(id => node(id).querySelector("title.diagram-link")?.textContent),
           hint: document.getElementById("selection-label").textContent,
         };
         click(node("Alice"));
@@ -1210,7 +1212,12 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       })()`);
     });
     assert.deepStrictEqual(shown, {
-      tooltips: ["Open Dashboard (https://example.com/dash)", "Open Wiki or Repo"],
+      tooltips: [
+        "Open Dashboard (https://example.com/dash)",
+        "Open Wiki or Repo",
+        // Without a serial comma, as other lists of words.
+        "Open Wiki, Repo or Docs",
+      ],
       hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
       selected: ["Bob"],
       menuAfterSelecting: false,
