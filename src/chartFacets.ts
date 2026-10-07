@@ -150,6 +150,10 @@ export function buildFacetedChart(
 /** Align category occurrences as well as numeric ranges; equal labels need not be aggregated. */
 function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): void {
   const axes = panels.map((panel) => objects(panel.option[key])[0] ?? {});
+  // Negative values in one panel extend every panel's range, so all keep this axis at the edge.
+  if (axes.some((axis) => axis.axisLine !== undefined)) {
+    for (const axis of axes) axis.axisLine = { onZero: false };
+  }
   if (axes.every((axis) => axis.type === "category")) {
     const domain = new Map<string, unknown>();
     const panelKeys = axes.map((axis) => {

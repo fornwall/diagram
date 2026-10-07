@@ -92,6 +92,11 @@ suite("chartFacets", () => {
         [-4, 2],
       ],
     );
+    // The category axis stays at the edge of the shared range, also in the panel without -4.
+    assert.deepStrictEqual(
+      option.yAxis.map((axis: Option) => axis.axisLine),
+      [{ onZero: false }, { onZero: false }],
+    );
   });
 
   test("shared stacked bounds skip missing observations in disjoint categories", () => {
