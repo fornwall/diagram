@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { afterTest } from "./afterTest";
-import { newPanel, openWebviewPanel, recordChat } from "./newPanel";
+import { newPanel, openWebviewPanel, recordChat, within } from "./newPanel";
 import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("webview", function () {
@@ -116,10 +116,8 @@ suite("webview", function () {
       input.dispatchEvent(new Event("input"));
       document.getElementById("ask-form").requestSubmit();
     })()`);
-    // Waits up to four seconds for both requests; if they do not all come, the assertion shows which did.
-    for (const end = Date.now() + 4000; chat.requests.length < 2 && Date.now() < end; ) {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    // If both requests do not come, the assertion shows which did.
+    await within(() => chat.requests.length >= 2);
     assert.deepStrictEqual(
       chat.requests.map((request) => request.query),
       ["Regarding the diagram: From the button", "Regarding the diagram: From Enter"],

@@ -184,18 +184,28 @@ export async function newFakePanel(
   return { panel, webview: await showInFake(panel) };
 }
 
-/** The webview tabs, once their labels are as expected: tabs are updated asynchronously. */
-export async function webviewTabs(expected: (labels: string[]) => boolean): Promise<vscode.Tab[]> {
-  let labels: string[] = [];
-  for (let attempt = 0; attempt < 500; attempt++) {
-    const tabs = vscode.window.tabGroups.all
-      .flatMap((group) => group.tabs)
-      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
-    labels = tabs.map((tab) => tab.label);
-    if (expected(labels)) return tabs;
+/** Waits for `done()` to hold, checking it every 10 ms for up to five seconds; says whether it does. */
+export async function within(done: () => boolean): Promise<boolean> {
+  const end = Date.now() + 5000;
+  while (!done()) {
+    if (Date.now() > end) return false;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.fail(`The webview tabs are labelled ${JSON.stringify(labels)}.`);
+  return true;
+}
+
+/** The webview tabs, once their labels are as expected: tabs are updated asynchronously. */
+export async function webviewTabs(expected: (labels: string[]) => boolean): Promise<vscode.Tab[]> {
+  let tabs: vscode.Tab[] = [];
+  const labels = () => tabs.map((tab) => tab.label);
+  const found = await within(() => {
+    tabs = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter((tab) => tab.input instanceof vscode.TabInputWebview);
+    return expected(labels());
+  });
+  if (!found) assert.fail(`The webview tabs are labelled ${JSON.stringify(labels())}.`);
+  return tabs;
 }
 
 /** Shows the panel, returning the webview panel that it opens. */
