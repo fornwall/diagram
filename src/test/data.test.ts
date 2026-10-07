@@ -1299,6 +1299,9 @@ suite("data", () => {
       "Only the table from line 2 was read, not the text above it. Only the rows that the " +
         "output shows were read, not those it left out.",
     );
+    // Lines of text, such as commit subjects, a single one of which has a comma.
+    const log = "a1b2c3 Fix the parser\nd4e5f6 Add tests, docs\n0a0b0c Bump version";
+    assert.strictEqual(parseTable(log).note, undefined);
     // A single column of decimal commas, and a header aligned with the columns, are no titles.
     assert.deepStrictEqual(parse("value\n1,5\n2,5").rows, [[1.5], [2.5]]);
     assert.deepStrictEqual(parse("NAME  PORTS\nweb   80, 443\ndb    5432, 5433").rows, [

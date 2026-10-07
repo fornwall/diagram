@@ -606,7 +606,10 @@ function preambleLength(lines: string[]): number {
     }
     length++;
   }
-  return text && /[,;\t]/.test(lines[length] ?? "") ? length : 0;
+  // A header and a row of the table share a delimiter, which a line of text, such as a commit
+  // subject, may have too.
+  const [header = "", row = ""] = lines.slice(length).filter((line) => !isBlank(line));
+  return text && [",", ";", "\t"].some((d) => header.includes(d) && row.includes(d)) ? length : 0;
 }
 
 /**
