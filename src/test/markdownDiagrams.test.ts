@@ -30,10 +30,20 @@ suite("markdownDiagrams", function () {
     );
   }
 
+  /** An untitled Markdown document holding the text. */
+  const untitled = (content: string) =>
+    vscode.workspace.openTextDocument({ language: "markdown", content });
+
+  /** The command of the first lens in the document, which opens its first diagram. */
+  async function firstLens(document: vscode.TextDocument): Promise<vscode.Command> {
+    const command = (await codeLenses(document))[0]?.command;
+    assert.ok(command);
+    return command;
+  }
+
   test("offers a lens for every diagram in a Markdown document", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: [
+    const document = await untitled(
+      [
         "# Notes",
         "",
         "```mermaid",
@@ -50,7 +60,7 @@ suite("markdownDiagrams", function () {
         "```",
         "",
       ].join("\n"),
-    });
+    );
     const lenses = await codeLenses(document);
     assert.deepStrictEqual(
       lenses.map((lens) => [lens.range.start.line, lens.command?.title]),
@@ -69,9 +79,8 @@ suite("markdownDiagrams", function () {
   });
 
   test("offers lenses in block quotes and list items, but not in indented code", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: [
+    const document = await untitled(
+      [
         "    ```mermaid",
         "    flowchart TD",
         "    ```",
@@ -85,7 +94,7 @@ suite("markdownDiagrams", function () {
         "   {}",
         "   ```",
       ].join("\n"),
-    });
+    );
     const lenses = await codeLenses(document);
     assert.deepStrictEqual(
       lenses.map((lens) => lens.range.start.line),
@@ -95,10 +104,7 @@ suite("markdownDiagrams", function () {
   });
 
   test("offers no lenses while the setting turns them off", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: "```mermaid\nflowchart TD\n```\n",
-    });
+    const document = await untitled("```mermaid\nflowchart TD\n```\n");
     assert.strictEqual((await codeLenses(document)).length, 1);
     const settings = vscode.workspace.getConfiguration("diagram");
     await settings.update("codeLens.enabled", false, vscode.ConfigurationTarget.Global);
@@ -152,12 +158,8 @@ suite("markdownDiagrams", function () {
       ["```mermaid\nsequenceDiagram\n```\n", "\n\n\n"],
       ["```echarts\n{}\n```\n", ""],
     ] as const) {
-      const document = await vscode.workspace.openTextDocument({
-        language: "markdown",
-        content: `\`\`\`mermaid\nflowchart TD\n\`\`\`\n\n${second}`,
-      });
-      const command = (await codeLenses(document))[0]?.command;
-      assert.ok(command);
+      const document = await untitled(`\`\`\`mermaid\nflowchart TD\n\`\`\`\n\n${second}`);
+      const command = await firstLens(document);
       const edit = new vscode.WorkspaceEdit();
       edit.replace(document.uri, new vscode.Range(0, 0, 4, 0), inserted);
       assert.ok(await vscode.workspace.applyEdit(edit));
@@ -171,12 +173,8 @@ suite("markdownDiagrams", function () {
   });
 
   test("a CodeLens of a file that no longer exists says why it cannot open it", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: "```mermaid\nflowchart TD\n```\n",
-    });
-    const command = (await codeLenses(document))[0]?.command;
-    assert.ok(command);
+    const document = await untitled("```mermaid\nflowchart TD\n```\n");
+    const command = await firstLens(document);
     const file = path.join(dir, "deleted.md");
     const errors = recordMessages("showErrorMessage");
     await vscode.commands.executeCommand(
@@ -192,12 +190,8 @@ suite("markdownDiagrams", function () {
   });
 
   test("opening a diagram reports when the panel cannot display it", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: "```mermaid\nflowchart TD\n```\n",
-    });
-    const command = (await codeLenses(document))[0]?.command;
-    assert.ok(command);
+    const document = await untitled("```mermaid\nflowchart TD\n```\n");
+    const command = await firstLens(document);
     const panel = newPanel();
     afterTest(() => panel.dispose());
     const reason = "The diagram panel did not respond within 15 seconds.";
