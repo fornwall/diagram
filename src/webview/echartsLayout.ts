@@ -58,12 +58,16 @@ const isNegative = (value: unknown) => typeof value === "number" && value < 0;
 
 /**
  * Whether series data or a dataset source holds a negative value: in a value, the value of a data
- * item, a row, or a column.
+ * item, a row, or a column. Every field of a dataset row counts, also beside one named "value".
  */
-function hasNegativeValues(data: unknown): boolean {
+function hasNegativeValues(data: unknown, dataset = false): boolean {
   const entries = Array.isArray(data) ? data : isPlainObject(data) ? Object.values(data) : [];
   return entries.some((entry) => {
-    const value = isPlainObject(entry) ? (entry.value ?? Object.values(entry)) : entry;
+    const value = !isPlainObject(entry)
+      ? entry
+      : dataset
+        ? Object.values(entry)
+        : (entry.value ?? Object.values(entry));
     return Array.isArray(value) ? value.some(isNegative) : isNegative(value);
   });
 }
@@ -620,7 +624,9 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
         }
       } else if (
         itemStyle.borderRadius === undefined &&
-        !hasNegativeValues(each.data ?? datasetSource(each, datasets))
+        !(each.data == null
+          ? hasNegativeValues(datasetSource(each, datasets), true)
+          : hasNegativeValues(each.data))
       ) {
         // Rounded data ends, square at the baseline.
         const axis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];

@@ -432,6 +432,7 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(fromDataset([["A", 1]]), [4, 4, 0, 0]);
     assert.strictEqual(fromDataset([["A", -1]]), undefined);
     assert.strictEqual(fromDataset([{ name: "A", value: -1 }]), undefined);
+    assert.strictEqual(fromDataset([{ name: "A", value: 1, change: -1 }]), undefined);
     assert.strictEqual(fromDataset({ name: ["A"], value: [-1] }), undefined);
     assert.strictEqual(fromDataset([["A", -1]], { datasetIndex: 1 }), undefined);
   });
