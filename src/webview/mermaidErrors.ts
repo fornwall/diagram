@@ -611,6 +611,14 @@ const UNPLACED: [
       "An edge or relationship refers to something that the diagram does not define.",
     ],
   ],
+  // Mermaid gives its cose-bilkent layout the root node that it needs for mind maps alone.
+  [
+    /^Root node is required$/,
+    () => [
+      undefined,
+      'The cose-bilkent layout only lays out mind maps: set "layout" to "dagre" or "elk" instead.',
+    ],
+  ],
   // Mermaid's dagre layout fails on any group inside itself, where its ELK one may hang.
   [
     /^Setting (.*?) as parent of .* would create a cycle$/,

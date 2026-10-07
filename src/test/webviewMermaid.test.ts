@@ -711,6 +711,7 @@ suite("Mermaid in the webview", function () {
         "sequenceDiagram\n  Alice->>+Bob: Hi\n  Bob-->>-Alice: Yo\n  deactivate Bob",
         // Others quote what they are about.
         'C4Context\n  Person(u, "User")\n  Rel(u, s, "Uses")',
+        "---\nconfig:\n  layout: cose-bilkent\n---\nflowchart TD\n  A --> B",
       ),
       [
         'Error on line 4: Invalid date "notadate": write dates as the dateFormat says, YYYY-MM-DD.',
@@ -719,6 +720,7 @@ suite("Mermaid in the webview", function () {
         'Error on line 4: A mind map has one root: indent "B" below it.',
         'Error on line 4: "Bob" is deactivated, but it is not active.',
         'Error on line 3: C4 rel "u" -> "s" references an unknown shape or boundary',
+        'The cose-bilkent layout only lays out mind maps: set "layout" to "dagre" or "elk" instead.',
       ],
     );
     const elk = (message: string, source: string) =>
