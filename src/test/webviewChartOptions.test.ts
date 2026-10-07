@@ -268,6 +268,20 @@ suite("Chart Options in the webview", function () {
     await closeChartOptions();
   });
 
+  test("chart options count the rows and columns of the data", async () => {
+    for (const [data, counted] of [
+      ["name,amount\na,1", "1 row · 2 columns."],
+      ["name,amount,other\na,1,3\nb,4,7", "2 rows · 3 columns."],
+    ] as const) {
+      await showChartOptions({ type: "bar", data });
+      const status = await evaluate(
+        `document.querySelector("#chart-options .chart-options-heading + p").textContent`,
+      );
+      assert.ok(String(status).startsWith(`${counted} Columns are inferred`), String(status));
+      await closeChartOptions();
+    }
+  });
+
   test("chart options show explicitly shared facet scales as the default", async () => {
     const data = "name,service,amount\na,api-a,1\nb,api-b,3";
     const table = parseTable(data);
