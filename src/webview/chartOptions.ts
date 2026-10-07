@@ -7,6 +7,7 @@ import {
   FACET_TYPES,
 } from "../chartSpec";
 import type { FromWebview } from "../protocol";
+import { plural } from "../text";
 
 function button(text: string, className = "secondary"): HTMLButtonElement {
   const element = document.createElement("button");
@@ -238,7 +239,7 @@ export class ChartOptionsForm {
     this.reset.textContent = state.unavailable ? "Reset styling and reload data" : "Reset styling";
     this.status.textContent =
       state.unavailable ??
-      `${state.rowCount.toLocaleString()} rows · ${state.columns.length} columns. Columns are inferred unless selected. Refresh reloads the data.`;
+      `${plural(state.rowCount, "row")} · ${plural(state.columns.length, "column")}. Columns are inferred unless selected. Refresh reloads the data.`;
     this.replace.checked = false;
     this.replaceLabel.hidden = !state.edited;
     this.error.hidden = true;

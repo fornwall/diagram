@@ -181,10 +181,10 @@ function checkItems(type: RowChartType, spec: ChartSpec, option: Record<string, 
     limit === SLICES && spec.limit !== undefined && isPlainObject(last) && last.name === "Other";
   const drawn = count(data) - (other ? 1 : 0);
   if (drawn > most) {
-    const number = (value: number) => value.toLocaleString("en-US");
     throw new Error(
-      `The ${type} chart would have ${number(drawn)} ${items}, more than the ${number(most)} ` +
-        `the panel draws: they would hold it up and could not be told apart. ${advice}`,
+      `The ${type} chart would have ${formatCount(drawn)} ${items}, more than the ` +
+        `${formatCount(most)} the panel draws: they would hold it up and could not be told ` +
+        `apart. ${advice}`,
     );
   }
 }
