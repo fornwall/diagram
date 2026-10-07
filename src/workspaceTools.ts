@@ -486,8 +486,9 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     const output: string[] = [];
     let matches = 0;
     let matchedFiles = 0;
+    const tooLarge = `binary or over ${MAX_SEARCHED_BYTES / MIB} MiB`;
     const skipped = {
-      "binary or over 1 MiB": 0,
+      [tooLarge]: 0,
       "linked outside the workspace": 0,
       unreadable: 0,
     };
@@ -517,12 +518,12 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       }
       // Count binary and invalid text too, which is read before it is rejected.
       if (scannedBytes + content.bytes > MAX_SCANNED_BYTES) {
-        stopped = "it reached the 16 MiB scan limit";
+        stopped = `it reached the ${MAX_SCANNED_BYTES / MIB} MiB scan limit`;
         break;
       }
       scannedBytes += content.bytes;
       if ("error" in content) {
-        skipped["binary or over 1 MiB"]++;
+        skipped[tooLarge]++;
         continue;
       }
       scanned++;

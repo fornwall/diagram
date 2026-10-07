@@ -26,8 +26,9 @@ import { filesGlob } from "./workspaceTools";
 
 /** Attached files are truncated to this many characters. */
 const MAX_ATTACHMENT_LENGTH = 50_000;
+const MIB = 1024 * 1024;
 /** Larger images are left out, below the limits of common model APIs. */
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 3 * MIB;
 /** Assume an image takes this many tokens, about the most that models scale them to. */
 const IMAGE_TOKENS = 1_600;
 /** The image formats that common models accept, by file extension. */
@@ -277,7 +278,7 @@ export async function fitToolResults(
         part.data.byteLength > MAX_IMAGE_BYTES
       ) {
         content[index] = new vscode.LanguageModelTextPart(
-          `[left out: an image of ${(part.data.byteLength / 1024 / 1024).toFixed(1)} MiB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB limit]`,
+          `[left out: an image of ${oversized(part.data.byteLength)}]`,
         );
       }
     });
@@ -679,7 +680,7 @@ async function readImage(
   }
   const tooLarge = (bytes: number) => ({
     name,
-    error: `the image takes ${(bytes / 1024 / 1024).toFixed(1)} MiB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB limit. Attach a smaller or more compressed image.`,
+    error: `the image takes ${oversized(bytes)}. Attach a smaller or more compressed image.`,
   });
   try {
     if (source instanceof vscode.Uri) {
@@ -703,6 +704,11 @@ async function readImage(
     const explained = source instanceof vscode.Uri ? fileError(error, source) : error;
     return { name, error: errorMessage(explained), named: explained !== error };
   }
+}
+
+/** E.g. "4.2 MiB, more than the 3 MiB limit". */
+function oversized(bytes: number): string {
+  return `${(bytes / MIB).toFixed(1)} MiB, more than the ${MAX_IMAGE_BYTES / MIB} MiB limit`;
 }
 
 function contentKey(data: Uint8Array): string {
