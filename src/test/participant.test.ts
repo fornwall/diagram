@@ -803,6 +803,7 @@ suite("participant", () => {
           new vscode.LanguageModelPromptTsxPart({ text: "x".repeat(20_000) }),
           vscode.LanguageModelDataPart.json({ rows: "z".repeat(20_000) }),
           text("ok"),
+          vscode.LanguageModelDataPart.image(new Uint8Array(4 * 1024 * 1024), "image/png"),
         ]),
     );
     const { sent } = await ask(
@@ -811,7 +812,7 @@ suite("participant", () => {
     );
     const [result] = (sent[1]?.messages.at(-1)?.content ??
       []) as vscode.LanguageModelToolResultPart[];
-    const [kept, leftOut, shortened, ok] = result?.content ?? [];
+    const [kept, leftOut, shortened, ok, image] = result?.content ?? [];
     assert.strictEqual(kept, small);
     assert.deepStrictEqual(
       leftOut,
@@ -825,6 +826,10 @@ suite("participant", () => {
       /"rows": ?"z+\n\n\[truncated: first \d+ of 200\d\d characters\]$/,
     );
     assert.deepStrictEqual(ok, text("ok"));
+    assert.deepStrictEqual(
+      image,
+      text("[left out: an image of 4.0 MiB, more than the 3 MiB limit]"),
+    );
   });
 
   test("stops with a clear error when tool rounds exhaust the model's context", async () => {

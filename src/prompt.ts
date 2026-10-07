@@ -258,7 +258,8 @@ export function escapeMarkdown(text: string): string {
 
 /**
  * Truncate tool results as needed, leaving half the reserve for later rounds. Text is shortened;
- * other parts, such as prompt-tsx, are kept whole or replaced with a note.
+ * other parts, such as prompt-tsx, are kept whole or replaced with a note, as are images over the
+ * size limit.
  */
 export async function fitToolResults(
   model: vscode.LanguageModelChat,
@@ -266,6 +267,20 @@ export async function fitToolResults(
   results: readonly vscode.LanguageModelToolResultPart[],
   token: vscode.CancellationToken,
 ): Promise<void> {
+  // The model API would reject the request, as for an attached image.
+  for (const { content } of results) {
+    content.forEach((part, index) => {
+      if (
+        part instanceof vscode.LanguageModelDataPart &&
+        isImage(part) &&
+        part.data.byteLength > MAX_IMAGE_BYTES
+      ) {
+        content[index] = new vscode.LanguageModelTextPart(
+          `[left out: an image of ${(part.data.byteLength / 1024 / 1024).toFixed(1)} MiB, more than the ${MAX_IMAGE_BYTES / 1024 / 1024} MiB limit]`,
+        );
+      }
+    });
+  }
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE / 2));
   const earlier = messages.flatMap((message) => partTexts(message.content));
   const parts = results.flatMap(({ content }) =>
