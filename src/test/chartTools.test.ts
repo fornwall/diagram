@@ -164,6 +164,30 @@ suite("chartTools", function () {
     );
   });
 
+  test("inspection reads a file that it did not ask about only if it is still inside", async () => {
+    const file = path.join(tempDir("diagram-inspect-"), "data.csv");
+    fs.writeFileSync(file, data);
+    const { panel } = await harness();
+    const tool = new InspectDataTool(panel);
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const link = path.join(root.uri.fsPath, "diagram-inspect-swap.csv");
+    fs.symlinkSync("sizes.tsv", link);
+    afterTest(() => fs.rmSync(link));
+    const input = { file: path.basename(link) };
+    assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
+    fs.rmSync(link);
+    fs.symlinkSync(file, link);
+    assert.strictEqual(
+      await invokeTool(tool, input),
+      "Data could not be inspected: The file diagram-inspect-swap.csv now leads out of the " +
+        "workspace, so it was not read without asking the user. Call the tool again to ask.",
+    );
+    // Once asked, it is read.
+    assert.ok(tool.prepareInvocation({ input }).confirmationMessages);
+    assert.match(await invokeTool(tool, input), /"rowCount":3/);
+  });
+
   test("updates retain manual styling and loaded command data and support adoption", async () => {
     const { panel, webview } = await harness();
     const source = await draw(panel, { type: "bar", command: "this-command-must-never-run" });

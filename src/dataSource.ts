@@ -68,6 +68,12 @@ export function printsSiSizes(command: string): boolean {
   return false;
 }
 
+/**
+ * The data files, by their path as given, last let through without asking as they were inside the
+ * workspace, which is checked again when they are read, as a link may have changed meanwhile.
+ */
+const unasked = new Set<string>();
+
 /** Shared consent for tools that expose file contents or command output to the model. */
 export function prepareDataInvocation(
   spec: ChartSpec | undefined,
@@ -83,10 +89,13 @@ export function prepareDataInvocation(
   } else if (spec?.file) {
     try {
       const uri = resolveFile(spec.file);
+      unasked.delete(spec.file);
       if (!vscode.workspace.isTrusted || !inWorkspace(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
         message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };
+      } else {
+        unasked.add(spec.file);
       }
     } catch {
       // Invalid paths are reported when the tool is invoked.
@@ -120,6 +129,12 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
 
 export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
+  if (unasked.delete(file) && !inWorkspace(uri)) {
+    throw new Error(
+      `The file ${fileName(uri)} now leads out of the workspace, so it was not read without ` +
+        "asking the user. Call the tool again to ask.",
+    );
+  }
   const checkSize = (size: number): void => {
     if (size > MAX_BYTES) {
       throw new Error(
