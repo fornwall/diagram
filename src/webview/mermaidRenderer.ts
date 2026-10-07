@@ -3,7 +3,7 @@
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
-import { type DiagramImage, inlineStyleSheets, standaloneSvg } from "./images";
+import type { DiagramImage } from "./images";
 import { describeError, nestingError, parsableSource } from "./mermaidErrors";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
@@ -15,6 +15,7 @@ import {
   type WebLink,
   withModifier,
 } from "./renderer";
+import { inlineStyleSheets, standaloneSvg } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;

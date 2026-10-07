@@ -12,8 +12,9 @@ import { loadECharts } from "./echartsLoader";
 import { type JsonObject, optionWarnings, parseOption, seriesTypes } from "./echartsOption";
 import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
-import { type DiagramImage, standaloneSvg } from "./images";
+import type { DiagramImage } from "./images";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
+import { standaloneSvg } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
 
 /** A zrender element, which can animate, and the group it is in. */
