@@ -70,6 +70,9 @@ suite("savedChart", () => {
 
     const unclosed = await build({ colors: { ...testColors, fontFamily: "Inter (Display" } });
     assert.ok(unclosed.includes("font-family: Inter Display;"));
+
+    const unquoted = await build({ colors: { ...testColors, fontFamily: `"Inter, 'Noto Sans'` } });
+    assert.ok(unquoted.includes("font-family: Inter, 'Noto Sans';"));
   });
 
   test("keeps titles and labels from breaking out of the page", async () => {
