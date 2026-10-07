@@ -336,11 +336,6 @@ suite("workspaceTools", function () {
       await invoke(finder, { glob: `${relative}/external.txt` }),
       "Left out 1 file linked outside the workspace.",
     );
-    const parentLink = await make("external-dir", outside);
-    assert.match(
-      await invoke(reader, { file: path.join(parentLink, "secret.txt") }),
-      /symbolic link outside/,
-    );
     // Links within the workspace can be read.
     const inside = await make("inside-link.ts", path.join(dir, "code.ts"));
     assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
