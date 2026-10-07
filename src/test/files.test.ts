@@ -141,6 +141,38 @@ suite("files", () => {
     );
   });
 
+  test('follows ".." in a link target into the workspace folder beside it', function () {
+    if (process.platform === "win32") this.skip();
+    const one = path.join(dir, "one");
+    const two = path.join(dir, "two");
+    for (const folder of [one, two]) fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(two, "data.csv"), "a\n1\n");
+    fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+    for (const [name, target] of [
+      ["beside", "../two/data.csv"],
+      ["up", "../secret.csv"],
+      ["back", "../two/../secret.csv"],
+      ["dotted", `${dir}/./two//data.csv`],
+    ] as const) {
+      fs.symlinkSync(target, path.join(one, name));
+    }
+    const roots = [one, two].map((file, index) => ({
+      uri: vscode.Uri.file(file),
+      name: file,
+      index,
+    }));
+    const paths = recordFilePaths();
+    const inside = (name: string) => inWorkspace(vscode.Uri.file(path.join(one, name)), roots);
+    assert.ok(inside("beside"));
+    assert.ok(!inside("up"));
+    assert.ok(!inside("back"));
+    assert.ok(inside("dotted"));
+    assert.deepStrictEqual(
+      paths.filter((file) => file.endsWith("secret.csv")),
+      [],
+    );
+  });
+
   test("refuses a link whose target is not UTF-8, which no string names", function () {
     if (process.platform !== "linux") this.skip();
     const root = vscode.workspace.workspaceFolders?.[0];

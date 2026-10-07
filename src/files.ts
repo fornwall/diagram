@@ -113,14 +113,15 @@ const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
 
 /**
  * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
- * the folder's real path, and returns whether it stays inside. It yields each path to read as a
+ * the folder's real path, and returns whether it ends inside one. It yields each path to read as a
  * link, which is inside, and takes the link's target, or undefined for no link. A target outside
  * every folder by its path, as {@link nearRoot} tells, is never touched, as it could be on a network
  * share or an unreachable mount.
  *
  * A target is never resolved by its text, as the system follows "b/../key" to the folder above
  * where the link b leads. Its names are followed one at a time, as those of `file` are, and ".."
- * steps up from the real path reached so far, which must stay inside.
+ * steps up from the real path reached so far. That may leave the folders, as "../two" does from a
+ * folder beside two, when the next name leads back in.
  *
  * @throws Error when a name is missing, or for too many links, as realpath does, or for a folder
  * without a real path.
@@ -129,7 +130,12 @@ function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
 ): Generator<string, boolean, Buffer | undefined> {
-  const names = (file: string) => file.split(SEPARATORS).filter(Boolean);
+  const names = (file: string) => file.split(SEPARATORS).filter((name) => name && name !== ".");
+  const inside = (file: string) =>
+    roots.some(
+      ([, real]) =>
+        typeof real === "string" && contains(vscode.Uri.file(real), vscode.Uri.file(file)),
+    );
   let dir = "";
   let rest: string[] = [];
   const enter = (target: string) => {
@@ -149,20 +155,13 @@ function* linksInside(
   if (!enter(file)) return false;
   // As many as Linux follows.
   for (let links = 0, name = rest.shift(); name !== undefined; name = rest.shift()) {
-    if (name === ".") continue;
     if (name === "..") {
+      // The parent of a real path is real.
       dir = path.dirname(dir);
-      if (
-        !roots.some(
-          ([, real]) =>
-            typeof real === "string" && nearRoot(vscode.Uri.file(real), vscode.Uri.file(dir)),
-        )
-      ) {
-        return false;
-      }
       continue;
     }
     const next = path.join(dir, name);
+    if (!inside(next)) return false;
     const link = yield next;
     if (link === undefined) {
       dir = next;
@@ -176,27 +175,21 @@ function* linksInside(
     const target = link.toString();
     // A string names no target that is not UTF-8, as the file system takes it in UTF-8.
     if (!Buffer.from(target).equals(link)) return false;
-    const parts = target.split(SEPARATORS);
+    const { root } = path.parse(target);
+    const parts = names(target.slice(root.length));
     const up = parts.indexOf("..");
     // Windows may take ".." after a name in a target by its text, not from where that name leads.
-    if (
-      process.platform === "win32" &&
-      up !== -1 &&
-      parts.slice(0, up).some((part) => part !== "" && part !== ".")
-    ) {
-      return false;
-    }
-    if (path.parse(target).root) {
-      // An absolute target starts in the folder that its names before any "." or ".." are in.
-      const dots = parts.findIndex((part) => part === "." || part === "..");
-      const start = dots === -1 ? parts.length : dots;
-      rest = [...parts.slice(start).filter(Boolean), ...rest];
-      if (!enter(parts.slice(0, start).join(path.sep))) return false;
+    if (process.platform === "win32" && up > 0) return false;
+    if (root) {
+      // An absolute target starts in the folder that its names before any ".." are in.
+      const start = up === -1 ? parts.length : up;
+      rest = [...parts.slice(start), ...rest];
+      if (!enter(path.join(root, ...parts.slice(0, start)))) return false;
     } else {
-      rest = [...parts.filter(Boolean), ...rest];
+      rest = [...parts, ...rest];
     }
   }
-  return true;
+  return inside(dir);
 }
 
 /** No target for a path that is no symbolic link, and rethrows other errors. */
