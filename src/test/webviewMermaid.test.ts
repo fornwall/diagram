@@ -741,6 +741,8 @@ suite("Mermaid in the webview", function () {
         "flowchart TD\n  subgraph A\n    subgraph B\n      A\n      C --> D\n    end\n  end",
         "classDiagram\n  namespace A {\n    class A\n  }\n  X --> A",
         "classDiagram\n  namespace A {\n    class A\n    class B\n  }\n  A --> B",
+        // Of the parents of P.A, Q and P, the layout takes the group that comes last: P.
+        "classDiagram\n  namespace Q {\n    class P.A\n  }\n  namespace P.A {\n    class P\n  }\n  X --> P",
         // dagre fails on groups inside themselves without such edges too.
         "---\nconfig:\n  layout: dagre\n---\nclassDiagram\n  namespace A {\n    class A\n  }",
       ),
@@ -751,6 +753,7 @@ suite("Mermaid in the webview", function () {
         [3, "B"],
         [2, "A"],
         [2, "A"],
+        [5, "P"],
         [6, "A"],
       ].map(
         ([line, group]) =>

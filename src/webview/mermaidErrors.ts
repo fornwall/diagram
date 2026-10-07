@@ -655,11 +655,11 @@ function unplacedError(message: string, normalized: string): Error | undefined {
  */
 export function nestingError(db: DiagramDb | undefined, source: string): Error | undefined {
   const { nodes = [], edges = [] } = db?.getData?.() ?? {};
-  const groups = new Set(nodes.filter((node) => node.isGroup).map(({ id }) => id));
-  // As the layout finds them: a node with the id of a group holds what the group holds.
+  // As the layout finds them, group by group: of the groups that hold nodes of an id, such as a
+  // class and a namespace of a class diagram, the last is its parent.
   const parents = new Map<string, string>();
-  for (const { id, parentId } of nodes) {
-    if (parentId !== undefined && groups.has(parentId)) parents.set(id, parentId);
+  for (const group of nodes.filter(({ isGroup }) => isGroup)) {
+    for (const node of nodes) if (node.parentId === group.id) parents.set(node.id, group.id);
   }
   /** The node and its ancestors, up to the first that is its own ancestor, if one is. */
   const ancestry = (id: string) => {
