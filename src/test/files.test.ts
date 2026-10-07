@@ -173,6 +173,23 @@ suite("files", () => {
     );
   });
 
+  test('takes a workspace folder\'s ".." by its text, as files in it are named', function () {
+    if (process.platform === "win32") this.skip();
+    const one = path.join(dir, "dotted", "one");
+    fs.mkdirSync(one, { recursive: true });
+    fs.mkdirSync(path.join(dir, "dotted", "x"));
+    fs.symlinkSync(dir, path.join(one, "away"));
+    fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+    // As VS Code gives the folder of {"uri": "file:///…/x/../one"} in a .code-workspace file.
+    const uri = vscode.Uri.file(path.join(dir, "dotted", "x"));
+    const root = uri.with({ path: `${uri.path}/../one` });
+    assert.match(root.fsPath, /\/x\/\.\.\/one$/);
+    const roots = [{ uri: root, name: "one", index: 0 }];
+    fs.writeFileSync(path.join(one, "data.csv"), "a\n1\n");
+    assert.ok(inWorkspace(vscode.Uri.file(path.join(one, "data.csv")), roots));
+    assert.ok(!inWorkspace(vscode.Uri.file(path.join(one, "away", "secret.csv")), roots));
+  });
+
   test("refuses a link whose target is not UTF-8, which no string names", function () {
     if (process.platform !== "linux") this.skip();
     const root = vscode.workspace.workspaceFolders?.[0];

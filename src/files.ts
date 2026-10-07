@@ -66,10 +66,11 @@ export function inWorkspace(
     const local = roots
       .filter(({ uri }) => uri.scheme === "file")
       .map(({ uri }): LocalRoot => {
+        const file = path.resolve(uri.fsPath);
         try {
-          return [uri.fsPath, realpathSync.native(uri.fsPath)];
+          return [file, realpathSync.native(file)];
         } catch (error) {
-          return [uri.fsPath, error as Error];
+          return [file, error as Error];
         }
       });
     try {
@@ -103,8 +104,10 @@ export async function staysInside(file: string, roots: readonly LocalRoot[]): Pr
 }
 
 /**
- * A workspace folder on this computer, by its path and its real path, or the error for a folder
- * that has none, from which nothing is followed: ".." steps up from a real path.
+ * A workspace folder on this computer, by its path without "." and "..", which VS Code keeps from a
+ * folder's "uri" in a workspace file but not in the names of files in it, and by its real path, or
+ * the error for a folder that has none, from which nothing is followed: ".." steps up from a real
+ * path.
  */
 export type LocalRoot = readonly [file: string, real: string | Error];
 

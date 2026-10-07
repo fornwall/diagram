@@ -141,12 +141,10 @@ export function boundary(
   const localRoots = Promise.all(
     roots
       .filter(({ uri }) => uri.scheme === "file")
-      .map(
-        async ({ uri }): Promise<LocalRoot> => [
-          uri.fsPath,
-          await realpath(uri.fsPath).catch((error: Error) => error),
-        ],
-      ),
+      .map(async ({ uri }): Promise<LocalRoot> => {
+        const file = path.resolve(uri.fsPath);
+        return [file, await realpath(file).catch((error: Error) => error)];
+      }),
   );
   const checkedDirectories = new Map<string, Promise<void>>();
   /** Providers have no realpath API. Refuse reported symbolic links, including parent directories. */
