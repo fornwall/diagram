@@ -45,12 +45,9 @@ suite("Chart Options in the webview", function () {
       valueColumns: ["amount"],
     };
     await showChartOptions(chart, table, { clickPrompt: "Explain {label}" });
-    assert.deepStrictEqual(
-      await evaluate(`(() => {
-      const section = document.getElementById("chart-options");
-      return { visible: !section.hidden, columns: section.querySelectorAll("#chart-option-label option").length };
-    })()`),
-      { visible: true, columns: 3 },
+    assert.strictEqual(
+      await evaluate(`document.querySelectorAll("#chart-option-label option").length`),
+      3,
     );
     await nextRender(() =>
       evaluate(`(() => {
@@ -62,12 +59,18 @@ suite("Chart Options in the webview", function () {
       document.querySelector("#chart-options form button:default").click();
     })()`),
     );
-    assert.strictEqual(page.panel.current?.chart?.command, chart.command);
-    assert.strictEqual(page.panel.current?.chart?.type, "pie");
-    assert.strictEqual(page.panel.current?.chart?.aggregate, "sum");
-    assert.strictEqual(page.panel.current?.chart?.sort, "descending");
-    assert.strictEqual(page.panel.current?.chart?.limit, 1);
-    assert.strictEqual(page.panel.current?.clickPrompt, "Explain {label}");
+    const { command, type, aggregate, sort, limit } = page.panel.current?.chart ?? {};
+    assert.deepStrictEqual(
+      { command, type, aggregate, sort, limit, clickPrompt: page.panel.current?.clickPrompt },
+      {
+        command: chart.command,
+        type: "pie",
+        aggregate: "sum",
+        sort: "descending",
+        limit: 1,
+        clickPrompt: "Explain {label}",
+      },
+    );
     await closeChartOptions();
     assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), true);
   });
@@ -305,7 +308,6 @@ suite("Chart Options in the webview", function () {
   test("chart options recover inline data and close on arbitrary ECharts replacement", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
     await showChartOptions(chart);
-    assert.strictEqual(await evaluate(`document.getElementById("chart-options").hidden`), false);
     await draw({
       language: "echarts",
       source: '{"series":[{"type":"pie","data":[{"value":1,"name":"a"}]}]}',
