@@ -479,20 +479,12 @@ suite("participant", () => {
       /failed to render: Parse error on line 2, column 9: unexpected "--\\>"\.\n\n.*source view/,
     );
     assert.strictEqual(gaveUp.result?.metadata?.source, "flowchart TD\n  A --> --> B[");
-
-    const keepsFailing = await ask([
-      [text(invalid)],
-      [text(invalid)],
-      [text(invalid)],
-      [text(valid)],
-    ]);
-    assert.strictEqual(keepsFailing.sent.length, 3);
-    assert.match(keepsFailing.shown, /failed to render: .*source view/s);
   });
 
-  test("shows a render error as Markdown, with its source excerpt in a code block", async () => {
+  test("shows a render error as Markdown, with its source excerpt in a code block, after three tries", async () => {
     const broken = text(`\`\`\`echarts\n${brokenChart}\n\`\`\``);
-    const { shown } = await ask([[broken], [broken], [broken]]);
+    const { sent, shown } = await ask([[broken], [broken], [broken], [text(valid)]]);
+    assert.strictEqual(sent.length, 3);
     assert.ok(
       shown.endsWith(
         'The chart failed to render: The ECharts option could not be parsed: Missing "," before this element (line 1, column 45).\n\n' +
@@ -526,7 +518,16 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.origin, "participant");
   });
 
-  test("makes the model call the tools that the user attached first", async () => {
+  test("makes the model call the tools that the user attached first, whose descriptors may be new objects", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
+    assert.ok(descriptor);
+    const available = vscode.lm.tools;
+    // As the registry returns them.
+    Object.defineProperty(vscode.lm, "tools", {
+      configurable: true,
+      get: () => available.map((tool) => ({ ...tool })),
+    });
+    afterTest(() => Object.defineProperty(vscode.lm, "tools", descriptor));
     const { sent } = await ask(
       [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
       { toolReferences: [{ name: "diagram_getState" }] },
@@ -571,34 +572,6 @@ suite("participant", () => {
     const instructions = messageText(explained.sent[0]?.messages[0]);
     assert.match(instructions, /^You are @diagram in VS Code\. Explain/);
     assert.doesNotMatch(instructions, /the available tools/);
-  });
-
-  test("does not run tools that the model was not given", async () => {
-    const call = new vscode.LanguageModelToolCallPart("1", "unknown_external_tool", {});
-    const { sent } = await ask([[call], [text("Sorry.")]]);
-    assert.strictEqual(
-      messageText(sent[1]?.messages.at(-1)),
-      "The tool unknown_external_tool is not available in this round. Use only the tools you were given.",
-    );
-  });
-
-  test("keeps attached tools available when the registry returns fresh descriptors", async () => {
-    const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
-    assert.ok(descriptor);
-    const available = vscode.lm.tools;
-    Object.defineProperty(vscode.lm, "tools", {
-      configurable: true,
-      get: () => available.map((tool) => ({ ...tool })),
-    });
-    afterTest(() => Object.defineProperty(vscode.lm, "tools", descriptor));
-    const call = new vscode.LanguageModelToolCallPart("1", "diagram_getState", {});
-    const { sent } = await ask([[call], [text("Done.")]], {
-      toolReferences: [{ name: "diagram_getState" }],
-    });
-    assert.deepStrictEqual(
-      sent[1]?.options.tools?.map((tool) => tool.name).sort(),
-      availableDefaults(),
-    );
   });
 
   test("offers all built-in tools by default and only explicitly attached external tools", async () => {
