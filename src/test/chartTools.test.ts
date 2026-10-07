@@ -5,10 +5,10 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
+import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { afterTest } from "./afterTest";
+import { afterTest, replace } from "./afterTest";
 import { newFakePanel } from "./newPanel";
 import { toolText } from "./toolText";
 
@@ -345,5 +345,49 @@ suite("chartTools", function () {
     } finally {
       cancellation.dispose();
     }
+  });
+
+  test("diagram_chart blames its options for a chart that fails to render", async () => {
+    const { panel } = await harness();
+    panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
+    const chart = async (input: object) =>
+      toolText(
+        await new ChartTool(panel).invoke(
+          { input: { type: "bar", data: "a,1\nb,2", ...input } } as never,
+          token,
+        ),
+      );
+    assert.match(
+      await chart({ options: { yAxis: { type: "log" } } }),
+      /^The chart failed to render with this error:\n\nBad option\n\n"options" is the likely cause: fix or leave it out and call diagram_chart again\.\n\nCharted /,
+    );
+    assert.match(
+      await chart({}),
+      /Bad option\n\nTry another chart type, or write the ECharts option yourself/,
+    );
+  });
+
+  test("cancelling a chart stops waiting for a file read", async () => {
+    const { panel } = await harness();
+    const cancellable = new vscode.CancellationTokenSource();
+    afterTest(() => cancellable.dispose());
+    const started = Promise.withResolvers<void>();
+    const data = Promise.withResolvers<Uint8Array>();
+    afterTest(() => data.resolve(new TextEncoder().encode("name,value\nA,1")));
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: () => {
+        started.resolve();
+        return data.promise;
+      },
+    });
+    const result = new ChartTool(panel).invoke(
+      { input: { type: "bar", file: "sizes.tsv" } } as never,
+      cancellable.token,
+    );
+    await started.promise;
+    cancellable.cancel();
+    await assert.rejects(result, vscode.CancellationError);
+    assert.strictEqual(panel.current, undefined);
   });
 });

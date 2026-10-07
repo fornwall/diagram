@@ -1,13 +1,107 @@
+// The tools that chart data: diagram_chart, diagram_inspectData and diagram_updateChart.
+
 import * as vscode from "vscode";
-import { throwIfCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
+import { describeTable } from "./chartColumns";
 import type { ChartUpdateInput } from "./chartOptions";
-import { type ChartSpec, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
+import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
-import { errorMessage, isPlainObject } from "./protocol";
+import {
+  CHART_TOOL,
+  errorMessage,
+  isPlainObject,
+  RENDER_TOOL,
+  UPDATE_CHART_TOOL,
+} from "./protocol";
 import { givenProperties, unknownProperties } from "./text";
-import { textResult } from "./tools";
+import { nonBlank, renderFailure, textResult } from "./tools";
+
+type ChartInput = ChartSpec & { clickPrompt?: string };
+
+export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
+  constructor(private readonly panel: DiagramPanel) {}
+
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
+  ): vscode.PreparedToolInvocation {
+    try {
+      const spec = validateChartSpec(options.input);
+      return prepareDataInvocation(spec, `Rendering chart "${chartTitle(spec)}"`);
+    } catch {
+      // Reported when the tool is invoked.
+      return { invocationMessage: "Rendering a chart" };
+    }
+  }
+
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<ChartInput>,
+    token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    let spec: ChartSpec;
+    let chartTable: DataTable;
+    let source: string;
+    let report: string;
+    let description: string | undefined;
+    try {
+      spec = validateChartSpec(options.input);
+      const { table, warning } = await loadTable(spec, token);
+      chartTable = table;
+      description = `The data was read as: ${describeTable(table)}`;
+      const { option, summary } = buildChart(spec, table);
+      source = JSON.stringify(option, null, 2);
+      report = [summary, warning, description].filter(Boolean).join("\n\n");
+    } catch (error) {
+      if (error instanceof vscode.CancellationError) {
+        throw error;
+      }
+      return textResult(
+        `No chart was rendered: ${errorMessage(error)}${description ? `\n\n${description}` : ""}\n\nFix the input and call ${CHART_TOOL} again.`,
+      );
+    }
+
+    const outcome = await unlessCancelled(
+      () =>
+        this.panel.render(
+          {
+            language: "echarts",
+            source,
+            title: chartTitle(spec),
+            clickPrompt: nonBlank(options.input.clickPrompt),
+            chart: spec,
+          },
+          "tool",
+          options.toolInvocationToken,
+          chartTable,
+        ),
+      token,
+    );
+    if (outcome.ok) {
+      return textResult(
+        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose labelColumn or valueColumns with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a format.`,
+      );
+    }
+    const fix = spec.options
+      ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
+      : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
+    return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${report}`);
+  }
+}
+
+/** E.g. "horizontal bar" for "horizontalBar". */
+function chartTypeName(type: ChartType): string {
+  return type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+}
+
+/** The chart's title, by default e.g. "Horizontal bar chart of sales.csv". */
+function chartTitle({ type, title, file, command }: ChartSpec): string {
+  const words = chartTypeName(type);
+  const name = `${words.charAt(0).toUpperCase()}${words.slice(1)} chart`;
+  const of = file ? file.split(/[/\\]/).at(-1) : command;
+  return nonBlank(title) ?? (of ? `${name} of ${of}` : name);
+}
 
 interface InspectDataInput {
   data?: string;

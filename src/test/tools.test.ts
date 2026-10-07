@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { ChartTool } from "../chartTools";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { AnnotateDiagramTool, ChartTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
+import { AnnotateDiagramTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { afterTest, replace } from "./afterTest";
 import { newPanel } from "./newPanel";
 import { toolText } from "./toolText";
@@ -118,25 +119,6 @@ suite("tools", () => {
     );
   });
 
-  test("diagram_chart blames its options for a chart that fails to render", async () => {
-    panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
-    const chart = async (input: object) =>
-      toolText(
-        await new ChartTool(panel).invoke(
-          { input: { type: "bar", data: "a,1\nb,2", ...input } } as never,
-          token,
-        ),
-      );
-    assert.match(
-      await chart({ options: { yAxis: { type: "log" } } }),
-      /^The chart failed to render with this error:\n\nBad option\n\n"options" is the likely cause: fix or leave it out and call diagram_chart again\.\n\nCharted /,
-    );
-    assert.match(
-      await chart({}),
-      /Bad option\n\nTry another chart type, or write the ECharts option yourself/,
-    );
-  });
-
   test("diagram_pickNodes reports the nodes the user picked", async () => {
     const nodes = [
       { id: "A", label: "Parser" },
@@ -220,28 +202,5 @@ suite("tools", () => {
     assert.deepStrictEqual(calls, []);
     assert.deepStrictEqual(panel.current, flowchart);
     assert.strictEqual(values.get("diagram.state"), flowchart);
-  });
-
-  test("cancelling a chart stops waiting for a file read", async () => {
-    const cancellable = new vscode.CancellationTokenSource();
-    afterTest(() => cancellable.dispose());
-    const started = Promise.withResolvers<void>();
-    const data = Promise.withResolvers<Uint8Array>();
-    afterTest(() => data.resolve(new TextEncoder().encode("name,value\nA,1")));
-    replace(vscode.workspace, "fs", {
-      ...vscode.workspace.fs,
-      readFile: () => {
-        started.resolve();
-        return data.promise;
-      },
-    });
-    const result = new ChartTool(panel).invoke(
-      { input: { type: "bar", file: "sizes.tsv" } } as never,
-      cancellable.token,
-    );
-    await started.promise;
-    cancellable.cancel();
-    await assert.rejects(result, vscode.CancellationError);
-    assert.deepStrictEqual(panel.current, flowchart);
   });
 });

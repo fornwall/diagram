@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { InspectDataTool, UpdateChartTool } from "./chartTools";
+import { ChartTool, InspectDataTool, UpdateChartTool } from "./chartTools";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
 import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
@@ -17,7 +17,6 @@ import {
 } from "./protocol";
 import {
   AnnotateDiagramTool,
-  ChartTool,
   GetDiagramStateTool,
   PickDiagramNodesTool,
   RenderDiagramTool,
