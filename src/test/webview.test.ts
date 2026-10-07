@@ -271,14 +271,17 @@ suite("webview", function () {
         for (let i = 0; i < 2; i++) wheel(-100 * Math.log(1.1), 0, 0, 120);
         await frame();
         const pinched = zoom();
-        // Mouse wheel notches, as Chromium reports them on Windows and Linux, and in lines.
+        // Mouse wheel notches, as Chromium reports them on Windows and Linux, in pixels, lines
+        // and, with Windows set to scroll a screen at a time, pages.
         wheel(100, 0, 0, -120);
         await frame();
-        wheel(6.25, WheelEvent.DOM_DELTA_LINE);
+        wheel(3, WheelEvent.DOM_DELTA_LINE, 0, -120);
+        await frame();
+        wheel(1, WheelEvent.DOM_DELTA_PAGE, 0, -120);
         await frame();
         return {sideways, scrolled, steady: moved < 2, pinched, notches: zoom()};
       })()`),
-      { sideways: true, scrolled: "120%", steady: true, pinched: "145%", notches: "101%" },
+      { sideways: true, scrolled: "120%", steady: true, pinched: "145%", notches: "84%" },
     );
   });
 

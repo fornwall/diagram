@@ -339,21 +339,21 @@ export class MermaidRenderer implements Renderer {
         event.preventDefault();
         // Scrolling sideways does not zoom, nor stop the drawing fitting the panel.
         if (!event.deltaY) return;
-        // Chromium reports each step of a pinch as a whole wheel tick (a wheelDeltaY of ±120) of
-        // deltaY -100·ln(scale), where scrolling reports at least a pixel for every 3 of
-        // wheelDeltaY (see CreateSyntheticWheelFromTouchpadPinchEvent).
+        // Chromium reports each step of a pinch as Ctrl and a whole wheel tick (a wheelDeltaY of
+        // ±120) of deltaY -100·ln(scale) pixels, where scrolling reports at least a pixel for
+        // every 3 of wheelDeltaY (see CreateSyntheticWheelFromTouchpadPinchEvent). Scrolling by
+        // lines or pages, as Windows can be set to, reports a notch as ±1 or so.
         const { wheelDeltaY = 0 } = event as WheelEvent & { wheelDeltaY?: number };
-        const pinch = Math.abs(event.deltaY) < Math.abs(wheelDeltaY) / 4;
-        const pixels =
-          event.deltaY *
-          (event.deltaMode === WheelEvent.DOM_DELTA_LINE
-            ? 16
-            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-              ? canvas.clientHeight
-              : 1);
-        const factor = pinch
-          ? Math.exp(-event.deltaY / 100)
-          : WHEEL_ZOOM ** (-Math.max(-100, Math.min(100, pixels)) / 100);
+        const inPixels = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL;
+        const pinch =
+          inPixels &&
+          event.ctrlKey &&
+          !event.metaKey &&
+          Math.abs(event.deltaY) < Math.abs(wheelDeltaY) / 4;
+        const pixels = inPixels
+          ? Math.max(-100, Math.min(100, event.deltaY))
+          : Math.sign(event.deltaY) * 100;
+        const factor = pinch ? Math.exp(-event.deltaY / 100) : WHEEL_ZOOM ** (-pixels / 100);
         const pending = wheel !== undefined;
         wheel = { factor: (wheel?.factor ?? 1) * factor, x: event.clientX, y: event.clientY };
         if (pending) return;
