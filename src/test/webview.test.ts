@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { afterTest } from "./afterTest";
 import { newPanel, openWebviewPanel, recordChat } from "./newPanel";
-import { instrumentWebview, MERMAID, suitePage } from "./webviewHarness";
+import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
@@ -682,9 +682,10 @@ suite("webview", function () {
           live: banner.getAttribute("role") === "status" && getComputedStyle(banner).display !== "none",
           height: banner.getBoundingClientRect().height > 0
         });
+        ${UNTIL}
         const annotate = async (caption) => {
           window.dispatchEvent(new MessageEvent("message", {data: {type: "annotate", marks: [], dim: false, caption}}));
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await until(() => document.getElementById("annotation-caption").hidden === (caption === undefined));
           return shown();
         };
         return [shown(), await annotate("Step 1"), await annotate(undefined)];
