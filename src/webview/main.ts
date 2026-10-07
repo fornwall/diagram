@@ -366,8 +366,10 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   }
 });
 
-// Render again when the VS Code color theme changes: VS Code updates the body class and data
-// attributes (light, dark, high contrast; theme id), and the color variables on the root element.
+// Render again when the VS Code color theme changes: VS Code updates the body's data attributes
+// (light, dark, high contrast; theme id) and the color variables on the root element. Not when the
+// body class changes, as it does while VS Code shows its context menu: the redraw would move the
+// focus back into the page, closing the export format picker that the menu opened.
 let themeFrame = 0;
 const themeObserver = new MutationObserver(() => {
   cancelAnimationFrame(themeFrame);
@@ -382,7 +384,7 @@ const themeObserver = new MutationObserver(() => {
 });
 themeObserver.observe(document.body, {
   attributes: true,
-  attributeFilter: ["class", "data-vscode-theme-kind", "data-vscode-theme-id"],
+  attributeFilter: ["data-vscode-theme-kind", "data-vscode-theme-id"],
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
 

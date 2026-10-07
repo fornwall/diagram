@@ -438,6 +438,35 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("leaves the drawing alone while VS Code shows its context menu over the panel", async () => {
+    // A redraw would give the focus back to the node right-clicked, taking it from the export
+    // format picker that the menu opened, which then closed.
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        let redraws = 0;
+        const observer = new MutationObserver(() => redraws++);
+        observer.observe(document.getElementById("diagram"), {childList: true});
+        for (const visible of [true, false]) {
+          document.body.classList.toggle("vscode-context-menu-visible", visible);
+          await frames();
+        }
+        // A theme change redraws after anything the menu would have queued.
+        const original = document.body.dataset.vscodeThemeId;
+        document.body.dataset.vscodeThemeId = "test-context-menu";
+        ${UNTIL}
+        await until(() => redraws > 0);
+        await frames();
+        observer.disconnect();
+        if (original === undefined) delete document.body.dataset.vscodeThemeId;
+        else document.body.dataset.vscodeThemeId = original;
+        return redraws;
+      })()`),
+      1,
+    );
+  });
+
   test("names an unknown Mermaid diagram type, and what it could be", async () => {
     assert.deepStrictEqual(
       await errors("flowchar TD\n  A --> B", "sequence\n  A->>B: x", "erdiagram", "C4"),
