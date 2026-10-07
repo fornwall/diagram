@@ -44,6 +44,7 @@ suite("echartsLayout", () => {
       toolWarnings({ baseOption: bars({ toolbox: [{ feature: { brush: {} } }] }) }).join(),
       /toolbox feature "brush" out of the chart, .* undo what it changes\.$/,
     );
+    assert.match(toolWarnings(bars({ brush: {} })).join(), /toolbox feature "brush" out/);
   });
 
   test("leaves the source option untouched", () => {

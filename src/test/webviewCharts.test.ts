@@ -367,6 +367,23 @@ suite("ECharts in the webview", function () {
     assert.ok(await evaluate('document.querySelector("#chart svg path") !== null'));
   });
 
+  test("draws no brush buttons for a brush component", async () => {
+    const paths = async (extra: object) => {
+      await draw({
+        language: "echarts",
+        source: JSON.stringify({
+          animation: false,
+          xAxis: { type: "category", data: ["A", "B"] },
+          yAxis: {},
+          series: [{ type: "bar", data: [1, 2] }],
+          ...extra,
+        }),
+      });
+      return evaluate('document.querySelectorAll("#chart svg path").length');
+    };
+    assert.strictEqual(await paths({ brush: {} }), await paths({}));
+  });
+
   test("does not redraw a chart when a resize observation leaves its dimensions unchanged", async () => {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(

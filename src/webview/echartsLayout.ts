@@ -212,6 +212,8 @@ export function toolWarnings(option: JsonObject): string[] {
       Object.keys(feature).filter((name) => Object.hasOwn(PASSING_TOOLS, name)),
     ),
   );
+  // A brush component is drawn by the toolbox's brush, which ECharts adds for it.
+  if (asArray(baseOption(option).brush).length > 0) left.add("brush");
   if (left.size === 0) return editable;
   const names = [...left].map((name) => `"${name}"`);
   const instead = [...left].flatMap((name) => PASSING_TOOLS[name] ?? []);

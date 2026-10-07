@@ -1,6 +1,7 @@
 // Loaded on the first chart. SVG supports sharp text and vector export, but not the canvas
 // renderer's progressive/large-data optimizations. Maps (no map data), the canvas renderer and
-// universal transitions are omitted to keep the bundle smaller.
+// universal transitions are omitted to keep the bundle smaller, and the brush component, which
+// would add the toolbox's brush back to the chart that echartsLayout.ts takes it out of.
 
 import {
   BarChart,
@@ -28,7 +29,6 @@ import {
 } from "echarts/charts";
 import {
   AriaComponent,
-  BrushComponent,
   CalendarComponent,
   DatasetComponent,
   DataZoomComponent,
@@ -78,7 +78,6 @@ use([
   TreeChart,
   TreemapChart,
   AriaComponent,
-  BrushComponent,
   CalendarComponent,
   DatasetComponent,
   DataZoomComponent,
