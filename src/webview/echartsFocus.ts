@@ -274,7 +274,9 @@ export class ChartFocus {
 
   constructor(
     element: HTMLElement,
-    private readonly chart: () => { chart: ECharts.ECharts; items: ChartItems } | undefined,
+    private readonly chart: () => ECharts.ECharts | undefined,
+    /** The items of the chart, which take a while to work out for a large one. */
+    private readonly items: () => ChartItems | undefined,
     private readonly colors: () => ThemeColors | undefined,
     activate: (key: string, event: KeyboardEvent) => void,
   ) {
@@ -315,7 +317,7 @@ export class ChartFocus {
 
   /** Moves the focus to a clicked item, without showing it: the pointer is there. */
   clicked(key: string): void {
-    const node = this.chart()?.items.node(key);
+    const node = this.items()?.node(key);
     if (node) this.focused = { key, id: node.id };
   }
 
@@ -338,9 +340,9 @@ export class ChartFocus {
     if (!this.showCurrent()) this.hide();
   }
 
-  private place(navigation = this.navigationOf()): void {
+  private place(navigation?: ChartNavigation): void {
     const ref = this.shown && this.focused ? parseItemKey(this.focused.key) : undefined;
-    const box = ref && navigation?.box(ref);
+    const box = ref && (navigation ?? this.navigationOf())?.box(ref);
     const colors = this.colors();
     this.ring.hidden = !box || !colors;
     if (!box || !colors) return;
@@ -364,12 +366,12 @@ export class ChartFocus {
     if (!this.shown) return;
     this.shown = false;
     this.ring.hidden = true;
-    this.chart()?.chart.dispatchAction({ type: "hideTip" });
+    this.chart()?.dispatchAction({ type: "hideTip" });
   }
 
   /** Where the keyboard leads in the chart as shown now, after legend or zoom changes. */
   private navigationOf(): ChartNavigation | undefined {
-    const chart = this.chart()?.chart;
+    const chart = this.chart();
     return chart && new ChartNavigation(chart);
   }
 
@@ -383,7 +385,7 @@ export class ChartFocus {
 
   /** The focused item if the chart still shows it, the first item otherwise. */
   private current(navigation: ChartNavigation): ItemRef | undefined {
-    const items = this.chart()?.items;
+    const items = this.items();
     if (!items) return undefined;
     if (this.focused) {
       const { key, id } = this.focused;
@@ -396,22 +398,23 @@ export class ChartFocus {
   }
 
   private show(ref: ItemRef, navigation: ChartNavigation): void {
-    const found = this.chart();
+    const chart = this.chart();
+    const items = this.items();
     const key = itemKey(ref);
-    const node = found?.items.node(key);
+    const node = items?.node(key);
     const about = navigation.about(ref);
-    if (!found || !node || !about) return;
+    if (!chart || !items || !node || !about) return;
     const changed = !this.shown || this.focused?.key !== key || this.focused.id !== node.id;
     this.focused = { key, id: node.id };
     this.shown = true;
     this.place(navigation);
     const { seriesIndex, dataType, dataIndex } = ref;
     // A tooltip shows a node of a graph for an edge's index.
-    found.chart.dispatchAction(
+    chart.dispatchAction(
       dataType === "edge" ? { type: "hideTip" } : { type: "showTip", seriesIndex, dataIndex },
     );
     if (changed) {
-      const series = found.items.seriesName(seriesIndex);
+      const series = items.seriesName(seriesIndex);
       this.status.textContent = [
         about.value === undefined ? node.label : `${node.label}: ${about.value}`,
         series && `series ${series}`,

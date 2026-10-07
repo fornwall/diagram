@@ -79,10 +79,8 @@ export class EChartsRenderer implements Renderer {
     canvas.append(this.container);
     this.focus = new ChartFocus(
       this.container,
-      () => {
-        const items = this.items();
-        return this.chart && items && { chart: this.chart, items };
-      },
+      () => this.chart,
+      () => this.items(),
       () => this.theme?.colors,
       (key, event) => {
         const node = this.items()?.node(key);
@@ -424,6 +422,8 @@ export class EChartsRenderer implements Renderer {
 
   /** The items that go by the ids. */
   private find(ids: string[]): ItemRef[] {
+    // Each layout calls this, and working out the items of a large chart takes a while.
+    if (ids.length === 0) return [];
     const items = this.items();
     return ids.flatMap((id) => items?.find(id) ?? []);
   }
