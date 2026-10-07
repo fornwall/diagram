@@ -11,6 +11,10 @@ export const WITH_DATABASE = new Set([
   "xychart",
   "flowchart-v2",
   "flowchart",
+  "swimlane",
+  "agentflow",
+  "block",
+  "usecase",
   "classDiagram",
   "stateDiagram",
   "er",
@@ -44,18 +48,19 @@ interface TreeItem {
   children?: TreeItem[];
 }
 
+/** An edge of a diagram that Mermaid lays out as a flowchart. */
+interface ShapeEdge {
+  id: string;
+  start: string;
+  end: string;
+  label?: string;
+  thickness?: string;
+  arrowTypeStart?: string;
+  arrowTypeEnd?: string;
+}
+
 export interface DiagramDb {
-  getData?(): {
-    edges: {
-      id: string;
-      start: string;
-      end: string;
-      label?: string;
-      thickness?: string;
-      arrowTypeStart?: string;
-      arrowTypeEnd?: string;
-    }[];
-  };
+  getData?(): { edges: ShapeEdge[] };
   getMessages?(): { id: string; from?: string; to?: string; message?: string }[];
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
@@ -64,14 +69,17 @@ export interface DiagramDb {
   getLinks?(): Map<string, unknown> | unknown[];
   /** A sequence diagram's actors, by id, with their labels and links by name. */
   getActors?(): Map<string, { description?: string; links?: Record<string, unknown> | null }>;
-  /** An architecture diagram's edges, with whether they have an arrowhead into either end. */
-  getEdges?(): {
+  /**
+   * An architecture diagram's edges, with whether they have an arrowhead into either end, or a
+   * block diagram's.
+   */
+  getEdges?(): (Partial<ShapeEdge> & {
     lhsId?: string;
     rhsId?: string;
     lhsInto?: boolean;
     rhsInto?: boolean;
     title?: string;
-  }[];
+  })[];
   /** A C4 diagram's relationships, in the order it draws them. */
   getRels?(): { from: string; to: string; label?: { text?: string } }[];
   /** A C4 diagram's boundaries in the boundary with the alias, the whole diagram being "global". */
@@ -308,13 +316,19 @@ function shapes(f: Finder): Map<string, string> {
   for (const element of f.all(
     "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
   )) {
-    const domId = element.getAttribute("data-id") ?? f.withoutPrefix(element.id);
+    // A use case diagram keeps the source id in an attribute of its own.
+    const domId =
+      element.getAttribute("data-usecase-id") ??
+      element.getAttribute("data-id") ??
+      f.withoutPrefix(element.id);
     // A block diagram group without a label goes by its id, unless Mermaid made one up for it.
     const group = element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId);
     const label = nameOf(element) || (group ? domId : "");
     // Start and end states, forks and joins, and groups without ids.
     if (!label) continue;
-    const decorated = /^(?:flowchart|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
+    const decorated = /^(?:flowchart|agentflow|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(
+      domId,
+    );
     const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
       ? f.uniqueId(label)
       : (decorated?.[1] ?? decorated?.[2] ?? domId);
@@ -325,24 +339,29 @@ function shapes(f: Finder): Map<string, string> {
 }
 
 /**
- * The edges of flowcharts and class, state, ER and requirement diagrams, which Mermaid lays out
- * alike, joined to their lines by their ids in the database. `nodeIds` gives the id of each node
- * by the id that Mermaid draws it with.
+ * The edges of flowcharts and class, state, ER, requirement, block and use case diagrams, which
+ * Mermaid lays out alike, joined to their lines by their ids in the database. `nodeIds` gives the
+ * id of each node by the id that Mermaid draws it with.
  */
 function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
-  if (!f.db?.getData) return;
-  const { edges } = f.db.getData();
+  const edges =
+    f.db?.getData?.().edges ??
+    (f.db?.getEdges?.() ?? []).flatMap(({ id, start, end, ...edge }) =>
+      id && start && end ? [{ ...edge, id, start, end }] : [],
+    );
   const counts = new Map<string, number>();
   for (const edge of edges) counts.set(edge.id, (counts.get(edge.id) ?? 0) + 1);
   const byId = (selector: string) =>
     new Map(Array.from(f.all(selector), (element) => [element.getAttribute("data-id"), element]));
   const labels = byId(".edgeLabel .label[data-id]");
   const lines = byId('[data-et="edge"][data-id]');
-  // Diamonds, lollipops, cardinalities and "contains" circles are not arrowheads.
+  // Diamonds, lollipops, cardinalities and "contains" circles are not arrowheads, nor is the open
+  // end of a block diagram edge.
   const arrowhead = (marker = "") =>
-    /^(?:arrow_|extension$|dependency$|requirement_arrow$)/.test(marker);
+    /^(?:arrow_(?!open$)|extension$|dependency$|requirement_arrow$)/.test(marker);
   for (const edge of edges) {
-    const line = lines.get(edge.id);
+    // Block diagrams draw their edges with the drawing's id in front of theirs.
+    const line = lines.get(edge.id) ?? lines.get(f.idPrefix + edge.id);
     const source = nodeIds.get(edge.start) ?? edge.start;
     const target = nodeIds.get(edge.end) ?? edge.end;
     // An id that several edges share tells none of them apart, and an end that is not a node,

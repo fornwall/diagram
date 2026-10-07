@@ -657,7 +657,7 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
-  test("finds icon and image shapes, architecture groups, and sankey nodes and flows", async () => {
+  test("finds icon and image shapes, architecture groups, sankey flows and the edges of block, agent flow, swimlane and use case diagrams", async () => {
     const pixel =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     const cases: [string, string[]][] = [
@@ -686,6 +686,35 @@ suite("Mermaid in the webview", function () {
       [
         "sankey-beta\n  A,B,10\n  A,C,5",
         ["A: A", "B: B", "C: C", "edge:A → B: A → B: 10", "edge:A → C: A → C: 5"],
+      ],
+      [
+        'block-beta\n  columns 3\n  a b c\n  a --> b\n  b -- "go" --> c\n  c --- a',
+        ["a: a", "b: b", "c: c", "edge:1-a-b: a → b", "edge:1-b-c: b → c: go", "edge:1-c-a: c — a"],
+      ],
+      [
+        "agentflow-beta\n  start --> plan\n  plan --> done",
+        [
+          "done: done",
+          "edge:L_plan_done_0: plan → done",
+          "edge:L_start_plan_0: start → plan",
+          "plan: plan",
+          "start: start",
+        ],
+      ],
+      [
+        "swimlane-beta LR\n  subgraph A\n    a1[Start]\n  end\n  subgraph B\n    b1[End]\n  end\n  a1 -->|x| b1",
+        ["A: A", "B: B", "a1: Start", "b1: End", "edge:L_a1_b1_0: Start → End: x"],
+      ],
+      [
+        'usecase-beta\n  actor Customer\n  Customer --> "Place order"\n  Pay <-- Bank',
+        [
+          "Bank: Bank",
+          "Customer: Customer",
+          "Pay: Pay",
+          "Place_order: Place order",
+          "edge:edge-0: Customer → Place order",
+          "edge:edge-1: Bank → Pay",
+        ],
       ],
     ];
     for (const [source, nodes] of cases) {
