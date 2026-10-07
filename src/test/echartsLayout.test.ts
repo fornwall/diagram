@@ -415,6 +415,27 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(option.aria, { enabled: true });
   });
 
+  test("rounds the data ends of bars, unless a bar may point the other way", () => {
+    const radius = (option: Option) => layout(option).series[0].itemStyle.borderRadius;
+    assert.deepStrictEqual(radius(bars()), [4, 4, 0, 0]);
+    assert.strictEqual(
+      radius(bars({ series: [{ type: "bar", data: [{ value: -1 }] }] })),
+      undefined,
+    );
+    const fromDataset = (source: unknown, extra: Option = {}) =>
+      radius(
+        bars({
+          dataset: [{ source }, { fromDatasetIndex: 0 }],
+          series: [{ type: "bar", ...extra }],
+        }),
+      );
+    assert.deepStrictEqual(fromDataset([["A", 1]]), [4, 4, 0, 0]);
+    assert.strictEqual(fromDataset([["A", -1]]), undefined);
+    assert.strictEqual(fromDataset([{ name: "A", value: -1 }]), undefined);
+    assert.strictEqual(fromDataset({ name: ["A"], value: [-1] }), undefined);
+    assert.strictEqual(fromDataset([["A", -1]], { datasetIndex: 1 }), undefined);
+  });
+
   test("draws the axis lines that the theme hides on value axes outside a grid", () => {
     const option = layout({
       polar: {},

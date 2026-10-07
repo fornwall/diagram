@@ -54,16 +54,30 @@ function seriesName(series: JsonObject): string | undefined {
   return typeof series.name === "string" && series.name ? series.name : undefined;
 }
 
+const isNegative = (value: unknown) => typeof value === "number" && value < 0;
+
+/**
+ * Whether series data or a dataset source holds a negative value: in a value, the value of a data
+ * item, a row, or a column.
+ */
 function hasNegativeValues(data: unknown): boolean {
-  if (!Array.isArray(data)) {
-    return false;
-  }
-  return data.some((item) => {
-    const value = isPlainObject(item) ? item.value : item;
-    return Array.isArray(value)
-      ? value.some((v) => typeof v === "number" && v < 0)
-      : typeof value === "number" && value < 0;
+  const entries = Array.isArray(data) ? data : isPlainObject(data) ? Object.values(data) : [];
+  return entries.some((entry) => {
+    const value = isPlainObject(entry) ? (entry.value ?? Object.values(entry)) : entry;
+    return Array.isArray(value) ? value.some(isNegative) : isNegative(value);
   });
+}
+
+/** The source of the dataset that a series without data of its own draws from. */
+function datasetSource(series: JsonObject, datasets: JsonObject[]): unknown {
+  const find = (id: unknown, index: unknown) =>
+    id == null ? datasets[Number(index ?? 0)] : datasets.find((dataset) => dataset.id === id);
+  let dataset = find(series.datasetId, series.datasetIndex);
+  // A transformed dataset is made of the rows of the one it transforms.
+  for (let hops = 0; dataset && dataset.source === undefined && hops < datasets.length; hops++) {
+    dataset = find(dataset.fromDatasetId, dataset.fromDatasetIndex);
+  }
+  return dataset?.source;
 }
 
 export interface LayoutContext {
@@ -177,7 +191,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     const charWidth = context.colors.fontSize * 0.6;
     layOut(base, series, cartesian, { width, height, compact, charWidth });
   }
-  styleSeries(series, asArray(base.yAxis), context.colors);
+  styleSeries(base, series, context.colors);
   showAxisLines(base);
   addInteraction(base, series, cartesian, context.colors);
   // A timeline step or media query can set a toolbox of its own too.
@@ -592,8 +606,10 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
 }
 
 /** Styles bars, sankey nodes and areas to read clearly on the theme's background. */
-function styleSeries(series: JsonObject[], yAxes: JsonObject[], colors: ThemeColors): void {
+function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors): void {
   const background = toCss(colors.background);
+  const yAxes = asArray(base.yAxis);
+  const datasets = asArray(base.dataset);
   for (const each of series) {
     if (each.type === "bar") {
       const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
@@ -602,7 +618,10 @@ function styleSeries(series: JsonObject[], yAxes: JsonObject[], colors: ThemeCol
         if (itemStyle.borderColor === undefined && itemStyle.borderWidth === undefined) {
           Object.assign(itemStyle, { borderColor: background, borderWidth: 1 });
         }
-      } else if (itemStyle.borderRadius === undefined && !hasNegativeValues(each.data)) {
+      } else if (
+        itemStyle.borderRadius === undefined &&
+        !hasNegativeValues(each.data ?? datasetSource(each, datasets))
+      ) {
         // Rounded data ends, square at the baseline.
         const axis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];
         const horizontal = axis?.type === "category";
