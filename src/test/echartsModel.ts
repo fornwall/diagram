@@ -1,5 +1,9 @@
+import * as assert from "node:assert";
 import { init as initECharts } from "echarts";
 import type * as ECharts from "echarts/core";
+import type { ChartSpec } from "../chartSpec";
+import { buildChart } from "../charts";
+import { type DataTable, parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
 import { type LayoutContext, layoutOption } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
@@ -7,6 +11,13 @@ import { testColors } from "./themeColors";
 
 // biome-ignore lint/suspicious/noExplicitAny: tests read into the untyped options of ECharts
 export type Option = Record<string, any>;
+
+/** The option of the spec's chart of the table, which must be plain JSON, as it is saved and sent. */
+export function builtOption(spec: ChartSpec, table: DataTable | string): Option {
+  const { option } = buildChart(spec, typeof table === "string" ? parseTable(table) : table);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(option)), option, "the option is plain JSON");
+  return option;
+}
 
 /** Reads a chart of the option as ECharts lays it out, without a browser. */
 export function withChart<T>(

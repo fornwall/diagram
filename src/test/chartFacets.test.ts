@@ -3,16 +3,10 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
-import { itemsOf, layout, type Option, withChart } from "./echartsModel";
+import { builtOption, itemsOf, layout, type Option, withChart } from "./echartsModel";
 
-function build(data: string, spec: Partial<ChartSpec> = {}): Option {
-  const chart = buildChart(
-    { type: "bar", data, facetColumn: "service", ...spec } as ChartSpec,
-    parseTable(data),
-  );
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(chart.option)), chart.option);
-  return chart.option;
-}
+const build = (data: string, spec: Partial<ChartSpec> = {}) =>
+  builtOption({ type: "bar", data, facetColumn: "service", ...spec } as ChartSpec, data);
 
 suite("chartFacets", () => {
   test("shares category order without changing the values' categories", () => {

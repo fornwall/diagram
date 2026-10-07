@@ -4,7 +4,7 @@ import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from ".
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { afterTest } from "./afterTest";
-import { type Option, withChart } from "./echartsModel";
+import { builtOption, type Option, withChart } from "./echartsModel";
 import { newPanel } from "./newPanel";
 
 const LANGUAGES = parseTable(
@@ -22,11 +22,7 @@ function chart(
   return { type, data: "unused", ...extra };
 }
 
-function build(spec: ChartSpec, table: DataTable | string = LANGUAGES): Option {
-  const { option } = buildChart(spec, typeof table === "string" ? parseTable(table) : table);
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(option)), option, "the option is plain JSON");
-  return option;
-}
+const build = (spec: ChartSpec, table: DataTable | string = LANGUAGES) => builtOption(spec, table);
 
 function summary(spec: ChartSpec, table: DataTable | string = LANGUAGES): string {
   return buildChart(spec, typeof table === "string" ? parseTable(table) : table).summary;

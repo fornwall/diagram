@@ -3,16 +3,10 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { filterTable } from "../chartTransforms";
 import { type DataTable, parseTable } from "../data";
-import { type Option, withChart } from "./echartsModel";
+import { builtOption, type Option, withChart } from "./echartsModel";
 
-function build(data: string | DataTable, extra: Partial<ChartSpec> = {}): Option {
-  const result = buildChart(
-    { data: "unused", type: "histogram", ...extra } as ChartSpec,
-    typeof data === "string" ? parseTable(data) : data,
-  );
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(result.option)), result.option);
-  return result.option;
-}
+const build = (data: string | DataTable, extra: Partial<ChartSpec> = {}) =>
+  builtOption({ data: "unused", type: "histogram", ...extra } as ChartSpec, data);
 
 suite("chartTransforms", () => {
   test("keeps the rows that match every filter, comparing cells by type, without changing the table", () => {
