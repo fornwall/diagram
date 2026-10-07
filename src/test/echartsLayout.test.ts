@@ -47,6 +47,23 @@ suite("echartsLayout", () => {
     assert.match(toolWarnings(bars({ brush: {} })).join(), /toolbox feature "brush" out/);
   });
 
+  test("leaves out the passing toolbox features of timeline steps and media queries", () => {
+    const toolbox = { feature: { magicType: { type: ["line"] }, restore: {} } };
+    const source = {
+      baseOption: bars({ timeline: { data: ["2025"] } }),
+      options: [{ toolbox }],
+      media: [{ option: { toolbox: [toolbox] } }],
+    };
+    const laidOut = layout(source);
+    assert.deepStrictEqual(laidOut.options[0].toolbox.feature, { restore: {} });
+    assert.deepStrictEqual(laidOut.media[0].option.toolbox[0].feature, { restore: {} });
+    assert.match(toolWarnings(source).join(), /toolbox feature "magicType" out/);
+    assert.match(
+      toolWarnings({ ...bars(), options: [{ brush: {} }] }).join(),
+      /toolbox feature "brush" out/,
+    );
+  });
+
   test("leaves the source option untouched", () => {
     const source = bars();
     const copy = structuredClone(source);

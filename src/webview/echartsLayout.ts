@@ -179,7 +179,8 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
   styleSeries(series, asArray(base.yAxis), context.colors);
   addInteraction(base, series, cartesian, context.colors);
-  for (const toolbox of asArray(base.toolbox)) {
+  // A timeline step or media query can set a toolbox of its own too.
+  for (const toolbox of optionVariants(option).flatMap((variant) => asArray(variant.toolbox))) {
     keepLastingTools(toolbox);
   }
   return option;
@@ -198,8 +199,11 @@ const PASSING_TOOLS: Record<string, string | undefined> = {
 
 /** Tells a model which toolbox features it asked for the panel leaves out, and why. */
 export function toolWarnings(option: JsonObject): string[] {
-  const features = asArray(baseOption(option).toolbox).flatMap((toolbox) =>
-    isPlainObject(toolbox.feature) ? [toolbox.feature] : [],
+  const variants = optionVariants(option);
+  const features = variants.flatMap((variant) =>
+    asArray(variant.toolbox).flatMap((toolbox) =>
+      isPlainObject(toolbox.feature) ? [toolbox.feature] : [],
+    ),
   );
   const editable = features.some((feature) => asArray(feature.dataView)[0]?.readOnly === false)
     ? [
@@ -213,7 +217,7 @@ export function toolWarnings(option: JsonObject): string[] {
     ),
   );
   // A brush component is drawn by the toolbox's brush, which ECharts adds for it.
-  if (asArray(baseOption(option).brush).length > 0) left.add("brush");
+  if (variants.some((variant) => asArray(variant.brush).length > 0)) left.add("brush");
   if (left.size === 0) return editable;
   const names = [...left].map((name) => `"${name}"`);
   const instead = [...left].flatMap((name) => PASSING_TOOLS[name] ?? []);
