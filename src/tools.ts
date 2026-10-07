@@ -40,6 +40,20 @@ interface PickNodesInput {
   multiple?: boolean;
 }
 
+/** The question and whether several items may be picked, or what to fix in the input. */
+function parsePickInput(value: unknown): { prompt: string; multiple: boolean } | string {
+  const input = isPlainObject(value) ? givenProperties(value) : {};
+  const prompt = nonBlank(input.prompt);
+  if (!prompt) {
+    return 'Give "prompt", the question to show the user.';
+  }
+  if (input.multiple !== undefined && typeof input.multiple !== "boolean") {
+    return '"multiple" must be true or false.';
+  }
+  const unknown = unknownProperties(input, ["prompt", "multiple"]);
+  return unknown ?? { prompt, multiple: input.multiple === true };
+}
+
 const RENDER_KEYS = [
   "source",
   "language",
@@ -263,23 +277,20 @@ export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesI
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<PickNodesInput>,
   ): vscode.PreparedToolInvocation {
-    const prompt = nonBlank(options.input?.prompt);
-    return {
-      invocationMessage: prompt
-        ? `Waiting for you to pick in the diagram: ${prompt}`
-        : "Waiting for you to pick in the diagram",
-    };
+    const parsed = parsePickInput(options.input);
+    const question = typeof parsed === "string" ? "" : `: ${parsed.prompt}`;
+    return { invocationMessage: `Waiting for you to pick in the diagram${question}` };
   }
 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<PickNodesInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    const prompt = nonBlank(options.input?.prompt);
-    if (!prompt) {
-      return textResult('No node was picked: Give "prompt", the question to show the user.');
+    const parsed = parsePickInput(options.input);
+    if (typeof parsed === "string") {
+      return textResult(`No node was picked: ${parsed}`);
     }
-    const outcome = await this.panel.pickNodes(prompt, options.input.multiple === true, token);
+    const outcome = await this.panel.pickNodes(parsed.prompt, parsed.multiple, token);
     return textResult(
       outcome.picked
         ? `The user picked: ${nodeList(outcome.nodes)}.`

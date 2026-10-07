@@ -157,6 +157,19 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_pickNodes refuses a misnamed or mistyped setting instead of picking one item", async () => {
+    let picks = 0;
+    panel.pickNodes = async () => ({ picked: false, reason: `Pick ${++picks}` });
+    const pick = async (input: object) =>
+      toolText(await new PickDiagramNodesTool(panel).invoke({ input } as never, token));
+    assert.match(await pick({ prompt: "Which?", multi: true }), /Unknown property "multi"/);
+    assert.match(await pick({ prompt: "Which?", multiple: "true" }), /"multiple" must be true/);
+    assert.strictEqual(
+      await pick({ prompt: "Which?", multiple: null }),
+      "No node was picked: Pick 1",
+    );
+  });
+
   test("tools report malformed input without throwing during preparation", async () => {
     for (const tool of [
       new RenderDiagramTool(panel),
