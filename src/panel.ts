@@ -68,6 +68,8 @@ type AnnotateOutcome =
     }
   | { ok: false; reason: string };
 
+type RenderMessage = Extract<ToWebview, { type: "render" }>;
+
 /** A request to the webview awaiting its answer. */
 interface Pending<Type extends ToWebview["type"], Outcome> {
   message: Extract<ToWebview, { type: Type }>;
@@ -136,6 +138,14 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private pendingExport: Pending<"export", ExportResult> | undefined;
+  /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
+  private renderTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The render that the page took up as soon as it got it, until it answers, and the last render
+   * sent to the page, until it answers that. Renders sent meanwhile wait for the page.
+   */
+  private drawing: RenderMessage | undefined;
+  private lastSent: number | undefined;
   /** Why the last render did not finish, if the panel closed or stopped responding. */
   private unavailable: string | undefined;
   /**
@@ -320,15 +330,20 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Sends a message to the webview, ending the request it makes if it does not arrive. */
   private post(message: ToWebview): void {
-    // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
-    // A render that waits when trust is granted is sent again, to a page that can.
-    if (
-      message.type === "render" &&
-      message.language === "echarts" &&
-      vscode.workspace.isTrusted &&
-      runsCode(message.source)
-    ) {
-      this.pageRanCode = true;
+    if (message.type === "render") {
+      // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
+      // A render that waits when trust is granted is sent again, to a page that can.
+      const { language, source } = message;
+      if (language === "echarts" && vscode.workspace.isTrusted && runsCode(source)) {
+        this.pageRanCode = true;
+      }
+      // A page that is not ready yet gets the render again once it is, with the full time for it.
+      clearTimeout(this.renderTimer);
+      this.renderTimer = setTimeout(() => this.renderTimedOut(message), RENDER_TIMEOUT_MS);
+      if (this.webview.isReady) {
+        if (this.lastSent === undefined) this.drawing = message;
+        this.lastSent = message.requestId;
+      }
     }
     void this.webview.post(message).then((error) => {
       if (error === undefined) {
@@ -352,6 +367,8 @@ export class DiagramPanel implements vscode.Disposable {
         // The webview loaded, or lost its content and loaded again (e.g. when moved to another
         // window). Keep the pending request id so its caller is answered.
         this.selection = [];
+        this.drawing = undefined;
+        this.lastSent = undefined;
         if (this.pendingRender) {
           this.sendChartOptions();
           this.post(this.pendingRender.message);
@@ -364,6 +381,7 @@ export class DiagramPanel implements vscode.Disposable {
         }
         break;
       case "rendered":
+        this.pageAnswered(message.requestId);
         // The ids of what was drawn, for telling a model that a node it names is not there. A late
         // answer to a replaced render says nothing about the diagram now shown.
         if (this.isCurrentRender(message.requestId)) {
@@ -375,6 +393,7 @@ export class DiagramPanel implements vscode.Disposable {
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
       case "renderError":
+        this.pageAnswered(message.requestId);
         this.finishRender(message.requestId, {
           ok: false,
           kind: "invalid",
@@ -382,6 +401,7 @@ export class DiagramPanel implements vscode.Disposable {
         });
         break;
       case "renderUnavailable":
+        this.pageAnswered(message.requestId);
         this.finishRender(message.requestId, notShown(message.message));
         break;
       case "selectionChanged":
@@ -506,26 +526,7 @@ export class DiagramPanel implements vscode.Disposable {
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.store.save(state);
     const result = await new Promise<RenderOutcome>((resolve) => {
-      const timeout = setTimeout(() => {
-        // A late answer replaces the error.
-        if (this.state === state && state.error !== UNFINISHED) {
-          this.state = { ...state, error: UNFINISHED };
-          void this.store.save(this.state);
-        }
-        this.finishRender(
-          message.requestId,
-          notShown(
-            `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds. It may still be drawing a large diagram. If it stays unresponsive, the diagram hangs it, and only restarting VS Code recovers it.`,
-          ),
-        );
-      }, RENDER_TIMEOUT_MS);
-      this.pendingRender = {
-        message,
-        resolve: (outcome) => {
-          clearTimeout(timeout);
-          resolve(outcome);
-        },
-      };
+      this.pendingRender = { message, resolve };
       this.post(message);
       // Reloads and failed chart updates keep marks; replay them after the drawing they belong to.
       if (this.annotation) this.post({ type: "annotate", ...this.annotation });
@@ -548,12 +549,47 @@ export class DiagramPanel implements vscode.Disposable {
       : this.unavailable !== undefined && requestId === this.sourceRequestId;
   }
 
+  /**
+   * Ends the pending render that the page did not answer in time. Its source may hang the page if
+   * the page is drawing it, but not if the page is busy with another source or is not ready yet.
+   */
+  private renderTimedOut(message: RenderMessage): void {
+    if (this.pendingRender?.message !== message) return;
+    const { state, drawing } = this;
+    if (
+      state?.source === message.source &&
+      state.error !== UNFINISHED &&
+      this.webview.isReady &&
+      drawing?.language === message.language &&
+      drawing.source === message.source
+    ) {
+      // A late answer replaces the error.
+      this.state = { ...state, error: UNFINISHED };
+      void this.store.save(this.state);
+    }
+    this.finishRender(
+      message.requestId,
+      notShown(
+        `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds. It may still be drawing a large diagram. If it stays unresponsive, the diagram hangs it, and only restarting VS Code recovers it.`,
+      ),
+    );
+  }
+
+  /** Notes that the page answered a render: once it answers the last one, it is done with all. */
+  private pageAnswered(requestId: number): void {
+    if (requestId === this.lastSent) this.lastSent = undefined;
+    if (requestId === this.drawing?.requestId || this.lastSent === undefined) {
+      this.drawing = undefined;
+    }
+  }
+
   private finishRender(requestId: number, outcome: RenderOutcome): void {
     if (!this.isCurrentRender(requestId)) {
       return;
     }
     const pending = this.pendingRender;
     this.pendingRender = undefined;
+    clearTimeout(this.renderTimer);
     this.renderedRequestId = outcome.ok ? requestId : undefined;
     this.unavailable = !outcome.ok && outcome.kind === "unavailable" ? outcome.error : undefined;
     if (pending) pending.resolve(outcome);

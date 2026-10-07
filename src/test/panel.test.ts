@@ -1128,6 +1128,11 @@ suite("panel", function () {
     // Revealing the open panel, which may still be drawing, sends the diagram as it is.
     panel.show();
     assert.strictEqual(webview.render.notDrawn, undefined);
+    // Rendering it again, which the page has not taken up yet, keeps it unfinished.
+    const again = panel.render(flowchart, "tool");
+    timers.expire();
+    await again;
+    assert.match(panel.current?.error ?? "", unfinished);
 
     // VS Code restarts: the saved diagram shows as failing, until rendered again.
     const restarted = await newFakePanel(values);
@@ -1141,6 +1146,42 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.error, undefined);
     await webview.receive({ type: "ready" });
     assert.strictEqual(webview.render.notDrawn, undefined);
+  });
+
+  test("a page that takes over 15 seconds to load draws the diagram once it does", async () => {
+    const values = new Map<string, unknown>();
+    const { panel } = await newFakePanel(values);
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    const restarted = newPanel(values);
+    afterTest(() => restarted.dispose());
+    const webview = new FakeWebview();
+    const timers = holdTimers(15_000);
+    restarted.restore(webview.panel);
+    timers.expire();
+    assert.strictEqual(restarted.current?.error, undefined);
+    await webview.receive({ type: "ready" });
+    assert.strictEqual(webview.render.notDrawn, undefined);
+  });
+
+  test("a chart update that hangs the page does not leave the kept chart unfinished", async () => {
+    const values = new Map<string, unknown>();
+    const { panel, webview } = await newFakePanel(values);
+    const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
+    const table = parseTable(chart.data);
+    const source = JSON.stringify(buildChart(chart, table).option);
+    const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
+    assert.ok((await panel.render(diagram, "tool", undefined, table)).ok);
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    const updating = panel.updateChart({ limit: 2 }, new vscode.CancellationTokenSource().token);
+    await new Promise((resolve) => setImmediate(resolve));
+    timers.expire();
+    assert.ok(!(await updating).ok);
+    // The page, still drawing the update, does not draw the kept chart in time either.
+    assert.strictEqual(webview.render.source, source);
+    timers.expire();
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.strictEqual((await newFakePanel(values)).webview.render.notDrawn, undefined);
   });
 
   test("a chart update that the page answers after 15 seconds cannot replace the kept chart", async () => {
