@@ -144,7 +144,7 @@ export function boundary(
       .map(
         async ({ uri }): Promise<LocalRoot> => [
           uri.fsPath,
-          await realpath(uri.fsPath).catch(() => uri.fsPath),
+          await realpath(uri.fsPath).catch((error: Error) => error),
         ],
       ),
   );

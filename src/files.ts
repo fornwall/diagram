@@ -68,8 +68,8 @@ export function inWorkspace(
       .map(({ uri }): LocalRoot => {
         try {
           return [uri.fsPath, realpathSync.native(uri.fsPath)];
-        } catch {
-          return [uri.fsPath, uri.fsPath];
+        } catch (error) {
+          return [uri.fsPath, error as Error];
         }
       });
     try {
@@ -102,8 +102,11 @@ export async function staysInside(file: string, roots: readonly LocalRoot[]): Pr
   return step.value;
 }
 
-/** A workspace folder on this computer, by its path and its real path. */
-export type LocalRoot = readonly [file: string, real: string];
+/**
+ * A workspace folder on this computer, by its path and its real path, or the error for a folder
+ * that has none, from which nothing is followed: ".." steps up from a real path.
+ */
+export type LocalRoot = readonly [file: string, real: string | Error];
 
 /** What separates names in a path on this system. */
 const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
@@ -119,7 +122,8 @@ const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
  * where the link b leads. Its names are followed one at a time, as those of `file` are, and ".."
  * steps up from the real path reached so far, which must stay inside.
  *
- * @throws Error when a name is missing, or for too many links, as realpath does.
+ * @throws Error when a name is missing, or for too many links, as realpath does, or for a folder
+ * without a real path.
  */
 function* linksInside(
   file: string,
@@ -131,8 +135,9 @@ function* linksInside(
   const enter = (target: string) => {
     const uri = vscode.Uri.file(target);
     for (const [root, real] of roots) {
-      for (const name of [root, real]) {
+      for (const name of typeof real === "string" ? [root, real] : [root]) {
         if (nearRoot(vscode.Uri.file(name), uri)) {
+          if (typeof real !== "string") throw real;
           dir = real;
           rest = [...names(target).slice(names(name).length), ...rest];
           return true;
@@ -147,7 +152,12 @@ function* linksInside(
     if (name === ".") continue;
     if (name === "..") {
       dir = path.dirname(dir);
-      if (!roots.some(([, real]) => nearRoot(vscode.Uri.file(real), vscode.Uri.file(dir)))) {
+      if (
+        !roots.some(
+          ([, real]) =>
+            typeof real === "string" && nearRoot(vscode.Uri.file(real), vscode.Uri.file(dir)),
+        )
+      ) {
         return false;
       }
       continue;

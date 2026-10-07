@@ -176,6 +176,17 @@ suite("files", () => {
     fs.symlinkSync(path.join(dir, "secret.csv"), path.join(short, "x"));
     assert.strictEqual(fs.readFileSync(path.join(short, "x"), "utf8"), "a\n1\n");
     assert.ok(!inWorkspace(vscode.Uri.file(path.join(short, "x"))));
+    // Nor from a workspace folder there, as ".." steps up from its real path, not from its path.
+    const roots = [short, root.uri.fsPath].map((file, index) => ({
+      uri: vscode.Uri.file(file),
+      name: file,
+      index,
+    }));
+    fs.symlinkSync("../x", path.join(short, "up"));
+    fs.symlinkSync(path.join(dir, "secret.csv"), path.join(short, "..", path.dirname(deep), "x"));
+    fs.writeFileSync(path.join(path.dirname(short), "x"), "decoy");
+    assert.strictEqual(fs.readFileSync(path.join(short, "up"), "utf8"), "a\n1\n");
+    assert.ok(!inWorkspace(vscode.Uri.file(path.join(short, "up")), roots));
   });
 
   test("resolves no path outside the workspace, which could reach a network share", () => {
