@@ -111,11 +111,11 @@ suite("chartSpec", () => {
     assert.deepStrictEqual(validateChartSpec(gauge), gauge);
     assert.throws(
       () => validateChartSpec({ type: "sankey", data: "a,1", labelColumn: [] }),
-      /"labelColumn" is an array; it must be a column name, or an array of them/,
+      /"labelColumn" is \[\]; it must be a column name, or an array of them/,
     );
     assert.throws(
       () => validateChartSpec({ type: "sankey", data: "a,1", labelColumn: [1] }),
-      /"labelColumn" is an array; it must be/,
+      /"labelColumn" is \[1\]; it must be/,
     );
     assert.throws(
       () => validateChartSpec({ type: "gauge", data: "a,1", max: "100" }),
@@ -151,7 +151,7 @@ suite("chartSpec", () => {
           '"limit" is 2.5; it must be a positive integer',
           '"sort" is "up"; it must be one of "ascending", "descending"',
           '"valueColumns" is "size"; it must be a non-empty array',
-          '"options" is an array; it must be an object',
+          '"options" is []; it must be an object',
         ]) {
           assert.ok(error.message.includes(expected), `${expected} in ${error.message}`);
         }

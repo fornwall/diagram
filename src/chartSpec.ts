@@ -313,16 +313,14 @@ function filterProblems(filter: unknown, at: string): string[] {
   return problems;
 }
 
-/** A value as an error message names it. */
+/** A value as an error message names it: as JSON, unless too long to quote. */
 function brief(value: unknown): string {
   if (value === undefined) {
     return "missing";
   }
-  if (Array.isArray(value)) {
-    return "an array";
+  if (typeof value === "string") {
+    return quote(value);
   }
-  if (isPlainObject(value)) {
-    return "an object";
-  }
-  return typeof value === "string" ? quote(value) : JSON.stringify(value);
+  const json = JSON.stringify(value);
+  return json.length <= 40 ? json : Array.isArray(value) ? "an array" : "an object";
 }
