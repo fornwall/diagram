@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeText, fileError, fileName, resolveFile } from "./files";
+import { decodeFile, fileError, fileName, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -124,13 +124,8 @@ export async function readDataFile(file: string): Promise<string> {
     });
   }
   checkSize(bytes.byteLength);
-  let text: string;
-  try {
-    text = decodeText(bytes);
-  } catch {
-    // Excel on Windows saves CSV files in the Windows code page.
-    text = new TextDecoder("windows-1252").decode(bytes);
-  }
+  // A file that the editor finds binary is refused as one with null characters is.
+  const text = await decodeFile(bytes, uri).catch(() => "\0");
   if (text.includes("\0")) {
     throw new Error(
       `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +

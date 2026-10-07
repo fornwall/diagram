@@ -10,6 +10,7 @@ import {
   readDataFile,
   runCommand,
 } from "../dataSource";
+import { afterTest } from "./afterTest";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -211,6 +212,15 @@ suite("dataSource", () => {
     const file = path.join(dir, "latin1.csv");
     fs.writeFileSync(file, Buffer.from("café,1", "latin1"));
     assert.strictEqual(await readDataFile(file), "café,1");
+  });
+
+  test("reads files that are not UTF-8 in the encoding of files.encoding", async () => {
+    const files = vscode.workspace.getConfiguration("files");
+    await files.update("encoding", "koi8r", vscode.ConfigurationTarget.Global);
+    afterTest(() => files.update("encoding", undefined, vscode.ConfigurationTarget.Global));
+    const file = path.join(dir, "koi8r.csv");
+    fs.writeFileSync(file, Buffer.from([0xc4, 0xc1, 0x2c, 0x31])); // "да,1"
+    assert.strictEqual(await readDataFile(file), "да,1");
   });
 
   test("refuses binary files, such as spreadsheets", async () => {

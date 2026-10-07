@@ -5,7 +5,7 @@ import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { absoluteFile, absolutePath, contains, decodeText, fileError, withinPath } from "./files";
+import { absoluteFile, absolutePath, contains, decodeFile, fileError, withinPath } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { givenProperties, plural, quote, unknownProperties } from "./text";
 import { textResult } from "./tools";
@@ -244,15 +244,10 @@ async function readText(
   if (bytes > maxBytes) return { bytes, error: tooLarge };
   let text: string;
   try {
-    text = decodeText(content);
-  } catch {
-    // Other text is in the encoding that the editor would open it in, as files.encoding sets.
-    try {
-      text = await unlessCancelled(async () => vscode.workspace.decode(content, { uri }), token);
-    } catch (error) {
-      if (error instanceof vscode.CancellationError) throw error;
-      return { bytes, error: binary };
-    }
+    text = await unlessCancelled(() => decodeFile(content, uri), token);
+  } catch (error) {
+    if (error instanceof vscode.CancellationError) throw error;
+    return { bytes, error: binary };
   }
   return text.includes("\0") ? { bytes, error: binary } : { bytes, text };
 }
