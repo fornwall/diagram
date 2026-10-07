@@ -33,7 +33,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 | Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
 | Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive, label link or sequence diagram actor `link`. An actor with several `links` offers a menu. VS Code asks before opening an untrusted website. |
-| Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
+| Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll, pinching on a trackpad and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
 
 Images keep the theme and drop links; Mermaid images also drop the selection and marks. A PNG has up to twice the drawing's resolution and records it, so documents show it at the drawing's size. Mermaid SVGs put their styles on each element, as apps such as Figma and Office need.
 

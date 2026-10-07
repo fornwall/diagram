@@ -234,7 +234,7 @@ suite("webview", function () {
     assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
   });
 
-  test("zooms at the pointer in proportion to Ctrl+scrolling", async () => {
+  test("zooms at the pointer in proportion to Ctrl+scrolling, and as much as a pinch", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
     await draw({ source: `flowchart LR\n  ${chain}` });
     assert.deepStrictEqual(
@@ -242,11 +242,11 @@ suite("webview", function () {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
         const canvas = document.getElementById("canvas");
         const zoom = () => document.getElementById("zoom-reset").textContent;
-        const wheel = (deltaY, deltaMode = 0, deltaX = 0) => {
+        const wheel = (deltaY, deltaMode = 0, deltaX = 0, wheelDeltaY = 0) => {
           const box = document.querySelector('[data-diagram-id="n15"][tabindex]').getBoundingClientRect();
           const x = box.left + box.width / 2;
           const y = box.top + box.height / 2;
-          canvas.dispatchEvent(new WheelEvent("wheel", {deltaX, deltaY, deltaMode, clientX: x, clientY: y,
+          canvas.dispatchEvent(new WheelEvent("wheel", {deltaX, deltaY, deltaMode, wheelDeltaY, clientX: x, clientY: y,
             ctrlKey: true, bubbles: true, cancelable: true}));
           return {x, y};
         };
@@ -259,19 +259,26 @@ suite("webview", function () {
         if (zoom() !== "100%") document.getElementById("zoom-reset").click();
         canvas.scrollLeft = (canvas.scrollWidth - canvas.clientWidth) / 2;
         await frame();
-        // A pinch: many small deltas in one frame, which add up to one notch.
+        // Trackpad scrolling: many small deltas in one frame, which add up to one notch.
         const anchor = wheel(-25);
         for (let i = 0; i < 3; i++) wheel(-25);
         await frame();
-        const pinched = zoom();
+        const scrolled = zoom();
         const box = document.querySelector('[data-diagram-id="n15"][tabindex]').getBoundingClientRect();
         // The diagram is taller than the canvas only once zoomed in, so only scrolling left keeps up.
         const moved = Math.abs(box.left + box.width / 2 - anchor.x);
+        // A pinch, as Chromium reports it, by as much as the fingers spread: twice by 1.1.
+        for (let i = 0; i < 2; i++) wheel(-100 * Math.log(1.1), 0, 0, 120);
+        await frame();
+        const pinched = zoom();
+        // Mouse wheel notches, as Chromium reports them on Windows and Linux, and in lines.
+        wheel(100, 0, 0, -120);
+        await frame();
         wheel(6.25, WheelEvent.DOM_DELTA_LINE);
         await frame();
-        return {sideways, pinched, steady: moved < 2, notch: zoom()};
+        return {sideways, scrolled, steady: moved < 2, pinched, notches: zoom()};
       })()`),
-      { sideways: true, pinched: "120%", steady: true, notch: "100%" },
+      { sideways: true, scrolled: "120%", steady: true, pinched: "145%", notches: "101%" },
     );
   });
 

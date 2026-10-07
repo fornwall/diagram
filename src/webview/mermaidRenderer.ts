@@ -322,8 +322,9 @@ export class MermaidRenderer implements Renderer {
     diagram.addEventListener("focusin", ({ target }) => {
       if (target instanceof SVGElement && target.hasAttribute("tabindex")) this.setTabStop(target);
     });
-    // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling: a trackpad pinch,
-    // which Chromium reports as such, sends many small deltas. Apply them once per frame.
+    // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling, and a trackpad pinch,
+    // which Chromium reports as Ctrl+scrolling, as much as the fingers spread. Both send many
+    // small deltas: apply them once per frame.
     let wheel: { factor: number; x: number; y: number } | undefined;
     canvas.addEventListener(
       "wheel",
@@ -332,6 +333,11 @@ export class MermaidRenderer implements Renderer {
         event.preventDefault();
         // Scrolling sideways does not zoom, nor stop the drawing fitting the panel.
         if (!event.deltaY) return;
+        // Chromium reports each step of a pinch as a whole wheel tick (a wheelDeltaY of ±120) of
+        // deltaY -100·ln(scale), where scrolling reports at least a pixel for every 3 of
+        // wheelDeltaY (see CreateSyntheticWheelFromTouchpadPinchEvent).
+        const { wheelDeltaY = 0 } = event as WheelEvent & { wheelDeltaY?: number };
+        const pinch = Math.abs(event.deltaY) < Math.abs(wheelDeltaY) / 4;
         const pixels =
           event.deltaY *
           (event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -339,7 +345,9 @@ export class MermaidRenderer implements Renderer {
             : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
               ? canvas.clientHeight
               : 1);
-        const factor = WHEEL_ZOOM ** (-Math.max(-100, Math.min(100, pixels)) / 100);
+        const factor = pinch
+          ? Math.exp(-event.deltaY / 100)
+          : WHEEL_ZOOM ** (-Math.max(-100, Math.min(100, pixels)) / 100);
         const pending = wheel !== undefined;
         wheel = { factor: (wheel?.factor ?? 1) * factor, x: event.clientX, y: event.clientY };
         if (pending) return;
