@@ -10,6 +10,7 @@ import { fileError, openDocument } from "./files";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
+  diagramNoun,
   errorMessage,
   FIND_FILES_TOOL,
   GET_STATE_TOOL,
@@ -125,7 +126,7 @@ export async function promptMessages(
   throwIfCancelled(token);
   const images = attachments.filter((attachment) => "image" in attachment);
   const imageKeys = new Set(images.flatMap((image) => image.keys));
-  const exchanges = await pastExchanges(context.history, documents, callsTools, imageKeys);
+  const exchanges = await pastExchanges(context.history, documents, callsTools, imageKeys, current);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -383,11 +384,13 @@ function sum(numbers: number[]): number {
   return numbers.reduce((total, n) => total + n, 0);
 }
 
+/** `current` describes the current diagram, so that a reply that drew it need not repeat it. */
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
   callsTools: boolean,
   imageKeys: ReadonlySet<string>,
+  current: string | undefined,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
@@ -421,7 +424,10 @@ async function pastExchanges(
     const language: unknown = turn.result.metadata?.language;
     const chart: unknown = turn.result.metadata?.chart;
     if (typeof source === "string" && isDiagramLanguage(language)) {
-      exchange.diagram = `\n\n${codeFence(source, language)}`;
+      const fenced = codeFence(source, language);
+      exchange.diagram = current?.includes(fenced)
+        ? `\n\n(I drew the current ${diagramNoun(language)}, described below.)`
+        : `\n\n${fenced}`;
     } else if (chart) {
       exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${describeChartParameters(chart)})`;
     }

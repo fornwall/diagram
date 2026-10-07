@@ -1071,6 +1071,25 @@ suite("participant", () => {
       ["Draw #file:sizes.tsv", "Here it is.", "Attached by the user: sizes.tsv", "Draw it"],
     );
     assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
+
+    // The current diagram, which the request describes, is not repeated.
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "participant")).ok);
+    const turn = (source: string) => [
+      new RequestTurn("Draw", undefined, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart("Drawn.")],
+        { metadata: { language: "mermaid", source } },
+        "diagram.participant",
+      ),
+    ];
+    const again = await ask([[text("Hm.")]], {
+      history: [...turn(flowchart.source), ...turn(`${flowchart.source}\n  B --> C`)],
+    });
+    const replies = again.sent[0]?.messages.map(messageText).filter((m) => m.startsWith("Drawn."));
+    assert.deepStrictEqual(replies, [
+      "Drawn.\n\n(I drew the current diagram, described below.)",
+      `Drawn.\n\n\`\`\`mermaid\n${flowchart.source}\n  B --> C\n\`\`\``,
+    ]);
   });
 
   test("leaves /show out of the history, and gives a command without a message by its name", async () => {
