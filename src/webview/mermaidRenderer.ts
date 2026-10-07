@@ -144,10 +144,13 @@ function thinAxisLabels(svg: SVGSVGElement): void {
  * The shapes that place a label themselves move it from x = 0.
  */
 function centerTextLabels(svg: SVGSVGElement): void {
-  for (const text of svg.querySelectorAll<SVGTextElement>(
-    'g.node > g.label[transform^="translate(0,"] text, g.statediagram-state > g.label > g > text:not([transform])',
-  )) {
-    if (getComputedStyle(text).textAnchor !== "start") continue;
+  // Read the styles before changing any, which would have each read compute them again.
+  const texts = Array.from(
+    svg.querySelectorAll<SVGTextElement>(
+      'g.node > g.label[transform^="translate(0,"] text, g.statediagram-state > g.label > g > text:not([transform])',
+    ),
+  ).filter((text) => getComputedStyle(text).textAnchor === "start");
+  for (const text of texts) {
     text.style.textAnchor = "middle";
     const left = (text.closest("g.label") as SVGGElement).transform.baseVal.consolidate();
     if (left?.matrix.e) text.setAttribute("transform", `translate(${-left.matrix.e})`);
