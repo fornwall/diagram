@@ -811,6 +811,7 @@ suite("participant", () => {
     const references = [
       { id: "folder", value: folder },
       { id: "selection", value: new vscode.Location(file, new vscode.Range(1, 0, 2, 0)) },
+      { id: "lines", value: new vscode.Location(file, new vscode.Range(1, 2, 2, 1)) },
       { id: "text", value: "some text", modelDescription: "The terminal selection" },
     ].reverse();
     const { sent } = await ask([[text("Hm.")]], { references });
@@ -822,7 +823,11 @@ suite("participant", () => {
     );
     assert.deepStrictEqual(
       attached?.slice(1).map((message) => message.split("\n")[0]),
-      ["Attached by the user: sizes.tsv:2", "Attached by the user: text (The terminal selection)"],
+      [
+        "Attached by the user: sizes.tsv:2",
+        "Attached by the user: sizes.tsv:2-3",
+        "Attached by the user: text (The terminal selection)",
+      ],
     );
   });
 

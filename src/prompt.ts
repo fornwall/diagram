@@ -512,7 +512,7 @@ async function readAttachment(
     };
   }
   const path = vscode.workspace.asRelativePath(uri);
-  const name = `${location ? `${path}:${location.range.start.line + 1}` : path}${description}`;
+  const name = `${location ? `${path}:${lineRange(location.range)}` : path}${description}`;
   const extension = /\.(\w+)$/.exec(uri.path)?.[1]?.toLowerCase();
   const mimeType = location || !extension ? undefined : IMAGE_TYPES.get(extension);
   if (mimeType) {
@@ -537,6 +537,15 @@ async function readAttachment(
       }
     );
   }
+}
+
+/**
+ * The lines of a selection, e.g. "12-30", so that a model can link to the lines in it. A selection
+ * that ends at the start of a line leaves that line out.
+ */
+function lineRange({ start, end }: vscode.Range): string {
+  const last = end.character === 0 && end.line > start.line ? end.line : end.line + 1;
+  return last > start.line + 1 ? `${start.line + 1}-${last}` : `${start.line + 1}`;
 }
 
 /**
