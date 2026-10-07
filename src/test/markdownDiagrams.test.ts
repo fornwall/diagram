@@ -148,22 +148,29 @@ suite("markdownDiagrams", function () {
     );
   });
 
-  test("a stale CodeLens does not open a different nearby diagram", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      language: "markdown",
-      content: "```mermaid\nflowchart TD\n```\n\n```mermaid\nsequenceDiagram\n```\n",
-    });
-    const command = (await codeLenses(document))[0]?.command;
-    assert.ok(command);
-    const edit = new vscode.WorkspaceEdit();
-    // Leave the second diagram below the deleted block, as it could be in a live editor.
-    edit.replace(document.uri, new vscode.Range(0, 0, 3, 0), "\n\n\n");
-    assert.ok(await vscode.workspace.applyEdit(edit));
+  test("a stale CodeLens does not open a different diagram", async () => {
     const warnings = recordMessages("showWarningMessage");
-    await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
-    assert.deepStrictEqual(warnings, [
-      "This diagram block moved or was removed. Use its current Open in Diagram action.",
-    ]);
+    // Below the deleted block, or moved onto its line, which an edit of it cannot do.
+    for (const [second, inserted] of [
+      ["```mermaid\nsequenceDiagram\n```\n", "\n\n\n"],
+      ["```echarts\n{}\n```\n", ""],
+    ] as const) {
+      const document = await vscode.workspace.openTextDocument({
+        language: "markdown",
+        content: `\`\`\`mermaid\nflowchart TD\n\`\`\`\n\n${second}`,
+      });
+      const command = (await codeLenses(document))[0]?.command;
+      assert.ok(command);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(document.uri, new vscode.Range(0, 0, 4, 0), inserted);
+      assert.ok(await vscode.workspace.applyEdit(edit));
+      await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
+      assert.strictEqual(warnings.length, 1);
+      assert.match(
+        warnings.pop() ?? "",
+        /^The mermaid block that was at line 1 of Untitled-\d+ moved or was removed\. If it is still there, use the Open in Diagram action above it\.$/,
+      );
+    }
   });
 
   test("a CodeLens of a file that no longer exists says why it cannot open it", async () => {

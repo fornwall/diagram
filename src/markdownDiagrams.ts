@@ -77,14 +77,18 @@ async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFen
     );
     return;
   }
-  // Follow a moved block by its content, or an edited block at the same opening line.
+  // Follow a moved block by its content, or an edited block at the same opening line, which a
+  // block of another language that moved there is not.
   const fences = findDocumentDiagramFences(document);
   const current =
     relocateFence(fences, fence) ??
-    fences.find((candidate) => candidate.openingLine === fence.openingLine);
+    fences.find(
+      ({ openingLine, language }) =>
+        openingLine === fence.openingLine && language === fence.language,
+    );
   if (!current) {
     void vscode.window.showWarningMessage(
-      "This diagram block moved or was removed. Use its current Open in Diagram action.",
+      `The ${fence.language} block that was at line ${fence.openingLine + 1} of ${vscode.workspace.asRelativePath(uri)} moved or was removed. If it is still there, use the Open in Diagram action above it.`,
     );
     return;
   }
