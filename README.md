@@ -103,7 +103,7 @@ Terminal colors are ignored. When DuckDB, Polars or pandas shorten a result, onl
 
 Abbreviations such as `1.5K` and `$1.2B` are thousands and billions, but in a column of sizes, such as `du -h` output or a column named `Size`, `1.5K` is 1536 bytes. Units such as `MiB` and `kB` always give bytes; bare units are powers of 1000 for commands run with `--si` or `df -H`. Durations such as `812ms` and `1h2m3s` become seconds, as do `45m` and `1:02:03` in a column named for durations, such as `Elapsed`. A unit in a header, as in `Size (KB)`, `Latency (ms)` or, in a column named for durations, `Elapsed (s)`, applies to the plain numbers below it. Charts show sizes and durations in the unit that suits the largest value.
 
-It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates and times (and `YYYY/MM/DD`) of the first label column on a time axis.
+It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates and times (and `YYYY/MM/DD`, also with a time) of the first label column on a time axis.
 
 | Setting | Behavior |
 | --- | --- |

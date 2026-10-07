@@ -3,6 +3,8 @@
 const MONTH = "(?:0[1-9]|1[0-2])";
 const DAY = String.raw`(?:0[1-9]|[12]\d|3[01])`;
 const DATE = String.raw`\d{4}-${MONTH}-${DAY}`;
+const SLASHED_DATE = String.raw`\d{4}/${MONTH}/${DAY}`;
+const TIME = String.raw`(?:[01]\d|2[0-3]):[0-5]\d`;
 
 /**
  * An ISO date and time, perhaps with a fraction of a second and a time zone, which git log
@@ -10,7 +12,7 @@ const DATE = String.raw`\d{4}-${MONTH}-${DAY}`;
  * --format json, also with its name ("2025-10-04 14:02:33 +0200 CEST").
  */
 const DATE_TIME = new RegExp(
-  String.raw`^(${DATE})[T ]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?)(?: ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)(?: [A-Z]{3,5})?)?$`,
+  String.raw`^(${DATE})[T ](${TIME}(?::[0-5]\d(?:\.\d{1,9})?)?)(?: ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)(?: [A-Z]{3,5})?)?$`,
 );
 
 /**
@@ -23,7 +25,11 @@ const DATE_FORMATS: { name: string; pattern: RegExp }[] = [
   { name: "ISO date-times", pattern: DATE_TIME },
   { name: "ISO dates", pattern: new RegExp(`^${DATE}$`) },
   { name: "ISO months", pattern: new RegExp(String.raw`^\d{4}-${MONTH}$`) },
-  { name: "dates written YYYY/MM/DD", pattern: new RegExp(String.raw`^\d{4}/${MONTH}/${DAY}$`) },
+  {
+    name: "date-times written YYYY/MM/DD hh:mm",
+    pattern: new RegExp(String.raw`^${SLASHED_DATE} ${TIME}(?::[0-5]\d)?$`),
+  },
+  { name: "dates written YYYY/MM/DD", pattern: new RegExp(`^${SLASHED_DATE}$`) },
 ];
 
 /**
