@@ -141,6 +141,23 @@ suite("files", () => {
     );
   });
 
+  test("refuses a link whose target is not UTF-8, which no string names", function () {
+    if (process.platform !== "linux") this.skip();
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+    // Read as a string, "\xff" becomes "�", a name that the walk would take instead.
+    const name = Buffer.from("diagram-files-\xff", "latin1");
+    const away = Buffer.concat([Buffer.from(`${root.uri.fsPath}/`), name]);
+    fs.symlinkSync(dir, away);
+    afterTest(() => fs.rmSync(away));
+    const link = path.join(root.uri.fsPath, "diagram-files-bytes");
+    fs.symlinkSync(Buffer.concat([name, Buffer.from("/secret.csv")]), link);
+    afterTest(() => fs.rmSync(link));
+    assert.strictEqual(fs.readFileSync(link, "utf8"), "a\n1\n");
+    assert.ok(!inWorkspace(vscode.Uri.joinPath(root.uri, "diagram-files-bytes")));
+  });
+
   test("resolves no path outside the workspace, which could reach a network share", () => {
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);

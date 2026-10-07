@@ -75,9 +75,9 @@ export function inWorkspace(
       const steps = linksInside(uri.fsPath, local);
       let step = steps.next();
       while (!step.done) {
-        let target: string | undefined;
+        let target: Buffer | undefined;
         try {
-          target = readlinkSync(step.value);
+          target = readlinkSync(step.value, "buffer");
         } catch (error) {
           target = noLink(error);
         }
@@ -93,7 +93,7 @@ export function inWorkspace(
 export async function staysInside(file: string, roots: readonly LocalRoot[]): Promise<boolean> {
   const steps = linksInside(file, roots);
   let step = steps.next();
-  while (!step.done) step = steps.next(await readlink(step.value).catch(noLink));
+  while (!step.done) step = steps.next(await readlink(step.value, "buffer").catch(noLink));
   return step.value;
 }
 
@@ -119,7 +119,7 @@ const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
 function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
-): Generator<string, boolean, string | undefined> {
+): Generator<string, boolean, Buffer | undefined> {
   const names = (file: string) => file.split(SEPARATORS).filter(Boolean);
   let dir = "";
   let rest: string[] = [];
@@ -148,12 +148,15 @@ function* linksInside(
       continue;
     }
     const next = path.join(dir, name);
-    const target = yield next;
-    if (target === undefined) {
+    const link = yield next;
+    if (link === undefined) {
       dir = next;
       continue;
     }
     if (++links > 40) throw new Error("The path goes through too many symbolic links.");
+    const target = link.toString();
+    // A string names no target that is not UTF-8, as the file system takes it in UTF-8.
+    if (!Buffer.from(target).equals(link)) return false;
     const parts = target.split(SEPARATORS);
     const up = parts.indexOf("..");
     // Windows may take ".." after a name in a target by its text, not from where that name leads.
