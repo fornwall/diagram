@@ -1140,13 +1140,14 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         ${redraw}
         ${UNTIL}
         await until(() => !bob.isConnected);
-        ${restore}
-        return {
+        const shown = {
           opened,
           redrawn: !bob.isConnected,
           menu: document.querySelector("#canvas .link-menu") !== null,
           focused: document.activeElement.getAttribute("data-diagram-id"),
         };
+        ${restore}
+        return shown;
       })()`);
     const render = () =>
       page.panel.render({ language: "mermaid", source: actorLinks, title: "Seq" }, "tool");
@@ -1156,8 +1157,11 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       await redraw(
         `const theme = document.body.dataset.vscodeThemeId;
         document.body.dataset.vscodeThemeId = "test-theme-link-menu";`,
-        `if (theme === undefined) delete document.body.dataset.vscodeThemeId;
-        else document.body.dataset.vscodeThemeId = theme;`,
+        `const drawn = document.querySelector("#diagram svg");
+        if (theme === undefined) delete document.body.dataset.vscodeThemeId;
+        else document.body.dataset.vscodeThemeId = theme;
+        // The theme coming back redraws too, which the next render must not race.
+        await until(() => !drawn.isConnected);`,
       ),
       shown,
     );
