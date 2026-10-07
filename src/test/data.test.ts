@@ -309,6 +309,12 @@ suite("data", () => {
       ["Brot", 1200],
     ]);
     assert.deepStrictEqual(parseNumber("5$"), { value: 5 });
+    // The sign may come after the currency symbol.
+    assert.deepStrictEqual(parse('item,change\na,$-5\nb,-$1.5\nc,"€-1,200"').rows, [
+      ["a", -5],
+      ["b", -1.5],
+      ["c", -1200],
+    ]);
     assert.deepStrictEqual(parse('item,price\na,"₹1,250"\nb,₩5000\nc,300 ₽').rows, [
       ["a", 1250],
       ["b", 5000],

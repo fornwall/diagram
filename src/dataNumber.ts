@@ -66,6 +66,9 @@ function parseDuration(text: string, durations = false): number | undefined {
 /** A sign and a currency symbol, as in "-$5". */
 const PREFIX = `(${SIGN}?)(${CURRENCY}?)`;
 
+/** A currency symbol before a sign, as in "$-5", which is read as "-$5" is. */
+const CURRENCY_SIGN = new RegExp(`^(${CURRENCY})(${SIGN})`);
+
 /** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
   String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:[^\S\r\n]*(${SUFFIX}))?$`,
@@ -133,7 +136,7 @@ export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
-  let trimmed = text.trim().replace(SINCE, "$1");
+  let trimmed = text.trim().replace(SINCE, "$1").replace(CURRENCY_SIGN, "$2$1");
   if (format.millicores && /^\d+m$/.test(trimmed)) {
     return { value: Number(trimmed.slice(0, -1)) / 1000 };
   }
@@ -272,7 +275,7 @@ export function numberFormat(
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string") continue;
-    let text = cell.trim();
+    let text = cell.trim().replace(CURRENCY_SIGN, "$2$1");
     const accounting = ACCOUNTING.exec(text);
     if (accounting) {
       text = `${accounting[1]}${accounting[2]}`;
