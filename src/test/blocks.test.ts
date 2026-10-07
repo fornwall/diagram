@@ -106,13 +106,6 @@ suite("blocks", () => {
     }
   }
 
-  test("removes diagram blocks from streamed text however it is split", () => {
-    assertFiltered(
-      "Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\nIt has two steps.",
-      "Here is the flow:\n\n\nIt has two steps.",
-    );
-  });
-
   test("collects a long chart line streamed in small fragments", () => {
     const source = JSON.stringify({ series: [{ type: "line", data: Array(100_000).fill(42) }] });
     const markdown = `Chart:\n\`\`\`echarts\n${source}\n\`\`\`\nDone.`;
@@ -144,6 +137,7 @@ suite("blocks", () => {
   test("finds diagram blocks in streamed text as CommonMark does", () => {
     const cases: { markdown: string; source?: string; shown: string; unterminated?: true }[] = [
       { markdown: "```mermaid\nA\n```", source: "A", shown: "" },
+      { markdown: "Flow:\n\n```mermaid\nA\n```\n\nDone.", source: "A", shown: "Flow:\n\n\nDone." },
       {
         markdown: 'Sales:\n```echarts\n{"series": []}\n```\nDone.',
         source: '{"series": []}',
