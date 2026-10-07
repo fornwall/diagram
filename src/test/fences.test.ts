@@ -291,6 +291,27 @@ suite("fences", () => {
     assert.deepStrictEqual(sources("Use a ```mermaid``` block.\n"), []);
   });
 
+  test("skips YAML front matter as VS Code's Markdown preview does", () => {
+    const diagram = "```mermaid\nA\n```\n";
+    assert.deepStrictEqual(sources(`---\ncode: |\n  \`\`\`\n--- \r\n${diagram}`), [
+      '4-5 mermaid "": "A"',
+    ]);
+    assert.deepStrictEqual(sources(`---\n\`\`\`mermaid\nA\n---`), []);
+    // Only at the start, closed by "---" alone on its line: otherwise "---" is a thematic break.
+    for (const markdown of [
+      `\n---\n${diagram}---\n`,
+      ` ---\n${diagram}---\n`,
+      `---\n${diagram}...\n`,
+      `---\n${diagram} ---\n`,
+    ]) {
+      assert.strictEqual(sources(markdown).length, 1, markdown);
+    }
+    assert.strictEqual(
+      rewritten(`---\n\`\`\`\n---\n${diagram}`, "B"),
+      "---\n```\n---\n```mermaid\nB\n```\n",
+    );
+  });
+
   test("counts lines as VS Code does, whatever the line endings", () => {
     assert.deepStrictEqual(sources("# Notes\r\n```mermaid\r\nflowchart TD\r\n```\r\n"), [
       '1-2 mermaid "": "flowchart TD"',

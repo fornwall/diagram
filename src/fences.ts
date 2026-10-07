@@ -457,15 +457,23 @@ interface CodeBlock {
   lines: string[];
 }
 
-/** Yields the code blocks in a text in order, collecting the lines of wanted languages only. */
+/**
+ * YAML front matter, as VS Code's Markdown preview hides it: from a first line of "---" to the next
+ * line of "---", each followed by whitespace only. Without that closing line there is none.
+ */
+const FRONT_MATTER = /^---[^\S\n]*\n(?:[^\n]*\n)*?---[^\S\n]*(?:\n|$)/;
+
+/** Yields the code blocks in a document in order, collecting the lines of wanted languages only. */
 function* codeBlocks(text: string, wanted: (language: string) => boolean): Generator<CodeBlock> {
   const scanner = new FenceScanner();
   let open: CodeBlock | undefined;
   let collect = false;
+  // A fence in front matter is YAML, not a code block.
+  const frontMatter = FRONT_MATTER.exec(text)?.[0] ?? "";
   // Lines end at LF, as in VS Code, whose documents hold no lone CR, and not at Unicode separators.
   // A final line break ends the last line rather than starting another one.
-  let line = 0;
-  for (let start = 0; start < text.length; line++) {
+  let line = frontMatter.split("\n").length - 1;
+  for (let start = frontMatter.length; start < text.length; line++) {
     const newline = text.indexOf("\n", start);
     const end = newline === -1 ? text.length : newline;
     const scanned = scanner.next(text.slice(start, end));
