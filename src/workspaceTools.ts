@@ -469,7 +469,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       );
     }
     if (caseSensitive !== undefined && typeof caseSensitive !== "boolean") {
-      throw new Error('"caseSensitive" must be a boolean.');
+      throw new Error('"caseSensitive" must be true or false.');
     }
     const max = integer(input.maxResults, 50, "maxResults", 100);
     const glob = globInput(input.glob);
@@ -671,7 +671,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     }
     const notes = [
       cutLines ? `Lines longer than ${plural(MAX_LINE_CHARS, "character")} are cut.` : "",
-      lastLine < totalLines ? `Continue with startLine ${lastLine + 1}.` : "",
+      lastLine < totalLines ? `Continue with "startLine" ${lastLine + 1}.` : "",
     ].filter(Boolean);
     return [
       `${displayPath(uri, roots)}, lines ${start}-${lastLine} of ${totalLines}${content.unsaved ? ", with unsaved changes" : ""}:`,

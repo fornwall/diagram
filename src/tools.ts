@@ -304,7 +304,7 @@ function markingMessage({ marks, caption }: Annotation, language: DiagramLanguag
   // A few ids say more than their number; many of them would crowd the chat.
   const what =
     marks.length <= 3
-      ? marks.map(({ id }) => `"${id}"`).join(", ")
+      ? quoteAll(marks.map(({ id }) => id))
       : plural(marks.length, nodeNoun(language));
   const where = `Marking ${what} in the ${noun}`;
   return caption === undefined ? where : `${where}: ${caption}`;

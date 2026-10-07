@@ -145,7 +145,7 @@ suite("dataSource", () => {
     });
 
     test("stops a command that runs too long or prints too much", async () => {
-      await assert.rejects(runCommand("sleep 5", token, 100), /timed out after 0.1 s/);
+      await assert.rejects(runCommand("sleep 5", token, 100), /timed out after 0.1 seconds/);
       await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MiB/);
     });
 

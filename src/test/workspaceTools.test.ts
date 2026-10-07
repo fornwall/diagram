@@ -103,7 +103,7 @@ suite("workspaceTools", function () {
   test("reads inclusive line ranges from relative paths and absolute URIs", async () => {
     assert.strictEqual(
       await invoke(reader, { file: `${relative}/code.ts`, startLine: 2, endLine: 3 }),
-      `${relative}/code.ts, lines 2-3 of 5:\n2: const value = 'Needle';\n3: needle needle\nContinue with startLine 4.`,
+      `${relative}/code.ts, lines 2-3 of 5:\n2: const value = 'Needle';\n3: needle needle\nContinue with "startLine" 4.`,
     );
     assert.strictEqual(
       await invoke(reader, {
@@ -120,7 +120,7 @@ suite("workspaceTools", function () {
     const page = (await invoke(reader, { file, startLine: 2, endLine: 1000 })).split("\n");
     assert.strictEqual(page[0], `${relative}/pages.txt, lines 2-501 of 601:`);
     assert.strictEqual(page.length, 502);
-    assert.strictEqual(page.at(-1), "Continue with startLine 502.");
+    assert.strictEqual(page.at(-1), 'Continue with "startLine" 502.');
   });
 
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
@@ -203,7 +203,7 @@ suite("workspaceTools", function () {
     ]);
     assert.strictEqual(
       await invoke(reader, { file, startLine: 3, endLine: 5 }),
-      `${relative}/mixed-lines.txt, lines 3-5 of 6:\n3: skip\n4: \n5: Needle end\nContinue with startLine 6.`,
+      `${relative}/mixed-lines.txt, lines 3-5 of 6:\n3: skip\n4: \n5: Needle end\nContinue with "startLine" 6.`,
     );
   });
 

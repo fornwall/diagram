@@ -278,7 +278,7 @@ export async function runCommand(
       }
     };
 
-    const timeout = `The command timed out after ${timeoutMs / 1000} s. Make it do less.`;
+    const timeout = `The command timed out after ${timeoutMs / 1000} seconds. Make it do less.`;
     const timer = setTimeout(() => kill(new Error(timeout)), timeoutMs);
     const cancellation = token.onCancellationRequested(() => kill(new vscode.CancellationError()));
 

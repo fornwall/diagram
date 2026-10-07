@@ -217,7 +217,7 @@ suite("extension", function () {
     });
     assert.match(
       contents,
-      /^sizes\.tsv, lines 1-2 of \d+:\n1: src\t120\n2: test\t30\nContinue with startLine 3\.$/,
+      /^sizes\.tsv, lines 1-2 of \d+:\n1: src\t120\n2: test\t30\nContinue with "startLine" 3\.$/,
     );
   });
 

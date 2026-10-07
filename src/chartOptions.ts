@@ -2,7 +2,7 @@
 // diagram_updateChart. Data and advanced styling stay on the host.
 import { type ChartSpec, type ChartType, FACET_TYPES, validateChartSpec } from "./chartSpec";
 import type { Column } from "./data";
-import { isPlainObject } from "./protocol";
+import { GET_STATE_TOOL, isPlainObject } from "./protocol";
 import { quoteAll, unknownProperties } from "./text";
 
 const CONTROL_KEYS = [
@@ -78,7 +78,7 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
     input.revision !== undefined &&
     (!Number.isSafeInteger(input.revision) || Number(input.revision) < 0)
   ) {
-    throw new Error('"revision" must be a nonnegative integer from diagram_getState.');
+    throw new Error(`"revision" must be a nonnegative integer from ${GET_STATE_TOOL}.`);
   }
   if (!UPDATE_KEYS.some((key) => Object.hasOwn(input, key))) {
     throw new Error(`Give at least one chart setting to change: ${quoteAll(UPDATE_KEYS)}.`);
