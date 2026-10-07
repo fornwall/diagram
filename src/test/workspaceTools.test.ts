@@ -125,16 +125,24 @@ suite("workspaceTools", function () {
 
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
     const files = vscode.workspace.getConfiguration("files");
-    await files.update(
-      "exclude",
-      { "**/*.js": { when: "$(basename).ts" } },
-      vscode.ConfigurationTarget.Global,
-    );
     afterTest(() => files.update("exclude", undefined, vscode.ConfigurationTarget.Global));
     for (const name of ["compiled.ts", "compiled.js", ".dot.ts", ".dot.js", "plain.js"]) {
       await writeFile(name, "Needle");
     }
-    assert.strictEqual(await invoke(finder, { glob: `${relative}/*.js` }), `${relative}/plain.js`);
+    for (const pattern of [
+      "**/*.js",
+      "**/*{.js,.map}",
+      "**/*{.js,.js.map}",
+      "**/{.dot,compiled}.js",
+    ]) {
+      const exclude = { [pattern]: { when: "$(basename).ts" } };
+      await files.update("exclude", exclude, vscode.ConfigurationTarget.Global);
+      assert.strictEqual(
+        await invoke(finder, { glob: `${relative}/*.js` }),
+        `${relative}/plain.js`,
+        pattern,
+      );
+    }
   });
 
   test("fills result limits across overlapping workspace roots", async () => {

@@ -196,10 +196,17 @@ function exists(uri: vscode.Uri): Promise<boolean> {
 }
 
 /**
- * A name's leading dot as a character that "*" and "**" match, as they do in VS Code's globs but
- * not in Node's, in a path and a pattern alike.
+ * Whether a relative path matches a glob as in VS Code, whose "*" and "**" match a name's leading
+ * dot, unlike Node's: a leading dot is "\u0001" in the path and pattern alike. A dot that starts a
+ * brace alternative, as in "*{.js,.map}", may or may not start a name, so it matches either.
  */
-const undot = (glob: string) => glob.replace(/(^|[/{,])\./g, "$1\u0001");
+function matchesGlob(relative: string, pattern: string): boolean {
+  const undot = (glob: string) => glob.replace(/(^|\/)\./g, "$1\u0001");
+  const dots = undot(pattern).replace(/\[[^\]]*\]|([{,])\./g, (match, before?: string) =>
+    before === undefined ? match : `${before}[.\u0001]`,
+  );
+  return path.matchesGlob(undot(relative), dots);
+}
 
 /**
  * Leaves out the files that a conditional exclude hides, as a sibling file named by its "when",
@@ -223,7 +230,7 @@ async function withoutHiddenSiblings(
             const sibling = when.replace("$(basename)", stem);
             if (
               !sibling.includes("/") &&
-              path.matchesGlob(undot(relative), undot(pattern)) &&
+              matchesGlob(relative, pattern) &&
               (await exists(vscode.Uri.joinPath(uri, "..", sibling)))
             ) {
               return true;
