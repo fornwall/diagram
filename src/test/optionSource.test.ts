@@ -198,6 +198,11 @@ suite("optionSource", () => {
       errorOf('{a: x => x, b: JSON.parse("{")}'),
       /^The ECharts option threw while being evaluated as JavaScript: .*JSON.*\(line 1, column 21\)\./,
     );
+    // A message that ends a sentence continues without a second period.
+    assert.match(
+      errorOf('{a: x => x, b: (() => { throw new Error("Bad value."); })()}'),
+      /^The ECharts option threw while being evaluated as JavaScript: Bad value \(line 1, column \d+\)\.(\n|$)/,
+    );
   });
 
   test("locates what throws while a JavaScript option is evaluated", () => {
