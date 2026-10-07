@@ -899,7 +899,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.post({
       type: "chartOptions",
-      visible: this.chartOptionsVisible,
+      visible: true,
       state: {
         revision: this.shownRevision,
         controls: chartControls(chart),
