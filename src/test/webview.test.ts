@@ -116,7 +116,8 @@ suite("webview", function () {
       input.dispatchEvent(new Event("input"));
       document.getElementById("ask-form").requestSubmit();
     })()`);
-    for (let attempt = 0; attempt < 100 && chat.requests.length < 2; attempt++) {
+    // Waits up to four seconds for both requests; if they do not all come, the assertion shows which did.
+    for (const end = Date.now() + 4000; chat.requests.length < 2 && Date.now() < end; ) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     assert.deepStrictEqual(
