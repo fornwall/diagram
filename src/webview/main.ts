@@ -220,6 +220,9 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     active?.hide();
     active = undefined;
   }
+  // Before rendering, which measures the canvas: the first diagram shows the views, which make the
+  // header taller.
+  updateToolbar();
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
   // Only for a slow render: the status line would shift a quick one down and back up, and a chart
