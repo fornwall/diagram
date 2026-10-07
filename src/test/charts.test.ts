@@ -124,6 +124,23 @@ suite("charts", () => {
     });
   });
 
+  test("charts that draw each item as a shape refuse too many items", () => {
+    const rows = (count: number, row: (index: number) => string) =>
+      Array.from({ length: count }, (_, index) => row(index)).join("\n");
+    const slices = `k,n\n${rows(1001, (index) => `k${index},${index + 1}`)}`;
+    assert.throws(() => build(chart("doughnut"), slices), {
+      message:
+        'The doughnut chart would have 1,001 slices, more than the 1,000 the panel draws: they would hold it up and could not be told apart. Set "sort": "descending" and a "limit" to sum the smallest up as "Other".',
+    });
+    assert.strictEqual(build(chart("pie", { limit: 999 }), slices).series[0].data.length, 1000);
+    // The nodes of a hierarchy count, the inner ones too.
+    const paths = `path,n\n${rows(5000, (index) => `a/${index},1\nb/${index},1`)}`;
+    assert.throws(() => build(chart("sunburst"), paths), /would have 10,002 nodes/);
+    assert.strictEqual(build(chart("treemap"), paths).series[0].data.length, 2);
+    const cells = `k,${rows(101, (index) => `v${index}`).replaceAll("\n", ",")}\n${rows(1000, (index) => `r${index}${",1".repeat(101)}`)}`;
+    assert.throws(() => build(chart("heatmap"), cells), /would have 101,000 cells/);
+  });
+
   test("bar has a category x axis and one series per value column", () => {
     const option = build(chart("bar"));
     // The webview adds the tooltip and legend.

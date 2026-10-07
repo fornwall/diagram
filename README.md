@@ -127,6 +127,7 @@ Histograms count one numeric value column; omit `labelColumn`, `aggregate`, `sor
 
 - Files and command output: 10 MiB. Commands time out after 60 seconds.
 - Tables: 1,000,000 cells, including headers and empty cells. Treemaps, sunbursts and sankeys: 100 levels.
+- Charts that draw each item as a shape of its own: 1,000 slices, stages or shapes for pie, doughnut, funnel and radar charts, 10,000 boxes or nodes for box plots and sunbursts, and 100,000 cells for heatmaps.
 - Mermaid sources: 50,000 characters.
 - Attachments to `@diagram`: 50,000 characters each, and less if the model's context requires it.
 - Workspace tools: reads of files up to 16 MiB, 500 lines at a time. A search skips files over 1 MiB and scans at most 1,000 files and 16 MiB. Results are bounded and report truncation.

@@ -91,6 +91,7 @@ function buildSingleChart(
     ...readRows(spec, table, columns, notes, plan.multiples),
   };
   const option = drawChart(type, reading);
+  checkItems(type, option);
   return {
     option,
     summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
@@ -127,6 +128,59 @@ function drawChart(type: RowChartType, reading: Reading): Record<string, unknown
       return boxplotOption(reading);
     case "gauge":
       return gaugeOption(reading);
+  }
+}
+
+/**
+ * The most items of the charts that draw each item as a shape of its own, with what they are and
+ * how to have fewer. The panel draws every shape as an element, and ECharts lays out pie and funnel
+ * labels and radar legends in time that grows faster than their number, while the panel does
+ * nothing else: beyond these, a chart takes seconds to minutes to draw, and has more items than
+ * can be told apart. Many bars or points are drawn as a shape per series, lines are sampled,
+ * treemaps leave out nodes too small to see, and sankeys sum up nodes.
+ */
+type ItemLimit = [most: number, items: string, advice: string];
+const SLICES: ItemLimit = [
+  1000,
+  "slices",
+  'Set "sort": "descending" and a "limit" to sum the smallest up as "Other".',
+];
+const MOST_ITEMS: Partial<Record<RowChartType, ItemLimit>> = {
+  pie: SLICES,
+  doughnut: SLICES,
+  funnel: [1000, "stages", 'Keep fewer rows with "filters" or "limit", or "aggregate" them.'],
+  radar: [1000, "shapes", 'Keep fewer rows with "filters" or "limit", or "aggregate" them.'],
+  boxplot: [10_000, "boxes", 'Group by a label column with fewer values, or use "filters".'],
+  sunburst: [
+    10_000,
+    "nodes",
+    'Draw a treemap, which leaves out nodes too small to see, or keep fewer rows with "filters".',
+  ],
+  heatmap: [
+    100_000,
+    "cells",
+    'Keep fewer rows or columns with "filters" or "valueColumns", or summarize the data into ' +
+      "coarser labels first, such as days instead of minutes.",
+  ],
+};
+
+/** Refuses a chart with more items, those of hierarchies included, than its type may have. */
+function checkItems(type: RowChartType, option: Record<string, unknown>): void {
+  const limit = MOST_ITEMS[type];
+  if (!limit) return;
+  const [most, items, advice] = limit;
+  const count = (data: unknown): number =>
+    Array.isArray(data)
+      ? data.reduce((sum: number, item) => sum + 1 + count(isPlainObject(item) && item.children), 0)
+      : 0;
+  const series = option.series;
+  const drawn = count(Array.isArray(series) && isPlainObject(series[0]) && series[0].data);
+  if (drawn > most) {
+    const number = (value: number) => value.toLocaleString("en-US");
+    throw new Error(
+      `The ${type} chart would have ${number(drawn)} ${items}, more than the ${number(most)} ` +
+        `the panel draws: they would hold it up and could not be told apart. ${advice}`,
+    );
   }
 }
 
