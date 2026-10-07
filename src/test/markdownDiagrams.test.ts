@@ -1,28 +1,25 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
-import { afterTest, recordMessages, replace } from "./afterTest";
+import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
 import { newPanel, webviewTabs } from "./newPanel";
 
 suite("markdownDiagrams", function () {
   // Opening a diagram loads the panel's webview, which can take a while.
   this.timeout(30_000);
 
-  let dir: string;
+  const dir = suiteTempDir("diagram-test-");
 
   suiteSetup(async () => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-test-"));
     const extension = vscode.extensions.getExtension("fornwall.diagram");
     assert.ok(extension);
     await extension.activate();
   });
 
   suiteTeardown(async () => {
-    fs.rmSync(dir, { recursive: true, force: true });
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 

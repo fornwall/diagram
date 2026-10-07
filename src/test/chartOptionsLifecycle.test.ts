@@ -1,13 +1,12 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { captureChartPresentation } from "../chartPresentation";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState } from "../panel";
-import { afterTest } from "./afterTest";
+import { afterTest, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2";
@@ -41,11 +40,7 @@ function applyOptions(
 suite("chart options lifecycle", function () {
   this.timeout(10_000);
 
-  let dir: string;
-  suiteSetup(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-options-"));
-  });
-  suiteTeardown(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = suiteTempDir("diagram-options-");
 
   test("a ready webview receives open options before replaying a pending render", async () => {
     const { panel, webview } = await newFakePanel();

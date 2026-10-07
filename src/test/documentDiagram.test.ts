@@ -1,28 +1,19 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { type DocumentBinding, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
-import { recordMessages, replace } from "./afterTest";
+import { recordMessages, replace, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 suite("documentDiagram", function () {
   // A panel that an agent renders in loads the webview, which can take a while.
   this.timeout(10_000);
 
-  let dir: string;
+  const dir = suiteTempDir("diagram-test-");
   let files = 0;
-
-  suiteSetup(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-test-"));
-  });
-
-  suiteTeardown(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
 
   /** A Markdown file holding exactly this text, opened as the panel opens a diagram's document. */
   async function markdown(content: string): Promise<vscode.TextDocument> {

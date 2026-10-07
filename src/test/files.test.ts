@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -11,18 +10,10 @@ import {
   openDocument,
   resolveFile,
 } from "../files";
-import { afterTest, recordFilePaths } from "./afterTest";
+import { afterTest, recordFilePaths, suiteTempDir } from "./afterTest";
 
 suite("files", () => {
-  let dir: string;
-
-  suiteSetup(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-files-"));
-  });
-
-  suiteTeardown(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  const dir = suiteTempDir("diagram-files-");
 
   test("resolves an absolute path on the file system of the workspace folders that contain it", () => {
     const folder = (uri: string, index: number) => ({

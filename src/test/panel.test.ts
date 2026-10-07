@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { buildChart } from "../charts";
@@ -10,7 +9,7 @@ import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } f
 import type { ToWebview } from "../protocol";
 import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
-import { afterTest, recordMessages, replace } from "./afterTest";
+import { afterTest, recordMessages, replace, tempDir } from "./afterTest";
 import {
   FakeWebview,
   memento,
@@ -406,9 +405,7 @@ suite("panel", function () {
         message.type === "export"
           ? { type: "exportTheme", requestId: message.requestId, colors: testColors }
           : undefined;
-      const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-save-test-"));
-      afterTest(() => fs.rmSync(directory, { recursive: true, force: true }));
-      const target = vscode.Uri.file(path.join(directory, "chart.html"));
+      const target = vscode.Uri.file(path.join(tempDir("diagram-save-test-"), "chart.html"));
       const reported = Promise.withResolvers<string>();
       replace(vscode.window, "showQuickPick", (async () => ({
         label: "Interactive HTML",
@@ -594,9 +591,7 @@ suite("panel", function () {
     let answer: string | undefined;
     const asked = recordMessages("showWarningMessage", () => answer);
     const errors = recordMessages("showErrorMessage");
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-link-test-"));
-    afterTest(() => fs.rmSync(directory, { recursive: true, force: true }));
-    const outside = path.join(directory, "outside.txt");
+    const outside = path.join(tempDir("diagram-link-test-"), "outside.txt");
     fs.writeFileSync(outside, "outside");
     const click = (id: string) => webview.receive({ type: "clickToOpen", node: { id, label: id } });
     const links = { A: { file: outside }, B: { file: "missing.txt" } };

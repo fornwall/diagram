@@ -1,12 +1,11 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ExportResult, FromWebview, ToWebview } from "../protocol";
-import { afterTest, recordMessages, replace } from "./afterTest";
+import { recordMessages, replace, tempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, newPanel, showInFake } from "./newPanel";
 
 const diagram: Diagram = {
@@ -46,8 +45,7 @@ suite("export", function () {
   let choose: ((items: Choice[]) => Promise<Choice | undefined>) | undefined;
 
   setup(() => {
-    directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-export-test-"));
-    afterTest(() => fs.rmSync(directory, { recursive: true, force: true }));
+    directory = tempDir("diagram-export-test-");
     offered = [];
     pickerTitles = [];
     dialogs = [];

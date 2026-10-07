@@ -3,7 +3,6 @@
 
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
@@ -12,7 +11,7 @@ import { parseTable } from "../data";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel } from "../panel";
 import { runsCode } from "../webview/optionSource";
-import { afterTest, recordMessages, replace } from "./afterTest";
+import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, recordChat } from "./newPanel";
 
 const flowchart = "flowchart LR\n  A[Parser] --> B[Checker]";
@@ -25,11 +24,7 @@ function renderChart(panel: DiagramPanel, source: string) {
 suite("chart code in the panel", function () {
   this.timeout(10_000);
 
-  let dir: string;
-  suiteSetup(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-chart-code-"));
-  });
-  suiteTeardown(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = suiteTempDir("diagram-chart-code-");
 
   test("tells options that run code from literals", () => {
     assert.ok(!runsCode('{"series": [{"type": "pie", "data": [1]}]}'));

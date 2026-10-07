@@ -1,4 +1,7 @@
 import * as assert from "node:assert";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 /** What to undo once the current test ends, such as a replaced VS Code API. */
@@ -31,6 +34,20 @@ export function replace<T extends object, K extends keyof T>(object: T, key: K, 
     if (original) Object.defineProperty(object, key, original);
     else delete object[key];
   });
+}
+
+/** A new temporary folder, which is removed once the current test ends. */
+export function tempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  afterTest(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+/** A new temporary folder for the tests of the suite, which is removed once they end. */
+export function suiteTempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  suiteTeardown(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 /** The paths that Node.js file system functions are called with until the current test ends. */

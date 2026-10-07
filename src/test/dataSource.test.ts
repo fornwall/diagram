@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -10,19 +9,11 @@ import {
   readDataFile,
   runCommand,
 } from "../dataSource";
-import { afterTest } from "./afterTest";
+import { afterTest, suiteTempDir } from "./afterTest";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
-  let dir: string;
-
-  suiteSetup(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-test-"));
-  });
-
-  suiteTeardown(() => {
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  const dir = suiteTempDir("diagram-test-");
 
   test("commands print numbers with decimal points", () => {
     const env = commandEnvironment({ LC_ALL: "de_DE.UTF-8", HOME: "/home/x" });

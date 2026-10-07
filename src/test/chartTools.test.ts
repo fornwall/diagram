@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
@@ -8,7 +7,7 @@ import { buildChart } from "../charts";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { afterTest, replace } from "./afterTest";
+import { afterTest, replace, tempDir } from "./afterTest";
 import { newFakePanel } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
 
@@ -141,10 +140,8 @@ suite("chartTools", function () {
   });
 
   test("inspection confirms external files and commands, and reads a file without rendering", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "diagram-inspect-"));
-    const file = path.join(directory, "data.csv");
+    const file = path.join(tempDir("diagram-inspect-"), "data.csv");
     fs.writeFileSync(file, data);
-    afterTest(() => fs.rmSync(directory, { recursive: true, force: true }));
     const { panel } = await harness();
     const tool = new InspectDataTool(panel);
     assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
