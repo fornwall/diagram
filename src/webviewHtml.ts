@@ -73,7 +73,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   </header>
   <div id="render-status" role="status" aria-live="polite"></div>
   <section id="chart-options" aria-label="Chart Options" hidden></section>
-  <div id="pick" role="status" hidden>
+  <div id="pick" hidden>
     <span id="pick-prompt"></span>
     <div class="actions">
       <button id="pick-done" hidden>Done</button>

@@ -159,7 +159,7 @@ suite("webview", function () {
     );
   });
 
-  test("reveals node picks without losing source edits and restores focus when finished", async () => {
+  test("reveals node picks without losing source edits, describes the canvas by the prompt, and restores focus when finished", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
@@ -176,7 +176,8 @@ suite("webview", function () {
               }}));
               const canvas = document.getElementById("canvas");
               const visible = canvas.getBoundingClientRect().height > 0;
-              const focused = document.activeElement === canvas;
+              const focused = document.activeElement === canvas &&
+                canvas.getAttribute("aria-describedby") === "pick-prompt";
               const preserved = source.value === draft;
               document.querySelector("#diagram .diagram-node[tabindex]")
                 .dispatchEvent(new MouseEvent("click", {bubbles: true}));
@@ -184,7 +185,7 @@ suite("webview", function () {
               button.focus();
               button.click();
               return visible && focused && preserved && document.getElementById("pick").hidden &&
-                document.activeElement === canvas;
+                document.activeElement === canvas && !canvas.hasAttribute("aria-describedby");
             });
           });
         } finally {

@@ -561,6 +561,9 @@ function startPick(id: number, prompt: string, multiple: boolean): void {
   pickDoneButton.hidden = !multiple;
   pickBanner.hidden = false;
   canvas.classList.add("picking");
+  // A screen reader reads the question with the drawing that the focus moves to, as the banner
+  // that shows it appears only now and so is no live region yet.
+  canvas.setAttribute("aria-describedby", pickPrompt.id);
   updateSelectionUi();
   canvas.focus();
 }
@@ -570,6 +573,7 @@ function endPick(): void {
   pick = undefined;
   pickBanner.hidden = true;
   canvas.classList.remove("picking");
+  canvas.removeAttribute("aria-describedby");
   updateSelectionUi();
   if (restoreFocus) {
     focusContent();
