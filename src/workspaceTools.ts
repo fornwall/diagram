@@ -12,6 +12,7 @@ import {
   decodeFile,
   fileError,
   inWorkspace,
+  nearRoot,
   withinPath,
 } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
@@ -166,6 +167,7 @@ export function boundary(
       if (!root) throw outside();
       return unlessCancelled(() => noLinks(uri, root.uri), token);
     }
+    if (!roots.some((root) => nearRoot(root.uri, uri))) throw outside();
     // The real path decides, as it has the case of the names on disk, which a path typed for a
     // case-insensitive file system may not.
     const [actual, actualRoots] = await unlessCancelled(

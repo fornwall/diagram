@@ -32,16 +32,36 @@ export function withinPath(root: string, file: string): boolean {
 }
 
 /**
- * Whether `uri` is inside a workspace folder once symbolic links on this computer are resolved, as
- * one inside could lead out. The real path also has the case of the names on disk, which a path
- * typed for a case-insensitive file system may not. A path that does not resolve, such as a
- * missing file, goes by its path, as nothing can be read through it. Virtual file systems have no
- * realpath.
+ * Whether `uri` is inside `root` by its path, also in other case where file systems usually ignore
+ * case, as on macOS and Windows. Only such paths are resolved on the file system before the user
+ * is asked, as resolving any other could reach a network share, sending the user's credentials,
+ * or hang on an unreachable mount.
+ */
+export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
+  const folded = (uri: vscode.Uri) =>
+    uri.with({
+      authority: uri.authority.toLowerCase(),
+      path: uri.path.normalize("NFC").toLowerCase(),
+    });
+  return (
+    contains(root, uri) ||
+    ((process.platform === "darwin" || process.platform === "win32") &&
+      contains(folded(root), folded(uri)))
+  );
+}
+
+/**
+ * Whether `uri` is inside a workspace folder, by its path and once symbolic links on this computer
+ * are resolved, as one inside could lead out. The real path also has the case of the names on
+ * disk, which a path typed for a case-insensitive file system may not. A path that does not
+ * resolve, such as a missing file, goes by its path, as nothing can be read through it. Virtual
+ * file systems have no realpath.
  */
 export function inWorkspace(
   uri: vscode.Uri,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
 ): boolean {
+  if (!roots.some((root) => nearRoot(root.uri, uri))) return false;
   const actual = uri.scheme === "file" ? realFile(uri.fsPath) : undefined;
   if (actual === undefined) return roots.some((root) => contains(root.uri, uri));
   return roots.some((root) => {

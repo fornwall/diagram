@@ -11,7 +11,7 @@ import {
   openDocument,
   resolveFile,
 } from "../files";
-import { afterTest } from "./afterTest";
+import { afterTest, replace } from "./afterTest";
 
 suite("files", () => {
   let dir: string;
@@ -73,11 +73,55 @@ suite("files", () => {
     assert.ok(inside("made-up.csv"));
     assert.ok(!inside("diagram-files-link/secret.csv"));
     assert.ok(!inside("diagram-files-link"));
-    assert.ok(!inside(path.join(dir, "secret.csv")));
-    // A link from outside into the workspace reads a workspace file.
+  });
+
+  test("resolves no path outside the workspace, which could reach a network share", () => {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
     const inward = path.join(dir, "inward.tsv");
     fs.symlinkSync(path.join(root.uri.fsPath, "sizes.tsv"), inward);
-    assert.ok(inside(inward));
+    const resolved: unknown[] = [];
+    const native = fs.realpathSync.native;
+    replace(fs.realpathSync, "native", ((file: fs.PathLike) => {
+      resolved.push(file);
+      return native(file);
+    }) as typeof native);
+    for (const uri of [
+      vscode.Uri.file(path.join(dir, "secret.csv")),
+      // Even a link into the workspace, as a path outside it could be on a network share.
+      vscode.Uri.file(inward),
+      vscode.Uri.parse("file://attacker.example/share/data.csv"),
+      root.uri.with({ authority: "attacker.example" }),
+    ]) {
+      assert.ok(!inWorkspace(uri), uri.toString());
+    }
+    assert.deepStrictEqual(resolved, []);
+  });
+
+  test("resolves a path in other case where file systems ignore case", function () {
+    const platform = process.platform;
+    if (platform !== "linux" && platform !== "darwin" && platform !== "win32") this.skip();
+    const real = path.join(dir, "Folder");
+    fs.mkdirSync(real);
+    fs.writeFileSync(path.join(real, "data.csv"), "a\n1\n");
+    const roots = [{ uri: vscode.Uri.file(real), name: "Folder", index: 0 }];
+    const typed = vscode.Uri.file(path.join(dir, "folder", "data.csv"));
+    if (platform !== "linux") {
+      assert.ok(inWorkspace(typed, roots));
+      return;
+    }
+    // A link stands for the folder in other case, as a case-insensitive file system would.
+    fs.symlinkSync(real, path.join(dir, "folder"));
+    assert.ok(!inWorkspace(typed, roots));
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    assert.ok(descriptor);
+    // Restored before anything else runs, which might go by the platform.
+    Object.defineProperty(process, "platform", { ...descriptor, value: "darwin" });
+    try {
+      assert.ok(inWorkspace(typed, roots));
+    } finally {
+      Object.defineProperty(process, "platform", descriptor);
+    }
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {

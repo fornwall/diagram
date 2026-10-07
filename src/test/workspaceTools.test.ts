@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -344,23 +345,39 @@ suite("workspaceTools", function () {
     assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
   });
 
-  test("goes by real paths, as a path in other case on a case-insensitive file system", async function () {
+  test("resolves no path outside the workspace, which could reach a network share", async function () {
     if (process.platform === "win32") this.skip();
-    // A path outside the workspace that resolves inside stands for one typed in other case.
+    const roots = vscode.workspace.workspaceFolders ?? [];
+    const check = boundary(roots, source.token);
     const inward = path.join(outside, "inward.ts");
     await fs.symlink(path.join(dir, "code.ts"), inward);
     afterTest(() => fs.rm(inward));
-    assert.match(await invoke(reader, { file: inward }), /\n1: first\n/);
-    const alias = path.join(outside, "alias");
-    await fs.symlink(dir, alias);
-    afterTest(() => fs.rm(alias));
-    const roots = [{ uri: vscode.Uri.file(alias), name: "alias", index: 0 }];
-    const check = boundary(roots, source.token);
-    await check(resolveWorkspaceFile(path.join(dir, "code.ts"), roots));
-    for (const file of [path.join(outside, "secret.txt"), path.join(outside, "missing.txt")]) {
-      assert.throws(() => resolveWorkspaceFile(file, roots), /inside/);
-      await assert.rejects(check(vscode.Uri.file(file)), /^Error: The file is outside/);
+    const resolved: unknown[] = [];
+    // The module itself, which `import * as` copies.
+    const promises: typeof fs = require("node:fs/promises");
+    const { realpath } = promises;
+    replace(promises, "realpath", ((file: string) => {
+      resolved.push(file);
+      return realpath(file);
+    }) as typeof realpath);
+    const native = realpathSync.native;
+    replace(realpathSync, "native", ((file: string) => {
+      resolved.push(file);
+      return native(file);
+    }) as typeof native);
+    for (const file of [
+      path.join(outside, "secret.txt"),
+      path.join(outside, "missing.txt"),
+      inward,
+      "file://attacker.example/share/code.ts",
+    ]) {
+      assert.match(await invoke(reader, { file }), /inside an open workspace/);
+      await assert.rejects(
+        check(file.startsWith("file:") ? vscode.Uri.parse(file) : vscode.Uri.file(file)),
+        /^Error: The file is outside/,
+      );
     }
+    assert.deepStrictEqual(resolved, []);
   });
 
   test("resolves multiple workspace roots and rejects URI decorations and sibling prefixes", () => {
