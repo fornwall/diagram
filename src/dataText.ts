@@ -494,6 +494,20 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
 }
 
 /**
+ * Whether `line` names groups of the columns of the `header` below it, as vmstat prints them:
+ * "procs -----------memory---------- ---swap--", with fewer words than the header has names.
+ */
+function isColumnGroups(line: string, header: string): boolean {
+  const groups = tokenize(line);
+  const names = tokenize(header);
+  return (
+    groups.some((group) => /^-{2,}[^-].*-{2,}$/.test(group.text)) &&
+    names.length > groups.length &&
+    names.every((name) => parseNumber(name.text) === undefined)
+  );
+}
+
+/**
  * Splits whitespace-separated lines into as many fields as most lines have; the last field keeps
  * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
  * as printed by df or docker ps, are matched to the data columns by position. The first line is a
@@ -502,6 +516,9 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
 function splitWhitespace(lines: string[], underlined: boolean): Records {
   // ls -l prints "total 16" above the files, also with the inodes or blocks before them (-i, -s).
   if (/^total\s+\S+$/.test(lines[0] ?? "") && tokenize(lines[1] ?? "").length > 2) {
+    return splitWhitespace(lines.slice(1), underlined);
+  }
+  if (isColumnGroups(lines[0] ?? "", lines[1] ?? "")) {
     return splitWhitespace(lines.slice(1), underlined);
   }
   // Each line is a record, so too many lines need not be split to be refused.

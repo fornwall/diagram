@@ -1005,6 +1005,19 @@ suite("data", () => {
     );
   });
 
+  test("leaves out the groups of columns that vmstat prints above its header", () => {
+    const vmstat = [
+      "procs -----memory---- ---swap-- -----cpu-----",
+      " r  b   free   buff   si   so us sy id wa st",
+      " 1  0 123456  12345    0    0  2  1 97  0  0",
+    ];
+    const columns = ["r", "b", "free", "buff", "si", "so", "us", "sy", "id", "wa", "st"];
+    const rows = [[1, 0, 123456, 12345, 0, 0, 2, 1, 97, 0, 0]];
+    assert.deepStrictEqual(parse(vmstat.join("\n")), { columns, rows });
+    vmstat[0] = "--procs-- -------memory------ ---swap-- --------cpu--------";
+    assert.deepStrictEqual(parse(vmstat.join("\n"), "whitespace"), { columns, rows });
+  });
+
   test("leaves out the size of a data frame that pandas prints below it", () => {
     assert.deepStrictEqual(parse("   a  b\n0  1  x\n1  2  y\n\n[2 rows x 2 columns]\n"), {
       columns: ["Column 1", "a", "b"],
