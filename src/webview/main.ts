@@ -220,7 +220,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     active?.hide();
     active = undefined;
   }
-  canvas.inert = true;
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
   // Only for a slow render: the status line would shift a quick one down and back up, and a chart
@@ -230,7 +229,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   }, 300);
   try {
     if (message.notDrawn !== undefined) throw new Error(message.notDrawn);
-    const diagramType = await renderer.render(source, message.title);
+    const diagramType = await inertUntil(renderer.render(source, message.title));
     active = renderer;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
@@ -255,7 +254,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });
   } finally {
-    canvas.inert = false;
     canvas.setAttribute("aria-busy", "false");
     clearTimeout(statusTimer);
     renderStatus.textContent = "";
@@ -270,6 +268,29 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     if (document.activeElement === document.body) drawingFocus().focus({ preventScroll: true });
   }
   diagramReplaced();
+}
+
+/**
+ * Makes the canvas inert until the render settles, as the drawing's actions are stale meanwhile,
+ * unless it settled already, as a chart's render does: no click or key can come in between then,
+ * and making a drawing inert and back restyles each of its elements, which takes seconds for a
+ * chart of a few hundred thousand items.
+ */
+async function inertUntil<T>(rendering: Promise<T>): Promise<T> {
+  let settled = false;
+  const settle = () => {
+    settled = true;
+  };
+  rendering.then(settle, settle);
+  // After the reactions to a settled promise, which run in the order they were added.
+  queueMicrotask(() => {
+    canvas.inert = !settled;
+  });
+  try {
+    return await rendering;
+  } finally {
+    canvas.inert = false;
+  }
 }
 
 function diagramReplaced(): void {

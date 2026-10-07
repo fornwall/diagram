@@ -623,7 +623,6 @@ suite("webview", function () {
       const result = await render({
         language: "echarts",
         source: `(() => {
-          window.testRenderingInert = document.getElementById("canvas").inert;
           window.testRenderingBusy = document.getElementById("canvas").getAttribute("aria-busy");
           window.testRenderingStatus = document.getElementById("render-status").textContent;
           window.testRenderingHeight = document.getElementById("canvas").clientHeight;
@@ -633,7 +632,6 @@ suite("webview", function () {
       assert.strictEqual(result.ok, series !== "[]");
       assert.deepStrictEqual(
         await evaluate(`({
-          during: window.testRenderingInert,
           duringBusy: window.testRenderingBusy,
           duringStatus: window.testRenderingStatus,
           // A status shown only while rendering would size the chart for a smaller canvas.
@@ -644,7 +642,6 @@ suite("webview", function () {
           idleStatusHeight: document.getElementById("render-status").getBoundingClientRect().height
         })`),
         {
-          during: true,
           duringBusy: "true",
           // Only a slow render shows its status.
           duringStatus: "",
@@ -657,6 +654,20 @@ suite("webview", function () {
         },
       );
     }
+    // The drawing takes no clicks or keys while a render waits, unlike one that never waits, as a
+    // chart's does once ECharts has loaded.
+    await evaluate(`(() => {
+      window.testInert = [];
+      const canvas = document.getElementById("canvas");
+      new MutationObserver(() => window.testInert.push(canvas.inert))
+        .observe(canvas, {attributeFilter: ["inert"]});
+    })()`);
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(await evaluate("window.testInert.splice(0)"), [true, false]);
+    for (let drawn = 0; drawn < 2; drawn++) {
+      await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
+    }
+    assert.deepStrictEqual(await evaluate("window.testInert"), []);
   });
 
   test("keeps the annotation banner a live region, which takes no space without marks", async () => {
