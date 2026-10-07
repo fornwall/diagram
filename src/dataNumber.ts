@@ -38,10 +38,11 @@ const DURATION_WORDS = new Set(
 );
 
 /**
- * A duration as Go, kubectl and time print it, in units from days down to nanoseconds: "1h2m3.5s",
- * "3h12m", "0m1.234s", "812ms", "1.2µs".
+ * A duration as Go, kubectl, time and systemd print it, in units from days down to nanoseconds:
+ * "1h2m3.5s", "3h12m", "0m1.234s", "1min 2.345s", "812ms", "1.2µs".
  */
-const DURATION = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m(?!s))?(?:(\d+(?:\.\d+)?) ?(s|ms|[uµμ]s|ns))?$/;
+const DURATION =
+  /^(?:(\d+)d ?)?(?:(\d+)h ?)?(?:(\d+)(?:min|m(?!s)) ?)?(?:(\d+(?:\.\d+)?) ?(s|ms|[uµμ]s|ns))?$/;
 
 /** A duration on a clock, as "1:02:03.5", "3:45" (minutes) or "1-02:03:04" (ps's days). */
 const CLOCK = /^(?:(\d+)-)?(?:(\d+):)?(\d+):([0-5]\d(?:\.\d+)?)$/;

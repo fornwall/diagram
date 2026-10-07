@@ -412,6 +412,27 @@ function tokenize(line: string): Token[] {
   return tokens;
 }
 
+/**
+ * Joins the tokens of a duration that systemd writes with spaces between its parts, as
+ * "1min 2.345s" in systemd-analyze blame, or "1h 2min". Only with its "min", as durations in
+ * columns of their own ("2h 30s") are as likely.
+ */
+function joinDurations(line: string, tokens: Token[]): Token[] {
+  const joined: Token[] = [];
+  for (const token of tokens) {
+    const last = joined.at(-1);
+    if (last !== undefined && token.start === last.end + 1 && /\d(?:d|h|min)$/.test(last.text)) {
+      const text = line.slice(last.start, token.end);
+      if (text.includes("min") && parseNumber(text)?.unit === "seconds") {
+        joined[joined.length - 1] = { text, start: last.start, end: token.end };
+        continue;
+      }
+    }
+    joined.push(token);
+  }
+  return joined;
+}
+
 /** The texts of a line's tokens, at most `count`: the last keeps the rest of the line. */
 function fields(line: string, tokens: Token[], count: number): string[] {
   const last = tokens[count - 1];
@@ -523,7 +544,7 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
   }
   // Each line is a record, so too many lines need not be split to be refused.
   checkTableSize(lines.length, 1);
-  const tokens = lines.map(tokenize);
+  const tokens = lines.map((line) => joinDurations(line, tokenize(line)));
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);
   // Rows that start with a name, under a header that starts after it, as printed by free and R.

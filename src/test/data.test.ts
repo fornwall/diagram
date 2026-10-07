@@ -142,7 +142,7 @@ suite("data", () => {
     assert.deepStrictEqual(parse("pod,members\na,800M\nb,1.2K").rows[0], ["a", 800e6]);
   });
 
-  test("reads durations in seconds, as Go, kubectl and time print them", () => {
+  test("reads durations in seconds, as Go, kubectl, time and systemd print them", () => {
     for (const [text, value] of [
       ["5.123s", 5.123],
       ["812ms", 0.812],
@@ -154,12 +154,15 @@ suite("data", () => {
       ["1h2m3s", 3723],
       ["3h12m", 11_520],
       ["2d5h", 190_800],
+      ["1min 2.345s", 62.345],
+      ["1min2.345s", 62.345],
+      ["1h 2min", 3720],
     ] as const) {
       assert.deepStrictEqual(parseNumber(text), { value, unit: "seconds" }, text);
     }
     // A single unit of minutes, hours or days, a clock, or whole seconds that read as a decade,
     // only in a column of durations.
-    for (const text of ["5m", "3h", "2d", "1:02:03", "1980s"]) {
+    for (const text of ["5m", "5min", "3h", "2d", "1:02:03", "1980s"]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
     assert.deepStrictEqual(parse("decade,count\n1980s,5\n1990s,7"), {
@@ -186,6 +189,24 @@ suite("data", () => {
       runs.rows.map((row) => row[1]),
       [3723.5, 225, 86_400],
     );
+    // systemd-analyze blame right-aligns durations with spaces between their parts.
+    const blame = [
+      "1h 2min 3.4s slow.service",
+      "1min 30.123s NetworkManager-wait-online.service",
+      "      812ms snapd.service",
+    ].join("\n");
+    for (const format of ["auto", "whitespace"] as const) {
+      assert.deepStrictEqual(parse(blame, format).rows, [
+        [3723.4, "slow.service"],
+        [90.123, "NetworkManager-wait-online.service"],
+        [0.812, "snapd.service"],
+      ]);
+    }
+    // Durations in columns of their own stay apart.
+    assert.deepStrictEqual(parse("job 2h 30s\nweb 3h 5s").rows, [
+      ["job", "2h", 30],
+      ["web", "3h", 5],
+    ]);
     // The time of day in another column stays text.
     assert.deepStrictEqual(parse("event,at,people\nstandup,09:30,8\nlunch,12:00,20").rows[0], [
       "standup",
