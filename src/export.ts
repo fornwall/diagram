@@ -7,6 +7,7 @@ import {
   diagramNoun,
   type ExportFormat,
   type ExportResult,
+  errorClause,
   errorMessage,
   safeFileName,
 } from "./protocol";
@@ -93,7 +94,7 @@ async function offerToOpen(target: vscode.Uri): Promise<void> {
     }
   } catch (error) {
     void vscode.window.showErrorMessage(
-      `Could not open the saved chart: ${errorMessage(error)}. Open ${target.fsPath} in your browser.`,
+      `Could not open the saved chart: ${errorClause(error)}. Open ${target.fsPath} in your browser.`,
     );
   }
 }

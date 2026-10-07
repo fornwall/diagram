@@ -7,7 +7,7 @@ import type { DocumentBinding } from "./documentDiagram";
 import { isDiagramFence } from "./fences";
 import type { NodeLinks } from "./links";
 import type { DiagramState } from "./panel";
-import { errorMessage, isDiagramLanguage, isPlainObject } from "./protocol";
+import { errorClause, isDiagramLanguage, isPlainObject } from "./protocol";
 
 const STATE_KEY = "diagram.state";
 /** Large generated chart options can be reloaded; manual edits must be kept. */
@@ -51,7 +51,7 @@ export class StateStore {
         if (this.lastSave === saving) this.lastSave = undefined;
         if (!this.failed) {
           void vscode.window.showWarningMessage(
-            `Could not save the diagram: ${errorMessage(error)}. Changes may be lost when VS Code closes.`,
+            `Could not save the diagram: ${errorClause(error)}. Changes may be lost when VS Code closes.`,
           );
         }
         this.failed = true;

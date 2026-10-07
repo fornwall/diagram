@@ -2,7 +2,7 @@
 
 import type { Cell, Records } from "./data";
 import { checkTableSize } from "./dataLimits";
-import { errorMessage, isPlainObject } from "./protocol";
+import { errorClause, isPlainObject } from "./protocol";
 import { quoteAll } from "./text";
 
 function jsonCell(value: unknown): Cell {
@@ -265,7 +265,7 @@ function parseJsonStream(text: string): unknown[] | undefined {
       if (i === 0) return undefined;
       const line = (text.slice(0, start).match(/\r\n?|\n/g)?.length ?? 0) + 1;
       // Leaves out V8's "(line 1 column 8)", which counts lines from the value's first.
-      const message = errorMessage(error).replace(/ \(line \d+ column \d+\)/, "");
+      const message = errorClause(error).replace(/ \(line \d+ column \d+\)/, "");
       throw new Error(`The JSON value on line ${line} is not valid JSON: ${message}.`);
     }
   }
@@ -279,7 +279,7 @@ export function parseJson(text: string): Records {
   } catch (error) {
     value = parseJsonStream(text);
     if (value === undefined) {
-      throw new Error(`The data is not valid JSON: ${errorMessage(error)}.`);
+      throw new Error(`The data is not valid JSON: ${errorClause(error)}.`);
     }
   }
   const unwrapped = unwrap(value);

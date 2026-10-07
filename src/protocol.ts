@@ -40,6 +40,11 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The error's message without a final period, to go on with more text. */
+export function errorClause(error: unknown): string {
+  return errorMessage(error).replace(/\.$/, "");
+}
+
 export interface DiagramNode {
   /**
    * Mermaid node id, or chart item id: the item's own id or else its name (its path in a tree),

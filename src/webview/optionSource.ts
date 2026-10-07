@@ -2,7 +2,7 @@
 // JavaScript expression when a callback needs a function. A source that is none of these gets an
 // error that says where it is wrong, for the model to repair its output.
 
-import { errorMessage } from "../protocol";
+import { errorClause, errorMessage } from "../protocol";
 
 /**
  * The source as a value: JSON when it parses, or a JavaScript object literal, read without
@@ -136,7 +136,7 @@ function describeError(
   const { at, excerpt } =
     position === undefined ? { at: "", excerpt: "" } : located(text, position);
   return (
-    `The ECharts option is neither valid JSON nor a valid JavaScript object literal: ${message.replace(/\.$/, "")}` +
+    `The ECharts option is neither valid JSON nor a valid JavaScript object literal: ${errorClause(error)}` +
     `${at}. Write it as one object, as JSON or as JavaScript when a callback needs a function.` +
     excerpt
   );
@@ -154,7 +154,7 @@ function describeThrown(text: string, error: unknown): string {
         'text in quotes, and values out, such as gradients as {"type": "linear", "x": 0, "y": 0, ' +
         '"x2": 0, "y2": 1, "colorStops": [{"offset": 0, "color": "…"}, ...]}.'
       : "";
-  const message = `The ECharts option threw while being evaluated as JavaScript: ${errorMessage(error)}`;
+  const message = `The ECharts option threw while being evaluated as JavaScript: ${errorClause(error)}`;
   const { at, excerpt } =
     position === undefined ? { at: "", excerpt: "" } : located(text, position);
   return `${message}${at}.${hint}${excerpt}`;

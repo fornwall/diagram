@@ -3,6 +3,7 @@ import {
   type DiagramLanguage,
   type DiagramMark,
   type DiagramNode,
+  errorClause,
   errorMessage,
   type FromWebview,
   isPlainObject,
@@ -147,7 +148,7 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
       renderers.delete(language);
       const name = language === "echarts" ? "ECharts" : "Mermaid";
       throw new Error(
-        `Could not load the ${name} renderer: ${errorMessage(error).replace(/\.$/, "")}. ` +
+        `Could not load the ${name} renderer: ${errorClause(error)}. ` +
           "Reload the window (Developer: Reload Window).",
       );
     });
