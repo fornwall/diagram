@@ -11,7 +11,8 @@ export class WebviewChannel implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   /**
    * Messages sent before the page's "ready" are dropped, as the panel sends what the page needs
-   * once it is ready. Each load of the page is a new generation.
+   * once it is ready. Each load of the page is a new generation, also one that VS Code makes
+   * itself, as when the tab moves to another window, which only the page's "ready" tells.
    */
   private ready = false;
   private generation = 0;
@@ -83,8 +84,7 @@ export class WebviewChannel implements vscode.Disposable {
   private attach(panel: vscode.WebviewPanel): void {
     this.panel = panel;
     panel.iconPath = new vscode.ThemeIcon("type-hierarchy");
-    this.ready = false;
-    loadWebview(panel.webview, this.extensionUri);
+    this.load(panel);
 
     // The webview renders content written by a model, so do not trust what it sends.
     const messageListener = panel.webview.onDidReceiveMessage((message: unknown) => {
@@ -97,10 +97,7 @@ export class WebviewChannel implements vscode.Disposable {
     });
     // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
     // draw the current chart again, now with its code.
-    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
-      this.ready = false;
-      loadWebview(panel.webview, this.extensionUri);
-    });
+    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => this.load(panel));
     panel.onDidDispose(() => {
       messageListener.dispose();
       trustListener.dispose();
@@ -108,6 +105,12 @@ export class WebviewChannel implements vscode.Disposable {
       this.ready = false;
       this.onClose();
     });
+  }
+
+  private load(panel: vscode.WebviewPanel): void {
+    this.ready = false;
+    this.generation++;
+    loadWebview(panel.webview, this.extensionUri);
   }
 
   /**

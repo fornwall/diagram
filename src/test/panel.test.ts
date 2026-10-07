@@ -239,27 +239,35 @@ suite("panel", function () {
     }
   });
 
-  test("failed deliveries from before a reload cannot cancel replayed requests", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const delivery = Promise.withResolvers<boolean>();
-    webview.deliver = () => delivery.promise;
-    const rendering = panel.render(flowchart, "tool");
-    const picking = pick(panel);
-    const startPick = webview.sent.findLast((message) => message.type === "startPick");
-    assert.ok(startPick);
+  for (const reload of ["moving the tab", "granting trust"]) {
+    test(`failed deliveries from before a reload by ${reload} cannot cancel replayed requests`, async () => {
+      const trust = new vscode.EventEmitter<void>();
+      afterTest(() => trust.dispose());
+      replace(vscode.workspace, "onDidGrantWorkspaceTrust", trust.event);
+      const { panel, webview } = await newFakePanel();
+      webview.answer = undefined;
+      const delivery = Promise.withResolvers<boolean>();
+      webview.deliver = () => delivery.promise;
+      const rendering = panel.render(flowchart, "tool");
+      const picking = pick(panel);
+      const startPick = webview.sent.findLast((message) => message.type === "startPick");
+      assert.ok(startPick);
 
-    webview.deliver = () => true;
-    await webview.receive({ type: "ready" });
-    delivery.resolve(false);
-    await new Promise((resolve) => setImmediate(resolve));
+      webview.deliver = () => true;
+      // VS Code reloads a moved tab's page itself, which only the page's "ready" tells.
+      if (reload === "granting trust") trust.fire();
+      else await webview.receive({ type: "ready" });
+      delivery.resolve(false);
+      await new Promise((resolve) => setImmediate(resolve));
+      if (reload === "granting trust") await webview.receive({ type: "ready" });
 
-    await webview.finishRender();
-    const nodes = [{ id: "A", label: "Parser" }];
-    await webview.receive({ type: "picked", pickId: startPick.pickId, nodes });
-    assert.ok((await rendering).ok);
-    assert.deepStrictEqual(await picking, { picked: true, nodes });
-  });
+      await webview.finishRender();
+      const nodes = [{ id: "A", label: "Parser" }];
+      await webview.receive({ type: "picked", pickId: startPick.pickId, nodes });
+      assert.ok((await rendering).ok);
+      assert.deepStrictEqual(await picking, { picked: true, nodes });
+    });
+  }
 
   test("source is saved before the webview responds, without saving successful renders twice", async () => {
     const values = new Map<string, unknown>();
