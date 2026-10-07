@@ -191,8 +191,8 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `fullSource` gives a long source too, and without `callsTools` the model is not told to call a
-   * tool for it.
+   * `fullSource` gives a long source and relationship list too, and without `callsTools` the model
+   * is not told to call a tool for them.
    */
   describeForModel({
     fullSource = false,
