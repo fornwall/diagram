@@ -1,8 +1,9 @@
 import * as assert from "node:assert";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveFile } from "../files";
-import { linkSelection, linkText, linkTexts, validateLinks } from "../links";
+import { linkSelection, linkText, linkTexts, validateLinks, withoutMissingFiles } from "../links";
 import { replace } from "./afterTest";
 
 suite("links", () => {
@@ -102,6 +103,21 @@ suite("links", () => {
     // A long location is shortened rather than repeated in full.
     const [long = ""] = validateLinks({ a: `${"x".repeat(200)}.ts#L1x` }, "mermaid").problems;
     assert.ok(long.length > 0 && long.length < 120, long);
+  });
+
+  test("leaves out links to missing workspace files, without looking outside it", async () => {
+    const outside = path.join(os.tmpdir(), "diagram-made-up.ts");
+    assert.deepStrictEqual(
+      await withoutMissingFiles({
+        kept: { file: "sizes.tsv", line: 1 },
+        missing: { file: "made-up.ts" },
+        outside: { file: outside },
+      }),
+      {
+        links: { kept: { file: "sizes.tsv", line: 1 }, outside: { file: outside } },
+        problems: ['"missing": made-up.ts does not exist.'],
+      },
+    );
   });
 
   test("keeps node ids that name object properties", () => {

@@ -64,8 +64,10 @@ export function validateLinks(
 }
 
 /**
- * Leaves out the links to files that do not exist, which a model may make up, saying why for each.
- * Other file system errors, such as one that a later click may not meet, keep the link.
+ * Leaves out the links to workspace files that do not exist, which a model may make up, saying why
+ * for each. Files outside the workspace are not looked up, as that would tell the model, without
+ * asking, which exist. Other file system errors, such as one that a later click may not meet, keep
+ * the link.
  */
 export async function withoutMissingFiles(
   links: NodeLinks,
@@ -75,13 +77,15 @@ export async function withoutMissingFiles(
     let check = checks.get(file);
     if (!check) {
       const uri = resolveFile(file);
-      check = Promise.resolve(vscode.workspace.fs.stat(uri)).then(
-        () => undefined,
-        (error: unknown) =>
-          error instanceof vscode.FileSystemError && error.code === "FileNotFound"
-            ? errorMessage(fileError(error, uri))
-            : undefined,
-      );
+      check = vscode.workspace.getWorkspaceFolder(uri)
+        ? Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+            () => undefined,
+            (error: unknown) =>
+              error instanceof vscode.FileSystemError && error.code === "FileNotFound"
+                ? errorMessage(fileError(error, uri))
+                : undefined,
+          )
+        : Promise.resolve(undefined);
       checks.set(file, check);
     }
     return check;

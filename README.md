@@ -78,7 +78,7 @@ Workspace tools stay inside the open workspace folders.
 
 Relationships are marked by the `edge:` or `message:` ids that `diagram_getState` lists. They tell parallel edges and repeated messages apart, and stay the same when the diagram is redrawn, but may change when its source does. Chart items that share a name, such as "Yes" in several stages of a sankey, are marked by the ids it lists for them.
 
-Both rendering tools take a `clickPrompt`, such as `"Explain {label} in more detail"`, which a click on an item sends to chat. For Mermaid, `diagram_render` also takes code links, such as `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30"}`, and leaves out links to missing files. A link takes priority over the click prompt.
+Both rendering tools take a `clickPrompt`, such as `"Explain {label} in more detail"`, which a click on an item sends to chat. For Mermaid, `diagram_render` also takes code links, such as `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30"}`, and leaves out links to missing workspace files. A link takes priority over the click prompt.
 
 ## Data access and security
 
