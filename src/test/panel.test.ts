@@ -39,6 +39,24 @@ const withoutSource: DiagramState = {
 };
 
 /** Holds back the timers of the given delay until the test expires them, or the test ends. */
+const PIE = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
+
+/** A pie chart of the workspace's sizes.tsv, which a refresh reads again, drawn as the source. */
+function sizesPie(source = PIE): Diagram {
+  return { language: "echarts", source, title: "Sizes", chart: { type: "pie", file: "sizes.tsv" } };
+}
+
+/** Holds back the progress that a refresh shows, and so the refresh, until resumed. */
+function holdProgress(): () => void {
+  const progress = vscode.window.withProgress;
+  const resumed = Promise.withResolvers<void>();
+  replace(vscode.window, "withProgress", async (options, task) => {
+    await resumed.promise;
+    return progress(options, task);
+  });
+  return resumed.resolve;
+}
+
 function holdTimers(delay: number): { expire(): void } {
   const set = globalThis.setTimeout;
   const held: (() => void)[] = [];
@@ -656,18 +674,8 @@ suite("panel", function () {
   test("large manual chart edits survive a reload", async () => {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
-    const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
-    const edited = `${source}${" ".repeat(1_000_000)}`;
-    const outcome = await panel.render(
-      {
-        language: "echarts",
-        source,
-        title: "Sizes",
-        chart: { type: "pie", file: "sizes.tsv" },
-      },
-      "tool",
-    );
-    assert.ok(outcome.ok);
+    const edited = `${PIE}${" ".repeat(1_000_000)}`;
+    assert.ok((await panel.render(sizesPie(), "tool")).ok);
     await webview.edit(edited);
     const restored = newPanel(values);
     afterTest(() => restored.dispose());
@@ -783,16 +791,7 @@ suite("panel", function () {
 
   test("refreshing chart data ends a pending pick", async () => {
     const { panel, webview } = await newFakePanel();
-    const outcome = await panel.render(
-      {
-        language: "echarts",
-        source: JSON.stringify({ series: [{ type: "pie", data: [1] }] }),
-        title: "Sizes",
-        chart: { type: "pie", file: "sizes.tsv" },
-      },
-      "tool",
-    );
-    assert.ok(outcome.ok);
+    assert.ok((await panel.render(sizesPie(), "tool")).ok);
     const picking = pick(panel);
     await webview.receive({ type: "refresh" });
     assert.deepStrictEqual(await picking, {
@@ -805,12 +804,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     const pie = (name: string) =>
       JSON.stringify({ series: [{ type: "pie", data: [{ name, value: 1 }] }] });
-    const chart = { type: "pie", file: "sizes.tsv" } as const;
-    const outcome = await panel.render(
-      { language: "echarts", source: pie("A"), title: "Sizes", chart },
-      "tool",
-    );
-    assert.ok(outcome.ok);
+    assert.ok((await panel.render(sizesPie(pie("A")), "tool")).ok);
     const refreshing = webview.receive({ type: "refresh" });
     await Promise.all([refreshing, webview.edit(pie("B"))]);
     assert.strictEqual(panel.current?.source, pie("B"));
@@ -820,52 +814,28 @@ suite("panel", function () {
   for (const action of ["edit and revert", "close and reopen"]) {
     test(`refresh does not overwrite the chart after ${action}`, async () => {
       const { panel, webview } = await newFakePanel();
-      const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
-      const outcome = await panel.render(
-        {
-          language: "echarts",
-          source,
-          title: "Sizes",
-          chart: { type: "pie", file: "sizes.tsv" },
-        },
-        "tool",
-      );
-      assert.ok(outcome.ok);
-      const progress = vscode.window.withProgress;
-      const resumed = Promise.withResolvers<void>();
-      replace(vscode.window, "withProgress", async (options, task) => {
-        await resumed.promise;
-        return progress(options, task);
-      });
+      assert.ok((await panel.render(sizesPie(), "tool")).ok);
+      const resume = holdProgress();
       const refreshing = webview.receive({ type: "refresh" });
       if (action === "edit and revert") {
-        await webview.edit(`${source} `);
-        await webview.edit(source);
+        await webview.edit(`${PIE} `);
+        await webview.edit(PIE);
       } else {
         webview.panel.dispose();
         await showInFake(panel);
       }
-      resumed.resolve();
+      resume();
       await refreshing;
-      assert.strictEqual(panel.current?.source, source);
+      assert.strictEqual(panel.current?.source, PIE);
       assert.strictEqual(panel.current?.editedByUser, action === "edit and revert");
     });
   }
 
   test("a reloaded page draws the same revision, which a refresh and an update still apply to", async () => {
     const { panel, webview } = await newFakePanel();
-    const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
-    const chart = { type: "pie", file: "sizes.tsv" } as const;
-    assert.ok(
-      (await panel.render({ language: "echarts", source, title: "Sizes", chart }, "tool")).ok,
-    );
+    assert.ok((await panel.render(sizesPie(), "tool")).ok);
     const revision = panel.revision;
-    const progress = vscode.window.withProgress;
-    const resumed = Promise.withResolvers<void>();
-    replace(vscode.window, "withProgress", async (options, task) => {
-      await resumed.promise;
-      return progress(options, task);
-    });
+    const resume = holdProgress();
     const refreshing = webview.receive({ type: "refresh" });
     const reload = async () => {
       await webview.receive({ type: "ready" });
@@ -873,7 +843,7 @@ suite("panel", function () {
     };
     await reload();
     assert.strictEqual(panel.revision, revision);
-    resumed.resolve();
+    resume();
     await refreshing;
     assert.match(panel.current?.source ?? "", /"src"/);
     assert.strictEqual(panel.revision, revision + 1);
