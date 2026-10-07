@@ -57,18 +57,29 @@ function holdProgress(): () => void {
   return resumed.resolve;
 }
 
-function holdTimers(delay: number): { expire(): void } {
+/** Holds the timers of the delay until `expire()` runs those not cleared, which `pending` counts. */
+function holdTimers(delay: number): { expire(): void; readonly pending: number } {
   const set = globalThis.setTimeout;
-  const held: (() => void)[] = [];
+  const clear = globalThis.clearTimeout;
+  const held = new Map<unknown, () => void>();
   replace(globalThis, "setTimeout", ((callback: () => void, ms?: number, ...args: unknown[]) => {
     if (ms !== delay) return set(callback, ms, ...args);
-    held.push(callback);
-    // A handle for clearTimeout, which then has nothing to clear.
-    return set(() => {}, 0);
+    // A handle of a timer that does nothing, which identifies the held callback.
+    const handle = set(() => {}, 0);
+    held.set(handle, callback);
+    return handle;
   }) as typeof setTimeout);
+  replace(globalThis, "clearTimeout", ((handle) => {
+    if (!held.delete(handle)) clear(handle);
+  }) as typeof clearTimeout);
   return {
     expire: () => {
-      for (const callback of held.splice(0)) callback();
+      const callbacks = [...held.values()];
+      held.clear();
+      for (const callback of callbacks) callback();
+    },
+    get pending() {
+      return held.size;
     },
   };
 }
@@ -1155,12 +1166,20 @@ suite("panel", function () {
     const restarted = newPanel(values);
     afterTest(() => restarted.dispose());
     const webview = new FakeWebview();
+    webview.answer = undefined;
     const timers = holdTimers(15_000);
     restarted.restore(webview.panel);
+    assert.strictEqual(timers.pending, 1);
     timers.expire();
     assert.strictEqual(restarted.current?.error, undefined);
     await webview.receive({ type: "ready" });
     assert.strictEqual(webview.render.notDrawn, undefined);
+    // With the full 15 seconds, also when the page loads again, which replaces the timer.
+    assert.strictEqual(timers.pending, 1);
+    await webview.receive({ type: "ready" });
+    assert.strictEqual(timers.pending, 1);
+    await webview.finishRender();
+    assert.strictEqual(timers.pending, 0);
   });
 
   test("a chart update that hangs the page does not leave the kept chart unfinished", async () => {
