@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
-import { suitePage, UNTIL } from "./webviewHarness";
+import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
  * A chart that counts its draws in `window.chartDraws`: how often each task that drew it did so,
@@ -473,6 +473,7 @@ suite("ECharts in the webview", function () {
       await evaluate(`(async () => {
         ${CHART_FITTED}
         ${ROTATED}
+        ${DRAG_IMAGE}
         const canvas = document.getElementById("canvas");
         await chartFitted();
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -481,8 +482,7 @@ suite("ECharts in the webview", function () {
           // for, ends the wait: the next size is again laid out at once.
           Object.assign(canvas.style, {width: "600px", flex: "none"});
           await new Promise((resolve) => setTimeout(resolve, 60));
-          document.getElementById("drag-out").dispatchEvent(new PointerEvent("pointerenter"));
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          await dragImage();
           canvas.style.width = "250px";
           return await rotatesAtOnce();
         } finally {
