@@ -608,7 +608,7 @@ export class MermaidRenderer implements Renderer {
     }
     // Replacing the SVG removes its focused node, which was the tab stop, as the new one is. Keep
     // keyboard navigation there, unless the user moved the focus elsewhere meanwhile.
-    if (focused && document.activeElement === document.body) {
+    if (focused && document.hasFocus() && document.activeElement === document.body) {
       this.diagram.querySelector<SVGElement>('[tabindex="0"]')?.focus({ preventScroll: true });
     }
     return true;

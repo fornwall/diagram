@@ -257,7 +257,8 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     clearTimeout(statusTimer);
     renderStatus.textContent = "";
   }
-  if (focused && document.activeElement === document.body) {
+  // Only while the page has the focus: focus() would take it from wherever the user went meanwhile.
+  if (focused && document.hasFocus() && document.activeElement === document.body) {
     const id = focused.getAttribute("data-diagram-id");
     const node = id
       ? canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`)

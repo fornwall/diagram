@@ -395,6 +395,40 @@ suite("Mermaid in the webview", function () {
     assert.strictEqual(await evaluate(`document.activeElement.id`), "canvas");
   });
 
+  test("leaves the focus alone when the page lost it during a new rendering", async () => {
+    // As if the user went to, say, the command palette while the diagram rendered: a node's
+    // focus() would take the focus back within seconds of a click in the panel.
+    const leave = `(() => {
+      document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus();
+      document.hasFocus = () => false;
+    })()`;
+    await draw({ source: "flowchart LR\n  A --> B" });
+    await evaluate(leave);
+    try {
+      await draw({ source: "flowchart LR\n  A --> B --> C" });
+      const versioned = await evaluate(`document.activeElement.tagName`);
+      await evaluate(leave);
+      const themed = await evaluate(`(async () => {
+        ${UNTIL}
+        const { dataset } = document.body;
+        const original = dataset.vscodeThemeId;
+        const redraw = async (themeId) => {
+          const node = document.querySelector('#diagram [data-diagram-id="B"]');
+          if (themeId === undefined) delete dataset.vscodeThemeId;
+          else dataset.vscodeThemeId = themeId;
+          await until(() => !node.isConnected);
+        };
+        await redraw("test-theme-unfocused");
+        const focused = document.activeElement.tagName;
+        await redraw(original);
+        return focused;
+      })()`);
+      assert.deepStrictEqual([versioned, themed], ["BODY", "BODY"]);
+    } finally {
+      await evaluate(`delete document.hasFocus`);
+    }
+  });
+
   test("keeps keyboard focus and selection on a Mermaid node when the theme redraws it", async () => {
     await draw({
       source: MERMAID["flowchart-v2"],
