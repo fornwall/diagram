@@ -769,7 +769,6 @@ suite("ECharts in the webview", function () {
     await evaluate(`(async () => {
       ${PRESS}
       while (document.getElementById("pick").hidden) await new Promise(resolve => setTimeout(resolve, 10));
-      chart.focus();
       press("Home");
       press("ArrowRight");
       press("Enter");
