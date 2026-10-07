@@ -732,6 +732,21 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("refuses groups inside themselves, which Mermaid would lay out forever", async () => {
+    assert.deepStrictEqual(
+      await errors(
+        "stateDiagram-v2\n  [*] --> A\n  state A {\n    [*] --> A\n  }",
+        "flowchart TD\n  X --> A\n  subgraph A\n    subgraph B\n      A\n    end\n  end",
+        "classDiagram\n  namespace A {\n    class A\n  }\n  X --> A",
+      ),
+      [3, 3, 2].map(
+        (line) =>
+          `Error on line ${line}: "A" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
+      ),
+    );
+    await draw({ source: MERMAID["flowchart-v2"] });
+  });
+
   test("explains Mermaid's limits", async () => {
     const edges = Array.from({ length: 501 }, (_, i) => `  n${i} --> n${i + 1}`);
     const outcome = await render({ source: `flowchart TD\n${edges.join("\n")}` });

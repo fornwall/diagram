@@ -4,7 +4,7 @@ import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { mix, type ThemeColors, toCss } from "./colors";
 import { type DiagramImage, inlineStyleSheets, standaloneSvg } from "./images";
-import { describeError, parsableSource } from "./mermaidErrors";
+import { describeError, nestingError, parsableSource } from "./mermaidErrors";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
@@ -237,14 +237,17 @@ async function layOut(
 }
 
 /**
- * The database of a diagram, which mermaid.render keeps to itself: parsed again for it. Should
+ * The database of a diagram, which mermaid.render keeps to itself: parsed separately for it. Should
  * that fail, the parts that only the database tells about are left out.
  */
-const databaseOf = (mermaid: Mermaid, text: string) =>
-  mermaid.mermaidAPI.getDiagramFromText(text).then(
-    (diagram) => diagram.db as DiagramDb,
-    () => undefined,
-  );
+async function databaseOf(mermaid: Mermaid, text: string): Promise<DiagramDb | undefined> {
+  try {
+    // It throws some errors, such as those in front matter, rather than rejecting.
+    return (await mermaid.mermaidAPI.getDiagramFromText(text)).db as DiagramDb;
+  } catch {
+    return undefined;
+  }
+}
 
 /** What a drawing shows of the state of its nodes, by node id. */
 interface Shown {
@@ -426,12 +429,13 @@ export class MermaidRenderer implements Renderer {
     if (width > 0) container.style.width = `${width}px`;
     const text = parsableSource(source);
     const drawing = async () => {
+      const parsed = await databaseOf(mermaid, text);
+      const nesting = nestingError(parsed, source);
+      if (nesting) throw nesting;
       const result = await mermaid.render(id, text, container).catch((error: unknown) => {
         throw describeError(error, source, () => mermaid.detectType(text));
       });
-      const db = WITH_DATABASE.has(result.diagramType)
-        ? await databaseOf(mermaid, text)
-        : undefined;
+      const db = WITH_DATABASE.has(result.diagramType) ? parsed : undefined;
       return {
         result,
         db,

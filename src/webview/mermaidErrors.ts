@@ -1,5 +1,7 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
+import type { DiagramDb } from "./mermaidNodes";
+
 /** The words that start each kind of diagram that Mermaid detects, the common ones first. */
 export const DIAGRAM_TYPES = [
   "flowchart",
@@ -628,6 +630,30 @@ function unplacedError(message: string, normalized: string): Error | undefined {
     const match = pattern.exec(message);
     const described = match && describe(match, normalized);
     if (described) return errorAt(normalized, described[0], described[1] ?? message);
+  }
+  return undefined;
+}
+
+/**
+ * The error for a diagram whose groups contain themselves, such as a composite state that refers to
+ * itself inside, which Mermaid's ELK layout would loop over forever, freezing the panel.
+ */
+export function nestingError(db: DiagramDb | undefined, source: string): Error | undefined {
+  const nodes = db?.getData?.().nodes ?? [];
+  const parents = new Map(nodes.map(({ id, parentId }) => [id, parentId]));
+  for (const id of parents.keys()) {
+    const seen = new Set<string>();
+    for (let at: string | undefined = id; at !== undefined; at = parents.get(at)) {
+      if (seen.has(at)) {
+        const normalized = source.replace(/\r\n?/g, "\n");
+        return errorAt(
+          normalized,
+          find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(at)}`),
+          `"${at}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
+        );
+      }
+      seen.add(at);
+    }
   }
   return undefined;
 }
