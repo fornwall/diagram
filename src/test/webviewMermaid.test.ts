@@ -1,13 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
+import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
-
-/**
- * How long after the canvas width last changes the webview lays a Gantt chart out again: the
- * `RELAYOUT_DELAY` of mermaidRenderer.ts.
- */
-const RELAYOUT_DELAY = 200;
 
 /**
  * Webview code defining `retheme(id)`, which changes the theme's id as a new theme does, taking

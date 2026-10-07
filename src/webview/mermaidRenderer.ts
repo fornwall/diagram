@@ -33,7 +33,7 @@ const MIN_HEIGHT_FIT = 0.6;
  * meanwhile), and how long after the last change: not for a scrollbar, nor for each step of a drag.
  */
 const RELAYOUT_THRESHOLD = 16;
-const RELAYOUT_DELAY = 200;
+export const RELAYOUT_DELAY = 200;
 
 /** The diagrams whose edges lead the way they point: those drawn as flowcharts, and state diagrams. */
 const PATH_DIAGRAMS = /^(?:flowchart|swimlane$|agentflow$|stateDiagram$)/;
