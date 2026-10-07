@@ -1739,6 +1739,14 @@ suite("data", () => {
       ["Iceland", null, 0.37, 0.8, "-"],
       ["Greenland", null, 0.06, null, "#REF!"],
     ]);
+    // Infinities, which no chart can place, as pandas, R and JavaScript write them.
+    assert.deepStrictEqual(parse("k,v\na,1\nb,inf\nc,-Inf\nd,Infinity\ne,2").rows, [
+      ["a", 1],
+      ["b", null],
+      ["c", null],
+      ["d", null],
+      ["e", 2],
+    ]);
     // Labels that look like markers stay labels.
     assert.deepStrictEqual(parse("plan,users\nNone,12\nPro,30\nNA,5").rows, [
       ["None", 12],

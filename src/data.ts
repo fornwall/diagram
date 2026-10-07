@@ -42,11 +42,12 @@ export interface Records {
 /**
  * Text that marks a missing value, as spreadsheets ("#N/A", or errors such as "#DIV/0!"),
  * databases ("NULL"), pandas ("NaN", "None", "<NA>"), kubectl ("<none>", "<unknown>") and command
- * output ("-", "--") write it. Like an empty cell it neither makes a column numeric nor keeps it
- * from being so, but outside numeric columns it stays, as a label.
+ * output ("-", "--") write it, or an infinity, which no chart can place, as pandas ("inf"), R
+ * ("-Inf") and JavaScript ("Infinity") write it. Like an empty cell it neither makes a column
+ * numeric nor keeps it from being so, but outside numeric columns it stays, as a label.
  */
 const MISSING =
-  /^(?:-+|[\u2013\u2014]|n\/a|na|<(?:na|none|unknown)>|nan|null|none|#(?:n\/a|div\/0!|value!|ref!|name\?|num!|null!))$/i;
+  /^(?:-+|[\u2013\u2014]|n\/a|na|<(?:na|none|unknown)>|nan|[-+\u2212]?inf(?:inity)?|null|none|#(?:n\/a|div\/0!|value!|ref!|name\?|num!|null!))$/i;
 
 interface ColumnCounts {
   numbers: number;
