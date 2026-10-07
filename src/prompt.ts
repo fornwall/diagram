@@ -256,7 +256,10 @@ export function escapeMarkdown(text: string): string {
   return text.replace(/[\\`*_~[\]<>&$]/g, "\\$&");
 }
 
-/** Truncate tool results as needed, leaving half the reserve for later rounds. */
+/**
+ * Truncate tool results as needed, leaving half the reserve for later rounds. Text is shortened;
+ * other parts, such as prompt-tsx, are kept whole or replaced with a note.
+ */
 export async function fitToolResults(
   model: vscode.LanguageModelChat,
   messages: readonly vscode.LanguageModelChatMessage[],
@@ -265,32 +268,39 @@ export async function fitToolResults(
 ): Promise<void> {
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE / 2));
   const earlier = messages.flatMap((message) => partTexts(message.content));
-  const parts = results.flatMap((result) =>
-    result.content.filter((part) => part instanceof vscode.LanguageModelTextPart),
+  const parts = results.flatMap(({ content }) =>
+    content.flatMap((part, index) => {
+      const text = partText(part);
+      return text === undefined ? [] : [{ content, index, text, whole: wholePart(part) }];
+    }),
   );
   const counts = exactCounts.get(messages) ?? new Map<string, Promise<number>>();
   exactCounts.set(messages, counts);
   const tokens = tokenCounter(
     model,
-    [...earlier, ...parts.map((part) => part.value)],
+    [...earlier, ...parts.map(({ text }) => text)],
     budget,
     token,
     counts,
   );
-  const images = messages.flatMap((message) =>
-    message.content.filter(
-      (part) => part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/"),
-    ),
-  );
-  const room = budget - sum(await Promise.all(earlier.map(tokens))) - images.length * IMAGE_TOKENS;
+  const images = imageCount([...messages.flatMap((message) => message.content), ...results]);
+  const room = budget - sum(await Promise.all(earlier.map(tokens))) - images * IMAGE_TOKENS;
   const { texts, left } = await fitTexts(
-    parts.map(({ value }) => ({
-      length: value.length,
-      shorten: (length: number) =>
-        length < value.length
-          ? `${value.slice(0, length)}\n\n[truncated: first ${length} of ${value.length} characters]`
-          : value,
-    })),
+    parts.map(({ text, whole }) =>
+      whole
+        ? {
+            length: 1,
+            shorten: (length: number) =>
+              length > 0 ? text : `[left out: ${whole}, too large for the model's input]`,
+          }
+        : {
+            length: text.length,
+            shorten: (length: number) =>
+              length < text.length
+                ? `${text.slice(0, length)}\n\n[truncated: first ${length} of ${text.length} characters]`
+                : text,
+          },
+    ),
     room,
     tokens,
   );
@@ -299,25 +309,64 @@ export async function fitToolResults(
       `The conversation is too large for ${model.name}, even with shortened tool results. Start a new chat or choose a model with a larger context.`,
     );
   }
-  for (const [index, part] of parts.entries()) {
-    part.value = texts[index] ?? part.value;
+  for (const [index, { content, index: at, text }] of parts.entries()) {
+    const fitted = texts[index] ?? text;
+    if (fitted !== text) {
+      content[at] = new vscode.LanguageModelTextPart(fitted);
+    }
   }
 }
 
-/** The text of message parts, including tool calls and results. Images and other data are left out. */
+/** The text of message parts, including tool calls and results. Images are left out. */
 function partTexts(parts: readonly unknown[]): string[] {
-  return parts.flatMap((part) => {
-    if (part instanceof vscode.LanguageModelTextPart) {
-      return [part.value];
-    }
-    if (part instanceof vscode.LanguageModelToolCallPart) {
-      return [JSON.stringify(part.input)];
-    }
-    if (part instanceof vscode.LanguageModelToolResultPart) {
-      return partTexts(part.content);
-    }
-    return [];
-  });
+  return parts.flatMap((part) =>
+    part instanceof vscode.LanguageModelToolResultPart
+      ? partTexts(part.content)
+      : (partText(part) ?? []),
+  );
+}
+
+/** The text a part is counted by, or undefined for an image or an unknown kind of part. */
+function partText(part: unknown): string | undefined {
+  if (part instanceof vscode.LanguageModelTextPart) {
+    return part.value;
+  }
+  if (part instanceof vscode.LanguageModelToolCallPart) {
+    return JSON.stringify(part.input);
+  }
+  // Its JSON is more than the text it renders to, and so a conservative estimate.
+  if (part instanceof vscode.LanguageModelPromptTsxPart) {
+    return JSON.stringify(part.value);
+  }
+  if (part instanceof vscode.LanguageModelDataPart && !isImage(part)) {
+    return new TextDecoder().decode(part.data);
+  }
+  return undefined;
+}
+
+/** What a part that can't be shortened as text is, e.g. "application/pdf data". */
+function wholePart(part: unknown): string | undefined {
+  if (part instanceof vscode.LanguageModelPromptTsxPart) {
+    return "a prompt-tsx part";
+  }
+  if (part instanceof vscode.LanguageModelDataPart && !/^text\/|[+/]json$/.test(part.mimeType)) {
+    return `${part.mimeType} data`;
+  }
+  return undefined;
+}
+
+function isImage(part: unknown): boolean {
+  return part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/");
+}
+
+function imageCount(parts: readonly unknown[]): number {
+  return sum(
+    parts.map((part) =>
+      part instanceof vscode.LanguageModelToolResultPart
+        ? imageCount(part.content)
+        : Number(isImage(part)),
+    ),
+  );
 }
 
 /**

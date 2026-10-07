@@ -786,6 +786,39 @@ suite("participant", () => {
     assert.ok(tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8, `${tokens}`);
   });
 
+  test("counts tool results that are not text, and leaves out or shortens those that don't fit", async () => {
+    const small = new vscode.LanguageModelPromptTsxPart({ text: "small" });
+    countToolCalls(
+      () =>
+        new vscode.LanguageModelToolResult([
+          small,
+          new vscode.LanguageModelPromptTsxPart({ text: "x".repeat(20_000) }),
+          vscode.LanguageModelDataPart.json({ rows: "z".repeat(20_000) }),
+          text("ok"),
+        ]),
+    );
+    const { sent } = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
+      { toolReferences: [{ name: "diagram_getState" }], maxInputTokens: 4_000 },
+    );
+    const [result] = (sent[1]?.messages.at(-1)?.content ??
+      []) as vscode.LanguageModelToolResultPart[];
+    const [kept, leftOut, shortened, ok] = result?.content ?? [];
+    assert.strictEqual(kept, small);
+    assert.deepStrictEqual(
+      leftOut,
+      new vscode.LanguageModelTextPart(
+        "[left out: a prompt-tsx part, too large for the model's input]",
+      ),
+    );
+    assert.ok(shortened instanceof vscode.LanguageModelTextPart);
+    assert.match(
+      shortened.value,
+      /"rows": ?"z+\n\n\[truncated: first \d+ of 200\d\d characters\]$/,
+    );
+    assert.deepStrictEqual(ok, text("ok"));
+  });
+
   test("stops with a clear error when tool rounds exhaust the model's context", async () => {
     const { sent, result } = await ask(
       [[text("x".repeat(20_000)), new vscode.LanguageModelToolCallPart("1", "unknown", {})]],
