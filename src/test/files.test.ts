@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { absoluteFile, absolutePath, fileError, openDocument } from "../files";
+import { absoluteFile, absolutePath, fileError, openDocument, resolveFile } from "../files";
 
 suite("files", () => {
   let dir: string;
@@ -41,6 +41,15 @@ suite("files", () => {
       undefined,
     );
     assert.strictEqual(absolutePath(vscode.Uri.file(local), github), local);
+  });
+
+  test("resolves an absolute path that leads out of the workspace outside it", () => {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    // Links and data files outside the workspace are confirmed first.
+    const uri = resolveFile([root.uri.fsPath, "..", "secret.txt"].join(path.sep));
+    assert.strictEqual(uri.fsPath, path.join(path.dirname(root.uri.fsPath), "secret.txt"));
+    assert.strictEqual(vscode.workspace.getWorkspaceFolder(uri), undefined);
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {

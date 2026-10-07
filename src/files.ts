@@ -33,13 +33,13 @@ export function withinPath(root: string, file: string): boolean {
 /**
  * Resolves an absolute path on the file system of the workspace folders that contain it, such as
  * that of a GitHub repository opened with Remote Repositories, when they are all on one. Other
- * paths are on this computer.
+ * paths are on this computer, without "." and "..", which getWorkspaceFolder would take as names.
  */
 export function absoluteFile(
   file: string,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
 ): vscode.Uri {
-  const local = vscode.Uri.file(file);
+  const local = vscode.Uri.file(path.normalize(file));
   const inside = new Map<string, vscode.Uri>();
   for (const { uri: root } of roots) {
     // A URI with an authority needs a path that starts with "/".
