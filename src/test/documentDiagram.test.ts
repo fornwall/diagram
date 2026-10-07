@@ -311,7 +311,7 @@ suite("documentDiagram", function () {
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n```\n");
   });
 
-  test("writing the diagram as shown needs no edit of the user's own", async () => {
+  test("writes the diagram as shown, which needs no edit, twice to the block it left", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const read = binding(document);
     // What an agent drew into the block's diagram, which the user has not touched: Apply has
@@ -320,24 +320,13 @@ suite("documentDiagram", function () {
       ...openedState(read),
       source: "flowchart LR\n  A --> B",
     });
-    await writeShown(webview);
-    assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
-    // The binding follows the block, as it does after an applied edit.
-    assert.strictEqual(panel.current?.document?.fence.lastLine, 4);
-  });
-
-  test("a second write finds the block where the first one left it", async () => {
-    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
-    const read = binding(document);
-    const { panel, webview } = await restored({
-      ...openedState(read),
-      source: "flowchart LR\n  A --> B",
-    });
     const warnings = recordMessages("showWarningMessage");
     await Promise.all([writeShown(webview), writeShown(webview)]);
     assert.deepStrictEqual(warnings, []);
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n");
+    // The binding follows the block, as it does after an applied edit.
     assert.strictEqual(panel.current?.document?.fence.source, "flowchart LR\n  A --> B");
+    assert.strictEqual(panel.current?.document?.fence.lastLine, 4);
   });
 
   test("an invalid Apply keeps the edits in the panel without overwriting the document", async () => {
@@ -361,39 +350,32 @@ suite("documentDiagram", function () {
     assert.strictEqual(panel.current?.error, undefined);
   });
 
-  test("an unfinished render cannot be written to the document", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
-    const before = document.getText();
-    const read = binding(document);
-    const { panel, webview } = await restored(openedState(read));
-    webview.answer = undefined;
-    const warnings = recordMessages("showWarningMessage");
-    const rendering = panel.render(
-      { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
-      "document",
-    );
-    await writeShown(webview);
-    assert.strictEqual(document.getText(), before);
-    assert.strictEqual(warnings.length, 1);
-    assert.match(warnings[0] ?? "", /Wait.*rendering/);
-    panel.dispose();
-    await rendering;
-  });
-
-  test("writing the diagram as shown writes nothing when it does not render", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
-    const before = document.getText();
-    const read = binding(document);
-    const { panel, webview } = await newFakePanel();
-    failingUnknown(webview);
-    const failing = await panel.render(
-      { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
-      "document",
-    );
-    assert.ok(!failing.ok);
-    await writeShown(webview);
-    assert.strictEqual(document.getText(), before);
-  });
+  const notWritten = {
+    unfinished: "Wait for the diagram to finish rendering before writing it.",
+    invalid: "The diagram is not written, as it fails to render: Parse error",
+    unavailable:
+      "The diagram was not written: The diagram panel is unavailable. Reopen the panel and try again.",
+  };
+  for (const [failure, warning] of Object.entries(notWritten)) {
+    test(`a render that is ${failure} cannot be written to the document`, async () => {
+      const document = await markdown("```mermaid\nflowchart TD\n```\n");
+      const { panel, webview } = await newFakePanel();
+      if (failure === "unfinished") webview.answer = undefined;
+      if (failure === "invalid") failingUnknown(webview);
+      if (failure === "unavailable") webview.deliver = (message) => message.type !== "render";
+      const warnings = recordMessages("showWarningMessage");
+      const rendering = panel.render(
+        { language: "mermaid", source: "flowchart ??", title: "Flow", document: binding(document) },
+        "document",
+      );
+      if (failure !== "unfinished") assert.ok(!(await rendering).ok);
+      await writeShown(webview);
+      assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
+      assert.deepStrictEqual(warnings, [warning]);
+      panel.dispose();
+      await rendering;
+    });
+  }
 
   test("a diagram that no document holds ignores a Write from the page", async () => {
     const { panel, webview } = await newFakePanel();
@@ -404,25 +386,6 @@ suite("documentDiagram", function () {
     );
     await writeShown(webview);
     assert.deepStrictEqual(warnings, []);
-  });
-
-  test("an unavailable render cannot be written to the document", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
-    const before = document.getText();
-    const read = binding(document);
-    const { panel, webview } = await newFakePanel();
-    webview.deliver = (message) => message.type !== "render";
-    const warnings = recordMessages("showWarningMessage");
-    const rendering = panel.render(
-      { language: "mermaid", source: "flowchart ??", title: "Flow", document: read },
-      "document",
-    );
-    await rendering;
-    await writeShown(webview);
-    assert.strictEqual(document.getText(), before);
-    assert.deepStrictEqual(warnings, [
-      "The diagram was not written: The diagram panel is unavailable. Reopen the panel and try again.",
-    ]);
   });
 
   test("applying an edit leaves a document that changed to the user, and offers to open it", async () => {
