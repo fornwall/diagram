@@ -132,7 +132,13 @@ suite("charts", () => {
       message:
         'The doughnut chart would have 1,001 slices, more than the 1,000 the panel draws: they would hold it up and could not be told apart. Set "sort": "descending" and a "limit" to sum the smallest up as "Other".',
     });
-    assert.strictEqual(build(chart("pie", { limit: 999 }), slices).series[0].data.length, 1000);
+    // A limit keeps as many slices as the panel draws, besides the "Other" slice.
+    const many = `k,n\n${rows(2000, (index) => `k${index},${index + 1}`)}`;
+    const limited = build(chart("pie", { sort: "descending", limit: 1000 }), many).series[0].data;
+    assert.strictEqual(limited.length, 1001);
+    assert.strictEqual(limited.at(-1).name, "Other");
+    const few = `k,n\n${rows(10, (index) => `k${index},${index + 1}`)}`;
+    assert.strictEqual(build(chart("pie", { limit: 1000 }), few).series[0].data.length, 10);
     // The nodes of a hierarchy count, the inner ones too.
     const paths = `path,n\n${rows(5000, (index) => `a/${index},1\nb/${index},1`)}`;
     assert.throws(() => build(chart("sunburst"), paths), /would have 10,002 nodes/);

@@ -91,7 +91,7 @@ function buildSingleChart(
     ...readRows(spec, table, columns, notes, plan.multiples),
   };
   const option = drawChart(type, reading);
-  checkItems(type, option);
+  checkItems(type, spec, option);
   return {
     option,
     summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
@@ -165,7 +165,7 @@ const MOST_ITEMS: Partial<Record<RowChartType, ItemLimit>> = {
 };
 
 /** Refuses a chart with more items, those of hierarchies included, than its type may have. */
-function checkItems(type: RowChartType, option: Record<string, unknown>): void {
+function checkItems(type: RowChartType, spec: ChartSpec, option: Record<string, unknown>): void {
   const limit = MOST_ITEMS[type];
   if (!limit) return;
   const [most, items, advice] = limit;
@@ -174,7 +174,12 @@ function checkItems(type: RowChartType, option: Record<string, unknown>): void {
       ? data.reduce((sum: number, item) => sum + 1 + count(isPlainObject(item) && item.children), 0)
       : 0;
   const series = option.series;
-  const drawn = count(Array.isArray(series) && isPlainObject(series[0]) && series[0].data);
+  const data = Array.isArray(series) && isPlainObject(series[0]) ? series[0].data : undefined;
+  // The "Other" slice that a pie's "limit" sums the rest up as comes on top of the slices it keeps.
+  const last: unknown = Array.isArray(data) ? data.at(-1) : undefined;
+  const other =
+    limit === SLICES && spec.limit !== undefined && isPlainObject(last) && last.name === "Other";
+  const drawn = count(data) - (other ? 1 : 0);
   if (drawn > most) {
     const number = (value: number) => value.toLocaleString("en-US");
     throw new Error(
