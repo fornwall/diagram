@@ -25,15 +25,12 @@ suite("webview", function () {
         receive({type: "render", requestId: 900003, language: "mermaid",
           source: "flowchart LR\\n E --> F", title: "Latest"});
         receive({type: "annotate", marks: [], dim: false, caption: "Latest annotation"});
-        for (let i = 0; i < 200; i++) {
-          await new Promise(resolve => setTimeout(resolve, 10));
-          if (document.getElementById("annotation-caption").textContent === "Latest annotation") {
-            return {results: window.testRenderResults,
-              title: document.getElementById("title").textContent,
-              errorHidden: document.getElementById("error").hidden};
-          }
-        }
-        throw new Error("The latest diagram did not finish rendering.");
+        ${UNTIL}
+        await until(() => document.getElementById("annotation-caption").textContent === "Latest annotation",
+          "the latest diagram's annotation");
+        return {results: window.testRenderResults,
+          title: document.getElementById("title").textContent,
+          errorHidden: document.getElementById("error").hidden};
       })()`),
       { results: [900003], title: "Latest", errorHidden: true },
     );
@@ -590,9 +587,8 @@ suite("webview", function () {
         const source = "flowchart LR\\n C --> D";
         receive({type: "render", requestId: 900004,
           language: "mermaid", source, title: "Hanging", notDrawn: "It may hang the panel."});
-        for (let i = 0; i < 200 && window.testRenderResults.length === 0; i++) {
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
+        ${UNTIL}
+        await until(() => window.testRenderResults.length > 0, "the outcome of the render");
         document.getElementById("view-source").click();
         const result = {results: window.testRenderResults,
           error: document.getElementById("error").textContent,
