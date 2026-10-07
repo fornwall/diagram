@@ -545,8 +545,36 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
 }
 
 /**
+ * Whether `line` may be above a table rather than in it, as exports from spreadsheets, banks and
+ * Google Analytics have them: a comment ("# exported 2024-01-01"), or a title ("Sales by region")
+ * of words without a delimiter, a leading digit or quote, or the wide gaps of aligned columns.
+ */
+function isPreamble(line: string): boolean {
+  const text = line.trim();
+  return /^#(?: |$)/.test(text) || (/^[^\d"].* /.test(text) && !/[,;\t|]| {2}/.test(text));
+}
+
+/**
+ * The number of lines above a table of delimited values that are not part of it, being blank or
+ * {@link isPreamble}, or 0 if there are none.
+ */
+function preambleLength(lines: string[]): number {
+  let length = 0;
+  let text = false;
+  for (const line of lines) {
+    if (!isBlank(line)) {
+      if (!isPreamble(line)) break;
+      text = true;
+    }
+    length++;
+  }
+  return text && /[,;\t]/.test(lines[length] ?? "") ? length : 0;
+}
+
+/**
  * Splits text into records in the given format, or in auto format as the first that fits of
- * those that parseTable (in data.ts) lists.
+ * those that parseTable (in data.ts) lists. Text above a table of delimited values, such as a
+ * title, is left out.
  */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
   // Excel writes and reads a first line such as "sep=;" that names the delimiter. It is left as an
@@ -572,6 +600,15 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
           : `Only the Markdown table (${lines}) was read, not the text around it.`;
       const inner = splitText(all.slice(table.start, table.end).join("\n"), format);
       // What the table itself left out, as rows of "...", is noted after it.
+      return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
+    }
+  }
+  const preamble = format === "whitespace" ? 0 : preambleLength(all);
+  if (preamble > 0) {
+    // Left as empty lines, which are skipped, as errors count lines.
+    const inner = splitText(all.map((line, i) => (i < preamble ? "" : line)).join("\n"), format);
+    if ((inner.records[0]?.length ?? 0) > 1) {
+      const note = `Only the table from line ${preamble + 1} was read, not the text above it.`;
       return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
     }
   }

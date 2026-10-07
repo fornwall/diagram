@@ -1223,6 +1223,33 @@ suite("data", () => {
     );
   });
 
+  test("leaves out titles and comments above delimited values, and says so", () => {
+    const rows = [
+      ["a", 1.5],
+      ["b", 2],
+    ];
+    for (const [text, format] of [
+      ["Sales by region\nregion,sales\na,1.5\nb,2", "auto"],
+      ["# ------\n# Audience Overview\n#\n\nregion;sales\na;1,5\nb;2", "auto"],
+      ["Sales by region\nregion\tsales\na\t1.5\nb\t2", "tsv"],
+      ["Sales by region\nregion,sales\na,1.5\nb,2", "csv"],
+    ] as const) {
+      const table = parseTable(text, format);
+      assert.deepStrictEqual(table.rows, rows, text);
+      assert.match(
+        table.note ?? "",
+        /^Only the table from line \d was read, not the text above it\.$/,
+      );
+    }
+    assert.throws(() => parseTable('Sales by region\nregion,sales\n"a,1'), /starts on line 3 /);
+    // A single column of decimal commas, and a header aligned with the columns, are no titles.
+    assert.deepStrictEqual(parse("value\n1,5\n2,5").rows, [[1.5], [2.5]]);
+    assert.deepStrictEqual(parse("NAME  PORTS\nweb   80, 443\ndb    5432, 5433").rows, [
+      ["web", "80, 443"],
+      ["db", "5432, 5433"],
+    ]);
+  });
+
   test("parses git diff --stat output as files and their numbers of changed lines", () => {
     const stat = [
       " README.md                    |   3 +-",
