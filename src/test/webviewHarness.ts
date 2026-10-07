@@ -3,6 +3,14 @@ import type * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel, openWebviewPanel } from "./newPanel";
 
+/** How long `evaluate` waits for an expression's answer. */
+const EVALUATE_TIMEOUT = 10_000;
+/**
+ * How long before then the `until` calls of an expression give up, saying what they await: longer
+ * than a step of a throttled page, which runs its timers once a second, so that they fail first.
+ */
+const UNTIL_MARGIN = 2000;
+
 /** Access to the DOM of a panel's webview, for tests that drive the actual page. */
 export interface WebviewHarness {
   webview: vscode.Webview;
@@ -49,7 +57,9 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
           if (data.type !== "testExpression") return;
           const {id} = data;
           try {
-            api.postMessage({type: "testResult", id, value: await new Function("return (" + data.expression + ")")()});
+            api.postMessage({type: "testResult", id, value: await new Function("testDeadline", "return (" + data.expression + ")")(
+              performance.now() + ${EVALUATE_TIMEOUT - UNTIL_MARGIN},
+            )});
           } catch (error) {
             api.postMessage({type: "testResult", id, error: error?.message ?? String(error)});
           }
@@ -70,7 +80,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
       const timer = setTimeout(() => {
         listener.dispose();
         reject(new Error("The webview did not answer the test expression."));
-      }, 5000);
+      }, EVALUATE_TIMEOUT);
       const listener = webview.onDidReceiveMessage((message) => {
         if (message.type === "testResult" && message.id === id) {
           clearTimeout(timer);
@@ -209,13 +219,13 @@ export const DRAG_IMAGE = `
 /**
  * Webview code defining `until(done, awaited, step)`, which waits for `done()` and returns it,
  * checking it every 20 ms, or after each `step()` such as `nextFrame`, for up to four seconds, as
- * a throttled page runs its timers and frames once a second. Told what it awaits, it fails saying
- * so rather than return a false value.
+ * a throttled page runs its timers and frames once a second, and only while the expression it is
+ * in may still answer. Told what it awaits, it fails saying so rather than return a false value.
  */
 export const UNTIL = `
   const nextFrame = () => new Promise(requestAnimationFrame);
   const until = async (done, awaited, step = () => new Promise(resolve => setTimeout(resolve, 20))) => {
-    for (const end = performance.now() + 4000; !done(); await step()) {
+    for (const end = Math.min(performance.now() + 4000, testDeadline); !done(); await step()) {
       if (performance.now() > end) {
         if (awaited) throw new Error("Timed out waiting for " + awaited + ".");
         break;
