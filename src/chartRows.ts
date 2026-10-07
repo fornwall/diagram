@@ -522,7 +522,7 @@ export function readRows(
           : (row: Row) => row.values[0] ?? null;
     rows = sortRows(rows, spec.sort, key, combineOther ? undefined : spec.limit);
     if (columns.timeAxis) {
-      notes.push("sorted the rows by value rather than in time order, which a line runs back over");
+      notes.push('the time axis orders the rows by time, so "sort" only chose the rows to keep');
     }
   }
   if (spec.limit !== undefined && beforeLimit > spec.limit) {

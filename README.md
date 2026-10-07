@@ -109,7 +109,7 @@ It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked ar
 | --- | --- |
 | `labelColumn`, `valueColumns` | Choose columns by name, or omit to infer them. Given a second label column, bar, line and area charts draw a series per label of it from one value column, as for rows such as `month,region,sales`. Several label columns are the levels of a treemap or sunburst, the stages of a sankey or the axes of a heatmap; a single label column of paths, such as `src/webview/main.ts`, gives them levels too. |
 | `aggregate` | Combine rows with the same labels by `sum`, `mean`, `count`, `min`, `max` or `median`. Without it, repeated labels stay separate. |
-| `sort`, `limit` | Sort by the first value column, or by the total of each stack or of each label of a series per label, then keep the first rows. Pie and doughnut charts sum the rest as "Other"; a series per label takes no `limit`. |
+| `sort`, `limit` | Sort by the first value column, or by the total of each stack or of each label of a series per label, then keep the first rows. Pie and doughnut charts sum the rest as "Other"; a series per label takes no `limit`. A time axis draws the rows in time order. |
 | `filters` | Keep rows matching every predicate, before anything else. Example: `[{"column":"latency","op":"gte","value":100}]`. |
 | `facetColumn` | Split a bar, line, area or scatter chart or a histogram into a panel per value, at most 12. Grouping, sorting and limits apply within each panel. |
 | `facetColumns`, `facetScales` | Set 1–4 panels per row, and `"shared"` (default) or `"independent"` axis scales. |

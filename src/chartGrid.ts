@@ -97,10 +97,27 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
+ * The rows in the order of the dates of their first labels. ECharts draws a line through its
+ * points, samples them and stacks them in the order of its data, which would otherwise run back
+ * and forth in time.
+ */
+function inTimeOrder(rows: Row[]): Row[] {
+  const times = rows.map((row) => {
+    const time = timeValue(label(row));
+    // Unzoned times are local to the viewer; the host's time zone orders them alike.
+    return typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-"));
+  });
+  return [...rows.keys()]
+    .sort((a, b) => (times[a] ?? 0) - (times[b] ?? 0))
+    .map((index) => rows[index] as Row);
+}
+
+/**
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
-export function cartesianOption(type: CartesianType, reading: Reading): Record<string, unknown> {
+export function cartesianOption(type: CartesianType, read: Reading): Record<string, unknown> {
+  const reading = read.columns.timeAxis ? { ...read, rows: inTimeOrder(read.rows) } : read;
   const { table, columns, names, rows } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];

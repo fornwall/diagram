@@ -1175,18 +1175,19 @@ suite("charts", () => {
         chart(type, { valueColumns: ["a", "b"], sort: "descending", limit: 2 }),
         data,
       );
+      // The two largest, in time order.
       const times = [
-        Date.parse("2026-01-02T10:00:00.1-03:30"),
         Date.parse("2026-01-01T10:00:00.12+05:30"),
+        Date.parse("2026-01-02T10:00:00.1-03:30"),
       ];
       const expected = [
         [
-          [times[0], 9],
-          [times[1], 3],
+          [times[0], 3],
+          [times[1], 9],
         ],
         [
-          [times[0], null],
-          [times[1], 30],
+          [times[0], 30],
+          [times[1], null],
         ],
       ];
       assert.deepStrictEqual(
@@ -1322,7 +1323,8 @@ suite("charts", () => {
       const points: (string | number)[][] = build(chart(type), data).series[0].data;
       assert.deepStrictEqual(
         points.map((point) => +echartsTime.parse(point[type === "horizontalBar" ? 1 : 0])),
-        expected,
+        // Bars and lines are in time order, which scatter points need not be.
+        type === "scatter" ? expected : expected.toSorted((a, b) => a - b),
         type,
       );
     }
@@ -1333,16 +1335,16 @@ suite("charts", () => {
       "date,n\n2026-01-02 14:30:00.5,3\n2026-01-02T14:30:00.05,5\n2026-01-02T14:30:00.123456789,7";
     const points: (string | number)[][] = build(chart("line"), data).series[0].data;
     assert.deepStrictEqual(points, [
-      ["2026-01-02 14:30:00.500", 3],
       ["2026-01-02T14:30:00.050", 5],
       ["2026-01-02T14:30:00.123", 7],
+      ["2026-01-02 14:30:00.500", 3],
     ]);
     assert.deepStrictEqual(
       points.map((point) => +echartsTime.parse(point[0])),
       [
-        +new Date(2026, 0, 2, 14, 30, 0, 500),
         +new Date(2026, 0, 2, 14, 30, 0, 50),
         +new Date(2026, 0, 2, 14, 30, 0, 123),
+        +new Date(2026, 0, 2, 14, 30, 0, 500),
       ],
     );
   });
@@ -1420,7 +1422,7 @@ suite("charts", () => {
     assert.strictEqual(summary(chart("pie"), daily), 'Charted "ms" by "date".');
   });
 
-  test("a time axis counts, sorts and leaves out rows without a date", () => {
+  test("a time axis counts, orders by time and leaves out rows without a date", () => {
     // Counting the rows per day needs no value column at all.
     const log = "2026-01-02\n2026-01-02\n2026-01-03";
     for (const type of ["bar", "scatter"] as const) {
@@ -1431,10 +1433,34 @@ suite("charts", () => {
         ["2026-01-03", 1],
       ]);
     }
-    const sorted = chart("line", { sort: "descending" });
+    // A line through rows out of order, or sorted by value, would run back and forth in time.
+    const unordered = "date,n\n2026-01-05,5\n2026-01-02,3\n2026-01-03,4";
+    assert.deepStrictEqual(build(chart("line", { sort: "descending" }), unordered).series[0].data, [
+      ["2026-01-02", 3],
+      ["2026-01-03", 4],
+      ["2026-01-05", 5],
+    ]);
     assert.match(
-      summary(sorted, "date,n\n2026-01-02,3\n2026-01-05,5"),
-      /sorted the rows by value rather than in time order, which a line runs back over/,
+      summary(chart("line", { sort: "descending" }), unordered),
+      /the time axis orders the rows by time, so "sort" only chose the rows to keep/,
+    );
+    // A stack adds up the points of each series at the same index.
+    const stacked = build(
+      chart("stackedArea", { labelColumn: ["date", "k"] }),
+      "date,k,n\n2026-01-02,a,1\n2026-01-01,b,3\n2026-01-01,a,5",
+    );
+    assert.deepStrictEqual(
+      stacked.series.map((series: Option) => series.data),
+      [
+        [
+          ["2026-01-01", 3],
+          ["2026-01-02", null],
+        ],
+        [
+          ["2026-01-01", 5],
+          ["2026-01-02", 1],
+        ],
+      ],
     );
     assert.match(
       summary(chart("line"), "date,n\n2026-01-02,3\n,5"),
