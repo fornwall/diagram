@@ -53,6 +53,24 @@ suite("chartFacets", () => {
     );
   });
 
+  test("shares one array of categories, in time order for dates read as categories", () => {
+    const data = "service,date,ms\napi,2026-01-01,1\napi,2026-03-01,3\nworker,2026-02-01,2";
+    const option = build(data, { options: { xAxis: { type: "category" } } });
+    assert.deepStrictEqual(option.xAxis[0].data, ["2026-01-01", "2026-02-01", "2026-03-01"]);
+    assert.deepStrictEqual(
+      option.series.map((series: Option) => series.data),
+      [
+        [1, null, 3],
+        [null, 2, null],
+      ],
+    );
+    const plain = build(data.replaceAll("2026-", "x"));
+    assert.strictEqual(plain.xAxis[0].data, plain.xAxis[1].data);
+    // Sorted rows keep the order of the panels' rows.
+    const sorted = build(data, { options: { xAxis: { type: "category" } }, sort: "descending" });
+    assert.deepStrictEqual(sorted.xAxis[0].data, ["2026-03-01", "2026-01-01", "2026-02-01"]);
+  });
+
   test("preserves repeated category observations without implicit aggregation", () => {
     const option = build("service,operation,ms\napi,read,2\napi,read,5\nworker,read,30");
     assert.deepStrictEqual(option.xAxis[0].data, ["read", "read"]);

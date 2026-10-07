@@ -1,6 +1,7 @@
 // Small multiples: a chart per value of a facet column, as the panels of one ECharts option.
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
+import { dateFormat, timeOrder, timeValue } from "./chartDates";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -76,8 +77,10 @@ export function buildFacetedChart(
     return { key: JSON.stringify(value), name, ...chart };
   });
   if (spec.facetScales !== "independent") {
-    shareAxes(panels, "xAxis", 0);
-    shareAxes(panels, "yAxis", 1);
+    // Dates on a category axis follow time, unless "sort" orders the rows by value.
+    const chronological = spec.sort === undefined;
+    shareAxes(panels, "xAxis", 0, chronological);
+    shareAxes(panels, "yAxis", 1, chronological);
   }
   const columns = Math.min(
     panels.length,
@@ -148,7 +151,12 @@ export function buildFacetedChart(
 }
 
 /** Align category occurrences as well as numeric ranges; equal labels need not be aggregated. */
-function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): void {
+function shareAxes(
+  panels: Panel[],
+  key: "xAxis" | "yAxis",
+  dimension: number,
+  chronological: boolean,
+): void {
   const axes = panels.map((panel) => objects(panel.option[key])[0] ?? {});
   // Negative values in one panel extend every panel's range, so all keep this axis at the edge.
   if (axes.some((axis) => axis.axisLine !== undefined)) {
@@ -162,16 +170,27 @@ function shareAxes(panels: Panel[], key: "xAxis" | "yAxis", dimension: number): 
         const label = JSON.stringify(category);
         const occurrence = seen.get(label) ?? 0;
         seen.set(label, occurrence + 1);
-        const key = JSON.stringify([label, occurrence]);
+        const key = `${occurrence} ${label}`;
         domain.set(key, category);
         return key;
       });
     });
-    const keys = [...domain.keys()];
+    let entries = [...domain];
+    const labels = entries.map(([, category]) => String(category));
+    // Dates read as categories, which panels list in the order of their own rows.
+    if (chronological && !labels.includes("") && dateFormat(labels) !== undefined) {
+      const times = labels.map((label) => timeOrder(timeValue(label)));
+      entries = [...entries.keys()]
+        .sort((a, b) => (times[a] ?? 0) - (times[b] ?? 0))
+        .map((index) => entries[index] as [string, unknown]);
+    }
+    const keys = entries.map(([key]) => key);
+    // ECharts reads the categories without changing them, so the panels share one array.
+    const categories = entries.map(([, category]) => category);
     panels.forEach((panel, i) => {
       const axis = axes[i];
       if (!axis) return;
-      axis.data = [...domain.values()];
+      axis.data = categories;
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
       for (const series of objects(panel.option.series)) {
         const data = Array.isArray(series.data) ? series.data : [];

@@ -1,7 +1,7 @@
 // Charts drawn on a grid of an x and a y axis: bar, line, area, scatter, heatmap and box plot.
 
 import { columnName } from "./chartColumns";
-import { timeValue } from "./chartDates";
+import { timeOrder, timeValue } from "./chartDates";
 import {
   addValues,
   label,
@@ -103,10 +103,7 @@ function noteAdded(notes: string[], added: number, item: string): void {
  */
 function inTimeOrder(rows: Row[]): { rows: Row[]; times: (string | number)[] } {
   const times = rows.map((row) => timeValue(label(row)));
-  // Unzoned times are local to the viewer; the host's time zone orders them alike.
-  const keys = times.map((time) =>
-    typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-")),
-  );
+  const keys = times.map(timeOrder);
   const order = [...rows.keys()].sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0));
   return {
     rows: order.map((index) => rows[index] as Row),

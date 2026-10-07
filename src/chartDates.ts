@@ -70,3 +70,11 @@ export function timeValue(date: string): string | number {
     (_, fraction: string) => `.${fraction.padEnd(3, "0").slice(0, 3)}`,
   );
 }
+
+/**
+ * The milliseconds that order a date as `timeValue` gives it. Unzoned times are local to the
+ * viewer; the host's time zone orders them alike.
+ */
+export function timeOrder(time: string | number): number {
+  return typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-"));
+}
