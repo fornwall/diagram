@@ -611,8 +611,7 @@ function preambleLength(lines: string[]): number {
 
 /**
  * Splits text into records in the given format, or in auto format as the first that fits of
- * those that parseTable (in data.ts) lists. Text above a table of delimited values, such as a
- * title, is left out.
+ * those that parseTable (in data.ts) lists.
  */
 export function splitText(text: string, format: Exclude<DataFormat, "json">): Records {
   // Excel writes and reads a first line such as "sep=;" that names the delimiter. It is left as an
@@ -641,15 +640,6 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
     }
   }
-  const preamble = format === "whitespace" ? 0 : preambleLength(all);
-  if (preamble > 0) {
-    // Left as empty lines, which are skipped, as errors count lines.
-    const inner = splitText(all.map((line, i) => (i < preamble ? "" : line)).join("\n"), format);
-    if ((inner.records[0]?.length ?? 0) > 1) {
-      const note = `Only the table from line ${preamble + 1} was read, not the text above it.`;
-      return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
-    }
-  }
   const elidedRows = all.some(isElision);
   // Left as empty lines, which are skipped, as errors count lines.
   const shown = elidedRows ? all.map((line) => (isElision(line) ? "" : line)) : all;
@@ -663,11 +653,15 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     ...table,
     records: table.records.map((record) => record.filter(kept)),
     ...(table.units === undefined ? {} : { units: table.units.filter(kept) }),
-    note: elisionNote(all, elidedRows, elided.size > 0),
+    note: [table.note, elisionNote(all, elidedRows, elided.size > 0)].filter(Boolean).join(" "),
   };
 }
 
-/** Splits text without the rows that the output left out, given as `all` its lines. */
+/**
+ * Splits text without the rows that the output left out, given as `all` its lines. Text above a
+ * table of delimited values, such as a title, is left out, unless the text is the output of a
+ * command that has its own lines around the table, such as go test -bench.
+ */
 function splitShown(text: string, all: string[], format: Exclude<DataFormat, "json">): Records {
   const { lines, underlined } = withoutRules(
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
@@ -676,6 +670,16 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
     const output = splitLs(lines) ?? splitGoBenchmarks(lines);
     if (output !== undefined) {
       return output;
+    }
+  }
+  const preamble = format === "whitespace" ? 0 : preambleLength(all);
+  if (preamble > 0) {
+    // Left as empty lines, which are skipped, as errors count lines.
+    const kept = all.map((line, i) => (i < preamble ? "" : line));
+    const table = splitShown(kept.join("\n"), kept, format);
+    if ((table.records[0]?.length ?? 0) > 1) {
+      const note = `Only the table from line ${preamble + 1} was read, not the text above it.`;
+      return { ...table, note };
     }
   }
   const tabs = lines.filter((line) => line.includes("\t")).length;

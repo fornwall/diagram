@@ -240,6 +240,8 @@ suite("data", () => {
       ["BenchmarkParse-16", 952141, 1234e-9, 560, 7, null],
       ["BenchmarkRender-16", 41020, 29071e-9, null, null, 12.5],
     ]);
+    // The headings above the results are no title above a table of tab-separated values.
+    assert.strictEqual(table.note, undefined);
     // With -v, and with what the benchmarks logged.
     const logged = parseTable(
       [
@@ -834,6 +836,16 @@ suite("data", () => {
       ["lrwxrwxrwx", 1, "root", "root", 7, "Oct 4 12:36", "bin"],
       ["drwxr-xr-x+", 3, "fred", "staff", 4096, "Mar 3 2024", "src"],
     ]);
+    // Nor is "total" a title above a table of comma-separated values.
+    const comma = parseTable(
+      "total 8\n-rw-r--r-- 1 fred fred 220 Oct  4 14:02 sales, 2025.csv\n" +
+        "-rw-r--r-- 1 fred fred 512 Oct  4 14:03 sales, 2026.csv",
+    );
+    assert.strictEqual(comma.note, undefined);
+    assert.deepStrictEqual(
+      comma.rows.map((row) => row.at(-1)),
+      ["sales, 2025.csv", "sales, 2026.csv"],
+    );
   });
 
   test("parses ls -lh output of BSD, other time styles and several directories", () => {
@@ -1282,6 +1294,11 @@ suite("data", () => {
       );
     }
     assert.throws(() => parseTable('Sales by region\nregion,sales\n"a,1'), /starts on line 3 /);
+    assert.strictEqual(
+      parseTable("Sales by region\nregion,sales\na,1.5\n...\nb,2").note,
+      "Only the table from line 2 was read, not the text above it. Only the rows that the " +
+        "output shows were read, not those it left out.",
+    );
     // A single column of decimal commas, and a header aligned with the columns, are no titles.
     assert.deepStrictEqual(parse("value\n1,5\n2,5").rows, [[1.5], [2.5]]);
     assert.deepStrictEqual(parse("NAME  PORTS\nweb   80, 443\ndb    5432, 5433").rows, [
