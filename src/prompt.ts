@@ -116,6 +116,7 @@ export async function promptMessages(
   token: vscode.CancellationToken,
 ): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice: string | undefined } | string> {
   const { model } = request;
+  const prompt = promptText(request);
   const instructions = explain
     ? EXPLAIN_INSTRUCTIONS
     : [ROLE, callsTools ? TOOL_USE : NO_TOOL_USE, WRITING].join("\n");
@@ -130,7 +131,7 @@ export async function promptMessages(
   const everything = [
     instructions,
     current ?? "",
-    request.prompt,
+    prompt,
     ...attachments.map((attachment) => attachmentText(attachment)),
     ...exchanges.flatMap((exchange) => [
       exchange.prompt,
@@ -145,7 +146,7 @@ export async function promptMessages(
 
   const [instructionTokens, promptTokens, currentTokens] = await Promise.all([
     tokens(instructions),
-    tokens(request.prompt),
+    tokens(prompt),
     current ? tokens(current) : 0,
   ]);
   let left = budget - sum([instructionTokens, promptTokens, currentTokens]);
@@ -221,10 +222,15 @@ export async function promptMessages(
         : User(text);
     }),
     ...(current ? [User(current)] : []),
-    User(request.prompt),
+    User(prompt),
   ];
   exactCounts.set(messages, counts);
   return { messages, notice: leftOutNotice(attachments) };
+}
+
+/** A request's message, or its command if it has none, as some models reject empty messages. */
+function promptText({ prompt, command }: vscode.ChatRequest | vscode.ChatRequestTurn): string {
+  return prompt.trim() || (command ? `/${command}` : "(No message.)");
 }
 
 /** Which attachments were left out, grouped by reason, in Markdown. */
@@ -385,19 +391,25 @@ async function pastExchanges(
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
+  let exchange: Exchange | undefined;
   for (const turn of history) {
     if (turn instanceof vscode.ChatRequestTurn) {
-      const exchange: Exchange = { prompt: turn.prompt, attachments: [], reply: "", diagram: "" };
-      exchanges.push(exchange);
+      exchange = undefined;
+      // A /show request asks nothing of the model, so it is left out with its reply.
+      if (turn.command === "show") {
+        continue;
+      }
+      const added: Exchange = { prompt: promptText(turn), attachments: [], reply: "", diagram: "" };
+      exchanges.push(added);
+      exchange = added;
       // Later requests often refer to the files, selections and text attached to earlier ones.
       reads.push(
         readAttachments(turn, documents, callsTools, undefined, imageKeys).then((attachments) => {
-          exchange.attachments = attachments.map((attachment) => attachmentText(attachment));
+          added.attachments = attachments.map((attachment) => attachmentText(attachment));
         }),
       );
       continue;
     }
-    const exchange = exchanges.at(-1);
     if (!exchange) {
       continue;
     }

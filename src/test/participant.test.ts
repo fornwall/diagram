@@ -1068,6 +1068,27 @@ suite("participant", () => {
     assert.strictEqual(messages[1], "Here it is.\n\n```mermaid\nflowchart TD\n  A --> B\n```");
   });
 
+  test("leaves /show out of the history, and gives a command without a message by its name", async () => {
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
+    const turn = (command: string, reply: string) => [
+      new RequestTurn(" ", command, [], "diagram.participant", []),
+      new ResponseTurn(
+        [new vscode.ChatResponseMarkdownPart(reply)],
+        {},
+        "diagram.participant",
+        command,
+      ),
+    ];
+    const history = [...turn("explain", "It parses."), ...turn("show", "Opened the panel.")];
+    const { sent } = await ask([[text("Hm.")]], { history, command: "explain", prompt: "" });
+    const messages = sent[0]?.messages.map(messageText) ?? [];
+    assert.deepStrictEqual(
+      [...messages.slice(1, 3), messages.at(-1)],
+      ["/explain", "It parses.", "/explain"],
+    );
+    assert.strictEqual(messages.length, 5);
+  });
+
   test("keeps historical chart settings without repeating large inline data", async () => {
     const chart = {
       type: "bar",
