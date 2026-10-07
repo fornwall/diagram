@@ -68,7 +68,7 @@ type AnnotateOutcome =
     }
   | { ok: false; reason: string };
 
-/** A request to the webview awaiting its answer, sent again if the webview reloads. */
+/** A request to the webview awaiting its answer. */
 interface Pending<Type extends ToWebview["type"], Outcome> {
   message: Extract<ToWebview, { type: Type }>;
   resolve: (outcome: Outcome) => void;
