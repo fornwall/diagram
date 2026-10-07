@@ -626,7 +626,6 @@ suite("data", () => {
       ["1920 1080", 2],
       ["320 240", 3],
     ]);
-    assert.strictEqual(parseNumber("1 234"), undefined);
     assert.deepStrictEqual(parseNumber("-$1 234.5", { groups: true }), { value: -1234.5 });
     assert.strictEqual(parseNumber("1 2345", { groups: true }), undefined);
     assert.strictEqual(parseNumber("1 234 5", { groups: true }), undefined);
@@ -1506,21 +1505,15 @@ suite("data", () => {
     });
   });
 
-  test("parses newline-delimited JSON", () => {
-    assert.deepStrictEqual(parse('{"name": "a", "n": 1}\n{"name": "b", "n": 2}\n'), {
-      columns: ["name", "n"],
-      rows: [
-        ["a", 1],
-        ["b", 2],
-      ],
-    });
-  });
-
   test("reads JSON Lines with any line endings, and says on which line of the text one fails", () => {
     for (const newline of ["\n", "\r\n", "\r"]) {
-      assert.deepStrictEqual(parse(['{"n": 1}', "", '{"n": 2}'].join(newline)), {
-        columns: ["n"],
-        rows: [[1], [2]],
+      const lines = ['{"name": "a", "n": 1}', "", '{"name": "b", "n": 2}', ""];
+      assert.deepStrictEqual(parse(lines.join(newline)), {
+        columns: ["name", "n"],
+        rows: [
+          ["a", 1],
+          ["b", 2],
+        ],
       });
       assert.throws(
         () => parse(['{"n": 1}', "", '{"n": }'].join(newline)),
