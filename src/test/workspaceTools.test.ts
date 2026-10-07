@@ -11,7 +11,7 @@ import {
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
 import { afterTest, recordFilePaths, replace } from "./afterTest";
-import { toolText } from "./toolText";
+import { invokeTool as invoke } from "./toolText";
 
 suite("workspaceTools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
@@ -23,12 +23,6 @@ suite("workspaceTools", function () {
   const reader = new ReadWorkspaceFileTool();
   const finder = new FindWorkspaceFilesTool();
   const searcher = new SearchWorkspaceTextTool();
-
-  async function invoke<T>(tool: vscode.LanguageModelTool<T>, input: T, token = source.token) {
-    const result = await tool.invoke({ input, toolInvocationToken: undefined }, token);
-    assert.ok(result);
-    return toolText(result);
-  }
 
   /** Writes a file into the test folder, to be removed once the test ends. */
   async function writeFile(name: string, contents: string | Buffer): Promise<string> {
@@ -513,7 +507,7 @@ suite("workspaceTools", function () {
       { maxResults: 201 },
       { maxResults: 0 },
     ]) {
-      assert.match(await invoke(finder, input as never), /^Error: /);
+      assert.match(await invoke(finder, input), /^Error: /);
     }
     for (const input of [
       { query: "" },
@@ -521,14 +515,14 @@ suite("workspaceTools", function () {
       { query: "x", caseSensitive: "yes" },
       { query: "x", maxResults: 101 },
     ]) {
-      assert.match(await invoke(searcher, input as never), /^Error: /);
+      assert.match(await invoke(searcher, input), /^Error: /);
     }
     assert.match(
-      await invoke(finder, { glob: `${relative}/code.ts`, maxResults: null } as never),
+      await invoke(finder, { glob: `${relative}/code.ts`, maxResults: null }),
       /code\.ts$/,
     );
     assert.strictEqual(
-      await invoke(finder, { pattern: "*.ts" } as never),
+      await invoke(finder, { pattern: "*.ts" }),
       'Error: Unknown property "pattern"; the properties are "glob", "maxResults".',
     );
     assert.strictEqual(

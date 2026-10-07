@@ -5,7 +5,7 @@ import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { AnnotateDiagramTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
 import { afterTest, replace } from "./afterTest";
 import { newPanel } from "./newPanel";
-import { toolText } from "./toolText";
+import { invokeTool } from "./toolText";
 
 const flowchart: DiagramState = {
   language: "mermaid",
@@ -18,7 +18,6 @@ const flowchart: DiagramState = {
 suite("tools", () => {
   let panel: DiagramPanel;
   let values: Map<string, unknown>;
-  const token = new vscode.CancellationTokenSource().token;
   setup(() => {
     values = new Map<string, unknown>([["diagram.state", flowchart]]);
     panel = newPanel(values);
@@ -48,12 +47,11 @@ suite("tools", () => {
     };
     const tool = new RenderDiagramTool(panel);
     for (const source of ["```mermaid\nflowchart TD\n````", "  ~~~echarts\r\n{}\r\n~~~~  "]) {
-      await tool.invoke({ input: { source } } as never, token);
+      await invokeTool(tool, { source });
     }
     assert.deepStrictEqual(rendered, ["mermaid: flowchart TD", "echarts: {}"]);
     for (const source of ["```mermaid\n```", "~~~echarts\n  \n~~~~"]) {
-      const result = await tool.invoke({ input: { source } } as never, token);
-      assert.match(toolText(result), /Nothing was rendered: Give "source"/);
+      assert.match(await invokeTool(tool, { source }), /Nothing was rendered: Give "source"/);
     }
     assert.strictEqual(rendered.length, 2);
   });
@@ -69,18 +67,11 @@ suite("tools", () => {
       linked.push(links);
       return outcomes.shift() ?? assert.fail("Rendered too often");
     };
-    const render = async () =>
-      toolText(
-        await new RenderDiagramTool(panel).invoke(
-          {
-            input: {
-              source: "flowchart LR\n  A --> B",
-              links: { A: "sizes.tsv#L1", B: "b.ts:2", C: "made-up.ts" },
-            },
-          } as never,
-          token,
-        ),
-      );
+    const render = () =>
+      invokeTool(new RenderDiagramTool(panel), {
+        source: "flowchart LR\n  A --> B",
+        links: { A: "sizes.tsv#L1", B: "b.ts:2", C: "made-up.ts" },
+      });
     const leftOut =
       '\n\nThese links were left out:\n- "B": "b.ts:2" gives its line after a colon; write it as "#L42" or "#L42-L80".\n- "C": made-up.ts does not exist.\n';
     const drawn = await render();
@@ -106,27 +97,26 @@ suite("tools", () => {
       rendered.push(diagram.clickPrompt);
       return { ok: true, diagramType: "flowchart" };
     };
-    const result = await new RenderDiagramTool(panel).invoke(
-      {
-        input: { source: "flowchart LR\n  A --> B", clickprompt: "Explain {label}", title: null },
-      } as never,
-      token,
-    );
+    const result = await invokeTool(new RenderDiagramTool(panel), {
+      source: "flowchart LR\n  A --> B",
+      clickprompt: "Explain {label}",
+      title: null,
+    });
     assert.deepStrictEqual(rendered, [undefined]);
     assert.match(
-      toolText(result),
+      result,
       /\n\nUnknown property "clickprompt"; the properties are "source", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.$/,
     );
   });
 
   test("diagram_render draws despite a title or click prompt that is not a string, and says so", async () => {
     panel.render = async () => ({ ok: true, diagramType: "flowchart" });
-    const result = await new RenderDiagramTool(panel).invoke(
-      { input: { source: "flowchart LR\n  A --> B", title: 5, clickPrompt: [] } } as never,
-      token,
-    );
     assert.match(
-      toolText(result),
+      await invokeTool(new RenderDiagramTool(panel), {
+        source: "flowchart LR\n  A --> B",
+        title: 5,
+        clickPrompt: [],
+      }),
       /\n\n"title" must be a string, so it was ignored\. "clickPrompt" must be a string, so it was ignored\.$/,
     );
   });
@@ -141,12 +131,8 @@ suite("tools", () => {
       },
     ] as const;
     panel.pickNodes = async () => ({ picked: true, nodes: [...nodes] });
-    const result = await new PickDiagramNodesTool(panel).invoke(
-      { input: { prompt: "Which?" } } as never,
-      token,
-    );
     assert.strictEqual(
-      toolText(result),
+      await invokeTool(new PickDiagramNodesTool(panel), { prompt: "Which?" }),
       'The user picked: "Parser" (id: A), "Parser → Checker" (id: edge:L_A_B_0; edge; from: A; to: B; direction: forward).',
     );
   });
@@ -154,8 +140,7 @@ suite("tools", () => {
   test("diagram_pickNodes refuses a misnamed or mistyped setting instead of picking one item", async () => {
     let picks = 0;
     panel.pickNodes = async () => ({ picked: false, reason: `Pick ${++picks}` });
-    const pick = async (input: object) =>
-      toolText(await new PickDiagramNodesTool(panel).invoke({ input } as never, token));
+    const pick = (input: object) => invokeTool(new PickDiagramNodesTool(panel), input);
     assert.match(await pick({ prompt: "Which?", multi: true }), /Unknown property "multi"/);
     assert.match(await pick({ prompt: "Which?", multiple: "true" }), /"multiple" must be true/);
     assert.strictEqual(
@@ -172,10 +157,9 @@ suite("tools", () => {
       new AnnotateDiagramTool(panel),
     ]) {
       for (const input of [null, undefined, [], 42]) {
-        const options = { input } as never;
-        tool.prepareInvocation(options);
+        tool.prepareInvocation({ input } as never);
         assert.match(
-          toolText(await tool.invoke(options, token)),
+          await invokeTool(tool, input),
           /^(Nothing was rendered|No chart was rendered|No node was picked|Nothing was marked): /,
         );
       }
@@ -207,7 +191,7 @@ suite("tools", () => {
       [new AnnotateDiagramTool(panel), { marks: ["A"] }],
     ] as const) {
       await assert.rejects(
-        async () => tool.invoke({ input } as never, cancellation.token),
+        () => invokeTool(tool, input, cancellation.token),
         vscode.CancellationError,
       );
     }

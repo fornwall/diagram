@@ -10,7 +10,7 @@ import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { afterTest, replace } from "./afterTest";
 import { newFakePanel } from "./newPanel";
-import { toolText } from "./toolText";
+import { invokeTool, toolText } from "./toolText";
 
 const data = "name,amount\na,1\nb,2\nc,3";
 const token = new vscode.CancellationTokenSource().token;
@@ -124,27 +124,19 @@ suite("chartTools", function () {
     await draw(panel);
     const before = panel.current;
     const tool = new InspectDataTool(panel);
-    const inline = toolText(
-      await tool.invoke({ input: { data, sampleRows: 0 }, toolInvocationToken: undefined }, token),
-    );
+    const inline = await invokeTool(tool, { data, sampleRows: 0 });
     assert.match(inline, /"rowCount":3/);
     assert.match(inline, /"sample":\[\]/);
     // Some models send null for the properties they leave out.
-    const nulls = { data, file: null, sampleRows: null } as never;
     assert.match(
-      toolText(await tool.invoke({ input: nulls, toolInvocationToken: undefined }, token)),
+      await invokeTool(tool, { data, file: null, sampleRows: null }),
       /"sample":\[\["a",1\]/,
     );
-    const cached = toolText(
-      await tool.invoke({ input: {}, toolInvocationToken: undefined }, token),
-    );
+    const cached = await invokeTool(tool, {});
     assert.match(cached, /"rowCount":3/);
     assert.strictEqual(panel.current, before);
     for (const input of [{ sampleRows: 21 }, { data, file: "x" }, { type: "bar", data }]) {
-      assert.match(
-        toolText(await tool.invoke({ input, toolInvocationToken: undefined }, token)),
-        /could not be inspected/,
-      );
+      assert.match(await invokeTool(tool, input), /could not be inspected/);
     }
   });
 
@@ -167,13 +159,10 @@ suite("chartTools", function () {
     assert.ok(!tool.prepareInvocation({ input: { file: "sizes.tsv" } }).confirmationMessages);
     assert.ok(tool.prepareInvocation({ input: { command: "printf data" } }).confirmationMessages);
     assert.ok(!tool.prepareInvocation({ input: { data } }).confirmationMessages);
-    assert.match(
-      toolText(await tool.invoke({ input: { file }, toolInvocationToken: undefined }, token)),
-      /"rowCount":3/,
-    );
+    assert.match(await invokeTool(tool, { file }), /"rowCount":3/);
     assert.strictEqual(panel.current, undefined);
     assert.strictEqual(
-      toolText(await tool.invoke({ input: file as never, toolInvocationToken: undefined }, token)),
+      await invokeTool(tool, file),
       'Data could not be inspected: The input must be an object with the properties "data", "file", "command", "format", "sampleRows".',
     );
   });
@@ -281,10 +270,7 @@ suite("chartTools", function () {
         vscode.CancellationError,
       );
       await assert.rejects(
-        new InspectDataTool(panel).invoke(
-          { input: { data }, toolInvocationToken: undefined },
-          cancellation.token,
-        ),
+        invokeTool(new InspectDataTool(panel), { data }, cancellation.token),
         vscode.CancellationError,
       );
       assert.deepStrictEqual(panel.current, before);
@@ -363,13 +349,8 @@ suite("chartTools", function () {
   test("diagram_chart blames its options for a chart that fails to render", async () => {
     const { panel } = await harness();
     panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
-    const chart = async (input: object) =>
-      toolText(
-        await new ChartTool(panel).invoke(
-          { input: { type: "bar", data: "a,1\nb,2", ...input } } as never,
-          token,
-        ),
-      );
+    const chart = (input: object) =>
+      invokeTool(new ChartTool(panel), { type: "bar", data: "a,1\nb,2", ...input });
     assert.match(
       await chart({ options: { yAxis: { type: "log" } } }),
       /^The chart failed to render with this error:\n\nBad option\n\n"options" is the likely cause: fix or leave it out and call diagram_chart again\.\n\nCharted /,
@@ -394,8 +375,9 @@ suite("chartTools", function () {
         return data.promise;
       },
     });
-    const result = new ChartTool(panel).invoke(
-      { input: { type: "bar", file: "sizes.tsv" } } as never,
+    const result = invokeTool(
+      new ChartTool(panel),
+      { type: "bar", file: "sizes.tsv" },
       cancellable.token,
     );
     await started.promise;
