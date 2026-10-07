@@ -1,14 +1,8 @@
 import * as assert from "node:assert";
 import { evaluateSource } from "../webview/optionSource";
+import { thrown } from "./thrown";
 
-function errorOf(source: string): string {
-  try {
-    evaluateSource(source);
-  } catch (error) {
-    return (error as Error).message;
-  }
-  assert.fail("expected an error");
-}
+const errorOf = (source: string) => thrown(evaluateSource, source);
 
 suite("optionSource", () => {
   /** Runs the action as the panel of an untrusted workspace, whose policy refuses to evaluate code. */

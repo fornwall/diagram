@@ -8,6 +8,7 @@ import {
   SERIES_TYPES,
   seriesTypes,
 } from "../webview/echartsOption";
+import { thrown } from "./thrown";
 
 // ECharts' registry of series and component classes, which its typings leave out.
 const registry = ComponentModel as unknown as {
@@ -16,14 +17,7 @@ const registry = ComponentModel as unknown as {
 
 const BAR = '"xAxis": {"type": "category", "data": ["A"]}, "yAxis": {}';
 
-function errorOf(source: string): string {
-  try {
-    parseOption(source);
-  } catch (error) {
-    return (error as Error).message;
-  }
-  assert.fail("expected an error");
-}
+const errorOf = (source: string) => thrown(parseOption, source);
 
 suite("echartsOption", () => {
   test("parses a valid option", () => {

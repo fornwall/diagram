@@ -1,15 +1,9 @@
 import * as assert from "node:assert";
 import { validateAnnotation } from "../annotations";
+import { thrown } from "./thrown";
 
 /** What validateAnnotation refuses, for an input that can only be corrected by the model. */
-function problems(input: unknown): string {
-  try {
-    validateAnnotation(input);
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  return assert.fail(`${JSON.stringify(input)} was accepted`);
-}
+const problems = (input: unknown) => thrown(validateAnnotation, input);
 
 suite("annotations", () => {
   test("takes the marks, their notes and how they read", () => {
