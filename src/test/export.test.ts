@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
-import type { ExportFormat, ExportResult, FromWebview, ToWebview } from "../protocol";
+import type { ExportFormat, ToWebview } from "../protocol";
 import { recordMessages, replace, tempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, newPanel, showInFake } from "./newPanel";
 
@@ -211,25 +211,24 @@ suite("export", function () {
     );
   });
 
-  test("reports an invalid PNG, or another format than the one chosen", async () => {
+  // The wrong format is reported in "says whether it exports a diagram or a chart".
+  test("reports an invalid PNG", async () => {
     const { panel, webview } = await newFakePanel();
-    let exported: ExportResult | undefined;
     const draw = webview.answer;
     webview.answer = (message) =>
       message.type === "export"
-        ? ({ ...exported, requestId: message.requestId } as FromWebview)
+        ? {
+            type: "exportImage",
+            requestId: message.requestId,
+            format: "png",
+            data: "data:image/jpeg;base64,AAAA",
+          }
         : draw?.(message);
     assert.ok((await panel.render(diagram, "tool")).ok);
     chosen = "png";
-    for (exported of [
-      { type: "exportImage", requestId: 0, format: "png", data: "data:image/jpeg;base64,AAAA" },
-      { type: "exportImage", requestId: 0, format: "svg", data: "<svg/>" },
-    ] as const) {
-      await panel.exportDiagram();
-    }
+    await panel.exportDiagram();
     assert.deepStrictEqual(errors, [
       "Could not export the diagram: The panel returned an invalid PNG image. Try exporting as SVG.",
-      "Could not export the diagram: The panel returned the wrong export format. Try again.",
     ]);
     assert.deepStrictEqual(dialogs, []);
   });
