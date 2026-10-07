@@ -144,11 +144,19 @@ function countToolCalls(
   return calls;
 }
 
-/** The text of a message, including tool results. */
+/** The text of a message, including tool results, with data and prompt-tsx parts in brackets. */
 function messageText(message: vscode.LanguageModelChatMessage | undefined): string {
   return (message?.content ?? [])
     .flatMap((part) => (part instanceof vscode.LanguageModelToolResultPart ? part.content : [part]))
-    .map((part) => (part instanceof vscode.LanguageModelTextPart ? part.value : ""))
+    .map((part) =>
+      part instanceof vscode.LanguageModelTextPart
+        ? part.value
+        : part instanceof vscode.LanguageModelDataPart
+          ? `[${part.mimeType}]`
+          : part instanceof vscode.LanguageModelPromptTsxPart
+            ? "[prompt-tsx]"
+            : "",
+    )
     .join("");
 }
 
@@ -983,8 +991,8 @@ suite("participant", () => {
       const { sent, shown } = await ask([[text("Drawing.")]], { references });
       const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
       assert.deepStrictEqual(messages?.map(messageText), [
-        "Attached by the user: whiteboard.PNG",
-        "Attached by the user: image",
+        "Attached by the user: whiteboard.PNG[image/png]",
+        "Attached by the user: image[image/jpeg]",
         "Attached by the user: image, which could not be read: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image.",
         "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
         "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
@@ -1075,8 +1083,8 @@ suite("participant", () => {
       const attached = attachments(sent[0]?.messages);
       assert.deepStrictEqual(attached, [
         "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
-        "Attached by the user: again.png",
-        "Attached by the user: image",
+        "Attached by the user: again.png[image/png]",
+        "Attached by the user: image[image/png]",
       ]);
     } finally {
       await vscode.workspace.fs.delete(file);
