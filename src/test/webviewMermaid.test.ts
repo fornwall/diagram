@@ -21,13 +21,7 @@ suite("Mermaid in the webview", function () {
     return found;
   };
 
-  test("renders Mermaid diagrams of the common types", async () => {
-    for (const [diagramType, source] of Object.entries(MERMAID)) {
-      assert.deepStrictEqual(await render({ source }), { ok: true, diagramType });
-    }
-  });
-
-  test("lays out Mermaid drawings outside the flow of the panel", async () => {
+  test("renders Mermaid diagrams of the common types, laid out outside the flow of the panel", async () => {
     // Mermaid draws in an element of its own, by default at the end of the body, where it would
     // take room from the panel while rendering. (Text it measures synchronously is not drawn.)
     await evaluate(`(() => {
@@ -41,8 +35,8 @@ suite("Mermaid in the webview", function () {
       });
       window.testBodyObserver.observe(document.body, {childList: true});
     })()`);
-    for (const source of Object.values(MERMAID)) {
-      await draw({ source });
+    for (const [diagramType, source] of Object.entries(MERMAID)) {
+      assert.deepStrictEqual(await render({ source }), { ok: true, diagramType });
     }
     assert.ok(!(await render({ source: "flowchart TD\n  A@{ shape: nosuch }" })).ok);
     assert.deepStrictEqual(
