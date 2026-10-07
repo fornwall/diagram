@@ -1151,7 +1151,8 @@ suite("panel", function () {
     assert.deepStrictEqual(await rendering, {
       ok: false,
       kind: "unavailable",
-      error: "The diagram panel did not respond within 15 seconds.",
+      error:
+        "The diagram panel did not respond within 15 seconds. It may still be drawing a large diagram. If it stays unresponsive, the diagram hangs it, and only restarting VS Code recovers it.",
     });
     webview.answer = draw;
     assert.ok((await panel.render(flowchart, "tool")).ok);
@@ -1187,6 +1188,34 @@ suite("panel", function () {
     await broken;
     await webview.finishRender("Parse error");
     assert.strictEqual(panel.current?.error, "Parse error");
+  });
+
+  test("a new page does not draw a diagram that the page did not finish drawing", async () => {
+    const values = new Map<string, unknown>();
+    const { panel, webview } = await newFakePanel(values);
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    const rendering = panel.render(flowchart, "tool");
+    timers.expire();
+    assert.ok(!(await rendering).ok);
+    const unfinished = /^The panel did not finish drawing it/;
+    assert.match(panel.current?.error ?? "", unfinished);
+    // Revealing the open panel, which may still be drawing, sends the diagram as it is.
+    panel.show();
+    assert.strictEqual(webview.render.notDrawn, undefined);
+
+    // VS Code restarts: the saved diagram shows as failing, until rendered again.
+    const restarted = await newFakePanel(values);
+    assert.match(restarted.webview.render.notDrawn ?? "", unfinished);
+    assert.match(restarted.panel.current?.error ?? "", unfinished);
+    assert.ok((await restarted.panel.render(flowchart, "tool")).ok);
+    assert.strictEqual(restarted.webview.render.notDrawn, undefined);
+
+    // The first page answers at last, which clears the error.
+    await webview.finishRender();
+    assert.strictEqual(panel.current?.error, undefined);
+    await webview.receive({ type: "ready" });
+    assert.strictEqual(webview.render.notDrawn, undefined);
   });
 
   test("a chart update that the page answers after 15 seconds cannot replace the kept chart", async () => {

@@ -105,6 +105,14 @@ export interface DiagramState extends Omit<Diagram, "source"> {
 
 const RENDER_TIMEOUT_MS = 15_000;
 
+/**
+ * The error of a source that the page did not finish drawing, until it does. It may hang the page,
+ * which neither reloading its HTML nor reopening the panel recovers, as the webviews of a window
+ * share a process; so that VS Code does not hang again once restarted, a new page does not draw it.
+ */
+const UNFINISHED =
+  "The panel did not finish drawing it, so it is not drawn again on its own, as it may hang the panel. Edit and apply it, or render it again, to draw it anyway.";
+
 /** The panel shared by the chat participant and language model tools. */
 export class DiagramPanel implements vscode.Disposable {
   private readonly store: StateStore;
@@ -276,8 +284,9 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Shows and focuses the panel unless a background update asks to preserve focus. */
   show(preserveFocus = false): void {
-    if ((this.webview.reveal(preserveFocus) || this.unavailable) && this.state) {
-      void this.renderCurrent({ redraw: true });
+    const opened = this.webview.reveal(preserveFocus);
+    if ((opened || this.unavailable) && this.state) {
+      void this.renderCurrent({ redraw: true, newPage: opened });
     }
   }
 
@@ -287,7 +296,7 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     if (this.state) {
-      void this.renderCurrent({ redraw: true });
+      void this.renderCurrent({ redraw: true, newPage: true });
     } else {
       // The tab keeps the title of the diagram it showed before, which was not saved.
       panel.title = "Diagram";
@@ -348,7 +357,7 @@ export class DiagramPanel implements vscode.Disposable {
           this.post(this.pendingRender.message);
           if (this.annotation) this.post({ type: "annotate", ...this.annotation });
         } else if (this.state) {
-          void this.renderCurrent({ redraw: true });
+          void this.renderCurrent({ redraw: true, newPage: true });
         }
         if (this.pendingPick) {
           this.post(this.pendingPick.message);
@@ -446,9 +455,10 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Shows the current diagram in the webview, and keeps its render error, if any, for later
-   * requests. A redraw shows the diagram shown before, in the same revision.
+   * requests. A redraw shows the diagram shown before, in the same revision; to a new page, it
+   * shows a diagram that the page did not finish drawing as failing instead.
    */
-  private async renderCurrent({ redraw = false } = {}): Promise<RenderOutcome> {
+  private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<RenderOutcome> {
     const state = this.state;
     const tab = this.webview.tab;
     if (!state || !tab) {
@@ -490,21 +500,25 @@ export class DiagramPanel implements vscode.Disposable {
       links: state.links && linkTexts(state.links),
       refreshFrom,
       writeTo: state.document && documentName(state.document),
+      notDrawn: newPage && state.error === UNFINISHED ? UNFINISHED : undefined,
     } as const;
     this.sourceRequestId = message.requestId;
     // Preserve new source even if VS Code reloads before the webview answers.
     let saved = this.store.save(state);
     const result = await new Promise<RenderOutcome>((resolve) => {
-      const timeout = setTimeout(
-        () =>
-          this.finishRender(
-            message.requestId,
-            notShown(
-              `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
-            ),
+      const timeout = setTimeout(() => {
+        // A late answer replaces the error.
+        if (this.state === state && state.error !== UNFINISHED) {
+          this.state = { ...state, error: UNFINISHED };
+          void this.store.save(this.state);
+        }
+        this.finishRender(
+          message.requestId,
+          notShown(
+            `The diagram panel did not respond within ${RENDER_TIMEOUT_MS / 1000} seconds. It may still be drawing a large diagram. If it stays unresponsive, the diagram hangs it, and only restarting VS Code recovers it.`,
           ),
-        RENDER_TIMEOUT_MS,
-      );
+        );
+      }, RENDER_TIMEOUT_MS);
       this.pendingRender = {
         message,
         resolve: (outcome) => {

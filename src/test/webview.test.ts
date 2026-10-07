@@ -590,6 +590,34 @@ suite("webview", function () {
     );
   });
 
+  test("shows a diagram that it is not to draw as failing, with its source to edit", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        window.testRenderResults = [];
+        const source = "flowchart LR\\n C --> D";
+        window.dispatchEvent(new MessageEvent("message", {data: {type: "render", requestId: 900004,
+          language: "mermaid", source, title: "Hanging", notDrawn: "It may hang the panel."}}));
+        for (let i = 0; i < 200 && window.testRenderResults.length === 0; i++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        document.getElementById("view-source").click();
+        const result = {results: window.testRenderResults,
+          error: document.getElementById("error").textContent,
+          drawn: document.querySelector("#canvas svg") !== null,
+          source: document.getElementById("source").value === source};
+        document.getElementById("view-visual").click();
+        return result;
+      })()`),
+      {
+        results: [900004],
+        error: "This diagram failed to render: It may hang the panel.",
+        drawn: false,
+        source: true,
+      },
+    );
+  });
+
   test("disables stale drawing interactions during rendering and restores them after errors", async () => {
     for (const series of ['[{type: "pie", data: [1]}]', "[]"]) {
       const result = await render({

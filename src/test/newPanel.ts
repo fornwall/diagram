@@ -33,11 +33,17 @@ export function newPanel(
  */
 export class FakeWebview {
   readonly sent: ToWebview[] = [];
-  /** Answers each posted message, by default drawing every render; undefined answers nothing. */
-  answer: ((message: ToWebview) => FromWebview | undefined) | undefined = (message) =>
-    message.type === "render"
-      ? { type: "rendered", requestId: message.requestId, diagramType: "test" }
-      : undefined;
+  /**
+   * Answers each posted message, by default drawing every render that the page is to draw;
+   * undefined answers nothing.
+   */
+  answer: ((message: ToWebview) => FromWebview | undefined) | undefined = (message) => {
+    if (message.type !== "render") return undefined;
+    const { requestId, notDrawn } = message;
+    return notDrawn === undefined
+      ? { type: "rendered", requestId, diagramType: "test" }
+      : { type: "renderError", requestId, message: notDrawn };
+  };
   /** Whether a posted message reaches the page, as postMessage resolves. */
   deliver: (message: ToWebview) => boolean | Promise<boolean> = () => true;
   readonly panel: vscode.WebviewPanel;

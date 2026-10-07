@@ -229,6 +229,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     renderStatus.textContent = `Rendering ${renderer.noun}…`;
   }, 300);
   try {
+    if (message.notDrawn !== undefined) throw new Error(message.notDrawn);
     const diagramType = await renderer.render(source, message.title);
     active = renderer;
     renderer.showLinks?.(links);
