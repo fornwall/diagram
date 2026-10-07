@@ -161,6 +161,10 @@ suite("chartSpec", () => {
     assert.throws(() => validateChartSpec({ type: "pie" }), /exactly one of "data"/);
     assert.throws(() => validateChartSpec({ type: "pie", data: " " }), /non-empty string/);
     assert.throws(() => validateChartSpec({ data: "a" }), /"type" is missing/);
+    assert.throws(
+      () => validateChartSpec({ type: "pie", data: "a,1", clickPrompt: 5 }),
+      /"clickPrompt" is 5; it must be a string\./,
+    );
     assert.throws(() => validateChartSpec("[1"), /must be an object/);
     assert.throws(() => validateChartSpec(null), /must be an object/);
   });

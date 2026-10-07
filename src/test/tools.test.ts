@@ -119,6 +119,18 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_render draws despite a title or click prompt that is not a string, and says so", async () => {
+    panel.render = async () => ({ ok: true, diagramType: "flowchart" });
+    const result = await new RenderDiagramTool(panel).invoke(
+      { input: { source: "flowchart LR\n  A --> B", title: 5, clickPrompt: [] } } as never,
+      token,
+    );
+    assert.match(
+      toolText(result),
+      /\n\n"title" must be a string, so it was ignored\. "clickPrompt" must be a string, so it was ignored\.$/,
+    );
+  });
+
   test("diagram_pickNodes reports the nodes the user picked", async () => {
     const nodes = [
       { id: "A", label: "Parser" },

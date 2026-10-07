@@ -61,12 +61,12 @@ const RENDER_KEYS = [
 ] as const satisfies readonly (keyof RenderInput)[];
 
 /**
- * Invalid links and unknown properties are reported and left out; an invalid source prevents
- * rendering.
+ * Invalid links are reported in `problems`, and other invalid or unknown properties in `ignored`;
+ * an invalid source prevents rendering.
  */
 function parseRenderInput(
   value: RenderInput,
-): { diagram: Diagram; problems: string[]; unknown: string | undefined } | string {
+): { diagram: Diagram; problems: string[]; ignored: string[] } | string {
   // Some models send null for the properties they leave out.
   const input = isPlainObject(value) ? givenProperties(value) : {};
   if (typeof input.source !== "string") {
@@ -92,6 +92,14 @@ function parseRenderInput(
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }
   const { links, problems } = validateLinks(input.links, language);
+  // A misnamed or mistyped property, such as "clickprompt", would otherwise be lost without a word.
+  const ignored = (["title", "clickPrompt"] as const)
+    .filter((key) => input[key] !== undefined && typeof input[key] !== "string")
+    .map((key) => `"${key}" must be a string, so it was ignored.`);
+  const unknown = unknownProperties(input, RENDER_KEYS);
+  if (unknown) {
+    ignored.push(`${unknown} Unknown properties are ignored.`);
+  }
   return {
     diagram: {
       language,
@@ -101,7 +109,7 @@ function parseRenderInput(
       links,
     },
     problems,
-    unknown: unknownProperties(input, RENDER_KEYS),
+    ignored,
   };
 }
 
@@ -128,9 +136,8 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
     }
-    const { diagram, problems, unknown } = parsed;
-    // A misnamed property, such as "clickprompt", would otherwise be lost without a word.
-    const ignored = unknown ? `\n\n${unknown} Unknown properties are ignored.` : "";
+    const { diagram, problems } = parsed;
+    const ignored = parsed.ignored.length > 0 ? `\n\n${parsed.ignored.join(" ")}` : "";
     const { links } = diagram;
     if (links) {
       const existing = await unlessCancelled(() => withoutMissingFiles(links), token);

@@ -165,12 +165,15 @@ export function validateChartSpec(value: unknown): ChartSpec {
       'The chart spec must be an object, e.g. {"type": "pie", "data": "name,value\\na,1\\nb,2"}.',
     );
   }
-  const { clickPrompt: _, ...input } = givenProperties(value);
+  const { clickPrompt, ...input } = givenProperties(value);
   // JSON data may be given as JSON rather than as text.
   if (Array.isArray(input.data) || isPlainObject(input.data)) {
     input.data = JSON.stringify(input.data);
   }
   const problems: string[] = [];
+  if (clickPrompt !== undefined && typeof clickPrompt !== "string") {
+    problems.push(`"clickPrompt" is ${brief(clickPrompt)}; it must be a string.`);
+  }
   const expect = (key: keyof ChartSpec, valid: boolean, what: string): void => {
     if (input[key] !== undefined && !valid) {
       problems.push(`"${key}" is ${brief(input[key])}; it must be ${what}.`);
