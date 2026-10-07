@@ -1,6 +1,7 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
 import { addValues, label, noteRepeatedLabels, type Reading } from "./chartRows";
+import { formatCount } from "./text";
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
   const { names, rows } = reading;
@@ -121,7 +122,7 @@ export function gaugeOption({
   }
   if (rows.length > 1) {
     notes.push(
-      `showed the first numeric value of ${rows.length} rows, ${JSON.stringify(label(shown))}`,
+      `showed the first numeric value of ${formatCount(rows.length)} rows, ${JSON.stringify(label(shown))}`,
     );
   }
   const total =

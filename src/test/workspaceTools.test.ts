@@ -245,7 +245,7 @@ suite("workspaceTools", function () {
     assert.match(await invoke(reader, { file: path.join(dir, "binary.bin") }), /^Error: Binary/);
     assert.strictEqual(
       await invoke(reader, { file: path.join(dir, "large.txt"), endLine: 1 }),
-      `${relative}/large.txt, lines 1-1 of 1:\n1: ${"X".repeat(1000)}… (1048577 characters)\nLines longer than 1000 characters are cut.`,
+      `${relative}/large.txt, lines 1-1 of 1:\n1: ${"X".repeat(1000)}… (1,048,577 characters)\nLines longer than 1,000 characters are cut.`,
     );
     const huge = await writeFile("huge.txt", "X".repeat(16 * 1024 * 1024 + 1));
     assert.strictEqual(
@@ -295,8 +295,8 @@ suite("workspaceTools", function () {
 
   test("bounds long line output while keeping search matches visible", async () => {
     const read = (await invoke(reader, { file: path.join(dir, "long.txt") })).split("\n");
-    assert.strictEqual(read[1], `1: ${"a".repeat(1000)}… (2006 characters)`);
-    assert.strictEqual(read.at(-1), "Lines longer than 1000 characters are cut.");
+    assert.strictEqual(read[1], `1: ${"a".repeat(1000)}… (2,006 characters)`);
+    assert.strictEqual(read.at(-1), "Lines longer than 1,000 characters are cut.");
     const search = await invoke(searcher, { query: "Needle", glob: `${relative}/long.txt` });
     assert.strictEqual(search.split("\n")[2], `  1: …${"a".repeat(200)}Needle`);
   });

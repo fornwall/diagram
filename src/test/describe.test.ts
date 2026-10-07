@@ -50,7 +50,9 @@ suite("describe", () => {
     assert.ok(description.length < 1_000);
     assert.doesNotMatch(description, /Private row/);
     assert.match(description, /"aggregate":"sum"/);
-    assert.ok(description.includes(`inline data: ${data.length} characters`));
+    assert.ok(
+      description.includes(`inline data: ${data.length.toLocaleString("en-US")} characters`),
+    );
     assert.match(description, /diagram_inspectData/);
   });
 

@@ -12,9 +12,14 @@ export function quote(text: string, max = 40): string {
   return JSON.stringify(text.length > max ? `${text.slice(0, max)}…` : text);
 }
 
-/** E.g. "1 row" or "3 rows". */
-export function plural(count: number, noun: string, nouns = `${noun}s`): string {
-  return `${count} ${count === 1 ? noun : nouns}`;
+/** A count or limit as messages give it, e.g. "1,000,000". */
+export function formatCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/** E.g. "1 row" or "1,200 rows". */
+export function plural(n: number, noun: string, nouns = `${noun}s`): string {
+  return `${formatCount(n)} ${n === 1 ? noun : nouns}`;
 }
 
 /** A tool input's properties, without the nulls that some models send for those they leave out. */

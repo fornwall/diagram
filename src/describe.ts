@@ -20,7 +20,7 @@ import {
   type RepeatedName,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
@@ -114,7 +114,7 @@ export function describeDiagram(
     );
   } else if (listed && callsTools) {
     lines.push(
-      `It has ${relationships.length} selectable relationships, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
+      `It has ${plural(relationships.length, "selectable relationship")}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
     );
   }
   if (repeatedNames.length > 0 && callsTools) {
@@ -143,9 +143,11 @@ export function describeChartParameters(chart: unknown): string {
   const { data, ...parameters } = chart;
   const json = JSON.stringify(parameters);
   const description =
-    json.length <= MAX_SOURCE_LENGTH ? json : `(parameters omitted: ${json.length} characters)`;
+    json.length <= MAX_SOURCE_LENGTH
+      ? json
+      : `(parameters omitted: ${plural(json.length, "character")})`;
   return typeof data === "string"
-    ? `${description} (inline data: ${data.length} characters)`
+    ? `${description} (inline data: ${plural(data.length, "character")})`
     : description;
 }
 
@@ -196,8 +198,8 @@ function describeSource(
     return codeFence(source, language);
   }
   return chart || !callsTools
-    ? `(The source is ${source.length} characters long, too long to show here.)`
-    : `(The source is ${source.length} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
+    ? `(The source is ${formatCount(source.length)} characters long, too long to show here.)`
+    : `(The source is ${formatCount(source.length)} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
 }
 
 /** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
@@ -217,7 +219,7 @@ export function nodeList(nodes: readonly DiagramNode[]): string {
 export function repeatedList(repeated: readonly RepeatedName[]): string {
   return repeated
     .map(({ name, ids, count }) => {
-      const more = count > ids.length ? ` and ${count - ids.length} more` : "";
+      const more = count > ids.length ? ` and ${formatCount(count - ids.length)} more` : "";
       return `${JSON.stringify(name)} (ids: ${quoteAll(ids)}${more})`;
     })
     .join(", ");

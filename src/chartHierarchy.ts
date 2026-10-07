@@ -2,7 +2,7 @@
 
 import { chained, columnName } from "./chartColumns";
 import { addValues, label, type Reading, type Row } from "./chartRows";
-import { plural, quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 /** A node of a hierarchy, before the values of the rows under it are summed up into it. */
 interface Level {
@@ -291,7 +291,7 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
   if (folded > 0) {
     notes.push(
       `kept the ${MAX_COLUMN_NODES - 1} largest nodes of each column and summed up the other ` +
-        `${folded} as "Other"`,
+        `${formatCount(folded)} as "Other"`,
     );
   }
   const { data, links } = nodesAndLinks(drawn);

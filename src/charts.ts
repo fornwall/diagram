@@ -11,7 +11,7 @@ import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "
 import type { DataTable } from "./data";
 import type { Unit } from "./dataNumber";
 import { isPlainObject } from "./protocol";
-import { plural, quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 export interface Chart {
   /** The ECharts option, as plain JSON that leaves colors, fonts and layout to the webview. */
@@ -49,7 +49,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     summary:
       filtered === table
         ? chart.summary
-        : `The filters kept ${filtered.rows.length} of ${plural(table.rows.length, "row")}. ${chart.summary}`,
+        : `The filters kept ${formatCount(filtered.rows.length)} of ${plural(table.rows.length, "row")}. ${chart.summary}`,
   };
 }
 

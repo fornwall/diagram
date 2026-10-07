@@ -4,7 +4,7 @@ import { type Columns, chained, columnName, isCartesian, readsLevels } from "./c
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import type { Cell, DataTable } from "./data";
 import { STATED_UNIT, scale, type Unit } from "./dataNumber";
-import { plural, quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 /** The most levels of a row, as the hierarchy built from them is walked recursively. */
 const MAX_LEVELS = 100;
@@ -469,7 +469,7 @@ export function readRows(
     rows = groupRows(rows, spec.aggregate);
     const by = columns.labels.length === 0 ? "row number" : quoteAll(columns.labels.map(name));
     notes.push(
-      `grouped ${ungrouped} rows into ${rows.length} by ${by}, ${AGGREGATED[spec.aggregate]}`,
+      `grouped ${plural(ungrouped, "row")} into ${formatCount(rows.length)} by ${by}, ${AGGREGATED[spec.aggregate]}`,
     );
   }
 
@@ -546,9 +546,11 @@ export function readRows(
         }
       }
       rows = [...kept, { labels: ["Other"], values: [other] }];
-      notes.push(`kept the first ${spec.limit} rows and summed up the other ${summed} as "Other"`);
+      notes.push(
+        `kept the first ${plural(spec.limit, "row")} and summed up the other ${formatCount(summed)} as "Other"`,
+      );
     } else {
-      notes.push(`kept the first ${spec.limit} of ${beforeLimit} rows`);
+      notes.push(`kept the first ${formatCount(spec.limit)} of ${plural(beforeLimit, "row")}`);
       rows.length = Math.min(rows.length, spec.limit);
     }
   }

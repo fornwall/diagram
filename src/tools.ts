@@ -22,7 +22,7 @@ import {
   nodeNoun,
   RENDER_TOOL,
 } from "./protocol";
-import { givenProperties, plural, quoteAll, unknownProperties } from "./text";
+import { formatCount, givenProperties, plural, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
@@ -305,7 +305,7 @@ function markingMessage({ marks, caption }: Annotation, language: DiagramLanguag
   const what =
     marks.length <= 3
       ? marks.map(({ id }) => `"${id}"`).join(", ")
-      : `${marks.length} ${nodeNoun(language)}s`;
+      : plural(marks.length, nodeNoun(language));
   const where = `Marking ${what} in the ${noun}`;
   return caption === undefined ? where : `${where}: ${caption}`;
 }
@@ -331,7 +331,7 @@ const MAX_LISTED_IDS = 40;
 function idList(ids: readonly string[]): string {
   const listed = quoteAll(ids.slice(0, MAX_LISTED_IDS));
   const left = ids.length - MAX_LISTED_IDS;
-  return left > 0 ? `${listed} and ${left} more` : listed;
+  return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
 }
 
 function leftOutLinks(problems: readonly string[]): string {

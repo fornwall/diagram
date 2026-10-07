@@ -21,6 +21,7 @@ import {
   RENDER_TOOL,
   SEARCH_TEXT_TOOL,
 } from "./protocol";
+import { formatCount } from "./text";
 import { filesGlob } from "./workspaceTools";
 
 /** Attached files are truncated to this many characters. */
@@ -143,7 +144,7 @@ export async function promptMessages(
   const counts = new Map<string, Promise<number>>();
   const tokens = tokenCounter(model, everything, budget, token, counts);
   const tooLarge = (what: string) =>
-    `This request exceeds ${model.name}'s ${budget}-token input budget: ${what}. Shorten your message${current ? ", use /new to omit the current diagram" : ""} or choose a model with a larger context.`;
+    `This request exceeds ${model.name}'s ${formatCount(budget)}-token input budget: ${what}. Shorten your message${current ? ", use /new to omit the current diagram" : ""} or choose a model with a larger context.`;
 
   const [instructionTokens, promptTokens, currentTokens] = await Promise.all([
     tokens(instructions),
@@ -153,7 +154,7 @@ export async function promptMessages(
   let left = budget - sum([instructionTokens, promptTokens, currentTokens]);
   if (left < 0) {
     return tooLarge(
-      `your message takes ${promptTokens} tokens${current ? ` and the current diagram ${currentTokens}` : ""}`,
+      `your message takes ${formatCount(promptTokens)} tokens${current ? ` and the current diagram ${formatCount(currentTokens)}` : ""}`,
     );
   }
 
@@ -312,7 +313,7 @@ export async function fitToolResults(
             length: text.length,
             shorten: (length: number) =>
               length < text.length
-                ? `${text.slice(0, length)}\n\n[truncated: first ${length} of ${text.length} characters]`
+                ? `${text.slice(0, length)}\n\n[truncated: first ${formatCount(length)} of ${formatCount(text.length)} characters]`
                 : text,
           },
     ),
@@ -544,7 +545,7 @@ function attachmentText(attachment: Attachment, length = MAX_ATTACHMENT_LENGTH):
   const { text } = attachment;
   const truncated =
     text.length > length
-      ? `, truncated to the first ${length} of its ${text.length} characters`
+      ? `, truncated to the first ${formatCount(length)} of its ${formatCount(text.length)} characters`
       : "";
   return `${label}${truncated}\n\n${codeFence(text.slice(0, length))}`;
 }

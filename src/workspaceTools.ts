@@ -17,7 +17,7 @@ import {
   staysInside,
 } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
-import { plural, quote, toolInput } from "./text";
+import { formatCount, plural, quote, toolInput } from "./text";
 import { textResult } from "./tools";
 
 const MIB = 1024 * 1024;
@@ -56,7 +56,7 @@ function globInput(value: unknown): string {
   if (value === undefined) return "**/*";
   if (typeof value !== "string" || !value.trim() || value.length > 1000 || value.includes("\0")) {
     throw new Error(
-      'Give "glob" as a nonempty workspace-relative glob of at most 1000 characters.',
+      'Give "glob" as a nonempty workspace-relative glob of at most 1,000 characters.',
     );
   }
   if (path.isAbsolute(value) || value.split(/[\\/]/).includes("..")) {
@@ -574,7 +574,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       }
     }
     if (!stopped && tooManyFiles) {
-      stopped = `more than ${MAX_SCANNED_FILES} files match the glob`;
+      stopped = `more than ${plural(MAX_SCANNED_FILES, "file")} match the glob`;
     }
     const reasons = Object.entries(skipped).filter(([, count]) => count > 0);
     const skippedFiles = reasons.reduce((sum, [, count]) => sum + count, 0);
@@ -584,7 +584,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
         : "No matches",
       ` (searched ${plural(scanned, "file")}`,
       reasons.length > 0
-        ? `; skipped ${plural(skippedFiles, "file")}: ${reasons.map(([reason, count]) => (reasons.length > 1 ? `${count} ${reason}` : reason)).join(", ")}`
+        ? `; skipped ${plural(skippedFiles, "file")}: ${reasons.map(([reason, count]) => (reasons.length > 1 ? `${formatCount(count)} ${reason}` : reason)).join(", ")}`
         : "",
       ").",
       stopped
@@ -649,7 +649,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
       totalLines++;
       if (totalLines === lastLine + 1 && totalLines <= end) {
         const cut = lineEnd - lineStart > MAX_LINE_CHARS;
-        const entry = `${totalLines}: ${text.slice(lineStart, cut ? lineStart + MAX_LINE_CHARS : lineEnd)}${cut ? `… (${lineEnd - lineStart} characters)` : ""}`;
+        const entry = `${totalLines}: ${text.slice(lineStart, cut ? lineStart + MAX_LINE_CHARS : lineEnd)}${cut ? `… (${plural(lineEnd - lineStart, "character")})` : ""}`;
         outputChars += entry.length + 1;
         if (outputChars <= MAX_OUTPUT_CHARS) {
           cutLines ||= cut;
@@ -669,7 +669,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
       );
     }
     const notes = [
-      cutLines ? `Lines longer than ${MAX_LINE_CHARS} characters are cut.` : "",
+      cutLines ? `Lines longer than ${plural(MAX_LINE_CHARS, "character")} are cut.` : "",
       lastLine < totalLines ? `Continue with startLine ${lastLine + 1}.` : "",
     ].filter(Boolean);
     return [

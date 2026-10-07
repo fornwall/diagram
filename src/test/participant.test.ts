@@ -559,7 +559,7 @@ suite("participant", () => {
     );
     const prompt = sent[0]?.messages.map(messageText).join("\n") ?? "";
     assert.match(prompt, /Reply with one complete diagram in a mermaid or echarts code block/);
-    assert.match(prompt, /The source is \d+ characters long, too long to show here\./);
+    assert.match(prompt, /The source is [\d,]+ characters long, too long to show here\./);
     assert.doesNotMatch(prompt, /diagram_/);
     assert.match(shown, /^Fake cannot call tools, so the attached tools are left out\.\n\n/);
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
@@ -789,7 +789,7 @@ suite("participant", () => {
       { toolReferences: [{ name: "diagram_getState" }], maxInputTokens },
     );
     const messages = sent[1]?.messages.map(messageText) ?? [];
-    assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first \d+ of \d+ characters\]$/);
+    assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first [\d,]+ of [\d,]+ characters\]$/);
     const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
     assert.ok(tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8, `${tokens}`);
   });
@@ -823,7 +823,7 @@ suite("participant", () => {
     assert.ok(shortened instanceof vscode.LanguageModelTextPart);
     assert.match(
       shortened.value,
-      /"rows": ?"z+\n\n\[truncated: first \d+ of 200\d\d characters\]$/,
+      /"rows": ?"z+\n\n\[truncated: first [\d,]+ of 20,0\d\d characters\]$/,
     );
     assert.deepStrictEqual(ok, text("ok"));
     assert.deepStrictEqual(
@@ -1187,7 +1187,9 @@ suite("participant", () => {
     assert.match(reply, /"type":"bar"/);
     assert.match(reply, /"title":"Regional sales"/);
     assert.match(reply, /"labelColumn":"region","valueColumns":\["sales"\]/);
-    assert.ok(reply.includes(`inline data: ${chart.data.length} characters)`));
+    assert.ok(
+      reply.includes(`inline data: ${chart.data.length.toLocaleString("en-US")} characters)`),
+    );
     // The current chart may be another one.
     assert.doesNotMatch(reply, /diagram_inspectData/);
     assert.doesNotMatch(messages.join("\n"), /Private sample row/);
@@ -1294,7 +1296,7 @@ suite("participant", () => {
     const messages = sent[0]?.messages.map(messageText) ?? [];
     assert.ok(messages.includes("Attached by the user: text\n\n```\nshort text\n```"));
     const truncated =
-      /^Attached by the user: text, truncated to the first \d+ of its 20000 characters\n\n```\na+\n```$/;
+      /^Attached by the user: text, truncated to the first [\d,]+ of its 20,000 characters\n\n```\na+\n```$/;
     assert.ok(messages.some((message) => truncated.test(message)));
     const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
     assert.ok(tokens > maxInputTokens / 2 && tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
@@ -1306,7 +1308,7 @@ suite("participant", () => {
     assert.strictEqual(sent.length, 0);
     assert.strictEqual(
       result?.errorDetails?.message,
-      "This request exceeds Fake's 3000-token input budget: your message takes 5004 tokens. Shorten your message or choose a model with a larger context.",
+      "This request exceeds Fake's 3,000-token input budget: your message takes 5,004 tokens. Shorten your message or choose a model with a larger context.",
     );
   });
 });
