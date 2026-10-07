@@ -3,7 +3,7 @@
 
 import type { TextDocument } from "vscode";
 import type { DiagramBlock } from "./blocks";
-import { isDiagramLanguage, isPlainObject } from "./protocol";
+import { DIAGRAM_LANGUAGES, isDiagramLanguage, isPlainObject } from "./protocol";
 
 /** CommonMark measures indentation in columns, with tab stops every 4 columns. */
 const TAB_STOP = 4;
@@ -495,6 +495,10 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
 /** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
   const fences: DiagramFence[] = [];
+  // CodeLens scans every Markdown document on each edit, and most name no diagram language.
+  if (!DIAGRAM_LANGUAGES.some((language) => text.includes(language))) {
+    return fences;
+  }
   for (const { language, lines, ...block } of codeBlocks(text, isDiagramLanguage)) {
     const source = trimBlankLines(lines);
     if (isDiagramLanguage(language) && source) {
