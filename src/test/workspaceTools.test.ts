@@ -361,6 +361,25 @@ suite("workspaceTools", function () {
     );
   });
 
+  test('follows ".." in a link target from where the link before it leads', async function () {
+    if (process.platform === "win32") this.skip();
+    await fs.mkdir(path.join(outside, "inner"), { recursive: true });
+    // A decoy for the target read by its text.
+    await writeFile("secret.txt", "decoy");
+    await make("b", path.join(outside, "inner"));
+    const away = await make("a", "b/../secret.txt");
+    await make("sub");
+    await make("in", "sub");
+    const back = await make("back", "in/../code.ts");
+    const paths = recordFilePaths();
+    assert.match(await invoke(reader, { file: away }), /symbolic link outside/);
+    assert.match(await invoke(reader, { file: back }), /\n1: first\n/);
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(outside)),
+      [],
+    );
+  });
+
   test("resolves no path outside the workspace, which could reach a network share", async function () {
     if (process.platform === "win32") this.skip();
     const roots = vscode.workspace.workspaceFolders ?? [];

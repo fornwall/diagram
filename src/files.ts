@@ -100,6 +100,9 @@ export async function staysInside(file: string, roots: readonly LocalRoot[]): Pr
 /** A workspace folder on this computer, by its path and its real path. */
 export type LocalRoot = readonly [file: string, real: string];
 
+/** What separates names in a path on this system. */
+const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
+
 /**
  * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
  * the folder's real path, and returns whether it stays inside. It yields each path to read as a
@@ -107,13 +110,17 @@ export type LocalRoot = readonly [file: string, real: string];
  * every folder by its path, as {@link nearRoot} tells, is never touched, as it could be on a network
  * share or an unreachable mount.
  *
+ * A target is never resolved by its text, as the system follows "b/../key" to the folder above
+ * where the link b leads. Its names are followed one at a time, as those of `file` are, and ".."
+ * steps up from the real path reached so far, which must stay inside.
+ *
  * @throws Error when a name is missing, or for too many links, as realpath does.
  */
 function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
 ): Generator<string, boolean, string | undefined> {
-  const names = (file: string) => file.split(path.sep).filter(Boolean);
+  const names = (file: string) => file.split(SEPARATORS).filter(Boolean);
   let dir = "";
   let rest: string[] = [];
   const enter = (target: string) => {
@@ -132,11 +139,40 @@ function* linksInside(
   if (!enter(file)) return false;
   // As many as Linux follows.
   for (let links = 0, name = rest.shift(); name !== undefined; name = rest.shift()) {
+    if (name === ".") continue;
+    if (name === "..") {
+      dir = path.dirname(dir);
+      if (!roots.some(([, real]) => nearRoot(vscode.Uri.file(real), vscode.Uri.file(dir)))) {
+        return false;
+      }
+      continue;
+    }
     const next = path.join(dir, name);
     const target = yield next;
-    if (target === undefined) dir = next;
-    else if (++links > 40) throw new Error("The path goes through too many symbolic links.");
-    else if (!enter(path.resolve(dir, target))) return false;
+    if (target === undefined) {
+      dir = next;
+      continue;
+    }
+    if (++links > 40) throw new Error("The path goes through too many symbolic links.");
+    const parts = target.split(SEPARATORS);
+    const up = parts.indexOf("..");
+    // Windows may take ".." after a name in a target by its text, not from where that name leads.
+    if (
+      process.platform === "win32" &&
+      up !== -1 &&
+      parts.slice(0, up).some((part) => part !== "" && part !== ".")
+    ) {
+      return false;
+    }
+    if (path.parse(target).root) {
+      // An absolute target starts in the folder that its names before any "." or ".." are in.
+      const dots = parts.findIndex((part) => part === "." || part === "..");
+      const start = dots === -1 ? parts.length : dots;
+      rest = [...parts.slice(start).filter(Boolean), ...rest];
+      if (!enter(parts.slice(0, start).join(path.sep))) return false;
+    } else {
+      rest = [...parts.filter(Boolean), ...rest];
+    }
   }
   return true;
 }

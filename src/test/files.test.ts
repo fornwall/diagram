@@ -97,6 +97,51 @@ suite("files", () => {
     );
   });
 
+  test('follows ".." in a link target from where the link before it leads', function () {
+    if (process.platform === "win32") this.skip();
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const inner = path.join(dir, "inner");
+    fs.mkdirSync(inner, { recursive: true });
+    fs.writeFileSync(path.join(dir, "diagram-files-key"), "secret");
+    const deep = path.join(root.uri.fsPath, "diagram-files-dir", "deep");
+    fs.mkdirSync(deep, { recursive: true });
+    afterTest(() => fs.rmSync(path.dirname(deep), { recursive: true }));
+    // A decoy for the target read by its text.
+    fs.writeFileSync(path.join(root.uri.fsPath, "diagram-files-key"), "decoy");
+    afterTest(() => fs.rmSync(path.join(root.uri.fsPath, "diagram-files-key")));
+    for (const [name, target] of [
+      ["diagram-files-b", inner],
+      ["diagram-files-a", "diagram-files-b/../diagram-files-key"],
+      ["diagram-files-in", "diagram-files-dir/deep"],
+      ["diagram-files-back", "diagram-files-in/../../sizes.tsv"],
+      [
+        "diagram-files-chain",
+        "diagram-files-dir/./deep/../deep/../../diagram-files-in/../../sizes.tsv",
+      ],
+      ["diagram-files-climb", "diagram-files-dir/deep/../../../diagram-files-x"],
+      ["diagram-files-abs", `${root.uri.fsPath}/diagram-files-b/../diagram-files-key`],
+    ] as const) {
+      const link = path.join(root.uri.fsPath, name);
+      fs.symlinkSync(target, link);
+      afterTest(() => fs.rmSync(link));
+    }
+    const read = (name: string) => fs.readFileSync(path.join(root.uri.fsPath, name), "utf8");
+    assert.strictEqual(read("diagram-files-a"), "secret");
+    assert.strictEqual(read("diagram-files-abs"), "secret");
+    const paths = recordFilePaths();
+    const inside = (file: string) => inWorkspace(vscode.Uri.joinPath(root.uri, file));
+    assert.ok(!inside("diagram-files-a"));
+    assert.ok(inside("diagram-files-back"));
+    assert.ok(inside("diagram-files-chain"));
+    assert.ok(!inside("diagram-files-climb"));
+    assert.ok(!inside("diagram-files-abs"));
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(dir) || file.endsWith("diagram-files-x")),
+      [],
+    );
+  });
+
   test("resolves no path outside the workspace, which could reach a network share", () => {
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);
