@@ -130,7 +130,7 @@ button.link {
   display: flex;
   align-items: center;
   padding: 3px 8px;
-  border: 1px solid var(--vscode-button-border, transparent);
+  border: 1px solid;
   border-radius: 2px;
   cursor: grab;
 }
@@ -357,13 +357,20 @@ button.link:enabled:hover {
 }
 
 textarea,
-input {
+input,
+select {
   box-sizing: border-box;
   padding: 4px 6px;
   border: 1px solid var(--vscode-input-border, transparent);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   font: inherit;
+}
+
+select {
+  border-color: var(--vscode-dropdown-border, transparent);
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
 }
 
 textarea {
@@ -599,20 +606,10 @@ select:focus {
   margin-bottom: 4px;
 }
 
-#chart-options select,
-#chart-options input[type="text"],
-#chart-options input[type="number"] {
+#chart-options :is(select, input[type="text"], input[type="number"]) {
   width: 100%;
   min-width: 0;
-  box-sizing: border-box;
-  font: inherit;
   padding: 3px 5px;
-}
-
-#chart-options select {
-  color: var(--vscode-dropdown-foreground);
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border, transparent);
 }
 
 .chart-column-row {
