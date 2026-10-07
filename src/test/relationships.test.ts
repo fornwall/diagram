@@ -279,6 +279,38 @@ suite("relationships", function () {
     );
   });
 
+  test("highlights paths in swimlane, agent flow and state diagrams, but not in class diagrams", async () => {
+    const path = async (source: string, from: string, to: string) => {
+      assert.ok((await render({ source })).ok);
+      await click(node(from));
+      await click(node(to), true);
+      if (await evaluate('document.querySelector("#highlight-path").hidden')) return undefined;
+      await click("#highlight-path");
+      return selection.map((n) => n.id);
+    };
+    assert.deepStrictEqual(
+      await path(
+        "swimlane-beta LR\n  subgraph A\n    a1[Start]\n  end\n  subgraph B\n    b1[Work] --> b2[End]\n  end\n  a1 --> b1",
+        "a1",
+        "b2",
+      ),
+      ["a1", "edge:L_a1_b1_0", "b1", "edge:L_b1_b2_0", "b2"],
+    );
+    assert.deepStrictEqual(
+      await path("agentflow-beta\n  start --> plan\n  plan --> done", "start", "done"),
+      ["start", "edge:L_start_plan_0", "plan", "edge:L_plan_done_0", "done"],
+    );
+    assert.deepStrictEqual(
+      await path(
+        "stateDiagram-v2\n  [*] --> Still\n  Still --> Moving\n  Moving --> Crash",
+        "Still",
+        "Crash",
+      ),
+      ["Still", "edge:edge1", "Moving", "edge:edge2", "Crash"],
+    );
+    assert.strictEqual(await path("classDiagram\n  Animal <|-- Duck", "Duck", "Animal"), undefined);
+  });
+
   test("respects bidirectional, undirected and invisible flowchart edges", async () => {
     assert.ok(
       (await render({ source: "flowchart LR\n A both@<--> B\n B plain@--- C\n C ~~~ D" })).ok,

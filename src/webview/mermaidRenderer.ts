@@ -33,6 +33,9 @@ const MIN_HEIGHT_FIT = 0.6;
 const RELAYOUT_THRESHOLD = 16;
 const RELAYOUT_DELAY = 200;
 
+/** The diagrams whose edges lead the way they point: those drawn as flowcharts, and state diagrams. */
+const PATH_DIAGRAMS = /^(?:flowchart|swimlane$|agentflow$|stateDiagram$)/;
+
 /** Mermaid's default limit: it draws a longer source as an error message instead. */
 const MAX_TEXT_SIZE = 50_000;
 
@@ -458,7 +461,7 @@ export class MermaidRenderer implements Renderer {
     this.diagram.hidden = false;
     this.displayedSource = source;
     this.diagramType = result.diagramType;
-    this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
+    this.supportsPaths = PATH_DIAGRAMS.test(result.diagramType);
     this.prepareSvg(svg, id, db);
     // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
     this.setZoom(this.zoom);
