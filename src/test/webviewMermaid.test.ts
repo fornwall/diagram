@@ -3,6 +3,12 @@ import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
+/**
+ * How long after the canvas width last changes the webview lays a Gantt chart out again: the
+ * `RELAYOUT_DELAY` of mermaidRenderer.ts.
+ */
+const RELAYOUT_DELAY = 200;
+
 suite("Mermaid in the webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -119,8 +125,8 @@ suite("Mermaid in the webview", function () {
       await evaluate(`(async () => {
         const svg = document.querySelector("#diagram svg");
         ${narrow};
-        // Well past when a Gantt chart would be laid out again.
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Well past when a Gantt chart would be laid out again, rendering included.
+        await new Promise(resolve => setTimeout(resolve, ${RELAYOUT_DELAY + 300}));
         document.getElementById("canvas").style.maxWidth = "";
         return document.querySelector("#diagram svg") === svg;
       })()`),
@@ -135,9 +141,8 @@ suite("Mermaid in the webview", function () {
       const before = document.querySelector("#diagram svg");
       ${narrow};
       task().focus();
-      for (let i = 0; i < 100 && document.querySelector("#diagram svg") === before; i++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
+      ${UNTIL}
+      await until(() => document.querySelector("#diagram svg") !== before);
       const style = getComputedStyle(canvas);
       const result = {
         drawn: Math.round(document.querySelector("#diagram svg").viewBox.baseVal.width),
