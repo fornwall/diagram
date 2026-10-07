@@ -20,6 +20,13 @@ function sources(markdown: string): string[] {
   );
 }
 
+/** Asserts the diagrams found in each document, as {@link sources} gives them. */
+function assertSources(cases: [markdown: string, expected: string[]][]): void {
+  for (const [markdown, expected] of cases) {
+    assert.deepStrictEqual(sources(markdown), expected, JSON.stringify(markdown));
+  }
+}
+
 /** The document after writing `source` into its first diagram, or why it cannot be written. */
 function rewritten(markdown: string, source: string, eol = "\n"): string | number | undefined {
   const [fence] = findDiagramFences(markdown);
@@ -36,6 +43,15 @@ function rewritten(markdown: string, source: string, eol = "\n"): string | numbe
   );
   assert.strictEqual(rewrite.fence.source, source);
   return written;
+}
+
+/** Asserts what {@link rewritten} gives for each document, source and line ending. */
+function assertRewritten(
+  cases: [markdown: string, source: string, expected: string | number, eol?: string][],
+): void {
+  for (const [markdown, source, expected, eol] of cases) {
+    assert.strictEqual(rewritten(markdown, source, eol), expected, JSON.stringify(markdown));
+  }
 }
 
 suite("fences", () => {
@@ -97,27 +113,23 @@ suite("fences", () => {
   });
 
   test("reads an info string with words after the language", () => {
-    assert.deepStrictEqual(sources("```mermaid title=Flow {highlight}\nflowchart TD\n```"), [
-      '0-1 mermaid "": "flowchart TD"',
+    assertSources([
+      ["```mermaid title=Flow {highlight}\nflowchart TD\n```", ['0-1 mermaid "": "flowchart TD"']],
+      // The language must be the whole first word.
+      ["```mermaidx\nflowchart TD\n```", []],
+      // Only spaces and tabs are trimmed from the info string.
+      ["``` \tmermaid\u00a0\nA\n```", ['0-1 mermaid "": "A"']],
+      ["```\u00a0mermaid\nA\n```", []],
     ]);
-    // The language must be the whole first word.
-    assert.deepStrictEqual(sources("```mermaidx\nflowchart TD\n```"), []);
-    // Only spaces and tabs are trimmed from the info string.
-    assert.deepStrictEqual(sources("``` \tmermaid\u00a0\nA\n```"), ['0-1 mermaid "": "A"']);
-    assert.deepStrictEqual(sources("```\u00a0mermaid\nA\n```"), []);
   });
 
   test("finds blocks with longer fences and tilde fences", () => {
-    assert.deepStrictEqual(sources("````mermaid\n```\nflowchart TD\n```\n````"), [
-      '0-3 mermaid "": "```\\nflowchart TD\\n```"',
-    ]);
-    assert.deepStrictEqual(sources("~~~ echarts\n{}\n~~~~~\n"), ['0-1 echarts "": "{}"']);
-    // A shorter closing fence, or one of the other character, does not close the block.
-    assert.deepStrictEqual(sources("````mermaid\nA --> B\n```\n"), [
-      '0-2 mermaid "": "A --> B\\n```"',
-    ]);
-    assert.deepStrictEqual(sources("~~~mermaid\nA --> B\n```\n"), [
-      '0-2 mermaid "": "A --> B\\n```"',
+    assertSources([
+      ["````mermaid\n```\nflowchart TD\n```\n````", ['0-3 mermaid "": "```\\nflowchart TD\\n```"']],
+      ["~~~ echarts\n{}\n~~~~~\n", ['0-1 echarts "": "{}"']],
+      // A shorter closing fence, or one of the other character, does not close the block.
+      ["````mermaid\nA --> B\n```\n", ['0-2 mermaid "": "A --> B\\n```"']],
+      ["~~~mermaid\nA --> B\n```\n", ['0-2 mermaid "": "A --> B\\n```"']],
     ]);
   });
 
@@ -147,40 +159,36 @@ suite("fences", () => {
 
   test("closes a block only at a fence indented by less than 4 columns", () => {
     // As in CommonMark, an indented fence is content, e.g. in a JavaScript template literal.
-    assert.deepStrictEqual(sources("```echarts\n{}\n    ```\n```\n"), [
-      '0-2 echarts "": "{}\\n    ```"',
+    assertSources([
+      ["```echarts\n{}\n    ```\n```\n", ['0-2 echarts "": "{}\\n    ```"']],
+      ["```mermaid\nA\n\t```\n", ['0-2 mermaid "": "A\\n\\t```"']],
+      // The opening fence's indentation is removed from the content, not from the closing fence.
+      ["  ```mermaid\n  A\n   ```\n", ['0-1 mermaid "  ": "A"']],
+      ["  ```mermaid\n  A\n    ```\n", ['0-2 mermaid "  ": "A\\n  ```"']],
+      // Only spaces and tabs indent a fence.
+      ["\u00a0```mermaid\nA\n```\n", []],
     ]);
-    assert.deepStrictEqual(sources("```mermaid\nA\n\t```\n"), ['0-2 mermaid "": "A\\n\\t```"']);
-    // The opening fence's indentation is removed from the content, not from the closing fence.
-    assert.deepStrictEqual(sources("  ```mermaid\n  A\n   ```\n"), ['0-1 mermaid "  ": "A"']);
-    assert.deepStrictEqual(sources("  ```mermaid\n  A\n    ```\n"), [
-      '0-2 mermaid "  ": "A\\n  ```"',
-    ]);
-    // Only spaces and tabs indent a fence.
-    assert.deepStrictEqual(sources("\u00a0```mermaid\nA\n```\n"), []);
   });
 
   test("skips fences in indented code, paragraphs and HTML blocks", () => {
-    // Indented by 4 columns, outside a list item, a fence is indented code.
-    assert.deepStrictEqual(sources("    ```mermaid\n    A\n    ```\n"), []);
-    assert.deepStrictEqual(sources("\t```mermaid\n\tA\n\t```\n"), []);
-    // Indented code cannot interrupt a paragraph, so this continues it.
-    assert.deepStrictEqual(sources("Text\n    ```mermaid\n    A\n    ```\n"), []);
-    // An HTML block runs to a blank line, or a comment to its end, with Markdown inside left alone.
-    assert.deepStrictEqual(sources("<details>\n```mermaid\nA\n```\n</details>\n"), []);
-    assert.deepStrictEqual(sources("<!--\n\n```mermaid\nA\n```\n-->\n"), []);
-    assert.deepStrictEqual(
-      sources("<details>\n<summary>Flow</summary>\n\n```mermaid\nA\n```\n\n</details>\n"),
-      ['3-4 mermaid "": "A"'],
-    );
-    assert.deepStrictEqual(sources("<!-- A comment -->\n```mermaid\nA\n```\n"), [
-      '1-2 mermaid "": "A"',
+    assertSources([
+      // Indented by 4 columns, outside a list item, a fence is indented code.
+      ["    ```mermaid\n    A\n    ```\n", []],
+      ["\t```mermaid\n\tA\n\t```\n", []],
+      // Indented code cannot interrupt a paragraph, so this continues it.
+      ["Text\n    ```mermaid\n    A\n    ```\n", []],
+      // An HTML block runs to a blank line, or a comment to its end, leaving Markdown inside alone.
+      ["<details>\n```mermaid\nA\n```\n</details>\n", []],
+      ["<!--\n\n```mermaid\nA\n```\n-->\n", []],
+      [
+        "<details>\n<summary>Flow</summary>\n\n```mermaid\nA\n```\n\n</details>\n",
+        ['3-4 mermaid "": "A"'],
+      ],
+      ["<!-- A comment -->\n```mermaid\nA\n```\n", ['1-2 mermaid "": "A"']],
+      // Any other tag alone on its line cannot interrupt a paragraph.
+      ['Text\n<img src="flow.png">\n```mermaid\nA\n```\n', ['2-3 mermaid "": "A"']],
+      ['<img src="flow.png">\n```mermaid\nA\n```\n', []],
     ]);
-    // Any other tag alone on its line cannot interrupt a paragraph.
-    assert.deepStrictEqual(sources('Text\n<img src="flow.png">\n```mermaid\nA\n```\n'), [
-      '2-3 mermaid "": "A"',
-    ]);
-    assert.deepStrictEqual(sources('<img src="flow.png">\n```mermaid\nA\n```\n'), []);
   });
 
   test("keeps the indentation of a fence in a list item", () => {
@@ -195,38 +203,28 @@ suite("fences", () => {
       "",
       "2. Done.",
     ].join("\n");
-    // The item's indentation is removed from each line, and deeper indentation is kept.
-    assert.deepStrictEqual(sources(markdown), ['2-5 mermaid "   ": "flowchart TD\\n    A --> B"']);
-    // A fence may start the item, whose content is indented by the marker and the spaces after it.
-    assert.deepStrictEqual(sources("- ```mermaid\n  A\n    B\n  ```\n"), [
-      '0-2 mermaid "  ": "A\\n  B"',
-    ]);
-    assert.deepStrictEqual(sources("10.  ```echarts\n     {}\n     ```\n"), [
-      '0-1 echarts "     ": "{}"',
-    ]);
-    // A line indented less than the item's content ends the item, and the block in it.
-    assert.deepStrictEqual(sources("1. ```mermaid\n   A\nB\n```\n"), ['0-1 mermaid "   ": "A"']);
-    // Blank lines continue the item, and keep the whitespace beyond its indentation.
-    assert.deepStrictEqual(sources("* ```mermaid\n  A\n\n \n     \n  B\n  ```\n"), [
-      '0-5 mermaid "  ": "A\\n\\n\\n   \\nB"',
-    ]);
-    // In a nested item, under a paragraph that continued lazily.
-    assert.deepStrictEqual(sources("- a\n  - b\nc\n\n    ```mermaid\n    A\n    ```\n"), [
-      '4-5 mermaid "    ": "A"',
-    ]);
-    // Indented by 4 columns more than the item's content, a fence is indented code.
-    assert.deepStrictEqual(sources("- a\n\n      ```mermaid\n      A\n      ```\n"), []);
-    // A list marker indented by 4 columns is not one, even below a wider item (examples 312, 313).
-    assert.deepStrictEqual(sources("-    a\n    - ```mermaid\n      A\n      ```\n"), []);
-    assert.deepStrictEqual(sources("-    a\n\n    - ```mermaid\n      A\n      ```\n"), []);
-    // Only an ordered list from 1 interrupts a paragraph, and a list item must not be empty.
-    assert.deepStrictEqual(sources("Text\n2. ```mermaid\nA\n```\n"), []);
-    assert.deepStrictEqual(sources("Text\n1. ```mermaid\n   A\n   ```\n"), [
-      '1-2 mermaid "   ": "A"',
-    ]);
-    // Tabs indent to the next multiple of 4 columns.
-    assert.deepStrictEqual(sources("-\t```mermaid\n\tA\n\t\tB\n\t```"), [
-      '0-2 mermaid " \\t": "A\\n\\tB"',
+    assertSources([
+      // The item's indentation is removed from each line, and deeper indentation is kept.
+      [markdown, ['2-5 mermaid "   ": "flowchart TD\\n    A --> B"']],
+      // A fence may start the item, whose content is indented by the marker and the spaces after.
+      ["- ```mermaid\n  A\n    B\n  ```\n", ['0-2 mermaid "  ": "A\\n  B"']],
+      ["10.  ```echarts\n     {}\n     ```\n", ['0-1 echarts "     ": "{}"']],
+      // A line indented less than the item's content ends the item, and the block in it.
+      ["1. ```mermaid\n   A\nB\n```\n", ['0-1 mermaid "   ": "A"']],
+      // Blank lines continue the item, and keep the whitespace beyond its indentation.
+      ["* ```mermaid\n  A\n\n \n     \n  B\n  ```\n", ['0-5 mermaid "  ": "A\\n\\n\\n   \\nB"']],
+      // In a nested item, under a paragraph that continued lazily.
+      ["- a\n  - b\nc\n\n    ```mermaid\n    A\n    ```\n", ['4-5 mermaid "    ": "A"']],
+      // Indented by 4 columns more than the item's content, a fence is indented code.
+      ["- a\n\n      ```mermaid\n      A\n      ```\n", []],
+      // A list marker indented 4 columns is not one, even below a wider item (examples 312, 313).
+      ["-    a\n    - ```mermaid\n      A\n      ```\n", []],
+      ["-    a\n\n    - ```mermaid\n      A\n      ```\n", []],
+      // Only an ordered list from 1 interrupts a paragraph, and a list item must not be empty.
+      ["Text\n2. ```mermaid\nA\n```\n", []],
+      ["Text\n1. ```mermaid\n   A\n   ```\n", ['1-2 mermaid "   ": "A"']],
+      // Tabs indent to the next multiple of 4 columns.
+      ["-\t```mermaid\n\tA\n\t\tB\n\t```", ['0-2 mermaid " \\t": "A\\n\\tB"']],
     ]);
   });
 
@@ -243,52 +241,44 @@ suite("fences", () => {
       "> ```",
       "",
     ].join("\n");
-    assert.deepStrictEqual(sources(note), [
-      '3-7 mermaid "> ": "flowchart TD\\n  A --> B\\n\\n  B --> C"',
-    ]);
-    // The space after the marker is optional, and written back after it.
-    assert.deepStrictEqual(sources(">```mermaid\n>A\n> B\n>```\n"), ['0-2 mermaid "> ": "A\\nB"']);
-    assert.deepStrictEqual(sources("> > ```mermaid\n> > A\n> > ```\n"), [
-      '0-1 mermaid "> > ": "A"',
-    ]);
-    // A line without the marker ends the block quote, and the block in it: code is never lazy.
-    assert.deepStrictEqual(sources("> ```mermaid\n> A\nB\n> ```\n"), ['0-1 mermaid "> ": "A"']);
-    assert.deepStrictEqual(sources("> > ```mermaid\n> > A\n> B\n"), ['0-1 mermaid "> > ": "A"']);
-    assert.deepStrictEqual(sources("> ```mermaid\n> A\n\n> B\n"), ['0-1 mermaid "> ": "A"']);
-    // A paragraph's lazy continuation line keeps the block quote open.
-    assert.deepStrictEqual(sources("> Text\nlazy\n> ```mermaid\n> A\n> ```\n"), [
-      '2-3 mermaid "> ": "A"',
-    ]);
-    // Block quotes and list items nest.
-    assert.deepStrictEqual(sources("> - ```mermaid\n>   A\n>   ```\n"), [
-      '0-1 mermaid ">   ": "A"',
-    ]);
-    assert.deepStrictEqual(sources("- > ```mermaid\n  > A\n  > ```\n"), [
-      '0-1 mermaid "  > ": "A"',
-    ]);
-    // The optional space may be a column of a tab, whose other columns indent the fence.
-    assert.deepStrictEqual(sources(">\t```mermaid\n>\tA\n>\t\tB\n>\t```\n"), [
-      '0-2 mermaid ">\\t": "A\\n\\tB"',
+    assertSources([
+      [note, ['3-7 mermaid "> ": "flowchart TD\\n  A --> B\\n\\n  B --> C"']],
+      // The space after the marker is optional, and written back after it.
+      [">```mermaid\n>A\n> B\n>```\n", ['0-2 mermaid "> ": "A\\nB"']],
+      ["> > ```mermaid\n> > A\n> > ```\n", ['0-1 mermaid "> > ": "A"']],
+      // A line without the marker ends the block quote, and the block in it: code is never lazy.
+      ["> ```mermaid\n> A\nB\n> ```\n", ['0-1 mermaid "> ": "A"']],
+      ["> > ```mermaid\n> > A\n> B\n", ['0-1 mermaid "> > ": "A"']],
+      ["> ```mermaid\n> A\n\n> B\n", ['0-1 mermaid "> ": "A"']],
+      // A paragraph's lazy continuation line keeps the block quote open.
+      ["> Text\nlazy\n> ```mermaid\n> A\n> ```\n", ['2-3 mermaid "> ": "A"']],
+      // Block quotes and list items nest.
+      ["> - ```mermaid\n>   A\n>   ```\n", ['0-1 mermaid ">   ": "A"']],
+      ["- > ```mermaid\n  > A\n  > ```\n", ['0-1 mermaid "  > ": "A"']],
+      // The optional space may be a column of a tab, whose other columns indent the fence.
+      [">\t```mermaid\n>\tA\n>\t\tB\n>\t```\n", ['0-2 mermaid ">\\t": "A\\n\\tB"']],
     ]);
   });
 
   test("takes a fence that is never closed to the end of the document", () => {
-    assert.deepStrictEqual(sources("```mermaid\nflowchart TD\n  A --> B\n"), [
-      '0-2 mermaid "": "flowchart TD\\n  A --> B"',
+    assertSources([
+      ["```mermaid\nflowchart TD\n  A --> B\n", ['0-2 mermaid "": "flowchart TD\\n  A --> B"']],
+      ["```mermaid\nflowchart TD", ['0-1 mermaid "": "flowchart TD"']],
+      ["```mermaid\n", []],
+      ["```mermaid", []],
     ]);
-    assert.deepStrictEqual(sources("```mermaid\nflowchart TD"), ['0-1 mermaid "": "flowchart TD"']);
-    assert.deepStrictEqual(sources("```mermaid\n"), []);
-    assert.deepStrictEqual(sources("```mermaid"), []);
   });
 
   test("skips other languages, their contents and empty blocks", () => {
-    // A diagram fence inside another code block is code, not a diagram of its own.
-    assert.deepStrictEqual(sources("````md\n```mermaid\nflowchart TD\n```\n````\n"), []);
-    assert.deepStrictEqual(sources("```ts\nconst x = 1;\n```\n"), []);
-    assert.deepStrictEqual(sources("```\nflowchart TD\n```\n"), []);
-    assert.deepStrictEqual(sources("```mermaid\n```\n```mermaid\n\n  \n```\n"), []);
-    // Fences that are not on a line of their own neither open nor close a block.
-    assert.deepStrictEqual(sources("Use a ```mermaid``` block.\n"), []);
+    assertSources([
+      // A diagram fence inside another code block is code, not a diagram of its own.
+      ["````md\n```mermaid\nflowchart TD\n```\n````\n", []],
+      ["```ts\nconst x = 1;\n```\n", []],
+      ["```\nflowchart TD\n```\n", []],
+      ["```mermaid\n```\n```mermaid\n\n  \n```\n", []],
+      // Fences that are not on a line of their own neither open nor close a block.
+      ["Use a ```mermaid``` block.\n", []],
+    ]);
   });
 
   test("skips YAML front matter as VS Code's Markdown preview does", () => {
@@ -333,59 +323,51 @@ suite("fences", () => {
   });
 
   test("writes every line of a diagram behind its block's prefix", () => {
-    assert.strictEqual(
-      rewritten("Before\n```mermaid\nA\n```\nAfter\n", "B\n  C"),
-      "Before\n```mermaid\nB\n  C\n```\nAfter\n",
-    );
-    // Empty lines keep only the block quote markers, which hold the block quote together.
-    // Whitespace-only lines are written like any other line.
-    assert.strictEqual(
-      rewritten("> Note:\n> ```mermaid\n> A\n> ```\n> End.\n", "B\n\n  C\n \t\nD"),
-      "> Note:\n> ```mermaid\n> B\n>\n>   C\n>  \t\n> D\n> ```\n> End.\n",
-    );
-    assert.strictEqual(
-      rewritten("  ```mermaid\n  A\n  ```\n", "B\n\n  \nC"),
-      "  ```mermaid\n  B\n\n    \n  C\n  ```\n",
-    );
-    assert.strictEqual(
-      rewritten("> - ```mermaid\n>   A\n>   ```\n", "B\n\nC"),
-      "> - ```mermaid\n>   B\n>\n>   C\n>   ```\n",
-    );
-    assert.strictEqual(
-      rewritten("1. Flow:\n\n   ```mermaid\n   A\n   ```\n2. Done\n", "B\n\n C\n  \nD"),
-      "1. Flow:\n\n   ```mermaid\n   B\n\n    C\n     \n   D\n   ```\n2. Done\n",
-    );
-    // The marker's optional space is added, so that a line starting with a space keeps it.
-    assert.strictEqual(
-      rewritten(">>```mermaid\n>>A\n>>```\n", " B"),
-      ">>```mermaid\n> >  B\n>>```\n",
-    );
-    // Tabs are kept, unless they follow an added space and would change width.
-    assert.strictEqual(
-      rewritten(">\t```mermaid\n>\tA\n", "B\n\tC"),
-      ">\t```mermaid\n>\tB\n>\t\tC\n",
-    );
-    assert.strictEqual(rewritten(">>\t```mermaid\n>>\tA", " B"), ">>\t```mermaid\n> >   B");
-    assert.strictEqual(
-      rewritten("-\t```mermaid\r\n\tA\r\n\t```\r\n", "B\n C", "\r\n"),
-      "-\t```mermaid\r\n \tB\r\n \t C\r\n\t```\r\n",
-    );
+    assertRewritten([
+      ["Before\n```mermaid\nA\n```\nAfter\n", "B\n  C", "Before\n```mermaid\nB\n  C\n```\nAfter\n"],
+      // Empty lines keep only the block quote markers, which hold the block quote together.
+      // Whitespace-only lines are written like any other line.
+      [
+        "> Note:\n> ```mermaid\n> A\n> ```\n> End.\n",
+        "B\n\n  C\n \t\nD",
+        "> Note:\n> ```mermaid\n> B\n>\n>   C\n>  \t\n> D\n> ```\n> End.\n",
+      ],
+      ["  ```mermaid\n  A\n  ```\n", "B\n\n  \nC", "  ```mermaid\n  B\n\n    \n  C\n  ```\n"],
+      ["> - ```mermaid\n>   A\n>   ```\n", "B\n\nC", "> - ```mermaid\n>   B\n>\n>   C\n>   ```\n"],
+      [
+        "1. Flow:\n\n   ```mermaid\n   A\n   ```\n2. Done\n",
+        "B\n\n C\n  \nD",
+        "1. Flow:\n\n   ```mermaid\n   B\n\n    C\n     \n   D\n   ```\n2. Done\n",
+      ],
+      // The marker's optional space is added, so that a line starting with a space keeps it.
+      [">>```mermaid\n>>A\n>>```\n", " B", ">>```mermaid\n> >  B\n>>```\n"],
+      // Tabs are kept, unless they follow an added space and would change width.
+      [">\t```mermaid\n>\tA\n", "B\n\tC", ">\t```mermaid\n>\tB\n>\t\tC\n"],
+      [">>\t```mermaid\n>>\tA", " B", ">>\t```mermaid\n> >   B"],
+      [
+        "-\t```mermaid\r\n\tA\r\n\t```\r\n",
+        "B\n C",
+        "-\t```mermaid\r\n \tB\r\n \t C\r\n\t```\r\n",
+        "\r\n",
+      ],
+    ]);
   });
 
   test("writes a diagram back keeping the blank lines around it", () => {
-    assert.strictEqual(
-      rewritten("```mermaid\n\nA\n  \n```\nAfter\n", "B\n\nC"),
-      "```mermaid\n\nB\n\nC\n  \n```\nAfter\n",
-    );
-    assert.strictEqual(
-      rewritten("> ```mermaid\r\n>\r\n> A\r\n>\r\n> ```\r\n", "B", "\r\n"),
-      "> ```mermaid\r\n>\r\n> B\r\n>\r\n> ```\r\n",
-    );
-    // Also at the end of a block that is never closed.
-    assert.strictEqual(rewritten("```mermaid\nA\n\t", "B\nC"), "```mermaid\nB\nC\n\t");
-    assert.strictEqual(rewritten("```mermaid\n\nA", "B\nC"), "```mermaid\n\nB\nC");
-    // A closing fence in the source is reported by its line in the source.
-    assert.strictEqual(rewritten("```mermaid\n\n\nA\n```\n", "B\nC\n```\nD"), 2);
+    assertRewritten([
+      ["```mermaid\n\nA\n  \n```\nAfter\n", "B\n\nC", "```mermaid\n\nB\n\nC\n  \n```\nAfter\n"],
+      [
+        "> ```mermaid\r\n>\r\n> A\r\n>\r\n> ```\r\n",
+        "B",
+        "> ```mermaid\r\n>\r\n> B\r\n>\r\n> ```\r\n",
+        "\r\n",
+      ],
+      // Also at the end of a block that is never closed.
+      ["```mermaid\nA\n\t", "B\nC", "```mermaid\nB\nC\n\t"],
+      ["```mermaid\n\nA", "B\nC", "```mermaid\n\nB\nC"],
+      // A closing fence in the source is reported by its line in the source.
+      ["```mermaid\n\n\nA\n```\n", "B\nC\n```\nD", 2],
+    ]);
   });
 
   test("keeps lines of no-break spaces around a diagram", () => {
@@ -400,13 +382,12 @@ suite("fences", () => {
   });
 
   test("names the source line that would end the block", () => {
-    assert.strictEqual(rewritten("```mermaid\nA\n```\n", "B\n```\nC"), 1);
-    assert.strictEqual(rewritten("> ~~~mermaid\n> A\n> ~~~\n", "~~~~"), 0);
-    // A fence indented by 4 columns in the block is content.
-    assert.strictEqual(
-      rewritten("- ```mermaid\n  A\n  ```\n", "    ```"),
-      "- ```mermaid\n      ```\n  ```\n",
-    );
+    assertRewritten([
+      ["```mermaid\nA\n```\n", "B\n```\nC", 1],
+      ["> ~~~mermaid\n> A\n> ~~~\n", "~~~~", 0],
+      // A fence indented by 4 columns in the block is content.
+      ["- ```mermaid\n  A\n  ```\n", "    ```", "- ```mermaid\n      ```\n  ```\n"],
+    ]);
   });
 
   test("does not take in-line separators for new lines of the document", () => {
