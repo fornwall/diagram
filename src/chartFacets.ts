@@ -220,7 +220,7 @@ function shareAxes(
       typeof value === "number"
         ? value
         : type === "time" && typeof value === "string"
-          ? Date.parse(value)
+          ? timeOrder(value)
           : NaN;
     if (Number.isFinite(number)) {
       if (number < minimum) {
