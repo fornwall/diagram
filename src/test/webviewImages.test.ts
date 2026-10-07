@@ -354,7 +354,7 @@ suite("images in the webview", function () {
     assert.notStrictEqual(text, box);
   });
 
-  test("centers exported Mermaid labels that Mermaid leaves to CSS", async () => {
+  test("centers Mermaid labels that Mermaid leaves to CSS, in images and in the panel", async () => {
     // Mermaid starts these labels at the middle of the node, or at the left of a state's least
     // width, for CSS that only flowcharts have.
     for (const source of [
@@ -381,6 +381,17 @@ suite("images in the webview", function () {
       })()`);
       assert.deepStrictEqual(offCenter, [], source);
     }
+    // The panel too, for a diagram that asks for SVG labels.
+    await draw({
+      source:
+        "---\nconfig:\n  htmlLabels: false\n---\nmindmap\n  root((Central idea with long text))",
+    });
+    const offset = await evaluate(`(() => {
+      const node = document.querySelector("#diagram g.node:has(text)");
+      const [text, shape] = [node.querySelector("text"), node.querySelector("circle")].map(e => e.getBoundingClientRect());
+      return Math.round(Math.abs(text.left + text.right - shape.left - shape.right) / 2);
+    })()`);
+    assert.ok((offset as number) <= 8, `${offset}`);
   });
 
   test("exports well-formed XML whatever the labels hold", async () => {

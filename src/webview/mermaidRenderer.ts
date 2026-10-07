@@ -198,6 +198,39 @@ async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undef
 }
 
 /**
+ * Places a drawing that Mermaid made in the layout container, where it can be measured while the
+ * canvas is hidden, and completes it there. The caller takes it out of the container again.
+ */
+async function layOut(
+  markup: string,
+  diagramType: string,
+  text: string,
+  db: () => Promise<DiagramDb | undefined>,
+): Promise<SVGSVGElement> {
+  // Read as HTML: an XML parser rejects the <br> or &nbsp; of an HTML label, or a control
+  // character in any label.
+  const drawing = document.createElement("div");
+  drawing.innerHTML = markup;
+  const svg = drawing.firstElementChild;
+  if (!(svg instanceof SVGSVGElement)) {
+    throw new Error("Mermaid did not produce an SVG.");
+  }
+  layoutContainer().append(svg);
+  try {
+    centerTextLabels(svg);
+    if (diagramType === "sequence" && FORMULA.test(text)) {
+      await drawParticipantFormulas(svg, await db());
+    }
+    if (diagramType === "gantt") thinAxisLabels(svg);
+    showAllText(svg);
+  } catch (error) {
+    svg.remove();
+    throw error;
+  }
+  return svg;
+}
+
+/**
  * The database of a diagram, which mermaid.render keeps to itself: parsed again for it. Should
  * that fail, the parts that only the database tells about are left out.
  */
@@ -381,20 +414,8 @@ export class MermaidRenderer implements Renderer {
       throw describeError(error, source, () => mermaid.detectType(text));
     });
     const db = WITH_DATABASE.has(result.diagramType) ? await databaseOf(mermaid, text) : undefined;
-    // Measured where it is laid out even while the canvas is hidden.
-    const drawing = document.createElement("div");
-    drawing.innerHTML = result.svg;
-    container.append(drawing);
-    const svg = drawing.querySelector("svg");
-    if (svg) {
-      if (result.diagramType === "sequence" && FORMULA.test(text)) {
-        await drawParticipantFormulas(svg, db);
-      }
-      if (result.diagramType === "gantt") thinAxisLabels(svg);
-      showAllText(svg);
-    }
-    this.diagram.replaceChildren(...drawing.childNodes);
-    drawing.remove();
+    const svg = await layOut(result.svg, result.diagramType, text, async () => db);
+    this.diagram.replaceChildren(svg);
     // A click selects, and links open through the extension, which checks their URLs. A link that
     // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
     // that same click, in a trusted workspace without asking. Keep where it leads as data.
@@ -413,7 +434,7 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = source;
     this.diagramType = result.diagramType;
     this.supportsPaths = result.diagramType.startsWith("flowchart") && db?.getData !== undefined;
-    this.prepareSvg(id, db);
+    this.prepareSvg(svg, id, db);
     // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
     this.setZoom(this.zoom);
     if (this.fitting) {
@@ -463,25 +484,13 @@ export class MermaidRenderer implements Renderer {
         text,
         layoutContainer(),
       );
-      // Read as the panel reads it: Mermaid writes HTML, which an XML parser rejects for the <br>
-      // or &nbsp; of an HTML label, or a control character in any label.
-      const drawing = document.createElement("div");
-      drawing.innerHTML = svg;
-      const parsed = drawing.firstElementChild;
-      if (!(parsed instanceof SVGSVGElement)) {
-        throw new Error("Mermaid did not produce an SVG to make an image of.");
+      const drawing = await layOut(svg, diagramType, text, () => databaseOf(mermaid, text));
+      try {
+        inlineStyleSheets(drawing);
+        return standaloneSvg(drawing, background);
+      } finally {
+        drawing.remove();
       }
-      layoutContainer().append(parsed);
-      if (diagramType === "sequence" && FORMULA.test(text)) {
-        await drawParticipantFormulas(parsed, await databaseOf(mermaid, text));
-      }
-      centerTextLabels(parsed);
-      if (diagramType === "gantt") thinAxisLabels(parsed);
-      showAllText(parsed);
-      inlineStyleSheets(parsed);
-      const image = standaloneSvg(parsed, background);
-      parsed.remove();
-      return image;
     } finally {
       // Leave Mermaid configured for the panel: a theme change or a resize may render before the
       // next diagram arrives, and would otherwise draw the labels as plain text.
@@ -696,11 +705,9 @@ export class MermaidRenderer implements Renderer {
   }
 
   /** Finds the nodes of a new drawing, and shows their selection, links and marks on it. */
-  private prepareSvg(svgId: string, db: DiagramDb | undefined): void {
+  private prepareSvg(svg: SVGSVGElement, svgId: string, db: DiagramDb | undefined): void {
     this.shown = nothingShown();
-    const svg = this.diagram.querySelector("svg");
     this.drawn = NOTHING_DRAWN;
-    if (!svg) return;
     try {
       this.drawn = findNodes(svg, `${svgId}-`, db);
     } catch (error) {
