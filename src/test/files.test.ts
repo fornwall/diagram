@@ -69,7 +69,7 @@ suite("files", () => {
   test("follows links one name at a time, touching no target outside the workspace", () => {
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);
-    const far = path.join(dir, "far");
+    const far = path.join(dir, "far-away");
     fs.mkdirSync(far, { recursive: true });
     fs.writeFileSync(path.join(far, "data.csv"), "a\n1\n");
     for (const [name, target] of [
@@ -90,11 +90,10 @@ suite("files", () => {
     assert.ok(!inside("diagram-files-up/data.csv"));
     // As a missing file, as realpath would not resolve it either.
     assert.ok(inside("diagram-files-loop"));
-    // Nor through the links, as realpath would.
-    assert.deepStrictEqual(
-      paths.filter((file) => file.startsWith(dir) || file.endsWith("data.csv")),
-      [],
-    );
+    // Nor through the links, as realpath would. By name, as in the test of outside paths below.
+    const seen = (pattern: RegExp) => paths.filter((file) => pattern.test(file));
+    assert.notDeepStrictEqual(seen(/diagram-files-hop$/), [], "The paths are recorded.");
+    assert.deepStrictEqual(seen(/far-away|data\.csv/), []);
   });
 
   test('follows ".." in a link target from where the link before it leads', function () {
