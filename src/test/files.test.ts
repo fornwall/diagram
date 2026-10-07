@@ -157,10 +157,11 @@ suite("files", () => {
     ]) {
       assert.ok(!inWorkspace(uri), uri.toString());
     }
-    assert.deepStrictEqual(
-      paths.filter((file) => file.startsWith(dir) || file.includes("attacker.example")),
-      [],
-    );
+    assert.ok(inWorkspace(vscode.Uri.joinPath(root.uri, "sizes.tsv")));
+    // By file name, as Uri.file gives Windows drive letters in lower case, unlike os.tmpdir().
+    const seen = (pattern: RegExp) => paths.filter((file) => pattern.test(file));
+    assert.notDeepStrictEqual(seen(/sizes\.tsv$/), [], "The paths are recorded.");
+    assert.deepStrictEqual(seen(/secret\.csv|inward\.tsv|attacker\.example/), []);
   });
 
   test("resolves a path in other case where file systems ignore case", function () {
