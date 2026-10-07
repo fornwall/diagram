@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeFile, fileError, fileName, inWorkspace, resolveFile } from "./files";
+import { decodeFile, decodeText, fileError, fileName, inWorkspace, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -232,7 +232,8 @@ export async function runCommand(
       if (settled) {
         return;
       }
-      const output = Buffer.concat(stdout).toString("utf8");
+      // UTF-16 too, as cat prints Excel's "Unicode Text" files.
+      const output = decodeText(Buffer.concat(stdout), false);
       const errors = tail(Buffer.concat(stderr).toString("utf8"));
       const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;
       const failure =

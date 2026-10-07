@@ -93,6 +93,17 @@ suite("dataSource", () => {
       assert.ok(Date.now() - start < 500);
     });
 
+    test("reads UTF-16 output with a byte order mark, and invalid UTF-8 leniently", async () => {
+      const file = path.join(dir, "unicode.txt");
+      fs.writeFileSync(file, Buffer.from("﻿a\t1\r\nb\t2\r\n", "utf16le"));
+      assert.deepStrictEqual(await runCommand(`cat '${file}'`, token), {
+        output: "a\t1\r\nb\t2\r\n",
+      });
+      assert.deepStrictEqual(await runCommand("printf 'caf\\351 1\\n'", token), {
+        output: "caf� 1\n",
+      });
+    });
+
     test("keeps the output of a failed command, with a warning", async () => {
       const result = await runCommand("echo 'a 1'; echo 'no access' >&2; exit 1", token);
       assert.deepStrictEqual(result, {

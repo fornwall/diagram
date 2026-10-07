@@ -120,16 +120,17 @@ export function resolveFile(file: string): vscode.Uri {
  * Decodes UTF-16 when the bytes start with its byte order mark, as files that PowerShell writes
  * with > do, and UTF-8 otherwise.
  *
- * @throws TypeError when the bytes are not valid in that encoding.
+ * @param fatal Whether invalid bytes throw, rather than becoming "\uFFFD".
+ * @throws TypeError when `fatal` and the bytes are not valid in that encoding.
  */
-export function decodeText(bytes: Uint8Array): string {
+export function decodeText(bytes: Uint8Array, fatal = true): string {
   const encoding =
     bytes[0] === 0xff && bytes[1] === 0xfe
       ? "utf-16le"
       : bytes[0] === 0xfe && bytes[1] === 0xff
         ? "utf-16be"
         : "utf-8";
-  return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  return new TextDecoder(encoding, { fatal }).decode(bytes);
 }
 
 /**
