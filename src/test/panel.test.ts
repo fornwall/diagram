@@ -499,11 +499,7 @@ suite("panel", function () {
   test("a reloaded webview starts without a selection", async () => {
     const { panel, webview } = await newFakePanel();
     assert.ok((await panel.render(flowchart, "tool")).ok);
-    await webview.receive({
-      type: "selectionChanged",
-      requestId: webview.render.requestId,
-      nodes: [{ id: "A", label: "Parser" }],
-    });
+    await webview.select([{ id: "A", label: "Parser" }]);
     assert.match(panel.describeForModel() ?? "", /selected these nodes/);
     await webview.receive({ type: "ready" });
     assert.match(panel.describeForModel() ?? "", /no nodes selected/);
@@ -555,13 +551,7 @@ suite("panel", function () {
     assert.deepStrictEqual(clicks, ['chat: Explain "Parser"']);
     clicks.length = 0;
 
-    webview.nextRender((render) =>
-      webview.receive({
-        type: "renderError",
-        requestId: render.requestId,
-        message: "Parse error",
-      }),
-    );
+    webview.failNextRender("Parse error");
     const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete", links };
     assert.ok(!(await panel.render({ ...flowchart, ...broken }, "tool")).ok);
     // Clicks on the previous diagram, e.g. sent just before it was replaced.
@@ -783,13 +773,7 @@ suite("panel", function () {
     );
     assert.ok(panel.annotate({ marks: [{ id: "A", kind: "good" }], dim: false }).ok);
     const before = panel.current;
-    webview.nextRender((render) =>
-      webview.receive({
-        type: "renderError",
-        requestId: render.requestId,
-        message: "test refresh failure",
-      }),
-    );
+    webview.failNextRender("test refresh failure");
     const errors = recordMessages("showErrorMessage");
     await webview.receive({ type: "refresh" });
     assert.strictEqual(panel.current?.source, before?.source);
@@ -1068,9 +1052,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     const restored = await newFakePanel(new Map([["diagram.state", withoutSource]]));
     await panel.exportDiagram();
-    webview.nextRender((render) =>
-      webview.receive({ type: "renderError", requestId: render.requestId, message: "Oops" }),
-    );
+    webview.failNextRender("Oops");
     assert.ok(!(await panel.render(flowchart, "tool")).ok);
     await panel.exportDiagram();
     await restored.panel.exportDiagram();
@@ -1095,11 +1077,7 @@ suite("panel", function () {
       ["Regarding the diagram: Why?", "@diagram Regarding the diagram: Why?"],
     );
     const nodes = [{ id: "A", label: "Parser" }];
-    await webview.receive({
-      type: "selectionChanged",
-      requestId: webview.render.requestId,
-      nodes,
-    });
+    await webview.select(nodes);
     webview.sent.length = 0;
     chat.fail = true;
     await ask();

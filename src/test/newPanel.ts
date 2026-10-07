@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DiagramPanel } from "../panel";
-import type { FromWebview, ToWebview } from "../protocol";
+import type { DiagramNode, FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
 import { afterTest, replace } from "./afterTest";
 
@@ -116,6 +116,11 @@ export class FakeWebview {
     return render;
   }
 
+  /** Fails the next render with the error, as the page reports a diagram it cannot draw. */
+  failNextRender(message: string): void {
+    this.nextRender(({ requestId }) => this.receive({ type: "renderError", requestId, message }));
+  }
+
   /** Answers the latest render, as drawn or failing with the error. */
   finishRender(error?: string): Promise<void> {
     const { requestId } = this.render;
@@ -124,6 +129,11 @@ export class FakeWebview {
         ? { type: "rendered", requestId, diagramType: "test" }
         : { type: "renderError", requestId, message: error },
     );
+  }
+
+  /** Selects the nodes in the diagram shown, as the user does in the page. */
+  select(nodes: DiagramNode[]): Promise<void> {
+    return this.receive({ type: "selectionChanged", requestId: this.render.requestId, nodes });
   }
 
   /** Applies an edit of the source shown, as the page's Apply does. */

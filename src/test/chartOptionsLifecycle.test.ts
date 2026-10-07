@@ -100,9 +100,7 @@ suite("chart options lifecycle", function () {
     assert.deepStrictEqual(errors(), ["The chart changed. Reopen Chart Options and try again."]);
     assert.strictEqual(panel.current, shown);
 
-    webview.nextRender((render) =>
-      webview.receive({ type: "renderError", requestId: render.requestId, message: "Bad." }),
-    );
+    webview.failNextRender("Bad.");
     await applyOptions(panel, webview, { type: "applyChartOptions", controls: { type: "line" } });
     assert.deepStrictEqual(errors().slice(1), [
       "Could not apply the chart options: Bad. The previous chart is kept.",

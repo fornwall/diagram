@@ -222,13 +222,7 @@ suite("chartTools", function () {
     assert.ok(panel.annotate(annotation).ok);
     sent.length = 0;
     const before = panel.current;
-    webview.nextRender((render) =>
-      webview.receive({
-        type: "renderError",
-        requestId: render.requestId,
-        message: "bad renderer",
-      }),
-    );
+    webview.failNextRender("bad renderer");
     const result = await panel.updateChart({ limit: 2 }, token);
     assert.ok(!result.ok);
     assert.match(result.error, /previous chart is kept/);
