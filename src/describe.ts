@@ -63,9 +63,12 @@ export function describeDiagram(
   ];
   // A model that calls no tools can still change a generated chart's option as a whole.
   if (state.chart && callsTools) {
-    const refresh = state.chart.file !== undefined || state.chart.command !== undefined;
+    const { file, command, data } = state.chart;
+    const refresh = file !== undefined || command !== undefined;
     lines.push(
-      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.${refresh ? " Refresh reloads the data." : ""}`,
+      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.` +
+        (refresh ? " Refresh reloads the data." : "") +
+        (data === undefined ? "" : ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.`),
     );
     const units = chartTable && describeUnits(chartTable);
     if (units) lines.push(units);
@@ -132,7 +135,7 @@ export function describeChartParameters(chart: unknown): string {
   const description =
     json.length <= MAX_SOURCE_LENGTH ? json : `(parameters omitted: ${json.length} characters)`;
   return typeof data === "string"
-    ? `${description} (inline data: ${data.length} characters; ${INSPECT_DATA_TOOL} can inspect the current chart's columns and samples)`
+    ? `${description} (inline data: ${data.length} characters)`
     : description;
 }
 

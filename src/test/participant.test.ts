@@ -1117,7 +1117,9 @@ suite("participant", () => {
     assert.match(reply, /"type":"bar"/);
     assert.match(reply, /"title":"Regional sales"/);
     assert.match(reply, /"labelColumn":"region","valueColumns":\["sales"\]/);
-    assert.ok(reply.includes(`inline data: ${chart.data.length} characters`));
+    assert.ok(reply.includes(`inline data: ${chart.data.length} characters)`));
+    // The current chart may be another one.
+    assert.doesNotMatch(reply, /diagram_inspectData/);
     assert.doesNotMatch(messages.join("\n"), /Private sample row/);
     assert.ok(messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0) <= 3_000);
   });
