@@ -1,33 +1,26 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import type { DiagramNode } from "../protocol";
 import { replace } from "./afterTest";
-import { newPanel } from "./newPanel";
-import { DRAG_IMAGE, instrumentWebview, type WebviewHarness } from "./webviewHarness";
+import { DRAG_IMAGE, suitePage } from "./webviewHarness";
 
 suite("relationships", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
 
-  let panel: DiagramPanel;
-  let evaluate: WebviewHarness["evaluate"];
+  const page = suitePage();
+  const { evaluate, draw } = page;
   /** The selection, and the relationships drawn, that the webview last reported. */
   let selection: DiagramNode[] = [];
   let drawnRelationships: DiagramNode[] = [];
+  let listener: vscode.Disposable | undefined;
   suiteSetup(() => {
-    panel = newPanel();
-    const harness = instrumentWebview(panel);
-    evaluate = harness.evaluate;
-    harness.webview.onDidReceiveMessage((message) => {
+    listener = page.webview.onDidReceiveMessage((message) => {
       if (message.type === "selectionChanged") selection = message.nodes;
       if (message.type === "rendered") drawnRelationships = message.relationships ?? [];
     });
   });
-  suiteTeardown(() => panel.dispose());
-
-  const render = (diagram: Partial<Diagram>): Promise<RenderOutcome> =>
-    panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
+  suiteTeardown(() => listener?.dispose());
 
   const click = (selector: string, modifier = false) =>
     evaluate(`(() => {
@@ -48,7 +41,7 @@ suite("relationships", function () {
   test("selects labeled and parallel flowchart edges by their ids, with endpoints whose ids hold underscores", async () => {
     const source =
       "flowchart LR\n A_B[Origin] first@-->|First| B_C[Target]\n A_B second@--> B_C\n B_C back@--> A_B";
-    assert.ok((await render({ source })).ok);
+    await draw({ source });
     assert.deepStrictEqual(
       await evaluate(
         `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
@@ -68,9 +61,9 @@ suite("relationships", function () {
       selection.map((n) => n.id),
       ["edge:first", "edge:second"],
     );
-    assert.match(panel.describeForModel() ?? "", /edge:first; edge; from: A_B; to: B_C/);
+    assert.match(page.panel.describeForModel() ?? "", /edge:first; edge; from: A_B; to: B_C/);
     assert.ok(
-      panel.annotate({
+      page.panel.annotate({
         marks: [{ id: "edge:second", kind: "problem", note: "Timeout" }],
         dim: true,
       }).ok,
@@ -85,7 +78,7 @@ suite("relationships", function () {
       ),
       "rgba(0, 0, 0, 0)",
     );
-    assert.ok((await render({ source })).ok);
+    await draw({ source });
     assert.deepStrictEqual(
       await evaluate(
         `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
@@ -95,7 +88,7 @@ suite("relationships", function () {
   });
 
   test("selects unlabeled edges by a wide hit target and with the keyboard, together with nodes", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A --> B\n A --> B" })).ok);
+    await draw({ source: "flowchart LR\n A --> B\n A --> B" });
     const ids = (await evaluate(
       `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
     )) as string[];
@@ -123,14 +116,10 @@ suite("relationships", function () {
   });
 
   test("selects, picks and marks each sequence message, also repeated ones, ones to oneself and multiline ones", async () => {
-    assert.ok(
-      (
-        await render({
-          source:
-            "sequenceDiagram\n autonumber 7\n participant A as Client\n A->>A: Repeat\n A->>B: Repeat\n B-->>A: Reply<br/>again\n Note over A: waiting\n A->>B: Repeat",
-        })
-      ).ok,
-    );
+    await draw({
+      source:
+        "sequenceDiagram\n autonumber 7\n participant A as Client\n A->>A: Repeat\n A->>B: Repeat\n B-->>A: Reply<br/>again\n Note over A: waiting\n A->>B: Repeat",
+    });
     const ids = (await evaluate(
       `Array.from(document.querySelectorAll('[data-et="message"]'), e => e.dataset.diagramId)`,
     )) as string[];
@@ -154,10 +143,12 @@ suite("relationships", function () {
     await click(`text.messageText[data-diagram-id="${ids[2]}"]`);
     assert.strictEqual(selection[0]?.id, ids[2]);
     assert.match(selection[0]?.label ?? "", /Reply again/);
-    assert.ok(panel.annotate({ marks: [{ id: ids[2] ?? "", kind: "current" }], dim: false }).ok);
-    assert.match(panel.describeForModel() ?? "", /message; from: B; to: A/);
+    assert.ok(
+      page.panel.annotate({ marks: [{ id: ids[2] ?? "", kind: "current" }], dim: false }).ok,
+    );
+    assert.match(page.panel.describeForModel() ?? "", /message; from: B; to: A/);
     const token = new vscode.CancellationTokenSource();
-    const picking = panel.pickNodes("Which message?", false, token.token);
+    const picking = page.panel.pickNodes("Which message?", false, token.token);
     await until("document.querySelector('.picking')");
     await click(node(ids[3] ?? ""));
     const result = await picking;
@@ -167,14 +158,9 @@ suite("relationships", function () {
   });
 
   test("sends relationship IDs, endpoints and aliases with a chat request", async () => {
-    assert.ok(
-      (
-        await render({
-          source:
-            "sequenceDiagram\n participant A as Client\n participant B as Server\n A->>B: Retry",
-        })
-      ).ok,
-    );
+    await draw({
+      source: "sequenceDiagram\n participant A as Client\n participant B as Server\n A->>B: Retry",
+    });
     await click('[data-et="message"]');
     const asked = Promise.withResolvers<string>();
     replace(vscode.commands, "executeCommand", (async (
@@ -199,7 +185,7 @@ suite("relationships", function () {
 
   test("selects the relationships of class, state, ER and requirement diagrams", async () => {
     const relationships = async (source: string) => {
-      assert.ok((await render({ source })).ok);
+      await draw({ source });
       return drawnRelationships.map(({ label, relationship }) => [
         label,
         relationship?.source,
@@ -239,14 +225,10 @@ suite("relationships", function () {
   });
 
   test("highlights the shortest path from the first selected node to the second, or says there is none", async () => {
-    assert.ok(
-      (
-        await render({
-          source:
-            "flowchart LR\n A first@--> B\n A second@--> C\n B third@--> D\n C fourth@--> D\n B cycle@--> A\n E[Isolated]",
-        })
-      ).ok,
-    );
+    await draw({
+      source:
+        "flowchart LR\n A first@--> B\n A second@--> C\n B third@--> D\n C fourth@--> D\n B cycle@--> A\n E[Isolated]",
+    });
     await click(node("A"));
     await click(node("D"), true);
     assert.strictEqual(await evaluate('document.querySelector("#highlight-path").disabled'), false);
@@ -281,7 +263,7 @@ suite("relationships", function () {
 
   test("highlights paths in swimlane, agent flow and state diagrams, but not in class diagrams", async () => {
     const path = async (source: string, from: string, to: string) => {
-      assert.ok((await render({ source })).ok);
+      await draw({ source });
       await click(node(from));
       await click(node(to), true);
       if (await evaluate('document.querySelector("#highlight-path").hidden')) return undefined;
@@ -312,9 +294,7 @@ suite("relationships", function () {
   });
 
   test("respects bidirectional, undirected and invisible flowchart edges", async () => {
-    assert.ok(
-      (await render({ source: "flowchart LR\n A both@<--> B\n B plain@--- C\n C ~~~ D" })).ok,
-    );
+    await draw({ source: "flowchart LR\n A both@<--> B\n B plain@--- C\n C ~~~ D" });
     await click(node("C"));
     await click(node("A"), true);
     await click("#highlight-path");
@@ -336,7 +316,7 @@ suite("relationships", function () {
   });
 
   test("keeps interaction hit targets and metadata out of SVG exports", async () => {
-    assert.ok((await render({ source: "flowchart LR\n A edge@-->|Exported| B" })).ok);
+    await draw({ source: "flowchart LR\n A edge@-->|Exported| B" });
     const svg = (await evaluate(`(async () => {
       ${DRAG_IMAGE}
       return (await dragImage()).getData("image/svg+xml");
