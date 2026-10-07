@@ -832,6 +832,15 @@ suite("charts", () => {
     );
   });
 
+  test("boxplot infers a label column that groups rows, rather than one naming each", () => {
+    // "host" names each row, so a box per host would hold one value; "region" groups them.
+    const hosts = "host,region,ms\na,eu,1\nb,eu,2\nc,us,3\nd,us,4";
+    assert.deepStrictEqual(build(chart("boxplot"), hosts).xAxis.data, ["eu", "us"]);
+    // Without groups, a box per value column.
+    const named = "host,before,after\na,5,10\nb,3,20\nc,9,30";
+    assert.deepStrictEqual(build(chart("boxplot"), named).xAxis.data, ["before", "after"]);
+  });
+
   test("gauge shows one value and infers the top of its scale", () => {
     const [series] = build(chart("gauge")).series;
     assert.strictEqual(series.type, "gauge");
@@ -1722,7 +1731,8 @@ suite("charts", () => {
       const option = build(spec, table);
       const source = JSON.stringify(option);
       const outcome = await panel.render({ language: "echarts", source, title: spec.type }, "tool");
-      assert.deepStrictEqual(outcome, { ok: true, diagramType: option.series[0].type }, spec.type);
+      const types = new Set(option.series.map((series: Option) => series.type));
+      assert.deepStrictEqual(outcome, { ok: true, diagramType: [...types].join(", ") }, spec.type);
     }
   });
 

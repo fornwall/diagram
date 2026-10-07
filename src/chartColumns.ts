@@ -97,28 +97,41 @@ function textColumns(table: DataTable): number[] {
   );
 }
 
-/** Prefer distinct text labels, then any text, then a leading identifier or year column. */
-function defaultLabelColumn(table: DataTable, scatter: boolean): number | undefined {
+/** Whether a column groups the rows, with on average at least two rows per value. */
+function groupsRows(table: DataTable, column: number): boolean {
+  return new Set(table.rows.map((row) => row[column])).size * 2 <= table.rows.length;
+}
+
+/**
+ * Prefer distinct text labels, then any text, then a leading identifier or year column. A box
+ * plot needs groups of rows instead: a box per row would summarize a single value.
+ */
+function defaultLabelColumn(table: DataTable, type: ChartType): number | undefined {
   const text = textColumns(table);
-  if (text.length > 0) {
-    return text.find((i) => namesRows(table, i)) ?? text[0];
-  }
   const first = columnName(table, 0);
-  const labels =
-    table.columns.length > 1 && (isIdName(first) || table.rows.every((row) => isYear(row[0])));
-  return labels && !scatter ? 0 : undefined;
+  const leading =
+    text.length === 0 &&
+    type !== "scatter" &&
+    table.columns.length > 1 &&
+    (isIdName(first) || table.rows.every((row) => isYear(row[0])))
+      ? [0]
+      : [];
+  if (type === "boxplot") {
+    return [...text, ...leading].find((i) => groupsRows(table, i));
+  }
+  return text.find((i) => namesRows(table, i)) ?? text[0] ?? leading[0];
 }
 
 /** The most text columns read as the levels of a hierarchy, the stages of a flow or a pivot. */
 const MOST_LEVELS = 3;
 
 /** Use a few text columns as levels; many text columns (ls -l, ps aux) suggest flat records. */
-function defaultLabelColumns(table: DataTable, most: number): number[] {
+function defaultLabelColumns(table: DataTable, type: ChartType, most: number): number[] {
   const text = textColumns(table);
   if (text.length >= 2 && text.length <= MOST_LEVELS) {
     return text.slice(0, most);
   }
-  const single = defaultLabelColumn(table, false);
+  const single = defaultLabelColumn(table, type);
   return single === undefined ? [] : [single];
 }
 
@@ -257,9 +270,9 @@ function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): n
     // A Cartesian chart takes a second label column for its series only when given one: two text
     // columns are as often a name and a description.
     if (most > 1 && !isCartesian(spec.type)) {
-      return defaultLabelColumns(table, most);
+      return defaultLabelColumns(table, spec.type, most);
     }
-    const single = defaultLabelColumn(table, spec.type === "scatter");
+    const single = defaultLabelColumn(table, spec.type);
     return single === undefined ? [] : [single];
   }
   const given = findColumns(table, [spec.labelColumn].flat(), "labelColumn");
