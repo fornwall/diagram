@@ -635,24 +635,40 @@ function unplacedError(message: string, normalized: string): Error | undefined {
 }
 
 /**
- * The error for a diagram whose groups contain themselves, such as a composite state that refers to
- * itself inside, which Mermaid's ELK layout would loop over forever, freezing the panel.
+ * The error for an edge that Mermaid's ELK layout would loop over forever, freezing the panel: one
+ * at a node in a group inside itself, such as a composite state that refers to itself inside.
+ * ELK's findCommonAncestor follows the parents of the edge's start until it meets its end, and
+ * then those of its end until it meets one of the start's, which a group inside itself never does.
+ * A group inside itself without such edges draws, as does one in a kanban, which has no edges.
  */
 export function nestingError(db: DiagramDb | undefined, source: string): Error | undefined {
-  const nodes = db?.getData?.().nodes ?? [];
-  const parents = new Map(nodes.map(({ id, parentId }) => [id, parentId]));
-  for (const id of parents.keys()) {
+  const { nodes = [], edges = [] } = db?.getData?.() ?? {};
+  const groups = new Set(nodes.filter((node) => node.isGroup).map(({ id }) => id));
+  // As the layout finds them: a node with the id of a group holds what the group holds.
+  const parents = new Map<string, string>();
+  for (const { id, parentId } of nodes) {
+    if (parentId !== undefined && groups.has(parentId)) parents.set(id, parentId);
+  }
+  /** The node and its ancestors, up to the first that is its own ancestor, if one is. */
+  const ancestry = (id: string) => {
     const seen = new Set<string>();
     for (let at: string | undefined = id; at !== undefined; at = parents.get(at)) {
-      if (seen.has(at)) {
-        const normalized = source.replace(/\r\n?/g, "\n");
-        return errorAt(
-          normalized,
-          find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(at)}`),
-          `"${at}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
-        );
-      }
+      if (seen.has(at)) return { seen, loop: at };
       seen.add(at);
+    }
+    return { seen, loop: undefined };
+  };
+  for (const { start, end } of edges) {
+    if (start === end) continue;
+    const from = ancestry(start);
+    const loop = from.loop === undefined ? ancestry(end).loop : !from.seen.has(end) && from.loop;
+    if (loop) {
+      const normalized = source.replace(/\r\n?/g, "\n");
+      return errorAt(
+        normalized,
+        find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(loop)}`),
+        `"${loop}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
+      );
     }
   }
   return undefined;

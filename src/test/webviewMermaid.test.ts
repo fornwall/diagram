@@ -732,19 +732,38 @@ suite("Mermaid in the webview", function () {
     );
   });
 
-  test("refuses groups inside themselves, which Mermaid would lay out forever", async () => {
+  test("refuses edges in groups inside themselves, which Mermaid would lay out forever", async () => {
     assert.deepStrictEqual(
       await errors(
         "stateDiagram-v2\n  [*] --> A\n  state A {\n    [*] --> A\n  }",
+        "stateDiagram-v2\n  state A {\n    A --> B\n  }",
         "flowchart TD\n  X --> A\n  subgraph A\n    subgraph B\n      A\n    end\n  end",
+        "flowchart TD\n  subgraph A\n    subgraph B\n      A\n      C --> D\n    end\n  end",
         "classDiagram\n  namespace A {\n    class A\n  }\n  X --> A",
+        "classDiagram\n  namespace A {\n    class A\n    class B\n  }\n  A --> B",
       ),
-      [3, 3, 2].map(
-        (line) =>
-          `Error on line ${line}: "A" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
+      [
+        [3, "A"],
+        [2, "A"],
+        [3, "A"],
+        [3, "B"],
+        [2, "A"],
+        [2, "A"],
+      ].map(
+        ([line, group]) =>
+          `Error on line ${line}: "${group}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
       ),
     );
-    await draw({ source: MERMAID["flowchart-v2"] });
+    // Groups inside themselves without such edges draw.
+    for (const source of [
+      "kanban\n  Review\n    Review\n  Done\n    Ship",
+      "kanban\n  todo[Todo]\n    todo[Write docs]",
+      "classDiagram\n  namespace A {\n    class A\n  }",
+      "classDiagram\n  namespace A {\n    class A\n  }\n  X --> Y",
+      "classDiagram\n  namespace A {\n    class A\n    class B\n  }\n  B --> A",
+    ]) {
+      await draw({ source });
+    }
   });
 
   test("explains Mermaid's limits", async () => {
