@@ -3,7 +3,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveFile } from "../files";
-import { linkSelection, linkText, linkTexts, validateLinks, withoutMissingFiles } from "../links";
+import {
+  linkSelection,
+  linkText,
+  linkTexts,
+  openUrl,
+  validateLinks,
+  withoutMissingFiles,
+} from "../links";
 import { replace } from "./afterTest";
 
 suite("links", () => {
@@ -179,5 +186,16 @@ suite("links", () => {
     assert.deepStrictEqual(selection({ line: 1, endLine: 3 }), [0, 0, 2, 5]);
     // A diagram may outlive the file it links to, and name lines it no longer has.
     assert.deepStrictEqual(selection({ line: 9, endLine: 12 }), [2, 0, 2, 5]);
+  });
+
+  test("opens a URL with the escapes it was written with", async () => {
+    const opened: unknown[] = [];
+    replace(vscode.env, "openExternal", async (uri) => {
+      opened.push(uri);
+      return true;
+    });
+    const url = "https://example.com/a%2Fb?q=C%2B%2B%26x%3Dy#a%20b";
+    await openUrl(url, false, async () => false);
+    assert.deepStrictEqual(opened, [url]);
   });
 });
