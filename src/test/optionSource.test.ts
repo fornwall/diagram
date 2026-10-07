@@ -105,6 +105,22 @@ suite("optionSource", () => {
     assert.match(errorOf("  // nothing here\n"), /^The ECharts option is empty\./);
   });
 
+  test("refuses a source that closes the brackets it is evaluated in, without running it", () => {
+    const ran = "globalThis.optionSourceRan = true";
+    const cases: [string, RegExp][] = [
+      [`{a: 1}\n]); ${ran}; ([\n{}`, /Unexpected "\]" after the end of the option.*\(line 2, c/],
+      [`{a: f}\n]); ${ran}; ([\n{}`, /Unexpected token '\]' \(line 2, column 1\)/],
+      [`{a: g(1, [2])}]) && (${ran}) || ([{}`, /Unexpected token '\]' \(line 1, column 15\)/],
+      [`{a: f}][0] && (${ran}) || [{}`, /Unexpected token '\]' \(line 1, column 7\)/],
+      [`{a: f}\n); ${ran}; f(\n{}`, /Unexpected token '\)' \(line 2, column 1\)/],
+      ["{a: f},,{}", /Unexpected token ',' \(line 1, column 8\)/],
+    ];
+    for (const [source, expected] of cases) {
+      assert.match(errorOf(source), expected, source);
+    }
+    assert.strictEqual((globalThis as { optionSourceRan?: boolean }).optionSourceRan, undefined);
+  });
+
   test("describes syntax errors that JavaScript also rejects, with their position", () => {
     const message = errorOf('{\n  "series": [{"type": "bar", "name": "A}');
     assert.match(

@@ -29,6 +29,7 @@ export function evaluateSource(source: string): unknown {
     } catch (error) {
       throw new Error(describeError(source, error, scanned));
     }
+    rejectStrayBracket(source, scanned);
     try {
       values = evaluate();
     } catch (error) {
@@ -51,6 +52,24 @@ export function evaluateSource(source: string): unknown {
       : `The ECharts option source holds ${values.length} top-level values separated by ",": ` +
           'only one top-level object is allowed, so check for a "}" that closes it too early.',
   );
+}
+
+/**
+ * Rejects a source that closes the array it is evaluated in early and opens another, such as
+ * "{}]); code; ([{}", for the code between them to run as statements: as the arguments of a call,
+ * which close with ")" instead, it does not compile, unlike a list of values. It is described as
+ * a parenthesized expression, as which the engine names the "]" at fault.
+ */
+function rejectStrayBracket(source: string, scanned: SourceError | Code | undefined): void {
+  try {
+    new Function(`return f(\n${source}\n);`);
+  } catch {
+    try {
+      new Function(`"use strict"; return (\n${source}\n);`);
+    } catch (error) {
+      throw new Error(describeError(source, error, scanned, "("));
+    }
+  }
 }
 
 /**
@@ -91,6 +110,7 @@ function describeError(
   text: string,
   error: unknown,
   found: SourceError | Code | undefined,
+  open = "([",
 ): string {
   if (found instanceof SourceError) {
     const { at, excerpt } = located(text, found.position);
@@ -111,7 +131,7 @@ function describeError(
   const message = errorMessage(error);
   const position =
     found && error instanceof SyntaxError
-      ? syntaxErrorAt(text, found.position, message)
+      ? syntaxErrorAt(text, open, found.position, message)
       : undefined;
   const { at, excerpt } =
     position === undefined ? { at: "", excerpt: "" } : located(text, position);
@@ -170,10 +190,15 @@ const CUT_SHORT_ERRORS = new Set([
  * continued by, for the engine not to read the end of the function as part of it. The search
  * starts from where the source goes beyond literals, as it holds no error before that.
  */
-function syntaxErrorAt(text: string, from: number, message: string): number | undefined {
+function syntaxErrorAt(
+  text: string,
+  open: string,
+  from: number,
+  message: string,
+): number | undefined {
   const failsAlike = (end: number, ending = "enum") => {
     try {
-      new Function(`"use strict"; return ([\n${text.slice(0, end)}\n${ending}`);
+      new Function(`"use strict"; return ${open}\n${text.slice(0, end)}\n${ending}`);
       return false;
     } catch (error) {
       return errorMessage(error) === message;
