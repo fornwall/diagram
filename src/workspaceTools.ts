@@ -169,6 +169,12 @@ function exists(uri: vscode.Uri): Promise<boolean> {
 }
 
 /**
+ * A name's leading dot as a character that "*" and "**" match, as they do in VS Code's globs but
+ * not in Node's, in a path and a pattern alike.
+ */
+const undot = (glob: string) => glob.replace(/(^|[/{,])\./g, "$1\u0001");
+
+/**
  * Leaves out the files that a conditional exclude hides, as a sibling file named by its "when",
  * such as `{ "when": "$(basename).ts" }`, exists. "$(basename)" is the file name without its
  * extension, as in VS Code.
@@ -190,7 +196,7 @@ async function withoutHiddenSiblings(
             const sibling = when.replace("$(basename)", stem);
             if (
               !sibling.includes("/") &&
-              path.matchesGlob(relative, pattern) &&
+              path.matchesGlob(undot(relative), undot(pattern)) &&
               (await exists(vscode.Uri.joinPath(uri, "..", sibling)))
             ) {
               return true;

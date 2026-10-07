@@ -130,7 +130,9 @@ suite("workspaceTools", function () {
       vscode.ConfigurationTarget.Global,
     );
     afterTest(() => files.update("exclude", undefined, vscode.ConfigurationTarget.Global));
-    for (const name of ["compiled.ts", "compiled.js", "plain.js"]) await writeFile(name, "Needle");
+    for (const name of ["compiled.ts", "compiled.js", ".dot.ts", ".dot.js", "plain.js"]) {
+      await writeFile(name, "Needle");
+    }
     assert.strictEqual(await invoke(finder, { glob: `${relative}/*.js` }), `${relative}/plain.js`);
   });
 
