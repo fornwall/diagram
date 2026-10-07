@@ -1126,4 +1126,25 @@ suite("panel", function () {
       "Could not export the diagram: The diagram panel did not finish exporting within 15 seconds. Try again or choose SVG.",
     ]);
   });
+
+  test("a render that the page answers after 15 seconds counts once it does", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    const clicks = recordClicks();
+    const rendering = panel.render({ ...flowchart, clickPrompt: "Explain {label}" }, "tool");
+    timers.expire();
+    assert.ok(!(await rendering).ok);
+    const click = () => webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
+    await click();
+    await webview.finishRender();
+    await click();
+    assert.deepStrictEqual(clicks, ["chat: Explain Parser"]);
+
+    const broken = panel.render({ ...flowchart, source: "flowchart ??" }, "tool");
+    timers.expire();
+    await broken;
+    await webview.finishRender("Parse error");
+    assert.strictEqual(panel.current?.error, "Parse error");
+  });
 });

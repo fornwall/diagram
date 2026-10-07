@@ -349,7 +349,7 @@ export class DiagramPanel implements vscode.Disposable {
       case "rendered":
         // The ids of what was drawn, for telling a model that a node it names is not there. A late
         // answer to a replaced render says nothing about the diagram now shown.
-        if (this.pendingRender?.message.requestId === message.requestId) {
+        if (this.isCurrentRender(message.requestId)) {
           this.nodeIds = message.nodeIds;
           this.relationships = message.relationships?.filter((node) => node.relationship) ?? [];
           this.repeatedNames = message.repeatedNames ?? [];
@@ -505,36 +505,52 @@ export class DiagramPanel implements vscode.Disposable {
       if (this.annotation) this.post({ type: "annotate", ...this.annotation });
     });
 
-    // An unavailable panel says nothing about the source, and the diagram may have been replaced
-    // while rendering.
-    const latest = this.state;
-    if (latest && version === this.renderVersion) {
-      if (result.ok || result.kind === "invalid") {
-        const error = result.ok ? undefined : result.error;
-        if (latest.error !== error) {
-          this.state = { ...latest, error };
-          saved = this.store.save(this.state);
-        }
-      }
-      if (!result.ok) {
-        this.cancelPick(
-          result.kind === "invalid" ? failsToRender(latest.language, result.error) : result.error,
-        );
-      }
-    }
+    // The diagram may have been replaced while rendering.
+    if (version === this.renderVersion) saved = this.keepOutcome(result) ?? saved;
     await saved;
     return version === this.renderVersion ? result : notShown(replaced);
   }
 
+  /**
+   * Whether the page's answer is to the render the panel waits for, or else to the render of the
+   * current source that the panel stopped waiting for, which a page busy with a large drawing can
+   * still finish.
+   */
+  private isCurrentRender(requestId: number): boolean {
+    return this.pendingRender
+      ? this.pendingRender.message.requestId === requestId
+      : this.unavailable !== undefined && requestId === this.sourceRequestId;
+  }
+
   private finishRender(requestId: number, outcome: RenderOutcome): void {
-    if (this.pendingRender?.message.requestId !== requestId) {
+    if (!this.isCurrentRender(requestId)) {
       return;
     }
-    this.renderedRequestId = outcome.ok ? requestId : undefined;
-    const { resolve } = this.pendingRender;
+    const pending = this.pendingRender;
     this.pendingRender = undefined;
+    this.renderedRequestId = outcome.ok ? requestId : undefined;
     this.unavailable = !outcome.ok && outcome.kind === "unavailable" ? outcome.error : undefined;
-    resolve(outcome);
+    if (pending) pending.resolve(outcome);
+    else void this.keepOutcome(outcome);
+  }
+
+  /**
+   * Keeps the render error of the current source, if any, for later requests, and saves it if it
+   * changed. An unavailable panel says nothing about the source.
+   */
+  private keepOutcome(result: RenderOutcome): Promise<void> | undefined {
+    const state = this.state;
+    if (!state) return undefined;
+    if (!result.ok) {
+      this.cancelPick(
+        result.kind === "invalid" ? failsToRender(state.language, result.error) : result.error,
+      );
+      if (result.kind === "unavailable") return undefined;
+    }
+    const error = result.ok ? undefined : result.error;
+    if (state.error === error) return undefined;
+    this.state = { ...state, error };
+    return this.store.save(this.state);
   }
 
   private cancelRender(error: string): void {
