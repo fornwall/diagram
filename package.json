@@ -88,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one. Users can select its items and send follow-ups. Returns the diagram type, or the render error to fix. To chart a file, command output or table, use diagram_chart.",
+        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To chart a file, command output or table, use diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or as a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
             },
             "language": {
               "type": "string",
@@ -117,14 +117,14 @@
             },
             "clickPrompt": {
               "type": "string",
-              "description": "Chat request sent on the user's behalf when they click a node or chart item, with {label} replaced by its label, e.g. \"Explain {label} in more detail\". For explorable overviews."
+              "description": "Chat request sent for the user when they click an item, with {label} replaced by its label, e.g. \"Explain {label} in more detail\". For explorable overviews."
             },
             "links": {
               "type": "object",
               "additionalProperties": {
                 "type": "string"
               },
-              "description": "Mermaid node ids mapped to code locations, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\", \"cli\": \"src/cli.ts\"}. Clicking a linked node opens its location. Link only code you have read."
+              "description": "Mermaid node ids mapped to code locations that clicking them opens, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\"}. Link only code you have read."
             }
           },
           "required": [
@@ -140,7 +140,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of \"data\" (inline), \"file\" or \"command\" (its standard output), e.g. a treemap of `du -ah src`. Infers columns and reports how it read the data. For full control of the option or callbacks such as renderItem, use diagram_render.",
+        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file or command, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render.",
         "tags": [
           "chart",
           "echarts",
@@ -172,7 +172,7 @@
                 "gauge",
                 "funnel"
               ],
-              "description": "horizontalBar suits long labels; scatter compares the first two value columns; treemap/sunburst nest paths or label columns and sum children; sankey connects source/target columns or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value. Histogram counts raw numeric samples in bins; select one value column and omit labelColumn, aggregate, sort and limit."
+              "description": "horizontalBar suits long labels; treemap/sunburst sum children; sankey links source and target labels, or labels to a node per value column; heatmap pivots two label columns or uses value columns as columns; radar has an axis per value column; boxplot shows each group's spread; gauge shows one value; funnel orders stages by value; histogram bins the raw numbers of one value column, without labelColumn, aggregate, sort or limit."
             },
             "title": {
               "type": "string",
@@ -184,11 +184,11 @@
             },
             "file": {
               "type": "string",
-              "description": "Data file path, absolute or relative to the first workspace folder."
+              "description": "Path, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
-              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder, or the home directory without one, once the user confirms it."
+              "description": "Shell command whose standard output is the data, run by /bin/sh (cmd.exe on Windows) in the first workspace folder, or else the home folder, once the user confirms."
             },
             "format": {
               "type": "string",
@@ -199,7 +199,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "\"auto\" (default) detects the format, including Markdown tables and JSON Lines; \"json\" reads JSON or JSON Lines."
+              "description": "\"auto\" (default) detects the format, including Markdown tables; \"json\" includes JSON Lines."
             },
             "labelColumn": {
               "anyOf": [
@@ -214,7 +214,7 @@
                   "minItems": 1
                 }
               ],
-              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row, or for a boxplot grouping rows. Multiple names, outermost first, define treemap/sunburst levels, sankey stages (source, target), heatmap rows/columns, or the categories of a bar, line or area chart and a series per label of the second, for rows such as month,region,sales. Treemap, sunburst and sankey also split paths such as \"src/webview/main.ts\" into levels. ISO dates (\"2026-01-02\", \"2026-01-02T14:30:00Z\", \"2026-01\") and \"2026/01/02\" give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
+              "description": "Label column by header or generated name, e.g. \"Column 2\"; defaults to the first text column naming each row, or for a boxplot grouping rows. Several, outermost first, give treemap/sunburst levels, sankey stages (source, target), heatmap rows/columns, or a bar, line or area chart's categories and a series per label of the second, for rows such as month,region,sales. Treemap, sunburst and sankey also split paths such as \"src/a/b.ts\" into levels. Dates such as 2026-01-02, 2026-01, 2026/01/02 and ISO times give bar, line, area and scatter charts a time axis; other dates and plain years stay labels."
             },
             "valueColumns": {
               "type": "array",
@@ -222,11 +222,11 @@
                 "type": "string"
               },
               "minItems": 1,
-              "description": "Value columns, one series each, or the first alone with a series per label. Defaults to numeric columns, excluding identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use only the first, scatter the first two (x, y); boxplot uses its raw numbers."
+              "description": "One series each, or the first alone with a series per label. Defaults to numeric columns except identifiers (id, rank, pid, etc.) and units differing from the first. Pie, doughnut, treemap, sunburst, gauge and funnel use the first, scatter the first two (x, y), boxplot its raw numbers."
             },
             "max": {
               "type": "number",
-              "description": "The top of a gauge's scale, or of every radar axis, in input units (bytes for sizes, seconds for durations). Inferred when left out."
+              "description": "Top of a gauge's scale or of every radar axis; inferred by default."
             },
             "aggregate": {
               "type": "string",
@@ -238,7 +238,7 @@
                 "max",
                 "median"
               ],
-              "description": "Combine rows sharing the same label or labels. \"count\" counts rows without a value column, e.g. one row per commit or log entry. Grouping precedes \"sort\" and \"limit\"; sort descending to keep the largest groups. Omit for boxplot, which summarizes raw groups itself."
+              "description": "Combine rows with the same labels, before sort and limit. \"count\" counts rows and needs no value column, e.g. one row per commit. Omit for boxplot, which summarizes raw groups."
             },
             "sort": {
               "type": "string",
@@ -246,31 +246,31 @@
                 "ascending",
                 "descending"
               ],
-              "description": "Sorts the rows by the first value column, or by their total in stacked charts, after grouping. With a series per label of a second label column, sorts the labels of the first by their total."
+              "description": "After grouping, by the first value column, or by the total in stacked charts or with a series per label of a second label column."
             },
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Keep the first rows after sorting. Pie/doughnut exclude nonpositive values and combine omitted positive rows as \"Other\"."
+              "description": "Keep the first rows after sorting; pie/doughnut combine the other positive rows as \"Other\"."
             },
             "options": {
               "type": "object",
-              "description": "Merge an ECharts option: objects merge, null removes a setting, other values replace it. A \"series\" object applies to every series; an array of objects merges element by element, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Omit colors, backgrounds and fonts. JSON only; for callbacks use diagram_render with a JavaScript option."
+              "description": "ECharts option to merge: objects merge, null removes a setting, other values replace it. A \"series\" object applies to every series, and an array merges by index, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Omit colors, backgrounds and fonts. JSON only; for callbacks use diagram_render."
             },
             "clickPrompt": {
               "type": "string",
-              "description": "Chat request sent on the user's behalf when they click a chart item, with {label} replaced by its name, e.g. \"Which files make {label} so large?\"."
+              "description": "Chat request sent for the user when they click an item, with {label} replaced by its name, e.g. \"Which files make {label} so large?\"."
             },
             "bins": {
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
-              "description": "Histogram bins, of equal width; by default about √n bins of a round width (1, 2 or 5 × 10^n, at least 1 for whole numbers)."
+              "description": "Number of equal-width bins; by default about √n of a round width."
             },
             "facetColumn": {
               "type": "string",
               "minLength": 1,
-              "description": "Split a bar, line, area or scatter chart, or a histogram, into one panel per distinct value of this column (at most 12 panels). Filtering happens first; aggregation, sorting and limits apply inside each panel. The facet column is excluded from automatic label/value inference."
+              "description": "Split a bar, line, area, scatter or histogram chart into a panel per value of this column (at most 12), after filtering; aggregate, sort and limit apply per panel. It is not inferred as a label or value column."
             },
             "facetColumns": {
               "type": "integer",
@@ -284,7 +284,7 @@
                 "shared",
                 "independent"
               ],
-              "description": "Whether facet panels share axis ranges (default) or fit each its own."
+              "description": "Facet panels share axis ranges by default."
             },
             "filters": {
               "type": "array",
@@ -323,7 +323,7 @@
                 ],
                 "additionalProperties": false
               },
-              "description": "Keep rows matching ALL predicates before faceting, aggregation, binning, sorting or limits. Compare parsed cells: eq/neq use exact value and type (null matches missing cells); lt/lte/gt/gte require numeric cells and a number value; contains is case-sensitive text matching. Use input units: bytes for sizes, seconds for durations. An empty array clears filters."
+              "description": "Keep rows matching all filters, before anything else. Compares parsed cells: eq/neq need the exact value and type (null matches missing cells); lt/lte/gt/gte need numeric cells and a number; contains matches text case-sensitively."
             }
           },
           "required": [
@@ -565,7 +565,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(table)",
         "userDescription": "Inspect columns and sample rows from the current chart or another data source",
-        "modelDescription": "Report a data source's columns, inferred types, row count and sample rows, without drawing anything. Omit the source to inspect the current chart's loaded data; otherwise give exactly one of data, file or command, which diagram_chart reads again when charting it.",
+        "modelDescription": "Report a data source's columns, inferred types, row count and sample rows without drawing. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart, which reads it again to chart it.",
         "tags": [
           "diagram"
         ],
@@ -574,15 +574,15 @@
           "properties": {
             "data": {
               "type": "string",
-              "description": "Inline data: CSV, TSV, JSON (an array of objects or arrays, an object mapping names to numbers, or JSON Lines), a Markdown table or whitespace-separated columns."
+              "description": "Inline data, e.g. CSV or JSON."
             },
             "file": {
               "type": "string",
-              "description": "Data file path, absolute or relative to the first workspace folder."
+              "description": "Path, absolute or relative to the first workspace folder."
             },
             "command": {
               "type": "string",
-              "description": "Shell command whose standard output is the data, run with /bin/sh (cmd.exe on Windows) in the first workspace folder, or the home directory without one, once the user confirms it."
+              "description": "Shell command whose standard output is the data, run once the user confirms."
             },
             "format": {
               "type": "string",
@@ -593,7 +593,7 @@
                 "json",
                 "whitespace"
               ],
-              "description": "\"auto\" (default) detects the format, including Markdown tables and JSON Lines; \"json\" reads JSON or JSON Lines."
+              "description": "Defaults to \"auto\"."
             },
             "sampleRows": {
               "type": "integer",
