@@ -421,7 +421,7 @@ suite("chartFacets", () => {
     );
     assert.throws(
       () => build(`service,ms\n${Array.from({ length: 13 }, (_, i) => `s${i},${i}`).join("\n")}`),
-      /facet column "service" has more than 12 groups.*at most 12.*Filter/,
+      /facet column "service" has 13 values, more than the 12 panels.*"filters"/,
     );
   });
 

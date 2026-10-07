@@ -48,7 +48,9 @@ export function buildFacetedChart(
   const groups = Map.groupBy(table.rows.keys(), (row): Cell => table.rows[row]?.[index] ?? null);
   if (groups.size > MAX_FACETS) {
     throw new Error(
-      `The facet column ${JSON.stringify(facetName)} has more than ${MAX_FACETS} groups; at most ${MAX_FACETS} panels are supported. Filter the data or choose a column with fewer groups.`,
+      `The facet column ${JSON.stringify(facetName)} has ${groups.size} values, more than the ` +
+        `${MAX_FACETS} panels a chart can have. Keep fewer of them with "filters", or choose a ` +
+        "column with fewer values.",
     );
   }
   const allFacets = facetTable(spec, table, index);
