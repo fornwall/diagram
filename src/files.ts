@@ -135,8 +135,7 @@ export function decodeText(bytes: Uint8Array, fatal = true): string {
 
 /**
  * Decodes a file's bytes with {@link decodeText} or else in the encoding that the editor would
- * open the file in, as files.encoding sets, unless that leaves bytes undecoded: then as
- * Windows-1252, in which Excel on Windows saves CSV files.
+ * open the file in, as files.encoding sets.
  *
  * @throws Error when the editor finds the file binary.
  */
@@ -144,8 +143,7 @@ export async function decodeFile(bytes: Uint8Array, uri: vscode.Uri): Promise<st
   try {
     return decodeText(bytes);
   } catch {
-    const text = await vscode.workspace.decode(bytes, { uri });
-    return text.includes("�") ? new TextDecoder("windows-1252").decode(bytes) : text;
+    return vscode.workspace.decode(bytes, { uri });
   }
 }
 

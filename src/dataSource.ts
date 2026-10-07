@@ -95,6 +95,29 @@ export function prepareDataInvocation(
   return prepared;
 }
 
+/** Whether `bytes` have a character that UTF-8 encodes in more than one byte. */
+function hasMultiByteUtf8(bytes: Uint8Array): boolean {
+  const within = (i: number, low: number, high: number) => {
+    const byte = bytes[i] ?? 0;
+    return byte >= low && byte <= high;
+  };
+  for (let i = 0; i < bytes.length; i++) {
+    const lead = bytes[i] ?? 0;
+    if (lead < 0xc2 || lead > 0xf4) continue;
+    // As in TextDecoder, the second byte leaves out overlong forms, surrogates and code points
+    // beyond U+10FFFF.
+    const low = lead === 0xe0 ? 0xa0 : lead === 0xf0 ? 0x90 : 0x80;
+    const high = lead === 0xed ? 0x9f : lead === 0xf4 ? 0x8f : 0xbf;
+    if (
+      within(i + 1, low, high) &&
+      (lead < 0xe0 || (within(i + 2, 0x80, 0xbf) && (lead < 0xf0 || within(i + 3, 0x80, 0xbf))))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function readDataFile(file: string): Promise<string> {
   const uri = resolveFile(file);
   const checkSize = (size: number): void => {
@@ -125,7 +148,13 @@ export async function readDataFile(file: string): Promise<string> {
   }
   checkSize(bytes.byteLength);
   // A file that the editor finds binary is refused as one with null characters is.
-  const text = await decodeFile(bytes, uri).catch(() => "\0");
+  let text = await decodeFile(bytes, uri).catch(() => "\0");
+  // Excel on Windows saves CSV files in Windows-1252, which the editor reads as UTF-8 unless
+  // files.encoding names it. Bytes that are not UTF-8 are taken to be in it only when no character
+  // is in UTF-8 either, so that a stray byte in UTF-8 text does not garble the rest.
+  if (text.includes("\uFFFD") && !hasMultiByteUtf8(bytes)) {
+    text = new TextDecoder("windows-1252").decode(bytes);
+  }
   if (text.includes("\0")) {
     throw new Error(
       `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +

@@ -223,6 +223,9 @@ suite("dataSource", () => {
     const file = path.join(dir, "latin1.csv");
     fs.writeFileSync(file, Buffer.from("café,1", "latin1"));
     assert.strictEqual(await readDataFile(file), "café,1");
+    // A stray byte in UTF-8 text is left undecoded, as the editor shows it.
+    fs.writeFileSync(file, Buffer.concat([Buffer.from("café,€ 東京"), Buffer.from([0xff])]));
+    assert.strictEqual(await readDataFile(file), "café,€ 東京\uFFFD");
   });
 
   test("reads files that are not UTF-8 in the encoding of files.encoding", async () => {

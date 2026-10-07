@@ -269,6 +269,19 @@ suite("workspaceTools", function () {
     );
   });
 
+  test("reads and searches text with a stray byte as the editor shows it", async () => {
+    const bytes = Buffer.concat([Buffer.from("café € 東京 "), Buffer.from([0xff])]);
+    const file = await writeFile("stray.txt", bytes);
+    assert.strictEqual(
+      await invoke(reader, { file }),
+      `${relative}/stray.txt, lines 1-1 of 1:\n1: café € 東京 \uFFFD`,
+    );
+    assert.match(
+      await invoke(searcher, { query: "東京", glob: `${relative}/stray.txt` }),
+      /^1 match in 1 file/,
+    );
+  });
+
   test("bounds long line output while keeping search matches visible", async () => {
     const read = (await invoke(reader, { file: path.join(dir, "long.txt") })).split("\n");
     assert.strictEqual(read[1], `1: ${"a".repeat(1000)}… (2006 characters)`);
