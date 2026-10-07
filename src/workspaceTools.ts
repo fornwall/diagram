@@ -168,6 +168,49 @@ export function boundary(
   };
 }
 
+function exists(uri: vscode.Uri): Promise<boolean> {
+  return Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+    () => true,
+    () => false,
+  );
+}
+
+/**
+ * Leaves out the files that a conditional exclude hides, as a sibling file named by its "when",
+ * such as `{ "when": "$(basename).ts" }`, exists. "$(basename)" is the file name without its
+ * extension, as in VS Code.
+ */
+async function withoutHiddenSiblings(
+  root: vscode.WorkspaceFolder,
+  files: readonly vscode.Uri[],
+  conditions: readonly [pattern: string, when: string][],
+  token: vscode.CancellationToken,
+): Promise<vscode.Uri[]> {
+  const hidden = await unlessCancelled(
+    () =>
+      Promise.all(
+        files.map(async (uri) => {
+          const relative = path.posix.relative(root.uri.path, uri.path);
+          const name = path.posix.basename(uri.path);
+          const stem = name.slice(0, name.length - path.posix.extname(name).length);
+          for (const [pattern, when] of conditions) {
+            const sibling = when.replace("$(basename)", stem);
+            if (
+              !sibling.includes("/") &&
+              path.matchesGlob(relative, pattern) &&
+              (await exists(vscode.Uri.joinPath(uri, "..", sibling)))
+            ) {
+              return true;
+            }
+          }
+          return false;
+        }),
+      ),
+    token,
+  );
+  return files.filter((_, index) => !hidden[index]);
+}
+
 async function candidates(
   roots: readonly vscode.WorkspaceFolder[],
   glob: string,
@@ -178,37 +221,46 @@ async function candidates(
   const seen = new Set<string>();
   for (const root of roots) {
     throwIfCancelled(token);
-    // An exclude passed to findFiles replaces files.exclude, so pass both settings. Conditional
-    // exclusions apply always, as an excluded file must not show up in results.
+    // An exclude passed to findFiles replaces files.exclude, so pass both settings. It cannot
+    // carry a condition on sibling files, which is checked on the files found.
     const patterns = new Set(DEFAULT_EXCLUDES);
+    const conditions: [string, string][] = [];
     for (const section of ["files", "search"]) {
       const excludes = vscode.workspace
         .getConfiguration(section, root.uri)
         .get<Record<string, unknown>>("exclude", {});
       for (const [pattern, enabled] of Object.entries(excludes)) {
-        if (enabled) patterns.add(pattern);
+        const when = isPlainObject(enabled) ? enabled.when : undefined;
+        if (typeof when === "string") conditions.push([pattern, when]);
+        else if (enabled) patterns.add(pattern);
       }
     }
     // Nested workspace roots may return files already found in an earlier root.
     const overlapping = files.filter((uri) => contains(root.uri, uri)).length;
+    const limit = max + 1 - files.length + overlapping;
     const found = await unlessCancelled(
       async () =>
         vscode.workspace.findFiles(
           new vscode.RelativePattern(root, glob),
           `{${[...patterns].join(",")}}`,
-          max + 1 - files.length + overlapping,
+          limit,
           token,
         ),
       token,
     );
     throwIfCancelled(token);
-    for (const uri of found) {
+    const shown =
+      conditions.length > 0 ? await withoutHiddenSiblings(root, found, conditions, token) : found;
+    for (const uri of shown) {
       if (!seen.has(uri.toString())) {
         seen.add(uri.toString());
         files.push(uri);
       }
     }
-    if (files.length > max) return { files: files.slice(0, max), truncated: true };
+    // Hidden files may leave fewer than the limit while more remain.
+    if (files.length > max || found.length >= limit) {
+      return { files: files.slice(0, max), truncated: true };
+    }
   }
   return { files, truncated: false };
 }

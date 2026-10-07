@@ -122,6 +122,18 @@ suite("workspaceTools", function () {
     assert.strictEqual(page.at(-1), "Continue with startLine 502.");
   });
 
+  test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
+    const files = vscode.workspace.getConfiguration("files");
+    await files.update(
+      "exclude",
+      { "**/*.js": { when: "$(basename).ts" } },
+      vscode.ConfigurationTarget.Global,
+    );
+    afterTest(() => files.update("exclude", undefined, vscode.ConfigurationTarget.Global));
+    for (const name of ["compiled.ts", "compiled.js", "plain.js"]) await writeFile(name, "Needle");
+    assert.strictEqual(await invoke(finder, { glob: `${relative}/*.js` }), `${relative}/plain.js`);
+  });
+
   test("fills result limits across overlapping workspace roots", async () => {
     const nested = await make("nested");
     const files = ["nested/a.ts", "nested/b.ts", "c.ts"].map((name) =>
