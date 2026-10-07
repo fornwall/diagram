@@ -11,7 +11,7 @@ import {
   openDocument,
   resolveFile,
 } from "../files";
-import { afterTest, recordFilePaths, replace } from "./afterTest";
+import { afterTest, recordFilePaths } from "./afterTest";
 
 suite("files", () => {
   let dir: string;
@@ -111,12 +111,7 @@ suite("files", () => {
     assert.ok(root);
     const inward = path.join(dir, "inward.tsv");
     fs.symlinkSync(path.join(root.uri.fsPath, "sizes.tsv"), inward);
-    const resolved: unknown[] = [];
-    const native = fs.realpathSync.native;
-    replace(fs.realpathSync, "native", ((file: fs.PathLike) => {
-      resolved.push(file);
-      return native(file);
-    }) as typeof native);
+    const paths = recordFilePaths();
     for (const uri of [
       vscode.Uri.file(path.join(dir, "secret.csv")),
       // Even a link into the workspace, as a path outside it could be on a network share.
@@ -126,7 +121,10 @@ suite("files", () => {
     ]) {
       assert.ok(!inWorkspace(uri), uri.toString());
     }
-    assert.deepStrictEqual(resolved, []);
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(dir) || file.includes("attacker.example")),
+      [],
+    );
   });
 
   test("resolves a path in other case where file systems ignore case", function () {

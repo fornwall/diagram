@@ -1,5 +1,4 @@
 import * as assert from "node:assert";
-import { realpathSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -380,19 +379,7 @@ suite("workspaceTools", function () {
     const inward = path.join(outside, "inward.ts");
     await fs.symlink(path.join(dir, "code.ts"), inward);
     afterTest(() => fs.rm(inward));
-    const resolved: unknown[] = [];
-    // The module itself, which `import * as` copies.
-    const promises: typeof fs = require("node:fs/promises");
-    const { realpath } = promises;
-    replace(promises, "realpath", ((file: string) => {
-      resolved.push(file);
-      return realpath(file);
-    }) as typeof realpath);
-    const native = realpathSync.native;
-    replace(realpathSync, "native", ((file: string) => {
-      resolved.push(file);
-      return native(file);
-    }) as typeof native);
+    const paths = recordFilePaths();
     for (const file of [
       path.join(outside, "secret.txt"),
       path.join(outside, "missing.txt"),
@@ -405,7 +392,10 @@ suite("workspaceTools", function () {
         /^Error: The file is outside/,
       );
     }
-    assert.deepStrictEqual(resolved, []);
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(outside) || file.includes("attacker.example")),
+      [],
+    );
   });
 
   test("resolves multiple workspace roots and rejects URI decorations and sibling prefixes", () => {
