@@ -438,6 +438,17 @@ suite("workspaceTools", function () {
       await invoke(reader, { file: relative }),
       `Error: ${relative} is a folder, not a file. List its files with diagram_findFiles and the glob "${relative}/**".`,
     );
+    // Folder names such as Next.js's "[id]" are matched literally.
+    await make("[id]");
+    await writeFile("[id]/page.ts", "");
+    await make("i");
+    await writeFile("i/other.ts", "");
+    const glob = `${relative}/[[]id[]]/**`;
+    assert.strictEqual(
+      await invoke(reader, { file: `${relative}/[id]` }),
+      `Error: ${relative}/[id] is a folder, not a file. List its files with diagram_findFiles and the glob "${glob}".`,
+    );
+    assert.strictEqual(await invoke(finder, { glob }), `${relative}/[id]/page.ts`);
     assert.strictEqual(
       await invoke(reader, { file: `${relative}/missing.ts` }),
       `Error: ${relative}/missing.ts does not exist.`,

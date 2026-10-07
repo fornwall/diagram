@@ -99,7 +99,8 @@ export function resolveWorkspaceFile(
 export function filesGlob(folder: vscode.Uri): string | undefined {
   const root = vscode.workspace.getWorkspaceFolder(folder)?.uri.path.replace(/\/$/, "");
   if (root === undefined) return undefined;
-  const relative = folder.path.slice(root.length + 1);
+  // Names such as Next.js's "[id]" are matched literally, each glob character in brackets.
+  const relative = folder.path.slice(root.length + 1).replace(/[[\]{}*?]/g, "[$&]");
   return relative ? `${relative}/**` : "**";
 }
 
