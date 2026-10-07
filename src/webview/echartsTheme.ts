@@ -85,6 +85,7 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
         borderWidth: 1,
       },
     },
+    // ECharts themes the axes of every coordinate system, polar and parallel ones too, by type.
     categoryAxis: { ...axis, axisTick: { ...axisTick, alignWithLabel: true } },
     valueAxis,
     logAxis: valueAxis,
@@ -95,10 +96,6 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       axisLine: { lineStyle: { color: gridColor } },
       splitArea: { show: false },
     },
-    angleAxis: axis,
-    radiusAxis: axis,
-    singleAxis: axis,
-    parallelAxis: axis,
 
     line: {
       symbol: "circle",
