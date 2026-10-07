@@ -1356,10 +1356,7 @@ suite("charts", () => {
       const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
       for (const override of [{ type: "category" }, [{ type: "category" }]]) {
         const option = build(chart(type, { options: { [axis]: override } }), data);
-        assert.deepStrictEqual(
-          option.series[0].data,
-          type === "scatter" ? dates.map((date) => [date, 3]) : [3, 3],
-        );
+        assert.deepStrictEqual(option.series[0].data, [3, 3]);
         const svg = withChart(option, (rendered) => rendered.renderToSVGString(), {
           width: 1200,
           height: 800,
@@ -1371,24 +1368,21 @@ suite("charts", () => {
     }
   });
 
-  test("category axis overrides keep rows with missing dates", () => {
-    const data = "date,n\n2026-01-02,3\n,5\n2026-01-05,7";
+  test("category axis overrides keep rows with missing or repeated dates", () => {
+    const data = "date,n\n2026-01-02,3\n,5\n2026-01-05,7\n2026-01-02,9";
     for (const type of ["line", "horizontalBar", "scatter"] as const) {
       const axis = type === "horizontalBar" ? "yAxis" : "xAxis";
       for (const override of [{ type: "category" }, [{ type: "category" }]]) {
         const spec = chart(type, { options: { [axis]: override } });
         const option = build(spec, data);
-        const dates = ["2026-01-02", "", "2026-01-05"];
-        if (type === "scatter") {
-          assert.deepStrictEqual(option.series[0].data, [
-            [dates[0], 3],
-            [dates[1], 5],
-            [dates[2], 7],
-          ]);
-        } else {
-          assert.deepStrictEqual(option.series[0].data, [3, 5, 7]);
-        }
-        assert.deepStrictEqual([option[axis]].flat()[0].data, dates);
+        // Each value at its own row's category, rather than at the last of the same name.
+        assert.deepStrictEqual(option.series[0].data, [3, 5, 7, 9]);
+        assert.deepStrictEqual([option[axis]].flat()[0].data, [
+          "2026-01-02",
+          "",
+          "2026-01-05",
+          "2026-01-02",
+        ]);
         // The dates are labels, so nothing is said about reading them as times.
         assert.doesNotMatch(summary(spec, data), /without a date|time axis/);
       }

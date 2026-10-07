@@ -205,10 +205,12 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
           type: "scatter",
           name: xName,
           ...(rows.length >= LARGE_POINTS ? { large: true } : {}),
-          data: rows.map((row) => [
-            timeAxis ? timeValue(label(row)) : label(row),
-            row.values[0] ?? null,
-          ]),
+          // On a category axis, a point is at its row's category, as a bar is, rather than at the
+          // last of the categories named alike.
+          data: rows.map((row) => {
+            const value = row.values[0] ?? null;
+            return timeAxis ? [timeValue(label(row)), value] : value;
+          }),
         },
       ],
     };
