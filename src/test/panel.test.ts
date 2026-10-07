@@ -874,6 +874,37 @@ suite("panel", function () {
     });
   }
 
+  test("a reloaded page draws the same revision, which a refresh and an update still apply to", async () => {
+    const { panel, webview } = await newFakePanel();
+    const source = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
+    const chart = { type: "pie", file: "sizes.tsv" } as const;
+    assert.ok(
+      (await panel.render({ language: "echarts", source, title: "Sizes", chart }, "tool")).ok,
+    );
+    const revision = panel.revision;
+    const progress = vscode.window.withProgress;
+    const resumed = Promise.withResolvers<void>();
+    replace(vscode.window, "withProgress", async (options, task) => {
+      await resumed.promise;
+      return progress(options, task);
+    });
+    const refreshing = webview.receive({ type: "refresh" });
+    const reload = async () => {
+      await webview.receive({ type: "ready" });
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+    await reload();
+    assert.strictEqual(panel.revision, revision);
+    resumed.resolve();
+    await refreshing;
+    assert.match(panel.current?.source ?? "", /"src"/);
+    assert.strictEqual(panel.revision, revision + 1);
+
+    await reload();
+    const token = new vscode.CancellationTokenSource().token;
+    assert.ok((await panel.updateChart({ limit: 1, revision: revision + 1 }, token)).ok);
+  });
+
   test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
     const { panel, webview } = await newFakePanel();
     const { sent } = webview;

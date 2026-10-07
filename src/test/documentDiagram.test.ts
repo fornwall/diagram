@@ -480,9 +480,8 @@ suite("documentDiagram", function () {
   });
 
   for (const change of ["replacement", "reload"] as const) {
-    test(`a pending document open does not write after ${change}`, async () => {
+    test(`a pending document open writes only the diagram shown after ${change}`, async () => {
       const document = await markdown("```mermaid\nflowchart TD\n```\n");
-      const before = document.getText();
       const state = { ...openedState(binding(document)), source: "flowchart LR" };
       const { panel, webview } = await restored(state);
       const opened = Promise.withResolvers<vscode.TextDocument>();
@@ -490,16 +489,22 @@ suite("documentDiagram", function () {
       const warnings = recordMessages("showWarningMessage");
       const writing = writeShown(webview);
       if (change === "replacement") {
+        // Even the same diagram, opened again, is a new one.
         void panel.render({ ...state, document: { ...binding(document) } }, "document");
       } else {
-        // Even drawing the same source again invalidates the write that was already pending.
+        // A reloaded page draws the same diagram again.
         await webview.receive({ type: "ready" });
       }
       opened.resolve(document);
       await writing;
-      assert.strictEqual(document.getText(), before);
-      assert.strictEqual(warnings.length, 1);
-      assert.match(warnings[0] ?? "", /changed before it could be written/);
+      if (change === "replacement") {
+        assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
+        assert.strictEqual(warnings.length, 1);
+        assert.match(warnings[0] ?? "", /changed before it could be written/);
+      } else {
+        assert.strictEqual(document.getText(), "```mermaid\nflowchart LR\n```\n");
+        assert.deepStrictEqual(warnings, []);
+      }
     });
   }
 

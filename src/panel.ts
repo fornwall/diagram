@@ -117,8 +117,13 @@ export class DiagramPanel implements vscode.Disposable {
 
   private readonly webview: WebviewChannel;
   private nextRequestId = 1;
-  /** Counts renders, to detect intervening ones; tools see it as the revision. */
+  /** Counts renders, to detect intervening ones. */
   private renderVersion = 0;
+  /**
+   * Counts changes to the diagram shown, which tools and Chart Options see as its revision. Drawing
+   * the same diagram again, as when the page reloads, is no change.
+   */
+  private shownRevision = 0;
   /** Pending renders and picks are replayed when the webview reloads. */
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
@@ -173,7 +178,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Optimistic concurrency token, exposed to tools along with the current source. */
   get revision(): number {
-    return this.renderVersion;
+    return this.shownRevision;
   }
 
   /**
@@ -221,7 +226,7 @@ export class DiagramPanel implements vscode.Disposable {
       fullSource,
       callsTools,
     });
-    return `Revision: ${this.renderVersion}.\n\n${description}`;
+    return `Revision: ${this.shownRevision}.\n\n${description}`;
   }
 
   /** Opens and renders a diagram, tracking the originating tool request for adoption. */
@@ -272,7 +277,7 @@ export class DiagramPanel implements vscode.Disposable {
   /** Shows and focuses the panel unless a background update asks to preserve focus. */
   show(preserveFocus = false): void {
     if ((this.webview.reveal(preserveFocus) || this.unavailable) && this.state) {
-      void this.renderCurrent();
+      void this.renderCurrent({ redraw: true });
     }
   }
 
@@ -282,7 +287,7 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     if (this.state) {
-      void this.renderCurrent();
+      void this.renderCurrent({ redraw: true });
     } else {
       // The tab keeps the title of the diagram it showed before, which was not saved.
       panel.title = "Diagram";
@@ -343,7 +348,7 @@ export class DiagramPanel implements vscode.Disposable {
           this.post(this.pendingRender.message);
           if (this.annotation) this.post({ type: "annotate", ...this.annotation });
         } else if (this.state) {
-          void this.renderCurrent();
+          void this.renderCurrent({ redraw: true });
         }
         if (this.pendingPick) {
           this.post(this.pendingPick.message);
@@ -439,8 +444,11 @@ export class DiagramPanel implements vscode.Disposable {
     return undefined;
   }
 
-  /** Shows the current diagram in the webview, and keeps its render error, if any, for later requests. */
-  private async renderCurrent(): Promise<RenderOutcome> {
+  /**
+   * Shows the current diagram in the webview, and keeps its render error, if any, for later
+   * requests. A redraw shows the diagram shown before, in the same revision.
+   */
+  private async renderCurrent({ redraw = false } = {}): Promise<RenderOutcome> {
     const state = this.state;
     const tab = this.webview.tab;
     if (!state || !tab) {
@@ -450,6 +458,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.renderedRequestId = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
+    if (!redraw) this.shownRevision++;
     this.sendChartOptions();
     // What was drawn before says nothing about the rendering being drawn now.
     this.nodeIds = undefined;
@@ -729,9 +738,9 @@ export class DiagramPanel implements vscode.Disposable {
    * document block after a successful write.
    */
   private async writeToDocument(binding: DocumentBinding, source: string): Promise<void> {
-    const version = this.renderVersion;
+    const revision = this.shownRevision;
     const isCurrent = (current: DocumentBinding) => () =>
-      this.renderVersion === version &&
+      this.shownRevision === revision &&
       this.state?.document === current &&
       this.state.source === source;
     if (
@@ -804,7 +813,7 @@ export class DiagramPanel implements vscode.Disposable {
       );
     }
     const chart = updatedChartSpec(state.chart, input);
-    if (input.revision !== undefined && input.revision !== this.renderVersion) {
+    if (input.revision !== undefined && input.revision !== this.shownRevision) {
       throw new Error(
         `The chart changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
       );
@@ -878,7 +887,7 @@ export class DiagramPanel implements vscode.Disposable {
       type: "chartOptions",
       visible: this.chartOptionsVisible,
       state: {
-        revision: this.renderVersion,
+        revision: this.shownRevision,
         controls: chartControls(chart),
         columns: table?.columns ?? [],
         rowCount: table?.rows.length ?? 0,
@@ -897,7 +906,7 @@ export class DiagramPanel implements vscode.Disposable {
     const state = this.state;
     const tab = this.webview.tab;
     try {
-      if (!state?.chart || message.revision !== this.renderVersion) {
+      if (!state?.chart || message.revision !== this.shownRevision) {
         throw new Error("The chart changed. Reopen Chart Options and try again.");
       }
       if (!message.replaceSource) assertChartPresentation(state.chartPresentation);
@@ -912,7 +921,7 @@ export class DiagramPanel implements vscode.Disposable {
           },
           (_progress, token) => loadTable(state.chart as ChartSpec, token),
         );
-        if (message.revision !== this.renderVersion || this.webview.tab !== tab || !tab) return;
+        if (message.revision !== this.shownRevision || this.webview.tab !== tab || !tab) return;
         table = loaded.table;
         if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);
       }
@@ -937,7 +946,7 @@ export class DiagramPanel implements vscode.Disposable {
   private async refreshChart(): Promise<void> {
     const chart = this.state?.chart;
     const presentation = this.state?.chartPresentation;
-    const version = this.renderVersion;
+    const revision = this.shownRevision;
     const tab = this.webview.tab;
     if (!chart || this.refreshing) {
       return;
@@ -950,9 +959,9 @@ export class DiagramPanel implements vscode.Disposable {
         { location: vscode.ProgressLocation.Window, title: "Refreshing chart" },
         (_progress, token) => loadTable(chart, token),
       );
-      // Any intervening render wins, even if an edit restored the same source.
+      // Any intervening change wins, even if an edit restored the same source.
       const state = this.state;
-      if (this.renderVersion !== version || this.webview.tab !== tab || !tab || !state) {
+      if (this.shownRevision !== revision || this.webview.tab !== tab || !tab || !state) {
         return;
       }
       if (warning) void vscode.window.showWarningMessage(warning);
@@ -965,7 +974,7 @@ export class DiagramPanel implements vscode.Disposable {
         void vscode.window.showErrorMessage(`Could not refresh the chart: ${outcome.error}`);
       }
     } catch (error) {
-      if (this.renderVersion === version && this.webview.tab === tab) {
+      if (this.shownRevision === revision && this.webview.tab === tab) {
         void vscode.window.showErrorMessage(`Could not refresh the chart: ${errorMessage(error)}`);
       }
     } finally {
@@ -1026,9 +1035,9 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick(pickReason);
-    const revision = this.renderVersion + 1;
+    const version = this.renderVersion + 1;
     const cancellation = token?.onCancellationRequested(() => {
-      if (this.renderVersion === revision) this.cancelRender("The chart update was cancelled.");
+      if (this.renderVersion === version) this.cancelRender("The chart update was cancelled.");
     });
     let outcome: RenderOutcome;
     try {
@@ -1037,13 +1046,13 @@ export class DiagramPanel implements vscode.Disposable {
       cancellation?.dispose();
     }
     const cancelled = token?.isCancellationRequested ?? false;
-    if ((outcome.ok && !cancelled) || this.renderVersion !== revision || !state) return outcome;
+    if ((outcome.ok && !cancelled) || this.renderVersion !== version || !state) return outcome;
     this.state = state;
     this.chartTable = chartTable;
     this.annotation = annotation;
     await this.store.save(state);
     if (
-      this.renderVersion === revision &&
+      this.renderVersion === version &&
       tab &&
       this.webview.tab === tab &&
       (cancelled || (!outcome.ok && outcome.kind === "invalid"))
@@ -1079,14 +1088,14 @@ export class DiagramPanel implements vscode.Disposable {
       void vscode.window.showWarningMessage(warning ?? "There is no diagram to export.");
       return;
     }
-    const version = this.renderVersion;
+    const revision = this.shownRevision;
     this.exporting = true;
     try {
       await exportDrawing(
         { language: state.language, title: state.title, source: state.source },
         (format) => {
           const rendered = this.renderedRequestId;
-          if (version !== this.renderVersion || !this.webview.isReady || rendered === undefined) {
+          if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {
             throw new Error("The diagram changed or closed while choosing a format. Try again.");
           }
           return this.requestExport(format, rendered);
