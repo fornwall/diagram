@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import {
   absoluteFile,
   absolutePath,
+  contains,
   fileError,
   inWorkspace,
   openDocument,
@@ -40,6 +41,15 @@ suite("files", () => {
       undefined,
     );
     assert.strictEqual(absolutePath(vscode.Uri.file(local), github), local);
+  });
+
+  test("takes a virtual workspace folder's '.' and '..' by their text", () => {
+    const root = vscode.Uri.parse("vscode-vfs://github/owner/x/../one/./");
+    const inside = (file: string) => contains(root, vscode.Uri.parse(`vscode-vfs://github${file}`));
+    assert.ok(inside("/owner/one"));
+    assert.ok(inside("/owner/one/src/a.ts"));
+    assert.ok(!inside("/owner/x/a.ts"));
+    assert.ok(!inside("/owner/oneself"));
   });
 
   test("resolves an absolute path that leads out of the workspace outside it", () => {

@@ -15,6 +15,7 @@ import {
   type LocalRoot,
   nearRoot,
   staysInside,
+  virtualFolderPath,
 } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { formatCount, plural, quote, toolInput } from "./text";
@@ -150,7 +151,7 @@ export function boundary(
   /** Providers have no realpath API. Refuse reported symbolic links, including parent directories. */
   const noLinks = (uri: vscode.Uri, root: vscode.Uri): Promise<void> => {
     const key = uri.toString();
-    if (uri.path.replace(/\/$/, "") === root.path.replace(/\/$/, "")) return Promise.resolve();
+    if (uri.path.replace(/\/$/, "") === virtualFolderPath(root)) return Promise.resolve();
     let checked = checkedDirectories.get(key);
     if (!checked) {
       checked = Promise.resolve(vscode.workspace.fs.stat(uri)).then((stat) => {

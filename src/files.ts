@@ -20,8 +20,17 @@ export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
     root.authority === uri.authority &&
     (root.scheme === "file"
       ? withinPath(root.fsPath, uri.fsPath)
-      : uri.path === root.path || uri.path.startsWith(`${root.path.replace(/\/$/, "")}/`))
+      : `${uri.path}/`.startsWith(`${virtualFolderPath(root)}/`))
   );
+}
+
+/**
+ * The path of `root`, a folder on a virtual file system, without a trailing "/", and with "." and
+ * ".." taken by their text, as Uri.joinPath does, as such file systems have no links. VS Code keeps
+ * them from a folder's "uri" in a workspace file.
+ */
+export function virtualFolderPath(root: vscode.Uri): string {
+  return root.path && path.posix.normalize(root.path).replace(/\/$/, "");
 }
 
 function withinPath(root: string, file: string): boolean {
