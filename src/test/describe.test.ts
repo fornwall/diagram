@@ -73,6 +73,29 @@ suite("describe", () => {
     assert.match(full, /too long to show here/);
   });
 
+  test("many relationships are left out of requests, but listed in full when asked for", () => {
+    const relationships = Array.from({ length: 100 }, (_, index) => ({
+      id: `edge:L_A_B_${index}`,
+      label: "A → B",
+      relationship: { kind: "edge", source: "A", target: "B", direction: "forward" } as const,
+    }));
+    const state: DiagramState = {
+      language: "mermaid",
+      source: "flowchart LR\n  A --> B",
+      title: "Flow",
+      origin: "tool",
+      editedByUser: false,
+    };
+    const summary = describeDiagram(state, { relationships });
+    assert.doesNotMatch(summary, /L_A_B_/);
+    assert.match(
+      summary,
+      /It has 100 selectable relationships, .*diagram_getState lists their ids/,
+    );
+    assert.doesNotMatch(describeDiagram(state, { relationships, callsTools: false }), /relation/);
+    assert.match(describeDiagram(state, { relationships, fullSource: true }), /L_A_B_99;/);
+  });
+
   test("a model that calls no tools is told of the drawing, but of no tool", () => {
     const edge = { kind: "edge", source: "A", target: "B", direction: "forward" } as const;
     const drawing = {

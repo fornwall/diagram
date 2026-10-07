@@ -24,6 +24,11 @@ import { quoteAll } from "./text";
 
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
+/**
+ * A longer list of relationships is left out in the same way. Each takes about 100 characters, so a
+ * large diagram's list could take more of every request than its source.
+ */
+const MAX_RELATIONSHIPS_LENGTH = 5_000;
 
 /** What the panel knows of the drawing and of the user's interactions with it. */
 interface Drawing {
@@ -34,7 +39,7 @@ interface Drawing {
   warnings?: readonly string[];
   /** The generated chart's data, if loaded, for the units that filters and "max" are given in. */
   chartTable?: DataTable | undefined;
-  /** Gives a long source too, as {@link GET_STATE_TOOL} does. */
+  /** Gives a long source and list of relationships too, as {@link GET_STATE_TOOL} does. */
   fullSource?: boolean;
   /** Whether the model calls tools, and so is told which ones to call. */
   callsTools?: boolean;
@@ -102,9 +107,14 @@ export function describeDiagram(
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
-  if (relationships.length > 0) {
+  const listed = nodeList(relationships);
+  if (listed && (fullSource || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
     lines.push(
-      `Selectable relationships${callsTools ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${nodeList(relationships)}.`,
+      `Selectable relationships${callsTools ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,
+    );
+  } else if (listed && callsTools) {
+    lines.push(
+      `It has ${relationships.length} selectable relationships, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
     );
   }
   if (repeatedNames.length > 0 && callsTools) {
