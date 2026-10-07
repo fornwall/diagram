@@ -241,14 +241,19 @@ suite("webview", function () {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
         const canvas = document.getElementById("canvas");
         const zoom = () => document.getElementById("zoom-reset").textContent;
-        const wheel = (deltaY, deltaMode = 0) => {
+        const wheel = (deltaY, deltaMode = 0, deltaX = 0) => {
           const box = document.querySelector('[data-diagram-id="n15"][tabindex]').getBoundingClientRect();
           const x = box.left + box.width / 2;
           const y = box.top + box.height / 2;
-          canvas.dispatchEvent(new WheelEvent("wheel", {deltaY, deltaMode, clientX: x, clientY: y,
+          canvas.dispatchEvent(new WheelEvent("wheel", {deltaX, deltaY, deltaMode, clientX: x, clientY: y,
             ctrlKey: true, bubbles: true, cancelable: true}));
           return {x, y};
         };
+        // Sideways, the drawing keeps fitting the panel.
+        const fitting = document.getElementById("zoom-reset").title;
+        wheel(0, 0, 100);
+        await frame();
+        const sideways = document.getElementById("zoom-reset").title === fitting;
         document.getElementById("zoom-reset").click();
         if (zoom() !== "100%") document.getElementById("zoom-reset").click();
         canvas.scrollLeft = (canvas.scrollWidth - canvas.clientWidth) / 2;
@@ -263,9 +268,9 @@ suite("webview", function () {
         const moved = Math.abs(box.left + box.width / 2 - anchor.x);
         wheel(6.25, WheelEvent.DOM_DELTA_LINE);
         await frame();
-        return {pinched, steady: moved < 2, notch: zoom()};
+        return {sideways, pinched, steady: moved < 2, notch: zoom()};
       })()`),
-      { pinched: "120%", steady: true, notch: "100%" },
+      { sideways: true, pinched: "120%", steady: true, notch: "100%" },
     );
   });
 

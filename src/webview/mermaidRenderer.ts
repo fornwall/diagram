@@ -330,6 +330,8 @@ export class MermaidRenderer implements Renderer {
       (event) => {
         if (!(event.ctrlKey || event.metaKey) || this.displayedSource === undefined) return;
         event.preventDefault();
+        // Scrolling sideways does not zoom, nor stop the drawing fitting the panel.
+        if (!event.deltaY) return;
         const pixels =
           event.deltaY *
           (event.deltaMode === WheelEvent.DOM_DELTA_LINE
