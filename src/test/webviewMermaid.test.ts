@@ -442,8 +442,8 @@ suite("Mermaid in the webview", function () {
         node.focus();
         const original = document.body.dataset.vscodeThemeId;
         document.body.dataset.vscodeThemeId = "test-theme-redraw";
+        ${UNTIL}
         try {
-          ${UNTIL}
           if (!(await until(() => !node.isConnected))) {
             throw new Error("The theme change did not redraw the diagram.");
           }
@@ -457,8 +457,11 @@ suite("Mermaid in the webview", function () {
             tooltips: focused?.querySelectorAll("title.diagram-link").length
           };
         } finally {
+          const drawn = document.querySelector("#diagram svg");
           if (original === undefined) delete document.body.dataset.vscodeThemeId;
           else document.body.dataset.vscodeThemeId = original;
+          // The theme coming back redraws too, which the next test must not see.
+          await until(() => !drawn?.isConnected);
         }
       })()`),
       {
@@ -492,10 +495,12 @@ suite("Mermaid in the webview", function () {
         ${UNTIL}
         await until(() => redraws > 0);
         await frames();
-        observer.disconnect();
+        const counted = redraws;
         if (original === undefined) delete document.body.dataset.vscodeThemeId;
         else document.body.dataset.vscodeThemeId = original;
-        return redraws;
+        await until(() => redraws > counted);
+        observer.disconnect();
+        return counted;
       })()`),
       1,
     );
