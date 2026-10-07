@@ -263,7 +263,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
       ? canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`)
       : focused;
     node?.focus({ preventScroll: true });
-    if (document.activeElement === document.body) canvas.focus({ preventScroll: true });
+    if (document.activeElement === document.body) drawingFocus().focus({ preventScroll: true });
   }
   diagramReplaced();
 }
@@ -275,6 +275,15 @@ function diagramReplaced(): void {
   showAnnotation(UNMARKED);
   updateToolbar();
   updateSelectionUi();
+  // The canvas is a tab stop to scroll a diagram with the keys; a chart is a tab stop of its own.
+  canvas.tabIndex = active && !active.focusTarget ? 0 : -1;
+  const noun = active?.noun ?? "diagram";
+  canvas.setAttribute("aria-label", `${noun.charAt(0).toUpperCase()}${noun.slice(1)} preview`);
+}
+
+/** The element that takes the keys for the drawing. */
+function drawingFocus(): HTMLElement {
+  return active?.focusTarget ?? canvas;
 }
 
 function updateToolbar(): void {
@@ -563,9 +572,20 @@ function startPick(id: number, prompt: string, multiple: boolean): void {
   canvas.classList.add("picking");
   // A screen reader reads the question with the drawing that the focus moves to, as the banner
   // that shows it appears only now and so is no live region yet.
-  canvas.setAttribute("aria-describedby", pickPrompt.id);
+  const drawing = drawingFocus();
+  describeByPick(drawing, true);
   updateSelectionUi();
-  canvas.focus();
+  drawing.focus();
+}
+
+/** Adds the pick question to, or removes it from, what describes the element. */
+function describeByPick(element: Element, add: boolean): void {
+  const ids = (element.getAttribute("aria-describedby") ?? "")
+    .split(" ")
+    .filter((id) => id && id !== pickPrompt.id);
+  if (add) ids.unshift(pickPrompt.id);
+  if (ids.length > 0) element.setAttribute("aria-describedby", ids.join(" "));
+  else element.removeAttribute("aria-describedby");
 }
 
 function endPick(): void {
@@ -573,7 +593,10 @@ function endPick(): void {
   pick = undefined;
   pickBanner.hidden = true;
   canvas.classList.remove("picking");
-  canvas.removeAttribute("aria-describedby");
+  // A rendering while picking may have moved the focus to another element.
+  for (const element of document.querySelectorAll(`[aria-describedby~="${pickPrompt.id}"]`)) {
+    describeByPick(element, false);
+  }
   updateSelectionUi();
   if (restoreFocus) {
     focusContent();
@@ -582,7 +605,7 @@ function endPick(): void {
 
 /** Keeps keyboard navigation in the visible content when a focused action disappears. */
 function focusContent(): void {
-  editor.content(canvas).focus();
+  editor.content(drawingFocus()).focus();
 }
 
 pickDoneButton.addEventListener("click", () => {

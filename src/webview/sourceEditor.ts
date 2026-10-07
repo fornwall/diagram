@@ -92,8 +92,8 @@ export class SourceEditor {
   }
 
   /** The element that shows the content in the current view, for keyboard focus. */
-  content(canvas: HTMLElement): HTMLElement {
-    return this.view === "source" ? this.elements.input : canvas;
+  content(drawing: HTMLElement): HTMLElement {
+    return this.view === "source" ? this.elements.input : drawing;
   }
 
   /** Takes a diagram the extension sent, keeping edits, and warns before they replace newer source. */

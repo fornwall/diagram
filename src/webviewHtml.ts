@@ -95,7 +95,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       </div>
     </section>
     <div id="splitter" role="separator" tabindex="0" aria-label="Resize the source editor" aria-controls="editor" aria-valuemin="15" aria-valuemax="85" title="Resize source editor (arrow keys); Enter to reset"></div>
-    <main id="canvas" data-vscode-context='{"webviewSection":"drawing"}' aria-label="Diagram preview" tabindex="0">
+    <main id="canvas" data-vscode-context='{"webviewSection":"drawing"}' aria-label="Diagram preview" tabindex="-1">
       <div id="empty">No diagram yet. Ask <code>@diagram</code> in chat to draw a diagram or chart, or use <strong>Open in Diagram</strong> above a Mermaid or ECharts code block in a Markdown file.</div>
       <div id="diagram"></div>
     </main>

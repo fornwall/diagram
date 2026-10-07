@@ -185,7 +185,8 @@ suite("webview", function () {
               button.focus();
               button.click();
               return visible && focused && preserved && document.getElementById("pick").hidden &&
-                document.activeElement === canvas && !canvas.hasAttribute("aria-describedby");
+                document.activeElement === canvas && !canvas.hasAttribute("aria-describedby") &&
+                canvas.tabIndex === 0 && canvas.getAttribute("aria-label") === "Diagram preview";
             });
           });
         } finally {

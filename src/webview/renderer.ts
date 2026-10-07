@@ -28,6 +28,8 @@ export interface Renderer {
   readonly sourceName: string;
   /** Shows the source and returns its diagram type, or throws an actionable render error. */
   render(source: string, title: string): Promise<string>;
+  /** The element that takes the keys for the drawing, if not the canvas, which scrolls. */
+  readonly focusTarget?: HTMLElement;
   /** Hides the rendering and releases its resources (another renderer took over). */
   hide(): void;
   /** Highlights the parts with the given keys as selected. */

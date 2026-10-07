@@ -760,6 +760,40 @@ suite("ECharts in the webview", function () {
     tokens.dispose();
   });
 
+  test("gives the keys to the chart, not the canvas, on a pick and after it or Clear", async () => {
+    await renderChart(SALES);
+    const tokens = new vscode.CancellationTokenSource();
+    const picking = page.panel.pickNodes("Pick days", true, tokens.token);
+    const focus = await evaluate(`(async () => {
+      ${PRESS}
+      ${UNTIL}
+      await until(() => !document.getElementById("pick").hidden);
+      const canvas = document.getElementById("canvas");
+      const focus = () => [document.activeElement === chart, chart.getAttribute("aria-describedby")];
+      const picking = focus();
+      press("Home");
+      press("Enter");
+      const done = document.getElementById("pick-done");
+      done.focus();
+      done.click();
+      const picked = focus();
+      press("Enter");
+      const clear = document.getElementById("clear-selection");
+      clear.focus();
+      clear.click();
+      return {canvas: [canvas.tabIndex, canvas.getAttribute("aria-label")], picking, picked,
+        cleared: focus()};
+    })()`);
+    assert.deepStrictEqual(await picking, { picked: true, nodes: [{ id: "A/Mon", label: "Mon" }] });
+    tokens.dispose();
+    assert.deepStrictEqual(focus, {
+      canvas: [-1, "Chart preview"],
+      picking: [true, "pick-prompt chart-drawing"],
+      picked: [true, "chart-drawing"],
+      cleared: [true, "chart-drawing"],
+    });
+  });
+
   test("keeps the focus on a chart item through a theme change and a new rendering", async () => {
     await renderChart(SALES);
     const focus = (await evaluate(`(async () => {

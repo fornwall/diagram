@@ -36,6 +36,9 @@ export class EChartsRenderer implements Renderer {
 
   /** The chart's tab stop, around the element that ECharts draws in. */
   private readonly container: HTMLElement;
+  get focusTarget(): HTMLElement {
+    return this.container;
+  }
   private readonly drawing: HTMLElement;
   private readonly focus: ChartFocus;
   /** The library, loaded on the first chart. */
