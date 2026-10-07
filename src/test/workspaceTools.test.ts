@@ -307,7 +307,9 @@ suite("workspaceTools", function () {
       const search = await invoke(searcher, { query: "Needle", glob: `${relative}/dirty.txt` });
       assert.match(search, /\n.*dirty\.txt \(unsaved changes\)\n {2}1: unsaved Needle$/);
     } finally {
-      await document.save();
+      // Not saved: local history would copy the file after the test removes it.
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
     }
   });
 
