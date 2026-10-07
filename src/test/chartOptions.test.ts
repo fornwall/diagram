@@ -36,16 +36,8 @@ suite("chartOptions", () => {
     assert.strictEqual(spec.limit, 4);
   });
   test("rejects replacement data sources, arbitrary options and invalid controls", () => {
-    for (const extra of [
-      { command: "run-something" },
-      { options: {} },
-      { limit: 0 },
-      { type: "bogus" },
-      { valueColumns: [] },
-      { bins: 201 },
-      { facetColumns: 5 },
-      { filters: [{ column: "amount", op: "gte", value: "1" }] },
-    ]) {
+    // chartSpec's tests check which controls are valid.
+    for (const extra of [{ command: "run-something" }, { options: {} }, { limit: 0 }]) {
       assert.throws(
         () => withChartControls(spec, { type: "pie", ...extra }),
         /^Error: (Unknown property|Invalid chart spec)/,
@@ -72,20 +64,17 @@ suite("chartOptions", () => {
       bins: 12,
       facetColumn: "service",
     });
-    assert.strictEqual(histogram.bins, 12);
-    assert.strictEqual(histogram.facetColumn, "service");
-    for (const key of [
-      "aggregate",
-      "sort",
-      "limit",
-      "filters",
-      "facetColumns",
-      "facetScales",
-    ] as const) {
-      assert.strictEqual(histogram[key], undefined);
-    }
-    assert.strictEqual(histogram.command, spec.command);
-    assert.deepStrictEqual(histogram.options, spec.options);
+    assert.deepStrictEqual(histogram, {
+      type: "histogram",
+      command: "print-data",
+      format: "tsv",
+      title: "Sales",
+      max: 100,
+      options: spec.options,
+      valueColumns: ["amount"],
+      bins: 12,
+      facetColumn: "service",
+    });
   });
 
   test("updates only the settings given, keeping the source and styling, and clears those set to null", () => {
