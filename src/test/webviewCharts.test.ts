@@ -602,14 +602,15 @@ suite("ECharts in the webview", function () {
         ${UNTIL}
         ${CLICK_CHART}
         clickChart(document.querySelectorAll("#chart svg path")[1]);
-        await until(() => fills().includes("#ff0000"));
+        await until(() => fills().includes("#ff0000"), "the selected item's color");
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "#123456");
         try {
-          await until(() => fills().includes("#123456"));
+          await until(() => fills().includes("#123456"), "the theme's color");
           return fills();
         } finally {
           root.removeProperty("--vscode-charts-blue");
+          await until(() => !fills().includes("#123456"), "the default color again");
         }
       })()`),
       ["#123456", "#ff0000"],
