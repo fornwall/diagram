@@ -7,7 +7,7 @@ import { buildChart } from "../charts";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { afterTest, replace, tempDir } from "./afterTest";
+import { afterTest, cancellationSource, replace, tempDir } from "./afterTest";
 import { newFakePanel } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
 
@@ -246,28 +246,24 @@ suite("chartTools", function () {
 
   test("cancellation while rendering restores the chart, and pre-cancellation makes no changes", async () => {
     const { panel, webview } = await harness();
-    const cancellation = new vscode.CancellationTokenSource();
-    try {
-      await draw(panel);
-      const before = panel.current;
-      webview.nextRender(() => cancellation.cancel());
-      await assert.rejects(
-        panel.updateChart({ limit: 2 }, cancellation.token),
-        vscode.CancellationError,
-      );
-      assert.deepStrictEqual(panel.current, before);
-      await assert.rejects(
-        panel.updateChart({ limit: 1 }, cancellation.token),
-        vscode.CancellationError,
-      );
-      await assert.rejects(
-        invokeTool(new InspectDataTool(panel), { data }, cancellation.token),
-        vscode.CancellationError,
-      );
-      assert.deepStrictEqual(panel.current, before);
-    } finally {
-      cancellation.dispose();
-    }
+    const cancellation = cancellationSource();
+    await draw(panel);
+    const before = panel.current;
+    webview.nextRender(() => cancellation.cancel());
+    await assert.rejects(
+      panel.updateChart({ limit: 2 }, cancellation.token),
+      vscode.CancellationError,
+    );
+    assert.deepStrictEqual(panel.current, before);
+    await assert.rejects(
+      panel.updateChart({ limit: 1 }, cancellation.token),
+      vscode.CancellationError,
+    );
+    await assert.rejects(
+      invokeTool(new InspectDataTool(panel), { data }, cancellation.token),
+      vscode.CancellationError,
+    );
+    assert.deepStrictEqual(panel.current, before);
   });
 
   test("a superseding render wins over an in-flight chart update", async () => {
@@ -288,53 +284,39 @@ suite("chartTools", function () {
 
   test("cancellation does not wait for an unresponsive rollback renderer", async () => {
     const { panel, webview } = await harness();
-    const cancellation = new vscode.CancellationTokenSource();
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      await draw(panel);
-      const before = panel.current;
-      webview.nextRender(() => {
-        webview.nextRender(() => {
-          /* Simulate an unresponsive webview during restoration. */
-        });
-        cancellation.cancel();
-      });
-      const timeout = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Cancellation waited for the renderer")), 5000);
-      });
-      await assert.rejects(
-        Promise.race([panel.updateChart({ limit: 2 }, cancellation.token), timeout]),
-        vscode.CancellationError,
-      );
-      assert.deepStrictEqual(panel.current, before);
-    } finally {
-      clearTimeout(timer);
-      cancellation.dispose();
-    }
+    const cancellation = cancellationSource();
+    await draw(panel);
+    const before = panel.current;
+    webview.nextRender(() => {
+      // The page does not answer the render that restores the chart.
+      webview.nextRender(() => {});
+      cancellation.cancel();
+    });
+    await assert.rejects(
+      panel.updateChart({ limit: 2 }, cancellation.token),
+      vscode.CancellationError,
+    );
+    assert.deepStrictEqual(panel.current, before);
   });
 
   test("cancelling a superseded update does not restore the older chart", async () => {
     const { panel, webview } = await harness();
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     let replacement: Promise<RenderOutcome> | undefined;
-    try {
-      await draw(panel);
-      webview.nextRender(() => {
-        replacement = panel.render(
-          { language: "mermaid", title: "Replacement", source: "flowchart TD\nA-->B" },
-          "tool",
-        );
-        cancellation.cancel();
-      });
-      await assert.rejects(
-        panel.updateChart({ limit: 2 }, cancellation.token),
-        vscode.CancellationError,
+    await draw(panel);
+    webview.nextRender(() => {
+      replacement = panel.render(
+        { language: "mermaid", title: "Replacement", source: "flowchart TD\nA-->B" },
+        "tool",
       );
-      assert.ok((await replacement)?.ok);
-      assert.strictEqual(panel.current?.title, "Replacement");
-    } finally {
-      cancellation.dispose();
-    }
+      cancellation.cancel();
+    });
+    await assert.rejects(
+      panel.updateChart({ limit: 2 }, cancellation.token),
+      vscode.CancellationError,
+    );
+    assert.ok((await replacement)?.ok);
+    assert.strictEqual(panel.current?.title, "Replacement");
   });
 
   test("diagram_chart blames its options for a chart that fails to render", async () => {
@@ -354,8 +336,7 @@ suite("chartTools", function () {
 
   test("cancelling a chart stops waiting for a file read", async () => {
     const { panel } = await harness();
-    const cancellable = new vscode.CancellationTokenSource();
-    afterTest(() => cancellable.dispose());
+    const cancellable = cancellationSource();
     const started = Promise.withResolvers<void>();
     const data = Promise.withResolvers<Uint8Array>();
     afterTest(() => data.resolve(new TextEncoder().encode("name,value\nA,1")));

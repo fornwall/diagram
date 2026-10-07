@@ -36,6 +36,13 @@ export function replace<T extends object, K extends keyof T>(object: T, key: K, 
   });
 }
 
+/** A source of cancellation, disposed once the current test ends. */
+export function cancellationSource(): vscode.CancellationTokenSource {
+  const source = new vscode.CancellationTokenSource();
+  afterTest(() => source.dispose());
+  return source;
+}
+
 /** A new temporary folder, which is removed once the current test ends. */
 export function tempDir(prefix: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

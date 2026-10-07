@@ -9,7 +9,7 @@ import {
   readDataFile,
   runCommand,
 } from "../dataSource";
-import { afterTest, suiteTempDir } from "./afterTest";
+import { afterTest, cancellationSource, suiteTempDir } from "./afterTest";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -24,20 +24,16 @@ suite("dataSource", () => {
   });
 
   test("cancelled requests do not load or parse data", async () => {
-    const source = new vscode.CancellationTokenSource();
+    const source = cancellationSource();
     source.cancel();
-    try {
-      await assert.rejects(
-        loadTable({ type: "bar", data: "not JSON", format: "json" }, source.token),
-        vscode.CancellationError,
-      );
-      await assert.rejects(
-        loadTable({ type: "bar", file: path.join(dir, "missing.csv") }, source.token),
-        vscode.CancellationError,
-      );
-    } finally {
-      source.dispose();
-    }
+    await assert.rejects(
+      loadTable({ type: "bar", data: "not JSON", format: "json" }, source.token),
+      vscode.CancellationError,
+    );
+    await assert.rejects(
+      loadTable({ type: "bar", file: path.join(dir, "missing.csv") }, source.token),
+      vscode.CancellationError,
+    );
   });
 
   suite("commands", () => {
@@ -142,7 +138,7 @@ suite("dataSource", () => {
 
     test("stops a cancelled command, and the processes it started", async () => {
       const pidFile = path.join(dir, "pid");
-      const source = new vscode.CancellationTokenSource();
+      const source = cancellationSource();
       const running = runCommand(
         `sleep 30 & echo $! > '${pidFile}.tmp'; mv '${pidFile}.tmp' '${pidFile}'; wait`,
         source.token,

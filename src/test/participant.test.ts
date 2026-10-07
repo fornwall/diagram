@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
-import { afterTest, replace } from "./afterTest";
+import { afterTest, cancellationSource, replace } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
@@ -180,89 +180,72 @@ suite("participant", () => {
   });
 
   test("a cancelled request does not contact the model", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     cancellation.cancel();
-    try {
-      const { result, shown, sent } = await ask([[text(valid)]], {
-        token: cancellation.token,
-      });
-      assert.strictEqual(result, undefined);
-      assert.strictEqual(shown, "");
-      assert.deepStrictEqual(sent, []);
-      assert.strictEqual(panel.current, undefined);
-    } finally {
-      cancellation.dispose();
-    }
+    const { result, shown, sent } = await ask([[text(valid)]], { token: cancellation.token });
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(shown, "");
+    assert.deepStrictEqual(sent, []);
+    assert.strictEqual(panel.current, undefined);
   });
 
   test("ignores model output arriving after cancellation", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
-    try {
-      const { result, shown, sent } = await ask(
-        [
-          async () => {
-            cancellation.cancel();
-            return [
-              text(`Here it is:\n${valid}`),
-              new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
-            ];
-          },
-        ],
-        { token: cancellation.token },
-      );
-      assert.strictEqual(result, undefined);
-      assert.strictEqual(shown, "");
-      assert.strictEqual(sent.length, 1);
-      assert.strictEqual(panel.current, undefined);
-    } finally {
-      cancellation.dispose();
-    }
+    const cancellation = cancellationSource();
+    const { result, shown, sent } = await ask(
+      [
+        async () => {
+          cancellation.cancel();
+          return [
+            text(`Here it is:\n${valid}`),
+            new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
+          ];
+        },
+      ],
+      { token: cancellation.token },
+    );
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(shown, "");
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(panel.current, undefined);
   });
 
   test("cancellation during rendering does not start a repair request", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     panel.render = async () => {
       cancellation.cancel();
       return { ok: false, kind: "invalid", error: "Invalid diagram" };
     };
-    try {
-      const { result, shown, sent } = await ask([[text(invalid)], [text(valid)]], {
-        token: cancellation.token,
-      });
-      assert.strictEqual(result, undefined);
-      assert.strictEqual(shown, "");
-      assert.strictEqual(sent.length, 1);
-    } finally {
-      cancellation.dispose();
-    }
+    const { result, shown, sent } = await ask([[text(invalid)], [text(valid)]], {
+      token: cancellation.token,
+    });
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(shown, "");
+    assert.strictEqual(sent.length, 1);
   });
 
   test("cancellation stops waiting for an unresponsive diagram panel", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     const rendering = Promise.withResolvers<void>();
     const outcome = Promise.withResolvers<Awaited<ReturnType<DiagramPanel["render"]>>>();
+    afterTest(() => outcome.resolve({ ok: true, diagramType: "flowchart" }));
     panel.render = () => {
       rendering.resolve();
       return outcome.promise;
     };
-    try {
-      const response = ask([[text(valid)]], { token: cancellation.token });
-      await rendering.promise;
-      cancellation.cancel();
-      const { result, sent } = await response;
-      assert.strictEqual(result, undefined);
-      assert.strictEqual(sent.length, 1);
-    } finally {
-      outcome.resolve({ ok: true, diagramType: "flowchart" });
-      cancellation.dispose();
-    }
+    const response = ask([[text(valid)]], { token: cancellation.token });
+    await rendering.promise;
+    cancellation.cancel();
+    const { result, sent } = await response;
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(sent.length, 1);
   });
 
   for (const phase of ["token counting", "model request", "response stream"] as const) {
     test(`cancellation stops waiting for unresponsive ${phase}`, async () => {
-      const cancellation = new vscode.CancellationTokenSource();
+      const cancellation = cancellationSource();
       const started = Promise.withResolvers<void>();
       const resume = Promise.withResolvers<void>();
+      afterTest(() => resume.resolve());
       const stall = async (at: typeof phase) => {
         if (at === phase) {
           started.resolve();
@@ -286,54 +269,46 @@ suite("participant", () => {
           };
         },
       } as unknown as vscode.LanguageModelChat;
-      try {
-        const response = ask([], { model, token: cancellation.token });
-        await started.promise;
-        cancellation.cancel();
-        const { result, shown } = await response;
-        assert.strictEqual(result, undefined);
-        assert.strictEqual(shown, "");
-        resume.resolve();
-        await new Promise((resolve) => setImmediate(resolve));
-        assert.strictEqual(panel.current, undefined, "Late output must not replace the diagram");
-      } finally {
-        resume.resolve();
-        cancellation.dispose();
-      }
+      const response = ask([], { model, token: cancellation.token });
+      await started.promise;
+      cancellation.cancel();
+      const { result, shown } = await response;
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(shown, "");
+      resume.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.strictEqual(panel.current, undefined, "Late output must not replace the diagram");
     });
   }
 
   test("cancellation stops waiting for an unresponsive tool", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<vscode.LanguageModelToolResult>();
+    afterTest(() => resume.resolve(new vscode.LanguageModelToolResult([])));
     replace(vscode.lm, "invokeTool", () => {
       started.resolve();
       return resume.promise;
     });
-    try {
-      const response = ask(
-        [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
-        { toolReferences: [{ name: "diagram_getState" }], token: cancellation.token },
-      );
-      await started.promise;
-      cancellation.cancel();
-      const { result, sent } = await response;
-      assert.strictEqual(result, undefined);
-      resume.resolve(new vscode.LanguageModelToolResult([]));
-      await new Promise((resolve) => setImmediate(resolve));
-      assert.strictEqual(sent.length, 1, "Late tool results must not start another model request");
-      assert.strictEqual(panel.current, undefined);
-    } finally {
-      resume.resolve(new vscode.LanguageModelToolResult([]));
-      cancellation.dispose();
-    }
+    const response = ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
+      { toolReferences: [{ name: "diagram_getState" }], token: cancellation.token },
+    );
+    await started.promise;
+    cancellation.cancel();
+    const { result, sent } = await response;
+    assert.strictEqual(result, undefined);
+    resume.resolve(new vscode.LanguageModelToolResult([]));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(sent.length, 1, "Late tool results must not start another model request");
+    assert.strictEqual(panel.current, undefined);
   });
 
   test("cancellation stops waiting for an attachment and skips subsequent history reads", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     const started = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<string>();
+    afterTest(() => resume.resolve("Late attachment"));
     const opened: string[] = [];
     const provider = vscode.workspace.registerTextDocumentContentProvider("diagram-cancel-test", {
       provideTextDocumentContent: (uri) => {
@@ -342,31 +317,26 @@ suite("participant", () => {
         return resume.promise;
       },
     });
+    afterTest(() => provider.dispose());
     const reference = (path: string): vscode.ChatPromptReference => ({
       id: path,
       value: vscode.Uri.parse(`diagram-cancel-test:${path}`),
     });
-    try {
-      const response = ask([[text(valid)]], {
-        token: cancellation.token,
-        references: [reference("/current")],
-        history: [
-          new RequestTurn("Earlier", undefined, [reference("/history")], "diagram.participant"),
-        ],
-      });
-      await started.promise;
-      cancellation.cancel();
-      const { result, sent } = await response;
-      assert.strictEqual(result, undefined);
-      resume.resolve("Late attachment");
-      await new Promise((resolve) => setImmediate(resolve));
-      assert.deepStrictEqual(opened, ["/current"]);
-      assert.deepStrictEqual(sent, []);
-    } finally {
-      resume.resolve("Late attachment");
-      provider.dispose();
-      cancellation.dispose();
-    }
+    const response = ask([[text(valid)]], {
+      token: cancellation.token,
+      references: [reference("/current")],
+      history: [
+        new RequestTurn("Earlier", undefined, [reference("/history")], "diagram.participant"),
+      ],
+    });
+    await started.promise;
+    cancellation.cancel();
+    const { result, sent } = await response;
+    assert.strictEqual(result, undefined);
+    resume.resolve("Late attachment");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(opened, ["/current"]);
+    assert.deepStrictEqual(sent, []);
   });
 
   test("/show and /explain need a diagram, and say so without asking the model", async () => {

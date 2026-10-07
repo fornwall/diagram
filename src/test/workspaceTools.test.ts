@@ -10,7 +10,7 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
-import { afterTest, recordFilePaths, replace } from "./afterTest";
+import { afterTest, cancellationSource, recordFilePaths, replace } from "./afterTest";
 import { invokeTool as invoke } from "./toolText";
 
 suite("workspaceTools", function () {
@@ -579,20 +579,16 @@ suite("workspaceTools", function () {
   });
 
   test("propagates cancellation before inspecting files", async () => {
-    const cancelled = new vscode.CancellationTokenSource();
+    const cancelled = cancellationSource();
     cancelled.cancel();
-    try {
-      await assert.rejects(
-        invoke(reader, { file: `${relative}/code.ts` }, cancelled.token),
-        vscode.CancellationError,
-      );
-      await assert.rejects(invoke(finder, {}, cancelled.token), vscode.CancellationError);
-      await assert.rejects(
-        invoke(searcher, { query: "x" }, cancelled.token),
-        vscode.CancellationError,
-      );
-    } finally {
-      cancelled.dispose();
-    }
+    await assert.rejects(
+      invoke(reader, { file: `${relative}/code.ts` }, cancelled.token),
+      vscode.CancellationError,
+    );
+    await assert.rejects(invoke(finder, {}, cancelled.token), vscode.CancellationError);
+    await assert.rejects(
+      invoke(searcher, { query: "x" }, cancelled.token),
+      vscode.CancellationError,
+    );
   });
 });

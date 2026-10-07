@@ -9,7 +9,7 @@ import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } f
 import type { ToWebview } from "../protocol";
 import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
-import { afterTest, recordMessages, replace, tempDir } from "./afterTest";
+import { afterTest, cancellationSource, recordMessages, replace, tempDir } from "./afterTest";
 import {
   FakeWebview,
   memento,
@@ -446,7 +446,7 @@ suite("panel", function () {
     });
     assert.ok((await rendering).ok);
 
-    const cancellation = new vscode.CancellationTokenSource();
+    const cancellation = cancellationSource();
     const third = pick(panel, cancellation.token);
     cancellation.cancel();
     assert.deepStrictEqual(await third, { picked: false, reason: "The request was cancelled." });
@@ -454,8 +454,7 @@ suite("panel", function () {
 
   test("a cancelled pick leaves an existing pick active", async () => {
     const { panel } = await newFakePanel();
-    const cancellation = new vscode.CancellationTokenSource();
-    afterTest(() => cancellation.dispose());
+    const cancellation = cancellationSource();
     cancellation.cancel();
     assert.ok((await panel.render(flowchart, "tool")).ok);
     const active = pick(panel);

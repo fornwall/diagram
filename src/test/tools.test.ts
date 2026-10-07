@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { ChartTool } from "../chartTools";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { AnnotateDiagramTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
-import { afterTest, replace } from "./afterTest";
+import { cancellationSource, replace } from "./afterTest";
 import { newPanel } from "./newPanel";
 import { invokeTool } from "./toolText";
 
@@ -168,8 +168,7 @@ suite("tools", () => {
   });
 
   test("cancelled tools leave the diagram, its marks and the closed panel alone", async () => {
-    const cancellation = new vscode.CancellationTokenSource();
-    afterTest(() => cancellation.dispose());
+    const cancellation = cancellationSource();
     cancellation.cancel();
     const calls: string[] = [];
     panel.render = async () => {
