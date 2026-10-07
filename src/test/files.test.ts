@@ -260,30 +260,28 @@ suite("files", () => {
     assert.deepStrictEqual(seen(/secret\.csv|inward\.tsv|attacker\.example/), []);
   });
 
-  test("resolves a path in other case where file systems ignore case", function () {
-    const platform = process.platform;
-    if (platform !== "linux" && platform !== "darwin" && platform !== "win32") this.skip();
-    const real = path.join(dir, "Folder");
+  test("resolves a path in other case only where the file system ignores case", function () {
+    if (process.platform === "win32") this.skip();
+    const real = path.join(dir, "real");
     fs.mkdirSync(real);
     fs.writeFileSync(path.join(real, "data.csv"), "a\n1\n");
-    const roots = [{ uri: vscode.Uri.file(real), name: "Folder", index: 0 }];
+    // The folder's last name is a link, which a hard link can stand for in other case.
+    const folder = path.join(dir, "Folder");
+    fs.symlinkSync(real, folder);
+    const roots = [{ uri: vscode.Uri.file(folder), name: "Folder", index: 0 }];
     const typed = vscode.Uri.file(path.join(dir, "folder", "data.csv"));
-    if (platform !== "linux") {
-      assert.ok(inWorkspace(typed, roots));
-      return;
+    if (!fs.existsSync(path.join(dir, "FOLDER"))) {
+      // On a case-sensitive file system, as a macOS volume can be, "folder" is another folder.
+      const other = path.join(dir, "folder");
+      fs.mkdirSync(other);
+      fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+      fs.symlinkSync(path.join(dir, "secret.csv"), path.join(other, "data.csv"));
+      assert.ok(!inWorkspace(typed, roots));
+      fs.rmSync(other, { recursive: true });
+      // A case-insensitive file system finds the same entry by either name.
+      fs.linkSync(folder, other);
     }
-    // A link stands for the folder in other case, as a case-insensitive file system would.
-    fs.symlinkSync(real, path.join(dir, "folder"));
-    assert.ok(!inWorkspace(typed, roots));
-    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
-    assert.ok(descriptor);
-    // Restored before anything else runs, which might go by the platform.
-    Object.defineProperty(process, "platform", { ...descriptor, value: "darwin" });
-    try {
-      assert.ok(inWorkspace(typed, roots));
-    } finally {
-      Object.defineProperty(process, "platform", descriptor);
-    }
+    assert.ok(inWorkspace(typed, roots));
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {

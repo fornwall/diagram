@@ -75,7 +75,7 @@ function folders(): readonly vscode.WorkspaceFolder[] {
 /**
  * Relative names use the first root; absolute paths and URIs disambiguate multiple roots. A URI's
  * scheme is followed by "/", which tells it from a file named "a:b.md" or a drive letter. A file
- * is inside by its path, also typed in other case where file systems usually ignore case, as
+ * is inside by its path, also typed in other case where its file system ignores case, as
  * {@link nearRoot} tells; {@link boundary} then checks where links lead.
  */
 export function resolveWorkspaceFile(

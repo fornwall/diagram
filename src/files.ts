@@ -1,6 +1,6 @@
 // Resolving and decoding the files that users and models name.
 
-import { readlinkSync, realpathSync } from "node:fs";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { readlink } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,10 +33,10 @@ function withinPath(root: string, file: string): boolean {
 }
 
 /**
- * Whether `uri` is inside `root` by its path, also in other case where file systems usually ignore
- * case, as on macOS and Windows. Only such paths are resolved on the file system before the user
- * is asked, as resolving any other could reach a network share, sending the user's credentials,
- * or hang on an unreachable mount.
+ * Whether `uri` is inside `root` by its path, also where it names the folders up to `root` in other
+ * case or Unicode normalization that their file systems ignore, as on macOS and Windows by default.
+ * Only such paths are resolved on the file system before the user is asked, as resolving any other
+ * could reach a network share, sending the user's credentials, or hang on an unreachable mount.
  */
 export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
   const folded = (uri: vscode.Uri) =>
@@ -46,9 +46,39 @@ export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
     });
   return (
     contains(root, uri) ||
-    ((process.platform === "darwin" || process.platform === "win32") &&
-      contains(folded(root), folded(uri)))
+    (root.scheme === "file" &&
+      contains(folded(root), folded(uri)) &&
+      namesFolder(root.fsPath, uri.fsPath))
   );
+}
+
+/**
+ * Whether `file`, which names the folder `root` or a file in it in other case or normalization,
+ * leads into that folder: whether each folder on the way to `root` finds the same entry by the name
+ * as typed, which is not followed if it is a link, as one on a case-sensitive file system could
+ * lead to a network share. Windows is taken to ignore case, as path.relative does, though its
+ * folders can be made case-sensitive.
+ */
+function namesFolder(root: string, file: string): boolean {
+  const names = path.resolve(root).split(path.sep);
+  const typed = path.resolve(file).split(path.sep);
+  return names.every((name, index) => {
+    const given = typed[index] ?? "";
+    if (
+      name === given ||
+      (process.platform === "win32" && name.toLowerCase() === given.toLowerCase())
+    ) {
+      return true;
+    }
+    const parent = names.slice(0, index).join(path.sep) + path.sep;
+    try {
+      const one = lstatSync(parent + name, { bigint: true });
+      const two = lstatSync(parent + given, { bigint: true });
+      return one.dev === two.dev && one.ino === two.ino;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
