@@ -97,19 +97,21 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
- * The rows in the order of the dates of their first labels. ECharts draws a line through its
- * points, samples them and stacks them in the order of its data, which would otherwise run back
- * and forth in time.
+ * The rows in the order of the dates of their first labels, and those dates as ECharts reads
+ * them. ECharts draws a line through its points, samples them and stacks them in the order of its
+ * data, which would otherwise run back and forth in time.
  */
-function inTimeOrder(rows: Row[]): Row[] {
-  const times = rows.map((row) => {
-    const time = timeValue(label(row));
-    // Unzoned times are local to the viewer; the host's time zone orders them alike.
-    return typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-"));
-  });
-  return [...rows.keys()]
-    .sort((a, b) => (times[a] ?? 0) - (times[b] ?? 0))
-    .map((index) => rows[index] as Row);
+function inTimeOrder(rows: Row[]): { rows: Row[]; times: (string | number)[] } {
+  const times = rows.map((row) => timeValue(label(row)));
+  // Unzoned times are local to the viewer; the host's time zone orders them alike.
+  const keys = times.map((time) =>
+    typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-")),
+  );
+  const order = [...rows.keys()].sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0));
+  return {
+    rows: order.map((index) => rows[index] as Row),
+    times: order.map((index) => times[index] ?? ""),
+  };
 }
 
 /**
@@ -117,7 +119,8 @@ function inTimeOrder(rows: Row[]): Row[] {
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
 export function cartesianOption(type: CartesianType, read: Reading): Record<string, unknown> {
-  const reading = read.columns.timeAxis ? { ...read, rows: inTimeOrder(read.rows) } : read;
+  const sorted = read.columns.timeAxis ? inTimeOrder(read.rows) : undefined;
+  const reading = sorted ? { ...read, rows: sorted.rows } : read;
   const { table, columns, names, rows } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];
@@ -137,7 +140,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
   // Every series uses the same time coordinate; parse offsets and fractions once per point.
-  const times = columns.timeAxis ? points.map(timeValue) : undefined;
+  const times = sorted && (pivot ? points.map(timeValue) : sorted.times);
   // On a time axis, a series per label has points at its own times, and a line through them
   // rather than a gap where another series has a point. A stack needs a point at every time.
   const ownTimes = times !== undefined && pivot && CARTESIAN_SERIES[type].stack === undefined;
