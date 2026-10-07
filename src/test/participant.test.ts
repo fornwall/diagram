@@ -56,6 +56,27 @@ type Constructor<T> = new (...args: unknown[]) => T;
 const RequestTurn = vscode.ChatRequestTurn as unknown as Constructor<vscode.ChatRequestTurn>;
 const ResponseTurn = vscode.ChatResponseTurn as unknown as Constructor<vscode.ChatResponseTurn>;
 
+/** A request to @diagram and its reply in Markdown, as earlier turns of the chat. */
+function exchange(
+  prompt: string,
+  reply: string,
+  result: vscode.ChatResult = {},
+  {
+    command,
+    references = [],
+  }: { command?: string; references?: vscode.ChatPromptReference[] } = {},
+) {
+  return [
+    new RequestTurn(prompt, command, references, "diagram.participant", []),
+    new ResponseTurn(
+      [new vscode.ChatResponseMarkdownPart(reply)],
+      result,
+      "diagram.participant",
+      command,
+    ),
+  ];
+}
+
 /** The fake model's token count: about one token per four characters. */
 const tokenCount = (text: string) => Math.ceil(text.length / 4);
 
@@ -1043,14 +1064,12 @@ suite("participant", () => {
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(folder);
     const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
-    const history = [
-      new RequestTurn("Draw #file:sizes.tsv", undefined, references, "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Here it is.")],
-        { metadata: { language: "mermaid", source: "flowchart TD\n  A --> B" } },
-        "diagram.participant",
-      ),
-    ];
+    const history = exchange(
+      "Draw #file:sizes.tsv",
+      "Here it is.",
+      { metadata: { language: "mermaid", source: "flowchart TD\n  A --> B" } },
+      { references },
+    );
     const { sent, counted } = await ask([[text("Hm.")]], { history, references });
     // A small prompt fits without counting its tokens.
     assert.strictEqual(counted, 0);
@@ -1063,14 +1082,8 @@ suite("participant", () => {
 
     // The current diagram, which the request describes, is not repeated.
     assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "participant")).ok);
-    const turn = (source: string) => [
-      new RequestTurn("Draw", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Drawn.")],
-        { metadata: { language: "mermaid", source } },
-        "diagram.participant",
-      ),
-    ];
+    const turn = (source: string) =>
+      exchange("Draw", "Drawn.", { metadata: { language: "mermaid", source } });
     const again = await ask([[text("Hm.")]], {
       history: [...turn(flowchart.source), ...turn(`${flowchart.source}\n  B --> C`)],
     });
@@ -1083,15 +1096,7 @@ suite("participant", () => {
 
   test("leaves /show out of the history, and gives a command without a message by its name", async () => {
     assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
-    const turn = (command: string, reply: string) => [
-      new RequestTurn(" ", command, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart(reply)],
-        {},
-        "diagram.participant",
-        command,
-      ),
-    ];
+    const turn = (command: string, reply: string) => exchange(" ", reply, {}, { command });
     const history = [...turn("explain", "It parses."), ...turn("show", "Opened the panel.")];
     const { sent } = await ask([[text("Hm.")]], { history, command: "explain", prompt: "" });
     const messages = sent[0]?.messages.map(messageText) ?? [];
@@ -1110,14 +1115,9 @@ suite("participant", () => {
       valueColumns: ["sales"],
       data: `region,sales\n${"Private sample row,42\n".repeat(20_000)}`,
     };
-    const history = [
-      new RequestTurn("Chart regional sales", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Here are the regional totals.")],
-        { metadata: { chart } },
-        "diagram.participant",
-      ),
-    ];
+    const history = exchange("Chart regional sales", "Here are the regional totals.", {
+      metadata: { chart },
+    });
     const { result, sent } = await ask([[text("The settings are retained.")]], {
       history,
       maxInputTokens: 4_000,
@@ -1142,14 +1142,11 @@ suite("participant", () => {
   test("leaves out the oldest turns, and older diagrams first, to fit the model's input", async () => {
     // Each turn takes about 3000 tokens of text and 10000 of diagram, and the prompt may take
     // 3/4 of 41640 tokens: the last two turns fit with their diagrams, and one more without.
-    const history = [1, 2, 3, 4].flatMap((n) => [
-      new RequestTurn(`Draw ${n}`, undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart(`Reply ${n}: ${"x".repeat(12_000)}`)],
-        { metadata: { language: "mermaid", source: `flowchart TD\n%% ${"y".repeat(40_000)}` } },
-        "diagram.participant",
-      ),
-    ]);
+    const history = [1, 2, 3, 4].flatMap((n) =>
+      exchange(`Draw ${n}`, `Reply ${n}: ${"x".repeat(12_000)}`, {
+        metadata: { language: "mermaid", source: `flowchart TD\n%% ${"y".repeat(40_000)}` },
+      }),
+    );
     const { sent } = await ask([[text("Hm.")]], { history, maxInputTokens: 41_640 });
     const messages = sent[0]?.messages.map(messageText).slice(1) ?? [];
     assert.deepStrictEqual(
@@ -1163,18 +1160,10 @@ suite("participant", () => {
 
   test("counts prose-only history after leaving out a diagram", async () => {
     const history = [
-      new RequestTurn("Earlier question", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("x".repeat(12_000))],
-        {},
-        "diagram.participant",
-      ),
-      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Here it is.")],
-        { metadata: { language: "mermaid", source: "y".repeat(20_000) } },
-        "diagram.participant",
-      ),
+      ...exchange("Earlier question", "x".repeat(12_000)),
+      ...exchange("Draw it", "Here it is.", {
+        metadata: { language: "mermaid", source: "y".repeat(20_000) },
+      }),
     ];
     const maxInputTokens = 4_000;
     const { sent } = await ask([[text("Hm.")]], { history, maxInputTokens });
@@ -1186,14 +1175,11 @@ suite("participant", () => {
   });
 
   test("counts repeated history once and skips unused shortened replies", async () => {
-    const history = [1, 2].flatMap(() => [
-      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Here it is.")],
-        { metadata: { language: "mermaid", source: "x".repeat(2_800) } },
-        "diagram.participant",
-      ),
-    ]);
+    const history = [1, 2].flatMap(() =>
+      exchange("Draw it", "Here it is.", {
+        metadata: { language: "mermaid", source: "x".repeat(2_800) },
+      }),
+    );
     const { sent, counted } = await ask([[text("Hm.")]], {
       history,
       maxInputTokens: 4_000,
@@ -1207,14 +1193,9 @@ suite("participant", () => {
   test("counts the messages of earlier tool rounds once", async () => {
     // A short result, so that each round's fits whole.
     countToolCalls(() => new vscode.LanguageModelToolResult([text("flowchart TD\n  A --> B")]));
-    const history = [
-      new RequestTurn("Draw it", undefined, [], "diagram.participant", []),
-      new ResponseTurn(
-        [new vscode.ChatResponseMarkdownPart("Here it is.")],
-        { metadata: { language: "mermaid", source: "x".repeat(5_000) } },
-        "diagram.participant",
-      ),
-    ];
+    const history = exchange("Draw it", "Here it is.", {
+      metadata: { language: "mermaid", source: "x".repeat(5_000) },
+    });
     const call = () => [new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})];
     const options = {
       history,
