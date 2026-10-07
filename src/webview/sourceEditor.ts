@@ -100,14 +100,10 @@ export class SourceEditor {
   diagramChanged(renderer: Renderer, source: string, requestId: number): void {
     this.diagram = { renderer, source, requestId };
     const { input, staleNote, viewButtons } = this.elements;
-    for (const [button, description] of [
-      [viewButtons.visual, `Show the ${renderer.noun}`],
-      [viewButtons.split, `Show the ${renderer.noun} and its source`],
-      [viewButtons.source, `Edit the ${renderer.sourceName}`],
-    ] as const) {
-      button.title = description;
-      button.setAttribute("aria-label", description);
-    }
+    // The buttons show only icons, so their titles also name them.
+    viewButtons.visual.title = `Show the ${renderer.noun}`;
+    viewButtons.split.title = `Show the ${renderer.noun} and its source`;
+    viewButtons.source.title = `Edit the ${renderer.sourceName}`;
     input.setAttribute("aria-label", renderer.sourceName);
     // The first diagram makes the source available, and with it the view chosen before a reload.
     this.setView(this.view);

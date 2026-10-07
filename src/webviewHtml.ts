@@ -65,9 +65,9 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       <button id="write-to" hidden></button>
       <span id="drag-out" class="drag-out" draggable="true" role="img" aria-label="Drag the drawing into another application as an image" title="Drag into another app as an image (hold Shift to drag SVG)" hidden>${IMAGE_ICON}</span>
       <div id="views" class="views" role="group" aria-label="View">
-        <button id="view-visual" aria-pressed="true" title="Show the diagram" aria-label="Show the diagram">${DIAGRAM_ICON}</button>
-        <button id="view-split" aria-pressed="false" title="Show the diagram and its source" aria-label="Show the diagram and its source">${SPLIT_ICON}</button>
-        <button id="view-source" aria-pressed="false" title="Edit the source" aria-label="Edit the source">${SOURCE_ICON}</button>
+        <button id="view-visual" aria-pressed="true" title="Show the diagram">${DIAGRAM_ICON}</button>
+        <button id="view-split" aria-pressed="false" title="Show the diagram and its source">${SPLIT_ICON}</button>
+        <button id="view-source" aria-pressed="false" title="Edit the source">${SOURCE_ICON}</button>
       </div>
     </div>
   </header>
