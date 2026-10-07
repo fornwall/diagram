@@ -1,5 +1,6 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
+import { joinWords } from "../text";
 import type { DiagramDb } from "./mermaidNodes";
 
 /** The words that start each kind of diagram that Mermaid detects, the common ones first. */
@@ -48,14 +49,7 @@ export const DIAGRAM_TYPES = [
   "railroad-peg-beta",
 ];
 
-/** Lists the words as alternatives: "a, b or c". */
-function alternatives(words: string[]): string {
-  return words.length > 1
-    ? `${words.slice(0, -1).join(", ")} or ${words.at(-1)}`
-    : (words[0] ?? "");
-}
-
-const COMMON_TYPES = alternatives(DIAGRAM_TYPES.slice(0, 11));
+const COMMON_TYPES = joinWords(DIAGRAM_TYPES.slice(0, 11), "or");
 
 /** The edit distance between two words, ignoring case. */
 function distance(a: string, b: string): number {
@@ -104,7 +98,10 @@ function unknownTypeError(message: string): Error {
   ).slice(0, 3);
   return new Error(
     matches.length > 0
-      ? `Unknown diagram type "${type}": did you mean ${alternatives(matches.map((match) => `"${match}"`))}?`
+      ? `Unknown diagram type "${type}": did you mean ${joinWords(
+          matches.map((match) => `"${match}"`),
+          "or",
+        )}?`
       : `Unknown diagram type "${type}": start the diagram with its type, such as ${COMMON_TYPES}.`,
   );
 }
@@ -416,7 +413,8 @@ function describe(source: string, start: number, end: number, expected?: string[
   }
   // A longer list is of every kind of statement, which does not help.
   const names = expected?.map((name) => (name === "EOF" ? "end of the diagram" : name)) ?? [];
-  const instead = names.length > 0 && names.length <= 8 ? `; expected ${alternatives(names)}` : "";
+  const instead =
+    names.length > 0 && names.length <= 8 ? `; expected ${joinWords(names, "or")}` : "";
   return `unexpected ${found}${instead}.`;
 }
 

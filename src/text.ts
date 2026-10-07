@@ -7,6 +7,13 @@ export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");
 }
 
+/** E.g. "a, b or c": a list as the messages and README word it, without a serial comma. */
+export function joinWords(words: readonly string[], conjunction: "and" | "or"): string {
+  return words.length > 1
+    ? `${words.slice(0, -1).join(", ")} ${conjunction} ${words.at(-1)}`
+    : (words[0] ?? "");
+}
+
 /** Text as quoted in a message: as JSON, shortened to `max` characters. */
 export function quote(text: string, max = 40): string {
   return JSON.stringify(text.length > max ? `${text.slice(0, max)}…` : text);

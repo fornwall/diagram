@@ -2,6 +2,7 @@
 
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
+import { joinWords } from "../text";
 import { mix, type ThemeColors, toCss } from "./colors";
 import type { DiagramImage } from "./images";
 import { describeError, nestingError, parsableSource } from "./mermaidErrors";
@@ -63,7 +64,10 @@ function darkScale({ palette, background }: ThemeColors): Record<string, string>
 function describeLinks(targets: readonly WebLink[]): string {
   const [first] = targets;
   if (targets.length > 1 || !first) {
-    return new Intl.ListFormat("en", { type: "disjunction" }).format(targets.map((t) => t.name));
+    return joinWords(
+      targets.map((t) => t.name),
+      "or",
+    );
   }
   return first.name === first.url ? first.url : `${first.name} (${first.url})`;
 }

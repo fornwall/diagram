@@ -3,6 +3,7 @@
 // errors.
 
 import { isPlainObject } from "../protocol";
+import { joinWords } from "../text";
 import { evaluateSource, isFunctionAt } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
@@ -341,11 +342,13 @@ function checkSeries(each: unknown, path: string, base: JsonObject): void {
   }
   const components = system === undefined ? undefined : COORDINATE_COMPONENTS[system];
   if (components?.needs.some((name) => asArray(base[name]).length === 0)) {
-    const needs = components.needs.map((name) => `"${name}"`);
+    const needs = joinWords(
+      components.needs.map((name) => `"${name}"`),
+      "and",
+    );
     throw new Error(
       `${path} (type "${type}") is drawn on the ${system} coordinate system and needs ` +
-        `${needs.length > 1 ? `${needs.slice(0, -1).join(", ")} and ${needs.at(-1)}` : needs[0]}, ` +
-        `e.g. ${components.example}.`,
+        `${needs}, e.g. ${components.example}.`,
     );
   }
   if (type === "custom" && typeof each.renderItem !== "function") {
