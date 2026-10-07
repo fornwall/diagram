@@ -294,20 +294,17 @@ export class ChartFocus {
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
       if (!(activates || (moves && !event.altKey && !event.ctrlKey && !event.metaKey))) return;
       const navigation = this.navigationOf();
-      const current = this.current();
+      const current = navigation && this.current(navigation);
       if (!navigation || !current) return;
       event.preventDefault();
       this.keyboard = true;
       const to = activates ? current : (navigation.move(current, key) ?? current);
-      this.show(to);
+      this.show(to, navigation);
       if (activates) activate(itemKey(to), event);
     });
     element.addEventListener("focus", () => {
       this.keyboard ||= element.matches(":focus-visible");
-      if (this.keyboard) {
-        const current = this.current();
-        if (current) this.show(current);
-      }
+      if (this.keyboard) this.showCurrent();
     });
     element.addEventListener("blur", () => this.hide());
     element.addEventListener("pointerdown", () => {
@@ -338,14 +335,12 @@ export class ChartFocus {
       return;
     }
     this.stale = false;
-    const current = this.current();
-    if (current) this.show(current);
-    else this.hide();
+    if (!this.showCurrent()) this.hide();
   }
 
-  private place(): void {
+  private place(navigation = this.navigationOf()): void {
     const ref = this.shown && this.focused ? parseItemKey(this.focused.key) : undefined;
-    const box = ref && this.navigationOf()?.box(ref);
+    const box = ref && navigation?.box(ref);
     const colors = this.colors();
     this.ring.hidden = !box || !colors;
     if (!box || !colors) return;
@@ -378,11 +373,18 @@ export class ChartFocus {
     return chart && new ChartNavigation(chart);
   }
 
-  /** The focused item if the chart still shows it, the first item otherwise. */
-  private current(): ItemRef | undefined {
+  /** Shows the item that {@link current} gives, returning whether there is one. */
+  private showCurrent(): boolean {
     const navigation = this.navigationOf();
+    const current = navigation && this.current(navigation);
+    if (current) this.show(current, navigation);
+    return current !== undefined;
+  }
+
+  /** The focused item if the chart still shows it, the first item otherwise. */
+  private current(navigation: ChartNavigation): ItemRef | undefined {
     const items = this.chart()?.items;
-    if (!navigation || !items) return undefined;
+    if (!items) return undefined;
     if (this.focused) {
       const { key, id } = this.focused;
       const ref = parseItemKey(key);
@@ -393,17 +395,16 @@ export class ChartFocus {
     return navigation.first();
   }
 
-  private show(ref: ItemRef): void {
+  private show(ref: ItemRef, navigation: ChartNavigation): void {
     const found = this.chart();
-    const node = found?.items.node(itemKey(ref));
-    const about = this.navigationOf()?.about(ref);
+    const key = itemKey(ref);
+    const node = found?.items.node(key);
+    const about = navigation.about(ref);
     if (!found || !node || !about) return;
-    const focused = { key: itemKey(ref), id: node.id };
-    const changed =
-      !this.shown || this.focused?.key !== focused.key || this.focused.id !== focused.id;
-    this.focused = focused;
+    const changed = !this.shown || this.focused?.key !== key || this.focused.id !== node.id;
+    this.focused = { key, id: node.id };
     this.shown = true;
-    this.place();
+    this.place(navigation);
     const { seriesIndex, dataType, dataIndex } = ref;
     // A tooltip shows a node of a graph for an edge's index.
     found.chart.dispatchAction(
