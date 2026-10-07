@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { absoluteFile, absolutePath, contains, decodeFile, fileError, withinPath } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
-import { givenProperties, plural, quote, unknownProperties } from "./text";
+import { plural, quote, toolInput } from "./text";
 import { textResult } from "./tools";
 
 const MIB = 1024 * 1024;
@@ -26,16 +26,6 @@ const DEFAULT_READ_LINES = 200;
 /** Files read ahead while searching, as reading them one by one waits on each. */
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
-
-function objectInput(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (!isPlainObject(value)) throw new Error("Give the tool input as an object.");
-  const input = givenProperties(value);
-  const unknown = unknownProperties(input, keys);
-  if (unknown !== undefined) {
-    throw new Error(unknown);
-  }
-  return input;
-}
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
   if (value === undefined) return fallback;
@@ -341,7 +331,7 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       throwIfCancelled(token);
-      return textResult(await this.run(objectInput(options.input, this.keys), token));
+      return textResult(await this.run(toolInput(options.input, this.keys), token));
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;
       return textResult(`Error: ${errorMessage(error)}`);

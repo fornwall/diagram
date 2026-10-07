@@ -1,5 +1,7 @@
 // Wording shared by the messages for users and models.
 
+import { isPlainObject } from "./protocol";
+
 /** E.g. `"a", "b"`. */
 export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");
@@ -22,8 +24,9 @@ export function givenProperties(input: Record<string, unknown>): Record<string, 
 
 /**
  * E.g. `Unknown property "colour"; the properties are "type", "title".`, or undefined if `input`
- * has only `known` properties. Unknown properties are refused rather than ignored, as a model
- * that sends one has likely misnamed it.
+ * has only `known` properties. A model that sends an unknown property has likely misnamed it, so
+ * the tools refuse such input, except that diagram_render draws and names it, as its source is
+ * costly to send again.
  */
 export function unknownProperties(input: object, known: readonly string[]): string | undefined {
   const unknown = Object.keys(input).filter((key) => !known.includes(key));
@@ -32,4 +35,21 @@ export function unknownProperties(input: object, known: readonly string[]): stri
   }
   const properties = unknown.length === 1 ? "property" : "properties";
   return `Unknown ${properties} ${quoteAll(unknown)}; the properties are ${quoteAll(known)}.`;
+}
+
+/**
+ * A tool input's {@link givenProperties}.
+ *
+ * @throws Error if it is not an object or has properties other than `known`.
+ */
+export function toolInput(value: unknown, known: readonly string[]): Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    throw new Error(`The input must be an object with the properties ${quoteAll(known)}.`);
+  }
+  const input = givenProperties(value);
+  const unknown = unknownProperties(input, known);
+  if (unknown !== undefined) {
+    throw new Error(unknown);
+  }
+  return input;
 }

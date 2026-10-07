@@ -172,6 +172,10 @@ suite("chartTools", function () {
       /"rowCount":3/,
     );
     assert.strictEqual(panel.current, undefined);
+    assert.strictEqual(
+      toolText(await tool.invoke({ input: file as never, toolInvocationToken: undefined }, token)),
+      'Data could not be inspected: The input must be an object with the properties "data", "file", "command", "format", "sampleRows".',
+    );
   });
 
   test("updates retain manual styling and loaded command data and support adoption", async () => {

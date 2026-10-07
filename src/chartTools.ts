@@ -9,14 +9,8 @@ import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation } from "./dataSource";
 import type { DiagramPanel } from "./panel";
-import {
-  CHART_TOOL,
-  errorMessage,
-  isPlainObject,
-  RENDER_TOOL,
-  UPDATE_CHART_TOOL,
-} from "./protocol";
-import { givenProperties, unknownProperties } from "./text";
+import { CHART_TOOL, errorMessage, RENDER_TOOL, UPDATE_CHART_TOOL } from "./protocol";
+import { toolInput } from "./text";
 import { nonBlank, renderFailure, textResult } from "./tools";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
@@ -112,14 +106,8 @@ interface InspectDataInput {
 }
 
 function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
-  if (!isPlainObject(input))
-    throw new Error('The input must be an object, e.g. {"file": "data.csv"}.');
-  const given = givenProperties(input);
-  const unknown = unknownProperties(given, ["data", "file", "command", "format", "sampleRows"]);
-  if (unknown !== undefined) {
-    throw new Error(unknown);
-  }
-  const { sampleRows = 5, ...source } = given;
+  const keys = ["data", "file", "command", "format", "sampleRows"];
+  const { sampleRows = 5, ...source } = toolInput(input, keys);
   if (!Number.isInteger(sampleRows) || Number(sampleRows) < 0 || Number(sampleRows) > 20) {
     throw new Error('"sampleRows" must be an integer from 0 to 20.');
   }
