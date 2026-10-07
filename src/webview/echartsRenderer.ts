@@ -107,7 +107,7 @@ export class EChartsRenderer implements Renderer {
     this.selectedKeys = new Set();
     this.annotation = UNMARKED;
     try {
-      this.apply(true);
+      this.apply(false);
     } catch (error) {
       // A failed setOption can leave the instance broken: start over.
       this.disposeChart();
@@ -181,7 +181,7 @@ export class EChartsRenderer implements Renderer {
     // Export can precede the resize observer or its debounced layout after changing views: lay out
     // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
     // dimensions of their last visible rendering.
-    this.apply(false, true);
+    this.apply(true);
     this.cancelRelayout();
     const svg = this.container.querySelector("svg");
     if (!svg) throw new Error("There is no chart to make an image of.");
@@ -316,9 +316,9 @@ export class EChartsRenderer implements Renderer {
 
   /**
    * Sets the option, laid out for the current size and theme. A relayout of the shown chart keeps
-   * what the user changed in it, and is skipped when the layout stays the same.
+   * what the user changed in it, does not animate, and is skipped when the layout stays the same.
    */
-  private apply(animate: boolean, relayout = false): void {
+  private apply(relayout: boolean): void {
     const echarts = this.echarts;
     if (!echarts) {
       return;
@@ -348,7 +348,7 @@ export class EChartsRenderer implements Renderer {
       colors: this.theme.colors,
       reducedMotion,
     });
-    if (!animate) {
+    if (relayout) {
       disableAnimation(option);
     }
     if (this.blurring()) {
@@ -442,7 +442,7 @@ export class EChartsRenderer implements Renderer {
   private relayout(): void {
     if (this.chart && this.option) {
       try {
-        this.apply(false, true);
+        this.apply(true);
       } catch (error) {
         console.error(error);
       }

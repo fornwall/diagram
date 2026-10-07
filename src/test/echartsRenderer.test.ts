@@ -57,10 +57,7 @@ function relayout<T>(
     focus: { chartChanged: () => {} },
   });
   const apply = (relayout: boolean) =>
-    (renderer as unknown as { apply(animate: boolean, relayout: boolean): void }).apply(
-      false,
-      relayout,
-    );
+    (renderer as unknown as { apply(relayout: boolean): void }).apply(relayout);
   try {
     apply(false);
     change(shown);
