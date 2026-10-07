@@ -11,9 +11,9 @@ const fromHex = (hex: string): Rgba => ({
 
 let context: CanvasRenderingContext2D | null | undefined;
 
-/** Parses any CSS color, by letting the canvas normalize it to "#rrggbb" or "rgba(…)". */
+/** Parses any CSS color, in any color space, by painting a pixel in it. */
 function parseColor(css: string): Rgba | undefined {
-  context ??= document.createElement("canvas").getContext("2d");
+  context ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   const value = css.trim();
   if (!value || !context) {
     return undefined;
@@ -27,14 +27,10 @@ function parseColor(css: string): Rgba | undefined {
   if (String(context.fillStyle) !== normalized) {
     return undefined;
   }
-  if (normalized.startsWith("#")) {
-    return fromHex(normalized);
-  }
-  const [r = 0, g = 0, b = 0, a = 1] = normalized
-    .slice(normalized.indexOf("(") + 1, -1)
-    .split(",")
-    .map(Number);
-  return { r, g, b, a };
+  context.clearRect(0, 0, 1, 1);
+  context.fillRect(0, 0, 1, 1);
+  const [r = 0, g = 0, b = 0, a = 0] = context.getImageData(0, 0, 1, 1).data;
+  return { r, g, b, a: a / 255 };
 }
 
 /** Reads the colors and font that charts use from VS Code's CSS variables. */

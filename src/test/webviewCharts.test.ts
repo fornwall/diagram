@@ -561,6 +561,27 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("reads theme colors written in other CSS color syntaxes", async () => {
+    await draw({ language: "echarts", source: COUNTED_CHART });
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
+        const root = document.documentElement.style;
+        root.setProperty("--vscode-charts-blue", "color(srgb 0.0706 0.2039 0.3373)");
+        try {
+          for (let frame = 0; frame < 50 && fill() !== "#123456"; frame++) {
+            await new Promise(requestAnimationFrame);
+          }
+          return fill();
+        } finally {
+          root.removeProperty("--vscode-charts-blue");
+          while (fill() === "#123456") await new Promise(requestAnimationFrame);
+        }
+      })()`),
+      "#123456",
+    );
+  });
+
   test("keeps a selected chart item selected through a theme change", async () => {
     await draw({
       language: "echarts",
