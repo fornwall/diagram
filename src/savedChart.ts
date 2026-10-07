@@ -19,11 +19,13 @@ const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => HTML_ESCA
  */
 const embedJson = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
-/** Preserve international font names without allowing CSS or HTML injection. */
+/**
+ * Preserve international font names without allowing CSS or HTML injection. Font names have no
+ * parentheses, and an unclosed one would take the rest of the stylesheet into the declaration.
+ */
 function fontStack(colors: ThemeColors): string {
   return (
-    colors.fontFamily.replace(/[^\p{L}\p{M}\p{N}_\s,.'"()-]/gu, "").trim() ||
-    "system-ui, sans-serif"
+    colors.fontFamily.replace(/[^\p{L}\p{M}\p{N}_\s,.'"-]/gu, "").trim() || "system-ui, sans-serif"
   );
 }
 
