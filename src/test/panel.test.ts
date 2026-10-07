@@ -1135,11 +1135,13 @@ suite("panel", function () {
     const rendering = panel.render({ ...flowchart, clickPrompt: "Explain {label}" }, "tool");
     timers.expire();
     assert.ok(!(await rendering).ok);
+    assert.match(panel.describeForModel() ?? "", /not showing it yet: The diagram panel did not/);
     const click = () => webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
     await click();
     await webview.finishRender();
     await click();
     assert.deepStrictEqual(clicks, ["chat: Explain Parser"]);
+    assert.doesNotMatch(panel.describeForModel() ?? "", /not showing it/);
 
     const broken = panel.render({ ...flowchart, source: "flowchart ??" }, "tool");
     timers.expire();

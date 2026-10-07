@@ -16,6 +16,7 @@ import {
   type DiagramLanguage,
   diagramNoun,
   errorMessage,
+  GET_STATE_TOOL,
   isDiagramLanguage,
   isPlainObject,
   nodeNoun,
@@ -345,7 +346,7 @@ export function renderFailure(
 ): string {
   return outcome.kind === "invalid"
     ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
-    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}; if the user still wants to see it, call ${tool} again to reopen the panel.`;
+    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown. Call ${tool} again only to reopen a closed panel, if the user still wants to see it.`;
 }
 
 export function nonBlank(value: unknown): string | undefined {

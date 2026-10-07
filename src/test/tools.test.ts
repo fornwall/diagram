@@ -96,7 +96,7 @@ suite("tools", () => {
     assert.ok(invalid.includes(leftOut), invalid);
     assert.match(
       await render(),
-      /^The diagram could not be shown: The diagram panel is unavailable\. This is not a problem with the diagram; .*call diagram_render again to reopen the panel\./,
+      /^The diagram could not be shown: The diagram panel is unavailable\. This is not a problem with the diagram, and the panel may still be drawing it: diagram_getState says whether it is shown\. Call diagram_render again only to reopen a closed panel/,
     );
   });
 

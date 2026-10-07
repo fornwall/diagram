@@ -213,7 +213,10 @@ export class DiagramPanel implements vscode.Disposable {
       annotation: this.annotation,
       relationships: this.relationships,
       repeatedNames: this.repeatedNames,
-      warnings: this.renderWarnings,
+      // A page busy with a large drawing may still show it.
+      warnings: this.unavailable
+        ? [...this.renderWarnings, `The panel is not showing it yet: ${this.unavailable}`]
+        : this.renderWarnings,
       chartTable,
       fullSource,
       callsTools,
