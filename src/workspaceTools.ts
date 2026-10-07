@@ -5,7 +5,15 @@ import { realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { absoluteFile, absolutePath, contains, decodeFile, fileError, withinPath } from "./files";
+import {
+  absoluteFile,
+  absolutePath,
+  contains,
+  decodeFile,
+  fileError,
+  inWorkspace,
+  withinPath,
+} from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { plural, quote, toolInput } from "./text";
 import { textResult } from "./tools";
@@ -64,7 +72,9 @@ function folders(): readonly vscode.WorkspaceFolder[] {
 
 /**
  * Relative names use the first root; absolute paths and URIs disambiguate multiple roots. A URI's
- * scheme is followed by "/", which tells it from a file named "a:b.md" or a drive letter.
+ * scheme is followed by "/", which tells it from a file named "a:b.md" or a drive letter. A file
+ * is inside by its path, or by its real path when typed in other case on a case-insensitive file
+ * system; {@link boundary} then checks where links lead.
  */
 export function resolveWorkspaceFile(
   file: unknown,
@@ -80,7 +90,11 @@ export function resolveWorkspaceFile(
     : /^[a-zA-Z][\w+.-]+:\//.test(file)
       ? vscode.Uri.parse(file, true)
       : vscode.Uri.joinPath(firstRoot.uri, file);
-  if (uri.query || uri.fragment || !roots.some((root) => contains(root.uri, uri))) {
+  if (
+    uri.query ||
+    uri.fragment ||
+    !(roots.some((root) => contains(root.uri, uri)) || inWorkspace(uri, roots))
+  ) {
     throw new Error(
       "The file must be inside an open workspace folder, without a query or fragment.",
     );
@@ -144,19 +158,30 @@ export function boundary(
     }
     return checked;
   };
+  const outside = () => new Error("The file is outside the workspace folders.");
   return async (uri) => {
     throwIfCancelled(token);
     const root = roots.find((root) => contains(root.uri, uri));
-    if (!root) throw new Error("The file is outside the workspace folders.");
     if (uri.scheme !== "file") {
+      if (!root) throw outside();
       return unlessCancelled(() => noLinks(uri, root.uri), token);
     }
+    // The real path decides, as it has the case of the names on disk, which a path typed for a
+    // case-insensitive file system may not.
     const [actual, actualRoots] = await unlessCancelled(
-      () => Promise.all([realpath(uri.fsPath), realRoots]),
+      () =>
+        Promise.all([
+          realpath(uri.fsPath).catch((error: unknown) => {
+            throw root ? error : outside();
+          }),
+          realRoots,
+        ]),
       token,
     );
     if (!actualRoots.some((actualRoot) => actualRoot && withinPath(actualRoot, actual))) {
-      throw new Error("The file resolves through a symbolic link outside the workspace.");
+      throw root
+        ? new Error("The file resolves through a symbolic link outside the workspace.")
+        : outside();
     }
   };
 }

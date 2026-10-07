@@ -38,8 +38,10 @@ export function withinPath(root: string, file: string): boolean {
  * missing file, goes by its path, as nothing can be read through it. Virtual file systems have no
  * realpath.
  */
-export function inWorkspace(uri: vscode.Uri): boolean {
-  const roots = vscode.workspace.workspaceFolders ?? [];
+export function inWorkspace(
+  uri: vscode.Uri,
+  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): boolean {
   const actual = uri.scheme === "file" ? realFile(uri.fsPath) : undefined;
   if (actual === undefined) return roots.some((root) => contains(root.uri, uri));
   return roots.some((root) => {

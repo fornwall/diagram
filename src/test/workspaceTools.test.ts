@@ -344,6 +344,25 @@ suite("workspaceTools", function () {
     assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
   });
 
+  test("goes by real paths, as a path in other case on a case-insensitive file system", async function () {
+    if (process.platform === "win32") this.skip();
+    // A path outside the workspace that resolves inside stands for one typed in other case.
+    const inward = path.join(outside, "inward.ts");
+    await fs.symlink(path.join(dir, "code.ts"), inward);
+    afterTest(() => fs.rm(inward));
+    assert.match(await invoke(reader, { file: inward }), /\n1: first\n/);
+    const alias = path.join(outside, "alias");
+    await fs.symlink(dir, alias);
+    afterTest(() => fs.rm(alias));
+    const roots = [{ uri: vscode.Uri.file(alias), name: "alias", index: 0 }];
+    const check = boundary(roots, source.token);
+    await check(resolveWorkspaceFile(path.join(dir, "code.ts"), roots));
+    for (const file of [path.join(outside, "secret.txt"), path.join(outside, "missing.txt")]) {
+      assert.throws(() => resolveWorkspaceFile(file, roots), /inside/);
+      await assert.rejects(check(vscode.Uri.file(file)), /^Error: The file is outside/);
+    }
+  });
+
   test("resolves multiple workspace roots and rejects URI decorations and sibling prefixes", () => {
     const roots = ["/one", "/two"].map((file, index) => ({
       uri: vscode.Uri.file(file),
