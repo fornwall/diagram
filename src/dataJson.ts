@@ -208,6 +208,28 @@ function recordsFromJson(value: unknown): Records {
 const OPEN_STRING = String.raw`"[^"\\]*(?:\\[\s\S][^"\\]*)*`;
 
 /**
+ * NaN and Infinity, as Python's json module writes numbers that are not finite, though JSON has
+ * no such values; strings are matched to be kept as they are.
+ */
+const NON_FINITE = new RegExp(String.raw`(${OPEN_STRING}")|-?\bInfinity\b|\bNaN\b`, "g");
+
+/** Parses a JSON value, reading NaN and Infinity as null. */
+function parseValue(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    // Only when they occur, as JSON Lines, also invalid as a whole, are parsed again by value.
+    if (!text.includes("NaN") && !text.includes("Infinity")) throw error;
+    const finite = text.replace(NON_FINITE, (_, string?: string) => string ?? "null");
+    try {
+      return JSON.parse(finite);
+    } catch {
+      throw error;
+    }
+  }
+}
+
+/**
  * A string, perhaps left open at the end, a bracket, or other text between them, such as "1",
  * "true" or ":".
  */
@@ -238,7 +260,7 @@ function parseJsonStream(text: string): unknown[] | undefined {
   for (const [i, start] of starts.entries()) {
     try {
       // A value left open at the end is parsed too, to report it.
-      values.push(JSON.parse(text.slice(start, ends[i])));
+      values.push(parseValue(text.slice(start, ends[i])));
     } catch (error) {
       if (i === 0) return undefined;
       const line = (text.slice(0, start).match(/\r\n?|\n/g)?.length ?? 0) + 1;
@@ -253,7 +275,7 @@ function parseJsonStream(text: string): unknown[] | undefined {
 export function parseJson(text: string): Records {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = parseValue(text);
   } catch (error) {
     value = parseJsonStream(text);
     if (value === undefined) {

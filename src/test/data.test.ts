@@ -1452,6 +1452,20 @@ suite("data", () => {
     assert.throws(() => parse(`${values[0]}\n{\n  "n":\n}`), /value on line 5 /);
   });
 
+  test("reads NaN and Infinity in JSON, as Python writes them, as empty", () => {
+    const lines = '{"k": "NaN", "v": NaN}\n{"k": "Infinity", "v": -Infinity}\n{"k": "b", "v": 2}';
+    const expected = {
+      columns: ["k", "v"],
+      rows: [
+        ["NaN", null],
+        ["Infinity", null],
+        ["b", 2],
+      ],
+    };
+    assert.deepStrictEqual(parse(lines), expected);
+    assert.deepStrictEqual(parse(`[${lines.replaceAll("\n", ", ")}]`), expected);
+  });
+
   test("parses a JSON array of arrays with and without a header", () => {
     assert.deepStrictEqual(parse('[["lang", "loc"], ["ts", 120], ["css", 30]]'), {
       columns: ["lang", "loc"],
