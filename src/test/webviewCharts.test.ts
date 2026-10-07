@@ -22,19 +22,19 @@ const COUNTED_CHART = `(() => {
     }}]};
 })()`;
 
-/** Webview code defining `chartFitted()`: whether the chart takes the size of its container soon. */
+/**
+ * Webview code defining `chartFitted()`, whether the chart takes the size of its container soon,
+ * and what `UNTIL` defines.
+ */
 const CHART_FITTED = `
-  const chartFitted = async () => {
+  ${UNTIL}
+  const chartFitted = () => {
     const chart = document.getElementById("chart");
-    const fitted = () => {
+    return until(() => {
       const svg = chart.querySelector("svg");
       return svg?.getAttribute("width") === String(chart.clientWidth) &&
         svg.getAttribute("height") === String(chart.clientHeight);
-    };
-    for (let frame = 0; frame < 10 && !fitted(); frame++) {
-      await new Promise(requestAnimationFrame);
-    }
-    return fitted();
+    }, undefined, nextFrame);
   };`;
 
 /** Webview code defining `clickChart(element, init)`, which clicks the middle of a chart's element. */
@@ -55,12 +55,10 @@ suite("ECharts in the webview", function () {
   /** Which half of the chart its one item drawn in red is in, once ECharts draws it so. */
   const redHalf = () =>
     evaluate(`(async () => {
-      for (let attempt = 0; attempt < 100; attempt++) {
-        const svg = document.querySelector("#chart svg");
-        const red = svg.querySelectorAll('path[fill="#ff0000"]');
-        if (red.length === 1) return red[0].getBBox().x < svg.clientWidth / 2 ? "left" : "right";
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
+      ${UNTIL}
+      const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]');
+      await until(() => red().length === 1, "one item drawn in red");
+      return red()[0].getBBox().x < document.querySelector("#chart svg").clientWidth / 2 ? "left" : "right";
     })()`);
 
   test("keeps the chart dimmed around its marks while the pointer hovers items and leaves", async () => {
@@ -522,7 +520,7 @@ suite("ECharts in the webview", function () {
           };
           try {
             send(failing, '{"xAxis": null, "yAxis": {}, "series": [{"type": "bar", "data": [1]}]}');
-            while (!results.includes(drawn)) await new Promise(resolve => setTimeout(resolve, 10));
+            await until(() => results.includes(drawn), "the chart drawn after the failing one");
           } finally {
             results.push = push;
           }
@@ -544,17 +542,18 @@ suite("ECharts in the webview", function () {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
+        ${UNTIL}
         const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
         const root = document.documentElement.style;
         const before = window.chartDraws.length;
         root.setProperty("--vscode-charts-blue", "#123456");
         try {
-          while (fill() !== "#123456") await new Promise(requestAnimationFrame);
+          await until(() => fill() === "#123456", "the theme's color", nextFrame);
           // A layout that is not the theme's, still on its way from rendering, draws once too.
           return [...new Set(window.chartDraws.slice(before))];
         } finally {
           root.removeProperty("--vscode-charts-blue");
-          while (fill() === "#123456") await new Promise(requestAnimationFrame);
+          await until(() => fill() !== "#123456", "the default color again", nextFrame);
         }
       })()`),
       [1],
@@ -565,17 +564,16 @@ suite("ECharts in the webview", function () {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.strictEqual(
       await evaluate(`(async () => {
+        ${UNTIL}
         const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "color(srgb 0.0706 0.2039 0.3373)");
         try {
-          for (let frame = 0; frame < 50 && fill() !== "#123456"; frame++) {
-            await new Promise(requestAnimationFrame);
-          }
+          await until(() => fill() === "#123456", undefined, nextFrame);
           return fill();
         } finally {
           root.removeProperty("--vscode-charts-blue");
-          while (fill() === "#123456") await new Promise(requestAnimationFrame);
+          await until(() => fill() !== "#123456", "the default color again", nextFrame);
         }
       })()`),
       "#123456",
@@ -768,7 +766,8 @@ suite("ECharts in the webview", function () {
     const picking = page.panel.pickNodes("Pick a day", false, tokens.token);
     await evaluate(`(async () => {
       ${PRESS}
-      while (document.getElementById("pick").hidden) await new Promise(resolve => setTimeout(resolve, 10));
+      ${UNTIL}
+      await until(() => !document.getElementById("pick").hidden, "the pick prompt");
       press("Home");
       press("ArrowRight");
       press("Enter");
@@ -818,6 +817,8 @@ suite("ECharts in the webview", function () {
     await renderChart(SALES);
     const focus = (await evaluate(`(async () => {
       ${PRESS}
+      ${UNTIL}
+      const themed = () => document.querySelector('#chart svg path[fill="#123456"]');
       chart.focus();
       press("Home");
       press("ArrowRight");
@@ -825,20 +826,14 @@ suite("ECharts in the webview", function () {
       const root = document.documentElement.style;
       root.setProperty("--vscode-charts-blue", "#123456");
       try {
-        while (!document.querySelector('#chart svg path[fill="#123456"]')) {
-          await new Promise(requestAnimationFrame);
-        }
+        await until(themed, "the theme's color", nextFrame);
         // The tooltip follows once ECharts has drawn the chart anew.
-        for (let frame = 0; frame < 20 && !/Tue/.test(tooltip()); frame++) {
-          await new Promise(requestAnimationFrame);
-        }
+        await until(() => /Tue/.test(tooltip()), undefined, nextFrame);
         return {focused: document.activeElement === chart, ring: Boolean(ring()), tooltip: tooltip(),
           next: press("ArrowRight")};
       } finally {
         root.removeProperty("--vscode-charts-blue");
-        while (document.querySelector('#chart svg path[fill="#123456"]')) {
-          await new Promise(requestAnimationFrame);
-        }
+        await until(() => !themed(), "the default color again", nextFrame);
       }
     })()`)) as Record<string, unknown>;
     assert.match(String(focus.tooltip), /Tue.*B/s);

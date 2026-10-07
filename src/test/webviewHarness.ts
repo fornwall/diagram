@@ -45,10 +45,11 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         };
         window.addEventListener("message", async ({data}) => {
           if (data.type !== "testExpression") return;
+          const {id} = data;
           try {
-            api.postMessage({type: "testResult", value: await new Function("return (" + data.expression + ")")()});
+            api.postMessage({type: "testResult", id, value: await new Function("return (" + data.expression + ")")()});
           } catch (error) {
-            api.postMessage({type: "testResult", error: String(error)});
+            api.postMessage({type: "testResult", id, error: error?.message ?? String(error)});
           }
         });
         return {...api, postMessage, setState: (state) => {
@@ -59,21 +60,24 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
     </script><script type="module"`,
   );
 
+  // Tells answers apart, as an expression that timed out may still answer, later.
+  let expressions = 0;
   function evaluate(expression: string): Promise<unknown> {
+    const id = ++expressions;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         listener.dispose();
         reject(new Error("The webview did not answer the test expression."));
       }, 5000);
       const listener = webview.onDidReceiveMessage((message) => {
-        if (message.type === "testResult") {
+        if (message.type === "testResult" && message.id === id) {
           clearTimeout(timer);
           listener.dispose();
           if (message.error) reject(new Error(message.error));
           else resolve(message.value);
         }
       });
-      void webview.postMessage({ type: "testExpression", expression });
+      void webview.postMessage({ type: "testExpression", id, expression });
     });
   }
 
@@ -200,11 +204,20 @@ export const DRAG_IMAGE = `
     throw new Error("The image was not prepared.");
   };`;
 
-/** Webview code defining `until(done)`, which waits up to two seconds for `done()`, and returns it. */
+/**
+ * Webview code defining `until(done, awaited, step)`, which waits for `done()` and returns it,
+ * checking it every 20 ms, or after each `step()` such as `nextFrame`, for up to four seconds, as
+ * a throttled page runs its timers and frames once a second. Told what it awaits, it fails saying
+ * so rather than return a false value.
+ */
 export const UNTIL = `
-  const until = async (done) => {
-    for (let attempt = 0; attempt < 100 && !done(); attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
+  const nextFrame = () => new Promise(requestAnimationFrame);
+  const until = async (done, awaited, step = () => new Promise(resolve => setTimeout(resolve, 20))) => {
+    for (const end = performance.now() + 4000; !done(); await step()) {
+      if (performance.now() > end) {
+        if (awaited) throw new Error("Timed out waiting for " + awaited + ".");
+        break;
+      }
     }
     return done();
   };`;
