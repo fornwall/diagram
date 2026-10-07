@@ -410,16 +410,28 @@ export class MermaidRenderer implements Renderer {
         (scroller.offsetWidth - scroller.clientWidth);
       scroller.remove();
     }
-    if (width > 0) {
-      container.style.width = `${width}px`;
-      this.layoutWidth = width;
-    }
+    // A drawing that fails leaves the one shown, and the width it was laid out at.
+    const shownWidth = container.style.width;
+    if (width > 0) container.style.width = `${width}px`;
     const text = parsableSource(source);
-    const result = await mermaid.render(id, text, container).catch((error: unknown) => {
-      throw describeError(error, source, () => mermaid.detectType(text));
+    const drawing = async () => {
+      const result = await mermaid.render(id, text, container).catch((error: unknown) => {
+        throw describeError(error, source, () => mermaid.detectType(text));
+      });
+      const db = WITH_DATABASE.has(result.diagramType)
+        ? await databaseOf(mermaid, text)
+        : undefined;
+      return {
+        result,
+        db,
+        svg: await layOut(result.svg, result.diagramType, text, async () => db),
+      };
+    };
+    const { result, db, svg } = await drawing().catch((error: unknown) => {
+      container.style.width = shownWidth;
+      throw error;
     });
-    const db = WITH_DATABASE.has(result.diagramType) ? await databaseOf(mermaid, text) : undefined;
-    const svg = await layOut(result.svg, result.diagramType, text, async () => db);
+    if (width > 0) this.layoutWidth = width;
     this.diagram.replaceChildren(svg);
     // A click selects, and links open through the extension, which checks their URLs. A link that
     // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on

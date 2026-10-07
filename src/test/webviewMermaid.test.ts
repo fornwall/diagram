@@ -166,6 +166,41 @@ suite("Mermaid in the webview", function () {
     });
   });
 
+  test("lays a Gantt chart out again at the next resize after laying it out failed", async () => {
+    await draw({ source: MERMAID.gantt });
+    const result = await evaluate(`(async () => {
+      const canvas = document.getElementById("canvas");
+      const layout = document.querySelector(".mermaid-layout");
+      const shown = { svg: document.querySelector("#diagram svg"), width: layout.style.width };
+      const measure = Element.prototype.getBoundingClientRect;
+      let failures = 0;
+      Element.prototype.getBoundingClientRect = function () {
+        if (this.closest(".mermaid-layout")) {
+          failures++;
+          throw new Error("Test failure");
+        }
+        return measure.call(this);
+      };
+      ${UNTIL}
+      try {
+        canvas.style.maxWidth = canvas.offsetWidth * 0.6 + "px";
+        await until(() => failures > 0);
+      } finally {
+        Element.prototype.getBoundingClientRect = measure;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const kept = document.querySelector("#diagram svg") === shown.svg && layout.style.width === shown.width;
+      // Less than a relayout takes, but from the width that the shown drawing has.
+      canvas.style.maxWidth = parseFloat(canvas.style.maxWidth) - 4 + "px";
+      await until(() => document.querySelector("#diagram svg") !== shown.svg);
+      const style = getComputedStyle(canvas);
+      const room = canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      canvas.style.maxWidth = "";
+      return { kept, relaidOut: Math.abs(document.querySelector("#diagram svg").viewBox.baseVal.width - room) < 1 };
+    })()`);
+    assert.deepStrictEqual(result, { kept: true, relaidOut: true });
+  });
+
   test("scrolls past every side of a Mermaid drawing larger than the canvas", async () => {
     await draw({ source: "flowchart LR\n  A[Left] --> B[Middle] --> C[Right]" });
     const padded = await evaluate(`(async () => {
