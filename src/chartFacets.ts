@@ -10,6 +10,8 @@ import { quoteAll } from "./text";
 
 type Option = Record<string, unknown>;
 const MAX_FACETS = 12;
+/** More rows of panels would leave each too short to read in a panel of usual height. */
+const MAX_ROWS = 4;
 
 const objects = (value: unknown): Option[] =>
   Array.isArray(value) ? value.filter(isPlainObject) : isPlainObject(value) ? [value] : [];
@@ -82,11 +84,12 @@ export function buildFacetedChart(
     shareAxes(panels, "xAxis", 0, chronological);
     shareAxes(panels, "yAxis", 1, chronological);
   }
-  const columns = Math.min(
-    panels.length,
-    spec.facetColumns ?? Math.min(2, Math.ceil(Math.sqrt(panels.length))),
-  );
+  const wanted = spec.facetColumns ?? Math.min(2, Math.ceil(Math.sqrt(panels.length)));
+  const columns = Math.min(panels.length, Math.max(wanted, Math.ceil(panels.length / MAX_ROWS)));
   const rows = Math.ceil(panels.length / columns);
+  // The heights, in percent of the chart's, of a row of panels and of a panel's title.
+  const rowHeight = 87 / rows;
+  const titleHeight = Math.min(7, 20 / rows);
   const grids: Option[] = [];
   const titles: Option[] = [];
   const xAxes: Option[] = [];
@@ -96,14 +99,14 @@ export function buildFacetedChart(
   panels.forEach((panel, i) => {
     const id = `facet:${panel.key}`;
     const left = 2 + ((i % columns) * 96) / columns;
-    const top = 3 + (Math.floor(i / columns) * 87) / rows;
+    const top = 3 + Math.floor(i / columns) * rowHeight;
     const width = 96 / columns - 4;
     grids.push({
       id,
       left: `${left}%`,
-      top: `${top + Math.min(7, 20 / rows)}%`,
+      top: `${top + titleHeight}%`,
       width: `${width}%`,
-      height: `${87 / rows - Math.min(7, 20 / rows) - 4}%`,
+      height: `${rowHeight - titleHeight - 4}%`,
       outerBoundsMode: "same",
     });
     titles.push({
@@ -135,6 +138,10 @@ export function buildFacetedChart(
       });
     });
   });
+  const layout =
+    spec.facetColumns !== undefined && columns > spec.facetColumns
+      ? ` in ${columns} columns, as "facetColumns": ${spec.facetColumns} would leave them too short to read,`
+      : "";
   return {
     option: {
       title: titles,
@@ -146,7 +153,7 @@ export function buildFacetedChart(
       // Panels of one type have the same tooltip, such as a histogram's; the webview adds others.
       ...(panels[0]?.option.tooltip === undefined ? {} : { tooltip: panels[0].option.tooltip }),
     },
-    summary: `Faceted by ${JSON.stringify(facetName)} into ${panels.length} panels with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
+    summary: `Faceted by ${JSON.stringify(facetName)} into ${panels.length} panels${layout} with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
   };
 }
 

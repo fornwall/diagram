@@ -425,6 +425,28 @@ suite("chartFacets", () => {
     assert.deepStrictEqual(widths(2), [424, 424]);
   });
 
+  test("takes more panels per row than 4 rows of panels would need, and says so", () => {
+    const panels = (count: number) =>
+      `service,ms\n${Array.from({ length: count }, (_, i) => `s${i},${i}`).join("\n")}`;
+    const lefts = (chart: Option) => new Set(chart.grid.map((grid: Option) => grid.left)).size;
+    assert.strictEqual(lefts(build(panels(4), { facetColumns: 1 })), 1);
+    assert.strictEqual(lefts(build(panels(12))), 3);
+    const data = panels(12);
+    const { option, summary } = buildChart(
+      { type: "bar", data, facetColumn: "service", facetColumns: 1 },
+      parseTable(data),
+    );
+    assert.strictEqual(lefts(option), 3);
+    assert.match(
+      summary,
+      /12 panels in 3 columns, as "facetColumns": 1 would leave them too short/,
+    );
+    assert.doesNotMatch(
+      buildChart({ type: "bar", data, facetColumn: "service" }, parseTable(data)).summary,
+      /too short/,
+    );
+  });
+
   test("panels keep the tooltip of their type", () => {
     const data = "service,operation,ms\napi,read,2\nworker,read,30";
     const tooltip = (spec: Partial<ChartSpec>) => layout(build(data, spec), { width: 600 }).tooltip;
