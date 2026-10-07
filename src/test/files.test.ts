@@ -158,6 +158,26 @@ suite("files", () => {
     assert.ok(!inWorkspace(vscode.Uri.joinPath(root.uri, "diagram-files-bytes")));
   });
 
+  test("refuses a link that it cannot follow where the system can", function () {
+    if (process.platform !== "linux") this.skip();
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+    // Short links to deep folders reach a real path longer than the system takes, 4096 bytes.
+    const deep = Array(8).fill("d".repeat(200)).join("/");
+    const long = path.join(root.uri.fsPath, "diagram-files-long");
+    afterTest(() => fs.rmSync(long, { recursive: true }));
+    let short = long;
+    for (let i = 0; i < 3; i++) {
+      fs.mkdirSync(path.join(short, deep), { recursive: true });
+      fs.symlinkSync(deep, path.join(short, "s"));
+      short = path.join(short, "s");
+    }
+    fs.symlinkSync(path.join(dir, "secret.csv"), path.join(short, "x"));
+    assert.strictEqual(fs.readFileSync(path.join(short, "x"), "utf8"), "a\n1\n");
+    assert.ok(!inWorkspace(vscode.Uri.file(path.join(short, "x"))));
+  });
+
   test("resolves no path outside the workspace, which could reach a network share", () => {
     const root = vscode.workspace.workspaceFolders?.[0];
     assert.ok(root);

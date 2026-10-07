@@ -53,8 +53,9 @@ export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
 
 /**
  * Whether `uri` is inside a workspace folder, by its path and once symbolic links on this computer
- * are followed, as one inside could lead out. A path that does not resolve, such as a missing file,
- * goes by its path, as nothing can be read through it. Virtual file systems have no links to follow.
+ * are followed, as one inside could lead out. A path that does not resolve for a missing name or
+ * too many links goes by its path, as nothing can be read through it. Virtual file systems have no
+ * links to follow.
  */
 export function inWorkspace(
   uri: vscode.Uri,
@@ -84,7 +85,11 @@ export function inWorkspace(
         step = steps.next(target);
       }
       return step.value;
-    } catch {}
+    } catch (error) {
+      // Other errors, as for a real path too long to name, need not stop the system.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR" && code !== "ELOOP") return false;
+    }
   }
   return roots.some((root) => contains(root.uri, uri));
 }
@@ -153,7 +158,11 @@ function* linksInside(
       dir = next;
       continue;
     }
-    if (++links > 40) throw new Error("The path goes through too many symbolic links.");
+    if (++links > 40) {
+      throw Object.assign(new Error("The path goes through too many symbolic links."), {
+        code: "ELOOP",
+      });
+    }
     const target = link.toString();
     // A string names no target that is not UTF-8, as the file system takes it in UTF-8.
     if (!Buffer.from(target).equals(link)) return false;
