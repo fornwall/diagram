@@ -6,10 +6,11 @@ const DATE = String.raw`\d{4}-${MONTH}-${DAY}`;
 
 /**
  * An ISO date and time, perhaps with a fraction of a second and a time zone, which git log
- * --date=iso writes after a space ("2025-10-04 14:02:33 +0200").
+ * --date=iso writes after a space ("2025-10-04 14:02:33 +0200"), and Go programs, as docker ps
+ * --format json, also with its name ("2025-10-04 14:02:33 +0200 CEST").
  */
 const DATE_TIME = new RegExp(
-  String.raw`^(${DATE})[T ]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?) ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?$`,
+  String.raw`^(${DATE})[T ]((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?)(?: ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)(?: [A-Z]{3,5})?)?$`,
 );
 
 /**
