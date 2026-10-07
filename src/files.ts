@@ -32,22 +32,20 @@ export function withinPath(root: string, file: string): boolean {
 }
 
 /**
- * Whether `uri` is inside a workspace folder, also once symbolic links on this computer are
- * resolved, as one inside could lead out. A path that does not resolve, such as a missing file,
- * goes by its path, as nothing can be read through it. Virtual file systems have no realpath.
+ * Whether `uri` is inside a workspace folder once symbolic links on this computer are resolved, as
+ * one inside could lead out. The real path also has the case of the names on disk, which a path
+ * typed for a case-insensitive file system may not. A path that does not resolve, such as a
+ * missing file, goes by its path, as nothing can be read through it. Virtual file systems have no
+ * realpath.
  */
 export function inWorkspace(uri: vscode.Uri): boolean {
   const roots = vscode.workspace.workspaceFolders ?? [];
-  if (!roots.some((root) => contains(root.uri, uri))) return false;
-  if (uri.scheme !== "file") return true;
-  const actual = realFile(uri.fsPath);
-  return (
-    actual === undefined ||
-    roots.some((root) => {
-      const actualRoot = root.uri.scheme === "file" ? realFile(root.uri.fsPath) : undefined;
-      return actualRoot !== undefined && withinPath(actualRoot, actual);
-    })
-  );
+  const actual = uri.scheme === "file" ? realFile(uri.fsPath) : undefined;
+  if (actual === undefined) return roots.some((root) => contains(root.uri, uri));
+  return roots.some((root) => {
+    const actualRoot = root.uri.scheme === "file" ? realFile(root.uri.fsPath) : undefined;
+    return actualRoot !== undefined && withinPath(actualRoot, actual);
+  });
 }
 
 function realFile(file: string): string | undefined {

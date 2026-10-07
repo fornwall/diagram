@@ -74,6 +74,10 @@ suite("files", () => {
     assert.ok(!inside("diagram-files-link/secret.csv"));
     assert.ok(!inside("diagram-files-link"));
     assert.ok(!inside(path.join(dir, "secret.csv")));
+    // A link from outside into the workspace reads a workspace file.
+    const inward = path.join(dir, "inward.tsv");
+    fs.symlinkSync(path.join(root.uri.fsPath, "sizes.tsv"), inward);
+    assert.ok(inside(inward));
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {
