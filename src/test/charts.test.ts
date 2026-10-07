@@ -117,7 +117,11 @@ suite("charts", () => {
       'Charted "n" by "k"; left out 3 rows without a positive value; ' +
         'kept the first 2 rows and summed up the other 2 as "Other".',
     );
-    assert.throws(() => build(chart("pie"), "k,n\na,-1\nb,0"), /needs positive numbers/);
+    assert.throws(() => build(chart("pie"), "k,n\na,-1\nb,0"), {
+      message:
+        'A pie chart needs positive numbers, as it sizes each item by its value, but "n" has ' +
+        "none. Chart negative values as a bar chart instead.",
+    });
   });
 
   test("bar has a category x axis and one series per value column", () => {
@@ -934,7 +938,11 @@ suite("charts", () => {
     // An order that was asked for is the one ECharts draws.
     const ascending = build(chart("funnel", { sort: "ascending" }), stages);
     assert.strictEqual(ascending.series[0].sort, "ascending");
-    assert.throws(() => build(chart("funnel"), "k,n\na,0"), /funnel chart needs positive numbers/);
+    assert.throws(() => build(chart("funnel"), "k,n\na,0\nb,0"), {
+      message:
+        'A funnel chart needs positive numbers, as it sizes each item by its value, but "n" has ' +
+        'none, only zeros. Choose a column with positive numbers in "valueColumns".',
+    });
   });
 
   test("label columns are matched loosely, and the extra ones are left out", () => {

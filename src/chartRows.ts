@@ -495,10 +495,16 @@ export function readRows(
     const left = rows.length - charted.length;
     if (charted.length === 0) {
       const quoted = quoteAll(valueIndices.map(name));
+      const values = rows.map(({ values }) => values[0]);
       throw new Error(
         positive
           ? `A ${type} chart needs positive numbers, as it sizes each item by its value, but ` +
-              `${quoted} has none. Chart negative values as a bar chart instead.`
+              `${quoted} has none` +
+              (values.some((value) => (value ?? 0) < 0)
+                ? ". Chart negative values as a bar chart instead."
+                : values.includes(0)
+                  ? ', only zeros. Choose a column with positive numbers in "valueColumns".'
+                  : ".")
           : `A scatter chart needs rows with numbers in both ${quoted}, but none has. Choose ` +
               '"valueColumns" that are filled in the same rows.',
       );
