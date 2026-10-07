@@ -209,12 +209,17 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   editor.diagramChanged(renderer, source, requestId);
   emptyElement.hidden = true;
   closeLinkMenu();
-  // The previous drawing may remain visible while rendering, but its actions are now stale.
-  // That takes the focus from it, so give it back afterwards: to the same node if there is one, or
-  // to the chart, which keeps its own focused item.
+  // The previous drawing's actions are now stale, and the drawing of another renderer goes: a large
+  // one, such as a chart of many thousand items, would slow every measurement that Mermaid makes in
+  // the page several times over. That takes the focus from it, so give it back afterwards: to the
+  // same node if there is one, or to the chart, which keeps its own focused item.
   const focused = canvas.contains(document.activeElement)
     ? (document.activeElement as HTMLElement | SVGElement)
     : undefined;
+  if (active !== renderer) {
+    active?.hide();
+    active = undefined;
+  }
   canvas.inert = true;
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
@@ -225,9 +230,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   }, 300);
   try {
     const diagramType = await renderer.render(source, message.title);
-    if (active !== renderer) {
-      active?.hide();
-    }
     active = renderer;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
