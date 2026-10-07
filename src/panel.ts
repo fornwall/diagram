@@ -1051,15 +1051,13 @@ export class DiagramPanel implements vscode.Disposable {
     this.chartTable = chartTable;
     this.annotation = annotation;
     await this.store.save(state);
-    if (
-      this.renderVersion === version &&
-      tab &&
-      this.webview.tab === tab &&
-      (cancelled || (!outcome.ok && outcome.kind === "invalid"))
-    ) {
-      // Draw the kept chart again, but a cancelled request does not wait for the webview.
+    if (this.renderVersion === version && tab && this.webview.tab === tab) {
+      // Draw the kept chart again, also after a page that stopped responding, which may still draw
+      // the abandoned chart. Only a chart that failed to render waits for the kept one.
       const restoring = this.renderCurrent();
-      if (!cancelled) await (token ? unlessCancelled(() => restoring, token) : restoring);
+      if (!cancelled && !outcome.ok && outcome.kind === "invalid") {
+        await (token ? unlessCancelled(() => restoring, token) : restoring);
+      }
     }
     return outcome.ok
       ? outcome

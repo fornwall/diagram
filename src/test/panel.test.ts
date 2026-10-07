@@ -1188,4 +1188,34 @@ suite("panel", function () {
     await webview.finishRender("Parse error");
     assert.strictEqual(panel.current?.error, "Parse error");
   });
+
+  test("a chart update that the page answers after 15 seconds cannot replace the kept chart", async () => {
+    const { panel, webview } = await newFakePanel();
+    const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
+    const table = parseTable(chart.data);
+    const source = JSON.stringify(buildChart(chart, table).option);
+    const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
+    assert.ok((await panel.render(diagram, "tool", undefined, table)).ok);
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    const token = new vscode.CancellationTokenSource().token;
+    const updating = panel.updateChart({ limit: 2 }, token);
+    await new Promise((resolve) => setImmediate(resolve));
+    const abandoned = webview.render;
+    assert.notStrictEqual(abandoned.source, source);
+    timers.expire();
+    const outcome = await updating;
+    assert.ok(!outcome.ok);
+    assert.match(outcome.error, /did not respond.*previous chart is kept/);
+
+    // The page draws the abandoned chart late, and then the kept one again.
+    const { requestId } = abandoned;
+    await webview.receive({ type: "renderError", requestId, message: "Late" });
+    await webview.receive({ type: "rendered", requestId, diagramType: "bar" });
+    assert.strictEqual(panel.current?.source, source);
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.strictEqual(webview.render.source, source);
+    await webview.finishRender();
+    assert.doesNotMatch(panel.describeForModel() ?? "", /not showing it/);
+  });
 });
