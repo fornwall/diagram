@@ -1432,11 +1432,24 @@ suite("data", () => {
       });
       assert.throws(
         () => parse(['{"n": 1}', "", '{"n": }'].join(newline)),
-        /Line 3 of the JSON Lines/,
+        /The JSON value on line 3 is not valid/,
       );
     }
-    assert.throws(() => parse('{"n": 1}\n\n{"n": 2}\n\n{"n": }'), /Line 5 of the JSON Lines/);
-    assert.throws(() => parse('\n\n{"n": 1}\n\n{"n": }'), /Line 5 of the JSON Lines/);
+    assert.throws(() => parse('{"n": 1}\n\n{"n": 2}\n\n{"n": }'), /value on line 5 /);
+    assert.throws(() => parse('\n\n{"n": 1}\n\n{"n": '), /value on line 5 /);
+  });
+
+  test("reads JSON values over several lines, as jq prints them", () => {
+    const values = ['{\n  "name": "a } [ \\"",\n  "n": 1\n}', '{\n  "name": "b",\n  "n": 2\n}'];
+    assert.deepStrictEqual(parse(values.join("\n")), {
+      columns: ["name", "n"],
+      rows: [
+        ['a } [ "', 1],
+        ["b", 2],
+      ],
+    });
+    assert.deepStrictEqual(parse("1\n2", "json"), { columns: ["value"], rows: [[1], [2]] });
+    assert.throws(() => parse(`${values[0]}\n{\n  "n":\n}`), /value on line 5 /);
   });
 
   test("parses a JSON array of arrays with and without a header", () => {
@@ -1775,7 +1788,7 @@ suite("data", () => {
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);
     assert.throws(
       () => parseTable('{"a": 1}\n{"a": 2,}'),
-      /^Error: Line 2 of the JSON Lines is not valid JSON: [^()]*\.$/,
+      /^Error: The JSON value on line 2 is not valid JSON: [^()]*\.$/,
     );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);

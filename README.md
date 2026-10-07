@@ -95,7 +95,7 @@ The panel loads images only from `data:` URLs, so a Mermaid image shape must emb
 `diagram_chart` reads:
 
 - CSV (comma, semicolon or the delimiter of an Excel `sep=` line) and TSV
-- JSON (nested objects become dotted columns such as `cpu.user`) and JSON Lines
+- JSON (nested objects become dotted columns such as `cpu.user`), JSON Lines and other streams of JSON values, as `jq` prints them
 - Markdown tables, also within text, and tables drawn with pipes or box-drawing characters, such as `psql`, `mysql`, `sqlite3`, DuckDB and Polars output
 - Whitespace-separated output such as `du`, `wc -l`, `ls -l`, `df`, `free`, `docker ps`, `kubectl`, `git diff --stat`, `go test -bench` and pandas data frames
 

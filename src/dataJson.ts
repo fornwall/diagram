@@ -1,4 +1,4 @@
-// Reading JSON, or JSON Lines, as records.
+// Reading JSON, JSON Lines or other streams of JSON values as records.
 
 import type { Cell, Records } from "./data";
 import { checkTableSize } from "./dataLimits";
@@ -204,29 +204,47 @@ function recordsFromJson(value: unknown): Records {
   );
 }
 
+/** A JSON string up to its closing quote. */
+const OPEN_STRING = String.raw`"[^"\\]*(?:\\[\s\S][^"\\]*)*`;
+
 /**
- * Parses newline-delimited JSON, as printed by jq -c or docker ps --format json, or returns
- * undefined unless the first of several lines is a JSON value.
+ * A string, perhaps left open at the end, a bracket, or other text between them, such as "1",
+ * "true" or ":".
  */
-function parseJsonLines(text: string): unknown[] | undefined {
-  const lines = text.split(/\r\n?|\n/);
-  if (lines.length < 2) {
-    return undefined;
-  }
-  const values: unknown[] = [];
-  for (const [i, line] of lines.entries()) {
-    if (line.trim() === "") {
-      continue;
+const JSON_TOKEN = new RegExp(String.raw`${OPEN_STRING}"?|[[{]|[\]}]|[^\s"[\]{}]+`, "g");
+
+/**
+ * Parses a stream of JSON values: JSON Lines, as jq -c and docker ps --format json print them, or
+ * values over several lines, as jq prints them without -c. Returns undefined unless the first of
+ * several values is valid.
+ */
+function parseJsonStream(text: string): unknown[] | undefined {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let depth = 0;
+  JSON_TOKEN.lastIndex = 0;
+  for (let match = JSON_TOKEN.exec(text); match !== null; match = JSON_TOKEN.exec(text)) {
+    if (depth === 0) starts.push(match.index);
+    const token = match[0];
+    if (token === "[" || token === "{") depth++;
+    else if (token === "]" || token === "}") depth--;
+    if (depth <= 0) {
+      depth = 0;
+      ends.push(JSON_TOKEN.lastIndex);
     }
+  }
+  if (starts.length < 2) return undefined;
+  const values: unknown[] = [];
+  for (const [i, start] of starts.entries()) {
     try {
-      values.push(JSON.parse(line));
+      // A value left open at the end is parsed too, to report it.
+      values.push(JSON.parse(text.slice(start, ends[i])));
     } catch (error) {
-      if (values.length === 0) {
-        return undefined;
-      }
-      // Leaves out V8's "(line 1 column 8)", which counts lines from this one.
+      if (i === 0) return undefined;
+      const line = (text.slice(0, start).match(/\r\n?|\n/g)?.length ?? 0) + 1;
+      // Leaves out V8's "(line 1 column 8)", which counts lines from the value's first.
       const message = errorMessage(error).replace(/ \(line \d+ column \d+\)/, "");
-      throw new Error(`Line ${i + 1} of the JSON Lines is not valid JSON: ${message}.`);
+      throw new Error(`The JSON value on line ${line} is not valid JSON: ${message}.`);
     }
   }
   return values;
@@ -237,7 +255,7 @@ export function parseJson(text: string): Records {
   try {
     value = JSON.parse(text);
   } catch (error) {
-    value = parseJsonLines(text);
+    value = parseJsonStream(text);
     if (value === undefined) {
       throw new Error(`The data is not valid JSON: ${errorMessage(error)}.`);
     }
