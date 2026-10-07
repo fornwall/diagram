@@ -433,7 +433,7 @@ highlightPathButton.addEventListener("click", () => {
   selection.clear();
   for (const node of path) selection.set(node.id, node);
   selectionChanged();
-  canvas.focus();
+  drawingFocus().focus();
   transientHint(
     `Highlighted the shortest path from ${from.label} to ${to.label} (${path.filter((node) => node.relationship).length} edges).`,
   );
