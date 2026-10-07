@@ -1,3 +1,4 @@
+import * as assert from "node:assert";
 import * as vscode from "vscode";
 
 /** What to undo once the current test ends, such as a replaced VS Code API. */
@@ -30,6 +31,30 @@ export function replace<T extends object, K extends keyof T>(object: T, key: K, 
     if (original) Object.defineProperty(object, key, original);
     else delete object[key];
   });
+}
+
+/** The paths that Node.js file system functions are called with until the current test ends. */
+export function recordFilePaths(): string[] {
+  const paths: string[] = [];
+  const spy = (object: object, keys: readonly string[]) => {
+    for (const key of keys) {
+      const original = (object as Record<string, (...args: unknown[]) => unknown>)[key];
+      assert.ok(original, key);
+      const recorded = (file: unknown, ...rest: unknown[]) => {
+        paths.push(String(file));
+        return original.call(object, file, ...rest);
+      };
+      // Keeps realpath.native.
+      replace(object as Record<string, unknown>, key, Object.assign(recorded, original));
+    }
+  };
+  // The module itself, which `import * as` copies.
+  const fs: typeof import("node:fs") = require("node:fs");
+  const names = ["lstat", "stat", "readlink", "realpath", "access", "open", "readdir"];
+  spy(fs, [...names, ...names.map((name) => `${name}Sync`), "existsSync"]);
+  spy(fs.promises, names);
+  for (const realpath of [fs.realpath, fs.realpathSync]) spy(realpath, ["native"]);
+  return paths;
 }
 
 type MessageKind = "showInformationMessage" | "showWarningMessage" | "showErrorMessage";

@@ -11,7 +11,7 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
-import { afterTest, replace } from "./afterTest";
+import { afterTest, recordFilePaths, replace } from "./afterTest";
 import { toolText } from "./toolText";
 
 suite("workspaceTools", function () {
@@ -351,6 +351,26 @@ suite("workspaceTools", function () {
     // Links within the workspace can be read.
     const inside = await make("inside-link.ts", path.join(dir, "code.ts"));
     assert.match(await invoke(reader, { file: inside }), /\n1: first\n/);
+  });
+
+  test("follows links one name at a time, touching no target outside the workspace", async function () {
+    if (process.platform === "win32") this.skip();
+    await make("hop.ts", "next.ts");
+    await make("next.ts", "code.ts");
+    const links = [await make("out", outside), await make("up", path.relative(dir, outside))];
+    const loop = await make("loop.ts", "loop.ts");
+    const paths = recordFilePaths();
+    assert.match(await invoke(reader, { file: path.join(dir, "hop.ts") }), /\n1: first\n/);
+    for (const link of links) {
+      const file = path.join(link, "secret.txt");
+      assert.match(await invoke(reader, { file }), /symbolic link outside/);
+    }
+    assert.match(await invoke(reader, { file: loop }), /too many symbolic links/);
+    // Nor through the links, as realpath would.
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(outside) || file.endsWith("secret.txt")),
+      [],
+    );
   });
 
   test("resolves no path outside the workspace, which could reach a network share", async function () {

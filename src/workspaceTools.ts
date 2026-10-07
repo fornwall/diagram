@@ -12,8 +12,9 @@ import {
   decodeFile,
   fileError,
   inWorkspace,
+  type LocalRoot,
   nearRoot,
-  withinPath,
+  staysInside,
 } from "./files";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { plural, quote, toolInput } from "./text";
@@ -137,10 +138,15 @@ export function boundary(
   token: vscode.CancellationToken,
 ): (uri: vscode.Uri) => Promise<void> {
   // A missing workspace folder must not prevent reading from the others.
-  const realRoots = Promise.all(
+  const localRoots = Promise.all(
     roots
       .filter(({ uri }) => uri.scheme === "file")
-      .map(({ uri }) => realpath(uri.fsPath).catch(() => undefined)),
+      .map(
+        async ({ uri }): Promise<LocalRoot> => [
+          uri.fsPath,
+          await realpath(uri.fsPath).catch(() => uri.fsPath),
+        ],
+      ),
   );
   const checkedDirectories = new Map<string, Promise<void>>();
   /** Providers have no realpath API. Refuse reported symbolic links, including parent directories. */
@@ -168,19 +174,14 @@ export function boundary(
       return unlessCancelled(() => noLinks(uri, root.uri), token);
     }
     if (!roots.some((root) => nearRoot(root.uri, uri))) throw outside();
-    // The real path decides, as it has the case of the names on disk, which a path typed for a
-    // case-insensitive file system may not.
-    const [actual, actualRoots] = await unlessCancelled(
-      () =>
-        Promise.all([
-          realpath(uri.fsPath).catch((error: unknown) => {
-            throw root ? error : outside();
-          }),
-          realRoots,
-        ]),
+    const inside = await unlessCancelled(
+      async () =>
+        staysInside(uri.fsPath, await localRoots).catch((error: unknown) => {
+          throw root ? error : outside();
+        }),
       token,
     );
-    if (!actualRoots.some((actualRoot) => actualRoot && withinPath(actualRoot, actual))) {
+    if (!inside) {
       throw root
         ? new Error("The file resolves through a symbolic link outside the workspace.")
         : outside();

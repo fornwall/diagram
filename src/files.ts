@@ -1,6 +1,7 @@
 // Resolving and decoding the files that users and models name.
 
-import { realpathSync } from "node:fs";
+import { readlinkSync, realpathSync } from "node:fs";
+import { readlink } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -23,7 +24,7 @@ export function contains(root: vscode.Uri, uri: vscode.Uri): boolean {
   );
 }
 
-export function withinPath(root: string, file: string): boolean {
+function withinPath(root: string, file: string): boolean {
   const relative = path.relative(root, file);
   return (
     relative === "" ||
@@ -52,30 +53,98 @@ export function nearRoot(root: vscode.Uri, uri: vscode.Uri): boolean {
 
 /**
  * Whether `uri` is inside a workspace folder, by its path and once symbolic links on this computer
- * are resolved, as one inside could lead out. The real path also has the case of the names on
- * disk, which a path typed for a case-insensitive file system may not. A path that does not
- * resolve, such as a missing file, goes by its path, as nothing can be read through it. Virtual
- * file systems have no realpath.
+ * are followed, as one inside could lead out. A path that does not resolve, such as a missing file,
+ * goes by its path, as nothing can be read through it. Virtual file systems have no links to follow.
  */
 export function inWorkspace(
   uri: vscode.Uri,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
 ): boolean {
   if (!roots.some((root) => nearRoot(root.uri, uri))) return false;
-  const actual = uri.scheme === "file" ? realFile(uri.fsPath) : undefined;
-  if (actual === undefined) return roots.some((root) => contains(root.uri, uri));
-  return roots.some((root) => {
-    const actualRoot = root.uri.scheme === "file" ? realFile(root.uri.fsPath) : undefined;
-    return actualRoot !== undefined && withinPath(actualRoot, actual);
-  });
+  if (uri.scheme === "file") {
+    const local = roots
+      .filter(({ uri }) => uri.scheme === "file")
+      .map(({ uri }): LocalRoot => {
+        try {
+          return [uri.fsPath, realpathSync.native(uri.fsPath)];
+        } catch {
+          return [uri.fsPath, uri.fsPath];
+        }
+      });
+    try {
+      const steps = linksInside(uri.fsPath, local);
+      let step = steps.next();
+      while (!step.done) {
+        let target: string | undefined;
+        try {
+          target = readlinkSync(step.value);
+        } catch (error) {
+          target = noLink(error);
+        }
+        step = steps.next(target);
+      }
+      return step.value;
+    } catch {}
+  }
+  return roots.some((root) => contains(root.uri, uri));
 }
 
-function realFile(file: string): string | undefined {
-  try {
-    return realpathSync.native(file);
-  } catch {
-    return undefined;
+/** As {@link inWorkspace}, for a local `file` inside a workspace folder by its path. */
+export async function staysInside(file: string, roots: readonly LocalRoot[]): Promise<boolean> {
+  const steps = linksInside(file, roots);
+  let step = steps.next();
+  while (!step.done) step = steps.next(await readlink(step.value).catch(noLink));
+  return step.value;
+}
+
+/** A workspace folder on this computer, by its path and its real path. */
+export type LocalRoot = readonly [file: string, real: string];
+
+/**
+ * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
+ * the folder's real path, and returns whether it stays inside. It yields each path to read as a
+ * link, which is inside, and takes the link's target, or undefined for no link. A target outside
+ * every folder by its path, as {@link nearRoot} tells, is never touched, as it could be on a network
+ * share or an unreachable mount.
+ *
+ * @throws Error when a name is missing, or for too many links, as realpath does.
+ */
+function* linksInside(
+  file: string,
+  roots: readonly LocalRoot[],
+): Generator<string, boolean, string | undefined> {
+  const names = (file: string) => file.split(path.sep).filter(Boolean);
+  let dir = "";
+  let rest: string[] = [];
+  const enter = (target: string) => {
+    const uri = vscode.Uri.file(target);
+    for (const [root, real] of roots) {
+      for (const name of [root, real]) {
+        if (nearRoot(vscode.Uri.file(name), uri)) {
+          dir = real;
+          rest = [...names(target).slice(names(name).length), ...rest];
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  if (!enter(file)) return false;
+  // As many as Linux follows.
+  for (let links = 0, name = rest.shift(); name !== undefined; name = rest.shift()) {
+    const next = path.join(dir, name);
+    const target = yield next;
+    if (target === undefined) dir = next;
+    else if (++links > 40) throw new Error("The path goes through too many symbolic links.");
+    else if (!enter(path.resolve(dir, target))) return false;
   }
+  return true;
+}
+
+/** No target for a path that is no symbolic link, and rethrows other errors. */
+function noLink(error: unknown): undefined {
+  if ((error as NodeJS.ErrnoException).code !== "EINVAL") throw error;
+  return undefined;
 }
 
 /**

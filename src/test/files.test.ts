@@ -11,7 +11,7 @@ import {
   openDocument,
   resolveFile,
 } from "../files";
-import { afterTest, replace } from "./afterTest";
+import { afterTest, recordFilePaths, replace } from "./afterTest";
 
 suite("files", () => {
   let dir: string;
@@ -73,6 +73,37 @@ suite("files", () => {
     assert.ok(inside("made-up.csv"));
     assert.ok(!inside("diagram-files-link/secret.csv"));
     assert.ok(!inside("diagram-files-link"));
+  });
+
+  test("follows links one name at a time, touching no target outside the workspace", () => {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const far = path.join(dir, "far");
+    fs.mkdirSync(far, { recursive: true });
+    fs.writeFileSync(path.join(far, "data.csv"), "a\n1\n");
+    for (const [name, target] of [
+      ["diagram-files-hop", "diagram-files-next"],
+      ["diagram-files-next", "sizes.tsv"],
+      ["diagram-files-out", far],
+      ["diagram-files-up", path.relative(root.uri.fsPath, far)],
+      ["diagram-files-loop", "diagram-files-loop"],
+    ] as const) {
+      const link = path.join(root.uri.fsPath, name);
+      fs.symlinkSync(target, link);
+      afterTest(() => fs.rmSync(link));
+    }
+    const paths = recordFilePaths();
+    const inside = (file: string) => inWorkspace(vscode.Uri.joinPath(root.uri, file));
+    assert.ok(inside("diagram-files-hop"));
+    assert.ok(!inside("diagram-files-out/data.csv"));
+    assert.ok(!inside("diagram-files-up/data.csv"));
+    // As a missing file, as realpath would not resolve it either.
+    assert.ok(inside("diagram-files-loop"));
+    // Nor through the links, as realpath would.
+    assert.deepStrictEqual(
+      paths.filter((file) => file.startsWith(dir) || file.endsWith("data.csv")),
+      [],
+    );
   });
 
   test("resolves no path outside the workspace, which could reach a network share", () => {
