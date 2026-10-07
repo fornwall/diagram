@@ -9,8 +9,11 @@ import type { Cell } from "./data";
  */
 export type Unit = "%" | "bytes" | "seconds";
 
-/** A currency symbol, which comes before a number ("$5") or, in much of Europe, after it ("5 €"). */
-const CURRENCY = "[$€£¥]";
+/**
+ * A currency symbol, which comes before a number ("$5", "₹5") or, in much of Europe, after it
+ * ("5 €").
+ */
+const CURRENCY = "[$€£¥₹₩₽₺₪₱₫฿₴₦]";
 
 /** A sign, which may be a typeset minus (−). */
 const SIGN = "[-+\u2212]";

@@ -288,6 +288,11 @@ suite("data", () => {
       ["Brot", 1200],
     ]);
     assert.deepStrictEqual(parseNumber("5$"), { value: 5 });
+    assert.deepStrictEqual(parse('item,price\na,"₹1,250"\nb,₩5000\nc,300 ₽').rows, [
+      ["a", 1250],
+      ["b", 5000],
+      ["c", 300],
+    ]);
     // Abbreviated amounts of money, which are not sizes in bytes.
     assert.deepStrictEqual(parse("company,revenue\na,$1.2B\nb,$350M\nc,-€12.5k\nd,$3T").rows, [
       ["a", 1.2e9],
