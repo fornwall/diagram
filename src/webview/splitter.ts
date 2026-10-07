@@ -49,14 +49,7 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
     );
   });
 
-  const stopDrag = (event: PointerEvent) => {
-    if (splitter.hasPointerCapture(event.pointerId)) {
-      splitter.releasePointerCapture(event.pointerId);
-    }
-    splitter.classList.remove("dragging");
-  };
-  splitter.addEventListener("pointerup", stopDrag);
-  splitter.addEventListener("pointercancel", stopDrag);
+  // Releasing the pointer, or the browser cancelling it, ends the capture, and with it the drag.
   splitter.addEventListener("lostpointercapture", () => splitter.classList.remove("dragging"));
 
   splitter.addEventListener("keydown", (event) => {
