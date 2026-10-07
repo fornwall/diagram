@@ -78,7 +78,6 @@ export class ChartOptionsForm {
     const header = document.createElement("div");
     header.className = "chart-options-heading";
     header.append(heading, close);
-    this.status.className = "note";
     this.error.setAttribute("role", "alert");
     this.error.className = "chart-options-error";
     this.error.hidden = true;

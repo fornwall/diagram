@@ -250,7 +250,6 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
-    active?.hide();
     renderer.hide();
     active = undefined;
     const text = errorMessage(error);

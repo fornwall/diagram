@@ -135,7 +135,6 @@ export class SourceEditor {
     for (const [name, button] of Object.entries(this.elements.viewButtons)) {
       button.setAttribute("aria-pressed", String(name === shown));
     }
-    // On the panes, not the body: a body class change would look like a theme change.
     this.elements.panes.className = `view-${shown}`;
     const opening = shown !== "visual" && !this.sourceShown;
     this.sourceShown = shown !== "visual";
