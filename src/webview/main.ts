@@ -126,7 +126,11 @@ let pick: { id: number; multiple: boolean } | undefined;
 // charts does not load the code of the other.
 const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
   mermaid: async () => {
-    const { MermaidRenderer } = await import("./mermaidRenderer");
+    // Mermaid loads beside its renderer instead of on its first render, after it.
+    const [{ MermaidRenderer }] = await Promise.all([
+      import("./mermaidRenderer"),
+      import("mermaid"),
+    ]);
     return new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue);
   },
   echarts: async () => {

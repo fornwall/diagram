@@ -632,16 +632,18 @@ suite("webview", function () {
 suite("webview renderer loading", function () {
   this.timeout(20_000);
 
-  test("reports at once when a renderer's code does not load", async () => {
+  /** A page on which the chunk that the pattern names does not load. */
+  async function pageWithout(chunkPattern: RegExp) {
     const panel = newPanel();
     afterTest(() => panel.dispose());
-    const { webview, evaluate } = instrumentWebview(panel);
-    // Point the import of the Mermaid renderer's chunk at a file that does not exist.
+    const harness = instrumentWebview(panel);
+    const { webview } = harness;
+    // Point the import of the chunk at a file that does not exist.
     const extension = vscode.extensions.getExtension("fornwall.diagram");
     assert.ok(extension);
     const chunks = vscode.Uri.joinPath(extension.extensionUri, "dist", "chunks");
     const chunk = (await vscode.workspace.fs.readDirectory(chunks)).find(([name]) =>
-      /^mermaidRenderer-\w+\.js$/.test(name),
+      chunkPattern.test(name),
     )?.[0];
     assert.ok(chunk);
     const url = (name: string) => webview.asWebviewUri(vscode.Uri.joinPath(chunks, name));
@@ -651,7 +653,11 @@ suite("webview renderer loading", function () {
       "<script",
       `<script type="importmap" nonce="${nonce}">${imports}</script><script`,
     );
+    return { panel, ...harness };
+  }
 
+  test("reports at once when a renderer's code does not load", async () => {
+    const { panel, evaluate } = await pageWithout(/^mermaidRenderer-\w+\.js$/);
     const flowchart: Diagram = {
       language: "mermaid",
       source: MERMAID["flowchart-v2"],
@@ -678,6 +684,16 @@ suite("webview renderer loading", function () {
     assert.ok(chart.ok, chart.ok ? undefined : chart.error);
     const again = await panel.render(flowchart, "tool");
     assert.ok(!again.ok && again.kind === "unavailable");
+  });
+
+  test("reports Mermaid not loading as its renderer not loading, not as an error to fix", async () => {
+    const { panel } = await pageWithout(/^mermaid\.core-\w+\.js$/);
+    const outcome = await panel.render(
+      { language: "mermaid", source: MERMAID["flowchart-v2"], title: "Flow" },
+      "tool",
+    );
+    assert.ok(!outcome.ok && outcome.kind === "unavailable", JSON.stringify(outcome));
+    assert.match(outcome.error, /^Could not load the Mermaid renderer: /);
   });
 
   test("reports at once when ECharts does not load, and loads it next time", async () => {
