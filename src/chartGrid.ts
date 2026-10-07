@@ -382,7 +382,16 @@ export function boxplotOption({
     series: [
       { type: "boxplot", ...(labeled ? { name: names[0] } : {}), data: boxes },
       // The x of an outlier names its box's category, which the tooltip shows.
-      ...(outliers.length > 0 ? [{ type: "scatter", name: "outliers", data: outliers }] : []),
+      ...(outliers.length > 0
+        ? [
+            {
+              type: "scatter",
+              name: "outliers",
+              ...(outliers.length >= LARGE_POINTS ? { large: true } : {}),
+              data: outliers,
+            },
+          ]
+        : []),
     ],
   };
 }
