@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeFile, fileError, fileName, resolveFile } from "./files";
+import { decodeFile, fileError, fileName, inWorkspace, resolveFile } from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -83,7 +83,7 @@ export function prepareDataInvocation(
   } else if (spec?.file) {
     try {
       const uri = resolveFile(spec.file);
-      if (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) {
+      if (!vscode.workspace.isTrusted || !inWorkspace(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
         message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };

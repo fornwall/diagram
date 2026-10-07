@@ -1,5 +1,6 @@
 // Resolving and decoding the files that users and models name.
 
+import { realpathSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -28,6 +29,33 @@ export function withinPath(root: string, file: string): boolean {
     relative === "" ||
     (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
   );
+}
+
+/**
+ * Whether `uri` is inside a workspace folder, also once symbolic links on this computer are
+ * resolved, as one inside could lead out. A path that does not resolve, such as a missing file,
+ * goes by its path, as nothing can be read through it. Virtual file systems have no realpath.
+ */
+export function inWorkspace(uri: vscode.Uri): boolean {
+  const roots = vscode.workspace.workspaceFolders ?? [];
+  if (!roots.some((root) => contains(root.uri, uri))) return false;
+  if (uri.scheme !== "file") return true;
+  const actual = realFile(uri.fsPath);
+  return (
+    actual === undefined ||
+    roots.some((root) => {
+      const actualRoot = root.uri.scheme === "file" ? realFile(root.uri.fsPath) : undefined;
+      return actualRoot !== undefined && withinPath(actualRoot, actual);
+    })
+  );
+}
+
+function realFile(file: string): string | undefined {
+  try {
+    return realpathSync.native(file);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

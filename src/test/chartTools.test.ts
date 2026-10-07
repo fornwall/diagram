@@ -156,6 +156,15 @@ suite("chartTools", function () {
     const { panel } = await harness();
     const tool = new InspectDataTool(panel);
     assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const link = path.join(root.uri.fsPath, "diagram-inspect-link.csv");
+    fs.symlinkSync(file, link);
+    afterTest(() => fs.rmSync(link));
+    assert.ok(
+      tool.prepareInvocation({ input: { file: path.basename(link) } }).confirmationMessages,
+    );
+    assert.ok(!tool.prepareInvocation({ input: { file: "sizes.tsv" } }).confirmationMessages);
     assert.ok(tool.prepareInvocation({ input: { command: "printf data" } }).confirmationMessages);
     assert.ok(!tool.prepareInvocation({ input: { data } }).confirmationMessages);
     assert.match(

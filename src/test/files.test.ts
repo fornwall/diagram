@@ -3,7 +3,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { absoluteFile, absolutePath, fileError, openDocument, resolveFile } from "../files";
+import {
+  absoluteFile,
+  absolutePath,
+  fileError,
+  inWorkspace,
+  openDocument,
+  resolveFile,
+} from "../files";
+import { afterTest } from "./afterTest";
 
 suite("files", () => {
   let dir: string;
@@ -50,6 +58,22 @@ suite("files", () => {
     const uri = resolveFile([root.uri.fsPath, "..", "secret.txt"].join(path.sep));
     assert.strictEqual(uri.fsPath, path.join(path.dirname(root.uri.fsPath), "secret.txt"));
     assert.strictEqual(vscode.workspace.getWorkspaceFolder(uri), undefined);
+  });
+
+  test("finds files inside the workspace also once symbolic links are resolved", () => {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
+    const link = path.join(root.uri.fsPath, "diagram-files-link");
+    fs.symlinkSync(dir, link);
+    afterTest(() => fs.rmSync(link));
+    const inside = (file: string) => inWorkspace(resolveFile(file));
+    assert.ok(inside("sizes.tsv"));
+    // Nothing can be read through a path that does not resolve.
+    assert.ok(inside("made-up.csv"));
+    assert.ok(!inside("diagram-files-link/secret.csv"));
+    assert.ok(!inside("diagram-files-link"));
+    assert.ok(!inside(path.join(dir, "secret.csv")));
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {

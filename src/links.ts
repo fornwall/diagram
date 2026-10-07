@@ -1,7 +1,7 @@
 // Validate, resolve and open Mermaid node links.
 
 import * as vscode from "vscode";
-import { absolutePath, fileError, openDocument, resolveFile } from "./files";
+import { absolutePath, fileError, inWorkspace, openDocument, resolveFile } from "./files";
 import { type DiagramLanguage, errorMessage, isPlainObject } from "./protocol";
 import { quote } from "./text";
 
@@ -77,7 +77,7 @@ export async function withoutMissingFiles(
     let check = checks.get(file);
     if (!check) {
       const uri = resolveFile(file);
-      check = vscode.workspace.getWorkspaceFolder(uri)
+      check = inWorkspace(uri)
         ? Promise.resolve(vscode.workspace.fs.stat(uri)).then(
             () => undefined,
             (error: unknown) =>
@@ -199,7 +199,7 @@ export async function openLink(
   try {
     const uri = resolveFile(link.file);
     if (
-      (!vscode.workspace.isTrusted || !vscode.workspace.getWorkspaceFolder(uri)) &&
+      (!vscode.workspace.isTrusted || !inWorkspace(uri)) &&
       !(await confirm(async () => {
         const open = await vscode.window.showWarningMessage(
           `Open the file that "${label}" links to?`,
