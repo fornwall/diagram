@@ -9,6 +9,23 @@ import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
  */
 const RELAYOUT_DELAY = 200;
 
+/**
+ * Webview code defining `retheme(id)`, which changes the theme's id as a new theme does, taking
+ * it away given `undefined`, waits for the diagram drawn in that theme and returns the id it
+ * had; with what `UNTIL` defines.
+ */
+const RETHEME = `
+  ${UNTIL}
+  const retheme = async (id) => {
+    const { dataset } = document.body;
+    const previous = dataset.vscodeThemeId;
+    const drawn = document.querySelector("#diagram svg");
+    if (id === undefined) delete dataset.vscodeThemeId;
+    else dataset.vscodeThemeId = id;
+    await until(() => !drawn.isConnected, "the diagram drawn in the theme " + id);
+    return previous;
+  };`;
+
 suite("Mermaid in the webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -443,18 +460,10 @@ suite("Mermaid in the webview", function () {
       const versioned = await evaluate(`document.activeElement.tagName`);
       await evaluate(leave);
       const themed = await evaluate(`(async () => {
-        ${UNTIL}
-        const { dataset } = document.body;
-        const original = dataset.vscodeThemeId;
-        const redraw = async (themeId) => {
-          const node = document.querySelector('#diagram [data-diagram-id="B"]');
-          if (themeId === undefined) delete dataset.vscodeThemeId;
-          else dataset.vscodeThemeId = themeId;
-          await until(() => !node.isConnected);
-        };
-        await redraw("test-theme-unfocused");
+        ${RETHEME}
+        const original = await retheme("test-theme-unfocused");
         const focused = document.activeElement.tagName;
-        await redraw(original);
+        await retheme(original);
         return focused;
       })()`);
       assert.deepStrictEqual([versioned, themed], ["BODY", "BODY"]);
@@ -474,13 +483,10 @@ suite("Mermaid in the webview", function () {
         const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
         node.dispatchEvent(new MouseEvent("click", {bubbles: true, shiftKey: true}));
         node.focus();
+        ${RETHEME}
         const original = document.body.dataset.vscodeThemeId;
-        document.body.dataset.vscodeThemeId = "test-theme-redraw";
-        ${UNTIL}
         try {
-          if (!(await until(() => !node.isConnected))) {
-            throw new Error("The theme change did not redraw the diagram.");
-          }
+          await retheme("test-theme-redraw");
           const focused = document.activeElement;
           return {
             id: focused?.getAttribute("data-diagram-id"),
@@ -491,11 +497,8 @@ suite("Mermaid in the webview", function () {
             tooltips: focused?.querySelectorAll("title.diagram-link").length
           };
         } finally {
-          const drawn = document.querySelector("#diagram svg");
-          if (original === undefined) delete document.body.dataset.vscodeThemeId;
-          else document.body.dataset.vscodeThemeId = original;
           // The theme coming back redraws too, which the next test must not see.
-          await until(() => !drawn?.isConnected);
+          await retheme(original);
         }
       })()`),
       {
@@ -524,15 +527,11 @@ suite("Mermaid in the webview", function () {
           await frames();
         }
         // A theme change redraws after anything the menu would have queued.
-        const original = document.body.dataset.vscodeThemeId;
-        document.body.dataset.vscodeThemeId = "test-context-menu";
-        ${UNTIL}
-        await until(() => redraws > 0);
+        ${RETHEME}
+        const original = await retheme("test-context-menu");
         await frames();
         const counted = redraws;
-        if (original === undefined) delete document.body.dataset.vscodeThemeId;
-        else document.body.dataset.vscodeThemeId = original;
-        await until(() => redraws > counted);
+        await retheme(original);
         observer.disconnect();
         return counted;
       })()`),
@@ -1253,8 +1252,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         bob.focus();
         bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
         const opened = document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
+        ${RETHEME}
         ${redraw}
-        ${UNTIL}
         await until(() => !bob.isConnected);
         const shown = {
           opened,
@@ -1271,13 +1270,9 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     const shown = { opened: true, redrawn: true, menu: false, focused: "Bob" };
     assert.deepStrictEqual(
       await redraw(
-        `const theme = document.body.dataset.vscodeThemeId;
-        document.body.dataset.vscodeThemeId = "test-theme-link-menu";`,
-        `const drawn = document.querySelector("#diagram svg");
-        if (theme === undefined) delete document.body.dataset.vscodeThemeId;
-        else document.body.dataset.vscodeThemeId = theme;
+        `const theme = await retheme("test-theme-link-menu");`,
         // The theme coming back redraws too, which the next render must not race.
-        await until(() => !drawn.isConnected);`,
+        "await retheme(theme);",
       ),
       shown,
     );
