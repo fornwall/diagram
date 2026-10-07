@@ -218,17 +218,29 @@ suite("workspaceTools", function () {
     );
   });
 
-  test("charges binary and invalid text against the total scan byte limit", async () => {
+  test("charges binary files against the total scan byte limit", async () => {
     const budgetDir = await make("budget");
     for (let i = 0; i < 17; i++) {
-      await fs.writeFile(
-        path.join(budgetDir, `${i}.bin`),
-        Buffer.alloc(1024 * 1024, i % 2 ? 0xff : 0),
-      );
+      await fs.writeFile(path.join(budgetDir, `${i}.bin`), Buffer.alloc(1024 * 1024));
     }
     assert.strictEqual(
       await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` }),
-      "No matches (searched 0 files; skipped 16 files: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+      "No matches (searched 0 files; skipped 16 files: binary, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+    );
+  });
+
+  test("reads and searches text that is not UTF-8 in the encoding of files.encoding", async () => {
+    const files = vscode.workspace.getConfiguration("files");
+    await files.update("encoding", "iso88591", vscode.ConfigurationTarget.Global);
+    afterTest(() => files.update("encoding", undefined, vscode.ConfigurationTarget.Global));
+    const file = await writeFile("latin1.txt", Buffer.from("café Needle", "latin1"));
+    assert.strictEqual(
+      await invoke(reader, { file }),
+      `${relative}/latin1.txt, lines 1-1 of 1:\n1: café Needle`,
+    );
+    assert.match(
+      await invoke(searcher, { query: "café", glob: `${relative}/latin1.txt` }),
+      /^1 match in 1 file/,
     );
   });
 

@@ -244,7 +244,13 @@ async function readText(
   try {
     text = decodeText(content);
   } catch {
-    return { bytes, error: "The file is not valid UTF-8 or UTF-16 text." };
+    // Other text is in the encoding that the editor would open it in, as files.encoding sets.
+    try {
+      text = await unlessCancelled(async () => vscode.workspace.decode(content, { uri }), token);
+    } catch (error) {
+      if (error instanceof vscode.CancellationError) throw error;
+      return { bytes, error: binary };
+    }
   }
   return text.includes("\0") ? { bytes, error: binary } : { bytes, text };
 }
@@ -476,7 +482,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
         : "No matches",
       ` (searched ${plural(scanned, "file")}`,
       skipped > 0
-        ? `; skipped ${plural(skipped, "file")}: binary, not UTF-8 or UTF-16, over 1 MiB or linked outside the workspace`
+        ? `; skipped ${plural(skipped, "file")}: binary, over 1 MiB or linked outside the workspace`
         : "",
       ").",
       stopped
