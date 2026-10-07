@@ -322,26 +322,6 @@ suite("panel", function () {
     assert.strictEqual(writes, 2);
   });
 
-  test("an unavailable rendering ignores stale clicks on the previous diagram", async () => {
-    const { panel, webview } = await newFakePanel();
-    webview.deliver = (message) => message.type !== "render";
-    const clicks = recordClicks();
-    const rendering = panel.render(
-      {
-        ...flowchart,
-        clickPrompt: "Explain {label}",
-        links: { A: { file: "sizes.tsv" } },
-      },
-      "tool",
-    );
-    assert.ok(!(await rendering).ok);
-    const node = { id: "A", label: "Parser" };
-    await webview.receive({ type: "clickToAsk", node });
-    await webview.receive({ type: "clickToOpen", node });
-    await webview.receive({ type: "openUrl", url: "https://example.com/" });
-    assert.deepStrictEqual(clicks, []);
-  });
-
   test("a completed render cannot mark a newer copy of the same source as broken", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;
@@ -558,25 +538,28 @@ suite("panel", function () {
     assert.ok((await panel.render(flowchart, "tool")).ok);
   });
 
-  test("a diagram that fails to render takes no clicks", async () => {
-    const { panel, webview } = await newFakePanel();
-    const clicks = recordClicks();
-    const links = { A: { file: "sizes.tsv", line: 2 } };
-    const click = (id: string) => webview.receive({ type: "clickToOpen", node: { id, label: id } });
-    assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
-    await webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
-    assert.deepStrictEqual(clicks, ['chat: Explain "Parser"']);
-    clicks.length = 0;
+  for (const failure of ["fails to render", "the panel cannot show"] as const) {
+    test(`a diagram that ${failure} takes no clicks`, async () => {
+      const { panel, webview } = await newFakePanel();
+      const clicks = recordClicks();
+      const node = { id: "A", label: "Parser" };
+      assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
+      await webview.receive({ type: "clickToAsk", node });
+      assert.deepStrictEqual(clicks, ['chat: Explain "Parser"']);
+      clicks.length = 0;
 
-    webview.failNextRender("Parse error");
-    const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete", links };
-    assert.ok(!(await panel.render({ ...flowchart, ...broken }, "tool")).ok);
-    // Clicks on the previous diagram, e.g. sent just before it was replaced.
-    await webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
-    await click("A");
-    await webview.receive({ type: "openUrl", url: "https://example.com/" });
-    assert.deepStrictEqual(clicks, []);
-  });
+      if (failure === "fails to render") webview.failNextRender("Parse error");
+      else webview.deliver = (message) => message.type !== "render";
+      const links = { A: { file: "sizes.tsv", line: 2 } };
+      const broken = { source: "flowchart TD\n  A --> --> B[", clickPrompt: "Delete", links };
+      assert.ok(!(await panel.render({ ...flowchart, ...broken }, "tool")).ok);
+      // Clicks on the previous diagram, e.g. sent just before it was replaced.
+      await webview.receive({ type: "clickToAsk", node });
+      await webview.receive({ type: "clickToOpen", node });
+      await webview.receive({ type: "openUrl", url: "https://example.com/" });
+      assert.deepStrictEqual(clicks, []);
+    });
+  }
 
   test("only a click on a node with a link opens code", async () => {
     const { panel, webview } = await newFakePanel();
