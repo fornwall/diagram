@@ -513,16 +513,21 @@ suite("panel", function () {
     assert.strictEqual(webview.panel.title, "Diagram");
   });
 
-  test("opening the panel replaces a diagram tab left from before a reload", async () => {
+  test("opening the panel replaces a diagram tab left from before a reload, and no other", async () => {
+    const other = vscode.window.createWebviewPanel("a.diagram.panel", "Other", {
+      viewColumn: vscode.ViewColumn.One,
+      preserveFocus: true,
+    });
+    afterTest(() => other.dispose());
     vscode.window.createWebviewPanel(WebviewChannel.viewType, "Old", {
       viewColumn: vscode.ViewColumn.Two,
       preserveFocus: true,
     });
-    const [old] = await webviewTabs((labels) => labels.join() === "Old");
+    const [, old] = await webviewTabs((labels) => labels.join() === "Other,Old");
     const panel = newPanel();
     afterTest(() => panel.dispose());
     panel.show(true);
-    const [replacement] = await webviewTabs((labels) => labels.join() === "Diagram");
+    const [, replacement] = await webviewTabs((labels) => labels.join() === "Other,Diagram");
     assert.strictEqual(replacement?.group.viewColumn, old?.group.viewColumn);
   });
 

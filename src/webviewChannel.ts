@@ -45,13 +45,14 @@ export class WebviewChannel implements vscode.Disposable {
       return false;
     }
     // After a window reload, VS Code restores a panel in a background tab only once the tab is
-    // shown. Replace such a tab rather than open a second one.
+    // shown. Replace such a tab rather than open a second one. A tab gives the view type a prefix,
+    // which another extension's view type that ends the same, such as "a.diagram.panel", lacks.
     const leftovers = vscode.window.tabGroups.all
       .flatMap((group) => group.tabs)
       .filter(
         (tab) =>
           tab.input instanceof vscode.TabInputWebview &&
-          tab.input.viewType.endsWith(WebviewChannel.viewType),
+          tab.input.viewType === `mainThreadWebview-${WebviewChannel.viewType}`,
       );
     const panel = vscode.window.createWebviewPanel(
       WebviewChannel.viewType,
