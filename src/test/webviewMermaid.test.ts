@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { DIAGRAM_TYPES } from "../webview/mermaidErrors";
+import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("Mermaid in the webview", function () {
@@ -696,6 +696,39 @@ suite("Mermaid in the webview", function () {
     assert.strictEqual(
       await renderError("---\ntitle: T\n---\nagentflow-beta\n  %% c\n  A@{ shape: nope } --> B"),
       "Error on line 6, column 4: No such shape: nope.",
+    );
+  });
+
+  test("finds the lines of errors that Mermaid gives no position for", async () => {
+    assert.deepStrictEqual(
+      await errors(
+        "gantt\n  dateFormat YYYY-MM-DD\n  Task :a1, 2026-01-01, 3d\n  Other :a2, notadate, 7d",
+        // Mermaid's own check of the indices misses them.
+        "flowchart TD\n  A --> B\n  linkStyle 0 stroke:red\n  linkStyle 0,4 stroke:blue",
+        "flowchart TD\n  A --> B\n  C@{ shape: nosuch }",
+        "mindmap\n  root((R))\n    A\n  B",
+        // Mermaid makes up a parser's error, which put it on line 1.
+        "sequenceDiagram\n  Alice->>+Bob: Hi\n  Bob-->>-Alice: Yo\n  deactivate Bob",
+        // Others quote what they are about.
+        'C4Context\n  Person(u, "User")\n  Rel(u, s, "Uses")',
+      ),
+      [
+        'Error on line 4: Invalid date "notadate": write dates as the dateFormat says, YYYY-MM-DD.',
+        "Error on line 4: linkStyle 4 refers to no link: links are numbered from 0, in the order the diagram defines them.",
+        "Error on line 3: No such shape: nosuch.",
+        'Error on line 4: A mind map has one root: indent "B" below it.',
+        'Error on line 4: "Bob" is deactivated, but it is not active.',
+        'Error on line 3: C4 rel "u" -> "s" references an unknown shape or boundary',
+      ],
+    );
+    const elk = (message: string, source: string) =>
+      (describeError(new Error(message), source, () => "flowchart-v2") as Error).message;
+    assert.strictEqual(
+      elk(
+        "org.eclipse.elk.graph.json.JsonImportException: Referenced shape does not exist: A",
+        "flowchart TD\n  subgraph S\n    A\n  end",
+      ),
+      'Error on line 3: Mermaid cannot lay out the edges of "A": give the groups and the nodes different ids.',
     );
   });
 

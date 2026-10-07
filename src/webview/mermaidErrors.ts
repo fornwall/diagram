@@ -353,7 +353,8 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
     ];
   }
   const { hash } = error as { hash?: JisonHash };
-  if (!hash) return [];
+  // Some of Mermaid's checks of what it parsed make up the details of a parser's error.
+  if (!hash || (hash.token !== null && !/^(?:Parse|Lexical) error/.test(error.message))) return [];
   const starts = lineStarts(parsed);
   const offset = (line: number, column: number) =>
     Math.min((starts[line - 1] ?? parsed.length) + column, parsed.length);
@@ -496,5 +497,137 @@ export function describeError(error: unknown, source: string, type: () => string
     .sort((a, b) => a.line - b.line || a.column - b.column)
     .filter((problem, i) => problems[i - 1]?.line !== problem.line)
     .map(({ message }) => message);
-  return messages.length > 0 ? new Error(messages.join("\n")) : error;
+  return messages.length > 0
+    ? new Error(messages.join("\n"))
+    : (unplacedError(error.message, normalized) ?? error);
+}
+
+/** A pattern for the text. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A pattern for the text as a word of its own. */
+const word = (text: string) => `(?<![\\w-])${literal(text)}(?![\\w-])`;
+
+/** The offset of the first match of the pattern in the source, after the front matter. */
+function find(normalized: string, pattern: string): number | undefined {
+  const start = frontMatterEnd(normalized);
+  const found = new RegExp(pattern, "m").exec(normalized.slice(start));
+  return found ? start + found.index : undefined;
+}
+
+/** The error, on the line of the offset in the source if there is one. */
+const errorAt = (normalized: string, at: number | undefined, message: string) =>
+  new Error(
+    at === undefined ? message : `Error on line ${position(normalized, at).line}: ${message}`,
+  );
+
+/**
+ * Where a sequence diagram first deactivates the participant more often than it activated it:
+ * `deactivate` and a message from it with "-" after the arrow deactivate it.
+ */
+function deactivation(normalized: string, name: string): number | undefined {
+  const arrow = "[^\\S\\n]*<?<?-{1,2}(?:>>|>|x|\\))";
+  const statements = new RegExp(
+    `^[^\\S\\n]*(?:(de)?activate[^\\S\\n]+${word(name)}|${literal(name)}${arrow}(-)|.*?${arrow}(\\+)[^\\S\\n]*${word(name)})`,
+    "gm",
+  );
+  let active = 0;
+  for (const match of normalized.matchAll(statements)) {
+    active += match[1] || match[2] ? -1 : 1;
+    if (active < 0) return match.index;
+  }
+  return undefined;
+}
+
+/** The largest index that linkStyle statements give, which no link has when one fails. */
+function linkStyleIndex(normalized: string): string | undefined {
+  const indices = Array.from(
+    normalized.matchAll(/^[^\S\n]*linkStyle[^\S\n]+([\d,\s]*\d)/gm),
+    (match) => (match[1] as string).split(/[,\s]+/).map(Number),
+  ).flat();
+  return indices.length > 0 ? String(Math.max(...indices)) : undefined;
+}
+
+/**
+ * Errors of Mermaid's checks of what it parsed, which do not say where in the source they are: by
+ * their messages, where they are, and clearer messages for some.
+ */
+const UNPLACED: [
+  RegExp,
+  (match: RegExpExecArray, normalized: string) => [number | undefined, string?] | undefined,
+][] = [
+  [
+    /^Invalid date:(.*)$/s,
+    ([, date = ""], normalized) => [
+      find(normalized, word(date)),
+      `Invalid date "${date}": write dates as the dateFormat says, ${/^[^\S\n]*dateFormat[^\S\n]+(.*\S)/m.exec(normalized)?.[1] ?? "YYYY-MM-DD"}.`,
+    ],
+  ],
+  [
+    /^No such shape: (.*?)\./,
+    ([, shape = ""], normalized) => [find(normalized, `shape\\s*:\\s*["']?${word(shape)}`)],
+  ],
+  [
+    /^There can be only one root\. No parent could be found for \("(.*)"\)$/s,
+    ([, node = ""], normalized) => [
+      find(normalized, `^[^\\S\\n]*${word(node)}`),
+      `A mind map has one root: indent "${node}" below it.`,
+    ],
+  ],
+  [
+    /^Trying to inactivate an inactive participant \((.*)\)$/,
+    ([, name = ""], normalized) => [
+      deactivation(normalized, name),
+      `"${name}" is deactivated, but it is not active.`,
+    ],
+  ],
+  // Mermaid's own check of the indices misses them.
+  [
+    /^Cannot set properties of undefined \(setting 'style'\)$/,
+    (_, normalized) => {
+      const index = linkStyleIndex(normalized);
+      return index === undefined
+        ? undefined
+        : [
+            find(normalized, `^[^\\S\\n]*linkStyle[^\\S\\n]+(?:[\\d,\\s]*[,\\s])?${index}\\b`),
+            `linkStyle ${index} refers to no link: links are numbered from 0, in the order the diagram defines them.`,
+          ];
+    },
+  ],
+  // Mermaid lays diagrams out with ELK, which fails on an edge of a node that it was not given.
+  [
+    /^org\.eclipse\.elk\..*: Referenced shape does not exist: (.*)$/,
+    ([, id = ""], normalized) => [
+      find(normalized, word(id)),
+      `Mermaid cannot lay out the edges of "${id}": give the groups and the nodes different ids.`,
+    ],
+  ],
+  [
+    /^org\.eclipse\.elk\..*: Id must be a string or an integer: 'null'\.$/,
+    () => [
+      undefined,
+      "An edge or relationship refers to something that the diagram does not define.",
+    ],
+  ],
+  // Others quote what they are about: the first line with all of it.
+  [
+    /"[^"\n]+"|\[[^\]\n]+\]/,
+    ({ input }, normalized) => {
+      const quoted = Array.from(
+        input.matchAll(/"([^"\n]+)"|\[([^\]\n]+)\]/g),
+        (quote) => `(?=.*${word((quote[1] ?? quote[2]) as string)})`,
+      );
+      return [find(normalized, `^${quoted.join("")}`)];
+    },
+  ],
+];
+
+/** Describes an error that Mermaid gives no position for, where in the source it can tell. */
+function unplacedError(message: string, normalized: string): Error | undefined {
+  for (const [pattern, describe] of UNPLACED) {
+    const match = pattern.exec(message);
+    const described = match && describe(match, normalized);
+    if (described) return errorAt(normalized, described[0], described[1] ?? message);
+  }
+  return undefined;
 }
