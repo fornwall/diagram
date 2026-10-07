@@ -199,24 +199,6 @@ export const MERMAID = {
 };
 
 /**
- * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
- * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
- */
-export const DRAG_IMAGE = `
-  const dragImage = async (init) => {
-    const handle = document.getElementById("drag-out");
-    handle.dispatchEvent(new PointerEvent("pointerenter"));
-    if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
-    for (let attempt = 0; attempt < 100; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const dataTransfer = new DataTransfer();
-      handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-      if (dataTransfer.getData("image/svg+xml")) return dataTransfer;
-    }
-    throw new Error("The image was not prepared.");
-  };`;
-
-/**
  * Webview code defining `until(done, awaited, step)`, which waits for `done()` and returns it,
  * checking it every 20 ms, or after each `step()` such as `nextFrame`, for up to four seconds, as
  * a throttled page runs its timers and frames once a second, and only while the expression it is
@@ -233,3 +215,23 @@ export const UNTIL = `
     }
     return done();
   };`;
+
+/**
+ * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
+ * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
+ * It keeps its `until` to itself, for expressions that define their own.
+ */
+export const DRAG_IMAGE = `
+  const dragImage = (() => {
+    ${UNTIL}
+    return async (init) => {
+      const handle = document.getElementById("drag-out");
+      handle.dispatchEvent(new PointerEvent("pointerenter"));
+      if (init) handle.dispatchEvent(new PointerEvent("pointerdown", init));
+      return until(() => {
+        const dataTransfer = new DataTransfer();
+        handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
+        return dataTransfer.getData("image/svg+xml") && dataTransfer;
+      }, "the drag image");
+    };
+  })();`;
