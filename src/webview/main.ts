@@ -64,7 +64,6 @@ const refreshButton = element<HTMLButtonElement>("refresh");
 const writeToButton = element<HTMLButtonElement>("write-to");
 const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
-const annotationBanner = element("annotation");
 const annotationCaption = element("annotation-caption");
 const annotationNotes = element("annotation-notes");
 const pickBanner = element("pick");
@@ -532,7 +531,6 @@ function showAnnotation(next: Annotation): void {
   annotationCaption.textContent = next.caption ?? "";
   annotationCaption.hidden = next.caption === undefined;
   annotationNotes.replaceChildren(...notes);
-  annotationBanner.hidden = next.caption === undefined && notes.length === 0;
 }
 
 function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {

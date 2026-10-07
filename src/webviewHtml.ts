@@ -81,7 +81,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
     </div>
   </div>
   <div id="error" role="alert" hidden></div>
-  <div id="annotation" role="status" hidden>
+  <div id="annotation" role="status">
     <span id="annotation-caption" hidden></span>
     <ul id="annotation-notes"></ul>
   </div>

@@ -222,6 +222,12 @@ button.link:enabled:hover {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
+/* Without a caption or notes, a live region still, so that those that come are announced. */
+#annotation:not(:has(#annotation-caption:not([hidden]), li)) {
+  padding: 0;
+  border: 0;
+}
+
 #annotation-caption {
   font-weight: 600;
 }

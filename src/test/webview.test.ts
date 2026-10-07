@@ -618,6 +618,30 @@ suite("webview", function () {
     }
   });
 
+  test("keeps the annotation banner a live region, which takes no space without marks", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        const banner = document.getElementById("annotation");
+        const shown = () => ({
+          live: banner.getAttribute("role") === "status" && getComputedStyle(banner).display !== "none",
+          height: banner.getBoundingClientRect().height > 0
+        });
+        const annotate = async (caption) => {
+          window.dispatchEvent(new MessageEvent("message", {data: {type: "annotate", marks: [], dim: false, caption}}));
+          await new Promise(resolve => setTimeout(resolve, 50));
+          return shown();
+        };
+        return [shown(), await annotate("Step 1"), await annotate(undefined)];
+      })()`),
+      [
+        { live: true, height: false },
+        { live: true, height: true },
+        { live: true, height: false },
+      ],
+    );
+  });
+
   test("hides the drag handle and other hidden controls whatever their styles", async () => {
     assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
     assert.deepStrictEqual(
