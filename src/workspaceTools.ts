@@ -268,6 +268,11 @@ async function candidates(
   return { files, truncated: false };
 }
 
+/** Whether reading a file failed in the file system, rather than at the workspace boundary. */
+function isFileError(error: unknown, uri: vscode.Uri): boolean {
+  return fileError(error, uri) !== error;
+}
+
 /** The text of a file, or why it is not read, with the bytes read to find out. */
 type FileText = { bytes: number; unsaved?: boolean } & ({ text: string } | { error: string });
 
@@ -382,7 +387,8 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
         await check(uri);
       } catch (error) {
         if (error instanceof vscode.CancellationError) throw error;
-        outsideFiles++;
+        // A file that the file system fails on, such as one deleted since, is left out unsaid.
+        if (!isFileError(error, uri)) outsideFiles++;
         continue;
       }
       const line = displayPath(uri, roots);
@@ -449,7 +455,11 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     const output: string[] = [];
     let matches = 0;
     let matchedFiles = 0;
-    let skipped = 0;
+    const skipped = {
+      "binary or over 1 MiB": 0,
+      "linked outside the workspace": 0,
+      unreadable: 0,
+    };
     let scanned = 0;
     let scannedBytes = 0;
     let outputChars = 0;
@@ -469,7 +479,9 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       throwIfCancelled(token);
       if (!content || "failure" in content) {
         if (content?.failure instanceof vscode.CancellationError) throw content.failure;
-        skipped++;
+        skipped[
+          isFileError(content?.failure, uri) ? "unreadable" : "linked outside the workspace"
+        ]++;
         continue;
       }
       // Count binary and invalid text too, which is read before it is rejected.
@@ -479,7 +491,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       }
       scannedBytes += content.bytes;
       if ("error" in content) {
-        skipped++;
+        skipped["binary or over 1 MiB"]++;
         continue;
       }
       scanned++;
@@ -533,13 +545,15 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     if (!stopped && tooManyFiles) {
       stopped = `more than ${MAX_SCANNED_FILES} files match the glob`;
     }
+    const reasons = Object.entries(skipped).filter(([, count]) => count > 0);
+    const skippedFiles = reasons.reduce((sum, [, count]) => sum + count, 0);
     const summary = [
       matches > 0
         ? `${plural(matches, "match", "matches")} in ${plural(matchedFiles, "file")}`
         : "No matches",
       ` (searched ${plural(scanned, "file")}`,
-      skipped > 0
-        ? `; skipped ${plural(skipped, "file")}: binary, over 1 MiB or linked outside the workspace`
+      reasons.length > 0
+        ? `; skipped ${plural(skippedFiles, "file")}: ${reasons.map(([reason, count]) => (reasons.length > 1 ? `${count} ${reason}` : reason)).join(", ")}`
         : "",
       ").",
       stopped

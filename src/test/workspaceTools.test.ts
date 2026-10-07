@@ -223,7 +223,14 @@ suite("workspaceTools", function () {
     });
     assert.match(limited, /^1 match in 1 file .* Incomplete: .*\n.*\n {2}2: [^\n]+$/);
     const full = await invoke(searcher, { query: "missing", glob: `${relative}/*` });
-    assert.match(full, /^No matches \(searched \d+ files; skipped 2 files: binary/);
+    assert.match(full, /^No matches \(searched \d+ files; skipped 2 files: binary or over 1 MiB\)/);
+    if (process.platform !== "win32" && process.getuid?.() !== 0) {
+      await fs.chmod(await writeFile("denied.txt", "Needle"), 0);
+      assert.match(
+        await invoke(searcher, { query: "missing", glob: `${relative}/*` }),
+        /; skipped 3 files: 2 binary or over 1 MiB, 1 unreadable\)/,
+      );
+    }
     assert.match(await invoke(reader, { file: path.join(dir, "binary.bin") }), /^Error: Binary/);
     assert.strictEqual(
       await invoke(reader, { file: path.join(dir, "large.txt"), endLine: 1 }),
@@ -243,7 +250,7 @@ suite("workspaceTools", function () {
     }
     assert.strictEqual(
       await invoke(searcher, { query: "missing", glob: `${relative}/budget/*` }),
-      "No matches (searched 0 files; skipped 16 files: binary, over 1 MiB or linked outside the workspace). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
+      "No matches (searched 0 files; skipped 16 files: binary or over 1 MiB). Incomplete: the search stopped because it reached the 16 MiB scan limit. Narrow the glob or use a more specific query.",
     );
   });
 
@@ -302,7 +309,10 @@ suite("workspaceTools", function () {
       query: "external secret",
       glob: `${relative}/external.txt`,
     });
-    assert.match(search, /^No matches \(searched 0 files; skipped 1 file: /);
+    assert.match(
+      search,
+      /^No matches \(searched 0 files; skipped 1 file: linked outside the workspace\)/,
+    );
     assert.strictEqual(
       await invoke(finder, { glob: `${relative}/external.txt` }),
       "Left out 1 file linked outside the workspace.",
