@@ -62,7 +62,8 @@ function globInput(value: unknown): string {
   if (path.isAbsolute(value) || value.split(/[\\/]/).includes("..")) {
     throw new Error('"glob" must be relative to workspace folders and cannot contain "..".');
   }
-  return value;
+  // A glob that starts with "./", as a shell path would, matches nothing.
+  return value.replace(/^(?:\.\/)+/, "") || "**/*";
 }
 
 function folders(): readonly vscode.WorkspaceFolder[] {
@@ -343,7 +344,12 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
     }
     const listed = lines.length;
     if (listed === 0 && !truncated && outsideFiles === 0) {
-      lines.push(`No files match ${JSON.stringify(glob)}.`);
+      lines.push(
+        `No files match ${JSON.stringify(glob)}.` +
+          (/[*?[{]/.test(glob)
+            ? ""
+            : ` To list the files in a folder, use the glob "${glob.replace(/\/$/, "")}/**".`),
+      );
     }
     if (outsideFiles > 0) {
       lines.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);

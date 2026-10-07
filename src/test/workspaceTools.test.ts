@@ -91,6 +91,12 @@ suite("workspaceTools", function () {
       await invoke(finder, { glob: `${relative}/*.missing` }),
       `No files match "${relative}/*.missing".`,
     );
+    // As models write globs.
+    assert.strictEqual(await invoke(finder, { glob: `./${relative}/*.ts` }), `${relative}/code.ts`);
+    assert.strictEqual(
+      await invoke(finder, { glob: `${relative}/` }),
+      `No files match "${relative}/". To list the files in a folder, use the glob "${relative}/**".`,
+    );
   });
 
   test("reads inclusive line ranges from relative paths and absolute URIs", async () => {
