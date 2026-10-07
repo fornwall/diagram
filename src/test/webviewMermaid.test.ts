@@ -741,6 +741,8 @@ suite("Mermaid in the webview", function () {
         "flowchart TD\n  subgraph A\n    subgraph B\n      A\n      C --> D\n    end\n  end",
         "classDiagram\n  namespace A {\n    class A\n  }\n  X --> A",
         "classDiagram\n  namespace A {\n    class A\n    class B\n  }\n  A --> B",
+        // dagre fails on groups inside themselves without such edges too.
+        "---\nconfig:\n  layout: dagre\n---\nclassDiagram\n  namespace A {\n    class A\n  }",
       ),
       [
         [3, "A"],
@@ -749,6 +751,7 @@ suite("Mermaid in the webview", function () {
         [3, "B"],
         [2, "A"],
         [2, "A"],
+        [6, "A"],
       ].map(
         ([line, group]) =>
           `Error on line ${line}: "${group}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,

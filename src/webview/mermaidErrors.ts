@@ -611,6 +611,11 @@ const UNPLACED: [
       "An edge or relationship refers to something that the diagram does not define.",
     ],
   ],
+  // Mermaid's dagre layout fails on any group inside itself, where its ELK one may hang.
+  [
+    /^Setting (.*?) as parent of .* would create a cycle$/,
+    ([, id = ""], normalized) => insideItself(normalized, id),
+  ],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,
@@ -622,6 +627,12 @@ const UNPLACED: [
       return [find(normalized, `^${quoted.join("")}`)];
     },
   ],
+];
+
+/** Where the group is declared, and the error for it being inside itself. */
+const insideItself = (normalized: string, id: string): [number | undefined, string] => [
+  find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(id)}`),
+  `"${id}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
 ];
 
 /** Describes an error that Mermaid gives no position for, where in the source it can tell. */
@@ -640,6 +651,7 @@ function unplacedError(message: string, normalized: string): Error | undefined {
  * ELK's findCommonAncestor follows the parents of the edge's start until it meets its end, and
  * then those of its end until it meets one of the start's, which a group inside itself never does.
  * A group inside itself without such edges draws, as does one in a kanban, which has no edges.
+ * Other layouts draw none of these either: dagre fails on any group inside itself.
  */
 export function nestingError(db: DiagramDb | undefined, source: string): Error | undefined {
   const { nodes = [], edges = [] } = db?.getData?.() ?? {};
@@ -664,11 +676,7 @@ export function nestingError(db: DiagramDb | undefined, source: string): Error |
     const loop = from.loop === undefined ? ancestry(end).loop : !from.seen.has(end) && from.loop;
     if (loop) {
       const normalized = source.replace(/\r\n?/g, "\n");
-      return errorAt(
-        normalized,
-        find(normalized, `^[^\\S\\n]*(?:state|subgraph|namespace)[^\\S\\n]+${word(loop)}`),
-        `"${loop}" is inside itself, which Mermaid cannot lay out: give the group and what it contains different ids.`,
-      );
+      return errorAt(normalized, ...insideItself(normalized, loop));
     }
   }
   return undefined;
