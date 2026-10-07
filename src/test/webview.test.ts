@@ -616,6 +616,17 @@ suite("webview", function () {
       );
     }
   });
+
+  test("hides the drag handle and other hidden controls whatever their styles", async () => {
+    assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`[...document.querySelectorAll("[hidden]")]
+        .filter(element => getComputedStyle(element).display !== "none")
+        .map(element => element.id)`),
+      [],
+    );
+    assert.strictEqual(await evaluate(`document.getElementById("drag-out").hidden`), true);
+  });
 });
 
 suite("webview renderer loading", function () {

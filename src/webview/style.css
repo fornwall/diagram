@@ -7,6 +7,12 @@ body {
   padding: 0;
 }
 
+/* Hidden whatever display the element's rules give it, as the script hides and shows controls. */
+[hidden] {
+  /* biome-ignore lint/complexity/noImportantStyles: Outranks every rule that sets display. */
+  display: none !important;
+}
+
 /* Native select menus and number steppers follow the workbench's light/dark theme. */
 body[data-vscode-theme-kind="vscode-dark"],
 body[data-vscode-theme-kind="vscode-high-contrast"] {
@@ -192,7 +198,7 @@ button.link:enabled:hover {
   border: 0;
 }
 
-#pick:not([hidden]) {
+#pick {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -207,7 +213,7 @@ button.link:enabled:hover {
 }
 
 /* The caption and notes an agent sent with its marks, above the drawing they are about. */
-#annotation:not([hidden]) {
+#annotation {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -637,7 +643,7 @@ select:focus {
   white-space: pre-wrap;
 }
 
-#chart-options form > label:not([hidden]) {
+#chart-options form > label {
   display: block;
   margin: 8px 0;
 }
