@@ -444,6 +444,40 @@ suite("workspaceTools", function () {
     assert.throws(() => resolveWorkspaceFile("/owner/three/c.ts", roots), /inside/);
   });
 
+  test("names files relative to a virtual workspace folder whose path has '.' and '..'", async () => {
+    const unsupported = () => {
+      throw vscode.FileSystemError.NoPermissions();
+    };
+    const provider = vscode.workspace.registerFileSystemProvider("diagram-dots", {
+      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+      stat: (uri) => ({
+        type: uri.path.endsWith(".ts") ? vscode.FileType.File : vscode.FileType.Directory,
+        ctime: 0,
+        mtime: 0,
+        size: 4,
+      }),
+      watch: () => new vscode.Disposable(() => {}),
+      readDirectory: unsupported,
+      createDirectory: unsupported,
+      readFile: () => Buffer.from("text"),
+      writeFile: unsupported,
+      delete: unsupported,
+      rename: unsupported,
+    });
+    afterTest(() => provider.dispose());
+    const root = vscode.Uri.parse("diagram-dots:/owner/x/../one/./");
+    replace(vscode.workspace, "workspaceFolders", [{ uri: root, name: "one", index: 0 }]);
+    replace(vscode.workspace, "findFiles", async () => [
+      vscode.Uri.parse("diagram-dots:/owner/one/src/a.ts"),
+    ]);
+    assert.strictEqual(await invoke(finder, {}), "src/a.ts");
+    assert.strictEqual(
+      await invoke(reader, { file: "src/a.ts" }),
+      "src/a.ts, lines 1-1 of 1:\n1: text",
+    );
+    assert.match(await invoke(reader, { file: "src" }), /the glob "src\/\*\*"\.$/);
+  });
+
   test("rejects traversal in virtual URIs, including encoded dot segments", () => {
     const roots = [{ uri: vscode.Uri.parse("memory:/root/"), name: "virtual", index: 0 }];
     assert.strictEqual(resolveWorkspaceFile("memory:/root/code.ts", roots).path, "/root/code.ts");

@@ -105,13 +105,26 @@ export function resolveWorkspaceFile(
   return uri;
 }
 
-/** The glob that lists a folder's files with diagram_findFiles, if it is in the workspace. */
-export function filesGlob(folder: vscode.Uri): string | undefined {
-  const root = vscode.workspace.getWorkspaceFolder(folder)?.uri.path.replace(/\/$/, "");
+/**
+ * The glob that lists a folder's files with diagram_findFiles, if it is in the workspace. VS Code
+ * finds no folder for it in a virtual workspace folder whose path has "." or "..".
+ */
+export function filesGlob(
+  folder: vscode.Uri,
+  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): string | undefined {
+  const root =
+    vscode.workspace.getWorkspaceFolder(folder)?.uri ??
+    roots.find((root) => contains(root.uri, folder))?.uri;
   if (root === undefined) return undefined;
   // Names such as Next.js's "[id]" are matched literally, each glob character in brackets.
-  const relative = folder.path.slice(root.length + 1).replace(/[[\]{}*?]/g, "[$&]");
+  const relative = folder.path.slice(rootPath(root).length + 1).replace(/[[\]{}*?]/g, "[$&]");
   return relative ? `${relative}/**` : "**";
+}
+
+/** The path of a workspace folder, as that of a file in it starts, without a trailing "/". */
+function rootPath(root: vscode.Uri): string {
+  return root.scheme === "file" ? root.path.replace(/\/$/, "") : virtualFolderPath(root);
 }
 
 /**
@@ -124,7 +137,7 @@ function displayPath(uri: vscode.Uri, roots: readonly vscode.WorkspaceFolder[]):
     const relative =
       first.scheme === "file"
         ? path.relative(first.fsPath, uri.fsPath).split(path.sep).join("/")
-        : uri.path.slice(first.path.replace(/\/$/, "").length + 1);
+        : uri.path.slice(rootPath(first).length + 1);
     if (relative) return relative;
   }
   return absolutePath(uri, roots) ?? uri.toString();
@@ -624,7 +637,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const content = await readText(uri, boundary(roots, token), token, MAX_READ_BYTES).catch(
       (error: unknown) => {
         throw fileError(error, uri, {
-          FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri)}".`,
+          FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri, roots)}".`,
         });
       },
     );
