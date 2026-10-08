@@ -13,7 +13,82 @@ const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagra
 /** What XML 1.0 does not allow in a document, not even as a character reference. */
 const NOT_IN_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
-const HTML_LABEL_WITH_FALLBACK = "switch > foreignObject:not(:has(math))";
+/** An HTML label but for a formula, whose text would be its TeX. */
+const HTML_LABEL = "foreignObject:not(:has(math))";
+const HTML_LABEL_WITH_FALLBACK = `switch > ${HTML_LABEL}`;
+
+/** The font properties that an HTML label's text keeps as SVG text. */
+const FONT = ["font-family", "font-size", "font-style", "font-weight", "letter-spacing"];
+/** Where the ascent and descent of fonts are measured. */
+let fonts: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * The text of an HTML label in the document as SVG text, a text element for each piece of a text
+ * node on a line, where the browser lays it out: wrapped, aligned and styled as it shows it.
+ * Undefined if it shows none.
+ */
+function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
+  fonts ??= document.createElement("canvas").getContext("2d");
+  const toUser = label.getScreenCTM()?.inverse();
+  if (!toUser || !fonts) return undefined;
+  const measure = fonts;
+  /**
+   * Where a range is in the label's units, which its font size is in: its left, its middle and
+   * its size, along the lines of a label that the drawing turns, such as a vertical lane title.
+   */
+  const place = (range: Range) => {
+    const { left, top, right, bottom } = range.getBoundingClientRect();
+    const corners = [
+      [left, top],
+      [right, top],
+      [left, bottom],
+      [right, bottom],
+    ].map(([x, y]) => new DOMPoint(x, y).matrixTransform(toUser));
+    const xs = corners.map(({ x }) => x);
+    const ys = corners.map(({ y }) => y);
+    const [x, y] = [Math.min(...xs), Math.min(...ys)];
+    const height = Math.max(...ys) - y;
+    return { x, middle: y + height / 2, width: Math.max(...xs) - x, height };
+  };
+  const group = document.createElementNS(SVG_NAMESPACE, "g");
+  const range = document.createRange();
+  const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const style = getComputedStyle(node.parentElement as Element);
+    let run: { text: string; x: number; middle: number } | undefined;
+    const end = () => {
+      if (!run) return;
+      // The baseline, with the font's ascent and descent around the middle of the line.
+      measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } =
+        measure.measureText("");
+      const element = document.createElementNS(SVG_NAMESPACE, "text");
+      element.setAttribute("x", String(run.x));
+      element.setAttribute("y", String(run.middle + (ascent - descent) / 2));
+      for (const name of FONT) element.style.setProperty(name, style.getPropertyValue(name));
+      element.style.fill = style.color;
+      element.textContent = run.text.trimEnd();
+      group.append(element);
+      run = undefined;
+    };
+    for (let i = 0; i < node.length; ) {
+      const char = String.fromCodePoint(node.data.codePointAt(i) as number);
+      range.setStart(node, i);
+      i += char.length;
+      range.setEnd(node, i);
+      const box = place(range);
+      // Whitespace that the browser collapses has no width; a line starts with none.
+      if (!box.width || (!run && !char.trim())) continue;
+      if (run && Math.abs(box.middle - run.middle) > box.height / 2) end();
+      run ??= { text: "", x: box.x, middle: box.middle };
+      run.text += char;
+      run.x = Math.min(run.x, box.x);
+    }
+    end();
+  }
+  return group.childElementCount > 0 ? group : undefined;
+}
 
 /**
  * A computed value as applications that read SVG 1.1 also know it: they may not read a quoted
@@ -128,6 +203,18 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
     const shown = labels[index]?.querySelector("*:not(:has(*))");
     if (text instanceof SVGElement && shown) text.style.fill = getComputedStyle(shown).color;
     element.remove();
+  });
+  // Other HTML labels, which Mermaid draws for some diagrams whatever it is told, such as event
+  // models: their text as SVG text, where it shows in the drawing.
+  const html = `${HTML_LABEL}:not(switch > *)`;
+  const shown = source.querySelectorAll<SVGForeignObjectElement>(html);
+  svg.querySelectorAll(html).forEach((element, index) => {
+    const label = shown[index];
+    const text = label && labelAsText(label);
+    if (!text) return;
+    const transform = element.getAttribute("transform");
+    if (transform) text.setAttribute("transform", transform);
+    element.replaceWith(text);
   });
   // Formulas draw beyond the boxes that Mermaid sizes to their line boxes, as in the panel.
   for (const element of svg.querySelectorAll("foreignObject")) {

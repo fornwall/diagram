@@ -321,7 +321,9 @@ suite("images in the webview", function () {
       { htmlLabels: 0, text: "ExportedlabelOtherlabel" },
     );
     assert.deepStrictEqual(
-      await exported("swimlane-beta LR\n  subgraph Lane\n    a[Start]\n  end"),
+      await exported(
+        "---\nconfig:\n  flowchart:\n    htmlLabels: true\n---\nswimlane-beta LR\n  subgraph Lane\n    a[Start]\n  end",
+      ),
       { htmlLabels: 0, text: "LaneStart" },
     );
     // User journeys draw task names as HTML with a text fallback.
@@ -331,6 +333,62 @@ suite("images in the webview", function () {
     };
     assert.strictEqual(journey.htmlLabels, 0);
     assert.match(journey.text, /Brewtea/);
+  });
+
+  test("exports the HTML labels that Mermaid draws anyway as SVG text, where they show", async () => {
+    const cases: [string, string[]][] = [
+      // Event models and the texts of Venn diagrams are HTML whatever Mermaid is told: a bold
+      // name that does not wrap, data, and a text that does.
+      [
+        "eventmodeling\n  tf 01 cmd AddItemToTheCartWithAVeryLongName\n  tf 02 evt ItemAdded { id: 1, name: thing }",
+        // Mermaid writes the spaces of data as &nbsp;.
+        ["AddItemToTheCartWithAVeryLongName", "ItemAdded", "id: 1, name: thing"],
+      ],
+      [
+        'venn-beta\n  set A\n  set B\n  union A,B["AB"]\n    text t1["Alice and her friends"]',
+        ["Alice and her", "friends"],
+      ],
+      // A diagram with a formula keeps its HTML labels, such as a lane title that it turns.
+      ['swimlane-beta LR\n  subgraph Lane one\n    a["$$x^2$$"]\n  end', ["Lane one"]],
+    ];
+    for (const [source, lines] of cases) {
+      await draw({ source });
+      const exported = await evaluate(`(async () => {
+        ${DRAG_IMAGE}
+        const host = document.createElement("div");
+        host.innerHTML = (await dragImage()).getData("image/svg+xml");
+        document.body.append(host);
+        /** The boxes in the drawing's units, rounded. */
+        const boxes = (svg, rects) => rects.map(rect => {
+          const outer = svg.getBoundingClientRect();
+          const { x, y, width, height } = svg.viewBox.baseVal;
+          return [rect.left, rect.top, rect.right, rect.bottom].map((at, i) => i % 2
+            ? Math.round(y + (at - outer.top) * height / outer.height)
+            : Math.round(x + (at - outer.left) * width / outer.width)).join();
+        });
+        const image = host.querySelector("svg");
+        const panel = document.querySelector("#diagram svg");
+        // The lines of the labels in the panel, and the texts in groups of their own in the image.
+        const range = document.createRange();
+        const shown = [];
+        for (const label of panel.querySelectorAll("foreignObject:not(:has(math))")) {
+          const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            range.selectNodeContents(walker.currentNode);
+            shown.push(...range.getClientRects());
+          }
+        }
+        const texts = [...image.querySelectorAll("g:not([class]) > text")];
+        const result = {
+          htmlLabels: image.querySelectorAll("foreignObject:not(:has(math))").length,
+          lines: texts.map(text => text.textContent),
+          moved: boxes(image, texts.map(text => text.getBoundingClientRect())).join(" ") !== boxes(panel, shown).join(" "),
+        };
+        host.remove();
+        return result;
+      })()`);
+      assert.deepStrictEqual(exported, { htmlLabels: 0, lines, moved: false }, source);
+    }
   });
 
   test("exports text fallbacks of Mermaid labels in the colors of their labels", async () => {

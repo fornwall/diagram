@@ -485,7 +485,8 @@ export class MermaidRenderer implements Renderer {
    *
    * Formulas are MathML, which only HTML labels hold: a diagram with any is drawn as in the panel.
    * (Class and sequence diagrams draw formulas as HTML either way, but other diagrams would show
-   * their TeX.)
+   * their TeX.) standaloneSvg turns its other labels into SVG text, as it does those that some
+   * diagrams draw as HTML whatever Mermaid is told.
    */
   async toImage(background: string): Promise<DiagramImage> {
     const source = this.displayedSource;
