@@ -150,7 +150,11 @@ export function buildFacetedChart(
       xAxis: xAxes,
       yAxis: yAxes,
       series,
-      legend: { type: "scroll", bottom: 0, left: "center" },
+      // A single measure is named by its axis, and an entry for it would toggle every panel.
+      legend:
+        new Set(series.map(({ name }) => name)).size > 1
+          ? { type: "scroll", bottom: 0, left: "center" }
+          : { show: false },
       // Panels of one type have the same tooltip, such as a histogram's; the webview adds others.
       ...(panels[0]?.option.tooltip === undefined ? {} : { tooltip: panels[0].option.tooltip }),
     },

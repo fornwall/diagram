@@ -394,6 +394,11 @@ suite("chartFacets", () => {
       option.series.map((series: Option) => series.name),
       ["a", "b", "a", "b"],
     );
+    assert.strictEqual(option.legend.type, "scroll");
+    // A single measure has no legend to tell it from others.
+    assert.deepStrictEqual(build("service,operation,ms\napi,read,2\nworker,read,30").legend, {
+      show: false,
+    });
   });
 
   test("histogram facets share bin boundaries including an empty numeric group", () => {
