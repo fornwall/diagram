@@ -225,6 +225,21 @@ suite("panel", function () {
     assert.ok(opened.active, "Show Panel should focus the diagram");
   });
 
+  test("a diagram with no panel to render in is still a new revision", async () => {
+    const panel = newPanel();
+    afterTest(() => panel.dispose());
+    replace(WebviewChannel.prototype, "reveal", () => false);
+    const outcome = await panel.render(flowchart, "tool");
+    assert.deepStrictEqual(outcome, {
+      ok: false,
+      kind: "unavailable",
+      error: "There is no diagram panel to render in.",
+      revision: 1,
+    });
+    assert.strictEqual(panel.revision, 1);
+    assert.strictEqual(panel.current?.source, flowchart.source);
+  });
+
   test("closing the panel ends a waiting render and pick, without blaming the diagram", async () => {
     const panel = newPanel();
     const rendering = panel.render(flowchart, "tool");

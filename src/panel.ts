@@ -485,6 +485,7 @@ export class DiagramPanel implements vscode.Disposable {
   private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<Drawn> {
     const state = this.state;
     const tab = this.webview.tab;
+    if (!redraw) this.shownRevision++;
     if (!state || !tab) {
       return {
         ...notShown("There is no diagram panel to render in."),
@@ -495,7 +496,6 @@ export class DiagramPanel implements vscode.Disposable {
     this.renderedRequestId = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
-    if (!redraw) this.shownRevision++;
     const revision = this.shownRevision;
     this.sendChartOptions();
     // What was drawn before says nothing about the rendering being drawn now.
