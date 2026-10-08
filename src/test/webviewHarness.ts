@@ -36,6 +36,15 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
   });
   const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
   assert.ok(nonce);
+  let isLoaded = false;
+  const loaded = new Promise<void>((resolve) => {
+    const listener = webview.onDidReceiveMessage((message) => {
+      if (message.type !== "testLoaded") return;
+      listener.dispose();
+      isLoaded = true;
+      resolve();
+    });
+  });
   webview.html = webview.html.replace(
     '<script type="module"',
     `<script nonce="${nonce}">
@@ -64,6 +73,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
             api.postMessage({type: "testResult", id, error: error?.message ?? String(error)});
           }
         });
+        api.postMessage({type: "testLoaded"});
         return {...api, postMessage, setState: (state) => {
           window.testStateWrites++;
           return api.setState(state);
@@ -75,6 +85,9 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
   // Tells answers apart, as an expression that timed out may still answer, later.
   let expressions = 0;
   function evaluate(expression: string): Promise<unknown> {
+    // The time to answer starts once the page has loaded, which takes long on a busy machine.
+    // Once it has, the expression goes at once, before any message that the test sends next.
+    if (!isLoaded) return loaded.then(() => evaluate(expression));
     const id = ++expressions;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -152,10 +165,12 @@ suiteTeardown(() => shared?.panel.dispose());
  * suite in between opened a panel of its own, which closes it.
  */
 export function suitePage(): Page {
-  suiteSetup(() => {
+  suiteSetup(async () => {
     if (shared?.harness.open) return;
     const panel = newPanel();
     shared = { panel, harness: instrumentWebview(panel) };
+    // Loads the page before the tests, whose time it would take.
+    await shared.harness.evaluate("0");
   });
   const page = () => {
     assert.ok(shared, "The page opens before the tests of the suite.");
