@@ -173,6 +173,7 @@ suite("optionSource", () => {
   });
 
   test("locates a token the engine cannot read, such as a string left open after a function", () => {
+    const long = `{a: (p) => p.value / 2, b: [${"1, ".repeat(5000)}], c: "open${" text".repeat(500)}}`;
     const cases: [string, RegExp][] = [
       ['{a: x => x, b: "open}', /Invalid or unexpected token \(line 1, column 16\)/],
       [
@@ -181,6 +182,11 @@ suite("optionSource", () => {
       ],
       ["{a: (p) => p.name, b: “quoted”}", /Invalid or unexpected token \(line 1, column 23\)/],
       ["{a: (p) => '\\x4' + p}", /Invalid hexadecimal escape sequence \(line 1, column 13\)/],
+      // Read along its line, a token is found however long it runs, also after a division.
+      [long, new RegExp(`token \\(line 1, column ${long.indexOf('"open') + 1}\\)`)],
+      ["{a: (p) => 0, b: 5px}", /Invalid or unexpected token \(line 1, column 19\)/],
+      // The engine finds it past what the line can be read as, such as a regular expression.
+      ['{a: (p) => /"/.test(p), b: "open}', /Invalid or unexpected token \(line 1, column 28\)/],
     ];
     for (const [source, expected] of cases) {
       assert.match(errorOf(source), expected, source);

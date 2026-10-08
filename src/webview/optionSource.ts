@@ -229,12 +229,16 @@ function syntaxErrorAt(
   return position;
 }
 
+/** How many characters the search back along a line may have the engine compile, about a second's worth. */
+const SEARCH_BUDGET = 20_000_000;
+
 /**
  * Where a token that the engine cannot read starts, such as a string left open. A start of the
  * source cut short inside any string fails alike, so search by lines, with which strings end, and
  * end each start with the end of a comment too, for one cut short inside a comment to compile.
  * The token is on the first line whose end fails alike, right after the last start of that line
- * that does not, which is searched for back from its end, up to a length that keeps it quick.
+ * that does not. Reading the line finds that start at once, when the engine confirms it; else it
+ * is searched for back from the end of the line, as far as is quick.
  */
 function tokenErrorAt(
   text: string,
@@ -256,9 +260,60 @@ function tokenErrorAt(
   }
   const lineEnd = lineEnds[high] ?? text.length;
   const lineStart = Math.max(from, text.lastIndexOf("\n", lineEnd - 1) + 1);
-  for (let end = lineEnd - 1; end >= Math.max(lineStart, lineEnd - 500); end--) {
+  const token = unreadableTokenAt(text, lineStart, lineEnd);
+  if (token && !failsAlike(token.start) && failsAlike(token.seen)) return token.start;
+  const last = Math.max(lineStart, lineEnd - Math.min(500, Math.floor(SEARCH_BUDGET / lineEnd)));
+  for (let end = lineEnd - 1; end >= last; end--) {
     // An escape that the engine cannot read starts at its backslash.
     if (!failsAlike(end)) return text[end - 1] === "\\" ? end - 1 : end;
+  }
+  return undefined;
+}
+
+/**
+ * The first token on a line that JavaScript cannot read, read as the line would be if it started
+ * outside of any comment, string or template: a string left open, an escape in a string that is
+ * cut short, a number run into a word, or a character that starts no token. Also where the engine
+ * has seen enough of it to fail. Undefined at a comment, a regular expression, a template or a
+ * "\" outside of a string, past which the line is not read, as a "/" after a value is taken to
+ * divide it: the engine confirms what is found.
+ */
+function unreadableTokenAt(
+  text: string,
+  start: number,
+  end: number,
+): { start: number; seen: number } | undefined {
+  for (let index = start; index < end; index++) {
+    const char = text.charAt(index);
+    if (char === '"' || char === "'") {
+      const open = index;
+      for (index++; text.charAt(index) !== char; index++) {
+        if (index >= end) return { start: open, seen: open + 1 };
+        if (text.charAt(index) !== "\\") continue;
+        const kind = text.charAt(index + 1);
+        const digits = kind === "x" ? HEX_ESCAPE : kind === "u" ? UNICODE_ESCAPE : undefined;
+        if (digits && matchAt(digits, text, index + 2) === undefined) {
+          return { start: index, seen: index + 2 };
+        }
+        index++;
+      }
+    } else if (/\d/.test(char) && !/[\p{ID_Continue}$.]/u.test(text.charAt(index - 1))) {
+      index += matchAt(NUMBER, text, index)?.length ?? 1;
+      if (/[\p{ID_Continue}$]/u.test(text.charAt(index))) return { start: index, seen: index + 1 };
+      index--;
+    } else if (char === "/") {
+      // A division, after a value, rather than a comment or a regular expression.
+      let before = index - 1;
+      while (before >= start && /\s/.test(text.charAt(before))) before--;
+      const value = before >= start && /[\p{ID_Continue}$)\]]/u.test(text.charAt(before));
+      if (!value || "/*".includes(text.charAt(index + 1))) {
+        return undefined;
+      }
+    } else if (char === "`" || char === "\\") {
+      return undefined;
+    } else if (!/[\s\p{ID_Continue}$(){}[\];,.<>=!+\-*%&|^~?:#]/u.test(char)) {
+      return { start: index, seen: index + 1 };
+    }
   }
   return undefined;
 }
@@ -348,6 +403,9 @@ const IDENTIFIER_START = /[\p{ID_Start}$_]/u;
 const NUMBER =
   /0[xX][\da-fA-F](?:_?[\da-fA-F])*n?|0[bB][01](?:_?[01])*n?|0[oO][0-7](?:_?[0-7])*n?|(?:0|[1-9](?:_?\d)*)n|(?:(?:0|[1-9](?:_?\d)*)(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:[eE][-+]?\d(?:_?\d)*)?/y;
 const LINE_COMMENT = /\/\/[^\n\r\u2028\u2029]*/y;
+/** The digits of a "\x" escape and of a "\u" escape. */
+const HEX_ESCAPE = /[\da-fA-F]{2}/y;
+const UNICODE_ESCAPE = /[\da-fA-F]{4}|\{[\da-fA-F]+\}/y;
 /** What makes the preceding value part of an expression, such as a call, a member or an operator. */
 const OPERATOR = /[-+*/%?.&|^<>=!([`]|(?:in|instanceof)(?![\p{ID_Continue}$])/uy;
 /** A placeholder "..." in place of values, rather than a spread. */
@@ -675,10 +733,7 @@ class Scanner {
     const escaped = this.text.charAt(at + 1);
     this.index += 2;
     if (escaped === "u" || escaped === "x") {
-      const digits =
-        escaped === "u"
-          ? matchAt(/[\da-fA-F]{4}|\{[\da-fA-F]+\}/y, this.text, this.index)
-          : matchAt(/[\da-fA-F]{2}/y, this.text, this.index);
+      const digits = matchAt(escaped === "u" ? UNICODE_ESCAPE : HEX_ESCAPE, this.text, this.index);
       if (digits === undefined) {
         this.fail(
           escaped === "u"
