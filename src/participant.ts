@@ -18,6 +18,7 @@ import {
   SEARCH_TEXT_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { resolveWorkspaceFile } from "./workspaceTools";
 
 export const PARTICIPANT_ID = "diagram.participant";
 
@@ -52,6 +53,8 @@ interface ToolBudget {
   notRun?: string;
   /** The panel's revision after the last of the request's tool calls that drew in it. */
   drawn?: number;
+  /** The workspace files that the request's tool calls read, which chat lists as references. */
+  read: Set<string>;
 }
 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
@@ -110,7 +113,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (notice) {
         stream.markdown(`${notice}\n\n`);
       }
-      const budget: ToolBudget = { rounds: 0, calls: 0 };
+      const budget: ToolBudget = { rounds: 0, calls: 0, read: new Set() };
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
         unlessCancelled(
           () => streamReply(request, messages, tools, required, stream, token, panel, budget),
@@ -305,6 +308,11 @@ async function streamReply(
           if (DRAWING_TOOLS.has(call.name) && panel.revision !== revision) {
             budget.drawn = panel.revision;
           }
+          const file = call.name === READ_FILE_TOOL ? fileRead(call.input, content) : undefined;
+          if (file && !budget.read.has(file.toString())) {
+            budget.read.add(file.toString());
+            stream.reference(file);
+          }
         } catch (error) {
           if (token.isCancellationRequested) {
             throw error;
@@ -332,5 +340,19 @@ async function streamReply(
     if (reply && !reply.endsWith("\n")) {
       stream.markdown("\n\n");
     }
+  }
+}
+
+/** The file that a call of {@link READ_FILE_TOOL} read, unless it failed. */
+function fileRead(input: object, content: readonly unknown[]): vscode.Uri | undefined {
+  const [result] = content;
+  if (!(result instanceof vscode.LanguageModelTextPart) || result.value.startsWith("Error:")) {
+    return undefined;
+  }
+  try {
+    const { file } = input as { file?: unknown };
+    return resolveWorkspaceFile(file, vscode.workspace.workspaceFolders ?? []);
+  } catch {
+    return undefined;
   }
 }

@@ -141,15 +141,18 @@ async function ask(
     ...overrides,
   } as unknown as vscode.ChatRequest;
   let shown = "";
+  const references: string[] = [];
   const stream = new Proxy({} as vscode.ChatResponseStream, {
     get: (_target, method) => (value: unknown) => {
       if (method === "markdown") {
         shown += value;
+      } else if (method === "reference") {
+        references.push(vscode.workspace.asRelativePath(value as vscode.Uri));
       }
     },
   });
   const result = await createParticipantHandler(panel)(request, { history }, stream, token);
-  return { result: result || undefined, shown, sent, counted };
+  return { result: result || undefined, shown, sent, counted, references };
 }
 
 /**
@@ -724,6 +727,20 @@ suite("participant", () => {
     ]);
     assert.deepStrictEqual(result?.metadata, { chart });
     assert.strictEqual(panel.current?.source, source);
+  });
+
+  test("lists the workspace files that its tool calls read as references, once each", async () => {
+    countToolCalls(
+      (call) =>
+        new vscode.LanguageModelToolResult([text(call === 2 ? "Error: Not found." : "Read")]),
+    );
+    const read = (id: string, file: string) =>
+      new vscode.LanguageModelToolCallPart(id, "diagram_readFile", { file });
+    const { references } = await ask([
+      [read("1", "src/a.ts"), read("2", "src/missing.ts"), read("3", "src/a.ts")],
+      [text("Done.")],
+    ]);
+    assert.deepStrictEqual(references, ["src/a.ts"]);
   });
 
   test("runs only the attached tool in the round that must call it", async () => {
