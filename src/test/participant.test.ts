@@ -593,7 +593,7 @@ suite("participant", () => {
     const prompt = sent[0]?.messages.map(messageText).join("\n") ?? "";
     assert.match(prompt, /Reply with one complete diagram in a mermaid or echarts code block/);
     assert.match(prompt, /The source is [\d,]+ characters long, too long to show here\./);
-    assert.doesNotMatch(prompt, /diagram_/);
+    assert.doesNotMatch(prompt, /diagram_|Revision/);
     assert.match(shown, /^Fake cannot call tools, so the attached tools are left out\.\n\n/);
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
     // Nor is it told that it has tools to explain a diagram with.

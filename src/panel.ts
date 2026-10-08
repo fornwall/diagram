@@ -221,8 +221,8 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `fullSource` gives a long source and relationship list too, and without `callsTools` the model
-   * is not told to call a tool for them.
+   * `fullSource` gives a long source and relationship list too. Without `callsTools`, the model is
+   * not told to call a tool for them, nor the revision, which only diagram_updateChart takes.
    */
   describeForModel({
     fullSource = false,
@@ -251,7 +251,7 @@ export class DiagramPanel implements vscode.Disposable {
       fullSource,
       callsTools,
     });
-    return `Revision: ${this.shownRevision}.\n\n${description}`;
+    return callsTools ? `Revision: ${this.shownRevision}.\n\n${description}` : description;
   }
 
   /** Opens and renders a diagram. */
