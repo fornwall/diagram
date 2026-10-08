@@ -609,9 +609,14 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
   radar.radius = Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2);
 }
 
+/** The type of an axis, which ECharts makes "category" for one with data. */
+const axisType = (axis: JsonObject | undefined) =>
+  axis?.type ?? (axis?.data ? "category" : "value");
+
 /** Styles bars, sankey nodes and areas to read clearly on the theme's background. */
 function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors): void {
   const background = toCss(colors.background);
+  const xAxes = asArray(base.xAxis);
   const yAxes = asArray(base.yAxis);
   const datasets = asArray(base.dataset);
   for (const each of series) {
@@ -628,10 +633,14 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
           ? hasNegativeValues(datasetSource(each, datasets), true)
           : hasNegativeValues(each.data))
       ) {
-        // Rounded data ends, square at the baseline.
-        const axis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];
-        const horizontal = axis?.type === "category";
-        itemStyle.borderRadius = horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0];
+        // Rounded data ends, square at the baseline. ECharts draws bars from the axis of
+        // categories, or else of time, or else from the x axis.
+        const xAxis = xAxes[typeof each.xAxisIndex === "number" ? each.xAxisIndex : 0];
+        const yAxis = yAxes[typeof each.yAxisIndex === "number" ? each.yAxisIndex : 0];
+        const [x, y] = [axisType(xAxis), axisType(yAxis)];
+        const horizontal = x !== "category" && (y === "category" || (y === "time" && x !== "time"));
+        const [valueAxis, ends] = horizontal ? [xAxis, [0, 4, 4, 0]] : [yAxis, [4, 4, 0, 0]];
+        itemStyle.borderRadius = valueAxis?.inverse ? ends.map((radius) => 4 - radius) : ends;
       }
       each.itemStyle = itemStyle;
     }

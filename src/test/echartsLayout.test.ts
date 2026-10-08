@@ -418,6 +418,14 @@ suite("echartsLayout", () => {
   test("rounds the data ends of bars, unless a bar may point the other way", () => {
     const radius = (option: Option) => layout(option).series[0].itemStyle.borderRadius;
     assert.deepStrictEqual(radius(bars()), [4, 4, 0, 0]);
+    // Bars go along the axis of categories, which an axis with data is, or else of time.
+    const across = (xAxis: Option, yAxis: Option) => radius(bars({ xAxis, yAxis }));
+    assert.deepStrictEqual(across({}, { data: ["A", "B"] }), [0, 4, 4, 0]);
+    assert.deepStrictEqual(across({ type: "value" }, { type: "time" }), [0, 4, 4, 0]);
+    assert.deepStrictEqual(across({ data: ["A"] }, { type: "category" }), [4, 4, 0, 0]);
+    assert.deepStrictEqual(across({ type: "time" }, { type: "time" }), [4, 4, 0, 0]);
+    assert.deepStrictEqual(across({ inverse: true }, { data: ["A"] }), [4, 0, 0, 4]);
+    assert.deepStrictEqual(across({ data: ["A"] }, { inverse: true }), [0, 0, 4, 4]);
     assert.strictEqual(
       radius(bars({ series: [{ type: "bar", data: [{ value: -1 }] }] })),
       undefined,
