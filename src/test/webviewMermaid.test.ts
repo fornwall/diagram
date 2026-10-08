@@ -1331,41 +1331,36 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
   });
 
   test("closes an actor's menu when the diagram is drawn again, keeping the focus on the actor", async () => {
-    /** Opens Bob's menu, runs the code that draws the diagram again, and tells how it ends up. */
-    const redraw = (redraw: string, restore = "") =>
-      evaluate(`(async () => {
-        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
-        bob.focus();
-        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
-        const opened = document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
-        ${RETHEME}
-        ${redraw}
-        await until(() => !bob.isConnected, "the diagram drawn again");
-        const shown = {
-          opened,
-          redrawn: !bob.isConnected,
-          menu: document.querySelector("#canvas .link-menu") !== null,
-          focused: document.activeElement.getAttribute("data-diagram-id"),
-        };
-        ${restore}
-        return shown;
+    /** Opens Bob's menu, draws the diagram again as `drawAgain` does, and tells how it ends up. */
+    const redraw = async (drawAgain: () => Promise<unknown>) => {
+      const opened = await evaluate(`(() => {
+        window.testBob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        testBob.focus();
+        testBob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        return document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
       })()`);
+      await drawAgain();
+      const shown = await evaluate(`({
+        redrawn: !testBob.isConnected,
+        menu: document.querySelector("#canvas .link-menu") !== null,
+        focused: document.activeElement.getAttribute("data-diagram-id"),
+      })`);
+      return { opened, ...(shown as object) };
+    };
     const render = () =>
       page.panel.render({ language: "mermaid", source: actorLinks, title: "Seq" }, "tool");
     assert.ok((await render()).ok);
     const shown = { opened: true, redrawn: true, menu: false, focused: "Bob" };
-    assert.deepStrictEqual(
-      await redraw(
-        `const theme = await retheme("test-theme-link-menu");`,
-        // The theme coming back redraws too, which the next render must not race.
-        "await retheme(theme);",
-      ),
-      shown,
-    );
+    const retheme = (id: string) =>
+      evaluate(`(async () => {
+        ${RETHEME}
+        window.testTheme = await retheme(${id});
+      })()`);
+    assert.deepStrictEqual(await redraw(() => retheme('"test-theme-link-menu"')), shown);
+    // The theme coming back redraws too, which the next render must not race.
+    await retheme("testTheme");
     // The render arrives once the menu is open.
-    const rendered = redraw("");
-    assert.ok((await render()).ok);
-    assert.deepStrictEqual(await rendered, shown);
+    assert.deepStrictEqual(await redraw(render), shown);
   });
 
   test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
