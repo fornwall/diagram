@@ -575,14 +575,18 @@ suite("participant", () => {
     ];
     assert.ok((await panel.render(opened, "tool")).ok);
     for (const [source, change] of changes) {
-      const { result } = await ask([
+      const { result, shown } = await ask([
         async () => {
           await change();
-          return [text(valid)];
+          return [text(`Here:\n${valid}`)];
         },
       ]);
       assert.strictEqual(result, undefined);
       assert.strictEqual(panel.current?.source, source);
+      assert.strictEqual(
+        shown,
+        "Here:\n\n\nI did not draw this diagram over the change you made in the panel meanwhile. Ask again to draw it.",
+      );
     }
   });
 

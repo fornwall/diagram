@@ -289,10 +289,17 @@ async function streamReply(
       // this request's tool calls after the block, and one before it that the panel still shows,
       // which the block would lose code links, chart data and styling of. A block may still
       // repair a failed render, and draws over what another request drew meanwhile.
-      const userChanged = panel.userChangeCount !== userChanges;
       const drewAfter = toolUse.drawn !== drawnBeforeDiagram;
       const shown = toolUse.drawn === panel.revision && !panel.current?.error;
-      return userChanged || drewAfter || shown ? undefined : diagram;
+      if (!diagram || drewAfter || shown) return undefined;
+      if (panel.userChangeCount !== userChanges) {
+        const noun = diagramNoun(diagram.language);
+        stream.markdown(
+          `\n\nI did not draw this ${noun} over the change you made in the panel meanwhile. Ask again to draw it.`,
+        );
+        return undefined;
+      }
+      return diagram;
     }
     if (toolUse.rounds++ >= MAX_TOOL_ROUNDS) {
       toolUse.notRun ??= "this request reached its tool round limit";
