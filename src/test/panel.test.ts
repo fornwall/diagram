@@ -603,6 +603,11 @@ suite("panel", function () {
     await click("B");
     await click("constructor");
     assert.deepStrictEqual(clicks, ["open: sizes.tsv#L2"]);
+    // A click on the drawing before the page draws the next diagram is on the drawing it shows.
+    webview.answer = undefined;
+    void panel.render({ ...flowchart, links: { A: { file: "other.tsv" } } }, "tool");
+    await click("A");
+    assert.deepStrictEqual(clicks, ["open: sizes.tsv#L2"]);
   });
 
   test("asks before opening a linked file outside the workspace, and says why one cannot open", async () => {
