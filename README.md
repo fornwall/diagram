@@ -56,7 +56,7 @@ Click **Open in Diagram** above a `mermaid` or `echarts` code block, in any case
 
 ## Tools for agents
 
-Any chat agent can use these tools; `@diagram` includes them by default, unless its model cannot call tools. Attach a `#` reference to have a tool called first. `/explain` allows only the state and workspace reading tools.
+Any chat agent can use these tools; `@diagram` includes them by default, unless its model cannot call tools. Attach a `#` reference to have a tool called first. `/explain` allows only the state and workspace reading tools, and says which attached tools it leaves out.
 
 | Tool | Reference | Purpose |
 | --- | --- | --- |

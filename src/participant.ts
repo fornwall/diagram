@@ -19,6 +19,7 @@ import {
   SEARCH_TEXT_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { joinWords } from "./text";
 import { revisionDrawn } from "./tools";
 import { resolveWorkspaceFile } from "./workspaceTools";
 
@@ -103,6 +104,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         )
       : [];
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
+    const leftOut = explain ? [...attachedNames].filter((name) => !READ_ONLY_TOOLS.has(name)) : [];
     if (!callsTools && attachedNames.size > 0) {
       stream.markdown(
         `${escapeMarkdown(request.model.name)} cannot call tools, so the attached tools are left out.\n\n`,
@@ -110,6 +112,15 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     } else if (!viewsImages && attachedNames.has(GET_IMAGE_TOOL)) {
       stream.markdown(
         `${escapeMarkdown(request.model.name)} does not accept images, so it cannot view the diagram.\n\n`,
+      );
+    }
+    if (callsTools && leftOut.length > 0) {
+      const names = joinWords(
+        leftOut.map((name) => `\`${name}\``),
+        "and",
+      );
+      stream.markdown(
+        `/explain uses only the tools that read the diagram and the workspace, so it leaves out the attached ${names}.\n\n`,
       );
     }
 

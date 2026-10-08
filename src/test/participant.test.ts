@@ -640,7 +640,7 @@ suite("participant", () => {
     );
     const before = panel.current;
     const calls = countToolCalls();
-    const { sent, result } = await ask(
+    const { sent, result, shown } = await ask(
       [
         [
           "diagram_render",
@@ -661,6 +661,10 @@ suite("participant", () => {
           { name: "external_tool" },
         ],
       },
+    );
+    assert.match(
+      shown,
+      /^\/explain uses only the tools that read the diagram and the workspace, so it leaves out the attached `diagram_render`, `diagram_chart` and `external_tool`\.\n\n/,
     );
     assert.strictEqual(calls.count, 0);
     assert.strictEqual(panel.current, before);
