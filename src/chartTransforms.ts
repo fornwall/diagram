@@ -1,9 +1,10 @@
 // Transforms of the raw rows: the filters of any chart, and the bins of a histogram.
 
 import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
-import { columnMultiple, interpolate, roundStep, stepsOf } from "./chartRows";
+import { interpolate, roundStep, stepsOf } from "./chartRows";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
+import { columnMultiple } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
 import { scale } from "./dataNumber";
 import { plural } from "./text";

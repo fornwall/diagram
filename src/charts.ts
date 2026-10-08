@@ -5,11 +5,11 @@ import { buildFacetedChart } from "./chartFacets";
 import { boxplotOption, cartesianOption, heatmapOption, scatterOption } from "./chartGrid";
 import { hierarchyOption, sankeyOption } from "./chartHierarchy";
 import { funnelOption, gaugeOption, pieOption, radarOption } from "./chartItems";
-import { type Reading, readRows, tableMultiples } from "./chartRows";
+import { type Reading, readRows } from "./chartRows";
 import type { ChartSpec, ChartType } from "./chartSpec";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
+import { type Multiples, tableMultiples } from "./chartUnits";
 import type { DataTable } from "./data";
-import type { Unit } from "./dataNumber";
 import { isPlainObject } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
 
@@ -57,7 +57,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
 interface ChartPlan {
   columns: Columns;
   notes: string[];
-  multiples?: Partial<Record<Unit, number>> | undefined;
+  multiples?: Multiples | undefined;
 }
 
 /** Infer the shared columns and units once, rather than rescanning all rows for every facet. */

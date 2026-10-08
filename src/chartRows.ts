@@ -2,8 +2,9 @@
 
 import { type Columns, chained, columnName, isCartesian, readsLevels } from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
+import { type Multiples, showInMultiples } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
-import { STATED_UNIT, scale, type Unit } from "./dataNumber";
+import { scale } from "./dataNumber";
 import { formatCount, plural, quoteAll } from "./text";
 
 /** The most levels of a row, as the hierarchy built from them is walked recursively. */
@@ -101,95 +102,6 @@ export function stepsOf(step: number): { count(value: number): number; at(steps:
   return inverse === undefined
     ? { count: (value) => value / step, at: (steps) => steps * step }
     : { count: (value) => value * inverse, at: (steps) => steps / inverse };
-}
-
-/**
- * The units whose values are shown in a multiple of them: what the values are, and the multiples
- * by name and size from the smallest.
- */
-const SCALES = new Map<Unit, { what: string; multiples: [string, number][] }>([
-  [
-    "bytes",
-    {
-      what: "sizes",
-      multiples: ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"].map((name, i) => [
-        name,
-        1024 ** i,
-      ]),
-    },
-  ],
-  [
-    "seconds",
-    {
-      what: "durations",
-      multiples: [
-        ["ns", 1e-9],
-        ["µs", 1e-6],
-        ["ms", 1e-3],
-        ["s", 1],
-        ["min", 60],
-        ["h", 3600],
-        ["d", 86400],
-      ],
-    },
-  ],
-]);
-
-/** The multiple to show values up to `max` in: the largest not above it, or the unit for none. */
-function multipleFor(multiples: [string, number][], max: number): number {
-  let i = multiples.findIndex(([, size]) => size === 1);
-  while (i + 1 < multiples.length && max >= (multiples[i + 1]?.[1] ?? Infinity)) i++;
-  while (i > 0 && max > 0 && max < (multiples[i]?.[1] ?? 0)) i--;
-  return i;
-}
-
-/**
- * The multiple of `unit` at `index` of its scale: its name, its size and, unless it is the unit
- * itself, the note that values are shown in it.
- */
-function multipleAt(unit: Unit, index: number): { multiple: string; size: number; note?: string } {
-  const { what = "", multiples = [] } = SCALES.get(unit) ?? {};
-  const [multiple = "", size = 1] = multiples[index] ?? [];
-  return { multiple, size, ...(size === 1 ? {} : { note: `showed ${what} in ${multiple}` }) };
-}
-
-/** A name for values shown in a multiple, corrected where it states another ("Latency (ms)"). */
-function nameIn(name: string, multiple: string, size: number): string {
-  const unstated = name.replace(STATED_UNIT, "");
-  return size !== 1 || unstated !== name ? `${unstated} (${multiple})` : name;
-}
-
-/**
- * How a column's values are shown alone, as a histogram bins them: in the multiple of their unit
- * that suits the largest, under a name that states it, or as they are.
- */
-export function columnMultiple(
-  table: DataTable,
-  column: number,
-): { name: string; size: number; note?: string } {
-  const name = columnName(table, column);
-  const unit = table.columns[column]?.unit;
-  const index = unit === undefined ? undefined : tableMultiples(table, [column])[unit];
-  if (unit === undefined || index === undefined) return { name, size: 1 };
-  const { multiple, ...shown } = multipleAt(unit, index);
-  return { name: nameIn(name, multiple, shown.size), ...shown };
-}
-
-/** The multiple of each unit for the columns of that unit among `values`, over a whole table. */
-export function tableMultiples(table: DataTable, values: number[]): Partial<Record<Unit, number>> {
-  const shared: Partial<Record<Unit, number>> = {};
-  for (const [unit, { multiples }] of SCALES) {
-    let largest = 0;
-    for (const column of values) {
-      if (table.columns[column]?.unit !== unit) continue;
-      for (const row of table.rows) {
-        const value = row[column];
-        if (typeof value === "number") largest = Math.max(largest, Math.abs(value));
-      }
-    }
-    shared[unit] = multipleFor(multiples, largest);
-  }
-  return shared;
 }
 
 /** Recognize a named totals row only when its values match the preceding sums within 1%. */
@@ -445,7 +357,7 @@ export function readRows(
   table: DataTable,
   columns: Columns,
   notes: string[],
-  shared?: Partial<Record<Unit, number>>,
+  shared?: Multiples,
 ): Pick<Reading, "rows" | "names" | "maxima"> {
   const { type } = spec;
   const valueIndices = columns.values;
@@ -578,38 +490,11 @@ export function readRows(
 
   // Sizes and durations are shown in the multiple of their unit that suits the largest, and counts
   // of rows as they are.
-  const counted = spec.aggregate === "count";
-  const names = counted ? ["rows"] : valueIndices.map(name);
-  const divisors = names.map(() => 1);
-  for (const [unit, { multiples }] of counted ? [] : SCALES) {
-    const scaled = valueIndices.flatMap((index, i) =>
-      table.columns[index]?.unit === unit ? [i] : [],
-    );
-    if (scaled.length === 0) continue;
-    let largest = 0;
-    if (shared === undefined) {
-      for (const { values } of rows) {
-        for (const i of scaled) largest = Math.max(largest, Math.abs(values[i] ?? 0));
-      }
-    }
-    const index = shared?.[unit] ?? multipleFor(multiples, largest);
-    const { multiple, size, note } = multipleAt(unit, index);
-    if (note !== undefined) {
-      notes.push(note);
-      // These value arrays were created above, so scale them without allocating another table.
-      for (const { values } of rows) {
-        for (const i of scaled) {
-          const value = values[i];
-          if (value !== null && value !== undefined) values[i] = scale(value, 1 / size);
-        }
-      }
-    }
-    for (const i of scaled) {
-      names[i] = nameIn(names[i] ?? "", multiple, size);
-      divisors[i] = size;
-    }
-  }
+  const { names, sizes } =
+    spec.aggregate === "count"
+      ? { names: ["rows"], sizes: [1] }
+      : showInMultiples(table, valueIndices, rows, notes, shared);
   const max = spec.max;
-  const maxima = max === undefined ? [] : divisors.map((divisor) => scale(max, 1 / divisor));
+  const maxima = max === undefined ? [] : sizes.map((size) => scale(max, 1 / size));
   return { rows, names, maxima };
 }
