@@ -369,13 +369,10 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
     if (vscode.workspace.isTrusted) {
       return { invocationMessage };
     }
-    return {
-      invocationMessage,
-      confirmationMessages: {
-        title: "Read workspace files?",
-        message: "Allow the diagram agent to read files in this untrusted workspace?",
-      },
-    };
+    const message = new vscode.MarkdownString(
+      "Allow the diagram agent to read files in this untrusted workspace?",
+    ).appendCodeblock(invocationMessage, "text");
+    return { invocationMessage, confirmationMessages: { title: "Read workspace files?", message } };
   }
 
   async invoke(

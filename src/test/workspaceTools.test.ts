@@ -661,6 +661,17 @@ suite("workspaceTools", function () {
     }
   });
 
+  test("say what they would read when asking in an untrusted workspace", () => {
+    replace(vscode.workspace, "isTrusted", false);
+    const prepared = searcher.prepareInvocation({ input: { query: "a*b", glob: "**/*.ts" } });
+    const message = prepared.confirmationMessages?.message;
+    assert.ok(message instanceof vscode.MarkdownString);
+    assert.match(
+      message.value,
+      /\n```text\nSearching files matching "\*\*\/\*\.ts" for "a\*b"\n```/,
+    );
+  });
+
   test("propagates cancellation before inspecting files", async () => {
     const cancelled = cancellationSource();
     cancelled.cancel();
