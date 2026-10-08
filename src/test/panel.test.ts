@@ -64,13 +64,22 @@ function holdProgress(): () => void {
   return resumed.resolve;
 }
 
-/** Holds the timers of the delay until `expire()` runs those not cleared, which `pending` counts. */
-function holdTimers(delay: number): { expire(): void; readonly pending: number } {
+/**
+ * Holds the timers of the delay until `expire()` runs those not cleared, which `pending` counts;
+ * `started` counts all.
+ */
+function holdTimers(delay: number): {
+  expire(): void;
+  readonly pending: number;
+  readonly started: number;
+} {
   const set = globalThis.setTimeout;
   const clear = globalThis.clearTimeout;
   const held = new Map<unknown, () => void>();
+  let started = 0;
   replace(globalThis, "setTimeout", ((callback: () => void, ms?: number, ...args: unknown[]) => {
     if (ms !== delay) return set(callback, ms, ...args);
+    started++;
     // A handle of a timer that does nothing, which identifies the held callback.
     const handle = set(() => {}, 0);
     held.set(handle, callback);
@@ -87,6 +96,9 @@ function holdTimers(delay: number): { expire(): void; readonly pending: number }
     },
     get pending() {
       return held.size;
+    },
+    get started() {
+      return started;
     },
   };
 }
@@ -1225,6 +1237,23 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.error, undefined);
     await webview.receive({ type: "ready" });
     assert.strictEqual(webview.render.notDrawn, undefined);
+  });
+
+  test("a render that the page takes up after the one it was drawing gets the full 15 seconds", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    void panel.render({ ...flowchart, source: "flowchart LR\n  A" }, "tool");
+    const { requestId } = webview.render;
+    const rendering = panel.render(flowchart, "tool");
+    const started = timers.started;
+    // The page draws the first, then skips to the last render sent, which hangs it.
+    await webview.receive({ type: "rendered", requestId, diagramType: "test" });
+    assert.strictEqual(timers.started, started + 1);
+    assert.strictEqual(timers.pending, 1);
+    timers.expire();
+    assert.ok(!(await rendering).ok);
+    assert.match(panel.current?.error ?? "", /^The panel did not finish drawing it/);
   });
 
   test("a page that takes over 15 seconds to load draws the diagram once it does", async () => {

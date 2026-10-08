@@ -339,8 +339,7 @@ export class DiagramPanel implements vscode.Disposable {
         this.pageRanCode = true;
       }
       // A page that is not ready yet gets the render again once it is, with the full time for it.
-      clearTimeout(this.renderTimer);
-      this.renderTimer = setTimeout(() => this.renderTimedOut(message), RENDER_TIMEOUT_MS);
+      this.startRenderTimer(message);
       if (this.webview.isReady) {
         if (this.lastSent === undefined) this.drawing = message;
         this.lastSent = message.requestId;
@@ -576,10 +575,24 @@ export class DiagramPanel implements vscode.Disposable {
     );
   }
 
-  /** Notes that the page answered a render: once it answers the last one, it is done with all. */
+  private startRenderTimer(message: RenderMessage): void {
+    clearTimeout(this.renderTimer);
+    this.renderTimer = setTimeout(() => this.renderTimedOut(message), RENDER_TIMEOUT_MS);
+  }
+
+  /**
+   * Notes that the page answered a render: once it answers the last one, it is done with all. Done
+   * with the one it was drawing, it skips the renders sent meanwhile but the last, which it takes
+   * up now, with the full time for it.
+   */
   private pageAnswered(requestId: number): void {
     if (requestId === this.lastSent) this.lastSent = undefined;
-    if (requestId === this.drawing?.requestId || this.lastSent === undefined) {
+    if (requestId !== this.drawing?.requestId && this.lastSent !== undefined) return;
+    const pending = this.pendingRender?.message;
+    if (this.lastSent !== undefined && pending?.requestId === this.lastSent) {
+      this.drawing = pending;
+      this.startRenderTimer(pending);
+    } else {
       this.drawing = undefined;
     }
   }
