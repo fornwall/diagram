@@ -663,13 +663,17 @@ suite("workspaceTools", function () {
 
   test("say what they would read when asking in an untrusted workspace", () => {
     replace(vscode.workspace, "isTrusted", false);
-    const prepared = searcher.prepareInvocation({ input: { query: "a*b", glob: "**/*.ts" } });
+    const query = `${"a".repeat(80)}*b`;
+    const prepared = searcher.prepareInvocation({ input: { query, glob: "**/*.ts" } });
     const message = prepared.confirmationMessages?.message;
     assert.ok(message instanceof vscode.MarkdownString);
-    assert.match(
+    assert.ok(
+      message.value.includes(
+        `\n\`\`\`text\nSearching files matching "**/*.ts" for "${query}"\n\`\`\``,
+      ),
       message.value,
-      /\n```text\nSearching files matching "\*\*\/\*\.ts" for "a\*b"\n```/,
     );
+    assert.match(String(prepared.invocationMessage), /"a{80}…"$/);
   });
 
   test("propagates cancellation before inspecting files", async () => {

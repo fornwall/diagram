@@ -365,13 +365,15 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<unknown>,
   ): vscode.PreparedToolInvocation {
-    const invocationMessage = this.message(isPlainObject(options.input) ? options.input : {});
+    const input = isPlainObject(options.input) ? options.input : {};
+    const invocationMessage = this.message(input, 80);
     if (vscode.workspace.isTrusted) {
       return { invocationMessage };
     }
+    // In full, so that the user sees all of what they allow.
     const message = new vscode.MarkdownString(
       "Allow the diagram agent to read files in this untrusted workspace?",
-    ).appendCodeblock(invocationMessage, "text");
+    ).appendCodeblock(this.message(input, Infinity), "text");
     return { invocationMessage, confirmationMessages: { title: "Read workspace files?", message } };
   }
 
@@ -389,8 +391,11 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
     }
   }
 
-  /** What the chat shows while the tool runs, from its input as the model gave it. */
-  protected abstract message(input: Record<string, unknown>): string;
+  /**
+   * What the chat shows while the tool runs, from its input as the model gave it, with its strings
+   * shortened to `max` characters.
+   */
+  protected abstract message(input: Record<string, unknown>, max: number): string;
 
   protected abstract run(
     input: Record<string, unknown>,
@@ -429,8 +434,8 @@ async function fit(
 }
 
 /** A string input as the chat shows it, if the model gave one. */
-function shown(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? quote(value, 80) : undefined;
+function shown(value: unknown, max: number): string | undefined {
+  return typeof value === "string" && value.trim() ? quote(value, max) : undefined;
 }
 
 export class FindWorkspaceFilesTool extends WorkspaceTool {
@@ -438,8 +443,8 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
     super(["glob", "maxResults"]);
   }
 
-  protected message({ glob }: Record<string, unknown>) {
-    const pattern = shown(glob);
+  protected message({ glob }: Record<string, unknown>, max: number) {
+    const pattern = shown(glob, max);
     return pattern ? `Finding workspace files matching ${pattern}` : "Finding workspace files";
   }
 
@@ -497,9 +502,9 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     super(["query", "glob", "caseSensitive", "maxResults"]);
   }
 
-  protected message({ query, glob }: Record<string, unknown>) {
-    const text = shown(query);
-    const pattern = shown(glob);
+  protected message({ query, glob }: Record<string, unknown>, max: number) {
+    const text = shown(query, max);
+    const pattern = shown(glob, max);
     if (!text) return "Searching workspace text";
     return `Searching ${pattern ? `files matching ${pattern}` : "the workspace"} for ${text}`;
   }
@@ -648,8 +653,8 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     super(["file", "startLine", "endLine"]);
   }
 
-  protected message({ file, startLine, endLine }: Record<string, unknown>) {
-    const name = shown(file);
+  protected message({ file, startLine, endLine }: Record<string, unknown>, max: number) {
+    const name = shown(file, max);
     if (!name) return "Reading a workspace file";
     const lines =
       typeof startLine === "number" && typeof endLine === "number"
