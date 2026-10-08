@@ -1,7 +1,7 @@
 // Transforms of the raw rows: the filters of any chart, and the bins of a histogram.
 
 import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
-import { columnMultiple, interpolate } from "./chartRows";
+import { columnMultiple, interpolate, roundStep, stepsOf } from "./chartRows";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -173,27 +173,19 @@ function roundBins(
   const width = (maximum - minimum) / bins;
   let step = 1;
   if (width > 0 && Number.isFinite(width)) {
-    const power = 10 ** Math.floor(Math.log10(width));
-    // The tolerance allows for rounding in the logarithm and the power, as for a width of 0.3.
-    step =
-      [1, 2, 5].map((factor) => factor * power).find((round) => round >= width * 0.999999) ??
-      10 * power;
+    step = roundStep(width);
   } else if (!whole) {
     return undefined;
   }
   if (whole) step = Math.max(1, step);
-  // Multiples of a fraction's inverse, 3 / 10 for 0.3, are exact where 3 * 0.1 is not.
-  const inverse = step < 1 ? Math.round(1 / step) : undefined;
-  const at = (value: number) => (inverse === undefined ? value / step : value * inverse);
-  const first = Math.floor(at(minimum));
+  const steps = stepsOf(step);
+  const first = Math.floor(steps.count(minimum));
   // A bin of whole numbers ends before the next whole number, so the last one after the maximum.
-  const end = whole ? Math.floor(at(maximum)) + 1 : Math.ceil(at(maximum));
+  const end = whole ? Math.floor(steps.count(maximum)) + 1 : Math.ceil(steps.count(maximum));
   if (!Number.isSafeInteger(first) || !Number.isSafeInteger(end) || end - first > 2 * bins + 2) {
     return undefined;
   }
-  const edges = Array.from({ length: end - first + 1 }, (_, i) =>
-    inverse === undefined ? (first + i) * step : (first + i) / inverse,
-  );
+  const edges = Array.from({ length: end - first + 1 }, (_, i) => steps.at(first + i));
   if (!edges.every((edge, i) => Number.isFinite(edge) && !(edge <= (edges[i - 1] ?? -Infinity)))) {
     return undefined;
   }

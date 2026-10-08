@@ -78,15 +78,16 @@ suite("chartFacets", () => {
   });
 
   test("shares positive and negative stacked totals separately", () => {
-    const option = build("service,operation,a,b,c\napi,read,10,20,-5\nworker,read,-20,-15,3", {
+    // Netted, the totals would be 0 and 3.
+    const option = build("service,operation,a,b,c\napi,read,10,20,-30\nworker,read,1,1,1", {
       type: "stackedBar",
       valueColumns: ["a", "b", "c"],
     });
     assert.deepStrictEqual(
       option.yAxis.map((axis: Option) => [axis.min, axis.max]),
       [
-        [-35, 30],
-        [-35, 30],
+        [-30, 30],
+        [-30, 30],
       ],
     );
     assert.notStrictEqual(option.series[0].stack, option.series[3].stack);
@@ -129,8 +130,8 @@ suite("chartFacets", () => {
     assert.deepStrictEqual(
       option.yAxis.map((axis: Option) => [axis.min, axis.max]),
       [
-        [-8, 15],
-        [-8, 15],
+        [-10, 15],
+        [-10, 15],
       ],
     );
   });
@@ -144,13 +145,30 @@ suite("chartFacets", () => {
       assert.deepStrictEqual(
         option.yAxis.map((axis: Option) => [axis.min, axis.max]),
         [
-          [0, 90],
-          [0, 90],
+          [0, 100],
+          [0, 100],
         ],
         type,
       );
       assert.strictEqual(option.series[0].data.length, 2);
     }
+  });
+
+  test("rounds shared value bounds out to ticks that every panel shares", () => {
+    const bars = build("service,operation,ms\napi,read,2\nworker,write,1234");
+    assert.deepStrictEqual(
+      bars.yAxis.map((axis: Option) => [axis.min, axis.max, axis.interval]),
+      Array(2).fill([0, 1400, 200]),
+    );
+    const scatter = build("service,x,y\napi,0.33,1\nworker,0.87,2", { type: "scatter" });
+    // Exactly, rather than 3 * 0.1.
+    assert.deepStrictEqual([scatter.xAxis[0].min, scatter.xAxis[0].max], [0.3, 0.9]);
+    // A count goes up in whole numbers.
+    const counts = build("service,ms\napi,1\napi,1\nworker,2", { type: "histogram" });
+    assert.deepStrictEqual(
+      [counts.yAxis[0].min, counts.yAxis[0].max, counts.yAxis[0].interval],
+      [0, 2, 1],
+    );
   });
 
   test("independent scales keep different category domains and automatic numeric ranges", () => {

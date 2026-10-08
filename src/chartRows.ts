@@ -82,6 +82,27 @@ export function interpolate(left: number, right: number, fraction: number): numb
     : left * (1 - fraction) + right * fraction;
 }
 
+/** The smallest of 1, 2 or 5 times a power of ten that is at least a positive value. */
+export function roundStep(value: number): number {
+  const power = 10 ** Math.floor(Math.log10(value));
+  // The tolerance allows for rounding in the logarithm and the power, as for 0.3.
+  return (
+    [1, 2, 5].map((factor) => factor * power).find((round) => round >= value * 0.999999) ??
+    10 * power
+  );
+}
+
+/**
+ * Counts steps of `step` to a value, and back. Multiples of a fraction's inverse, 3 / 10 for 0.3,
+ * are exact where 3 * 0.1 is not.
+ */
+export function stepsOf(step: number): { count(value: number): number; at(steps: number): number } {
+  const inverse = step < 1 ? Math.round(1 / step) : undefined;
+  return inverse === undefined
+    ? { count: (value) => value / step, at: (steps) => steps * step }
+    : { count: (value) => value * inverse, at: (steps) => steps / inverse };
+}
+
 /**
  * The units whose values are shown in a multiple of them: what the values are, and the multiples
  * by name and size from the smallest.

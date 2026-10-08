@@ -2,6 +2,7 @@
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
 import { dateFormat, timeOrder, timeValue } from "./chartDates";
+import { roundStep, stepsOf } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -269,14 +270,30 @@ function shareAxes(
     }
   }
   if (!Number.isFinite(minimum)) return;
-  if (type !== "time" && axes.some((axis) => axis.scale !== true)) {
+  if (type === "time") {
+    // Unzoned dates belong to the viewer's timezone, which may differ from the extension host's.
+    // Keep their text so ECharts interprets bounds and observations in the same timezone.
+    for (const axis of axes) Object.assign(axis, { min: minimumTime, max: maximumTime });
+    return;
+  }
+  if (axes.some((axis) => axis.scale !== true)) {
     minimum = Math.min(0, minimum);
     maximum = Math.max(0, maximum);
   }
-  for (const axis of axes) {
-    // Unzoned dates belong to the viewer's timezone, which may differ from the extension host's.
-    // Keep their text so ECharts interprets bounds and observations in the same timezone.
-    axis.min = axis.type === "time" ? minimumTime : minimum;
-    axis.max = axis.type === "time" ? maximumTime : maximum;
+  // ECharts labels the bounds as ticks of their own, as 1,234 just above 1,200, so round them out
+  // to an interval that splits the range into 3 to 7 parts, as ECharts' own ticks do, and give
+  // every panel those ticks.
+  let bounds: Option = { min: minimum, max: maximum };
+  if (maximum > minimum) {
+    const { minInterval } = axes[0] ?? {};
+    const interval = Math.max(
+      roundStep((maximum - minimum) / 7),
+      typeof minInterval === "number" ? minInterval : 0,
+    );
+    const steps = stepsOf(interval);
+    const min = steps.at(Math.floor(steps.count(minimum)));
+    const max = steps.at(Math.ceil(steps.count(maximum)));
+    if (Number.isFinite(min) && Number.isFinite(max)) bounds = { min, max, interval };
   }
+  for (const axis of axes) Object.assign(axis, bounds);
 }
