@@ -107,14 +107,14 @@ suite("images in the webview", function () {
       const image = async () => (await dragImage({shiftKey: true})).getData("image/svg+xml")
         .replace(/ (id|clip-path)="[^"]*"/g, "");
       const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
-      const marked = await until(() => red() === 1);
+      const marked = await until(() => red() === 1, "the marked item");
       const before = await image();
       // As when exporting from the context menu by keyboard, with the pointer left on the chart.
       const bar = document.querySelectorAll('#chart svg path[fill="#0000ff"]')[0];
       const box = bar.getBoundingClientRect();
       bar.dispatchEvent(new MouseEvent("mousemove", {bubbles: true,
         clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}));
-      const hovered = await until(() => red() === 2);
+      const hovered = await until(() => red() === 2, "the hovered item");
       return {marked, hovered, same: (await image()) === before};
     })()`);
     assert.deepStrictEqual(images, { marked: true, hovered: true, same: true });
@@ -206,7 +206,7 @@ suite("images in the webview", function () {
             document.getElementById("drag-out")
               .dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
             return label.textContent === ${JSON.stringify(hint)};
-          });
+          }, "the hint");
           return {url: dataTransfer.getData("DownloadURL"), hint: label.textContent};
         } finally {
           HTMLCanvasElement.prototype.toBlob = original;
@@ -237,7 +237,7 @@ suite("images in the webview", function () {
       ${UNTIL}
       try {
         handle.dispatchEvent(new PointerEvent("pointerenter"));
-        await until(() => decoding);
+        await until(() => decoding, "the image decoding");
         const dataTransfer = new DataTransfer();
         handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
         const svgAvailable = dataTransfer.getData("image/svg+xml").includes("Original");
@@ -246,7 +246,7 @@ suite("images in the webview", function () {
           source: JSON.stringify({animation: false, series: [{type: "pie", data: [{name: "Incoming", value: 1}]}]})
         });
         const rendered = await until(() =>
-          document.querySelector("#chart svg")?.textContent.includes("Incoming"));
+          document.querySelector("#chart svg")?.textContent.includes("Incoming"), "the incoming chart");
         return {svgAvailable, rendered};
       } finally {
         HTMLImageElement.prototype.decode = original;
@@ -635,7 +635,8 @@ suite("images in the webview", function () {
             source: "flowchart LR\\n C[Incoming label] --> D", title: "Incoming"
           });
           ${UNTIL}
-          await until(() => exported && document.querySelector("#diagram").textContent.includes("Incoming label"));
+          await until(() => exported && document.querySelector("#diagram").textContent.includes("Incoming label"),
+            "the image and the incoming diagram");
           return exported;
         } finally {
           observer.disconnect();

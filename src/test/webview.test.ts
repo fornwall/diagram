@@ -746,7 +746,8 @@ suite("webview", function () {
         ${UNTIL}
         const annotate = async (caption) => {
           receive({type: "annotate", marks: [], dim: false, caption});
-          await until(() => document.getElementById("annotation-caption").hidden === (caption === undefined));
+          await until(() => document.getElementById("annotation-caption").hidden === (caption === undefined),
+            "the caption " + caption);
           return shown();
         };
         return [shown(), await annotate("Step 1"), await annotate(undefined)];

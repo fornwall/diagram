@@ -23,8 +23,8 @@ const COUNTED_CHART = `(() => {
 })()`;
 
 /**
- * Webview code defining `chartFitted()`, whether the chart takes the size of its container soon,
- * and what `UNTIL` defines.
+ * Webview code defining `chartFitted()`, which waits for the chart to take the size of its
+ * container, and what `UNTIL` defines.
  */
 const CHART_FITTED = `
   ${UNTIL}
@@ -34,7 +34,7 @@ const CHART_FITTED = `
       const svg = chart.querySelector("svg");
       return svg?.getAttribute("width") === String(chart.clientWidth) &&
         svg.getAttribute("height") === String(chart.clientHeight);
-    }, undefined, nextFrame);
+    }, "the chart to take the size of its container", nextFrame);
   };`;
 
 /** Webview code defining `clickChart(element, init)`, which clicks the middle of a chart's element. */
@@ -98,7 +98,7 @@ suite("ECharts in the webview", function () {
         const settle = async () => {
           for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
         };
-        const marked = await until(faded);
+        const marked = await until(faded, "the chart dimmed around its marks");
         // Over the unmarked item C, then off it, into the empty corner of the chart.
         const box = item("#ff0000").getBoundingClientRect();
         move(item("#ff0000"), box.x + box.width / 2, box.y + box.height / 2);
@@ -161,7 +161,7 @@ suite("ECharts in the webview", function () {
           const svg = chart.querySelector("svg");
           ${UNTIL}
           return until(() => chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
-            svg.height.baseVal.value === chart.clientHeight);
+            svg.height.baseVal.value === chart.clientHeight, "the chart to take the size of its container");
         })()`),
         true,
       );
@@ -299,10 +299,10 @@ suite("ECharts in the webview", function () {
         }
         const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
         ${UNTIL}
-        await until(() => count() === 3);
+        await until(() => count() === 3, "three items selected");
         const selected = count();
         document.getElementById("clear-selection").click();
-        await until(() => count() === 0);
+        await until(() => count() === 0, "no item selected");
         const cleared = count();
         return {selected, cleared, clearHidden: document.getElementById("clear-selection").hidden};
       })()`),
@@ -414,7 +414,7 @@ suite("ECharts in the webview", function () {
       await evaluate(`(async () => {
         ${CHART_FITTED}
         // Let an earlier layout change, should one still be on its way, resize the chart first.
-        if (!(await chartFitted())) return "The chart does not take the size of its container.";
+        await chartFitted();
         const chart = document.getElementById("chart");
         const width = chart.clientWidth;
         const height = chart.clientHeight;
@@ -600,7 +600,7 @@ suite("ECharts in the webview", function () {
         const root = document.documentElement.style;
         root.setProperty("--vscode-charts-blue", "color(srgb 0.0706 0.2039 0.3373)");
         try {
-          await until(() => fill() === "#123456", undefined, nextFrame);
+          await until(() => fill() === "#123456", "the theme's color", nextFrame);
           return fill();
         } finally {
           root.removeProperty("--vscode-charts-blue");
@@ -865,7 +865,7 @@ suite("ECharts in the webview", function () {
       try {
         await until(themed, "the theme's color", nextFrame);
         // The tooltip follows once ECharts has drawn the chart anew.
-        await until(() => /Tue/.test(tooltip()), undefined, nextFrame);
+        await until(() => /Tue/.test(tooltip()), "the tooltip", nextFrame);
         return {focused: document.activeElement === chart, ring: Boolean(ring()), tooltip: tooltip(),
           next: press("ArrowRight")};
       } finally {

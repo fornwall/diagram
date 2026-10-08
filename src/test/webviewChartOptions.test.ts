@@ -28,7 +28,7 @@ suite("Chart Options in the webview", function () {
     // The form loads when first shown.
     assert.ok(
       await evaluate(`(async () => {${UNTIL}
-        return until(() => !document.getElementById("chart-options").hidden);
+        return until(() => !document.getElementById("chart-options").hidden, "Chart Options");
       })()`),
     );
   };

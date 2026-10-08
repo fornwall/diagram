@@ -216,7 +216,7 @@ suite("Mermaid in the webview", function () {
       ${narrow};
       task().focus();
       ${UNTIL}
-      await until(() => document.querySelector("#diagram svg") !== before);
+      await until(() => document.querySelector("#diagram svg") !== before, "the chart laid out again");
       const style = getComputedStyle(canvas);
       const result = {
         drawn: Math.round(document.querySelector("#diagram svg").viewBox.baseVal.width),
@@ -1335,7 +1335,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         const opened = document.querySelector("#canvas .link-menu")?.contains(document.activeElement);
         ${RETHEME}
         ${redraw}
-        await until(() => !bob.isConnected);
+        await until(() => !bob.isConnected, "the diagram drawn again");
         const shown = {
           opened,
           redrawn: !bob.isConnected,
