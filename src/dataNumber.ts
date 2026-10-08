@@ -32,6 +32,9 @@ const SIZE_WORDS = new Set(
   "size bytes mem memory disk rss vsz used avail available free swap heap storage".split(" "),
 );
 
+/** The words of column names that hold counts of inodes, as df -i prints them ("IFree"). */
+const INODE_WORDS = new Set(["inodes", "iused", "ifree"]);
+
 /** The words of column names that hold durations, as "Duration", "Elapsed" or kubectl's "AGE". */
 const DURATION_WORDS = new Set(
   "duration elapsed etime runtime took latency uptime age wall".split(" "),
@@ -101,6 +104,8 @@ interface NumberFormat {
   millicores?: boolean;
   /** "5m" and "3h" are durations, as are "1:02:03" and "3:45" (minutes) on a clock. */
   durations?: boolean;
+  /** "3.1G" is a count, as df -h on macOS prints those of inodes, rather than a size in bytes. */
+  counts?: boolean;
 }
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
@@ -183,8 +188,12 @@ export function parseNumber(
   // Counts and amounts of money abbreviate thousands, millions, billions and trillions: "1.2K
   // views", "$3.4M", "$1.2B", "1.5bn".
   const prefix = suffix.charAt(0).toUpperCase();
-  if (!BYTE_SUFFIX.test(suffix) && (!format.sizes || currency !== "" || suffix === "bn")) {
-    const scaled = value * 1000 ** ("KMBT".indexOf(prefix) + 1);
+  if (
+    format.counts ||
+    (!BYTE_SUFFIX.test(suffix) && (!format.sizes || currency !== "" || suffix === "bn"))
+  ) {
+    // A billion is a "B" or a "G".
+    const scaled = value * 1000 ** ("KMGTPE".indexOf(prefix === "B" ? "G" : prefix) + 1);
     return Number.isFinite(scaled) ? { value: scaled } : undefined;
   }
   // Explicit binary units ("KiB", "Mi") are in powers of 1024, and SI units in powers of 1000:
@@ -249,7 +258,8 @@ export function statedUnit(
  * the data's source tells (`given`):
  * - in sizes, if some cell has a unit that only sizes have ("MB", "Ki", "G"), or the column's name
  *   is of sizes ("Size", "Used"), or it has no name, as du and sort -h print none, while counts
- *   are named, as "views" or "stars" are;
+ *   are named, as "views" or "stars" are, unless the column's name is of inodes ("ifree"), whose
+ *   counts df -h writes as sizes are ("3.1G");
  * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5", "1.234.567")
  *   and none only with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
@@ -270,7 +280,10 @@ export function numberFormat(
     typeof name === "string" && parseNumber(name) === undefined
       ? name.split(/[^a-zA-Z]+|(?<=[a-z])(?=[A-Z])/).map((word) => word.toLowerCase())
       : undefined;
-  let sizes = given.sizes === true || words === undefined || words.some((w) => SIZE_WORDS.has(w));
+  const counts = words?.some((w) => INODE_WORDS.has(w)) === true;
+  let sizes =
+    !counts &&
+    (given.sizes === true || words === undefined || words.some((w) => SIZE_WORDS.has(w)));
   let comma = false;
   let point = false;
   let lowerK = false;
@@ -300,7 +313,7 @@ export function numberFormat(
     if (grouping && (number || commaNumber)) grouped = true;
     else if (/\d[\s'\u2019]+\d/.test(cell)) ungrouped = true;
     if (!number && !commaNumber) continue;
-    sizes ||= BYTE_SUFFIX.test(/[a-zA-Z]+$/.exec(text)?.[0] ?? "");
+    sizes ||= !counts && BYTE_SUFFIX.test(/[a-zA-Z]+$/.exec(text)?.[0] ?? "");
     if (accounting) parenthesized = true;
     else if (/^[-\u2212]/.test(text)) minus = true;
     // Only a decimal comma also reads "1.234.567", without a comma.
@@ -313,6 +326,7 @@ export function numberFormat(
   return {
     decimalComma: comma && !point,
     sizes,
+    counts,
     si: given.si === true || (lowerK && !upperK),
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,

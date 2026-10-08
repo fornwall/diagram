@@ -1071,6 +1071,12 @@ suite("data", () => {
     ]);
   });
 
+  test("reads inodes as counts, as df -h on macOS prints them like sizes", () => {
+    const df = "Filesystem  Size iused ifree\n/dev/disk1  460Gi 404k 3.1G\n/dev/disk2  2Gi 12 0";
+    assert.deepStrictEqual(parseTable(df).rows[0], ["/dev/disk1", 460 * 1024 ** 3, 404e3, 3.1e9]);
+    assert.deepStrictEqual(parseNumber("3.1G", { counts: true }), { value: 3.1e9 });
+  });
+
   test("parses free output, whose header has no name for the first column", () => {
     assert.deepStrictEqual(
       parse(
