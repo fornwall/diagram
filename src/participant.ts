@@ -50,7 +50,8 @@ const DEFAULT_TOOLS = new Set([
 ]);
 const DRAWING_TOOLS = new Set([RENDER_TOOL, CHART_TOOL, UPDATE_CHART_TOOL]);
 
-interface ToolBudget {
+/** What the tool calls of a request used and did, across its rounds and repairs. */
+interface ToolUse {
   rounds: number;
   calls: number;
   /** A decline or exhausted budget applies to every subsequent round and repair. */
@@ -136,10 +137,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (notice) {
         stream.markdown(`${notice}\n\n`);
       }
-      const budget: ToolBudget = { rounds: 0, calls: 0, read: new Set() };
+      const toolUse: ToolUse = { rounds: 0, calls: 0, read: new Set() };
       const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
         unlessCancelled(
-          () => streamReply(request, messages, tools, required, stream, token, panel, budget),
+          () => streamReply(request, messages, tools, required, stream, token, panel, toolUse),
           token,
         );
 
@@ -180,7 +181,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
       // A tool, such as the chart tool, may have drawn the diagram. Remember it for later requests'
       // history, by how it was drawn if it charts a file or command, as its data may be large.
-      const drawn = panel.adopt(budget.drawn);
+      const drawn = panel.adopt(toolUse.drawn);
       if (drawn) {
         showButton(stream, drawn.language);
         return {
@@ -230,7 +231,7 @@ async function streamReply(
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
   panel: DiagramPanel,
-  budget: ToolBudget,
+  toolUse: ToolUse,
 ): Promise<DiagramBlock | undefined> {
   const initialState = panel.current;
   let diagram: DiagramBlock | undefined;
@@ -240,7 +241,7 @@ async function streamReply(
     // Some models only support a single tool when a tool call is required. The tools are passed
     // even when calls are no longer run, as some models reject requests whose messages contain
     // tool calls but no tools.
-    const finalReply = budget.notRun !== undefined;
+    const finalReply = toolUse.notRun !== undefined;
     const requiredTool = finalReply ? undefined : required[round];
     const options: vscode.LanguageModelChatRequestOptions = requiredTool
       ? { tools: [requiredTool], toolMode: vscode.LanguageModelChatToolMode.Required }
@@ -278,7 +279,7 @@ async function streamReply(
         messages.push(vscode.LanguageModelChatMessage.Assistant(reply));
       }
       if (calls.length > 0) {
-        stream.markdown(`\n\nStopped tool use because ${budget.notRun}.`);
+        stream.markdown(`\n\nStopped tool use because ${toolUse.notRun}.`);
       }
       // A tool render or manual edit that succeeded wins over a diagram block the model writes
       // after it, which would lose code links, chart data and styling. A block may still repair
@@ -286,8 +287,8 @@ async function streamReply(
       const changed = panel.current !== initialState && !panel.current?.error;
       return !changed && panel.current === diagramState ? diagram : undefined;
     }
-    if (budget.rounds++ >= MAX_TOOL_ROUNDS) {
-      budget.notRun ??= "this request reached its tool round limit";
+    if (toolUse.rounds++ >= MAX_TOOL_ROUNDS) {
+      toolUse.notRun ??= "this request reached its tool round limit";
     }
 
     messages.push(
@@ -308,11 +309,11 @@ async function streamReply(
     for (const call of calls) {
       throwIfCancelled(token);
       let content: unknown[];
-      if (budget.calls >= MAX_TOOL_CALLS) {
-        budget.notRun ??= "this request reached its tool call limit";
+      if (toolUse.calls >= MAX_TOOL_CALLS) {
+        toolUse.notRun ??= "this request reached its tool call limit";
       }
-      if (budget.notRun) {
-        content = text(`Not run, as ${budget.notRun}. Answer without tools.`);
+      if (toolUse.notRun) {
+        content = text(`Not run, as ${toolUse.notRun}. Answer without tools.`);
       } else if (!options.tools?.some((tool) => tool.name === call.name)) {
         // invokeTool runs any registered tool, not only those the model was given. A required
         // round offers only the required tool, and the others in the next.
@@ -322,7 +323,7 @@ async function streamReply(
         );
       } else {
         try {
-          budget.calls++;
+          toolUse.calls++;
           const invocation = {
             input: call.input,
             toolInvocationToken: request.toolInvocationToken,
@@ -331,10 +332,10 @@ async function streamReply(
           content = (await vscode.lm.invokeTool(call.name, invocation, token)).content;
           // Another chat request may draw in the panel meanwhile.
           const drawn = DRAWING_TOOLS.has(call.name) ? revisionDrawn(content) : undefined;
-          if (drawn !== undefined) budget.drawn = drawn;
+          if (drawn !== undefined) toolUse.drawn = drawn;
           const file = call.name === READ_FILE_TOOL ? fileRead(call.input, content) : undefined;
-          if (file && !budget.read.has(file.toString())) {
-            budget.read.add(file.toString());
+          if (file && !toolUse.read.has(file.toString())) {
+            toolUse.read.add(file.toString());
             stream.reference(file);
           }
         } catch (error) {
@@ -347,7 +348,7 @@ async function streamReply(
             error instanceof Error &&
             ["Canceled", "CancellationError", "AbortError"].includes(error.name)
           ) {
-            budget.notRun = "the user declined an earlier tool call";
+            toolUse.notRun = "the user declined an earlier tool call";
             content = text(
               "The user declined this tool call. Do not try it again, and do not make up its result: tell the user briefly what you would have done with it.",
             );
