@@ -197,6 +197,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
   styleSeries(base, series, context.colors);
   showAxisLines(base);
+  compactAxisLabels(base);
   addInteraction(base, series, cartesian, context.colors);
   // A timeline step or media query can set a toolbox of its own too.
   for (const toolbox of optionVariants(option).flatMap((variant) => asArray(variant.toolbox))) {
@@ -717,6 +718,42 @@ function showAxisLines(base: JsonObject): void {
         const shared = isPlainObject(defaults) ? defaults[part] : undefined;
         settings.show ??= (isPlainObject(shared) ? shared.show : undefined) ?? true;
         axis[part] = settings;
+      }
+    }
+  }
+}
+
+/** A number in full below 1,000, and exactly in thousands, millions, … above, as "1.25K". */
+const compactNumber = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 20,
+});
+const compactLabel = (value: unknown) =>
+  typeof value === "number" ? compactNumber.format(value) : String(value);
+
+/**
+ * Labels the values of value and log axes compactly, as "1.5M" rather than "1,500,000", which
+ * would take the plot's width, unless the axis formats its labels itself. ECharts labels them in
+ * full, and an option sent as JSON cannot hold a formatter that does this. A parallel axis takes
+ * what its parallel component sets for all of them.
+ */
+function compactAxisLabels(base: JsonObject): void {
+  const parallels = asArray(base.parallel);
+  for (const key of ["xAxis", "yAxis", "radiusAxis", "angleAxis", "singleAxis", "parallelAxis"]) {
+    for (const axis of asArray(base[key])) {
+      const defaults =
+        key === "parallelAxis"
+          ? parallels[Number(axis.parallelIndex ?? 0)]?.parallelAxisDefault
+          : undefined;
+      const shared = isPlainObject(defaults) ? defaults : {};
+      const type = axisType({ ...shared, ...axis });
+      const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+      const formatted = [label, shared.axisLabel].some(
+        (each) => isPlainObject(each) && each.formatter !== undefined,
+      );
+      if ((type === "value" || type === "log") && !formatted) {
+        label.formatter = compactLabel;
+        axis.axisLabel = label;
       }
     }
   }

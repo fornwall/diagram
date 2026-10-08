@@ -392,6 +392,38 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("chord"), [44, 12, 12]);
   });
 
+  test("labels large values on value axes compactly, unless the axis formats them", () => {
+    const option = layout(
+      bars({
+        series: [{ type: "bar", data: [2e12, 3.5e12] }],
+        singleAxis: [{ type: "time" }, { axisLabel: { formatter: "{value} ms" } }],
+        parallel: { parallelAxisDefault: { type: "category" } },
+        parallelAxis: [{ dim: 0 }, { dim: 1, type: "log" }],
+      }),
+    );
+    const format = option.yAxis.axisLabel.formatter;
+    assert.deepStrictEqual([0, 0.25, 999, 1250, -2500, 1_025_000, 1e9, 3.5e12].map(format), [
+      "0",
+      "0.25",
+      "999",
+      "1.25K",
+      "-2.5K",
+      "1.025M",
+      "1B",
+      "3.5T",
+    ]);
+    assert.strictEqual(option.xAxis.axisLabel, undefined);
+    assert.deepStrictEqual(
+      [...option.singleAxis, ...option.parallelAxis].map((axis: Option) => axis.axisLabel),
+      [undefined, { formatter: "{value} ms" }, undefined, { formatter: format }],
+    );
+    const svg = withChart(option, (chart) =>
+      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
+    );
+    assert.match(svg, />3T</);
+    assert.doesNotMatch(svg, /000,000/);
+  });
+
   test("fits a graph of placed nodes into the space left, as ECharts fits it to the chart", () => {
     const option = layout({
       title: { text: "T" },
