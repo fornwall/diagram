@@ -149,10 +149,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       diagram.links = existing.links;
       problems.push(...existing.problems);
     }
-    const outcome = await unlessCancelled(
-      () => this.panel.render(diagram, "tool", options.toolInvocationToken),
-      token,
-    );
+    const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool"), token);
     const noun = diagramNoun(diagram.language);
     if (outcome.ok) {
       return textResult(

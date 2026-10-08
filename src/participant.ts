@@ -43,12 +43,15 @@ const DEFAULT_TOOLS = new Set([
   INSPECT_DATA_TOOL,
   UPDATE_CHART_TOOL,
 ]);
+const DRAWING_TOOLS = new Set([RENDER_TOOL, CHART_TOOL, UPDATE_CHART_TOOL]);
 
 interface ToolBudget {
   rounds: number;
   calls: number;
   /** A decline or exhausted budget applies to every subsequent round and repair. */
   notRun?: string;
+  /** The panel's revision after the last of the request's tool calls that drew in it. */
+  drawn?: number;
 }
 
 export function createParticipantHandler(panel: DiagramPanel): vscode.ChatRequestHandler {
@@ -151,7 +154,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
       // A tool, such as the chart tool, may have drawn the diagram. Remember it for later requests'
       // history, by how it was drawn if it charts a file or command, as its data may be large.
-      const drawn = panel.adopt(request.toolInvocationToken);
+      const drawn = panel.adopt(budget.drawn);
       if (drawn) {
         showButton(stream, drawn.language);
         return {
@@ -297,7 +300,11 @@ async function streamReply(
             toolInvocationToken: request.toolInvocationToken,
             tokenizationOptions,
           };
+          const revision = panel.revision;
           content = (await vscode.lm.invokeTool(call.name, invocation, token)).content;
+          if (DRAWING_TOOLS.has(call.name) && panel.revision !== revision) {
+            budget.drawn = panel.revision;
+          }
         } catch (error) {
           if (token.isCancellationRequested) {
             throw error;

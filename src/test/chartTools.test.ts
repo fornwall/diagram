@@ -27,7 +27,6 @@ async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }
       await panel.render(
         { language: "echarts", title: "Chart", source, chart: spec },
         "tool",
-        undefined,
         table,
       )
     ).ok,
@@ -53,7 +52,6 @@ suite("chartTools", function () {
             source: JSON.stringify(buildChart(chart, table).option),
           },
           "tool",
-          undefined,
           table,
         )
       ).ok,
@@ -196,17 +194,16 @@ suite("chartTools", function () {
     assert.match(await invokeTool(tool, input), /"rowCount":3/);
   });
 
-  test("updates retain manual styling and loaded command data and support adoption", async () => {
+  test("updates retain manual styling and loaded command data", async () => {
     const { panel, webview } = await harness();
     const source = await draw(panel, { type: "bar", command: "this-command-must-never-run" });
     const styled = JSON.parse(source);
     styled.backgroundColor = "#123456";
     await webview.edit(JSON.stringify(styled));
-    const request = { requestId: "chart-update" } as never;
     const result = await new UpdateChartTool(panel).invoke(
       {
         input: { type: "horizontalBar", sort: "descending", limit: 2, revision: panel.revision },
-        toolInvocationToken: request,
+        toolInvocationToken: undefined,
       },
       token,
     );
@@ -216,7 +213,6 @@ suite("chartTools", function () {
     assert.strictEqual(panel.loadedChartData?.rows.length, 3);
     assert.strictEqual(JSON.parse(panel.current?.source ?? "").backgroundColor, "#123456");
     assert.ok(panel.current?.editedByUser);
-    assert.ok(panel.adopt(request));
     assert.match(panel.describeForModel() ?? "", new RegExp(`Revision: ${panel.revision}`));
   });
 

@@ -1333,7 +1333,7 @@ suite("panel", function () {
     const table = parseTable(chart.data);
     const source = JSON.stringify(buildChart(chart, table).option);
     const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
-    assert.ok((await panel.render(diagram, "tool", undefined, table)).ok);
+    assert.ok((await panel.render(diagram, "tool", table)).ok);
     webview.answer = undefined;
     const timers = holdTimers(15_000);
     const updating = panel.updateChart({ limit: 2 }, new vscode.CancellationTokenSource().token);
@@ -1353,7 +1353,7 @@ suite("panel", function () {
     const table = parseTable(chart.data);
     const source = JSON.stringify(buildChart(chart, table).option);
     const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
-    assert.ok((await panel.render(diagram, "tool", undefined, table)).ok);
+    assert.ok((await panel.render(diagram, "tool", table)).ok);
     webview.answer = undefined;
     const timers = holdTimers(15_000);
     const token = new vscode.CancellationTokenSource().token;

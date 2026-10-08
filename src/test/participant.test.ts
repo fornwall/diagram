@@ -423,7 +423,6 @@ suite("participant", () => {
 
   for (const finalBlock of [false, true]) {
     test(`preserves a tool render ${finalBlock ? "despite a later diagram fence" : "in history"}`, async () => {
-      const toolInvocationToken = { requestId: "latest-diagram" } as never;
       const toolDiagram = {
         language: "mermaid",
         source: "flowchart TD\n  Tool --> Result",
@@ -431,7 +430,7 @@ suite("participant", () => {
         links: { Tool: { file: "src/tools.ts" } },
       } as const;
       replace(vscode.lm, "invokeTool", async () => {
-        assert.ok((await panel.render(toolDiagram, "tool", toolInvocationToken)).ok);
+        assert.ok((await panel.render(toolDiagram, "tool")).ok);
         return new vscode.LanguageModelToolResult([text("Rendered the diagram.")]);
       });
       const { result, shown } = await ask(
@@ -445,7 +444,7 @@ suite("participant", () => {
           ],
           [text(finalBlock ? "```mermaid\nflowchart TD\n  Final --> Result\n```" : "Done.")],
         ],
-        { toolReferences: [{ name: "diagram_render" }], toolInvocationToken },
+        { toolReferences: [{ name: "diagram_render" }] },
       );
       const source = toolDiagram.source;
       assert.strictEqual(panel.current?.source, source);
@@ -487,26 +486,31 @@ suite("participant", () => {
     );
   });
 
-  test("adopts a diagram that a tool drew for the request, but not one drawn for another", async () => {
-    const diagram = {
-      language: "mermaid",
-      source: "flowchart TD\n  A --> B",
-      title: "A",
-    } as const;
-    const drawFor = (requestId: string) => async () => {
-      assert.ok((await panel.render(diagram, "tool", { requestId })).ok);
+  test("adopts a diagram that its own tool call drew, unless it was drawn over since", async () => {
+    /** Draws as a tool does, for this request or, while the model replies, for another. */
+    const draw = async (source: string) => {
+      assert.ok((await panel.render({ language: "mermaid", source, title: "A" }, "tool")).ok);
       return [text("Done.")];
     };
-    const toolInvocationToken = { requestId: "this" } as never;
-    const other = await ask([drawFor("other")], { toolInvocationToken });
+    const other = await ask([() => draw("flowchart TD\n  Other")]);
     assert.strictEqual(other.result, undefined);
     assert.strictEqual(panel.current?.origin, "tool");
-    const own = await ask([drawFor("this")], { toolInvocationToken });
+
+    replace(vscode.lm, "invokeTool", async () => {
+      return new vscode.LanguageModelToolResult(await draw("flowchart TD\n  Own"));
+    });
+    const render = new vscode.LanguageModelToolCallPart("1", "diagram_render", {});
+    const own = await ask([[render], [text("Done.")]]);
     assert.deepStrictEqual(own.result?.metadata, {
       language: "mermaid",
-      source: diagram.source,
+      source: "flowchart TD\n  Own",
     });
     assert.strictEqual(panel.current?.origin, "participant");
+
+    const drawnOver = await ask([[render], () => draw("flowchart TD\n  Later")]);
+    assert.strictEqual(drawnOver.result, undefined);
+    assert.strictEqual(panel.current?.source, "flowchart TD\n  Later");
+    assert.strictEqual(panel.current?.origin, "tool");
   });
 
   test("makes the model call the tools that the user attached first, whose descriptors may be new objects", async () => {
@@ -705,26 +709,19 @@ suite("participant", () => {
   });
 
   test("adopts chart provenance instead of copying its rendered data into history", async () => {
-    const toolInvocationToken = { requestId: "chart-history" } as never;
     const chart = { data: "name,value\na,1\nb,2", type: "bar" } as const;
     const source =
       '{ "xAxis": { "data": ["a", "b"] }, "yAxis": {}, "series": [{ "type": "bar", "data": [1, 2] }] }';
     replace(vscode.lm, "invokeTool", async () => {
       assert.ok(
-        (
-          await panel.render(
-            { language: "echarts", source, title: "Chart", chart },
-            "tool",
-            toolInvocationToken,
-          )
-        ).ok,
+        (await panel.render({ language: "echarts", source, title: "Chart", chart }, "tool")).ok,
       );
       return new vscode.LanguageModelToolResult([text("Rendered")]);
     });
-    const { result } = await ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)], [text(valid)]],
-      { toolInvocationToken },
-    );
+    const { result } = await ask([
+      [new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)],
+      [text(valid)],
+    ]);
     assert.deepStrictEqual(result?.metadata, { chart });
     assert.strictEqual(panel.current?.source, source);
   });

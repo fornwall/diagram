@@ -67,7 +67,6 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
             chart: spec,
           },
           "tool",
-          options.toolInvocationToken,
           chartTable,
         ),
       token,
@@ -211,11 +210,7 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     try {
-      const outcome = await this.panel.updateChart(
-        options.input,
-        token,
-        options.toolInvocationToken,
-      );
+      const outcome = await this.panel.updateChart(options.input, token);
       return textResult(
         outcome.ok
           ? `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""} Revision: ${this.panel.revision}.`

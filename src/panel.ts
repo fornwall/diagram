@@ -38,7 +38,6 @@ import {
   errorMessage,
   type FromWebview,
   GET_STATE_TOOL,
-  isPlainObject,
   RENDER_TOOL,
   type RepeatedName,
   type ToWebview,
@@ -120,8 +119,6 @@ const UNFINISHED =
 export class DiagramPanel implements vscode.Disposable {
   private readonly store: StateStore;
   private state: DiagramState | undefined;
-  /** The id of the chat request that a tool rendered the current diagram for; see {@link adopt}. */
-  private toolRequestId: unknown;
   private selection: DiagramNode[] = [];
   /** Transient marks: cleared on replacement, never persisted. */
   private annotation: Annotation | undefined;
@@ -251,14 +248,12 @@ export class DiagramPanel implements vscode.Disposable {
     return `Revision: ${this.shownRevision}.\n\n${description}`;
   }
 
-  /** Opens and renders a diagram, tracking the originating tool request for adoption. */
+  /** Opens and renders a diagram. */
   async render(
     diagram: Diagram,
     origin: DiagramOrigin,
-    toolInvocationToken?: unknown,
     chartTable?: DataTable,
   ): Promise<RenderOutcome> {
-    this.toolRequestId = chatRequestId(toolInvocationToken);
     // Keep document bindings across agent replacements; a later Apply requires confirmation.
     const previousBinding = this.state?.document;
     const document =
@@ -285,10 +280,12 @@ export class DiagramPanel implements vscode.Disposable {
     return this.renderCurrent();
   }
 
-  /** Adopts a tool render only if it belongs to this participant request. */
-  adopt(toolInvocationToken: unknown): Readonly<DiagramState> | undefined {
-    const id = chatRequestId(toolInvocationToken);
-    if (!this.state || id === undefined || id !== this.toolRequestId) {
+  /**
+   * Takes the diagram that the participant's tool call drew, at `revision`, as the participant's,
+   * unless something changed it since.
+   */
+  adopt(revision: number | undefined): Readonly<DiagramState> | undefined {
+    if (!this.state || revision !== this.shownRevision) {
       return undefined;
     }
     this.state = { ...this.state, origin: "participant" };
@@ -867,7 +864,6 @@ export class DiagramPanel implements vscode.Disposable {
   async updateChart(
     input: ChartUpdateInput,
     token: vscode.CancellationToken,
-    toolInvocationToken?: unknown,
   ): Promise<RenderOutcome & { summary?: string }> {
     throwIfCancelled(token);
     const state = this.state;
@@ -905,7 +901,6 @@ export class DiagramPanel implements vscode.Disposable {
     );
     throwIfCancelled(token);
     if (!outcome.ok) return outcome;
-    this.toolRequestId = chatRequestId(toolInvocationToken);
     return { ...outcome, summary };
   }
 
@@ -1332,12 +1327,4 @@ export function clickToAskQuery(clickPrompt: string, label: string): string {
   return clickPrompt.includes("{label}")
     ? clickPrompt.replaceAll("{label}", () => label)
     : `${clickPrompt} "${label}"`;
-}
-
-/**
- * The id of the chat request that a tool invocation token is for. The token is opaque, and a tool
- * is given a copy of the one passed to vscode.lm.invokeTool, so tokens are compared by this id.
- */
-function chatRequestId(toolInvocationToken: unknown): unknown {
-  return isPlainObject(toolInvocationToken) ? toolInvocationToken.requestId : undefined;
 }

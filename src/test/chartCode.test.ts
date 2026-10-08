@@ -157,7 +157,6 @@ suite("chart code in the panel", function () {
     const drawn = await panel.render(
       { language: "echarts", source, title: "Sizes", chart },
       "tool",
-      undefined,
       table,
     );
     assert.ok(drawn.ok);

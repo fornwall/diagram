@@ -18,7 +18,6 @@ async function draw(panel: DiagramPanel, spec: ChartSpec, table = parseTable(dat
       await panel.render(
         { language: "echarts", title: "Lifecycle", source, chart: spec },
         "tool",
-        undefined,
         table,
       )
     ).ok,

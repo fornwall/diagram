@@ -21,7 +21,6 @@ suite("Chart Options in the webview", function () {
     const outcome = await page.panel.render(
       { language: "echarts", source, title: "Test", chart, ...diagram },
       "tool",
-      undefined,
       table,
     );
     assert.ok(outcome.ok);
