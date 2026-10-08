@@ -1,7 +1,7 @@
 // Persist the panel's diagram across window reloads and VS Code restarts.
 
 import * as vscode from "vscode";
-import type { ChartPresentation } from "./chartPresentation";
+import { isChartPresentation } from "./chartPresentation";
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { DocumentBinding } from "./documentDiagram";
 import { isDiagramFence } from "./fences";
@@ -106,17 +106,6 @@ function chartSpec(value: unknown): ChartSpec | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isChartPresentation(value: unknown): value is ChartPresentation {
-  return (
-    isPlainObject(value) &&
-    isPlainObject(value.baseline) &&
-    typeof value.dataHash === "string" &&
-    Array.isArray(value.edits) &&
-    value.edits.every((edit) => isPlainObject(edit) && Array.isArray(edit.path)) &&
-    (value.blocked === undefined || typeof value.blocked === "string")
-  );
 }
 
 function isNodeLinks(value: unknown): value is NodeLinks {

@@ -39,6 +39,31 @@ const DATA_KEYS = new Set([
 ]);
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Whether a saved value is a presentation whose edits name properties, by keys that capturing one
+ * allows, and array items.
+ */
+export function isChartPresentation(value: unknown): value is ChartPresentation {
+  return (
+    isPlainObject(value) &&
+    isPlainObject(value.baseline) &&
+    typeof value.dataHash === "string" &&
+    Array.isArray(value.edits) &&
+    value.edits.every(
+      (edit) =>
+        isPlainObject(edit) &&
+        Array.isArray(edit.path) &&
+        edit.path.length > 0 &&
+        edit.path.every(
+          (key) =>
+            (typeof key === "number" && Number.isSafeInteger(key) && key >= 0) ||
+            (typeof key === "string" && !UNSAFE_KEYS.has(key)),
+        ),
+    ) &&
+    (value.blocked === undefined || typeof value.blocked === "string")
+  );
+}
+
 /** Stable key order makes formatting and reordered JSON properties equivalent. */
 function sorted(value: unknown): unknown {
   if (Array.isArray(value)) {

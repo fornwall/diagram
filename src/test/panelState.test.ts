@@ -110,11 +110,15 @@ suite("panelState", () => {
       state,
     );
     const chart = { type: "pie", file: "sizes.tsv" };
-    const chartPresentation = { baseline: {}, dataHash: "x", edits: [{}] };
-    assert.deepStrictEqual(load({ ...withoutSource, chart, chartPresentation }), {
-      ...withoutSource,
-      chart,
-    });
+    // Edits of properties that capturing refuses, such as "__proto__", which assigning would
+    // set the prototype by rather than styling the chart.
+    for (const edits of [[{}], [{ path: [] }], [{ path: [{}] }], [{ path: ["__proto__", "x"] }]]) {
+      const chartPresentation = { baseline: {}, dataHash: "x", edits };
+      assert.deepStrictEqual(load({ ...withoutSource, chart, chartPresentation }), {
+        ...withoutSource,
+        chart,
+      });
+    }
   });
 
   test("a large chart of a file is saved without its option, unless edited by hand", async () => {
