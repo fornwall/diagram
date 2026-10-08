@@ -81,6 +81,9 @@ suite("data", () => {
       () => splitText("\t".repeat(1_000_005), "tsv"),
       /1 row × 1,000,001 columns, exceeding the 1,000,000 cell limit/,
     );
+    for (const line of ["a ".repeat(1_000_005), `|${"a|".repeat(1_000_005)}`]) {
+      assert.throws(() => splitText(line, "auto"), /exceeding the 1,000,000 cell limit/);
+    }
     const wide = Array.from({ length: 1100 }, () => 1);
     const rows = [wide, ...Array.from({ length: 1100 }, () => [1])];
     assert.throws(() => parseJson(JSON.stringify(rows)), /exceeding the 1,000,000 cell limit/);

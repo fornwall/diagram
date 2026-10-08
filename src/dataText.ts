@@ -357,9 +357,11 @@ const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
  * optional.
  */
 function pipeCells(line: string): string[] {
-  const cells = line.trim().split(PIPE);
+  // Two more than a row may have, as a leading and a trailing pipe leave empty cells.
+  const cells = line.trim().split(PIPE, MAX_CELLS + 3);
   if (cells.length > 1 && cells[0] === "") cells.shift();
   if (cells.length > 1 && cells.at(-1) === "") cells.pop();
+  checkTableSize(1, cells.length);
   return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
 }
 
@@ -409,6 +411,8 @@ function tokenize(line: string): Token[] {
   WORD.lastIndex = 0;
   for (let match = WORD.exec(line); match !== null; match = WORD.exec(line)) {
     tokens.push({ text: match[0], start: match.index, end: WORD.lastIndex });
+    // No row has more cells, so a longer line is refused before it is read further.
+    if (tokens.length > MAX_CELLS) checkTableSize(1, tokens.length);
   }
   return tokens;
 }
@@ -521,11 +525,10 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
  */
 function isColumnGroups(line: string, header: string): boolean {
   const groups = tokenize(line);
+  if (!groups.some((group) => /^-{2,}[^-].*-{2,}$/.test(group.text))) return false;
   const names = tokenize(header);
   return (
-    groups.some((group) => /^-{2,}[^-].*-{2,}$/.test(group.text)) &&
-    names.length > groups.length &&
-    names.every((name) => parseNumber(name.text) === undefined)
+    names.length > groups.length && names.every((name) => parseNumber(name.text) === undefined)
   );
 }
 
