@@ -2,6 +2,7 @@
 
 import * as os from "node:os";
 import * as vscode from "vscode";
+import { fileName } from "./files";
 import {
   type DiagramLanguage,
   diagramNoun,
@@ -76,12 +77,25 @@ export async function exportDrawing(
       filters: { [choice.label]: [format] },
     });
     if (!target) return;
-    await vscode.workspace.fs.writeFile(target, bytes);
+    try {
+      await vscode.workspace.fs.writeFile(target, bytes);
+    } catch (error) {
+      throw saveError(error, target);
+    }
     lastFolder = vscode.Uri.joinPath(target, "..");
     if (format === "html") void offerToOpen(target);
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not export the ${noun}: ${errorMessage(error)}`);
   }
+}
+
+/** Says why the file could not be saved, without the "Error: " that VS Code puts before it. */
+function saveError(error: unknown, target: vscode.Uri): Error {
+  return new Error(
+    error instanceof vscode.FileSystemError && error.code === "NoPermissions"
+      ? `You do not have permission to save ${fileName(target)}. Choose another folder.`
+      : errorMessage(error).replace(/^Error: /, ""),
+  );
 }
 
 /** Says where a chart was saved, and opens it in the user's browser if they ask. */

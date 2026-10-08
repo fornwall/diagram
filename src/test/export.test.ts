@@ -211,6 +211,23 @@ suite("export", function () {
     );
   });
 
+  test("says why it could not save the export", async () => {
+    const { panel } = await exportingPanel();
+    assert.ok((await panel.render(diagram, "tool")).ok);
+    const folder = path.join(directory, "folder.svg");
+    fs.mkdirSync(folder);
+    const readOnly = path.join(directory, "read-only");
+    fs.mkdirSync(readOnly, { mode: 0o555 });
+    for (const target of [folder, path.join(readOnly, "export.svg")]) {
+      replace(vscode.window, "showSaveDialog", async () => vscode.Uri.file(target));
+      await panel.exportDiagram();
+    }
+    assert.deepStrictEqual(errors, [
+      `Could not export the diagram: EISDIR: illegal operation on a directory, open '${folder}'`,
+      `Could not export the diagram: You do not have permission to save ${path.join(readOnly, "export.svg")}. Choose another folder.`,
+    ]);
+  });
+
   // The wrong format is reported in "says whether it exports a diagram or a chart".
   test("reports an invalid PNG", async () => {
     const { panel, webview } = await newFakePanel();
