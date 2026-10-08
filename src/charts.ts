@@ -44,12 +44,18 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
       ? single(spec, filtered)
       : buildFacetedChart(spec, filtered, single);
   // Filtering comes first, so it is said first, rather than within the last facet's summary.
+  const kept =
+    filtered === table
+      ? ""
+      : `The filters kept ${formatCount(filtered.rows.length)} of ${plural(table.rows.length, "row")}. `;
+  // Noted rather than refused, as "max" stays with a chart whose type changes.
+  const unused =
+    spec.max === undefined || spec.type === "gauge" || spec.type === "radar"
+      ? ""
+      : ` "max" is left out, as only gauge and radar charts have a scale to top.`;
   return {
     option: spec.options === undefined ? chart.option : deepMerge(chart.option, spec.options),
-    summary:
-      filtered === table
-        ? chart.summary
-        : `The filters kept ${formatCount(filtered.rows.length)} of ${plural(table.rows.length, "row")}. ${chart.summary}`,
+    summary: `${kept}${chart.summary}${unused}`,
   };
 }
 

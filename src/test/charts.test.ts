@@ -795,6 +795,7 @@ suite("charts", () => {
       { name: "files", max: 100 },
       { name: "lines", max: 100 },
     ]);
+    assert.match(summary(chart("bar", { max: 100 })), / "max" is left out, as only gauge and/);
     // One shape needs no legend, and a negative value an axis that reaches below zero.
     const negative = build(chart("radar"), "k,x,y\na,-1,3");
     assert.strictEqual(negative.legend, undefined);
