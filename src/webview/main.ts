@@ -669,6 +669,19 @@ function focusContent(): void {
   editor.content(drawingFocus()).focus();
 }
 
+// VS Code focuses a panel by taking the focus out of the page and giving it back to the page alone,
+// a while later, which leaves nothing in it focused (see WebviewElement._doFocus): give the focus
+// back to what had it, such as the drawing that a pick revealing the panel just focused.
+let lastFocused: HTMLElement | SVGElement | undefined;
+document.addEventListener("focusin", ({ target }) => {
+  if (target instanceof HTMLElement || target instanceof SVGElement) lastFocused = target;
+});
+window.addEventListener("focus", () => {
+  if (document.activeElement === document.body && lastFocused?.isConnected) {
+    lastFocused.focus({ preventScroll: true });
+  }
+});
+
 pickDoneButton.addEventListener("click", () => {
   if (pick) {
     post({ type: "picked", pickId: pick.id, nodes: Array.from(selection.values()) });

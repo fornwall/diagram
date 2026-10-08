@@ -813,9 +813,14 @@ suite("ECharts in the webview", function () {
     const focus = await evaluate(`(async () => {
       ${PRESS}
       ${UNTIL}
-      await until(() => !document.getElementById("pick").hidden);
+      // VS Code, revealing the panel for the pick, may take the focus out of the page meanwhile.
+      await until(() => !document.getElementById("pick").hidden && document.activeElement === chart,
+        "the pick prompt, with the focus on the chart");
       const canvas = document.getElementById("canvas");
       const focus = () => [document.activeElement === chart, chart.getAttribute("aria-describedby")];
+      // As VS Code focuses the panel: the focus leaves the page, and comes back to the page alone.
+      chart.blur();
+      window.dispatchEvent(new FocusEvent("focus"));
       const picking = focus();
       press("Home");
       press("Enter");
