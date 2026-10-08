@@ -268,7 +268,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
         this.panel.drawnIds &&
         marks.some((mark) => !this.panel.drawnIds?.includes(mark.id));
       const marked = plural(marks.length, includesRelationships ? "item" : nodeNoun(language));
-      const listed = marks.map(({ id, kind }) => `${id} (${kind})`).join(", ");
+      const listed = marks.map(({ id, kind }) => `${JSON.stringify(id)} (${kind})`).join(", ");
       sentences.push(`Marked ${marked}: ${listed}.`);
       if (dim) {
         sentences.push("Unmarked items are faded.");

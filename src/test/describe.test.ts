@@ -116,7 +116,7 @@ suite("describe", () => {
     assert.doesNotMatch(described, /diagram_/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
     assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);
-    assert.match(described, /Marked chart items: A \(problem\)\./);
+    assert.match(described, /Marked chart items: "A" \(problem\)\./);
   });
 
   test("oversized chart options are omitted from model context", () => {

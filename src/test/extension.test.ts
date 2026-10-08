@@ -237,7 +237,7 @@ suite("extension", function () {
       caption: "Step 1 of 2",
       dim: true,
     });
-    assert.match(marked, /^Marked 1 node: parse \(current\)\./);
+    assert.match(marked, /^Marked 1 node: "parse" \(current\)\./);
     assert.match(marked, /Unmarked items are faded\./);
     assert.match(marked, /Caption: "Step 1 of 2"\./);
     // The label of a node is not its id, so there is nothing to mark for it.
@@ -248,7 +248,7 @@ suite("extension", function () {
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.
     const state = await invoke("diagram_getState", {});
-    assert.match(state, /Marked nodes: parse \(current: we are here\)\./);
+    assert.match(state, /Marked nodes: "parse" \(current: "we are here"\)\./);
     assert.match(state, /flowchart LR/);
 
     assert.strictEqual(await invoke("diagram_annotate", {}), "Cleared the diagram's marks.");

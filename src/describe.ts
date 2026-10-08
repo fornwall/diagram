@@ -170,7 +170,8 @@ function describeMarks(
   }
   if (marks.length > 0) {
     const listed = marks.map(
-      ({ id, kind, note }) => `${id} (${kind}${note === undefined ? "" : `: ${note}`})`,
+      ({ id, kind, note }) =>
+        `${JSON.stringify(id)} (${kind}${note === undefined ? "" : `: ${JSON.stringify(note)}`})`,
     );
     lines.push(
       `Marked ${parts}: ${listed.join(", ")}.` +

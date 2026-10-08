@@ -804,7 +804,7 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.source, before?.source);
     assert.deepStrictEqual(panel.current?.chartPresentation, before?.chartPresentation);
     assert.match(errors.join(), /test refresh failure.*previous chart is kept/);
-    assert.match(panel.describeForModel() ?? "", /A \(good\)/);
+    assert.match(panel.describeForModel() ?? "", /"A" \(good\)/);
   });
 
   test("refreshing chart data ends a pending pick", async () => {
@@ -973,7 +973,7 @@ suite("panel", function () {
       ["annotate"],
     );
     const described = panel.describeForModel() ?? "";
-    assert.match(described, /Marked nodes: A \(problem: fails here\)\./);
+    assert.match(described, /Marked nodes: "A" \(problem: "fails here"\)\./);
     assert.match(described, /Annotation caption: Step 1 of 2/);
     assert.match(described, /Everything else is faded\./);
 
@@ -1070,7 +1070,7 @@ suite("panel", function () {
       { input: { marks: [{ id: "Yes" }, { id: "Yes (q2)" }] } } as never,
       new vscode.CancellationTokenSource().token,
     );
-    assert.match(toolText(result), /^Marked 1 chart item: Yes \(q2\) \(current\)\./);
+    assert.match(toolText(result), /^Marked 1 chart item: "Yes \(q2\)" \(current\)\./);
     assert.match(
       toolText(result),
       /These names each name several items of the chart, so nothing was marked for them: "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\. Mark the items you mean by their ids\./,
