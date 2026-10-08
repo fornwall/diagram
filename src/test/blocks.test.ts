@@ -181,6 +181,10 @@ suite("blocks", () => {
       { markdown: '````mermaid\nA["```"]\n```\n````\nB', source: 'A["```"]\n```', shown: "B" },
       { markdown: "~~~ mermaid title\nA\n~~~~\nB", source: "A", shown: "B" },
       { markdown: "~~~mermaid\nA\n```\n", shown: "", unterminated: true },
+      // Languages in any case, and mermaid containers but no others.
+      { markdown: "```Mermaid\nA\n```\nB", source: "A", shown: "B" },
+      { markdown: "Flow:\n::: mermaid\nA\n:::\nB", source: "A", shown: "Flow:\nB" },
+      { markdown: "::: note\nA\n:::\n", shown: "::: note\nA\n:::\n" },
       // A fence indented by 4 or more columns more than the opening fence is content.
       { markdown: "```mermaid\nA\n    ```\n```\nB", source: "A\n    ```", shown: "B" },
       { markdown: "  ```mermaid\nA\n   ```\nB", source: "A", shown: "B" },

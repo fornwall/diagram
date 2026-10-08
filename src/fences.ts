@@ -73,7 +73,7 @@ class Cursor {
   }
 }
 
-/** An opening code fence: its marker, the first word of its info string and its indentation. */
+/** An opening code fence: its marker, its language as {@link fenceMarker} reads it and its indent. */
 interface OpeningFence {
   fence: string;
   language: string;
@@ -81,10 +81,14 @@ interface OpeningFence {
   indent: number;
 }
 
-/** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
-function opening(line: string, start: number, indent: number): OpeningFence | undefined {
+/**
+ * Parses a fence marker at the start of text, and the first word of its info string in lower case,
+ * as VS Code's preview and GitHub compare it. The marker may also be ":::", which opens a block
+ * only as a mermaid container.
+ */
+export function fenceMarker(text: string): { fence: string; language: string } | undefined {
   // Unicode line separators are not line endings in Markdown, so "." must match them.
-  const match = /^(`{3,}|~{3,})(.*)$/s.exec(line.slice(start));
+  const match = /^(`{3,}|~{3,}|:{3,})(.*)$/s.exec(text);
   if (!match) {
     return undefined;
   }
@@ -95,7 +99,18 @@ function opening(line: string, start: number, indent: number): OpeningFence | un
   }
   // The info string is trimmed of spaces and tabs only: a no-break space before a word leaves no
   // language. The word ends at any whitespace.
-  return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1] ?? "", indent };
+  return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1]?.toLowerCase() ?? "" };
+}
+
+/** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
+function opening(line: string, start: number, indent: number): OpeningFence | undefined {
+  const marker = fenceMarker(line.slice(start));
+  // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram, and
+  // other containers as text.
+  if (!marker || (marker.fence.startsWith(":") && marker.language !== "mermaid")) {
+    return undefined;
+  }
+  return { ...marker, indent };
 }
 
 /** Whether the text at `start` closes a block: the fence's character, as many or more, then spaces. */
@@ -345,7 +360,7 @@ export class FenceScanner {
         this.paragraph = false;
         continue;
       }
-      if (char === "`" || char === "~") {
+      if (char === "`" || char === "~" || char === ":") {
         const fence = opening(line, at, indent);
         if (fence) {
           while (containers.length > depth) containers.pop();
@@ -507,11 +522,13 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
   }
 }
 
+const NAMES_DIAGRAM_LANGUAGE = new RegExp(DIAGRAM_LANGUAGES.join("|"), "i");
+
 /** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
   const fences: DiagramFence[] = [];
   // CodeLens scans every Markdown document on each edit, and most name no diagram language.
-  if (!DIAGRAM_LANGUAGES.some((language) => text.includes(language))) {
+  if (!NAMES_DIAGRAM_LANGUAGE.test(text)) {
     return fences;
   }
   for (const { language, lines, ...block } of codeBlocks(text, isDiagramLanguage)) {

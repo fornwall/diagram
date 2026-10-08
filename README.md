@@ -48,7 +48,7 @@ Charts leave out the toolbox's chart type switch, box zoom and brush, as laying 
 
 ## Edit Markdown diagrams
 
-Click **Open in Diagram** above a `mermaid` or `echarts` code block, including blocks in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or the editor context menu. Set `diagram.codeLens.enabled` to `false` to hide **Open in Diagram**.
+Click **Open in Diagram** above a `mermaid` or `echarts` code block, in any case, or a `::: mermaid` container as in Azure DevOps wikis, including blocks in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or the editor context menu. Set `diagram.codeLens.enabled` to `false` to hide **Open in Diagram**.
 
 **Apply** renders your edits and writes them to the block, keeping its fences, block quote markers, indentation and the surrounding text. The file is changed but not saved, and the change can be undone. A diagram that fails to render is not written; your edits stay in the panel. If the block changed or cannot be found safely, reopen it.
 

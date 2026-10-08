@@ -120,7 +120,32 @@ suite("fences", () => {
       // Only spaces and tabs are trimmed from the info string.
       ["``` \tmermaid\u00a0\nA\n```", ['0-1 mermaid "": "A"']],
       ["```\u00a0mermaid\nA\n```", []],
+      // In any case, as VS Code's preview and GitHub draw it.
+      [
+        "```Mermaid\nA\n```\n~~~ECharts x\n{}\n~~~",
+        ['0-1 mermaid "": "A"', '3-4 echarts "": "{}"'],
+      ],
     ]);
+  });
+
+  test("finds mermaid containers, which VS Code's preview draws as Azure DevOps wikis do", () => {
+    assertSources([
+      ["::: mermaid\nA\n:::\n", ['0-1 mermaid "": "A"']],
+      // Closed by as many colons or more, and holding fences of other characters.
+      [":::: Mermaid\n```\nA\n:::\n::::: \n", ['0-3 mermaid "": "```\\nA\\n:::"']],
+      ["> - :::mermaid\n>   A\n>   :::\n", ['0-1 mermaid ">   ": "A"']],
+      // Like a fence, a container interrupts a paragraph.
+      ["Text\n::: mermaid\nA\n:::\n", ['1-2 mermaid "": "A"']],
+      // Other containers, such as ones for notes, are text.
+      ["::: note\n```mermaid\nA\n```\n:::\n", ['1-2 mermaid "": "A"']],
+      ["::: echarts\n{}\n:::\n", []],
+      [":: mermaid\nA\n::\n", []],
+    ]);
+    assert.strictEqual(
+      rewritten("- ::: mermaid\n  A\n  :::\n", "B\n\nC"),
+      "- ::: mermaid\n  B\n\n  C\n  :::\n",
+    );
+    assert.strictEqual(rewritten("::: mermaid\nA\n:::\n", "B\n:::"), 1);
   });
 
   test("finds blocks with longer fences and tilde fences", () => {

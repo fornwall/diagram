@@ -1,4 +1,4 @@
-import { FenceScanner, openingFence, trimBlankLines } from "./fences";
+import { FenceScanner, fenceMarker, trimBlankLines } from "./fences";
 import { DIAGRAM_LANGUAGES, type DiagramLanguage, isDiagramLanguage } from "./protocol";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
@@ -88,11 +88,11 @@ function mayOpenDiagramBlock(partialLine: string): boolean {
   if (/^(?:[-+*]|\d{1,9}[.)]?)?$/.test(rest)) {
     return true;
   }
-  const [, fence = "", info] = /^(`+|~+)(.*)$/s.exec(rest) ?? [];
+  const [, fence = "", info] = /^(`+|~+|:+)(.*)$/s.exec(rest) ?? [];
   if (info === "") {
     return true;
   }
-  const language = fence.length >= 3 ? openingFence(rest)?.language : undefined;
+  const language = fence.length >= 3 ? fenceMarker(rest)?.language : undefined;
   return (
     language !== undefined && DIAGRAM_LANGUAGES.some((diagram) => diagram.startsWith(language))
   );
