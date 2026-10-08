@@ -394,6 +394,11 @@ suite("charts", () => {
       () => build(chart("bar", { labelColumn: ["month", "region"] }), many),
       /51 series, more than the 50/,
     );
+    const columns = Array.from({ length: 51 }, (_, i) => `c${i}`);
+    assert.throws(
+      () => build(chart("line"), `name,${columns.join(",")}\na,${columns.map(() => 1).join(",")}`),
+      /A series per value column would be 51 series, more than the 50 .* "valueColumns"/,
+    );
   });
 
   test("stacks the areas of a stacked area chart", () => {

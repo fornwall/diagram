@@ -130,6 +130,12 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
       for (const each of series) each.values = each.values.map((value) => value ?? 0);
     }
   } else {
+    if (names.length > MOST_SERIES) {
+      throw new Error(
+        `A series per value column would be ${names.length} series, more than the ` +
+          `${MOST_SERIES} that can be told apart. Choose fewer in "valueColumns".`,
+      );
+    }
     if (!columns.timeAxis) {
       noteRepeatedLabels(reading, "category", "categories");
     }
