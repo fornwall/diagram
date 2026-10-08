@@ -100,7 +100,7 @@ suite("describe", () => {
       /It has 100 selectable relationships, .*diagram_getState lists their ids/,
     );
     assert.doesNotMatch(describeDiagram(state, { relationships, callsTools: false }), /relation/);
-    assert.match(describeDiagram(state, { relationships, fullSource: true }), /L_A_B_99;/);
+    assert.match(describeDiagram(state, { relationships, fullSource: true }), /L_A_B_99";/);
   });
 
   test("a model that calls no tools is told of the drawing, but of no tool", () => {
@@ -115,7 +115,7 @@ suite("describe", () => {
     const described = describeDiagram(state, { ...drawing, callsTools: false });
     assert.doesNotMatch(described, /diagram_/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
-    assert.match(described, /Selectable relationships: "A → B" \(id: L_A_B; edge/);
+    assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);
     assert.match(described, /Marked chart items: A \(problem\)\./);
   });
 

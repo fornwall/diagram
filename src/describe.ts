@@ -205,15 +205,17 @@ function describeSource(
     : `(The source is ${formatCount(source.length)} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
 }
 
-/** Lists nodes for a language model, e.g. `"Parser" (id: A), "Checker" (id: B)`. */
+/**
+ * Lists nodes for a language model, e.g. `"Parser" (id: "A"), "Checker" (id: "B")`. Labels and ids
+ * are quoted as JSON, as chart item ids may contain parentheses, commas and outer spaces.
+ */
 export function nodeList(nodes: readonly DiagramNode[]): string {
   return nodes
-    .map((node) => {
-      const relation = node.relationship;
+    .map(({ label, id, relationship: relation }) => {
       const details = relation
-        ? `; ${relation.kind}; from: ${relation.source}; to: ${relation.target}; direction: ${relation.direction}`
+        ? `; ${relation.kind}; from: ${JSON.stringify(relation.source)}; to: ${JSON.stringify(relation.target)}; direction: ${relation.direction}`
         : "";
-      return `"${node.label}" (id: ${node.id}${details})`;
+      return `${JSON.stringify(label)} (id: ${JSON.stringify(id)}${details})`;
     })
     .join(", ");
 }

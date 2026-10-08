@@ -210,7 +210,7 @@ suite("ECharts in the webview", function () {
     );
     assert.match(
       page.panel.describeForModel() ?? "",
-      /selected these chart items in the panel: "A" \(id: A \(item 3\)\)/,
+      /selected these chart items in the panel: "A" \(id: "A \(item 3\)"\)/,
     );
     const ambiguous = page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
     assert.ok(ambiguous.ok);

@@ -61,7 +61,7 @@ suite("relationships", function () {
       selection.map((n) => n.id),
       ["edge:first", "edge:second"],
     );
-    assert.match(page.panel.describeForModel() ?? "", /edge:first; edge; from: A_B; to: B_C/);
+    assert.match(page.panel.describeForModel() ?? "", /"edge:first"; edge; from: "A_B"; to: "B_C"/);
     assert.ok(
       page.panel.annotate({
         marks: [{ id: "edge:second", kind: "problem", note: "Timeout" }],
@@ -146,7 +146,7 @@ suite("relationships", function () {
     assert.ok(
       page.panel.annotate({ marks: [{ id: ids[2] ?? "", kind: "current" }], dim: false }).ok,
     );
-    assert.match(page.panel.describeForModel() ?? "", /message; from: B; to: A/);
+    assert.match(page.panel.describeForModel() ?? "", /message; from: "B"; to: "A"/);
     const token = new vscode.CancellationTokenSource();
     const picking = page.panel.pickNodes("Which message?", false, token.token);
     await until("document.querySelector('.picking')");
@@ -179,7 +179,7 @@ suite("relationships", function () {
     })()`);
     const query = await asked.promise;
     assert.match(query, /Client → Server: Retry/);
-    assert.match(query, /id: message:i\d+; message; from: A; to: B; direction: forward/);
+    assert.match(query, /id: "message:i\d+"; message; from: "A"; to: "B"; direction: forward/);
     assert.match(query, /Add a timeout here/);
   });
 

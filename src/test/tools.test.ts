@@ -149,7 +149,7 @@ suite("tools", () => {
     panel.pickNodes = async () => ({ picked: true, nodes: [...nodes] });
     assert.strictEqual(
       await invokeTool(new PickDiagramNodesTool(panel), { prompt: "Which?" }),
-      'The user picked: "Parser" (id: A), "Parser → Checker" (id: edge:L_A_B_0; edge; from: A; to: B; direction: forward).',
+      'The user picked: "Parser" (id: "A"), "Parser → Checker" (id: "edge:L_A_B_0"; edge; from: "A"; to: "B"; direction: forward).',
     );
   });
 
