@@ -813,6 +813,30 @@ suite("panel", function () {
     });
   });
 
+  for (const action of ["cancel", "close the panel"]) {
+    test(`a refresh's command stops as the user may ${action}`, async () => {
+      const { panel, webview } = await newFakePanel();
+      const chart = { type: "pie", command: "sleep 60" } as const;
+      const diagram = { language: "echarts", source: PIE, title: "Sizes", chart } as const;
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      const progress = Promise.withResolvers<vscode.CancellationTokenSource>();
+      replace(vscode.window, "withProgress", (options, task) => {
+        assert.ok(options.cancellable);
+        const source = cancellationSource();
+        progress.resolve(source);
+        return task({ report() {} }, source.token);
+      });
+      const errors = recordMessages("showErrorMessage");
+      const refreshing = webview.receive({ type: "refresh" });
+      const source = await progress.promise;
+      if (action === "cancel") source.cancel();
+      else webview.panel.dispose();
+      await refreshing;
+      assert.strictEqual(panel.current?.source, PIE);
+      assert.deepStrictEqual(errors, []);
+    });
+  }
+
   test("a refresh that started before a hand edit keeps the edit", async () => {
     const { panel, webview } = await newFakePanel();
     const pie = (name: string) =>

@@ -173,6 +173,8 @@ export class DiagramPanel implements vscode.Disposable {
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
   private refreshing = false;
+  /** Ends the data load of a refresh or reset, as the panel closes or another load starts. */
+  private reloading: vscode.CancellationTokenSource | undefined;
   private exporting = false;
   /** The last write to a document, which the next one waits for. */
   private writing: Promise<void> | undefined;
@@ -323,6 +325,7 @@ export class DiagramPanel implements vscode.Disposable {
   private closed(): void {
     this.pageRanCode = false;
     this.pageRefused = false;
+    this.reloading?.cancel();
     this.cancelExport("The diagram panel was closed before export finished.");
     this.selection = [];
     this.cancelPick("The user closed the diagram panel.");
@@ -1046,7 +1049,7 @@ export class DiagramPanel implements vscode.Disposable {
    * outside the workspace, and, once chart code could have pressed Refresh, before rerunning its
    * command.
    *
-   * @returns undefined if the user declined.
+   * @returns undefined if the user declined or cancelled.
    */
   private async reloadTable(
     chart: ChartSpec,
@@ -1077,10 +1080,24 @@ export class DiagramPanel implements vscode.Disposable {
       const message = "Run the chart's command again to reload its data?";
       if (!(await confirm(message, chart.command, "Run"))) return;
     }
-    return vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Window, title },
-      (_progress, token) => loadTable(chart, token, unasked),
-    );
+    this.reloading?.cancel();
+    const reloading = new vscode.CancellationTokenSource();
+    this.reloading = reloading;
+    try {
+      return await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+        (_progress, token) => {
+          token.onCancellationRequested(() => reloading.cancel());
+          return loadTable(chart, reloading.token, unasked);
+        },
+      );
+    } catch (error) {
+      if (error instanceof vscode.CancellationError) return undefined;
+      throw error;
+    } finally {
+      if (this.reloading === reloading) this.reloading = undefined;
+      reloading.dispose();
+    }
   }
 
   /**
