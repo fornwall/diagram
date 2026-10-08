@@ -218,14 +218,20 @@ suite("export", function () {
     fs.mkdirSync(folder);
     const readOnly = path.join(directory, "read-only");
     fs.mkdirSync(readOnly, { mode: 0o555 });
-    for (const target of [folder, path.join(readOnly, "export.svg")]) {
+    const denied = path.join(readOnly, "export.svg");
+    // Root may write to a read-only folder.
+    const targets = process.getuid?.() === 0 ? [folder] : [folder, denied];
+    for (const target of targets) {
       replace(vscode.window, "showSaveDialog", async () => vscode.Uri.file(target));
       await panel.exportDiagram();
     }
-    assert.deepStrictEqual(errors, [
-      `Could not export the diagram: EISDIR: illegal operation on a directory, open '${folder}'`,
-      `Could not export the diagram: You do not have permission to save ${path.join(readOnly, "export.svg")}. Choose another folder.`,
-    ]);
+    assert.deepStrictEqual(
+      errors,
+      [
+        `Could not export the diagram: EISDIR: illegal operation on a directory, open '${folder}'`,
+        `Could not export the diagram: You do not have permission to save ${denied}. Choose another folder.`,
+      ].slice(0, targets.length),
+    );
   });
 
   // The wrong format is reported in "says whether it exports a diagram or a chart".
