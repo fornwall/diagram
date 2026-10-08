@@ -67,7 +67,8 @@ export class WebviewChannel implements vscode.Disposable {
       { retainContextWhenHidden: true },
     );
     this.attach(panel);
-    void vscode.window.tabGroups.close(leftovers, true);
+    // A tab that cannot be closed is only left over, as before.
+    vscode.window.tabGroups.close(leftovers, true).then(undefined, () => {});
     return true;
   }
 
