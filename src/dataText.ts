@@ -17,7 +17,7 @@ function isBlank(line: string): boolean {
  * pip list and PowerShell tables, of "=", as around tokei's, or of box-drawing characters, as
  * around those of DuckDB and sqlite3 -box ("├──┼──┤").
  */
-const RULE = /^(?=[^-=\u2500-\u257F]*[-=\u2500-\u257F])[\s|+:=\u2500-\u257F-]+$/;
+const RULE = /^[\s|+:]*[-=\u2500-\u257F][\s|+:=\u2500-\u257F-]*$/;
 
 /** A line of single dashes, which may be missing values ("-  -") rather than a rule. */
 const SINGLE_DASHES = /^\s*-(?:\s+-)*\s*$/;
@@ -293,10 +293,11 @@ const TABLE_SIZE =
 /** What DuckDB ("·"), Polars ("…") and pandas ("...") print for the rows or columns they left out. */
 const ELISION = /^(?:[·…]|\.{2,})$/;
 
-/** Whether `line` stands for the rows that the output left out of a long table, in each column. */
+/** A line that stands for the rows that the output left out of a long table, in each column. */
+const ELIDED_ROWS = /^[\s|│┆]*(?:(?:[·…]|\.{2,})(?:[\s|│┆]+|$))+$/;
+
 function isElision(line: string): boolean {
-  const marks = line.split(/[\s|│┆]+/).filter(Boolean);
-  return marks.length > 0 && marks.every((mark) => ELISION.test(mark));
+  return ELIDED_ROWS.test(line);
 }
 
 /**
