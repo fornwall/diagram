@@ -204,6 +204,12 @@ function thirdPartyNotices(metafiles, includer) {
       }
       add(readFileSync(file, "utf8").trim(), version ? `${name} ${version}` : name);
     }
+    // elkjs's bundle has GWT's runtime and Guava compiled in from Java, and web-worker's browser
+    // stub, all by Google under the Apache License 2.0, without a comment that names them.
+    if (path.endsWith("/elkjs/lib/elk.bundled.js")) {
+      const text = readFileSync("licenses/elkjs-google.txt", "utf8").trim();
+      for (const name of ["GWT", "Guava", "web-worker"]) add(text, `${name}, in elkjs`);
+    }
   }
   const sections = [...namesByText]
     .map(([text, names]) => `${[...names].sort().join("\n")}\n\n${text}`)
