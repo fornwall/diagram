@@ -250,8 +250,8 @@ export function statedUnit(
  * - in sizes, if some cell has a unit that only sizes have ("MB", "Ki", "G"), or the column's name
  *   is of sizes ("Size", "Used"), or it has no name, as du and sort -h print none, while counts
  *   are named, as "views" or "stars" are;
- * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5") and none only
- *   with thousands separators ("1,234.5", "1,234,567");
+ * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5", "1.234.567")
+ *   and none only with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
  * - with spaces or apostrophes between thousands, if some cell has them and no other cell has
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
@@ -303,10 +303,9 @@ export function numberFormat(
     sizes ||= BYTE_SUFFIX.test(/[a-zA-Z]+$/.exec(text)?.[0] ?? "");
     if (accounting) parenthesized = true;
     else if (/^[-\u2212]/.test(text)) minus = true;
-    if (text.includes(",")) {
-      point ||= number && !commaNumber;
-      comma ||= commaNumber && !number;
-    }
+    // Only a decimal comma also reads "1.234.567", without a comma.
+    comma ||= commaNumber && !number;
+    point ||= number && !commaNumber && text.includes(",");
     const unit = /\d\s*([kK])$/.exec(text)?.[1];
     if (unit === "k") lowerK = true;
     else if (unit === "K") upperK = true;

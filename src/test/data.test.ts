@@ -496,6 +496,11 @@ suite("data", () => {
       ["B", 999],
       ["C", 2000],
     ]);
+    // Only a decimal comma reads several dots between thousands.
+    assert.deepStrictEqual(parse("Stadt;Einwohner\nBerlin;3.645.000\nBremen;567.559").rows, [
+      ["Berlin", 3_645_000],
+      ["Bremen", 567_559],
+    ]);
   });
 
   test("detects semicolons in headerless decimal-comma numeric tables", () => {
