@@ -211,15 +211,16 @@ suite("Mermaid in the webview", function () {
       ${UNTIL}
       try {
         canvas.style.maxWidth = canvas.offsetWidth * 0.6 + "px";
-        await until(() => failures > 0);
+        await until(() => failures > 0, "a layout that fails");
       } finally {
         Element.prototype.getBoundingClientRect = measure;
       }
-      await new Promise(resolve => setTimeout(resolve, 50));
-      const kept = document.querySelector("#diagram svg") === shown.svg && layout.style.width === shown.width;
+      // Laying the chart out sets the width first, and that failing sets it back.
+      await until(() => layout.style.width === shown.width, "the width that the shown drawing has");
+      const kept = document.querySelector("#diagram svg") === shown.svg;
       // Less than a relayout takes, but from the width that the shown drawing has.
       canvas.style.maxWidth = parseFloat(canvas.style.maxWidth) - 4 + "px";
-      await until(() => document.querySelector("#diagram svg") !== shown.svg);
+      await until(() => document.querySelector("#diagram svg") !== shown.svg, "the chart laid out again");
       const style = getComputedStyle(canvas);
       const room = canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       return { kept, relaidOut: Math.abs(document.querySelector("#diagram svg").viewBox.baseVal.width - room) < 1 };
