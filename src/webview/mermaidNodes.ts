@@ -31,6 +31,7 @@ export const WITH_DATABASE = new Set([
   "venn",
   "wardley",
   "cynefin",
+  "eventmodeling",
 ]);
 
 /** A packet field, or a piece of one, from its first bit to its last. */
@@ -111,6 +112,16 @@ export interface DiagramDb {
   };
   /** A Cynefin diagram's transitions between domains. */
   getTransitions?(): { from: string; to: string; label?: string }[];
+  /** An event model's boxes and the arrows between them, in the order it draws them. */
+  getState?(): {
+    boxes: EventBox[];
+    relations: { sourceBox: EventBox; targetBox: EventBox }[];
+  };
+}
+
+/** A box of an event model, which shows the entity of a time frame. */
+interface EventBox {
+  frame: { name: string };
 }
 
 /** The nodes of a drawing, and the elements that show them. */
@@ -521,6 +532,26 @@ function cynefin(f: Finder): void {
   f.addLines("path.cynefinArrowLine", "text.cynefinArrowLabel", transitions);
 }
 
+/**
+ * Event model boxes, which go by their time frames, as in "tf 01", and are named by the entities
+ * they show in bold, and the arrows between them.
+ */
+function eventModel(f: Finder): void {
+  const boxes = f.all("g.em-box");
+  const state = boxes.length > 0 ? f.db?.getState?.() : undefined;
+  if (state?.boxes.length !== boxes.length) return;
+  for (const [i, { frame }] of state.boxes.entries()) {
+    const box = boxes[i] as Element;
+    f.add(box, { id: frame.name, label: textOf(box.querySelector("b") ?? box) });
+  }
+  const lines = f.all("path.em-relation");
+  if (lines.length !== state.relations.length) return;
+  for (const [i, { sourceBox, targetBox }] of state.relations.entries()) {
+    const node = f.relation(sourceBox.frame.name, targetBox.frame.name, "", [false, true]);
+    f.addLine(lines[i] as Element, node);
+  }
+}
+
 /** Sequence diagram participants, with their footer copies and menus of links, and messages. */
 function sequence(f: Finder): void {
   const participants = new Map<string, DiagramNode>();
@@ -855,6 +886,7 @@ export function findNodes(
     sankey,
     wardley,
     cynefin,
+    eventModel,
     sequence,
     gantt,
     journey,

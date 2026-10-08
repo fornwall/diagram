@@ -828,7 +828,7 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
-  test("finds icon and image shapes, architecture groups, sankey flows and the edges of block, agent flow, swimlane and use case diagrams", async () => {
+  test("finds icon and image shapes, architecture groups, sankey flows and the edges of block, agent flow, swimlane and use case diagrams, and event models", async () => {
     const pixel =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     const cases: [string, string[]][] = [
@@ -885,6 +885,22 @@ suite("Mermaid in the webview", function () {
           "Place_order: Place order",
           "edge:edge-0: Customer → Place order",
           "edge:edge-1: Bank → Pay",
+        ],
+      ],
+      [
+        // Frames follow the frame before them in another lane, or the frames they name.
+        "eventmodeling\n  tf 01 ui Cart.Screen\n  tf 02 cmd AddItem\n  tf 03 evt ItemAdded\n  tf 04 rmo Items ->> 03\n  tf 05 ui Done ->> 04 ->> 02",
+        [
+          "01: Screen",
+          "02: AddItem",
+          "03: ItemAdded",
+          "04: Items",
+          "05: Done",
+          "edge:01 → 02: Screen → AddItem",
+          "edge:02 → 03: AddItem → ItemAdded",
+          "edge:02 → 05: AddItem → Done",
+          "edge:03 → 04: ItemAdded → Items",
+          "edge:04 → 05: Items → Done",
         ],
       ],
     ];
