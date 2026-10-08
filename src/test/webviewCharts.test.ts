@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
+import { SETTLE_DELAY } from "../webview/echartsRenderer";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -458,16 +459,16 @@ suite("ECharts in the webview", function () {
   /**
    * Webview code defining `rotated()`, whether the chart's category labels are turned,
    * `rotatesAtOnce()`, whether they turn within a few frames: well before the layout that follows
-   * 150 ms after the size stops changing, and `settled()`, which waits for that layout.
+   * `SETTLE_DELAY` after the size stops changing, and `settled()`, which waits for that layout.
    */
   const ROTATED = `
     const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
       /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
-    // Past the layout 150 ms after the size settled since the chart was drawn, which the resize
+    // Past the layout once the size settled since the chart was drawn, which the resize
     // observer schedules in the frame after the one in which it sees the new drawing.
     const settled = async () => {
       for (let frame = 0; frame < 3; frame++) await nextFrame();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, ${SETTLE_DELAY + 50}));
     };
     const rotatesAtOnce = async () => {
       for (let frame = 0; frame < 5 && !rotated(); frame++) await new Promise(requestAnimationFrame);
@@ -506,15 +507,20 @@ suite("ECharts in the webview", function () {
         const canvas = document.getElementById("canvas");
         await chartFitted();
         await settled();
+        // The wait for a new size to settle does not end by itself meanwhile, as on a busy machine.
+        const original = window.setTimeout;
+        window.setTimeout = (handler, delay, ...rest) =>
+          original.call(window, handler, delay === ${SETTLE_DELAY} ? 3600000 : delay, ...rest);
         try {
           // An image taken while waiting for a new size to settle, which it lays the chart out
           // for, ends the wait: the next size is again laid out at once.
           Object.assign(canvas.style, {width: "600px", flex: "none"});
-          await new Promise((resolve) => setTimeout(resolve, 60));
+          await chartFitted();
           await dragImage();
           canvas.style.width = "250px";
           return await rotatesAtOnce();
         } finally {
+          window.setTimeout = original;
           Object.assign(canvas.style, {width: "", flex: ""});
           await chartFitted();
         }

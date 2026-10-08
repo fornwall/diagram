@@ -17,6 +17,9 @@ import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./
 import { standaloneSvg } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
 
+/** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
+export const SETTLE_DELAY = 150;
+
 /** A zrender element, which can animate, and the group it is in. */
 interface Animated {
   parent: Animated | null;
@@ -476,7 +479,7 @@ export class EChartsRenderer implements Renderer {
       this.relayoutTimer = setTimeout(() => {
         this.relayoutTimer = undefined;
         this.relayout();
-      }, 150);
+      }, SETTLE_DELAY);
     });
   }
 
