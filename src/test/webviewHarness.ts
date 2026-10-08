@@ -207,13 +207,14 @@ export const MERMAID = {
 export const UNTIL = `
   const nextFrame = () => new Promise(requestAnimationFrame);
   const until = async (done, awaited, step = () => new Promise(resolve => setTimeout(resolve, 20))) => {
-    for (const end = Math.min(performance.now() + 4000, testDeadline); !done(); await step()) {
+    for (const end = Math.min(performance.now() + 4000, testDeadline); ; await step()) {
+      const result = done();
+      if (result) return result;
       if (performance.now() > end) {
         if (awaited) throw new Error("Timed out waiting for " + awaited + ".");
-        break;
+        return result;
       }
     }
-    return done();
   };`;
 
 /**
