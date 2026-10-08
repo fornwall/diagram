@@ -54,27 +54,47 @@ export const allSeries = (option: JsonObject): JsonObject[] =>
 export const seriesOf = (option: JsonObject): unknown[] =>
   option.series === undefined ? [] : Array.isArray(option.series) ? option.series : [option.series];
 
+/** An id or name as ECharts compares them, which takes a number for the same text. */
+const comparable = (key: unknown) => (typeof key === "number" ? String(key) : key);
+
 /**
  * The place among the series of the base option that each series of a patch merges into, as
- * ECharts matches them: by "id", then by "name", and the rest to the free places in order. A null
- * is skipped rather than given a place.
+ * ECharts matches them: by "id", then those without an id by "name", and the rest to the first
+ * free place, except that one with an id goes after the others, as every series has an id once
+ * drawn, of its own or one that ECharts makes up. What is not an object is skipped, as ECharts
+ * skips it, rather than given a place.
  */
 export function seriesPlaces(base: unknown[], patch: unknown[]): (number | undefined)[] {
-  const keyed = patch.map((each) => {
-    if (!isPlainObject(each)) return -1;
-    const key = each.id != null ? "id" : "name";
-    return each[key] == null
-      ? -1
-      : base.findIndex((existing) => isPlainObject(existing) && existing[key] === each[key]);
-  });
-  let free = 0;
-  return patch.map((each, index) => {
-    if (each == null) return undefined;
-    const place = keyed[index] ?? -1;
-    if (place >= 0) return place;
-    while (keyed.includes(free)) free++;
-    return free++;
-  });
+  const places: (number | undefined)[] = patch.map(() => undefined);
+  const taken = new Set<number>();
+  const take = (index: number, place: number) => {
+    places[index] = place;
+    taken.add(place);
+  };
+  const objects = patch.flatMap((each, index) =>
+    typeof each === "object" && each !== null ? [{ each: each as JsonObject, index }] : [],
+  );
+  for (const key of ["id", "name"] as const) {
+    for (const { each, index } of objects) {
+      if (each[key] == null || (key === "name" && each.id != null)) continue;
+      const place = base.findIndex(
+        (existing, at) =>
+          !taken.has(at) &&
+          isPlainObject(existing) &&
+          comparable(existing[key]) === comparable(each[key]),
+      );
+      if (place >= 0) take(index, place);
+    }
+  }
+  let length = base.length;
+  for (const { each, index } of objects) {
+    if (places[index] !== undefined) continue;
+    let place = each.id != null ? length : 0;
+    while (taken.has(place)) place++;
+    take(index, place);
+    length = Math.max(length, place + 1);
+  }
+  return places;
 }
 
 /** The coordinate system that each series type is drawn on, unless the series sets another. */

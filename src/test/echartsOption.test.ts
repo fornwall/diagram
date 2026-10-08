@@ -85,6 +85,16 @@ suite("echartsOption", () => {
       errorOf(`{${timeline}, "options": [{"series": [{"data": [1]}]}]}`),
       /^options\[0\]\.series\[0\] has no "type"/,
     );
+    // One with an id of no series of the base option is another series, as ECharts adds it, and
+    // a name already matched leads on to the next free place.
+    const patched = (patch: string) =>
+      `{"baseOption": {${timeline}, "series": [{"type": "pie", "id": "1", "name": "A"}, ${pie}]}, "options": [{"series": [${patch}]}]}`;
+    assert.match(errorOf(patched('{"id": "x", "data": [1]}')), /^options\[0\]\.series\[0\] has no/);
+    assert.strictEqual(seriesTypes(parseOption(patched('{"id": 1, "data": [2]}, 5'))), "pie");
+    assert.match(
+      errorOf(patched('{"name": "A"}, {"name": "A"}, {"name": "A"}')),
+      /^options\[0\]\.series\[2\] has no "type"/,
+    );
     // ECharts merges each step into what the steps before it showed.
     const steps = `"options": [{"series": [${pie}]}, {"series": [{"data": [2]}]}]`;
     assert.strictEqual(seriesTypes(parseOption(`{${timeline}, ${steps}}`)), "pie");
