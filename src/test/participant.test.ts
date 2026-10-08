@@ -812,6 +812,19 @@ suite("participant", () => {
     );
   });
 
+  test("leaves out the images of tool results for a model that does not accept images", async () => {
+    const image = vscode.LanguageModelDataPart.image(new Uint8Array(8), "image/png");
+    countToolCalls(() => new vscode.LanguageModelToolResult([image]));
+    const { sent } = await ask(
+      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
+      { capabilities: { supportsImageToText: false } },
+    );
+    assert.strictEqual(
+      messageText(sent[1]?.messages.at(-1)),
+      "[left out: an image, as Fake does not accept images]",
+    );
+  });
+
   test("stops with a clear error when tool rounds exhaust the model's context", async () => {
     const { sent, result } = await ask(
       [[text("x".repeat(20_000)), new vscode.LanguageModelToolCallPart("1", "unknown", {})]],

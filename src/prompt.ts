@@ -261,7 +261,7 @@ export function escapeMarkdown(text: string): string {
 /**
  * Truncate tool results as needed, leaving half the reserve for later rounds. Text is shortened;
  * other parts, such as prompt-tsx, are kept whole or replaced with a note, as are images over the
- * size limit.
+ * size limit or for a model that does not accept images.
  */
 export async function fitToolResults(
   model: vscode.LanguageModelChat,
@@ -270,17 +270,17 @@ export async function fitToolResults(
   token: vscode.CancellationToken,
 ): Promise<void> {
   // The model API would reject the request, as for an attached image.
+  const images = acceptsImages(model);
   for (const { content } of results) {
     content.forEach((part, index) => {
-      if (
-        part instanceof vscode.LanguageModelDataPart &&
-        isImage(part) &&
-        part.data.byteLength > MAX_IMAGE_BYTES
-      ) {
-        content[index] = new vscode.LanguageModelTextPart(
-          `[left out: an image of ${oversized(part.data.byteLength)}]`,
-        );
-      }
+      if (!isImage(part)) return;
+      const bytes = part.data.byteLength;
+      const why = !images
+        ? `an image, as ${model.name} does not accept images`
+        : bytes > MAX_IMAGE_BYTES
+          ? `an image of ${oversized(bytes)}`
+          : undefined;
+      if (why) content[index] = new vscode.LanguageModelTextPart(`[left out: ${why}]`);
     });
   }
   const parts = results.flatMap(({ content }) =>
@@ -382,10 +382,10 @@ function partText(part: unknown): string | undefined {
   if (part instanceof vscode.LanguageModelPromptTsxPart) {
     return JSON.stringify(part.value);
   }
-  if (part instanceof vscode.LanguageModelDataPart && !isImage(part)) {
-    return new TextDecoder().decode(part.data);
+  if (isImage(part) || !(part instanceof vscode.LanguageModelDataPart)) {
+    return undefined;
   }
-  return undefined;
+  return new TextDecoder().decode(part.data);
 }
 
 /** What a part that can't be shortened as text is, e.g. "application/pdf data". */
@@ -399,7 +399,7 @@ function wholePart(part: unknown): string | undefined {
   return undefined;
 }
 
-function isImage(part: unknown): boolean {
+function isImage(part: unknown): part is vscode.LanguageModelDataPart {
   return part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/");
 }
 
@@ -671,9 +671,17 @@ function imageData(
 }
 
 /**
- * Give the model an image, unless it is too large or the model does not accept images. Models
- * describe this with `capabilities.supportsImageToText`, which is not part of the stable API.
- * Without a model, for an earlier request, it is left out, unnoted if `imageKeys` identifies it.
+ * Models say whether they accept images in `capabilities.supportsImageToText`, which is not part of
+ * the stable API.
+ */
+function acceptsImages(model: vscode.LanguageModelChat): boolean {
+  const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
+  return capabilities?.supportsImageToText !== false;
+}
+
+/**
+ * Give the model an image, unless it is too large or the model does not accept images. Without a
+ * model, for an earlier request, it is left out, unnoted if `imageKeys` identifies it.
  */
 async function readImage(
   name: string,
@@ -698,8 +706,7 @@ async function readImage(
       ? undefined
       : { name, error: "images are only given with the request they are attached to" };
   }
-  const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
-  if (capabilities?.supportsImageToText === false) {
+  if (!acceptsImages(model)) {
     return {
       name,
       error: `${model.name} does not accept images. Choose a model that does, or describe the image in words.`,
