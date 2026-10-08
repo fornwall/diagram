@@ -37,6 +37,26 @@ const problemMatcherPlugin = {
   },
 };
 
+/**
+ * Starts each script with the licenses of the packages it includes, as a saved chart's page carries
+ * them without the notices file.
+ * @type {import("esbuild").Plugin}
+ */
+const noticesPlugin = {
+  name: "notices",
+  setup(build) {
+    build.onEnd(({ metafile }) => {
+      for (const [file, output] of Object.entries(metafile?.outputs ?? {})) {
+        const notices = thirdPartyNotices([{ outputs: { [file]: output } }], "This script");
+        const comment = notices && `/*!\n${notices.replaceAll("*/", "* /")}*/\n`;
+        const script = readFileSync(file, "utf8");
+        // A rebuild when watching may leave a file it would write the same as it was.
+        if (comment && !script.startsWith(comment)) writeFileSync(file, comment + script);
+      }
+    });
+  },
+};
+
 const common = {
   bundle: true,
   minify: production,
@@ -61,6 +81,9 @@ const savedPage = {
   outdir: "dist",
   minify: true,
   sourcemap: false,
+  // Replaced by the full notices that noticesPlugin puts first.
+  legalComments: "none",
+  plugins: [noticesPlugin, problemMatcherPlugin],
 };
 
 // Chunk names are hashed, so start from scratch to not ship stale chunks.
@@ -92,10 +115,6 @@ const contexts = await Promise.all([
     ...savedPage,
     entryPoints: { echarts: "src/webview/echartsLibrary.ts" },
     globalName: "DiagramECharts",
-    // Saved charts carry ECharts without the notices file, so name its licenses here.
-    banner: {
-      js: "/*! Apache ECharts, Copyright 2017-2026 The Apache Software Foundation, Apache-2.0 License. ZRender, Copyright (c) 2017, Baidu Inc., BSD-3-Clause License. */",
-    },
   }),
   esbuild.context({ ...savedPage, entryPoints: { standalone: "src/webview/standalone.ts" } }),
 ]);
@@ -109,14 +128,21 @@ if (watch) {
   if (analyze) {
     for (const { metafile } of results) console.log(await esbuild.analyzeMetafile(metafile));
   }
-  writeFileSync("dist/THIRD_PARTY_NOTICES.txt", thirdPartyNotices(results.map((r) => r.metafile)));
+  writeFileSync(
+    "dist/THIRD_PARTY_NOTICES.txt",
+    thirdPartyNotices(
+      results.map((r) => r.metafile),
+      "@diagram",
+    ),
+  );
 }
 
 /**
  * The license and notice files of the packages that the bundles include code from, as their
- * licenses ask to be distributed with it. Minifying drops most of the comments that carry them.
+ * licenses ask to be distributed with it, or nothing if there are none. Minifying drops most of
+ * the comments that carry them.
  */
-function thirdPartyNotices(metafiles) {
+function thirdPartyNotices(metafiles, includer) {
   const packages = new Set();
   const sources = new Set();
   for (const { outputs } of metafiles) {
@@ -182,5 +208,6 @@ function thirdPartyNotices(metafiles) {
   const sections = [...namesByText]
     .map(([text, names]) => `${[...names].sort().join("\n")}\n\n${text}`)
     .sort();
-  return `@diagram includes the following third-party software.\n\n${sections.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
+  if (sections.length === 0) return "";
+  return `${includer} includes the following third-party software.\n\n${sections.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
 }
