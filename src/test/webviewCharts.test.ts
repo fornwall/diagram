@@ -456,13 +456,19 @@ suite("ECharts in the webview", function () {
     series: [{ type: "bar", data: [1, 2] }],
   });
   /**
-   * Webview code defining `rotated()`, whether the chart's category labels are turned, and
+   * Webview code defining `rotated()`, whether the chart's category labels are turned,
    * `rotatesAtOnce()`, whether they turn within a few frames: well before the layout that follows
-   * 150 ms after the size stops changing.
+   * 150 ms after the size stops changing, and `settled()`, which waits for that layout.
    */
   const ROTATED = `
     const rotated = () => [...document.querySelectorAll("#chart svg text")].some((text) =>
       /^matrix\\((?!1,0,0,1,)/.test(text.getAttribute("transform") ?? ""));
+    // Past the layout 150 ms after the size settled since the chart was drawn, which the resize
+    // observer schedules in the frame after the one in which it sees the new drawing.
+    const settled = async () => {
+      for (let frame = 0; frame < 3; frame++) await nextFrame();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    };
     const rotatesAtOnce = async () => {
       for (let frame = 0; frame < 5 && !rotated(); frame++) await new Promise(requestAnimationFrame);
       return rotated();
@@ -476,8 +482,7 @@ suite("ECharts in the webview", function () {
         ${ROTATED}
         const canvas = document.getElementById("canvas");
         await chartFitted();
-        // After the size settled since the chart was drawn.
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await settled();
         const wide = rotated();
         Object.assign(canvas.style, {width: "250px", flex: "none"});
         try {
@@ -500,7 +505,7 @@ suite("ECharts in the webview", function () {
         ${DRAG_IMAGE}
         const canvas = document.getElementById("canvas");
         await chartFitted();
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await settled();
         try {
           // An image taken while waiting for a new size to settle, which it lays the chart out
           // for, ends the wait: the next size is again laid out at once.
