@@ -121,9 +121,13 @@ suite("fences", () => {
       // The first word must hold mermaid as a word, as for VS Code's preview, or be echarts.
       ["```mermaidx\nflowchart TD\n```", []],
       ["```{mermaid}\nA\n```\n```echarts-x\n{}\n```", ['0-1 mermaid "": "A"']],
-      // Only spaces and tabs are trimmed from the info string.
+      // As in the preview, but not in chat, any whitespace is trimmed from the info string, and
+      // a container's first word ends at a space alone.
       ["``` \tmermaid\u00a0\nA\n```", ['0-1 mermaid "": "A"']],
-      ["```\u00a0mermaid\nA\n```", []],
+      [
+        "```\u00a0mermaid\nA\n```\n:::\u00a0mermaid\nB\n:::\n::: mermaid\u00a0x\nC\n:::",
+        ['0-1 mermaid "": "A"', '3-4 mermaid "": "B"'],
+      ],
       // In any case, as VS Code's preview and GitHub draw it.
       [
         "```Mermaid\nA\n```\n~~~ECharts x\n{}\n~~~",

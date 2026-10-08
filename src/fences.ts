@@ -81,15 +81,20 @@ interface OpeningFence {
   indent: number;
 }
 
-/** Which diagram language, if any, a fence's language as {@link fenceMarker} reads it names. */
-type LanguageOf = (language: string) => DiagramLanguage | undefined;
+/** Which diagram language, if any, a fence names, given its marker as {@link fenceMarker} reads it. */
+type LanguageOf = (marker: FenceMarker) => DiagramLanguage | undefined;
 
-/** As in chat, where VS Code draws mermaid fences alone. */
-const chatLanguage: LanguageOf = (language) => (isDiagramLanguage(language) ? language : undefined);
+/** As in chat, where VS Code draws mermaid fences alone, and in CommonMark. */
+const chatLanguage: LanguageOf = ({ fence, language }) =>
+  isDiagramLanguage(language) && (language === "mermaid" || !fence.startsWith(":"))
+    ? language
+    : undefined;
 
 /**
  * How Markdown documents name languages: VS Code's preview draws a fence as Mermaid if its language
- * contains a word of the markdown-mermaid.languages setting, given here.
+ * contains a word of the markdown-mermaid.languages setting, given here, and draws a ::: mermaid
+ * container whatever the setting. It trims any whitespace, such as a no-break space, from the info
+ * string, and a container's first word ends at a space alone.
  */
 function documentLanguages(words: readonly string[]): {
   languageOf: LanguageOf;
@@ -101,7 +106,12 @@ function documentLanguages(words: readonly string[]): {
   const alternatives = escaped.length > 0 ? escaped : [""];
   const mermaid = new RegExp(`\\b(?:${alternatives.join("|")})\\b`, "i");
   return {
-    languageOf: (language) => {
+    languageOf: ({ fence, info }) => {
+      const trimmed = info.trim();
+      if (fence.startsWith(":")) {
+        return trimmed.split(" ", 1)[0]?.toLowerCase() === "mermaid" ? "mermaid" : undefined;
+      }
+      const language = trimmed.split(/\s/, 1)[0]?.toLowerCase();
       if (language === "echarts") return language;
       return language && mermaid.test(language) ? "mermaid" : undefined;
     },
@@ -117,12 +127,19 @@ export function setMermaidLanguages(words: readonly string[]): void {
   documentFences = new WeakMap();
 }
 
+/** A fence marker, the first word of its info string in lower case, and the info string. */
+interface FenceMarker {
+  fence: string;
+  language: string;
+  info: string;
+}
+
 /**
- * Parses a fence marker at the start of text, and the first word of its info string in lower case,
- * as VS Code's preview and GitHub compare it. The marker may also be ":::", which opens a block
- * only as a mermaid container.
+ * Parses a fence marker at the start of text, comparing languages in lower case as VS Code's
+ * preview and GitHub do. The marker may also be ":::", which opens a block only as a mermaid
+ * container.
  */
-export function fenceMarker(text: string): { fence: string; language: string } | undefined {
+export function fenceMarker(text: string): FenceMarker | undefined {
   // Unicode line separators are not line endings in Markdown, so "." must match them.
   const match = /^(`{3,}|~{3,}|:{3,})(.*)$/s.exec(text);
   if (!match) {
@@ -133,9 +150,9 @@ export function fenceMarker(text: string): { fence: string; language: string } |
   if (fence.startsWith("`") && info.includes("`")) {
     return undefined;
   }
-  // The info string is trimmed of spaces and tabs only: a no-break space before a word leaves no
-  // language. The word ends at any whitespace.
-  return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1]?.toLowerCase() ?? "" };
+  // As CommonMark has it, the info string is trimmed of spaces and tabs only: a no-break space
+  // before a word leaves no language. The word ends at any whitespace.
+  return { fence, language: /^[ \t]*(\S*)/.exec(info)?.[1]?.toLowerCase() ?? "", info };
 }
 
 /** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
@@ -149,13 +166,12 @@ function opening(
   if (!marker) {
     return undefined;
   }
-  const { fence, language } = marker;
-  if (fence.startsWith(":")) {
-    // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram,
-    // whatever the setting, and other containers as text.
-    return language === "mermaid" ? { fence, language, indent } : undefined;
-  }
-  return { fence, language: languageOf(language), indent };
+  const language = languageOf(marker);
+  // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram, and other
+  // containers as text.
+  return language || !marker.fence.startsWith(":")
+    ? { fence: marker.fence, language, indent }
+    : undefined;
 }
 
 /** Whether the text at `start` closes a block: the fence's character, as many or more, then spaces. */

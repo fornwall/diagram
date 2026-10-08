@@ -225,6 +225,7 @@ suite("blocks", () => {
       },
       // Indentation is spaces and tabs only.
       { markdown: "\u00a0```mermaid\nA\n```\n", shown: "\u00a0```mermaid\nA\n```\n" },
+      { markdown: "```\u00a0mermaid\nA\n```\n", shown: "```\u00a0mermaid\nA\n```\n" },
       // A diagram fence inside another code block is just code.
       {
         markdown: "````md\n```mermaid\nA\n```\n````\n",
