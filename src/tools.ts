@@ -200,9 +200,27 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
       );
     }
     const room = options.tokenizationOptions;
-    const fits = !room || (await room.countTokens(full, token)) <= room.tokenBudget;
-    return textResult(fits ? full : summary);
+    return textResult(!room || (await fits(full, room, token)) ? full : summary);
   }
+}
+
+/**
+ * A token rarely stands for more than 10 characters, and typically for 3 or 4. Text longer than
+ * this many characters for each token of the budget does not fit, without counting its tokens,
+ * which takes long for megabytes of it.
+ */
+const MAX_CHARS_PER_TOKEN = 10;
+
+/** Whether the text fits the token budget, counted only when its length does not tell. */
+async function fits(
+  text: string,
+  { tokenBudget, countTokens }: vscode.LanguageModelToolTokenizationOptions,
+  token: vscode.CancellationToken,
+): Promise<boolean> {
+  // A token takes at least a byte of UTF-8, which takes at most 3 for each UTF-16 code unit.
+  if (text.length * 3 <= tokenBudget) return true;
+  if (text.length > tokenBudget * MAX_CHARS_PER_TOKEN) return false;
+  return (await countTokens(text, token)) <= tokenBudget;
 }
 
 /** The longest side of an image for a model: labels stay readable, at about 1,000 tokens. */
