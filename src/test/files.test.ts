@@ -8,6 +8,7 @@ import {
   contains,
   fileError,
   inWorkspace,
+  linkTarget,
   openDocument,
   pathOutside,
   resolveFile,
@@ -221,6 +222,35 @@ suite("files", () => {
     afterTest(() => fs.rmSync(link));
     assert.strictEqual(fs.readFileSync(link, "utf8"), "a\n1\n");
     assert.ok(!inWorkspace(vscode.Uri.joinPath(root.uri, "diagram-files-bytes")));
+    assert.strictEqual(
+      pathOutside(vscode.Uri.joinPath(root.uri, "diagram-files-bytes")),
+      undefined,
+    );
+  });
+
+  test("continues from a link's target by the path rules of Windows and of other systems", () => {
+    const win = (target: string) => linkTarget(target, "C:\\ws\\dir", path.win32);
+    // Symbolic links and junctions to a drive, a share or the long-path namespace.
+    assert.deepStrictEqual(win("D:\\data\\x.csv"), { start: "D:\\data\\x.csv", names: [] });
+    assert.deepStrictEqual(win("\\\\server\\share\\data\\"), {
+      start: "\\\\server\\share\\data",
+      names: [],
+    });
+    assert.deepStrictEqual(win("\\\\?\\C:\\data"), { start: "\\\\?\\C:\\data", names: [] });
+    // On the drive of the link.
+    assert.deepStrictEqual(win("\\data/x"), { start: "C:\\data\\x", names: [] });
+    assert.deepStrictEqual(win("..\\..\\data"), { names: ["..", "..", "data"] });
+    // With ".." after a name, taken by its text, as Windows may do.
+    assert.deepStrictEqual(win("C:\\data\\..\\x"), { path: "C:\\x" });
+    assert.deepStrictEqual(win("a\\..\\..\\data"), { path: "C:\\ws\\data" });
+    assert.deepStrictEqual(win("..\\a\\..\\b"), { path: "C:\\ws\\b" });
+    assert.deepStrictEqual(win("E:\\a\\..\\b"), { path: "E:\\b" });
+    // Relative to the current folder of drive D, which is not known.
+    assert.strictEqual(win("D:data"), undefined);
+    const posix = (target: string) => linkTarget(target, "/ws/dir", path.posix);
+    assert.deepStrictEqual(posix("/data/../x"), { start: "/data", names: ["..", "x"] });
+    assert.deepStrictEqual(posix("a/../b"), { names: ["a", "..", "b"] });
+    assert.deepStrictEqual(posix("a\\b"), { names: ["a\\b"] });
   });
 
   test("refuses a link that it cannot follow where the system can", function () {

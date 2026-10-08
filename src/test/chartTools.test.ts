@@ -220,6 +220,23 @@ suite("chartTools", function () {
     assert.strictEqual(panel.current?.chart?.file, target);
   });
 
+  test("asks the user for another way to a file whose link names no path", async function () {
+    if (process.platform !== "linux") this.skip();
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const link = path.join(root.uri.fsPath, "diagram-bytes-link.csv");
+    fs.symlinkSync(Buffer.from("/tmp/diagram-\xff.csv", "latin1"), link);
+    afterTest(() => fs.rmSync(link));
+    const { panel } = await harness();
+    assert.strictEqual(
+      await invokeTool(new InspectDataTool(panel), { file: path.basename(link) }),
+      "Data could not be inspected: The file diagram-bytes-link.csv leads out of the workspace " +
+        "through a symbolic link whose target cannot be named, such as one that is not UTF-8, so " +
+        "it was not read without asking the user. Ask the user to copy the file into the " +
+        "workspace, or to give its data another way.",
+    );
+  });
+
   test("updates retain manual styling and loaded command data", async () => {
     const { panel, webview } = await harness();
     const source = await draw(panel, { type: "bar", command: "this-command-must-never-run" });

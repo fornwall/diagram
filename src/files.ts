@@ -172,8 +172,42 @@ export async function staysInside(file: string, roots: readonly LocalRoot[]): Pr
  */
 export type LocalRoot = readonly [file: string, real: string | Error];
 
-/** What separates names in a path on this system. */
-const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
+/** The names in a path, without "." and empty ones, by the rules `p` of its system. */
+function names(file: string, p: path.PlatformPath = path): string[] {
+  return file.split(p.sep === "/" ? "/" : /[\\/]/).filter((name) => name && name !== ".");
+}
+
+/**
+ * How a symbolic link's `target` continues from `dir`, the real folder the link is in, by the path
+ * rules `p` of its system: the folder by its path that an absolute target starts in, if any, and
+ * the names to follow from there or from `dir`. A target that Windows may take by its text is
+ * named by the path it leads to by its text instead, and one that is relative to the current folder
+ * of a drive, which is not known, is undefined.
+ */
+export function linkTarget(
+  target: string,
+  dir: string,
+  p: path.PlatformPath = path,
+): { start?: string; names: string[] } | { path: string } | undefined {
+  let { root } = p.parse(target);
+  const parts = names(target.slice(root.length), p);
+  if (p.sep === "\\") {
+    // "C:data" is relative to the current folder of drive C.
+    if (/^[a-z]:$/i.test(root)) return undefined;
+    // "\data" is on the drive or share of the link.
+    if (root === "\\" || root === "/") root = p.parse(dir).root;
+    // Windows may take ".." after a name by its text, not from where that name leads.
+    const name = parts.findIndex((part) => part !== "..");
+    if (name !== -1 && parts.lastIndexOf("..") > name) {
+      return { path: root ? p.join(root, ...parts) : p.join(dir, ...parts) };
+    }
+  }
+  if (!root) return { names: parts };
+  // An absolute target starts in the folder that its names before any ".." are in.
+  const up = parts.indexOf("..");
+  const start = up === -1 ? parts.length : up;
+  return { start: p.join(root, ...parts.slice(0, start)), names: parts.slice(start) };
+}
 
 /**
  * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
@@ -195,7 +229,6 @@ function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
 ): Generator<string, boolean | string, Buffer | undefined> {
-  const names = (file: string) => file.split(SEPARATORS).filter((name) => name && name !== ".");
   const inside = (file: string) =>
     roots.some(
       ([, real]) =>
@@ -237,22 +270,15 @@ function* linksInside(
         code: "ELOOP",
       });
     }
-    const target = link.toString();
+    const text = link.toString();
     // A string names no target that is not UTF-8, as the file system takes it in UTF-8.
-    if (!Buffer.from(target).equals(link)) return false;
-    const { root } = path.parse(target);
-    const parts = names(target.slice(root.length));
-    const up = parts.indexOf("..");
-    // Windows may take ".." after a name in a target by its text, not from where that name leads.
-    if (process.platform === "win32" && up > 0) return false;
-    if (root) {
-      // An absolute target starts in the folder that its names before any ".." are in.
-      const start = up === -1 ? parts.length : up;
-      rest = [...parts.slice(start), ...rest];
-      const target = path.join(root, ...parts.slice(0, start));
-      if (!enter(target)) return [target, ...rest].join(path.sep);
-    } else {
-      rest = [...parts, ...rest];
+    if (!Buffer.from(text).equals(link)) return false;
+    const target = linkTarget(text, dir);
+    if (!target) return false;
+    if ("path" in target) return [target.path, ...rest].join(path.sep);
+    rest = [...target.names, ...rest];
+    if (target.start !== undefined && !enter(target.start)) {
+      return [target.start, ...rest].join(path.sep);
     }
   }
   return inside(dir) || dir;

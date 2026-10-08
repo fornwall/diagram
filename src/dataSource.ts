@@ -96,14 +96,26 @@ function toolAsks(uri: vscode.Uri): boolean {
  * For a tool invoked with `spec`, what {@link loadTable} takes if its data file was let through
  * without asking, so that it is read only while it is inside the workspace, links followed.
  */
-export function toolUnasked({ file }: ChartSpec): { retry: string } | undefined {
+export function toolUnasked({ file }: ChartSpec): Unasked | undefined {
   try {
     if (file === undefined || toolAsks(resolveFile(file))) return undefined;
   } catch {
     // Reported when loading.
     return undefined;
   }
-  return { retry: "Call the tool again with the path that it leads to, which asks the user." };
+  return {
+    retry: "Call the tool again with the path that it leads to, which asks the user.",
+    unnamed: "Ask the user to copy the file into the workspace, or to give its data another way.",
+  };
+}
+
+/**
+ * How to be asked about a data file that was let through without asking but leads out of the
+ * workspace: by `retry`, or by `unnamed` if given when the path that it leads to cannot be named.
+ */
+export interface Unasked {
+  retry: string;
+  unnamed?: string;
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -160,13 +172,16 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
  * Reads a data file. One that the user was not asked about is read only while it is inside the
  * workspace, checked right before, else `retry` follows the error to tell how to be asked.
  */
-export async function readDataFile(file: string, unasked?: { retry: string }): Promise<string> {
+export async function readDataFile(file: string, unasked?: Unasked): Promise<string> {
   const uri = resolveFile(file);
   if (unasked && readAsks(uri)) {
     const outside = pathOutside(uri);
     throw new Error(
-      `The file ${fileName(uri)} leads out of the workspace${outside === undefined ? "" : `, to ${outside}`}, ` +
-        `so it was not read without asking the user. ${unasked.retry}`,
+      `The file ${fileName(uri)} leads out of the workspace` +
+        (outside === undefined
+          ? " through a symbolic link whose target cannot be named, such as one that is not UTF-8, " +
+            `so it was not read without asking the user. ${unasked.unnamed ?? unasked.retry}`
+          : `, to ${outside}, so it was not read without asking the user. ${unasked.retry}`),
     );
   }
   const checkSize = (size: number): void => {
@@ -381,7 +396,7 @@ export async function runCommand(
 export async function loadTable(
   spec: ChartSpec,
   token: vscode.CancellationToken,
-  unasked?: { retry: string },
+  unasked?: Unasked,
 ): Promise<{ table: DataTable; warning?: string }> {
   throwIfCancelled(token);
   let text: string;
