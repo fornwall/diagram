@@ -305,6 +305,10 @@ suite("charts", () => {
     assert.strictEqual(option.yAxis.name, "lines");
     assert.deepStrictEqual(option.series[0].type, "scatter");
     assert.deepStrictEqual(option.series[0].data[0], { name: "ts", value: [10, 1200] });
+    // The tooltip names both values, which a template would show ungrouped, as "10,1200".
+    assert.strictEqual(option.tooltip, undefined);
+    assert.deepStrictEqual(option.series[0].dimensions, ["files", "lines"]);
+    assert.deepStrictEqual(option.series[0].encode, { x: 0, y: 1, tooltip: [0, 1] });
     assert.strictEqual(summary(chart("scatter")), 'Charted "lines" against "files" by "language".');
   });
 

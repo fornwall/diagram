@@ -228,7 +228,6 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
   }
   const labeled = columns.labels.length > 0;
   return {
-    tooltip: { formatter: labeled ? "{b}: ({c})" : "({c})" },
     xAxis: axis(xName),
     yAxis: axis(yName),
     series: [
@@ -236,6 +235,10 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
         type: "scatter",
         name: yName,
         ...(rows.length >= LARGE_POINTS ? { large: true } : {}),
+        // The tooltip shows the y alone unless told to show both, each named when the names
+        // differ, and grouped by thousands, as a template's "{c}" would not.
+        ...(xName === yName ? {} : { dimensions: [xName, yName] }),
+        encode: { x: 0, y: 1, tooltip: [0, 1] },
         data: rows.map((row) => (labeled ? { name: label(row), value: row.values } : row.values)),
       },
     ],

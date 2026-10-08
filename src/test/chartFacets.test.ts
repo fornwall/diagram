@@ -474,7 +474,7 @@ suite("chartFacets", () => {
     const tooltip = (spec: Partial<ChartSpec>) => layout(build(data, spec), { width: 600 }).tooltip;
     assert.deepStrictEqual(tooltip({}).axisPointer, { type: "shadow" });
     assert.strictEqual(tooltip({ type: "line" }).trigger, "axis");
-    assert.strictEqual(tooltip({ type: "histogram" }).formatter, "{b}<br/>{a}: {c}");
+    assert.strictEqual(tooltip({ type: "histogram" }).trigger, "item");
   });
 
   test("validates facet types, names and group count instead of dropping groups", () => {

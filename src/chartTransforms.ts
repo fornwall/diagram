@@ -249,7 +249,8 @@ export function buildHistogram(
   const skipped = table.rows.length - count;
   return {
     option: {
-      tooltip: { trigger: "item", formatter: "{b}<br/>{a}: {c}" },
+      // The bin rather than an axis crosshair, which the webview gives bars.
+      tooltip: { trigger: "item" },
       xAxis: {
         type: "category",
         name,
