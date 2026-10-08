@@ -320,6 +320,10 @@ suite("images in the webview", function () {
       ),
       { htmlLabels: 0, text: "ExportedlabelOtherlabel" },
     );
+    assert.deepStrictEqual(
+      await exported("swimlane-beta LR\n  subgraph Lane\n    a[Start]\n  end"),
+      { htmlLabels: 0, text: "LaneStart" },
+    );
     // User journeys draw task names as HTML with a text fallback.
     const journey = (await exported("journey\n  section Work\n    Brew tea: 5: Me")) as {
       htmlLabels: number;

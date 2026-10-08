@@ -500,6 +500,8 @@ export class MermaidRenderer implements Renderer {
         : {
             ...this.config(),
             htmlLabels: false,
+            // Swimlane titles still follow this deprecated setting alone.
+            flowchart: { htmlLabels: false },
             // SVG text would show the tags of HTML in labels, such as <b> and <a>: keep only their
             // text and the line breaks that Mermaid splits SVG text at.
             dompurifyConfig: { ALLOWED_TAGS: ["br"] },
