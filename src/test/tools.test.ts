@@ -286,8 +286,14 @@ suite("tools", () => {
           `${image.mimeType}: ${Buffer.from(image.data)}`,
       ]),
       [
-        ["Revision 1 of the chart, laid out for the panel's size:", "image/png: png 1"],
-        ["Revision 1 of the chart, laid out for the panel's size:", "image/png: png 0"],
+        [
+          "Revision 1 of the chart, laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden:",
+          "image/png: png 1",
+        ],
+        [
+          "Revision 1 of the chart, laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden:",
+          "image/png: png 0",
+        ],
       ],
     );
   });

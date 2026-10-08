@@ -218,9 +218,12 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<Record<stri
     if (typeof image === "string") {
       return textResult(`There is no image to view. ${image}`);
     }
-    // A chart fits the panel, and so is laid out for its size; a Mermaid image is the whole
-    // diagram, whatever the panel's zoom.
-    const where = current.language === "echarts" ? "laid out for the panel's size" : "as drawn";
+    // A chart fits the panel, and so is laid out for its size, which a panel hidden behind another
+    // tab has none of; a Mermaid image is the whole diagram, whatever the panel's zoom.
+    const where =
+      current.language === "echarts"
+        ? "laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden"
+        : "as drawn";
     return new vscode.LanguageModelToolResult([
       new vscode.LanguageModelTextPart(
         `Revision ${revision} of the ${diagramNoun(current.language)}, ${where}:`,
