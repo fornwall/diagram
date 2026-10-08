@@ -173,18 +173,43 @@ function showError(renderer: Renderer, message: string): void {
   errorElement.hidden = false;
 }
 
-async function render(message: Extract<ToWebview, { type: "render" }>): Promise<void> {
+type RenderMessage = Extract<ToWebview, { type: "render" }>;
+
+/** Sets up what clicks and the header's actions do for the diagram, or for none. */
+function showActions({
+  clickPrompt: prompt,
+  links: linked,
+  refreshFrom,
+  writeTo,
+}: Partial<RenderMessage>): void {
+  clickPrompt = prompt;
+  links = new Map(Object.entries(linked ?? {}));
+  canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
+  showRefresh(refreshFrom);
+  writeToButton.hidden = writeTo === undefined;
+  if (writeTo !== undefined) {
+    writeToButton.textContent = `Write to ${writeTo}`;
+    writeToButton.title = `Write the diagram as shown into the code block in ${writeTo}`;
+  }
+}
+
+async function render(message: RenderMessage): Promise<void> {
   forgetDragImage();
   const { language, source, requestId } = message;
+  titleElement.textContent = message.title;
   let renderer: Renderer;
   try {
     renderer = await loadRenderer(language);
   } catch (error) {
     // Nothing is drawn, and there is no source to fix: the extension reports the panel unavailable.
+    // Nor is there a diagram for the views, the source editor and the actions to act on.
     active?.hide();
     active = undefined;
+    current = undefined;
+    renderedIdentity = undefined;
+    showActions({});
+    editor.diagramGone();
     const text = errorMessage(error);
-    titleElement.textContent = message.title;
     emptyElement.hidden = true;
     errorElement.textContent = text;
     errorElement.hidden = false;
@@ -192,16 +217,7 @@ async function render(message: Extract<ToWebview, { type: "render" }>): Promise<
     diagramReplaced();
     return;
   }
-  titleElement.textContent = message.title;
-  clickPrompt = message.clickPrompt;
-  links = new Map(Object.entries(message.links ?? {}));
-  canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
-  showRefresh(message.refreshFrom);
-  writeToButton.hidden = message.writeTo === undefined;
-  if (message.writeTo !== undefined) {
-    writeToButton.textContent = `Write to ${message.writeTo}`;
-    writeToButton.title = `Write the diagram as shown into the code block in ${message.writeTo}`;
-  }
+  showActions(message);
   current = { language, renderer, requestId };
   // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
   const identity = JSON.stringify([language, message.title, message.writeTo]);

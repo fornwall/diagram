@@ -127,6 +127,13 @@ export class SourceEditor {
     }
   }
 
+  /** Shows the drawing alone, as before the first diagram, keeping unapplied edits for the next. */
+  diagramGone(): void {
+    this.diagram = undefined;
+    this.elements.staleNote.hidden = true;
+    this.setView(this.view);
+  }
+
   /** Changes views without discarding unapplied edits. */
   setView(mode: ViewMode): void {
     this.view = mode;

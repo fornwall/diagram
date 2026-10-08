@@ -798,6 +798,28 @@ suite("webview renderer loading", function () {
       "tool",
     );
     assert.ok(chart.ok, chart.ok ? undefined : chart.error);
+    // Nor do the actions, views and source of the chart stay for the diagram that did not load.
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const render = (requestId, language, source) => {
+          receive({type: "render", requestId, language, source, title: "Shown",
+            clickPrompt: "Explain {label}", refreshFrom: "file pie.csv", writeTo: "notes.md"});
+          return until(() => window.testRenderResults.includes(requestId), "render " + requestId);
+        };
+        const shown = () => ["views", "refresh", "write-to", "editor"]
+          .filter(id => document.getElementById(id).checkVisibility())
+          .concat(document.getElementById("canvas").classList.contains("click-to-ask") ? ["click-to-ask"] : []);
+        document.getElementById("view-split").click();
+        await render(900010, "echarts", '{"series": [{"type": "pie", "data": [2]}]}');
+        const chart = shown();
+        await render(900011, "mermaid", "flowchart LR\\n A --> B");
+        const failed = shown();
+        document.getElementById("view-visual").click();
+        return {chart, failed};
+      })()`),
+      { chart: ["views", "refresh", "write-to", "editor", "click-to-ask"], failed: [] },
+    );
     const again = await panel.render(flowchart, "tool");
     assert.ok(!again.ok && again.kind === "unavailable");
   });
