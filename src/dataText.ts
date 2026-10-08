@@ -328,14 +328,11 @@ const TABLE_SIZE =
   /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \([\d_]+, [\d_]+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
 
 /** What DuckDB ("·"), Polars ("…") and pandas ("...") print for the rows or columns they left out. */
-const ELISION = /^(?:[·…]|\.{2,})$/;
+const ELISION_MARK = String.raw`(?:[·…]|\.{2,})`;
+const ELISION = new RegExp(`^${ELISION_MARK}$`);
 
 /** A line that stands for the rows that the output left out of a long table, in each column. */
-const ELIDED_ROWS = /^[\s|│┆]*(?:(?:[·…]|\.{2,})(?:[\s|│┆]+|$))+$/;
-
-function isElision(line: string): boolean {
-  return ELIDED_ROWS.test(line);
-}
+const ELIDED_ROWS = new RegExp(String.raw`^[\s|│┆]*(?:${ELISION_MARK}(?:[\s|│┆]+|$))+$`);
 
 /**
  * The columns that stand for those the output left out of a wide table: under a mark in the
@@ -787,9 +784,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
     }
   }
-  const elidedRows = all.some(isElision);
+  const elidedRows = all.some((line) => ELIDED_ROWS.test(line));
   // Left as empty lines, which are skipped, as errors count lines.
-  const shown = elidedRows ? all.map((line) => (isElision(line) ? "" : line)) : all;
+  const shown = elidedRows ? all.map((line) => (ELIDED_ROWS.test(line) ? "" : line)) : all;
   const table = splitShown(elidedRows ? shown.join("\n") : text, shown, format);
   const elided = elidedColumns(table.records);
   if (!elidedRows && elided.size === 0) {
