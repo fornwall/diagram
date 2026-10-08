@@ -920,7 +920,7 @@
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "markdownDescription": "Show an **Open in Diagram** action above every `mermaid` and `echarts` code block in a Markdown file, which opens the diagram in the panel. The **Diagram: Open Diagram at Cursor** command opens one without it."
+          "markdownDescription": "Show an **Open in Diagram** action above every `mermaid` and `echarts` code block and `::: mermaid` container in a Markdown file, which opens the diagram in the panel. The **Diagram: Open Diagram at Cursor** command opens one without it."
         }
       }
     }
