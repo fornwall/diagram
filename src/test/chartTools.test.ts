@@ -153,7 +153,7 @@ suite("chartTools", function () {
     assert.ok(!tool.prepareInvocation({ input: linked }).confirmationMessages);
     assert.strictEqual(
       await invokeTool(tool, linked),
-      `Data could not be inspected: The file diagram-inspect-link.csv now leads out of the workspace, to ${file}, ` +
+      `Data could not be inspected: The file diagram-inspect-link.csv leads out of the workspace, to ${file}, ` +
         "so it was not read without asking the user. Call the tool again with the path that it leads to, which asks the user.",
     );
     assert.ok(!tool.prepareInvocation({ input: { file: "sizes.tsv" } }).confirmationMessages);
@@ -185,10 +185,39 @@ suite("chartTools", function () {
     await webview.receive({ type: "refresh" });
     fs.rmSync(link);
     fs.symlinkSync(file, link);
-    assert.match(await invokeTool(tool, input), /now leads out of the workspace, to /);
+    assert.match(await invokeTool(tool, input), /leads out of the workspace, to /);
     // The path it leads to is asked about, and then read.
     assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
     assert.match(await invokeTool(tool, { file }), /"rowCount":3/);
+  });
+
+  test("both data tools name where a file in a linked folder leads, which a new call asks about", async () => {
+    const folder = tempDir("diagram-linked-");
+    fs.writeFileSync(path.join(folder, "data.csv"), data);
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const link = path.join(root.uri.fsPath, "diagram-linked-folder");
+    fs.symlinkSync(folder, link);
+    afterTest(() => fs.rmSync(link));
+    const { panel } = await harness();
+    const target = path.join(folder, "data.csv");
+    const file = "diagram-linked-folder/data.csv";
+    for (const [tool, input] of [
+      [new InspectDataTool(panel), { file }],
+      [new ChartTool(panel), { type: "bar", file }],
+    ] as const) {
+      assert.ok(!tool.prepareInvocation({ input: input as never }).confirmationMessages);
+      assert.match(
+        await invokeTool(tool, input),
+        new RegExp(
+          `The file diagram-linked-folder/data.csv leads out of the workspace, to ${RegExp.escape(target)}, .* Call the tool again with the path that it leads to`,
+        ),
+      );
+      const retry = { ...input, file: target };
+      assert.ok(tool.prepareInvocation({ input: retry as never }).confirmationMessages);
+      assert.doesNotMatch(await invokeTool(tool, retry), /could not|not rendered|leads out/i);
+    }
+    assert.strictEqual(panel.current?.chart?.file, target);
   });
 
   test("updates retain manual styling and loaded command data", async () => {

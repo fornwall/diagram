@@ -909,7 +909,7 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.source, PIE);
     assert.ok(!paths.includes(outside), "the file outside was touched");
     assert.deepStrictEqual(errors, [
-      "Could not refresh the chart: The file diagram-refresh-link.tsv now leads out of the " +
+      "Could not refresh the chart: The file diagram-refresh-link.tsv leads out of the " +
         `workspace, to ${outside}, so it was not read without asking the user. Try again to be asked.`,
     ]);
   });

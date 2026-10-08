@@ -102,29 +102,8 @@ export function inWorkspace(
 ): boolean {
   if (!roots.some((root) => nearRoot(root.uri, uri))) return false;
   if (uri.scheme === "file") {
-    const local = roots
-      .filter(({ uri }) => uri.scheme === "file")
-      .map(({ uri }): LocalRoot => {
-        const file = path.resolve(uri.fsPath);
-        try {
-          return [file, realpathSync.native(file)];
-        } catch (error) {
-          return [file, error as Error];
-        }
-      });
     try {
-      const steps = linksInside(uri.fsPath, local);
-      let step = steps.next();
-      while (!step.done) {
-        let target: Buffer | undefined;
-        try {
-          target = readlinkSync(step.value, "buffer");
-        } catch (error) {
-          target = noLink(error);
-        }
-        step = steps.next(target);
-      }
-      return step.value;
+      return followLinks(uri.fsPath, roots) === true;
     } catch (error) {
       // Other errors, as for a real path too long to name, need not stop the system.
       const code = (error as NodeJS.ErrnoException).code;
@@ -134,12 +113,55 @@ export function inWorkspace(
   return roots.some((root) => contains(root.uri, uri));
 }
 
+/**
+ * The path by which `uri`, inside a workspace folder by its path, leads out of the folders through
+ * symbolic links, as {@link linksInside} tells, if it does and that path is known.
+ */
+export function pathOutside(
+  uri: vscode.Uri,
+  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): string | undefined {
+  if (uri.scheme !== "file" || !roots.some((root) => nearRoot(root.uri, uri))) return undefined;
+  try {
+    const followed = followLinks(uri.fsPath, roots);
+    return typeof followed === "string" ? followed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** {@link linksInside} for a local `file`, reading each link as it goes. */
+function followLinks(file: string, roots: readonly vscode.WorkspaceFolder[]): boolean | string {
+  const local = roots
+    .filter(({ uri }) => uri.scheme === "file")
+    .map(({ uri }): LocalRoot => {
+      const file = path.resolve(uri.fsPath);
+      try {
+        return [file, realpathSync.native(file)];
+      } catch (error) {
+        return [file, error as Error];
+      }
+    });
+  const steps = linksInside(file, local);
+  let step = steps.next();
+  while (!step.done) {
+    let target: Buffer | undefined;
+    try {
+      target = readlinkSync(step.value, "buffer");
+    } catch (error) {
+      target = noLink(error);
+    }
+    step = steps.next(target);
+  }
+  return step.value;
+}
+
 /** As {@link inWorkspace}, for a local `file` inside a workspace folder by its path. */
 export async function staysInside(file: string, roots: readonly LocalRoot[]): Promise<boolean> {
   const steps = linksInside(file, roots);
   let step = steps.next();
   while (!step.done) step = steps.next(await readlink(step.value, "buffer").catch(noLink));
-  return step.value;
+  return step.value === true;
 }
 
 /**
@@ -155,7 +177,8 @@ const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
 
 /**
  * Follows the symbolic links in `file`, a path inside a workspace folder, one name at a time from
- * the folder's real path, and returns whether it ends inside one. It yields each path to read as a
+ * the folder's real path, and returns true if it ends inside one, else the path by which it leads
+ * out, unresolved past the folders, when it is known. It yields each path to read as a
  * link, which is inside, and takes the link's target, or undefined for no link. A target outside
  * every folder by its path, as {@link nearRoot} tells, is never touched, as it could be on a network
  * share or an unreachable mount.
@@ -171,7 +194,7 @@ const SEPARATORS = path.sep === "/" ? "/" : /[\\/]/;
 function* linksInside(
   file: string,
   roots: readonly LocalRoot[],
-): Generator<string, boolean, Buffer | undefined> {
+): Generator<string, boolean | string, Buffer | undefined> {
   const names = (file: string) => file.split(SEPARATORS).filter((name) => name && name !== ".");
   const inside = (file: string) =>
     roots.some(
@@ -203,7 +226,7 @@ function* linksInside(
       continue;
     }
     const next = path.join(dir, name);
-    if (!inside(next)) return false;
+    if (!inside(next)) return [next, ...rest].join(path.sep);
     const link = yield next;
     if (link === undefined) {
       dir = next;
@@ -226,12 +249,13 @@ function* linksInside(
       // An absolute target starts in the folder that its names before any ".." are in.
       const start = up === -1 ? parts.length : up;
       rest = [...parts.slice(start), ...rest];
-      if (!enter(path.join(root, ...parts.slice(0, start)))) return false;
+      const target = path.join(root, ...parts.slice(0, start));
+      if (!enter(target)) return [target, ...rest].join(path.sep);
     } else {
       rest = [...parts, ...rest];
     }
   }
-  return inside(dir);
+  return inside(dir) || dir;
 }
 
 /** No target for a path that is no symbolic link, and rethrows other errors. */

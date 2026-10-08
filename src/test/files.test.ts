@@ -9,6 +9,7 @@ import {
   fileError,
   inWorkspace,
   openDocument,
+  pathOutside,
   resolveFile,
 } from "../files";
 import { afterTest, recordFilePaths, suiteTempDir } from "./afterTest";
@@ -98,6 +99,11 @@ suite("files", () => {
     assert.ok(inside("diagram-files-hop"));
     assert.ok(!inside("diagram-files-out/data.csv"));
     assert.ok(!inside("diagram-files-up/data.csv"));
+    // Where they lead out, without following the path further.
+    const outside = (file: string) => pathOutside(vscode.Uri.joinPath(root.uri, file));
+    assert.strictEqual(outside("diagram-files-out/data.csv"), path.join(far, "data.csv"));
+    assert.ok(outside("diagram-files-up/data.csv")?.endsWith(path.join("far-away", "data.csv")));
+    assert.strictEqual(outside("diagram-files-hop"), undefined);
     // As a missing file, as realpath would not resolve it either.
     assert.ok(inside("diagram-files-loop"));
     // Nor through the links, as realpath would. By name, as in the test of outside paths below.

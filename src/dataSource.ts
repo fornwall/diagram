@@ -15,6 +15,7 @@ import {
   fileName,
   inWorkspace,
   nearRoot,
+  pathOutside,
   resolveFile,
 } from "./files";
 
@@ -132,16 +133,6 @@ export function prepareDataInvocation(
   return prepared;
 }
 
-/** Where a file that is a link leads, e.g. ", to /tmp/data.csv", read without following it. */
-function linkTarget(uri: vscode.Uri): string {
-  try {
-    const target = fs.readlinkSync(uri.fsPath);
-    return `, to ${path.resolve(path.dirname(uri.fsPath), target)}`;
-  } catch {
-    return "";
-  }
-}
-
 /** Whether `bytes` have a character that UTF-8 encodes in more than one byte. */
 function hasMultiByteUtf8(bytes: Uint8Array): boolean {
   const within = (i: number, low: number, high: number) => {
@@ -172,9 +163,10 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
 export async function readDataFile(file: string, unasked?: { retry: string }): Promise<string> {
   const uri = resolveFile(file);
   if (unasked && readAsks(uri)) {
+    const outside = pathOutside(uri);
     throw new Error(
-      `The file ${fileName(uri)} now leads out of the workspace${linkTarget(uri)}, so it was not ` +
-        `read without asking the user. ${unasked.retry}`,
+      `The file ${fileName(uri)} leads out of the workspace${outside === undefined ? "" : `, to ${outside}`}, ` +
+        `so it was not read without asking the user. ${unasked.retry}`,
     );
   }
   const checkSize = (size: number): void => {
