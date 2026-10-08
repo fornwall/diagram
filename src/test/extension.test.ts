@@ -91,7 +91,7 @@ suite("extension", function () {
       });
     const warning =
       "Tree series 1 has 2 trees in its data, of which ECharts draws only the first: put them under one root node to draw them all.";
-    assert.ok((await tree("A", "B")).endsWith(` ${warning}`));
+    assert.ok((await tree("A", "B")).includes(` ${warning}\n\nRevision: `));
     assert.ok((await invoke("diagram_getState", {})).includes(`\n${warning}\n`));
     assert.doesNotMatch(await tree("A"), /Tree series/);
     assert.doesNotMatch(await invoke("diagram_getState", {}), /Tree series/);
@@ -212,7 +212,7 @@ suite("extension", function () {
     // The model learns how the data was read, as from diagram_chart.
     assert.match(
       changed,
-      /Charted "sales" by "region"; kept the first 2 of 3 rows\. Revision: \d+\.$/,
+      /Charted "sales" by "region"; kept the first 2 of 3 rows\.\n\nRevision: \d+\.$/,
     );
     const after = await invoke("diagram_getState", {});
     assert.match(after, /"type":"horizontalBar"/);

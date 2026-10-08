@@ -392,7 +392,7 @@ suite("chartTools", function () {
 
   test("diagram_chart blames its options for a chart that fails to render", async () => {
     const { panel } = await harness();
-    panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option" });
+    panel.render = async () => ({ ok: false, kind: "invalid", error: "Bad option", revision: 1 });
     const chart = (input: object) =>
       invokeTool(new ChartTool(panel), { type: "bar", data: "a,1\nb,2", ...input });
     assert.match(

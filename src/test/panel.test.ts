@@ -234,6 +234,7 @@ suite("panel", function () {
       ok: false,
       kind: "unavailable",
       error: "The diagram panel was closed before it finished rendering.",
+      revision: 1,
     });
     assert.deepStrictEqual(await picking, {
       picked: false,
@@ -251,6 +252,7 @@ suite("panel", function () {
       ok: false,
       kind: "unavailable",
       error: "The diagram was replaced before it finished rendering.",
+      revision: 1,
     });
     webview.sent.length = 0;
     await webview.receive({ type: "ready" });
@@ -362,6 +364,7 @@ suite("panel", function () {
       ok: false,
       kind: "unavailable",
       error: "The diagram was replaced before it finished rendering.",
+      revision: 1,
     });
     assert.strictEqual(panel.current?.error, undefined);
     await webview.finishRender();
@@ -410,7 +413,7 @@ suite("panel", function () {
       error: "The diagram panel is unavailable.",
     } as const;
     const renders = () => webview.sent.filter((message) => message.type === "render").length;
-    assert.deepStrictEqual(await panel.render(flowchart, "tool"), unavailable);
+    assert.deepStrictEqual(await panel.render(flowchart, "tool"), { ...unavailable, revision: 1 });
     assert.strictEqual(panel.current?.error, undefined);
 
     const picking = pick(panel);
@@ -1111,7 +1114,12 @@ suite("panel", function () {
     const rendering = panel.render(broken, "tool");
     const waiting = pick(panel);
     await webview.finishRender("Parse error");
-    assert.deepStrictEqual(await rendering, { ok: false, kind: "invalid", error: "Parse error" });
+    assert.deepStrictEqual(await rendering, {
+      ok: false,
+      kind: "invalid",
+      error: "Parse error",
+      revision: 1,
+    });
     for (const failed of [await waiting, await pick(panel)]) {
       assert.ok(!failed.picked && /fails to render/.test(failed.reason), JSON.stringify(failed));
     }
@@ -1198,6 +1206,7 @@ suite("panel", function () {
       kind: "unavailable",
       error:
         "The diagram panel did not respond within 15 seconds. It may still be drawing a large diagram. If it stays unresponsive, the diagram hangs it, and only restarting VS Code recovers it.",
+      revision: 1,
     });
     webview.answer = draw;
     assert.ok((await panel.render(flowchart, "tool")).ok);

@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { afterTest } from "./afterTest";
-import { newPanel, openWebviewPanel, recordChat, within } from "./newPanel";
+import { newPanel, openWebviewPanel, recordChat, within, withoutRevision } from "./newPanel";
 import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("webview", function () {
@@ -931,8 +931,8 @@ suite("JavaScript in chart options", function () {
   });
   suiteTeardown(() => panel.dispose());
 
-  const render = (source: string): Promise<RenderOutcome> =>
-    panel.render({ language: "echarts", source, title: "Test" }, "tool");
+  const render = async (source: string): Promise<RenderOutcome> =>
+    withoutRevision(await panel.render({ language: "echarts", source, title: "Test" }, "tool"));
   // Code in the option clicks Refresh, which sends the extension a message as if the user had.
   const forging =
     '{series: [{type: "pie", data: [1]}], title: {text: (document.getElementById("refresh").click(), "Forged")}}';

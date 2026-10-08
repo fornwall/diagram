@@ -5,7 +5,7 @@ import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { afterTest } from "./afterTest";
 import { builtOption, type Option, withChart } from "./echartsModel";
-import { newPanel } from "./newPanel";
+import { newPanel, withoutRevision } from "./newPanel";
 
 const LANGUAGES = parseTable(
   ["language,files,lines", "ts,10,1200", "css,3,300", "md,5,150", "json,2,80"].join("\n"),
@@ -1802,7 +1802,11 @@ suite("charts", () => {
       const source = JSON.stringify(option);
       const outcome = await panel.render({ language: "echarts", source, title: spec.type }, "tool");
       const types = new Set(option.series.map((series: Option) => series.type));
-      assert.deepStrictEqual(outcome, { ok: true, diagramType: [...types].join(", ") }, spec.type);
+      assert.deepStrictEqual(
+        withoutRevision(outcome),
+        { ok: true, diagramType: [...types].join(", ") },
+        spec.type,
+      );
     }
   });
 

@@ -152,19 +152,20 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool"), token);
     const noun = diagramNoun(diagram.language);
     if (outcome.ok) {
-      return textResult(
+      return drawnResult(
         `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
           this.panel.warnings.map((warning) => ` ${warning}`).join("") +
           leftOutLinks(problems) +
           linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds) +
           ignored,
+        outcome.revision,
       );
     }
     const fix =
       diagram.language === "echarts"
         ? "Fix the ECharts option (JSON, or a JavaScript object literal for callbacks such as renderItem)"
         : "Fix the Mermaid syntax";
-    return textResult(
+    return drawnResult(
       renderFailure(
         outcome,
         noun,
@@ -173,6 +174,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       ) +
         leftOutLinks(problems) +
         ignored,
+      outcome.revision,
     );
   }
 }
@@ -403,4 +405,21 @@ export function nonBlank(value: unknown): string | undefined {
 
 export function textResult(text: string): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
+}
+
+/**
+ * The result of a tool call that drew in the panel, also if the drawing failed, ending with the
+ * revision drawn: the model can pass it to diagram_updateChart, and @diagram tells by it the
+ * drawings of its own tool calls from those of other chat requests meanwhile.
+ */
+export function drawnResult(text: string, revision: number): vscode.LanguageModelToolResult {
+  return textResult(`${text}\n\nRevision: ${revision}.`);
+}
+
+/** The revision that a {@link drawnResult} says its tool call drew. */
+export function revisionDrawn(content: readonly unknown[]): number | undefined {
+  const [result] = content;
+  const match =
+    result instanceof vscode.LanguageModelTextPart && /\n\nRevision: (\d+)\.$/.exec(result.value);
+  return match ? Number(match[1]) : undefined;
 }

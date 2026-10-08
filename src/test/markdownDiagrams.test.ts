@@ -215,7 +215,7 @@ suite("markdownDiagrams", function () {
     const panel = newPanel();
     afterTest(() => panel.dispose());
     const reason = "The diagram panel did not respond within 15 seconds.";
-    panel.render = async () => ({ ok: false, kind: "unavailable", error: reason });
+    panel.render = async () => ({ ok: false, kind: "unavailable", error: reason, revision: 1 });
     // Registered under other names than the extension's own.
     const register = vscode.commands.registerCommand;
     replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>

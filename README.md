@@ -74,7 +74,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 
 Workspace tools stay inside the open workspace folders.
 
-`diagram_updateChart` keeps omitted settings; `null` clears one. With the revision from `diagram_getState`, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update and leave the chart as it is.
+`diagram_updateChart` keeps omitted settings; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update and leave the chart as it is.
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
 

@@ -753,7 +753,7 @@
             "revision": {
               "type": "integer",
               "minimum": 0,
-              "description": "Revision from diagram_getState; the update is refused if the chart has changed since."
+              "description": "Revision from diagram_getState or the result of the tool call that drew the chart; the update is refused if the chart has changed since."
             },
             "bins": {
               "anyOf": [

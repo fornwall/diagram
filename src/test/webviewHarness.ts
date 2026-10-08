@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
-import { newPanel, openWebviewPanel } from "./newPanel";
+import { newPanel, openWebviewPanel, withoutRevision } from "./newPanel";
 
 /** How long `evaluate` waits for an expression's answer. */
 const EVALUATE_TIMEOUT = 10_000;
@@ -176,8 +176,13 @@ export function suitePage(): Page {
     assert.ok(shared, "The page opens before the tests of the suite.");
     return shared;
   };
-  const render = (diagram: Partial<Diagram>) =>
-    page().panel.render({ language: "mermaid", source: "", title: "Test", ...diagram }, "tool");
+  const render = async (diagram: Partial<Diagram>): Promise<RenderOutcome> => {
+    const drawn = await page().panel.render(
+      { language: "mermaid", source: "", title: "Test", ...diagram },
+      "tool",
+    );
+    return withoutRevision(drawn);
+  };
   return {
     get panel() {
       return page().panel;

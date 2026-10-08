@@ -11,7 +11,7 @@ import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { DiagramPanel } from "./panel";
 import { CHART_TOOL, errorMessage, RENDER_TOOL, UPDATE_CHART_TOOL } from "./protocol";
 import { toolInput } from "./text";
-import { nonBlank, renderFailure, textResult } from "./tools";
+import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
 
@@ -72,14 +72,18 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       token,
     );
     if (outcome.ok) {
-      return textResult(
+      return drawnResult(
         `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
+        outcome.revision,
       );
     }
     const fix = spec.options
       ? `"options" is the likely cause: fix or leave it out and call ${CHART_TOOL} again.`
       : `Try another chart type, or write the ECharts option yourself and render it with ${RENDER_TOOL}.`;
-    return textResult(`${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${report}`);
+    return drawnResult(
+      `${renderFailure(outcome, "chart", CHART_TOOL, fix)}\n\n${report}`,
+      outcome.revision,
+    );
   }
 }
 
@@ -211,11 +215,13 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       const outcome = await this.panel.updateChart(options.input, token);
-      return textResult(
-        outcome.ok
-          ? `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""} Revision: ${this.panel.revision}.`
-          : `The chart was not updated: ${outcome.error}`,
-      );
+      // A failed update draws the kept chart again.
+      return outcome.ok
+        ? drawnResult(
+            `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""}`,
+            outcome.revision,
+          )
+        : textResult(`The chart was not updated: ${outcome.error}`);
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;
       return textResult(`The chart was not updated: ${errorMessage(error)}`);

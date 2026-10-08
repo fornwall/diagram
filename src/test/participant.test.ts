@@ -1,7 +1,9 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { ChartTool, UpdateChartTool } from "../chartTools";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
+import { drawnResult } from "../tools";
 import { afterTest, cancellationSource, replace } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
@@ -239,7 +241,7 @@ suite("participant", () => {
     const cancellation = cancellationSource();
     panel.render = async () => {
       cancellation.cancel();
-      return { ok: false, kind: "invalid", error: "Invalid diagram" };
+      return { ok: false, kind: "invalid", error: "Invalid diagram", revision: 1 };
     };
     const { result, shown, sent } = await ask([[text(invalid)], [text(valid)]], {
       token: cancellation.token,
@@ -253,7 +255,7 @@ suite("participant", () => {
     const cancellation = cancellationSource();
     const rendering = Promise.withResolvers<void>();
     const outcome = Promise.withResolvers<Awaited<ReturnType<DiagramPanel["render"]>>>();
-    afterTest(() => outcome.resolve({ ok: true, diagramType: "flowchart" }));
+    afterTest(() => outcome.resolve({ ok: true, diagramType: "flowchart", revision: 1 }));
     panel.render = () => {
       rendering.resolve();
       return outcome.promise;
@@ -435,8 +437,9 @@ suite("participant", () => {
         links: { Tool: { file: "src/tools.ts" } },
       } as const;
       replace(vscode.lm, "invokeTool", async () => {
-        assert.ok((await panel.render(toolDiagram, "tool")).ok);
-        return new vscode.LanguageModelToolResult([text("Rendered the diagram.")]);
+        const outcome = await panel.render(toolDiagram, "tool");
+        assert.ok(outcome.ok);
+        return drawnResult("Rendered the diagram.", outcome.revision);
       });
       const { result, shown } = await ask(
         [
@@ -494,15 +497,25 @@ suite("participant", () => {
   test("adopts a diagram that its own tool call drew, unless it was drawn over since", async () => {
     /** Draws as a tool does, for this request or, while the model replies, for another. */
     const draw = async (source: string) => {
-      assert.ok((await panel.render({ language: "mermaid", source, title: "A" }, "tool")).ok);
+      const outcome = await panel.render({ language: "mermaid", source, title: "A" }, "tool");
+      assert.ok(outcome.ok);
+      return outcome.revision;
+    };
+    const reply = (source: string) => async () => {
+      await draw(source);
       return [text("Done.")];
     };
-    const other = await ask([() => draw("flowchart TD\n  Other")]);
+    const other = await ask([reply("flowchart TD\n  Other")]);
     assert.strictEqual(other.result, undefined);
     assert.strictEqual(panel.current?.origin, "tool");
 
+    // The call draws its own diagram, after or before another request draws during it.
+    let otherFirst = true;
     replace(vscode.lm, "invokeTool", async () => {
-      return new vscode.LanguageModelToolResult(await draw("flowchart TD\n  Own"));
+      if (otherFirst) await draw("flowchart TD\n  Meanwhile");
+      const revision = await draw("flowchart TD\n  Own");
+      if (!otherFirst) await draw("flowchart TD\n  Meanwhile");
+      return drawnResult("Rendered.", revision);
     });
     const render = new vscode.LanguageModelToolCallPart("1", "diagram_render", {});
     const own = await ask([[render], [text("Done.")]]);
@@ -512,7 +525,14 @@ suite("participant", () => {
     });
     assert.strictEqual(panel.current?.origin, "participant");
 
-    const drawnOver = await ask([[render], () => draw("flowchart TD\n  Later")]);
+    otherFirst = false;
+    const drawnDuring = await ask([[render], [text("Done.")]]);
+    assert.strictEqual(drawnDuring.result, undefined);
+    assert.strictEqual(panel.current?.source, "flowchart TD\n  Meanwhile");
+    assert.strictEqual(panel.current?.origin, "tool");
+
+    otherFirst = true;
+    const drawnOver = await ask([[render], reply("flowchart TD\n  Later")]);
     assert.strictEqual(drawnOver.result, undefined);
     assert.strictEqual(panel.current?.source, "flowchart TD\n  Later");
     assert.strictEqual(panel.current?.origin, "tool");
@@ -730,10 +750,12 @@ suite("participant", () => {
     const source =
       '{ "xAxis": { "data": ["a", "b"] }, "yAxis": {}, "series": [{ "type": "bar", "data": [1, 2] }] }';
     replace(vscode.lm, "invokeTool", async () => {
-      assert.ok(
-        (await panel.render({ language: "echarts", source, title: "Chart", chart }, "tool")).ok,
+      const outcome = await panel.render(
+        { language: "echarts", source, title: "Chart", chart },
+        "tool",
       );
-      return new vscode.LanguageModelToolResult([text("Rendered")]);
+      assert.ok(outcome.ok);
+      return drawnResult("Rendered", outcome.revision);
     });
     const { result } = await ask([
       [new vscode.LanguageModelToolCallPart("1", "diagram_chart", chart)],
@@ -741,6 +763,40 @@ suite("participant", () => {
     ]);
     assert.deepStrictEqual(result?.metadata, { chart });
     assert.strictEqual(panel.current?.source, source);
+  });
+
+  test("does not adopt the chart that a failed update keeps", async () => {
+    const chart = { data: "name,value\na,1\nb,2", type: "bar" } as const;
+    const tools = new Map<string, vscode.LanguageModelTool<object>>([
+      ["diagram_chart", new ChartTool(panel)],
+      ["diagram_updateChart", new UpdateChartTool(panel)],
+    ]);
+    replace(vscode.lm, "invokeTool", async (name, options, token) => {
+      const result = await tools
+        .get(name)
+        ?.invoke(options, token ?? new vscode.CancellationTokenSource().token);
+      return result ?? assert.fail(`Unexpected tool ${name}`);
+    });
+    const invocation = { input: chart, toolInvocationToken: undefined };
+    await vscode.lm.invokeTool("diagram_chart", invocation);
+    assert.strictEqual(panel.current?.origin, "tool");
+    const revision = panel.revision;
+    // The page fails the updated chart, and then draws the kept one again.
+    const draw = webview.answer;
+    webview.answer = (message) => {
+      if (message.type !== "render") return draw?.(message);
+      webview.answer = draw;
+      return { type: "renderError", requestId: message.requestId, message: "Bad option" };
+    };
+    const update = new vscode.LanguageModelToolCallPart("1", "diagram_updateChart", {
+      type: "line",
+    });
+    const { result, sent } = await ask([[update], [text("It failed.")]]);
+    assert.match(messageText(sent[1]?.messages.at(-1)), /The chart was not updated: Bad option/);
+    assert.ok(panel.revision > revision + 1, "The kept chart is drawn again");
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(panel.current?.origin, "tool");
+    assert.strictEqual(panel.current?.chart?.type, "bar");
   });
 
   test("lists the workspace files that its tool calls read as references, once each", async () => {

@@ -53,6 +53,12 @@ export type RenderOutcome =
   | { ok: true; diagramType: string }
   | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
+/**
+ * A render's outcome and the revision it drew, which the panel shows until its next change, also
+ * when the render failed, and which tells it from a render for another request meanwhile.
+ */
+export type Drawn = RenderOutcome & { revision: number };
+
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 
 type AnnotateOutcome =
@@ -249,11 +255,7 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /** Opens and renders a diagram. */
-  async render(
-    diagram: Diagram,
-    origin: DiagramOrigin,
-    chartTable?: DataTable,
-  ): Promise<RenderOutcome> {
+  async render(diagram: Diagram, origin: DiagramOrigin, chartTable?: DataTable): Promise<Drawn> {
     // Keep document bindings across agent replacements; a later Apply requires confirmation.
     const previousBinding = this.state?.document;
     const document =
@@ -479,17 +481,21 @@ export class DiagramPanel implements vscode.Disposable {
    * requests. A redraw shows the diagram shown before, in the same revision; to a new page, it
    * shows a diagram that the page did not finish drawing as failing instead.
    */
-  private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<RenderOutcome> {
+  private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<Drawn> {
     const state = this.state;
     const tab = this.webview.tab;
     if (!state || !tab) {
-      return notShown("There is no diagram panel to render in.");
+      return {
+        ...notShown("There is no diagram panel to render in."),
+        revision: this.shownRevision,
+      };
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
     this.renderedRequestId = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
     if (!redraw) this.shownRevision++;
+    const revision = this.shownRevision;
     this.sendChartOptions();
     // What was drawn before says nothing about the rendering being drawn now.
     this.nodeIds = undefined;
@@ -508,7 +514,7 @@ export class DiagramPanel implements vscode.Disposable {
         : undefined;
     if (source === undefined) {
       this.post({ type: "needsRefresh", title, refreshFrom });
-      return notShown("The chart waits for the user to refresh it.");
+      return { ...notShown("The chart waits for the user to refresh it."), revision };
     }
 
     const message = {
@@ -536,7 +542,7 @@ export class DiagramPanel implements vscode.Disposable {
     // The diagram may have been replaced while rendering.
     if (version === this.renderVersion) saved = this.keepOutcome(result) ?? saved;
     await saved;
-    return version === this.renderVersion ? result : notShown(replaced);
+    return { ...(version === this.renderVersion ? result : notShown(replaced)), revision };
   }
 
   /**
@@ -864,7 +870,7 @@ export class DiagramPanel implements vscode.Disposable {
   async updateChart(
     input: ChartUpdateInput,
     token: vscode.CancellationToken,
-  ): Promise<RenderOutcome & { summary?: string }> {
+  ): Promise<Drawn & { summary?: string }> {
     throwIfCancelled(token);
     const state = this.state;
     if (!state?.chart) {
@@ -1121,7 +1127,7 @@ export class DiagramPanel implements vscode.Disposable {
     table: DataTable,
     pickReason: string,
     token?: vscode.CancellationToken,
-  ): Promise<RenderOutcome> {
+  ): Promise<Drawn> {
     const { state, chartTable, annotation } = this;
     const tab = this.webview.tab;
     this.state = next;
@@ -1133,7 +1139,7 @@ export class DiagramPanel implements vscode.Disposable {
     const cancellation = token?.onCancellationRequested(() => {
       if (this.renderVersion === version) this.cancelRender("The chart update was cancelled.");
     });
-    let outcome: RenderOutcome;
+    let outcome: Drawn;
     try {
       outcome = await this.renderCurrent();
     } finally {

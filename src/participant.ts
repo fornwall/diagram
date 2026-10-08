@@ -19,6 +19,7 @@ import {
   SEARCH_TEXT_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { revisionDrawn } from "./tools";
 import { resolveWorkspaceFile } from "./workspaceTools";
 
 export const PARTICIPANT_ID = "diagram.participant";
@@ -53,7 +54,7 @@ interface ToolBudget {
   calls: number;
   /** A decline or exhausted budget applies to every subsequent round and repair. */
   notRun?: string;
-  /** The panel's revision after the last of the request's tool calls that drew in it. */
+  /** The revision that the last of the request's tool calls that drew in the panel drew. */
   drawn?: number;
   /** The workspace files that the request's tool calls read, which chat lists as references. */
   read: Set<string>;
@@ -314,11 +315,10 @@ async function streamReply(
             toolInvocationToken: request.toolInvocationToken,
             tokenizationOptions,
           };
-          const revision = panel.revision;
           content = (await vscode.lm.invokeTool(call.name, invocation, token)).content;
-          if (DRAWING_TOOLS.has(call.name) && panel.revision !== revision) {
-            budget.drawn = panel.revision;
-          }
+          // Another chat request may draw in the panel meanwhile.
+          const drawn = DRAWING_TOOLS.has(call.name) ? revisionDrawn(content) : undefined;
+          if (drawn !== undefined) budget.drawn = drawn;
           const file = call.name === READ_FILE_TOOL ? fileRead(call.input, content) : undefined;
           if (file && !budget.read.has(file.toString())) {
             budget.read.add(file.toString());

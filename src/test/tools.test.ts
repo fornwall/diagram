@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { ChartTool } from "../chartTools";
-import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
+import type { DiagramPanel, DiagramState, Drawn } from "../panel";
 import type { FromWebview } from "../protocol";
 import {
   AnnotateDiagramTool,
@@ -49,7 +49,7 @@ suite("tools", () => {
     const rendered: string[] = [];
     panel.render = async (diagram) => {
       rendered.push(`${diagram.language}: ${diagram.source.trim()}`);
-      return { ok: true, diagramType: "test" };
+      return { ok: true, diagramType: "test", revision: 1 };
     };
     const tool = new RenderDiagramTool(panel);
     for (const source of ["```mermaid\nflowchart TD\n````", "  ~~~echarts\r\n{}\r\n~~~~  "]) {
@@ -66,7 +66,7 @@ suite("tools", () => {
     const rendered: string[] = [];
     panel.render = async (diagram) => {
       rendered.push(`${diagram.language} "${diagram.title}": ${diagram.source}`);
-      return { ok: true, diagramType: "test" };
+      return { ok: true, diagramType: "test", revision: 1 };
     };
     const tool = new RenderDiagramTool(panel);
     const option = { title: { text: "Sales" }, series: [] };
@@ -79,10 +79,10 @@ suite("tools", () => {
   });
 
   test("diagram_render reports links it left out, and a panel that could not show the diagram", async () => {
-    const outcomes: RenderOutcome[] = [
-      { ok: true, diagramType: "flowchart" },
-      { ok: false, kind: "invalid", error: "Parse error" },
-      { ok: false, kind: "unavailable", error: "The diagram panel is unavailable." },
+    const outcomes: Drawn[] = [
+      { ok: true, diagramType: "flowchart", revision: 1 },
+      { ok: false, kind: "invalid", error: "Parse error", revision: 1 },
+      { ok: false, kind: "unavailable", error: "The diagram panel is unavailable.", revision: 1 },
     ];
     const linked: unknown[] = [];
     panel.render = async ({ links }) => {
@@ -99,7 +99,10 @@ suite("tools", () => {
     const drawn = await render();
     assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel next to the chat\./);
     assert.ok(drawn.includes(leftOut), drawn);
-    assert.match(drawn, /Call diagram_render again with the links corrected to add them\.$/);
+    assert.match(
+      drawn,
+      /Call diagram_render again with the links corrected to add them\.\n\nRevision: 1\.$/,
+    );
     assert.deepStrictEqual(linked, [{ A: { file: "sizes.tsv", line: 1 } }]);
     const invalid = await render();
     assert.match(
@@ -117,7 +120,7 @@ suite("tools", () => {
     const rendered: (string | undefined)[] = [];
     panel.render = async (diagram) => {
       rendered.push(diagram.clickPrompt);
-      return { ok: true, diagramType: "flowchart" };
+      return { ok: true, diagramType: "flowchart", revision: 1 };
     };
     const result = await invokeTool(new RenderDiagramTool(panel), {
       source: "flowchart LR\n  A --> B",
@@ -127,19 +130,19 @@ suite("tools", () => {
     assert.deepStrictEqual(rendered, [undefined]);
     assert.match(
       result,
-      /\n\nUnknown property "clickprompt"; the properties are "source", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.$/,
+      /\n\nUnknown property "clickprompt"; the properties are "source", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
     );
   });
 
   test("diagram_render draws despite a title or click prompt that is not a string, and says so", async () => {
-    panel.render = async () => ({ ok: true, diagramType: "flowchart" });
+    panel.render = async () => ({ ok: true, diagramType: "flowchart", revision: 1 });
     assert.match(
       await invokeTool(new RenderDiagramTool(panel), {
         source: "flowchart LR\n  A --> B",
         title: 5,
         clickPrompt: [],
       }),
-      /\n\n"title" must be a string, so it was ignored\. "clickPrompt" must be a string, so it was ignored\.$/,
+      /\n\n"title" must be a string, so it was ignored\. "clickPrompt" must be a string, so it was ignored\.\n\nRevision: 1\.$/,
     );
   });
 
@@ -195,7 +198,7 @@ suite("tools", () => {
     const calls: string[] = [];
     panel.render = async () => {
       calls.push("render");
-      return { ok: true, diagramType: "test" };
+      return { ok: true, diagramType: "test", revision: 1 };
     };
     panel.annotate = () => {
       calls.push("annotate");

@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { DiagramPanel } from "../panel";
+import { DiagramPanel, type Drawn, type RenderOutcome } from "../panel";
 import type { DiagramNode, FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
 import { afterTest, replace } from "./afterTest";
@@ -223,4 +223,9 @@ export function openWebviewPanel(panel: DiagramPanel, preserveFocus = false): vs
   }
   assert.ok(opened, "The panel was already open.");
   return opened;
+}
+
+/** A render's outcome without its revision, which counts the renders before it. */
+export function withoutRevision({ revision: _, ...outcome }: Drawn): RenderOutcome {
+  return outcome;
 }
