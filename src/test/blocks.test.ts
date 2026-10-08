@@ -125,6 +125,20 @@ suite("blocks", () => {
     assert.strictEqual(filterInFragments(markdown, 100), `${prose}\nDone.`);
   });
 
+  test("streams a long line of list markers or backticks before its end, in linear time", () => {
+    // Such as a model repeating itself: each fragment rescanned the line, which took seconds.
+    for (const line of ["- ".repeat(40_000), "`".repeat(80_000)]) {
+      const start = Date.now();
+      const filter = new DiagramBlockFilter();
+      let shown = "";
+      for (let offset = 0; offset < line.length; offset += 4) {
+        shown += filter.push(line.slice(offset, offset + 4));
+      }
+      assert.strictEqual(shown, line);
+      assert.ok(Date.now() - start < 1000);
+    }
+  });
+
   test("streams text before the end of its line", () => {
     const filter = new DiagramBlockFilter();
     assert.strictEqual(filter.push("Hello, wor"), "Hello, wor");

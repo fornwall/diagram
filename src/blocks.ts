@@ -98,6 +98,9 @@ function mayOpenDiagramBlock(partialLine: string): boolean {
   );
 }
 
+/** The length up to which an unfinished line that may open a diagram block is held back. */
+const MAX_UNDECIDED_LINE = 1000;
+
 /**
  * Removes ```mermaid and ```echarts code blocks from markdown that arrives in fragments, such as a
  * streamed language model reply, and collects them. Text is passed through as soon as it cannot be
@@ -132,9 +135,11 @@ export class DiagramBlockFilter {
     }
     this.line += fragment.slice(start);
     // A line that ends another code block, by leaving its block quote or list item, may open one.
+    // Rescanning a long line on each fragment would be quadratic, and no fence is that far in.
+    const undecided = this.passed === 0 && this.line.length <= MAX_UNDECIDED_LINE;
     const hidden = this.scanner.inCode
-      ? this.diagram !== undefined || (this.passed === 0 && !this.scanner.continuesCode(this.line))
-      : this.passed === 0 && mayOpenDiagramBlock(this.line);
+      ? this.diagram !== undefined || (undecided && !this.scanner.continuesCode(this.line))
+      : undecided && mayOpenDiagramBlock(this.line);
     if (!hidden) {
       // Once a line is visible, only inspect new text; rescanning a long streamed line is quadratic.
       output += this.passed === 0 ? this.line : fragment.slice(start);
