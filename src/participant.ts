@@ -10,6 +10,7 @@ import {
   diagramNoun,
   errorMessage,
   FIND_FILES_TOOL,
+  GET_IMAGE_TOOL,
   GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   PICK_NODES_TOOL,
@@ -31,6 +32,7 @@ const MAX_TOOL_CALLS = 32;
 
 const READ_ONLY_TOOLS = new Set([
   GET_STATE_TOOL,
+  GET_IMAGE_TOOL,
   FIND_FILES_TOOL,
   SEARCH_TEXT_TOOL,
   READ_FILE_TOOL,
@@ -74,11 +76,14 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     const explain = request.command === "explain";
 
-    // A model says whether it calls tools in capabilities.supportsToolCalling, which is not part
-    // of the stable API. One that does not may reject a request with tools; it draws with a
-    // diagram block instead.
-    const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
+    // A model says whether it calls tools and views images in capabilities, which is not part of
+    // the stable API. One that does not call tools may reject a request with tools; it draws with
+    // a diagram block instead. One that does not view images may reject a request with an image.
+    const { capabilities } = request.model as {
+      capabilities?: { supportsToolCalling?: boolean; supportsImageToText?: boolean };
+    };
     const callsTools = capabilities?.supportsToolCalling !== false;
+    const viewsImages = capabilities?.supportsImageToText !== false;
     const current = request.command === "new" ? undefined : panel.describeForModel({ callsTools });
     if (explain && !current) {
       stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");
@@ -88,16 +93,22 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     // Drawing may also use the tools the user attached; /explain only the read-only tools.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
     const tools = callsTools
-      ? vscode.lm.tools.filter((tool) =>
-          explain
-            ? READ_ONLY_TOOLS.has(tool.name)
-            : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name),
+      ? vscode.lm.tools.filter(
+          (tool) =>
+            (viewsImages || tool.name !== GET_IMAGE_TOOL) &&
+            (explain
+              ? READ_ONLY_TOOLS.has(tool.name)
+              : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name)),
         )
       : [];
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
     if (!callsTools && attachedNames.size > 0) {
       stream.markdown(
         `${escapeMarkdown(request.model.name)} cannot call tools, so the attached tools are left out.\n\n`,
+      );
+    } else if (!viewsImages && attachedNames.has(GET_IMAGE_TOOL)) {
+      stream.markdown(
+        `${escapeMarkdown(request.model.name)} does not accept images, so it cannot view the diagram.\n\n`,
       );
     }
 

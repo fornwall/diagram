@@ -63,6 +63,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks, custom series and timelines. Reports render errors. |
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
+| `diagram_getImage` | `#diagramImage` | Look at the drawing as an image, to check its layout, for a model that accepts images. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
 | `diagram_annotate` | `#diagramAnnotate` | Mark items with notes, a caption and fading, without redrawing. Omit marks to clear them. |
 | `diagram_findFiles` | `#diagramFiles` | Find workspace files by glob, in all open folders. |
@@ -76,6 +77,8 @@ Workspace tools stay inside the open workspace folders.
 `diagram_updateChart` keeps omitted settings; `null` clears one. With the revision from `diagram_getState`, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update and leave the chart as it is.
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
+
+`diagram_getImage` gives a PNG of at most 1024 pixels a side: a chart as laid out for the panel, a Mermaid diagram in full. `@diagram` leaves it out for a model that says it does not accept images.
 
 Relationships are marked by the `edge:` or `message:` ids that `diagram_getState` lists. They tell parallel edges and repeated messages apart, and stay the same when the diagram is redrawn, but may change when its source does. Chart items that share a name, such as "Yes" in several stages of a sankey, are marked by the ids it lists for them.
 

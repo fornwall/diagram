@@ -1,5 +1,5 @@
-// The tools for any diagram in the panel: diagram_render, diagram_getState, diagram_pickNodes and
-// diagram_annotate.
+// The tools for any diagram in the panel: diagram_render, diagram_getState, diagram_getImage,
+// diagram_pickNodes and diagram_annotate.
 
 import * as vscode from "vscode";
 import { type AnnotateInput, validateAnnotation } from "./annotations";
@@ -191,6 +191,42 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
       this.panel.describeForModel({ fullSource: true }) ??
         `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
     );
+  }
+}
+
+/** The longest side of an image for a model: labels stay readable, at about 1,000 tokens. */
+const IMAGE_SIDE = 1024;
+
+export class GetDiagramImageTool implements vscode.LanguageModelTool<Record<string, never>> {
+  constructor(private readonly panel: DiagramPanel) {}
+
+  prepareInvocation(): vscode.PreparedToolInvocation {
+    return {
+      invocationMessage: `Viewing the ${diagramNoun(this.panel.current?.language ?? "mermaid")}`,
+    };
+  }
+
+  async invoke(
+    _options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,
+    token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const { current, revision } = this.panel;
+    if (!current) {
+      return textResult(`No diagram is shown. Use ${RENDER_TOOL} or ${CHART_TOOL} to show one.`);
+    }
+    const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_SIDE), token);
+    if (typeof image === "string") {
+      return textResult(`There is no image to view. ${image}`);
+    }
+    // A chart fits the panel, and so is laid out for its size; a Mermaid image is the whole
+    // diagram, whatever the panel's zoom.
+    const where = current.language === "echarts" ? "laid out for the panel's size" : "as drawn";
+    return new vscode.LanguageModelToolResult([
+      new vscode.LanguageModelTextPart(
+        `Revision ${revision} of the ${diagramNoun(current.language)}, ${where}:`,
+      ),
+      vscode.LanguageModelDataPart.image(image, "image/png"),
+    ]);
   }
 }
 

@@ -20,14 +20,17 @@ export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/** Rasterizes self-contained SVG. */
-export async function pngDataUrl({ svg, width, height }: DiagramImage): Promise<string> {
+/** Rasterizes self-contained SVG, at most maxSide pixels wide and high. */
+export async function pngDataUrl(
+  { svg, width, height }: DiagramImage,
+  maxSide = MAX_PNG_SIDE,
+): Promise<string> {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error("The drawing has no valid dimensions for a PNG. Try exporting it as SVG.");
   }
   const scale = Math.min(
     PNG_SCALE,
-    MAX_PNG_SIDE / Math.max(width, height),
+    maxSide / Math.max(width, height),
     Math.sqrt(MAX_PNG_PIXELS / width) / Math.sqrt(height),
   );
   const image = new Image();

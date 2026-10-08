@@ -19,6 +19,7 @@ const defaultTools = [
   "diagram_annotate",
   "diagram_chart",
   "diagram_findFiles",
+  "diagram_getImage",
   "diagram_getState",
   "diagram_inspectData",
   "diagram_pickNodes",
@@ -29,6 +30,7 @@ const defaultTools = [
 ];
 const readOnlyTools = [
   "diagram_findFiles",
+  "diagram_getImage",
   "diagram_getState",
   "diagram_readFile",
   "diagram_searchText",
@@ -540,6 +542,18 @@ suite("participant", () => {
       messageText(sent[1]?.messages.at(-1)),
       /Current Mermaid diagram|No diagram has been rendered/,
     );
+  });
+
+  test("gives a model that does not accept images no tool to view the diagram with", async () => {
+    const { sent, shown } = await ask([[text(valid)]], {
+      capabilities: { supportsImageToText: false },
+      toolReferences: [{ name: "diagram_getImage" }],
+    });
+    assert.deepStrictEqual(
+      sent.map(({ options }) => [options.tools?.map((tool) => tool.name).sort(), options.toolMode]),
+      [[availableDefaults().filter((name) => name !== "diagram_getImage"), undefined]],
+    );
+    assert.match(shown, /^Fake does not accept images, so it cannot view the diagram\.\n\n/);
   });
 
   test("gives a model that cannot call tools none, and draws its diagram block", async () => {

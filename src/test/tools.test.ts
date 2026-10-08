@@ -2,10 +2,16 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { ChartTool } from "../chartTools";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { AnnotateDiagramTool, PickDiagramNodesTool, RenderDiagramTool } from "../tools";
-import { cancellationSource, replace } from "./afterTest";
-import { newPanel } from "./newPanel";
-import { invokeTool } from "./toolText";
+import type { FromWebview } from "../protocol";
+import {
+  AnnotateDiagramTool,
+  GetDiagramImageTool,
+  PickDiagramNodesTool,
+  RenderDiagramTool,
+} from "../tools";
+import { afterTest, cancellationSource, replace } from "./afterTest";
+import { newFakePanel, newPanel } from "./newPanel";
+import { invokeTool, toolText } from "./toolText";
 
 const flowchart: DiagramState = {
   language: "mermaid",
@@ -204,6 +210,7 @@ suite("tools", () => {
       [new RenderDiagramTool(panel), { source: "flowchart LR\n  C --> D" }],
       [new ChartTool(panel), { type: "bar", data: "A,1\nB,2" }],
       [new AnnotateDiagramTool(panel), { marks: ["A"] }],
+      [new GetDiagramImageTool(panel), {}],
     ] as const) {
       await assert.rejects(
         () => invokeTool(tool, input, cancellation.token),
@@ -213,5 +220,105 @@ suite("tools", () => {
     assert.deepStrictEqual(calls, []);
     assert.deepStrictEqual(panel.current, flowchart);
     assert.strictEqual(values.get("diagram.state"), flowchart);
+  });
+
+  test("diagram_getImage draws at most 1024 pixels a side", async function () {
+    this.timeout(20_000);
+    const imageSize = async () => {
+      const result = await new GetDiagramImageTool(panel).invoke(
+        { input: {}, toolInvocationToken: undefined },
+        new vscode.CancellationTokenSource().token,
+      );
+      const image = result.content[1];
+      assert.ok(image instanceof vscode.LanguageModelDataPart, toolText(result));
+      const png = Buffer.from(image.data);
+      assert.strictEqual(png.subarray(1, 4).toString(), "PNG");
+      return [png.readUInt32BE(16), png.readUInt32BE(20)];
+    };
+    const steps = Array.from({ length: 12 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
+    const wide = {
+      language: "mermaid",
+      source: `flowchart LR\n  ${steps}`,
+      title: "Steps",
+    } as const;
+    assert.ok((await panel.render(wide, "tool")).ok);
+    assert.strictEqual((await imageSize())[0], 1024);
+    const pie = '{"series": [{"type": "pie", "data": [{"name": "Pie", "value": 1}]}]}';
+    assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
+    const shown = await imageSize();
+    assert.ok(Math.max(...shown) <= 1024 && Math.min(...shown) > 300, String(shown));
+  });
+
+  test("diagram_getImage answers each of several calls at once", async () => {
+    const { panel, webview } = await newFakePanel();
+    const pie = '{"series": [{"type": "pie", "data": [1]}]}';
+    assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
+    webview.answer = undefined;
+    const tool = new GetDiagramImageTool(panel);
+    const token = new vscode.CancellationTokenSource().token;
+    const viewing = [1, 2].map(() =>
+      tool.invoke({ input: {}, toolInvocationToken: undefined }, token),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    const exports = webview.sent.filter((message) => message.type === "export");
+    assert.deepStrictEqual(
+      exports.map(({ format, maxSide }) => ({ format, maxSide })),
+      Array(2).fill({ format: "png", maxSide: 1024 }),
+    );
+    // The page may answer them in any order.
+    for (const [index, { requestId }] of exports.reverse().entries()) {
+      const data = `data:image/png;base64,${Buffer.from(`png ${index}`).toString("base64")}`;
+      await webview.receive({ type: "exportImage", requestId, format: "png", data });
+    }
+    const results = await Promise.all(viewing);
+    assert.deepStrictEqual(
+      results.map(({ content: [text, image] }) => [
+        text instanceof vscode.LanguageModelTextPart && text.value,
+        image instanceof vscode.LanguageModelDataPart &&
+          `${image.mimeType}: ${Buffer.from(image.data)}`,
+      ]),
+      [
+        ["Revision 1 of the chart, laid out for the panel's size:", "image/png: png 1"],
+        ["Revision 1 of the chart, laid out for the panel's size:", "image/png: png 0"],
+      ],
+    );
+  });
+
+  test("diagram_getImage says why there is no image to view", async () => {
+    const view = (from: DiagramPanel) => invokeTool(new GetDiagramImageTool(from), {});
+    const empty = newPanel();
+    afterTest(() => empty.dispose());
+    const flow = { language: "mermaid", source: "flowchart LR\n  A --> B", title: "Flow" } as const;
+    const { panel: shown, webview } = await newFakePanel();
+    const reasons = [await view(empty), await view(panel)];
+    webview.failNextRender("Oops");
+    assert.ok(!(await shown.render(flow, "tool")).ok);
+    reasons.push(await view(shown));
+    webview.answer = undefined;
+    const rendering = shown.render(flow, "tool");
+    reasons.push(await view(shown));
+    await webview.finishRender();
+    assert.ok((await rendering).ok);
+    for (const answer of [
+      {
+        type: "exportError",
+        message: "The diagram changed before it could be exported. Try again.",
+      },
+      { type: "exportImage", format: "svg", data: "<svg/>" },
+    ] as const) {
+      webview.answer = (message) =>
+        message.type === "export"
+          ? ({ ...answer, requestId: message.requestId } as FromWebview)
+          : undefined;
+      reasons.push(await view(shown));
+    }
+    assert.deepStrictEqual(reasons, [
+      "No diagram is shown. Use diagram_render or diagram_chart to show one.",
+      "There is no image to view. The diagram panel is closed. The user can open it again with Diagram: Show Panel.",
+      "There is no image to view. The diagram fails to render: Oops",
+      "There is no image to view. The panel is still drawing the diagram.",
+      "There is no image to view. The diagram changed before it could be exported. Try again.",
+      "There is no image to view. The diagram panel returned an invalid PNG image.",
+    ]);
   });
 });

@@ -16,6 +16,12 @@ import { savedChartHtml } from "./savedChart";
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
 
+/** The bytes of a PNG data URL from the page, unless it is not one. */
+export function pngBytes(dataUrl: string): Uint8Array | undefined {
+  const base64 = PNG_DATA_URL.exec(dataUrl)?.[1];
+  return base64 === undefined ? undefined : Buffer.from(base64, "base64");
+}
+
 /** Where the last export went, where the next one is likely to go too. */
 let lastFolder: vscode.Uri | undefined;
 
@@ -57,11 +63,11 @@ export async function exportDrawing(
       bytes = new TextEncoder().encode(html);
     } else if (result.type === "exportImage" && result.format === format) {
       if (format === "png") {
-        const base64 = PNG_DATA_URL.exec(result.data)?.[1];
-        if (!base64) {
+        const png = pngBytes(result.data);
+        if (!png) {
           throw new Error("The panel returned an invalid PNG image. Try exporting as SVG.");
         }
-        bytes = Buffer.from(base64, "base64");
+        bytes = png;
       } else {
         bytes = new TextEncoder().encode(result.data);
       }

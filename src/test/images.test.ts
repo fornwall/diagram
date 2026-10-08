@@ -79,6 +79,18 @@ suite("images", () => {
     }
   });
 
+  test("draws a PNG within a smaller size where asked", async () => {
+    const browser = fakeBrowser();
+    for (const [width, height, expectedWidth, expectedHeight] of [
+      [320, 200, 640, 400],
+      [800, 400, 1024, 512],
+      [300, 3000, 102, 1024],
+    ] as const) {
+      await pngDataUrl({ svg: "<svg/>", width, height }, 1024);
+      assert.deepStrictEqual(browser.encodedSize, [expectedWidth, expectedHeight]);
+    }
+  });
+
   test("says why a PNG could not be made, without keeping the canvas or the image", async () => {
     const browser = fakeBrowser();
     const image = { svg: "<svg/>", width: 100, height: 100 };

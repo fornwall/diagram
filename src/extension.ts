@@ -7,6 +7,7 @@ import {
   ANNOTATE_TOOL,
   CHART_TOOL,
   FIND_FILES_TOOL,
+  GET_IMAGE_TOOL,
   GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   PICK_NODES_TOOL,
@@ -17,6 +18,7 @@ import {
 } from "./protocol";
 import {
   AnnotateDiagramTool,
+  GetDiagramImageTool,
   GetDiagramStateTool,
   PickDiagramNodesTool,
   RenderDiagramTool,
@@ -43,6 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(RENDER_TOOL, new RenderDiagramTool(panel)),
     vscode.lm.registerTool(CHART_TOOL, new ChartTool(panel)),
     vscode.lm.registerTool(GET_STATE_TOOL, new GetDiagramStateTool(panel)),
+    vscode.lm.registerTool(GET_IMAGE_TOOL, new GetDiagramImageTool(panel)),
     vscode.lm.registerTool(PICK_NODES_TOOL, new PickDiagramNodesTool(panel)),
     vscode.lm.registerTool(ANNOTATE_TOOL, new AnnotateDiagramTool(panel)),
     vscode.lm.registerTool(FIND_FILES_TOOL, new FindWorkspaceFilesTool()),

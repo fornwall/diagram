@@ -6,6 +6,7 @@ import type { ThemeColors } from "./webview/colors";
 export const RENDER_TOOL = "diagram_render";
 export const CHART_TOOL = "diagram_chart";
 export const GET_STATE_TOOL = "diagram_getState";
+export const GET_IMAGE_TOOL = "diagram_getImage";
 export const PICK_NODES_TOOL = "diagram_pickNodes";
 export const ANNOTATE_TOOL = "diagram_annotate";
 export const FIND_FILES_TOOL = "diagram_findFiles";
@@ -133,7 +134,14 @@ export type ExportResult = Extract<
 >;
 
 export type ToWebview =
-  | { type: "export"; requestId: number; renderRequestId: number; format: ExportFormat }
+  | {
+      type: "export";
+      requestId: number;
+      renderRequestId: number;
+      format: ExportFormat;
+      /** The most pixels a PNG may have on either side, by default the most it can have. */
+      maxSide?: number | undefined;
+    }
   | { type: "chartOptions"; state?: ChartOptionsState; visible: boolean }
   | { type: "chartOptionsError"; message: string }
   | {

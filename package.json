@@ -354,6 +354,27 @@
         }
       },
       {
+        "name": "diagram_getImage",
+        "displayName": "View Diagram",
+        "toolReferenceName": "diagramImage",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file-media)",
+        "userDescription": "Show the model an image of the diagram or chart in the diagram panel",
+        "modelDescription": "Return a PNG of the current diagram or chart as drawn in the panel, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. Call only if you can view images.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "echarts",
+          "chart",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
         "name": "diagram_pickNodes",
         "displayName": "Pick Diagram Nodes",
         "toolReferenceName": "diagramPick",

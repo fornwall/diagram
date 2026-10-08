@@ -65,6 +65,22 @@ suite("extension", function () {
     assert.doesNotMatch(state, /fails to render/);
   });
 
+  test("gives a model an image of the drawing through the registered tool", async () => {
+    assert.match(
+      await invoke("diagram_render", { source: "flowchart LR\n  A --> B" }),
+      /^Rendered/,
+    );
+    const result = await vscode.lm.invokeTool("diagram_getImage", {
+      input: {},
+      toolInvocationToken: undefined,
+    });
+    const [text, image] = result.content;
+    assert.ok(text instanceof vscode.LanguageModelTextPart, toolText(result));
+    assert.ok(image instanceof vscode.LanguageModelDataPart);
+    assert.strictEqual(image.mimeType, "image/png");
+    assert.strictEqual(Buffer.from(image.data).subarray(1, 4).toString(), "PNG");
+  });
+
   test("tells the agent that a tree series draws only the first of its trees", async () => {
     const tree = (...names: string[]) =>
       invoke("diagram_render", {

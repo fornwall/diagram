@@ -23,7 +23,7 @@ import {
   reportWriteFailure,
   writeFence,
 } from "./documentDiagram";
-import { exportDrawing } from "./export";
+import { exportDrawing, pngBytes } from "./export";
 import { fileName, resolveFile } from "./files";
 import { linkTexts, type NodeLink, type NodeLinks, openLink, openUrl } from "./links";
 import { StateStore } from "./panelState";
@@ -33,7 +33,6 @@ import {
   type DiagramLanguage,
   type DiagramNode,
   diagramNoun,
-  type ExportFormat,
   type ExportResult,
   errorMessage,
   type FromWebview,
@@ -135,7 +134,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Pending renders and picks are replayed when the webview reloads. */
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
-  private pendingExport: Pending<"export", ExportResult> | undefined;
+  /** How to answer each export request that the page has yet to answer, by its id. */
+  private readonly pendingExports = new Map<number, (result: ExportResult) => void>();
   /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
   /**
@@ -1190,7 +1190,10 @@ export class DiagramPanel implements vscode.Disposable {
           if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {
             throw new Error("The diagram changed or closed while choosing a format. Try again.");
           }
-          return this.requestExport(format, rendered);
+          return this.requestExport(
+            { format, renderRequestId: rendered },
+            `The diagram panel did not finish exporting within ${RENDER_TIMEOUT_MS / 1000} seconds. Try again or choose SVG.`,
+          );
         },
         this.context.extensionUri,
       );
@@ -1199,44 +1202,73 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  private requestExport(format: ExportFormat, renderRequestId: number): Promise<ExportResult> {
+  /**
+   * A PNG of the drawing shown, at most maxSide pixels wide and high, for a model to check its
+   * layout with, or why there is none.
+   */
+  async captureImage(maxSide: number): Promise<Uint8Array | string> {
+    const state = this.state;
+    const rendered = this.renderedRequestId;
+    if (!state) {
+      return "No diagram is shown.";
+    }
+    const noun = diagramNoun(state.language);
+    if (this.pendingRender) {
+      return `The panel is still drawing the ${noun}.`;
+    }
+    if (state.source === undefined) {
+      return "The chart's data was not kept when VS Code restarted. The user can press Refresh to load it again.";
+    }
+    if (state.error) {
+      return `The ${noun} fails to render: ${state.error}`;
+    }
+    if (!this.webview.tab) {
+      return "The diagram panel is closed. The user can open it again with Diagram: Show Panel.";
+    }
+    if (this.unavailable || !this.webview.isReady || rendered === undefined) {
+      return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
+    }
+    const result = await this.requestExport(
+      { format: "png", renderRequestId: rendered, maxSide },
+      `The diagram panel did not finish the image within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
+    );
+    if (result.type === "exportError") {
+      return result.message;
+    }
+    return (
+      (result.type === "exportImage" && result.format === "png" && pngBytes(result.data)) ||
+      "The diagram panel returned an invalid PNG image."
+    );
+  }
+
+  /** Asks the page for the drawing, answering with timedOut if it does not answer in time. */
+  private requestExport(
+    request: Omit<Extract<ToWebview, { type: "export" }>, "type" | "requestId">,
+    timedOut: string,
+  ): Promise<ExportResult> {
     const requestId = this.nextRequestId++;
     return new Promise((resolve) => {
       const timeout = setTimeout(
-        () =>
-          this.finishExport({
-            type: "exportError",
-            requestId,
-            message: `The diagram panel did not finish exporting within ${RENDER_TIMEOUT_MS / 1000} seconds. Try again or choose SVG.`,
-          }),
+        () => this.finishExport({ type: "exportError", requestId, message: timedOut }),
         RENDER_TIMEOUT_MS,
       );
-      const message = { type: "export", requestId, renderRequestId, format } as const;
-      this.pendingExport = {
-        message,
-        resolve: (result) => {
-          clearTimeout(timeout);
-          resolve(result);
-        },
-      };
-      this.post(message);
+      this.pendingExports.set(requestId, (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+      this.post({ type: "export", requestId, ...request });
     });
   }
 
   private finishExport(result: ExportResult): void {
-    if (this.pendingExport?.message.requestId !== result.requestId) return;
-    const { resolve } = this.pendingExport;
-    this.pendingExport = undefined;
-    resolve(result);
+    const resolve = this.pendingExports.get(result.requestId);
+    this.pendingExports.delete(result.requestId);
+    resolve?.(result);
   }
 
   private cancelExport(message: string): void {
-    if (this.pendingExport) {
-      this.finishExport({
-        type: "exportError",
-        requestId: this.pendingExport.message.requestId,
-        message,
-      });
+    for (const requestId of this.pendingExports.keys()) {
+      this.finishExport({ type: "exportError", requestId, message });
     }
   }
 
