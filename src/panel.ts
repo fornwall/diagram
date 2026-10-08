@@ -137,6 +137,8 @@ export class DiagramPanel implements vscode.Disposable {
    * the same diagram again, as when the page reloads, is no change.
    */
   private shownRevision = 0;
+  /** Counts the changes that the user or a document started, such as an Apply or a Refresh. */
+  private userChanges = 0;
   /** Pending renders and picks are replayed when the webview reloads. */
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
@@ -204,6 +206,14 @@ export class DiagramPanel implements vscode.Disposable {
   /** Optimistic concurrency token, exposed to tools along with the current source. */
   get revision(): number {
     return this.shownRevision;
+  }
+
+  /**
+   * How many changes to the diagram the user or a document has started, which a chat reply that
+   * sees this change while it streams must not draw over.
+   */
+  get userChangeCount(): number {
+    return this.userChanges;
   }
 
   /**
@@ -279,6 +289,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
+    if (origin === "document") this.userChanges++;
     this.webview.reveal(origin !== "document");
     return this.renderCurrent();
   }
@@ -766,6 +777,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The user edited the diagram source instead of picking.");
+    this.userChanges++;
     const outcome = await this.renderCurrent();
     const binding = state.document && this.movedBinding(state.document);
     // An intervening render must not redirect this Apply to another document, even if the source
@@ -991,6 +1003,7 @@ export class DiagramPanel implements vscode.Disposable {
       if (!table) throw new Error("Press Refresh to load the chart data first.");
       const chart = reset ? state.chart : withChartControls(state.chart, message.controls);
       const kept = reset || message.replaceSource ? undefined : state.chartPresentation;
+      this.userChanges++;
       const outcome = await this.showChart(
         withRebuiltChart(state, chart, table, kept).state,
         table,
@@ -1026,6 +1039,7 @@ export class DiagramPanel implements vscode.Disposable {
         return;
       }
       if (warning) void vscode.window.showWarningMessage(warning);
+      this.userChanges++;
       const outcome = await this.showChart(
         withRebuiltChart(state, chart, table, presentation).state,
         table,

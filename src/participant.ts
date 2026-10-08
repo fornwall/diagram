@@ -237,6 +237,7 @@ async function streamReply(
   panel: DiagramPanel,
   toolUse: ToolUse,
 ): Promise<DiagramBlock | undefined> {
+  const userChanges = panel.userChangeCount;
   let diagram: DiagramBlock | undefined;
   let drawnBeforeDiagram = toolUse.drawn;
   for (let round = 0; ; round++) {
@@ -284,13 +285,14 @@ async function streamReply(
       if (calls.length > 0) {
         stream.markdown(`\n\nStopped tool use because ${toolUse.notRun}.`);
       }
-      // A render of this request's tool calls wins over a diagram block the model wrote before
-      // it, and one that the panel shows also over a block written after it, which would lose
-      // code links, chart data and styling. A block may still repair a failed render, and draw
-      // over what another request drew meanwhile.
+      // What the user changed during the reply wins over its diagram block, as does a render of
+      // this request's tool calls after the block, and one before it that the panel still shows,
+      // which the block would lose code links, chart data and styling of. A block may still
+      // repair a failed render, and draws over what another request drew meanwhile.
+      const userChanged = panel.userChangeCount !== userChanges;
       const drewAfter = toolUse.drawn !== drawnBeforeDiagram;
       const shown = toolUse.drawn === panel.revision && !panel.current?.error;
-      return drewAfter || shown ? undefined : diagram;
+      return userChanged || drewAfter || shown ? undefined : diagram;
     }
     if (toolUse.rounds++ >= MAX_TOOL_ROUNDS) {
       toolUse.notRun ??= "this request reached its tool round limit";

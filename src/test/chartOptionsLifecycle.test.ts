@@ -130,6 +130,8 @@ suite("chart options lifecycle", function () {
     assert.ok(panel.current?.chartPresentation?.edits.length);
     assert.strictEqual(panel.current?.editedByUser, true);
     assert.strictEqual((values.get("diagram.state") as DiagramState).editedByUser, true);
+    // Which a chat reply must not draw over.
+    assert.strictEqual(panel.userChangeCount, 2);
   });
 
   test("closing during reset rendering restores persisted source and the previous table cache", async () => {
@@ -192,6 +194,7 @@ suite("chart options lifecycle", function () {
     webview.nextRender(() => panel.dispose());
     await webview.receive({ type: "refresh" });
     assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
+    assert.strictEqual(panel.userChangeCount, 1);
     assert.strictEqual(panel.current, previous);
     assert.strictEqual(panel.loadedChartData, table);
     assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);

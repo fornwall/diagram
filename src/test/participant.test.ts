@@ -566,6 +566,26 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.source, expected.source);
   });
 
+  test("leaves its diagram block undrawn over what the user changed during the reply", async () => {
+    const edited = "flowchart TD\n  Edited";
+    const opened = { language: "mermaid", source: "flowchart TD\n  Opened", title: "A" } as const;
+    const changes: [string, () => Promise<unknown>][] = [
+      [edited, () => webview.edit(edited)],
+      [opened.source, () => panel.render(opened, "document")],
+    ];
+    assert.ok((await panel.render(opened, "tool")).ok);
+    for (const [source, change] of changes) {
+      const { result } = await ask([
+        async () => {
+          await change();
+          return [text(valid)];
+        },
+      ]);
+      assert.strictEqual(result, undefined);
+      assert.strictEqual(panel.current?.source, source);
+    }
+  });
+
   test("makes the model call the tools that the user attached first, whose descriptors may be new objects", async () => {
     const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
     assert.ok(descriptor);
