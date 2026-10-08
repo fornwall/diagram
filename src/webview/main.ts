@@ -144,10 +144,12 @@ const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
   echarts: async () => {
     // The library is a script of its own, without which there is no chart to draw.
     const [{ EChartsRenderer }] = await Promise.all([import("./echartsRenderer"), loadECharts()]);
-    return new EChartsRenderer(itemClicked, canvas);
+    return new EChartsRenderer(itemClicked, canvas, readThemeColors, () => tabHidden);
   },
 };
 const renderers = new Map<DiagramLanguage, Promise<Renderer>>();
+/** Whether the tab is hidden behind another, as the extension says: the page cannot tell. */
+let tabHidden = false;
 function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
   let renderer = renderers.get(language);
   if (!renderer) {
@@ -378,6 +380,12 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "export":
       enqueue(() => exportDrawing(message));
       break;
+    case "tabVisibility": {
+      const shown = tabHidden && !message.hidden;
+      tabHidden = message.hidden;
+      if (shown) active?.tabShown?.();
+      break;
+    }
     case "chartOptions":
       // The form starts hidden, so there is nothing to hide before it is loaded.
       if (message.visible || chartOptions !== undefined) {
@@ -742,7 +750,7 @@ writeToButton.addEventListener("click", () => {
 
 /** Exports the drawing from the render queue, but rasterizes a PNG outside it, not to hold it up. */
 async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
-  const { requestId, renderRequestId, format, maxSide, tabHidden } = message;
+  const { requestId, renderRequestId, format, maxSide } = message;
   const failed = (error: unknown) =>
     post({ type: "exportError", requestId, message: errorMessage(error) });
   try {
@@ -756,7 +764,7 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
       return;
     }
     if (!active.toImage) throw new Error("This drawing cannot be exported as an image.");
-    const image = await active.toImage(imageBackground(), tabHidden);
+    const image = await active.toImage(imageBackground());
     if (format === "svg") {
       post({ type: "exportImage", requestId, format, data: image.svg });
     } else {

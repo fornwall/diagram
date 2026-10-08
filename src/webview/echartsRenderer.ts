@@ -70,6 +70,11 @@ export class EChartsRenderer implements Renderer {
     private readonly canvas: HTMLElement,
     /** The colors to draw in: the VS Code theme in the panel, the saved ones in a saved chart. */
     private readonly readColors: () => ThemeColors = readThemeColors,
+    /**
+     * Whether the tab is hidden behind another. Its page then has the size of an empty frame, 300
+     * by 150 pixels, which a chart is not laid out for.
+     */
+    private readonly tabHidden: () => boolean = () => false,
   ) {
     this.container = document.createElement("div");
     this.container.id = "chart";
@@ -173,19 +178,24 @@ export class EChartsRenderer implements Renderer {
   }
 
   /**
+   * Lays the chart out again once its tab is shown. The resize observer reports nothing if the tab
+   * is shown at the size it last reported, though the chart was laid out for another while hidden.
+   */
+  tabShown(): void {
+    this.scheduleRelayout();
+  }
+
+  /**
    * An image of the chart as laid out for its current size, with its animations finished, so that
    * an early export includes every item, and without what the pointer and the toolbox add to it.
    */
-  async toImage(background: string, tabHidden = false): Promise<DiagramImage> {
+  async toImage(background: string): Promise<DiagramImage> {
     if (!this.chart) throw new Error("There is no chart to make an image of.");
     // Export can precede the resize observer or its debounced layout after changing views: lay out
-    // for the size now, which leaves nothing to do once it settles. Charts hidden by the source
-    // view keep the dimensions of their last visible rendering. The page of a hidden tab has the
-    // size of an empty frame, 300 by 150 pixels: keep the layout it had while shown.
-    if (!tabHidden) {
-      this.apply(true);
-      this.cancelRelayout();
-    }
+    // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
+    // dimensions of their last visible rendering.
+    this.apply(true);
+    this.cancelRelayout();
     const svg = this.container.querySelector("svg");
     if (!svg) throw new Error("There is no chart to make an image of.");
     // The pointer can still rest on the chart, as when the image is exported from the context menu
@@ -326,10 +336,12 @@ export class EChartsRenderer implements Renderer {
     if (!echarts) {
       return;
     }
-    // Source view has no DOM dimensions. Keep an existing chart's size, or use an initial size
-    // for both the SVG and its layout; the resize observer fits it when the rendering is shown.
-    const width = this.container.clientWidth || this.chart?.getWidth() || 800;
-    const height = this.container.clientHeight || this.chart?.getHeight() || 500;
+    // Source view has no DOM dimensions, and a hidden tab none to go by. Keep an existing chart's
+    // size, or use an initial size for both the SVG and its layout; the resize observer fits it
+    // when the rendering is shown.
+    const tabShown = !this.tabHidden();
+    const width = (tabShown && this.container.clientWidth) || this.chart?.getWidth() || 800;
+    const height = (tabShown && this.container.clientHeight) || this.chart?.getHeight() || 500;
     const reducedMotion = this.reducedMotion.matches;
     const laidOut = `${width}:${height}:${reducedMotion}:${this.blurring()}`;
     // Check layout inputs before copying the data. Retaining a serialized option would also
@@ -479,6 +491,7 @@ export class EChartsRenderer implements Renderer {
     const height = this.container.clientHeight;
     if (
       this.chart &&
+      !this.tabHidden() &&
       width > 0 &&
       height > 0 &&
       (this.chart.getWidth() !== width || this.chart.getHeight() !== height)

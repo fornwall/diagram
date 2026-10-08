@@ -141,9 +141,9 @@ export type ToWebview =
       format: ExportFormat;
       /** The most pixels a PNG may have on either side, by default the most it can have. */
       maxSide?: number | undefined;
-      /** Whether the tab is hidden behind another, where the page has no size of its own. */
-      tabHidden: boolean;
     }
+  /** Whether the tab is hidden behind another, where the page has no size of its own. */
+  | { type: "tabVisibility"; hidden: boolean }
   | { type: "chartOptions"; state?: ChartOptionsState; visible: boolean }
   | { type: "chartOptionsError"; message: string }
   | {

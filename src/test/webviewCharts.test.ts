@@ -113,6 +113,32 @@ suite("ECharts in the webview", function () {
     }
   });
 
+  test("lays out a chart drawn in a hidden tab at an initial size, and for the tab once shown", async () => {
+    // Mermaid leaves no chart whose size a new one would keep.
+    await draw({ source: "flowchart LR\n A --> B" });
+    await evaluate('receive({type: "tabVisibility", hidden: true})');
+    let shown = false;
+    try {
+      await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1, 2]}]}' });
+      // The page of a hidden tab has the size of an empty frame, which the extension tells it of.
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const svg = document.querySelector("#chart svg");
+          return [svg.width.baseVal.value, svg.height.baseVal.value];
+        })()`),
+        [800, 500],
+      );
+      await evaluate('receive({type: "tabVisibility", hidden: false})');
+      shown = true;
+      assert.strictEqual(
+        await evaluate(`(async () => { ${CHART_FITTED} return chartFitted(); })()`),
+        true,
+      );
+    } finally {
+      if (!shown) await evaluate('receive({type: "tabVisibility", hidden: false})');
+    }
+  });
+
   test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate('document.getElementById("view-source").click()');

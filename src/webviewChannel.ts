@@ -95,19 +95,28 @@ export class WebviewChannel implements vscode.Disposable {
       if (message.type === "ready") {
         this.ready = true;
         this.generation++;
+        // Before what the panel sends the page on its ready, such as a render.
+        if (!panel.visible) this.postVisibility(panel);
       }
       return this.onMessage(message);
     });
+    // The page cannot tell that its tab is hidden: it keeps running, at the size of an empty frame.
+    const viewStateListener = panel.onDidChangeViewState(() => this.postVisibility(panel));
     // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
     // draw the current chart again, now with its code.
     const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => this.load(panel));
     panel.onDidDispose(() => {
       messageListener.dispose();
+      viewStateListener.dispose();
       trustListener.dispose();
       this.panel = undefined;
       this.ready = false;
       this.onClose();
     });
+  }
+
+  private postVisibility(panel: vscode.WebviewPanel): void {
+    void this.post({ type: "tabVisibility", hidden: !panel.visible });
   }
 
   private load(panel: vscode.WebviewPanel): void {

@@ -54,6 +54,7 @@ function relayout<T>(
     annotation: { marks: [], dim: false },
     selectedKeys: new Set(),
     reducedMotion: { matches: true },
+    tabHidden: () => false,
     focus: { chartChanged: () => {} },
   });
   const apply = (relayout: boolean) =>
