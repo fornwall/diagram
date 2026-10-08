@@ -290,6 +290,8 @@ export class MermaidRenderer implements Renderer {
     private readonly zoomButton: HTMLElement,
     /** Runs a task in the panel's render queue. */
     private readonly enqueue: (task: () => Promise<void>) => void,
+    /** Whether the tab is hidden behind another, at the size of an empty frame. */
+    private readonly tabHidden: () => boolean,
   ) {
     const activate = (event: MouseEvent | KeyboardEvent) => {
       const target = event.target instanceof Element ? event.target : undefined;
@@ -409,9 +411,10 @@ export class MermaidRenderer implements Renderer {
     const container = layoutContainer();
     // Gantt charts take the width of the element they are drawn in: give them the width they are
     // shown at, rather than shrinking their text to fit. In the Source view the canvas has no
-    // width: keep the last one, or before any, take the one it has in the Visual view.
+    // width: keep the last one, or before any, take the one it has in the Visual view. A hidden
+    // tab has none to take: the chart is laid out again once the tab is shown.
     let { width } = this.contentSize();
-    if (width <= 0 && !container.style.width && this.canvas.parentElement) {
+    if (width <= 0 && !container.style.width && !this.tabHidden() && this.canvas.parentElement) {
       const style = getComputedStyle(this.canvas);
       // The canvas keeps room for a scrollbar.
       const scroller = document.createElement("div");
@@ -690,6 +693,16 @@ export class MermaidRenderer implements Renderer {
       after.top + ((anchorY - before.top) * after.height) / before.height - anchorY;
   }
 
+  /**
+   * Fits the diagram, or lays a Gantt chart out, for the tab shown again, which the resize observer
+   * may not report: it reports no size it reported before the tab was hidden.
+   */
+  tabShown(): void {
+    if (this.displayedSource === undefined) return;
+    if (this.fitting) this.fit();
+    if (this.diagramType === "gantt") this.enqueue(() => this.relayout());
+  }
+
   fitToPanel(): void {
     this.fitting = true;
   }
@@ -762,8 +775,12 @@ export class MermaidRenderer implements Renderer {
     svg.style.maxWidth = "none";
   }
 
-  /** The room for the diagram in the canvas, which is 0 × 0 while it is hidden. */
+  /**
+   * The room for the diagram in the canvas, which is 0 × 0 while it is hidden, as by the Source
+   * view, or while the tab is, when the page has the size of an empty frame instead.
+   */
   private contentSize(): { width: number; height: number } {
+    if (this.tabHidden()) return { width: 0, height: 0 };
     const style = getComputedStyle(this.canvas);
     const sum = (a: string, b: string) => Number.parseFloat(a) + Number.parseFloat(b);
     return {

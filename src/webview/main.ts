@@ -139,7 +139,14 @@ const createRenderer: Record<DiagramLanguage, () => Promise<Renderer>> = {
       import("./mermaidRenderer"),
       import("mermaid"),
     ]);
-    return new MermaidRenderer(itemClicked, canvas, diagram, zoomResetButton, enqueue);
+    return new MermaidRenderer(
+      itemClicked,
+      canvas,
+      diagram,
+      zoomResetButton,
+      enqueue,
+      () => tabHidden,
+    );
   },
   echarts: async () => {
     // The library is a script of its own, without which there is no chart to draw.

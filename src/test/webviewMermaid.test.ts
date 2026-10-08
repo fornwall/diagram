@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
 import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
+import { webviewTabs } from "./newPanel";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -106,6 +107,51 @@ suite("Mermaid in the webview", function () {
       assert.strictEqual(new Set(dates.image).size, dates.image.length, dates.image.join());
     } finally {
       await evaluate(WIDEN);
+    }
+  });
+
+  test("fits a diagram drawn in a hidden tab, and lays out a Gantt chart, once the tab is shown", async () => {
+    const [tab] = await webviewTabs((labels) => labels.length === 1);
+    const column = tab?.group.viewColumn;
+    assert.ok(column);
+    const steps = Array.from({ length: 12 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
+    for (const [index, source] of [`flowchart LR\n  ${steps}`, MERMAID.gantt].entries()) {
+      await draw({ source: "flowchart LR\n  A --> B" });
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), column);
+      try {
+        // As when the page loads again in the background, so that nothing shows the tab.
+        await evaluate(`(async () => {
+          ${UNTIL}
+          await until(() => innerWidth === 300, "the size of a hidden tab");
+          const requestId = ${1_000_000 + index};
+          receive({type: "render", requestId, language: "mermaid", source: ${JSON.stringify(source)}, title: "Hidden"});
+          await until(() => testRenderResults.includes(requestId), "the diagram drawn");
+        })()`);
+      } finally {
+        page.panel.show(true);
+      }
+      const shown = await evaluate(`(async () => {
+        ${UNTIL}
+        const canvas = document.getElementById("canvas");
+        const style = getComputedStyle(canvas);
+        const room = () => canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        await until(() => innerWidth !== 300, "the size of the shown tab");
+        const svg = () => document.querySelector("#diagram svg");
+        const drawn = () => ({
+          laidOut: Math.round(svg().viewBox.baseVal.width),
+          width: Math.round(svg().width.baseVal.value),
+          room: Math.round(room()),
+        });
+        // Fitted, or for a Gantt chart laid out, for the shown tab.
+        await until(() => {
+          const { laidOut, width, room } = drawn();
+          return ${index === 0} ? width === room : laidOut === room;
+        }, "the diagram fitted", nextFrame).catch(() => {});
+        return drawn();
+      })()`);
+      const { laidOut, width, room } = shown as { laidOut: number; width: number; room: number };
+      if (index === 0) assert.strictEqual(width, room, JSON.stringify(shown));
+      else assert.strictEqual(laidOut, room, JSON.stringify(shown));
     }
   });
 
