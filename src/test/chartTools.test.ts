@@ -176,16 +176,21 @@ suite("chartTools", function () {
     afterTest(() => fs.rmSync(link));
     const input = { file: path.basename(link) };
     await draw(panel, { type: "pie", ...input });
-    assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
+    // Each of two calls prepared before either runs is checked again.
+    for (let call = 0; call < 2; call++) {
+      assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
+    }
     // A refresh of a chart of the file meanwhile leaves the check to the tool.
     await webview.receive({ type: "refresh" });
     fs.rmSync(link);
     fs.symlinkSync(file, link);
-    assert.strictEqual(
-      await invokeTool(tool, input),
-      "Data could not be inspected: The file diagram-inspect-swap.csv now leads out of the " +
-        "workspace, so it was not read without asking the user. Call the tool again to ask.",
-    );
+    for (let call = 0; call < 2; call++) {
+      assert.strictEqual(
+        await invokeTool(tool, input),
+        "Data could not be inspected: The file diagram-inspect-swap.csv now leads out of the " +
+          "workspace, so it was not read without asking the user. Call the tool again to ask.",
+      );
+    }
     // Once asked, it is read.
     assert.ok(tool.prepareInvocation({ input }).confirmationMessages);
     assert.match(await invokeTool(tool, input), /"rowCount":3/);

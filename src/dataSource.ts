@@ -69,10 +69,11 @@ export function printsSiSizes(command: string): boolean {
 }
 
 /**
- * The data files, by their path as given, last let through without asking as they were inside the
- * workspace, which is checked again when they are read, as a link may have changed meanwhile.
+ * The data files, by their path as given, that tool calls prepared meanwhile let through without
+ * asking as they were inside the workspace, with how many such calls are still to run. Each one
+ * checks the file again when it reads it, as a link may have changed meanwhile.
  */
-const unaskedFiles = new Set<string>();
+const unaskedFiles = new Map<string, number>();
 
 /** Whether reading a data file asks the user first, as for one outside the workspace. */
 export function readAsks(uri: vscode.Uri): boolean {
@@ -81,12 +82,14 @@ export function readAsks(uri: vscode.Uri): boolean {
 
 /**
  * For a tool invoked with `spec`, what {@link loadTable} takes if its data file was let through
- * without asking when the invocation was prepared, which this answers once.
+ * without asking when the invocation was prepared, which this answers once for each such call.
  */
-export function toolUnasked(spec: ChartSpec): { retry: string } | undefined {
-  return spec.file !== undefined && unaskedFiles.delete(spec.file)
-    ? { retry: "Call the tool again to ask." }
-    : undefined;
+export function toolUnasked({ file }: ChartSpec): { retry: string } | undefined {
+  const calls = file === undefined ? undefined : unaskedFiles.get(file);
+  if (file === undefined || calls === undefined) return undefined;
+  if (calls > 1) unaskedFiles.set(file, calls - 1);
+  else unaskedFiles.delete(file);
+  return { retry: "Call the tool again to ask." };
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -104,13 +107,13 @@ export function prepareDataInvocation(
   } else if (spec?.file) {
     try {
       const uri = resolveFile(spec.file);
-      unaskedFiles.delete(spec.file);
+      // A call that asks leaves the count, as a call prepared before it may run after it.
       if (readAsks(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
         message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };
       } else {
-        unaskedFiles.add(spec.file);
+        unaskedFiles.set(spec.file, (unaskedFiles.get(spec.file) ?? 0) + 1);
       }
     } catch {
       // Invalid paths are reported when the tool is invoked.
