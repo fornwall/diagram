@@ -372,24 +372,25 @@ function placeLegend(
     return;
   }
   let side: Side;
-  if (!has(legend, BOX_KEYS)) {
+  const placed = has(legend, BOX_KEYS);
+  if (
+    legend.orient === "vertical" ||
+    (legend.orient === undefined && !placed && !cartesian && width >= 560)
+  ) {
     // Beside a pie or other non-grid chart when there is room, as it then uses the height, and
-    // beside any chart when it goes down, which ECharts would center at the bottom.
-    side =
-      legend.orient === "vertical" || (legend.orient === undefined && !cartesian && width >= 560)
-        ? "right"
-        : cartesian && !compact
-          ? "top"
-          : "bottom";
-    if (side === "right") {
-      Object.assign(legend, { orient: "vertical", right: 8, top: "middle" });
-    } else if (side === "top") {
-      Object.assign(legend, { top: reserved.top > 0 ? reserved.top : 6, left: "center" });
-    } else {
-      Object.assign(legend, { bottom: reserved.bottom + 6, left: "center" });
-    }
-  } else if (legend.orient === "vertical") {
-    side = legend.left !== undefined && legend.right === undefined ? "left" : "right";
+    // beside any chart when it goes down, on the right unless told the side, where ECharts would
+    // center it.
+    if (!placed) Object.assign(legend, { orient: "vertical", right: 8, top: "middle" });
+    else if (!has(legend, ["left", "right"])) legend.right = 8;
+    side = legend.right === undefined ? "left" : "right";
+  } else if (!placed) {
+    side = cartesian && !compact ? "top" : "bottom";
+    Object.assign(
+      legend,
+      side === "top"
+        ? { top: reserved.top > 0 ? reserved.top : 6, left: "center" }
+        : { bottom: reserved.bottom + 6, left: "center" },
+    );
   } else {
     // ECharts places a horizontal legend at the bottom unless told otherwise.
     side = legend.top !== undefined && legend.bottom === undefined ? "top" : "bottom";

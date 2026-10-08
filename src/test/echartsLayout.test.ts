@@ -268,6 +268,12 @@ suite("echartsLayout", () => {
     const vertical = layout(bars({ legend: { orient: "vertical" } }));
     assert.deepStrictEqual([vertical.legend.right, vertical.legend.top], [8, "middle"]);
     assert.ok(vertical.grid.right > 60, String(vertical.grid.right));
+    // One placed only up and down goes on the right too, where ECharts would center it.
+    const top = layout(bars({ legend: { orient: "vertical", top: 0 } }));
+    assert.deepStrictEqual([top.legend.right, top.legend.top], [8, 0]);
+    assert.strictEqual(top.grid.right, vertical.grid.right);
+    const left = layout(bars({ legend: { orient: "vertical", left: 0 } }));
+    assert.deepStrictEqual([left.legend.right, left.grid.left > 60], [undefined, true]);
   });
 
   test("makes room for a pie's legend by the names of its slices", () => {
