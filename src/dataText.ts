@@ -69,6 +69,17 @@ function withoutRules(lines: string[]): { lines: string[]; underline?: string } 
   return underline === undefined ? { lines: kept } : { lines: kept, underline };
 }
 
+/** A quote in delimited text that is not closed as CSV quotes are. */
+class QuoteError extends Error {
+  /** Where the record with the quote starts in the text. */
+  constructor(
+    message: string,
+    readonly recordStart: number,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Splits text into delimited records. With quoting, "quoted" fields may contain delimiters,
  * newlines and "" escapes.
@@ -109,6 +120,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let line = 1;
   let quoteLine = 0;
   let recordQuoted = false;
+  let recordStart = 0;
   const finishRecord = (): void => {
     record.push(field);
     add(record, recordQuoted ? undefined : record.join(delimiter));
@@ -153,11 +165,13 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       }
       line++;
       finishRecord();
+      recordStart = i + 1;
     } else {
       if (closedQuote && char !== " " && char !== "\t") {
-        throw new Error(
+        throw new QuoteError(
           `Unexpected text after the quoted field ${quote(field)} on line ${line}. Separate fields ` +
             `with the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
+          recordStart,
         );
       }
       field += char;
@@ -167,24 +181,35 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     }
   }
   if (quoted) {
-    throw new Error(
+    throw new QuoteError(
       `The quoted field that starts on line ${quoteLine} is not closed. A quote in a ` +
         `quoted field is written twice, as in "say ""hi""".`,
+      recordStart,
     );
   }
   finishRecord();
   return { records, header: underlined || undefined };
 }
 
-/** Splits delimited text, ignoring quotes if they are not closed as CSV quotes are. */
-function splitLeniently(text: string, delimiter: string): { table: Records; quoteError?: unknown } {
+/**
+ * Splits delimited text, ignoring quotes if they are not closed as CSV quotes are. Then the records
+ * `above` the one with the quote error are split with quotes.
+ */
+function splitLeniently(
+  text: string,
+  delimiter: string,
+): { table: Records; quoteError?: QuoteError; above?: Records } {
   try {
     return { table: splitDelimited(text, delimiter) };
   } catch (error) {
-    if (error instanceof TableSizeError) {
+    if (!(error instanceof QuoteError)) {
       throw error;
     }
-    return { table: splitDelimited(text, delimiter, false), quoteError: error };
+    return {
+      table: splitDelimited(text, delimiter, false),
+      quoteError: error,
+      above: splitDelimited(text.slice(0, error.recordStart), delimiter),
+    };
   }
 }
 
@@ -198,6 +223,16 @@ function mode(values: number[]): number {
     if (count > bestCount || (count === bestCount && value < best)) best = value;
   }
   return best;
+}
+
+/**
+ * Whether records split into several fields consistently: most into as many, or each into at least
+ * two, as lines may have fewer or more fields than the header, as with cloc --csv.
+ */
+function fits(records: Cell[][]): boolean {
+  const width = mode(records.map((record) => record.length));
+  const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
+  return width >= 2 && (matching >= records.length * 0.8 || records.every((r) => r.length >= 2));
 }
 
 /** A number with thousands separators within text, as in "apples 1,234". */
@@ -235,7 +270,7 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       sizeError ??= error;
       continue;
     }
-    const { table, quoteError: candidateError } = split;
+    const { table, quoteError: candidateError, above } = split;
     if (strict) {
       quoteError ??= candidateError;
     }
@@ -244,17 +279,19 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
     const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
     const singleColumn =
       quotedColumn && candidateError === undefined && width === 1 && matching === records.length;
-    // Lines may have fewer or more fields than the header, as with cloc --csv.
-    if (
-      (width < 2 && !singleColumn) ||
-      (matching < records.length * 0.8 && records.some((r) => r.length < 2))
-    ) {
+    if (candidateError !== undefined) {
+      // In auto mode, literal quotes in command output are not CSV errors unless the unquoted
+      // rows also fit this delimiter, or the rows above the error do, as when a quoted field
+      // over several lines splits the unquoted rows apart.
+      if (
+        fits(records) ||
+        (above !== undefined && above.records.length > 1 && fits(above.records))
+      ) {
+        quoteError ??= candidateError;
+      }
       continue;
     }
-    if (candidateError !== undefined) {
-      // In auto mode, literal quotes in command output are not CSV errors unless the
-      // unquoted rows also fit this delimiter.
-      quoteError ??= candidateError;
+    if (!singleColumn && !fits(records)) {
       continue;
     }
     const uniform = matching === records.length ? 1 : 0;

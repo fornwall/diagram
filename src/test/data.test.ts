@@ -413,11 +413,20 @@ suite("data", () => {
         );
       }
     }
-    // Counting the lines in quoted fields, with any line ending, and in escaped quotes.
-    assert.throws(
-      () => parseTable('name,value\n"a\r\nb\rc""\n",1\n"d,2', "csv"),
-      /The quoted field that starts on line 6 is not closed/,
-    );
+    // Also below quoted fields over several lines, which split the unquoted rows apart, counting
+    // their lines with any line ending, and in escaped quotes.
+    for (const format of ["auto", "csv"] as const) {
+      assert.throws(
+        () => parseTable('name,value\n"a\r\nb\rc""\n",1\n"d,2', format),
+        /The quoted field that starts on line 6 is not closed/,
+      );
+    }
+    // Not for text with a quote below a single line with a comma.
+    assert.deepStrictEqual(parse('Done, ok\n"Starting\nnow').rows, [
+      ["Done, ok"],
+      ['"Starting'],
+      ["now"],
+    ]);
   });
 
   test("a quote error with one CSV delimiter does not reject the other", () => {
