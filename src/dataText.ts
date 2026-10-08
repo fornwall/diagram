@@ -502,30 +502,69 @@ function splitMultiWordHeader(tokens: Token[][]): string[][] | undefined {
   ) {
     return undefined;
   }
-  const spans = Array.from({ length: count }, (_, column) => {
+  const spans = columnSpans(rest, count);
+  const names: string[][] = spans.map(() => []);
+  for (const word of header) {
+    names[nearestColumn(word, spans)]?.push(word.text);
+  }
+  return [names.map((words) => words.join(" ")), ...rest.map((line) => line.map((t) => t.text))];
+}
+
+/** Where each of `count` columns is, from the first to the last character in it of `lines`. */
+function columnSpans(lines: Token[][], count: number): { start: number; end: number }[] {
+  return Array.from({ length: count }, (_, column) => {
     let start = Number.POSITIVE_INFINITY;
     let end = 0;
-    for (const line of rest) {
+    for (const line of lines) {
       start = Math.min(start, line[column]?.start ?? 0);
       end = Math.max(end, line[column]?.end ?? 0);
     }
     return { start, end };
   });
-  const names: string[][] = spans.map(() => []);
-  for (const word of header) {
-    let best = 0;
-    let bestScore = Number.NEGATIVE_INFINITY;
-    spans.forEach((span, column) => {
-      // The overlap when positive, otherwise minus the distance.
-      const score = Math.min(word.end, span.end) - Math.max(word.start, span.start);
-      if (score > bestScore) {
-        best = column;
-        bestScore = score;
-      }
-    });
-    names[best]?.push(word.text);
+}
+
+/** The column of `spans` that `word` overlaps most, or else is nearest to. */
+function nearestColumn(word: Token, spans: { start: number; end: number }[]): number {
+  let best = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  spans.forEach((span, column) => {
+    // The overlap when positive, otherwise minus the distance.
+    const score = Math.min(word.end, span.end) - Math.max(word.start, span.start);
+    if (score > bestScore) {
+      best = column;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
+/**
+ * The cells of a line with more words than the columns of `spans`, if all its extra words are under
+ * one column other than the last, as a name with a space is in the first column of df on macOS
+ * ("map auto_home"), and each other column has one. Otherwise, as in ps aux, the last column keeps
+ * them.
+ */
+function alignedFields(
+  line: string,
+  tokens: Token[],
+  spans: { start: number; end: number }[],
+): string[] | undefined {
+  // Each word is compared with each column, which would take long for very wide output.
+  if (tokens.length * spans.length > 10_000) return undefined;
+  const columns: Token[][] = spans.map(() => []);
+  let last = 0;
+  let wide: number | undefined;
+  for (const token of tokens) {
+    const column = nearestColumn(token, spans);
+    if (column < last) return undefined;
+    if (columns[column]?.push(token) === 2) {
+      if (wide !== undefined || column === spans.length - 1) return undefined;
+      wide = column;
+    }
+    last = column;
   }
-  return [names.map((words) => words.join(" ")), ...rest.map((line) => line.map((t) => t.text))];
+  if (wide === undefined || columns.some((words) => words.length === 0)) return undefined;
+  return columns.map((words) => line.slice(words[0]?.start, words.at(-1)?.end));
 }
 
 /**
@@ -639,8 +678,17 @@ function splitWhitespace(lines: string[], underline: string | undefined): Record
     textHeader && data.length > 0 && data.every((line) => line.length >= header.length)
       ? header.length
       : mode(counts);
+  const full = (textHeader ? data : tokens).filter((line) => line.length === count);
+  const spans = full.length > 0 ? columnSpans(full, count) : undefined;
   return {
-    records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)),
+    records: lines.map((line, i) => {
+      const words = tokens[i] ?? [];
+      const aligned =
+        spans && words.length > count && (i > 0 || !textHeader)
+          ? alignedFields(line, words, spans)
+          : undefined;
+      return aligned ?? fields(line, words, count);
+    }),
     header: underline === undefined ? undefined : true,
   };
 }

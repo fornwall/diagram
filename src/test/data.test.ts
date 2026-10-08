@@ -1048,6 +1048,29 @@ suite("data", () => {
     ]);
   });
 
+  test("keeps a name with a space in the column that it is under, as df on macOS prints it", () => {
+    const df = [
+      "Filesystem       Size   Used  Avail Capacity  Mounted on",
+      "/dev/disk3s1s1  460Gi   10Gi  300Gi       4%  /",
+      "devfs           205Ki  205Ki    0Bi     100%  /dev",
+      "map auto_home     0Bi    0Bi    0Bi     100%  /System/Volumes/Data/home",
+    ].join("\n");
+    assert.deepStrictEqual(parse(df).rows[2], [
+      "map auto_home",
+      0,
+      0,
+      0,
+      100,
+      "/System/Volumes/Data/home",
+    ]);
+    // Words past the columns, as in ps aux, stay in the last.
+    assert.deepStrictEqual(parse("USER PID COMMAND\nroot 1 init\nme   2 vim a b").rows[1], [
+      "me",
+      2,
+      "vim a b",
+    ]);
+  });
+
   test("parses free output, whose header has no name for the first column", () => {
     assert.deepStrictEqual(
       parse(
