@@ -372,9 +372,15 @@ function placeLegend(
     return;
   }
   let side: Side;
-  if (!has(legend, [...BOX_KEYS, "orient"])) {
-    // Beside a pie or other non-grid chart when there is room, as it then uses the height.
-    side = cartesian ? (compact ? "bottom" : "top") : width >= 560 ? "right" : "bottom";
+  if (!has(legend, BOX_KEYS)) {
+    // Beside a pie or other non-grid chart when there is room, as it then uses the height, and
+    // beside any chart when it goes down, which ECharts would center at the bottom.
+    side =
+      legend.orient === "vertical" || (legend.orient === undefined && !cartesian && width >= 560)
+        ? "right"
+        : cartesian && !compact
+          ? "top"
+          : "bottom";
     if (side === "right") {
       Object.assign(legend, { orient: "vertical", right: 8, top: "middle" });
     } else if (side === "top") {

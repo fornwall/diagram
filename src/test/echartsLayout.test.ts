@@ -263,6 +263,11 @@ suite("echartsLayout", () => {
       ],
     };
     assert.strictEqual(layout(pie).legend.orient, "vertical");
+    // A legend told only which way to go goes that way beside the chart.
+    assert.strictEqual(layout({ ...pie, legend: { orient: "horizontal" } }).legend.bottom, 6);
+    const vertical = layout(bars({ legend: { orient: "vertical" } }));
+    assert.deepStrictEqual([vertical.legend.right, vertical.legend.top], [8, "middle"]);
+    assert.ok(vertical.grid.right > 60, String(vertical.grid.right));
   });
 
   test("makes room for a pie's legend by the names of its slices", () => {
