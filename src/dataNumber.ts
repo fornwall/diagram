@@ -123,6 +123,9 @@ const ACCOUNTING = new RegExp(String.raw`^(${CURRENCY}?)\((${CURRENCY}?[\d.].*)\
 /** kubectl's restart counts: "2 (3h ago)". */
 const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
+/** A number as most cells write it, which reads the same in every format but decimal commas. */
+const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
+
 /**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
  * "$9.99", "9.99 €", "12.5%" (as 12.5), thousands to trillions ("1.2K", "$3.4M", "1.5bn", "2T")
@@ -136,6 +139,10 @@ export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
+  if (PLAIN.test(text) && !(format.decimalComma && text.includes("."))) {
+    const value = Number(text);
+    return Number.isFinite(value) ? { value } : undefined;
+  }
   let trimmed = text.trim().replace(SINCE, "$1").replace(CURRENCY_SIGN, "$2$1");
   if (format.millicores && /^\d+m$/.test(trimmed)) {
     return { value: Number(trimmed.slice(0, -1)) / 1000 };
@@ -275,6 +282,10 @@ export function numberFormat(
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string") continue;
+    if (PLAIN.test(cell)) {
+      minus ||= cell.trimStart().startsWith("-");
+      continue;
+    }
     let text = cell.trim().replace(CURRENCY_SIGN, "$2$1");
     const accounting = ACCOUNTING.exec(text);
     if (accounting) {

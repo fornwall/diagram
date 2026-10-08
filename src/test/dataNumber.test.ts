@@ -65,8 +65,13 @@ suite("dataNumber", () => {
   });
 
   test("rejects numbers too large to hold, also after converting byte units", () => {
-    for (const value of ["1e309", "1e308K", "-1e308MB", "1e300EiB"]) {
+    for (const value of ["1e309", "1e308K", "-1e308MB", "1e300EiB", "9".repeat(400)]) {
       assert.strictEqual(parseNumber(value), undefined, value);
     }
+  });
+
+  test("reads dots between thousands in a column of decimal commas", () => {
+    assert.deepStrictEqual(parseNumber("1.234", { decimalComma: true }), { value: 1234 });
+    assert.deepStrictEqual(parseNumber("1.5", { decimalComma: true }), { value: 1.5 });
   });
 });
