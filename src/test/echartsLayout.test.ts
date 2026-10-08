@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
+import { modelOf } from "../webview/echartsItems";
 import { toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
-import { layout, type Option } from "./echartsModel";
+import { layout, type Option, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
 
 const bars = (extra: Option = {}): Option => ({
@@ -389,6 +390,41 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("funnel"), [44, 80, 80]);
     assert.deepStrictEqual(box("sankey"), [44, 12, 144]);
     assert.deepStrictEqual(box("chord"), [44, 12, 12]);
+  });
+
+  test("fits a graph of placed nodes into the space left, as ECharts fits it to the chart", () => {
+    const option = layout({
+      title: { text: "T" },
+      legend: {},
+      series: [
+        {
+          type: "graph",
+          data: [
+            { name: "A", x: 0, y: 0 },
+            { name: "Bee", x: 300, y: 200 },
+          ],
+        },
+      ],
+    });
+    // Drawn by ECharts, the nodes keep their aspect, below the title and left of the legend.
+    const points = withChart(
+      option,
+      (chart) => {
+        const view = (modelOf(chart).getSeriesByIndex(0) as unknown as Option).coordinateSystem;
+        return [...view.dataToPoint([0, 0]), ...view.dataToPoint([300, 200])];
+      },
+      { width: 800, height: 500 },
+    );
+    const [ax = 0, ay = 0, bx = 0, by = 0] = points;
+    const { top, right } = option.series[0];
+    assert.ok(Math.abs((bx - ax) / (by - ay) - 1.5) < 0.01, String(points));
+    assert.ok(top > 32 && right > 100, `${top} ${right}`);
+    assert.ok(ay >= top && by <= 500 && ax >= 0 && bx <= 800 - right, String(points));
+    // Nodes in another coordinate system, or a box of the option's own, stay as they are.
+    for (const series of [{ coordinateSystem: "cartesian2d" }, { left: 0 }]) {
+      const placed = layout({ title: { text: "T" }, series: [{ type: "graph", ...series }] });
+      assert.strictEqual(placed.series[0].top, undefined);
+    }
   });
 
   test("gives sankey nodes their own palette colors, also beyond eight", () => {

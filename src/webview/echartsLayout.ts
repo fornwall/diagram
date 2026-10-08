@@ -342,7 +342,7 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
     layOutGrid(base, reserved, size);
   }
   layOutPie(base, series, reserved, size);
-  layOutBoxSeries(series, reserved, size.width);
+  layOutBoxSeries(series, reserved, size);
   layOutRadar(base, reserved, size);
 }
 
@@ -583,14 +583,28 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
 }
 
 /** Keeps series that ECharts lays out in a box clear of the title, legend and other components. */
-function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number): void {
+function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height }: Size): void {
   for (const each of series) {
     const type = String(each.type);
     const placed =
       has(each, BOX_KEYS) ||
-      (type === "graph" && (each.layout ?? "none") === "none") ||
+      (type === "graph" && (each.coordinateSystem ?? "view") !== "view") ||
       (type === "chord" && each.center !== undefined);
     if (placed || !["funnel", "sankey", "tree", "treemap", "graph", "chord"].includes(type)) {
+      continue;
+    }
+    if (type === "graph" && (each.layout ?? "none") === "none") {
+      // ECharts fits the nodes where they are into 80% of the chart, keeping their aspect: fit
+      // them so into the space left instead, as a box alone would stretch them to fill it.
+      const marginX = Math.round((width - reserved.left - reserved.right) * 0.1);
+      const marginY = Math.round((height - reserved.top - reserved.bottom) * 0.1);
+      Object.assign(each, {
+        top: reserved.top + marginY,
+        bottom: reserved.bottom + marginY,
+        left: reserved.left + marginX,
+        right: reserved.right + marginX,
+      });
+      each.preserveAspect ??= true;
       continue;
     }
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
