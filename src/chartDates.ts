@@ -1,4 +1,5 @@
-// Recognizing unambiguous calendar dates for chart time axes.
+// Recognizing unambiguous calendar dates for chart time axes, and other labels in an order of their
+// own.
 
 const MONTH = "(?:0[1-9]|1[0-2])";
 const DAY = String.raw`(?:0[1-9]|[12]\d|3[01])`;
@@ -83,4 +84,26 @@ export function timeValue(date: string): string | number {
  */
 export function timeOrder(time: string | number): number {
   return typeof time === "number" ? time : Date.parse(time.replace(" ", "T").replace(/\//g, "-"));
+}
+
+const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+/** The weekday of a name such as "Mon" or "monday", from 0 for Monday, or -1 for another label. */
+function weekday(label: string): number {
+  const name = label.toLowerCase();
+  return WEEKDAYS.findIndex((day) => name === day || name === day.slice(0, 3));
+}
+
+/**
+ * What orders categories that are all numbers, all dates written alike or all weekdays, as hours
+ * and days of a heatmap of when commits were made, or undefined for other labels.
+ */
+export function labelOrder(labels: string[]): ((label: string) => number) | undefined {
+  if (labels.every((label) => label.trim() !== "" && Number.isFinite(Number(label)))) {
+    return Number;
+  }
+  if (!labels.includes("") && dateFormat(labels) !== undefined) {
+    return (label) => timeOrder(timeValue(label));
+  }
+  return labels.every((label) => weekday(label) >= 0) ? weekday : undefined;
 }

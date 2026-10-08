@@ -58,6 +58,11 @@ suite("chartFacets", () => {
         [null, 2, null],
       ],
     );
+    // Numbers too, as years, of which a panel may lack the first.
+    const years = build("service,year,ms\napi,2021,1\napi,2022,2\nworker,2020,3", {
+      labelColumn: "year",
+    });
+    assert.deepStrictEqual(years.xAxis[0].data, ["2020", "2021", "2022"]);
     const plain = build(data.replaceAll("2026-", "x"));
     assert.strictEqual(plain.xAxis[0].data, plain.xAxis[1].data);
     // Sorted rows keep the order of the panels' rows.

@@ -1,7 +1,7 @@
 // Small multiples: a chart per value of a facet column, as the panels of one ECharts option.
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
-import { dateFormat, timeOrder, timeValue } from "./chartDates";
+import { labelOrder, timeOrder } from "./chartDates";
 import { roundStep, stepsOf } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
@@ -80,10 +80,10 @@ export function buildFacetedChart(
     return { key: JSON.stringify(value), name, ...chart };
   });
   if (spec.facetScales !== "independent") {
-    // Dates on a category axis follow time, unless "sort" orders the rows by value.
-    const chronological = spec.sort === undefined;
-    shareAxes(panels, "xAxis", 0, chronological);
-    shareAxes(panels, "yAxis", 1, chronological);
+    // Categories in an order of their own keep it, unless "sort" orders the rows by value.
+    const ordered = spec.sort === undefined;
+    shareAxes(panels, "xAxis", 0, ordered);
+    shareAxes(panels, "yAxis", 1, ordered);
   }
   const wanted = spec.facetColumns ?? Math.min(2, Math.ceil(Math.sqrt(panels.length)));
   const columns = Math.min(panels.length, Math.max(wanted, Math.ceil(panels.length / MAX_ROWS)));
@@ -167,7 +167,7 @@ function shareAxes(
   panels: Panel[],
   key: "xAxis" | "yAxis",
   dimension: number,
-  chronological: boolean,
+  ordered: boolean,
 ): void {
   const axes = panels.map((panel) => objects(panel.option[key])[0] ?? {});
   // Negative values in one panel extend every panel's range, so all keep this axis at the edge.
@@ -189,11 +189,13 @@ function shareAxes(
     });
     let entries = [...domain];
     const labels = entries.map(([, category]) => String(category));
-    // Dates read as categories, which panels list in the order of their own rows.
-    if (chronological && !labels.includes("") && dateFormat(labels) !== undefined) {
-      const times = labels.map((label) => timeOrder(timeValue(label)));
+    // Panels list numbers, dates and weekdays in the order of their own rows, and missing ones
+    // come after the categories of earlier panels.
+    const order = ordered ? labelOrder(labels) : undefined;
+    if (order !== undefined) {
+      const keys = labels.map(order);
       entries = [...entries.keys()]
-        .sort((a, b) => (times[a] ?? 0) - (times[b] ?? 0))
+        .sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0))
         .map((index) => entries[index] as [string, unknown]);
     }
     const keys = entries.map(([key]) => key);

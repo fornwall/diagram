@@ -1,7 +1,7 @@
 // Charts drawn on a grid of an x and a y axis: bar, line, area, scatter, heatmap and box plot.
 
 import { columnName } from "./chartColumns";
-import { timeOrder, timeValue } from "./chartDates";
+import { labelOrder, timeOrder, timeValue } from "./chartDates";
 import {
   addValues,
   label,
@@ -231,8 +231,29 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
   };
 }
 
-/** Pivot two label columns, or use one heatmap column per value column. Preserve input order. */
+/**
+ * The categories of a pivot's axis, in the order they first appear, unless they have an order of
+ * their own, as hours and weekdays do, and "sort" did not order the rows. Moves the cells along.
+ */
+function pivotAxis(
+  indices: Map<string, number>,
+  cells: [number, number, number][],
+  at: 0 | 1,
+  sorted: boolean,
+): string[] {
+  const categories = [...indices.keys()];
+  const order = sorted ? undefined : labelOrder(categories);
+  if (order === undefined) return categories;
+  const keys = new Map(categories.map((category) => [category, order(category)]));
+  categories.sort((a, b) => (keys.get(a) ?? 0) - (keys.get(b) ?? 0));
+  const position = new Map(categories.map((category, i) => [indices.get(category), i]));
+  for (const cell of cells) cell[at] = position.get(cell[at]) ?? cell[at];
+  return categories;
+}
+
+/** Pivot two label columns, or use one heatmap column per value column. */
 export function heatmapOption({
+  spec,
   table,
   columns,
   names,
@@ -299,8 +320,9 @@ export function heatmapOption({
     max = Math.max(max, value);
   }
   // Without a second label column every row is a row of its own, even one labeled like another.
-  const yCategories = pivot ? [...yIndices.keys()] : rows.map(label);
-  const xCategories = pivot ? [...xIndices.keys()] : names;
+  const sorted = spec.sort !== undefined;
+  const yCategories = pivot ? pivotAxis(yIndices, data, 1, sorted) : rows.map(label);
+  const xCategories = pivot ? pivotAxis(xIndices, data, 0, sorted) : names;
   const axis = (categories: string[], name: string | undefined) => ({
     type: "category",
     data: categories,

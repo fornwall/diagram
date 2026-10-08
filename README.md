@@ -118,6 +118,8 @@ It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked ar
 
 A sankey with two label columns joins nodes of the same name, as in a list of graph edges, unless that would make flows run in a circle. With more, each stage has nodes of its own. A column with more than 30 nodes keeps the 29 largest and sums the rest as "Other".
 
+The axes of a heatmap, and the categories that facets share, list numbers, dates and weekdays in order, unless `sort` orders the rows. Other labels keep the order they first appear in.
+
 A final total row that matches the sum of the rows above it is left out, as are parent rows of a hierarchy, such as the directory totals of `du -a`.
 
 Filters compare parsed cells: cells that look like numbers are numbers. `eq` and `neq` compare value and type, and `null` matches empty cells. `lt`, `lte`, `gt` and `gte` take a number; `contains` matches text, case-sensitively. Compare sizes in bytes and durations in seconds. Use at most 50 filters; `[]` clears them.

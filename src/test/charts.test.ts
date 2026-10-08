@@ -743,6 +743,26 @@ suite("charts", () => {
     );
   });
 
+  test("heatmap axes of numbers, dates or weekdays keep their order, unless rows are sorted", () => {
+    // As git log lists commits, newest first.
+    const commits = "day,hour,commits\nWed,14,1\nmon,9,2\nWed,9,3\nSunday,23,4";
+    const spec = chart("heatmap", { labelColumn: ["day", "hour"] });
+    const option = build(spec, commits);
+    assert.deepStrictEqual(option.yAxis.data, ["mon", "Wed", "Sunday"]);
+    assert.deepStrictEqual(option.xAxis.data, ["9", "14", "23"]);
+    assert.deepStrictEqual(option.series[0].data, [
+      [1, 1, 1],
+      [0, 0, 2],
+      [0, 1, 3],
+      [2, 2, 4],
+    ]);
+    const dates = build(chart("heatmap"), "team,date,n\na,2026-03-01,1\na,2026-01-01,2");
+    assert.deepStrictEqual(dates.xAxis.data, ["2026-01-01", "2026-03-01"]);
+    const sorted = build({ ...spec, sort: "descending" }, commits);
+    assert.deepStrictEqual(sorted.yAxis.data, ["Sunday", "Wed", "mon"]);
+    assert.deepStrictEqual(sorted.xAxis.data, ["23", "9", "14"]);
+  });
+
   test("heatmap of a numeric matrix uses the value columns as its columns", () => {
     const option = build(chart("heatmap"));
     assert.deepStrictEqual(option.xAxis.data, ["files", "lines"]);
