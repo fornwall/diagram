@@ -26,7 +26,7 @@ export async function pngDataUrl(
   maxSide = MAX_PNG_SIDE,
 ): Promise<string> {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    throw new Error("The drawing has no valid dimensions for a PNG. Try exporting it as SVG.");
+    throw new Error("The drawing has no valid dimensions for a PNG.");
   }
   const scale = Math.min(
     PNG_SCALE,

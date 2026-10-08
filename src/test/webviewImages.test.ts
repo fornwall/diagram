@@ -1,6 +1,8 @@
 import * as assert from "node:assert";
+import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
 import type { Diagram } from "../panel";
+import { recordMessages, replace } from "./afterTest";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("images in the webview", function () {
@@ -216,6 +218,34 @@ suite("images in the webview", function () {
       assert.strictEqual(download.hint, hint);
     });
   }
+
+  test("advises exporting SVG when a PNG fails, but not a model that views the drawing", async () => {
+    await draw({
+      language: "echarts",
+      title: "Chart",
+      source: '{"series": [{"type": "pie", "data": [1]}]}',
+    });
+    const errors = recordMessages("showErrorMessage");
+    replace(vscode.window, "showQuickPick", (async (items: { format: string }[]) =>
+      items.find(
+        (item) => item.format === "png",
+      )) as unknown as typeof vscode.window.showQuickPick);
+    await evaluate(`(() => {
+      window.originalToBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = (callback) => callback(null);
+    })()`);
+    try {
+      await page.panel.exportDiagram();
+      const viewed = await page.panel.captureImage(1024);
+      const failure = "The browser could not create a PNG at this image size.";
+      assert.deepStrictEqual(
+        [...errors, viewed],
+        [`Could not export the chart: ${failure} Try exporting it as SVG.`, failure],
+      );
+    } finally {
+      await evaluate("void (HTMLCanvasElement.prototype.toBlob = window.originalToBlob)");
+    }
+  });
 
   test("keeps SVG export and rendering available while PNG decoding stalls", async () => {
     await draw({

@@ -790,7 +790,9 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
     } else {
       void pngDataUrl(image, maxSide).then(
         (data) => post({ type: "exportImage", requestId, format, data }),
-        failed,
+        // Only a model asks for a smaller PNG, and it cannot take the drawing as SVG instead.
+        (error) =>
+          failed(maxSide === undefined ? `${errorMessage(error)} Try exporting it as SVG.` : error),
       );
     }
   } catch (error) {
