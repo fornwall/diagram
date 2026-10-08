@@ -723,13 +723,22 @@ function showAxisLines(base: JsonObject): void {
   }
 }
 
-/** A number in full below 1,000, and exactly in thousands, millions, … above, as "1.25K". */
+const plainNumber = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 20,
+  useGrouping: false,
+});
 const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 20,
 });
+/**
+ * A number in full below 10,000, so that a year reads as "2015", and exactly in thousands,
+ * millions, … from there, as "12.5K".
+ */
 const compactLabel = (value: unknown) =>
-  typeof value === "number" ? compactNumber.format(value) : String(value);
+  typeof value !== "number"
+    ? String(value)
+    : (Math.abs(value) < 10_000 ? plainNumber : compactNumber).format(value);
 
 /**
  * Labels the values of value and log axes compactly, as "1.5M" rather than "1,500,000", which

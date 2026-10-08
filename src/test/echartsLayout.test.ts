@@ -1,8 +1,9 @@
 import * as assert from "node:assert";
+import type { ChartSpec } from "../chartSpec";
 import { modelOf } from "../webview/echartsItems";
 import { toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
-import { layout, type Option, withChart } from "./echartsModel";
+import { builtOption, layout, type Option, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
 
 const bars = (extra: Option = {}): Option => ({
@@ -402,16 +403,10 @@ suite("echartsLayout", () => {
       }),
     );
     const format = option.yAxis.axisLabel.formatter;
-    assert.deepStrictEqual([0, 0.25, 999, 1250, -2500, 1_025_000, 1e9, 3.5e12].map(format), [
-      "0",
-      "0.25",
-      "999",
-      "1.25K",
-      "-2.5K",
-      "1.025M",
-      "1B",
-      "3.5T",
-    ]);
+    assert.deepStrictEqual(
+      [0, 0.25, 999, 2015.5, -9999, 12_500, -25_000, 1_025_000, 1e9, 3.5e12].map(format),
+      ["0", "0.25", "999", "2015.5", "-9999", "12.5K", "-25K", "1.025M", "1B", "3.5T"],
+    );
     assert.strictEqual(option.xAxis.axisLabel, undefined);
     assert.deepStrictEqual(
       [...option.singleAxis, ...option.parallelAxis].map((axis: Option) => axis.axisLabel),
@@ -422,6 +417,17 @@ suite("echartsLayout", () => {
     );
     assert.match(svg, />3T</);
     assert.doesNotMatch(svg, /000,000/);
+  });
+
+  test("labels years on the value axis of a scatter chart as years", () => {
+    const data = "year,sales\n2015,10\n2016,12\n2017,9\n2018,15";
+    const option = layout(builtOption({ data, type: "scatter" } as ChartSpec, data));
+    const svg = withChart(option, (chart) =>
+      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
+    );
+    assert.match(svg, />2015</);
+    assert.match(svg, />2016\.5</);
+    assert.doesNotMatch(svg, /K</);
   });
 
   test("fits a graph of placed nodes into the space left, as ECharts fits it to the chart", () => {
