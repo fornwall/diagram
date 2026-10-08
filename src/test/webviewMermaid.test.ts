@@ -21,6 +21,22 @@ const RETHEME = `
     return previous;
   };`;
 
+/**
+ * Webview code that takes the limit off the canvas width, and waits for a Gantt chart shown to be
+ * laid out again at the canvas width, as it is a while later: else in the tests that follow.
+ */
+const WIDEN = `(async () => {
+  ${UNTIL}
+  const canvas = document.getElementById("canvas");
+  canvas.style.maxWidth = "";
+  await until(() => {
+    const svg = document.querySelector('#diagram svg[aria-roledescription="gantt"]');
+    const style = getComputedStyle(canvas);
+    const room = canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return !svg || Math.abs(svg.viewBox.baseVal.width - room) < 1;
+  }, "the Gantt chart laid out at the canvas width");
+})()`;
+
 suite("Mermaid in the webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -89,7 +105,7 @@ suite("Mermaid in the webview", function () {
       assert.ok(dates.apart, dates.panel.join());
       assert.strictEqual(new Set(dates.image).size, dates.image.length, dates.image.join());
     } finally {
-      await evaluate(`document.getElementById("canvas").style.maxWidth = ""`);
+      await evaluate(WIDEN);
     }
   });
 
@@ -163,10 +179,10 @@ suite("Mermaid in the webview", function () {
         selected: task().classList.contains("diagram-selected"),
         focused: document.activeElement === task(),
       };
-      canvas.style.maxWidth = "";
       document.getElementById("zoom-reset").click();
       return result;
     })()`);
+    await evaluate(WIDEN);
     const { room } = result as { room: number };
     assert.deepStrictEqual(result, {
       drawn: room,
@@ -206,9 +222,9 @@ suite("Mermaid in the webview", function () {
       await until(() => document.querySelector("#diagram svg") !== shown.svg);
       const style = getComputedStyle(canvas);
       const room = canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      canvas.style.maxWidth = "";
       return { kept, relaidOut: Math.abs(document.querySelector("#diagram svg").viewBox.baseVal.width - room) < 1 };
     })()`);
+    await evaluate(WIDEN);
     assert.deepStrictEqual(result, { kept: true, relaidOut: true });
   });
 
