@@ -669,10 +669,10 @@ function cancelPick(): void {
 
 element("pick-cancel").addEventListener("click", cancelPick);
 document.addEventListener("keydown", (event) => {
-  // Escape in the source editor or message box is for the text, e.g. to close a completion.
-  const typing =
-    event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
-  if (event.key === "Escape" && !typing) {
+  // Escape in a field is for the field, e.g. to close a completion or a select's list, and one
+  // that a control already took, e.g. to close a menu, is not for the pick either.
+  const field = event.target instanceof Element && event.target.matches("input, textarea, select");
+  if (event.key === "Escape" && !field && !event.defaultPrevented) {
     cancelPick();
   }
 });

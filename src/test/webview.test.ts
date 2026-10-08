@@ -216,6 +216,32 @@ suite("webview", function () {
     );
   });
 
+  test("cancels a pick on Escape, unless a field or another control takes it", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const banner = document.getElementById("pick");
+        receive({type: "startPick", pickId: 90003, prompt: "Pick", multiple: false});
+        await until(() => !banner.hidden, "the pick");
+        const select = document.body.appendChild(document.createElement("select"));
+        const escape = (target, taken) => {
+          const event = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
+          if (taken) target.addEventListener("keydown", e => e.preventDefault(), {once: true});
+          target.dispatchEvent(event);
+          return banner.hidden;
+        };
+        try {
+          return [escape(select), escape(document.getElementById("ask-input")),
+            escape(document.getElementById("canvas"), true), escape(document.getElementById("canvas"))];
+        } finally {
+          select.remove();
+        }
+      })()`),
+      [false, false, false, true],
+    );
+  });
+
   test("starts and ends a pick sent with a diagram on the diagram drawn", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
