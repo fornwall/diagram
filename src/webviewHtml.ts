@@ -71,7 +71,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
       </div>
     </div>
   </header>
-  <div id="render-status" role="status" aria-live="polite"></div>
+  <div id="render-status" role="status"></div>
   <section id="chart-options" aria-label="Chart Options" hidden></section>
   <div id="pick" hidden>
     <span id="pick-prompt"></span>
@@ -102,7 +102,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   </div>
   <footer>
     <div id="selection">
-      <span id="selection-label" role="status" aria-live="polite" aria-atomic="true">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
+      <span id="selection-label" role="status">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
       <button id="highlight-path" class="link" hidden>Highlight Path</button>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>
