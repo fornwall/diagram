@@ -622,6 +622,17 @@ const UNPLACED: [
     /^Setting (.*?) as parent of .* would create a cycle$/,
     ([, id = ""], normalized) => insideItself(normalized, id),
   ],
+  // Event models count the line in the text after the front matter: find the second frame.
+  [
+    /^Duplicate event modeling frame ID "(.*)"/,
+    ([, id = ""], normalized) => {
+      const frame = `^[^\\S\\n]*(?:tf|timeframe)[^\\S\\n]+${word(id)}`;
+      return [
+        find(normalized, `(?<=${frame}[^]*)${frame}`),
+        `Two time frames are numbered "${id}": give each its own number.`,
+      ];
+    },
+  ],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,

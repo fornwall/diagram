@@ -705,6 +705,8 @@ suite("Mermaid in the webview", function () {
         // Others quote what they are about.
         'C4Context\n  Person(u, "User")\n  Rel(u, s, "Uses")',
         "---\nconfig:\n  layout: cose-bilkent\n---\nflowchart TD\n  A --> B",
+        // Mermaid counts the line from the end of the front matter.
+        "---\ntitle: Cart\n---\neventmodeling\n  tf 01 cmd Add\n  tf 01 evt Added",
       ),
       [
         'Error on line 4: Invalid date "notadate": write dates as the dateFormat says, YYYY-MM-DD.',
@@ -714,6 +716,7 @@ suite("Mermaid in the webview", function () {
         'Error on line 4: "Bob" is deactivated, but it is not active.',
         'Error on line 3: C4 rel "u" -> "s" references an unknown shape or boundary',
         'The cose-bilkent layout only lays out mind maps: set "layout" to "dagre" or "elk" instead.',
+        'Error on line 6: Two time frames are numbered "01": give each its own number.',
       ],
     );
     const elk = (message: string, source: string) =>
