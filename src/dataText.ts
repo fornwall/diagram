@@ -47,13 +47,13 @@ function isRule(line: string, first: string | undefined): boolean {
 const BOX_HEADER_RULE = /^\s*[\u251C\u255E]/;
 
 /**
- * Leaves out rules, and tells whether one is under the first line, making it a header. DuckDB and
+ * Leaves out rules, and gives the one under the first line, making it a header, if any. DuckDB and
  * Polars print the types of the columns ("varchar", "i64") below their names, above the rule
  * between header and body ("├──┼──┤", "╞══╪══╡"), and those are left out too.
  */
-function withoutRules(lines: string[]): { lines: string[]; underlined: boolean } {
+function withoutRules(lines: string[]): { lines: string[]; underline?: string } {
   const kept: string[] = [];
-  let underlined = false;
+  let underline: string | undefined;
   let boxHeader = false;
   for (const line of lines) {
     if (isRule(line, kept.length === 1 ? kept[0] : undefined)) {
@@ -61,12 +61,12 @@ function withoutRules(lines: string[]): { lines: string[]; underlined: boolean }
         boxHeader = true;
         kept.length = Math.min(kept.length, 1);
       }
-      underlined ||= kept.length === 1;
+      if (kept.length === 1) underline ??= line;
     } else {
       kept.push(line);
     }
   }
-  return { lines: kept, underlined };
+  return underline === undefined ? { lines: kept } : { lines: kept, underline };
 }
 
 /**
@@ -492,15 +492,10 @@ function splitMultiWordHeader(tokens: Token[][]): string[][] | undefined {
 }
 
 /**
- * Splits aligned columns (as printed by docker ps) at the positions where the header's columns
- * start, which are separated by at least two spaces, so that cells may be empty or have spaces.
- * Returns undefined when the lines are not aligned that way.
+ * Splits aligned columns at the positions where they `start`, so that cells may be empty or have
+ * spaces. Returns undefined unless there are several and each line has a space before each.
  */
-function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
-  // Not with a regular expression such as /(?:^|\s{2,})\S/g, which takes quadratic time.
-  const starts = tokenize(lines[0] ?? "")
-    .filter((token, i, tokens) => token.start === 0 || token.start - (tokens[i - 1]?.end ?? 0) >= 2)
-    .map((token) => token.start);
+function splitAtStarts(lines: string[], starts: number[]): string[][] | undefined {
   if (
     starts.length < 2 ||
     !lines.every(
@@ -512,11 +507,27 @@ function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
   ) {
     return undefined;
   }
-  const records = lines.map((line) =>
+  checkTableSize(lines.length, starts.length);
+  return lines.map((line) =>
     starts.map((start, i) => line.slice(start, starts[i + 1] ?? line.length).trim()),
   );
+}
+
+/**
+ * Splits aligned columns (as printed by docker ps) at the positions where the header's columns
+ * start, which are separated by at least two spaces. Returns undefined when the lines are not
+ * aligned that way.
+ */
+function splitAtHeaderGaps(lines: string[]): string[][] | undefined {
+  // Not with a regular expression such as /(?:^|\s{2,})\S/g, which takes quadratic time.
+  const starts = tokenize(lines[0] ?? "")
+    .filter((token, i, tokens) => token.start === 0 || token.start - (tokens[i - 1]?.end ?? 0) >= 2)
+    .map((token) => token.start);
+  const records = splitAtStarts(lines, starts);
   // A cell with a wide gap inside spans several columns: the header is not aligned with the data.
-  return records.some((record) => record.some((cell) => /\s{2,}/.test(cell))) ? undefined : records;
+  return records?.some((record) => record.some((cell) => /\s{2,}/.test(cell)))
+    ? undefined
+    : records;
 }
 
 /**
@@ -536,18 +547,29 @@ function isColumnGroups(line: string, header: string): boolean {
  * Splits whitespace-separated lines into as many fields as most lines have; the last field keeps
  * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
  * as printed by df or docker ps, are matched to the data columns by position. The first line is a
- * header if `underlined`.
+ * header if it has an `underline`, a rule, whose parts tell where the columns are, as tasklist,
+ * PowerShell, sqlite3 -column and pip list draw it, so that "Image Name" and "6,532 K" are cells.
  */
-function splitWhitespace(lines: string[], underlined: boolean): Records {
+function splitWhitespace(lines: string[], underline: string | undefined): Records {
   // ls -l prints "total 16" above the files, also with the inodes or blocks before them (-i, -s).
   if (/^total\s+\S+$/.test(lines[0] ?? "") && tokenize(lines[1] ?? "").length > 2) {
-    return splitWhitespace(lines.slice(1), underlined);
+    return splitWhitespace(lines.slice(1), underline);
   }
   if (isColumnGroups(lines[0] ?? "", lines[1] ?? "")) {
-    return splitWhitespace(lines.slice(1), underlined);
+    return splitWhitespace(lines.slice(1), underline);
   }
   // Each line is a record, so too many lines need not be split to be refused.
   checkTableSize(lines.length, 1);
+  const ruled =
+    underline === undefined
+      ? undefined
+      : splitAtStarts(
+          lines,
+          tokenize(underline).map((part) => part.start),
+        );
+  if (ruled !== undefined) {
+    return { records: ruled, header: true };
+  }
   const tokens = lines.map((line) => joinDurations(line, tokenize(line)));
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);
@@ -582,7 +604,7 @@ function splitWhitespace(lines: string[], underlined: boolean): Records {
       : mode(counts);
   return {
     records: lines.map((line, i) => fields(line, tokens[i] ?? [], count)),
-    header: underlined || undefined,
+    header: underline === undefined ? undefined : true,
   };
 }
 
@@ -704,7 +726,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
  * as go test -bench.
  */
 function splitShown(text: string, all: string[], format: Exclude<DataFormat, "json">): Records {
-  const { lines, underlined } = withoutRules(
+  const { lines, underline } = withoutRules(
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
   );
   if (format === "auto") {
@@ -746,7 +768,7 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
     const width = records[0]?.length ?? 0;
     // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
     // cells beyond it are left out.
-    if (underlined) {
+    if (underline !== undefined) {
       return { records: records.map((record) => record.slice(0, width)), header: true };
     }
     if (width > 1 && records.every((record) => record.length === width)) {
@@ -759,5 +781,5 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       return { ...table, csv: true };
     }
   }
-  return tabular ?? splitWhitespace(lines, underlined);
+  return tabular ?? splitWhitespace(lines, underline);
 }

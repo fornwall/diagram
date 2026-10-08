@@ -1061,6 +1061,28 @@ suite("data", () => {
     assert.deepStrictEqual(parse(vmstat.join("\n"), "whitespace"), { columns, rows });
   });
 
+  test("splits columns where the parts of the rule under the header are", () => {
+    const tasklist = [
+      "",
+      "Image Name                     PID Session Name        Session#    Mem Usage",
+      "========================= ======== ================ =========== ============",
+      "System Idle Process              0 Services                   0          8 K",
+      "Code.exe                     12345 Console                    1    245,120 K",
+    ].join("\r\n");
+    assert.deepStrictEqual(parse(tasklist), {
+      columns: ["Image Name", "PID", "Session Name", "Session#", "Mem Usage"],
+      rows: [
+        ["System Idle Process", 0, "Services", 0, 8 * 1024],
+        ["Code.exe", 12345, "Console", 1, 245_120 * 1024],
+      ],
+    });
+    // Not where a cell runs into the gap before the next part.
+    assert.deepStrictEqual(parse("a  b\n-  -\nxyz 1\nw  2").rows, [
+      ["xyz", 1],
+      ["w", 2],
+    ]);
+  });
+
   test("leaves out what top and cloc print above their tables, and says so", () => {
     const top = [
       "top - 10:00:00 up 1 day,  2:03,  2 users,  load average: 0.52, 0.58, 0.59",
