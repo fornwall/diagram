@@ -303,9 +303,11 @@ async function streamReply(
       if (budget.notRun) {
         content = text(`Not run, as ${budget.notRun}. Answer without tools.`);
       } else if (!options.tools?.some((tool) => tool.name === call.name)) {
-        // invokeTool runs any registered tool, not only those the model was given.
+        // invokeTool runs any registered tool, not only those the model was given. A required
+        // round offers only the required tool, and the others in the next.
+        const when = tools.some((tool) => tool.name === call.name) ? " in this round" : "";
         content = text(
-          `The tool ${call.name} is not available in this round. Use only the tools you were given.`,
+          `The tool ${call.name} is not available${when}. Use only the tools you were given.`,
         );
       } else {
         try {

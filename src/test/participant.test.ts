@@ -667,7 +667,11 @@ suite("participant", () => {
     assert.strictEqual(result, undefined);
     assert.ok(sent[0]?.options.tools?.every((tool) => readOnlyTools.includes(tool.name)));
     assert.strictEqual(sent[0]?.options.toolMode, undefined);
-    assert.match(messageText(sent[1]?.messages.at(-1)), /not available/);
+    // Not "in this round", as no round of the request offers them.
+    assert.match(
+      messageText(sent[1]?.messages.at(-1)),
+      /^The tool diagram_render is not available\. Use only the tools you were given\./,
+    );
   });
 
   test("stops calling tools after twelve rounds, and says so", async () => {
