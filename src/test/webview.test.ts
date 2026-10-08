@@ -154,6 +154,28 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the focus in the source view after highlighting a path from it", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    assert.strictEqual(
+      await evaluate(`(() => {
+        for (const id of ["A", "B"]) {
+          document.querySelector(\`[data-diagram-id="\${id}"][tabindex]\`)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}));
+        }
+        document.getElementById("view-source").click();
+        const button = document.getElementById("highlight-path");
+        button.focus();
+        button.click();
+        try {
+          return document.activeElement.id;
+        } finally {
+          document.getElementById("view-visual").click();
+        }
+      })()`),
+      "source",
+    );
+  });
+
   test("reveals node picks without losing source edits, describes the canvas by the prompt, and restores focus when finished", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
