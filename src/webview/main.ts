@@ -76,6 +76,14 @@ let chartOptions: Promise<ChartOptionsForm> | undefined;
 const loadChartOptions = () =>
   (chartOptions ??= import("./chartOptions").then(
     ({ ChartOptionsForm }) => new ChartOptionsForm(element("chart-options"), post, focusContent),
+    (error: unknown) => {
+      // Let the next time the form is shown try again.
+      chartOptions = undefined;
+      transientHint(
+        `Could not load Chart Options: ${errorClause(error)}. Reload the window (Developer: Reload Window).`,
+      );
+      throw error;
+    },
   ));
 
 // Register panning first so it can suppress clicks after a drag.

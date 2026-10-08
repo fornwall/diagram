@@ -850,6 +850,24 @@ suite("webview renderer loading", function () {
     assert.ok(!again.ok && again.kind === "unavailable");
   });
 
+  test("says when Chart Options do not load, and tries again the next time", async () => {
+    const { evaluate } = await pageWithout(/^chartOptions-\w+\.js$/);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const label = document.getElementById("selection-label");
+        const shown = async () => {
+          label.textContent = "";
+          receive({type: "chartOptions", visible: true});
+          return until(() => /^Could not load Chart Options: /.test(label.textContent) && label.textContent,
+            "the error");
+        };
+        return [await shown(), await shown()].map(text => text.endsWith("(Developer: Reload Window)."));
+      })()`),
+      [true, true],
+    );
+  });
+
   test("reports Mermaid not loading as its renderer not loading, not as an error to fix", async () => {
     const { panel } = await pageWithout(/^mermaid\.core-\w+\.js$/);
     const outcome = await panel.render(
