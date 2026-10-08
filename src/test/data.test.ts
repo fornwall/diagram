@@ -1059,6 +1059,50 @@ suite("data", () => {
     assert.deepStrictEqual(parse(vmstat.join("\n"), "whitespace"), { columns, rows });
   });
 
+  test("leaves out what top and cloc print above their tables, and says so", () => {
+    const top = [
+      "top - 10:00:00 up 1 day,  2:03,  2 users,  load average: 0.52, 0.58, 0.59",
+      "Tasks: 312 total,   1 running, 311 sleeping,   0 stopped,   0 zombie",
+      "MiB Swap:   2048.0 total,   2048.0 free,      0.0 used.  21005.1 avail Mem",
+      "",
+      "    PID USER      %CPU COMMAND",
+      "   1234 fornwall  12.5 code",
+      "      1 root       0.0 systemd",
+    ].join("\n");
+    for (const format of ["auto", "whitespace"] as const) {
+      const table = parseTable(top, format);
+      assert.deepStrictEqual(table.rows, [
+        [1234, "fornwall", 12.5, "code"],
+        [1, "root", 0, "systemd"],
+      ]);
+      assert.strictEqual(table.note, "Only the table from line 5 was read, not the text above it.");
+    }
+    const rule = "-".repeat(60);
+    const cloc = [
+      "      45 text files.",
+      "",
+      "github.com/AlDanial/cloc v 1.98  T=0.05 s (1000.0 files/s, 100000.0 lines/s)",
+      rule,
+      "Language         files     blank   comment      code",
+      rule,
+      "TypeScript          40      1000       800     12000",
+      "JSON                 5         0         0       300",
+      rule,
+    ].join("\n");
+    assert.deepStrictEqual(parse(cloc), {
+      columns: ["Language", "files", "blank", "comment", "code"],
+      rows: [
+        ["TypeScript", 40, 1000, 800, 12000],
+        ["JSON", 5, 0, 0, 300],
+      ],
+    });
+    // A line between two rules with as many words as the line above is the first row.
+    assert.deepStrictEqual(parse("name value\n----------\na 1\n----------\ntotal 1").rows, [
+      ["a", 1],
+      ["total", 1],
+    ]);
+  });
+
   test("leaves out the size of a data frame that pandas prints below it", () => {
     assert.deepStrictEqual(parse("   a  b\n0  1  x\n1  2  y\n\n[2 rows x 2 columns]\n"), {
       columns: ["Column 1", "a", "b"],

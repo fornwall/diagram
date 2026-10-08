@@ -612,8 +612,41 @@ function preambleLength(lines: string[]): number {
   }
   // A header and a row of the table share a delimiter, which a line of text, such as a commit
   // subject, may have too.
-  const [header = "", row = ""] = lines.slice(length).filter((line) => !isBlank(line));
+  const [header = "", row = ""] = filledLines(lines, length).map((i) => lines[i]);
   return text && [",", ";", "\t"].some((d) => header.includes(d) && row.includes(d)) ? length : 0;
+}
+
+/** The indexes of the first two lines from `start` that are not blank. */
+function filledLines(lines: string[], start: number): number[] {
+  const filled: number[] = [];
+  for (let i = start; i < lines.length && filled.length < 2; i++) {
+    if (!isBlank(lines[i] ?? "")) filled.push(i);
+  }
+  return filled;
+}
+
+/** The first line of top's summary of the system above its processes, on Linux or macOS. */
+const TOP_SUMMARY = /^(?:top - |Processes: \d+ total)/;
+
+/**
+ * The number of lines that a command prints above its table, or 0 if there are none: the summary
+ * that top prints above its header ("PID USER …"), or text above a header between two rules, as
+ * cloc prints its version and speed, which has other numbers of words than the header.
+ */
+function outputAbove(lines: string[]): number {
+  if (TOP_SUMMARY.test(lines[0] ?? "")) {
+    return Math.max(
+      lines.findIndex((line) => /^\s*PID\s/.test(line)),
+      0,
+    );
+  }
+  let rule = 0;
+  while (rule < lines.length && !isRule(lines[rule] ?? "", undefined)) rule++;
+  const [header, below] = filledLines(lines, rule + 1).map((i) => lines[i] ?? "");
+  if (header === undefined || below === undefined || !isRule(below, undefined)) return 0;
+  const words = tokenize(header).length;
+  const above = lines.slice(0, rule).filter((line) => !isBlank(line) && !TABLE_SIZE.test(line));
+  return above.length > 0 && above.every((line) => tokenize(line).length !== words) ? rule : 0;
 }
 
 /**
@@ -666,8 +699,9 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
 
 /**
  * Splits text without the rows that the output left out, given as `all` its lines. Text above a
- * table of delimited values, such as a title, is left out, unless the text is the output of a
- * command that has its own lines around the table, such as go test -bench.
+ * table of delimited values, such as a title, is left out, as is what top and cloc print above
+ * theirs, unless the text is the output of a command that has its own lines around the table, such
+ * as go test -bench.
  */
 function splitShown(text: string, all: string[], format: Exclude<DataFormat, "json">): Records {
   const { lines, underlined } = withoutRules(
@@ -679,7 +713,7 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       return output;
     }
   }
-  const preamble = format === "whitespace" ? 0 : preambleLength(all);
+  const preamble = outputAbove(all) || (format === "whitespace" ? 0 : preambleLength(all));
   if (preamble > 0) {
     // Left as empty lines, which are skipped, as errors count lines.
     const kept = all.map((line, i) => (i < preamble ? "" : line));
