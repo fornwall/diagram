@@ -69,6 +69,11 @@ function parseRenderInput(
 ): { diagram: Diagram; problems: string[]; ignored: string[] } | string {
   // Some models send null for the properties they leave out.
   const input = isPlainObject(value) ? givenProperties(value) : {};
+  // Models sometimes send an ECharts option as an object despite the schema. Sending it again as a
+  // string would cost as much.
+  if (isPlainObject(input.source) && (input.language ?? "echarts") === "echarts") {
+    input.source = JSON.stringify(input.source, null, 2);
+  }
   if (typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
   }

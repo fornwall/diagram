@@ -56,6 +56,22 @@ suite("tools", () => {
     assert.strictEqual(rendered.length, 2);
   });
 
+  test("diagram_render takes an ECharts option given as an object", async () => {
+    const rendered: string[] = [];
+    panel.render = async (diagram) => {
+      rendered.push(`${diagram.language} "${diagram.title}": ${diagram.source}`);
+      return { ok: true, diagramType: "test" };
+    };
+    const tool = new RenderDiagramTool(panel);
+    const option = { title: { text: "Sales" }, series: [] };
+    await invokeTool(tool, { source: option });
+    assert.match(
+      await invokeTool(tool, { source: option, language: "mermaid" }),
+      /Nothing was rendered: Give "source"/,
+    );
+    assert.deepStrictEqual(rendered, [`echarts "Sales": ${JSON.stringify(option, null, 2)}`]);
+  });
+
   test("diagram_render reports links it left out, and a panel that could not show the diagram", async () => {
     const outcomes: RenderOutcome[] = [
       { ok: true, diagramType: "flowchart" },
