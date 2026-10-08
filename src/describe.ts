@@ -37,7 +37,10 @@ interface Drawing {
   relationships?: readonly DiagramNode[];
   repeatedNames?: readonly RepeatedName[];
   warnings?: readonly string[];
-  /** The generated chart's data, if loaded, for the units that filters and "max" are given in. */
+  /**
+   * The generated chart's data, if loaded, which diagram_inspectData can show, for the units that
+   * filters and "max" are given in.
+   */
   chartTable?: DataTable | undefined;
   /** Gives a long source and list of relationships too, as {@link GET_STATE_TOOL} does. */
   fullSource?: boolean;
@@ -68,12 +71,12 @@ export function describeDiagram(
   ];
   // A model that calls no tools can still change a generated chart's option as a whole.
   if (state.chart && callsTools) {
-    const { file, command, data } = state.chart;
+    const { file, command } = state.chart;
     const refresh = file !== undefined || command !== undefined;
     lines.push(
       `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.` +
         (refresh ? " Refresh reloads the data." : "") +
-        (data === undefined ? "" : ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.`),
+        (chartTable ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.` : ""),
     );
     const units = chartTable && describeUnits(chartTable);
     if (units) lines.push(units);

@@ -21,6 +21,12 @@ suite("describe", () => {
     assert.match(description, /use diagram_updateChart with the loaded data/);
   });
 
+  test("points to diagram_inspectData for loaded chart data", () => {
+    assert.doesNotMatch(describeDiagram(chart), /diagram_inspectData/);
+    const chartTable = parseTable("name,value\nSales,42");
+    assert.match(describeDiagram(chart, { chartTable }), /diagram_inspectData shows its columns/);
+  });
+
   test("tells the units that sizes and durations were converted to", () => {
     const table = parseTable("name,Latency (ms),Size (KB),Wait,share\na,1.5,2,3s,5%");
     assert.match(
@@ -42,11 +48,10 @@ suite("describe", () => {
 
   test("large inline data does not bypass the source limit or hide chart settings", () => {
     const data = "name,value\nPrivate row,42\n".repeat(10_000);
-    const description = describeDiagram({
-      ...chart,
-      source: data,
-      chart: { type: "bar", data, aggregate: "sum" },
-    });
+    const description = describeDiagram(
+      { ...chart, source: data, chart: { type: "bar", data, aggregate: "sum" } },
+      { chartTable: parseTable(data) },
+    );
     assert.ok(description.length < 1_000);
     assert.doesNotMatch(description, /Private row/);
     assert.match(description, /"aggregate":"sum"/);
