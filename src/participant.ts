@@ -2,7 +2,13 @@ import * as vscode from "vscode";
 import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
-import { escapeMarkdown, fitToolResults, promptMessages, toolResultBudget } from "./prompt";
+import {
+  acceptsImages,
+  escapeMarkdown,
+  fitToolResults,
+  promptMessages,
+  toolResultBudget,
+} from "./prompt";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
@@ -79,14 +85,12 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     const explain = request.command === "explain";
 
-    // A model says whether it calls tools and views images in capabilities, which is not part of
-    // the stable API. One that does not call tools may reject a request with tools; it draws with
-    // a diagram block instead. One that does not view images may reject a request with an image.
-    const { capabilities } = request.model as {
-      capabilities?: { supportsToolCalling?: boolean; supportsImageToText?: boolean };
-    };
+    // A model says whether it calls tools in capabilities, which is not part of the stable API.
+    // One that does not call tools may reject a request with tools; it draws with a diagram block
+    // instead. One that does not view images may reject a request with an image.
+    const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
     const callsTools = capabilities?.supportsToolCalling !== false;
-    const viewsImages = capabilities?.supportsImageToText !== false;
+    const viewsImages = acceptsImages(request.model);
     const current = request.command === "new" ? undefined : panel.describeForModel({ callsTools });
     if (explain && !current) {
       stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");

@@ -674,7 +674,7 @@ function imageData(
  * Models say whether they accept images in `capabilities.supportsImageToText`, which is not part of
  * the stable API.
  */
-function acceptsImages(model: vscode.LanguageModelChat): boolean {
+export function acceptsImages(model: vscode.LanguageModelChat): boolean {
   const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
   return capabilities?.supportsImageToText !== false;
 }
