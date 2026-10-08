@@ -186,13 +186,22 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
     return { invocationMessage: "Reading the diagram panel" };
   }
 
-  invoke(): vscode.LanguageModelToolResult {
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,
+    token: vscode.CancellationToken,
+  ): Promise<vscode.LanguageModelToolResult> {
     // A source too long to repeat in every chat request is given in full here, as a model has to
-    // read it to change it. The participant shortens tool results that do not fit its budget.
-    return textResult(
-      this.panel.describeForModel({ fullSource: true }) ??
+    // read it to change it, unless it does not fit, as the caller would cut it short.
+    const full = this.panel.describeForModel({ detail: "full" });
+    const summary = this.panel.describeForModel({ detail: "summary" });
+    if (full === undefined || summary === undefined) {
+      return textResult(
         `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
-    );
+      );
+    }
+    const room = options.tokenizationOptions;
+    const fits = !room || (await room.countTokens(full, token)) <= room.tokenBudget;
+    return textResult(fits ? full : summary);
   }
 }
 

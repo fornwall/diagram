@@ -81,10 +81,10 @@ suite("describe", () => {
     const summary = describeDiagram(state);
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(summary, /too long to repeat in every request; diagram_getState gives it in full/);
-    assert.ok(describeDiagram(state, { fullSource: true }).includes(source));
+    assert.ok(describeDiagram(state, { detail: "full" }).includes(source));
     // A generated chart is changed with the chart tools, not by rewriting its long option.
     const generated = { ...chart, source: `{"dataset":${"[1,2],".repeat(10_000)}}` };
-    const full = describeDiagram(generated, { fullSource: true });
+    const full = describeDiagram(generated, { detail: "full" });
     assert.match(full, /too long to show here/);
   });
 
@@ -108,7 +108,7 @@ suite("describe", () => {
       /It has 100 selectable relationships, .*diagram_getState lists their ids/,
     );
     assert.doesNotMatch(describeDiagram(state, { relationships, callsTools: false }), /relation/);
-    assert.match(describeDiagram(state, { relationships, fullSource: true }), /L_A_B_99";/);
+    assert.match(describeDiagram(state, { relationships, detail: "full" }), /L_A_B_99";/);
   });
 
   test("a model that calls no tools is told of the drawing, but of no tool", () => {

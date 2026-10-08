@@ -12,6 +12,7 @@ import {
   type Annotation,
   CHART_TOOL,
   type DiagramNode,
+  diagramNoun,
   GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   isPlainObject,
@@ -21,6 +22,13 @@ import {
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
+
+/**
+ * How much of a long source and list of relationships to give: "brief" leaves them out of every
+ * chat request, "full" gives them, as {@link GET_STATE_TOOL} does, and "summary" leaves out even a
+ * short source, when the full description has no room in the model's input.
+ */
+export type Detail = "brief" | "full" | "summary";
 
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
@@ -42,8 +50,7 @@ interface Drawing {
    * filters and "max" are given in.
    */
   chartTable?: DataTable | undefined;
-  /** Gives a long source and list of relationships too, as {@link GET_STATE_TOOL} does. */
-  fullSource?: boolean;
+  detail?: Detail;
   /** Whether the model calls tools, and so is told which ones to call. */
   callsTools?: boolean;
 }
@@ -58,7 +65,7 @@ export function describeDiagram(
     repeatedNames = [],
     warnings = [],
     chartTable,
-    fullSource = false,
+    detail = "brief",
     callsTools = true,
   }: Drawing = {},
 ): string {
@@ -66,7 +73,7 @@ export function describeDiagram(
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, fullSource, callsTools),
+    describeSource(state, detail, callsTools),
     "",
   ];
   // A model that calls no tools can still change a generated chart's option as a whole.
@@ -114,13 +121,16 @@ export function describeDiagram(
   }
   lines.push(...warnings);
   const listed = nodeList(relationships);
-  if (listed && (fullSource || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
+  if (listed && (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
     lines.push(
       `Selectable relationships${callsTools ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,
     );
   } else if (listed && callsTools) {
+    const many = plural(relationships.length, "selectable relationship");
     lines.push(
-      `It has ${plural(relationships.length, "selectable relationship")}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
+      detail === "summary"
+        ? `It has ${many}, too many to list in the room left in your input.`
+        : `It has ${many}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
     );
   }
   if (repeatedNames.length > 0 && callsTools) {
@@ -188,20 +198,27 @@ function describeMarks(
 }
 
 /**
- * A long source is left out of every chat request, but given in full when `full`, as a model has to
- * read a source to change it. A chart generated from a large file or command output is the
+ * A long source is left out of every chat request, but given in full when asked for, as a model has
+ * to read a source to change it. A chart generated from a large file or command output is the
  * exception: it can be too large for the model's context, and the chart tools change it instead.
  * A model that calls no tools is not told to read it with {@link GET_STATE_TOOL}.
  */
 function describeSource(
   { source, language, chart }: DiagramState,
-  full: boolean,
+  detail: Detail,
   callsTools: boolean,
 ): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
-  if (source.length <= MAX_SOURCE_LENGTH || (full && !chart)) {
+  if (detail === "summary") {
+    // Part of a source would be of no use to change it.
+    const length = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
+    return chart
+      ? `(${length})`
+      : `(${length} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
+  }
+  if (source.length <= MAX_SOURCE_LENGTH || (detail === "full" && !chart)) {
     return codeFence(source, language);
   }
   return chart || !callsTools

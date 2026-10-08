@@ -6,6 +6,7 @@ import type { FromWebview } from "../protocol";
 import {
   AnnotateDiagramTool,
   GetDiagramImageTool,
+  GetDiagramStateTool,
   PickDiagramNodesTool,
   RenderDiagramTool,
 } from "../tools";
@@ -29,6 +30,30 @@ suite("tools", () => {
     panel = newPanel(values);
   });
   teardown(() => panel.dispose());
+
+  test("diagram_getState leaves out a source that does not fit, instead of having it cut", async () => {
+    const source = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
+    values.set("diagram.state", { ...flowchart, source });
+    panel.dispose();
+    panel = newPanel(values);
+    const state = (tokenBudget: number) =>
+      new GetDiagramStateTool(panel).invoke(
+        {
+          input: {},
+          toolInvocationToken: undefined,
+          tokenizationOptions: { tokenBudget, countTokens: async (text) => text.length / 4 },
+        },
+        new vscode.CancellationTokenSource().token,
+      );
+    assert.ok(toolText(await state(20_000)).includes(source));
+    const summary = toolText(await state(10_000));
+    assert.doesNotMatch(summary, /A --> B/);
+    assert.match(
+      summary,
+      /\(The source, 40,013 characters long, is left out, as the room left in your input is too small for it\. Without it, you cannot change the diagram: tell the user/,
+    );
+    assert.match(summary, /"Flow"[\s\S]*The user edited this source/);
+  });
 
   test("diagram_render says it renders a chart for a source that starts with a brace", () => {
     const tool = new RenderDiagramTool(panel);

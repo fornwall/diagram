@@ -15,7 +15,7 @@ import {
 import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 import { loadTable, readAsks } from "./dataSource";
-import { describeDiagram, nodeList } from "./describe";
+import { type Detail, describeDiagram, nodeList } from "./describe";
 import {
   confirmWrite,
   type DocumentBinding,
@@ -221,14 +221,15 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `fullSource` gives a long source and relationship list too. Without `callsTools`, the model is
-   * not told to call a tool for them, nor the revision, which only diagram_updateChart takes.
+   * `detail` says how much of a long source and relationship list to give. Without `callsTools`, the
+   * model is not told to call a tool for them, nor the revision, which only diagram_updateChart
+   * takes.
    */
   describeForModel({
-    fullSource = false,
+    detail = "brief",
     callsTools = true,
   }: {
-    fullSource?: boolean;
+    detail?: Detail;
     callsTools?: boolean;
   } = {}): string | undefined {
     if (!this.state) return undefined;
@@ -248,7 +249,7 @@ export class DiagramPanel implements vscode.Disposable {
         ? [...this.renderWarnings, `The panel is not showing it yet: ${this.unavailable}`]
         : this.renderWarnings,
       chartTable,
-      fullSource,
+      detail,
       callsTools,
     });
     return callsTools ? `Revision: ${this.shownRevision}.\n\n${description}` : description;
