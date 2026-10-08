@@ -118,18 +118,25 @@ if (watch) {
  */
 function thirdPartyNotices(metafiles) {
   const packages = new Set();
+  const sources = new Set();
   for (const { outputs } of metafiles) {
     for (const { inputs } of Object.values(outputs)) {
       for (const [path, { bytesInOutput }] of Object.entries(inputs)) {
         const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(path);
-        if (match && bytesInOutput > 0) packages.add(match[1]);
+        if (match && bytesInOutput > 0) {
+          packages.add(match[1]);
+          sources.add(path);
+        }
       }
     }
   }
   // Packages with the same license text, such as most d3 modules, share one copy of it.
-  const packagesByText = new Map();
+  const namesByText = new Map();
+  const add = (text, name) => namesByText.set(text, (namesByText.get(text) ?? new Set()).add(name));
+  const installed = new Set();
   for (const dir of packages) {
     const { name, version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    installed.add(name);
     const files = readdirSync(dir)
       .filter((file) => /^(licen[cs]e|notice)(-[\w-]+)?(\.(md|txt))?$/i.test(file))
       .map((file) => join(dir, file));
@@ -144,10 +151,25 @@ function thirdPartyNotices(metafiles) {
       .sort()
       .map((file) => readFileSync(file, "utf8").trim())
       .join("\n\n");
-    packagesByText.set(text, [...(packagesByText.get(text) ?? []), `${name} ${version}`]);
+    add(text, `${name} ${version}`);
   }
-  const sections = [...packagesByText]
-    .map(([text, names]) => `${names.sort().join("\n")}\n\n${text}`)
+  // Some packages ship other packages built into their files, such as @mermaid-js/parser with
+  // langium, and those are not installed. Their bundler names them in a comment above each of
+  // their modules, and licenses/ holds their license files.
+  const bundled =
+    /^\/\/ \S*?node_modules\/(?:\.pnpm\/(?:@[^/+]+\+)?[^/@]+@([^_/]+)[^/]*\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//gm;
+  for (const path of sources) {
+    for (const [, version, name] of readFileSync(path, "utf8").matchAll(bundled)) {
+      if (installed.has(name)) continue;
+      const file = join("licenses", `${name}.txt`);
+      if (!statSync(file, { throwIfNoEntry: false })) {
+        throw new Error(`${path} includes ${name}, which has no license file in licenses/`);
+      }
+      add(readFileSync(file, "utf8").trim(), version ? `${name} ${version}` : name);
+    }
+  }
+  const sections = [...namesByText]
+    .map(([text, names]) => `${[...names].sort().join("\n")}\n\n${text}`)
     .sort();
   return `@diagram includes the following third-party software.\n\n${sections.join(`\n\n${"=".repeat(78)}\n\n`)}\n`;
 }
