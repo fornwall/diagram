@@ -377,6 +377,7 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("tree"), [44, 96, 96]);
     assert.deepStrictEqual(box("funnel"), [44, 80, 80]);
     assert.deepStrictEqual(box("sankey"), [44, 12, 144]);
+    assert.deepStrictEqual(box("chord"), [44, 12, 12]);
   });
 
   test("gives sankey nodes their own palette colors, also beyond eight", () => {

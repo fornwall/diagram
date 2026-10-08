@@ -579,8 +579,11 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
 function layOutBoxSeries(series: JsonObject[], reserved: Insets, width: number): void {
   for (const each of series) {
     const type = String(each.type);
-    const placed = has(each, BOX_KEYS) || (type === "graph" && (each.layout ?? "none") === "none");
-    if (placed || !["funnel", "sankey", "tree", "treemap", "graph"].includes(type)) {
+    const placed =
+      has(each, BOX_KEYS) ||
+      (type === "graph" && (each.layout ?? "none") === "none") ||
+      (type === "chord" && each.center !== undefined);
+    if (placed || !["funnel", "sankey", "tree", "treemap", "graph", "chord"].includes(type)) {
       continue;
     }
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
