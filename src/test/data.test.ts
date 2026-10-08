@@ -125,6 +125,8 @@ suite("data", () => {
         /exceeding the 1,000,000 cell limit\. Select fewer rows or columns/,
       );
     }
+    // Naming all the columns, so that the model knows how many to select.
+    assert.throws(() => parseTable(json), /1,101 rows × 1,100 columns/);
   });
 
   test("reads K, M and B as sizes in bytes only in columns of sizes", () => {

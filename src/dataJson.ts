@@ -60,8 +60,8 @@ function recordsFromJsonArray(array: unknown[]): Records {
       for (const key of Object.keys(item)) {
         names.add(key);
       }
-      checkTableSize(objects.length + 1, names.size);
     }
+    checkTableSize(objects.length + 1, names.size);
     const keys = [...names];
     return {
       records: [
