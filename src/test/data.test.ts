@@ -79,7 +79,7 @@ suite("data", () => {
   test("rejects oversized records during parsing before converting cells", () => {
     assert.throws(
       () => splitText("\t".repeat(1_000_005), "tsv"),
-      /1 row × 1,000,001 columns, exceeding the 1,000,000 cell limit/,
+      /1 row × 1,000,001 columns, counting any header row and empty cells, exceeding the 1,000,000 cell limit/,
     );
     for (const line of ["a ".repeat(1_000_005), `|${"a|".repeat(1_000_005)}`]) {
       assert.throws(() => splitText(line, "auto"), /exceeding the 1,000,000 cell limit/);
@@ -126,7 +126,7 @@ suite("data", () => {
       );
     }
     // Naming all the columns, so that the model knows how many to select.
-    assert.throws(() => parseTable(json), /1,101 rows × 1,100 columns/);
+    assert.throws(() => parseTable(json), /1,101 rows × 1,100 columns, counting any header row/);
   });
 
   test("reads K, M and B as sizes in bytes only in columns of sizes", () => {
