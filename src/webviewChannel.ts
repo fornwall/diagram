@@ -64,8 +64,9 @@ export class WebviewChannel implements vscode.Disposable {
         preserveFocus,
       },
       // Keeps the webview while hidden behind another tab, so that it can still render and be
-      // asked to pick, and keeps its zoom and source editor.
-      { retainContextWhenHidden: true },
+      // asked to pick, and keeps its zoom and source editor. Ctrl/Cmd+F finds text in the drawing,
+      // SVG labels too, and the source.
+      { retainContextWhenHidden: true, enableFindWidget: true },
     );
     this.attach(panel);
     // A tab that cannot be closed is only left over, as before.
