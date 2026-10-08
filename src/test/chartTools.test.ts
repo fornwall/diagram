@@ -88,7 +88,7 @@ suite("chartTools", function () {
     assert.ok((await panel.updateChart({ filters: null, facetColumn: null }, token)).ok);
     const option = JSON.parse(panel.current?.source ?? "");
     assert.strictEqual(
-      option.series[0].data.reduce((total: number, bin: { value: number }) => total + bin.value, 0),
+      option.series[0].data.reduce((total: number, count: number) => total + count, 0),
       4,
     );
     assert.strictEqual(panel.loadedChartData, table);

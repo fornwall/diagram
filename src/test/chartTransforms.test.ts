@@ -1,12 +1,19 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { filterTable } from "../chartTransforms";
+import { filterTable, planHistogram } from "../chartTransforms";
 import { type DataTable, parseTable } from "../data";
-import { builtOption, type Option, withChart } from "./echartsModel";
+import { builtOption, withChart } from "./echartsModel";
 
 const build = (data: string | DataTable, extra: Partial<ChartSpec> = {}) =>
   builtOption({ data: "unused", type: "histogram", ...extra } as ChartSpec, data);
+
+/** The bin edges of a histogram, which the chart names but does not hold. */
+const edges = (data: string | DataTable, extra: Partial<ChartSpec> = {}) =>
+  planHistogram(
+    { data: "unused", type: "histogram", ...extra } as ChartSpec,
+    typeof data === "string" ? parseTable(data) : data,
+  ).edges;
 
 suite("chartTransforms", () => {
   test("keeps the rows that match every filter, comparing cells by type, without changing the table", () => {
@@ -121,10 +128,8 @@ suite("chartTransforms", () => {
 
   test("histogram bins raw observations including total rows, negatives and the upper boundary", () => {
     const option = build("label,value\na,-2\nb,-1\nc,0\nd,1\ntotal,2", { bins: 2 });
-    assert.deepStrictEqual(option.series[0].data, [
-      { name: "[-2, 0)", value: 2, lower: -2, upper: 0 },
-      { name: "[0, 2]", value: 3, lower: 0, upper: 2 },
-    ]);
+    assert.deepStrictEqual(option.xAxis.data, ["[-2, 0)", "[0, 2]"]);
+    assert.deepStrictEqual(option.series[0].data, [2, 3]);
     assert.strictEqual(option.series[0].barCategoryGap, "0%");
     const svg = withChart(option, (chart) => chart.renderToSVGString(), {
       width: 600,
@@ -135,13 +140,11 @@ suite("chartTransforms", () => {
   });
 
   test("histograms round bin names and skip identifier columns by default", () => {
-    const option = build("id,ms\n1,0\n2,0.5\n3,1\n4,0.2", { bins: 3 });
+    const data = "id,ms\n1,0\n2,0.5\n3,1\n4,0.2";
+    const option = build(data, { bins: 3 });
     assert.strictEqual(option.xAxis.name, "ms");
-    assert.deepStrictEqual(
-      option.series[0].data.map((bin: Option) => bin.name),
-      ["[0, 0.33)", "[0.33, 0.67)", "[0.67, 1]"],
-    );
-    assert.strictEqual(option.series[0].data[1].upper, 2 / 3);
+    assert.deepStrictEqual(option.xAxis.data, ["[0, 0.33)", "[0.33, 0.67)", "[0.67, 1]"]);
+    assert.strictEqual(edges(data, { bins: 3 })[2], 2 / 3);
   });
 
   test("histograms bin sizes and durations in the multiple that charts show them in", () => {
@@ -159,10 +162,12 @@ suite("chartTransforms", () => {
   });
 
   test("automatic histogram bins have a round width, and whole numbers a bin each", () => {
-    const bins = (values: number[]) =>
-      build(`value\n${values.join("\n")}`).series[0].data.map(
-        (bin: Option) => `${bin.name}: ${bin.value}`,
+    const bins = (values: number[]) => {
+      const option = build(`value\n${values.join("\n")}`);
+      return option.xAxis.data.map(
+        (name: string, i: number) => `${name}: ${option.series[0].data[i]}`,
       );
+    };
     // Ratings from 1 to 5, which bins 0.4 wide would split into five bins and five empty ones.
     assert.deepStrictEqual(bins(Array.from({ length: 100 }, (_, i) => 1 + (i % 5))), [
       "1: 20",
@@ -190,11 +195,8 @@ suite("chartTransforms", () => {
       bins: 2,
       filters: [{ column: "name", op: "neq", value: "d" }],
     });
-    assert.deepStrictEqual(
-      option.series[0].data.map((bin: Option) => bin.value),
-      [1, 2],
-    );
-    assert.strictEqual(option.series[0].data[1].upper, 2);
+    assert.deepStrictEqual(option.series[0].data, [1, 2]);
+    assert.deepStrictEqual(option.xAxis.data, ["[0, 1)", "[1, 2]"]);
   });
 
   test("bins constant, single, tiny and extreme values into finite bins that count every value", () => {
@@ -210,13 +212,12 @@ suite("chartTransforms", () => {
         columns: [{ name: "value", numeric: true }],
         rows: values.map((value) => [value]),
       };
-      const option = build(table, { bins: 200 });
-      const data = option.series[0].data as Option[];
+      const data: number[] = build(table, { bins: 200 }).series[0].data;
       assert.strictEqual(
-        data.reduce((total, bin) => total + bin.value, 0),
+        data.reduce((total, count) => total + count, 0),
         values.length,
       );
-      assert.ok(data.every((bin) => Number.isFinite(bin.lower) && Number.isFinite(bin.upper)));
+      assert.ok(edges(table, { bins: 200 }).every(Number.isFinite));
       if (values.every((value) => value === values[0])) assert.strictEqual(data.length, 1);
     }
   });

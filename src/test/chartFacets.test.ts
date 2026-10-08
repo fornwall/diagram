@@ -418,7 +418,7 @@ suite("chartFacets", () => {
         Array(3).fill(["[0, 5)", "[5, 10]"]),
       );
       assert.deepStrictEqual(
-        option.series.map((series: Option) => series.data.map((item: Option) => item.value)),
+        option.series.map((series: Option) => series.data),
         [
           [2, 0],
           [0, 2],

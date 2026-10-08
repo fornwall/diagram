@@ -242,10 +242,6 @@ export function buildHistogram(
     counts[index] = (counts[index] ?? 0) + 1;
     count++;
   }
-  const data = counts.map((value, index) => {
-    const lower = edges[index] ?? 0;
-    return { name: names[index] ?? "", value, lower, upper: edges[index + 1] ?? lower };
-  });
   const skipped = table.rows.length - count;
   return {
     option: {
@@ -254,11 +250,11 @@ export function buildHistogram(
       xAxis: {
         type: "category",
         name,
-        data: data.map((bin) => bin.name),
+        data: names,
         axisLabel: { hideOverlap: true },
       },
       yAxis: { type: "value", name: "count", min: 0, minInterval: 1 },
-      series: [{ type: "bar", name: "count", barCategoryGap: "0%", data }],
+      series: [{ type: "bar", name: "count", barCategoryGap: "0%", data: counts }],
     },
     summary:
       `Charted ${plural(count, "observation")} of ${JSON.stringify(name)} in ` +

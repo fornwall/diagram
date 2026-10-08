@@ -154,8 +154,7 @@ suite("chartPresentation", () => {
     const presentation = captureChartPresentation(JSON.stringify(option), baseline);
     const refreshed = rebuildChart(chart, parseTable("latency\n10\n20\n30"), presentation)
       .option as Option;
-    assert.strictEqual(refreshed.series[0].data[0].lower, 10);
-    assert.strictEqual(refreshed.series[0].data[1].upper, 30);
+    assert.deepStrictEqual(refreshed.xAxis.data, ["[10, 20)", "[20, 30]"]);
     assert.strictEqual(refreshed.series[0].itemStyle.color, "red");
   });
 
