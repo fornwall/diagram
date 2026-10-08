@@ -244,6 +244,13 @@ const HTML_BLOCKS: [start: RegExp, end: RegExp | "blank line", interrupts: boole
   ],
 ];
 
+/**
+ * How many block quotes and list items deep a line is read for more of them. VS Code's preview
+ * renders no blocks that deep. The bound keeps a line of many markers, such as "- - - x", from
+ * costing each line after it a step per container, and from being scanned to its end per marker.
+ */
+const MAX_DEPTH = 100;
+
 /** Whether a sticky regex matches a line at an index, after which its lastIndex is the match's end. */
 function matchesAt(regex: RegExp, line: string, index: number): boolean {
   regex.lastIndex = index;
@@ -329,7 +336,7 @@ export class FenceScanner {
       const indent = cursor.indent();
       const at = cursor.nonspace();
       const char = line[at];
-      if (indent >= 4 || char === undefined) {
+      if (indent >= 4 || char === undefined || depth === MAX_DEPTH) {
         break;
       }
       if (char === ">") {

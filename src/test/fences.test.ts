@@ -308,6 +308,14 @@ suite("fences", () => {
     ]);
   });
 
+  test("reads a line of many list markers, and the lines after it, in linear time", () => {
+    // Each marker scanned the rest of the line, and each blank line after it every list item.
+    const start = Date.now();
+    const markdown = `${"- ".repeat(40_000)}x${"\n".repeat(20_000)}\`\`\`mermaid\nA\n\`\`\``;
+    assertSources([[markdown, ['20000-20001 mermaid "": "A"']]]);
+    assert.ok(Date.now() - start < 1000);
+  });
+
   test("skips long prose and code, keeping the positions of diagrams", () => {
     const prose = "A paragraph with an inline ```mermaid marker.\n".repeat(10_000);
     const code = "````text\n```mermaid\nNot a diagram\n```\n````\n";
