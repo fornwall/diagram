@@ -1280,6 +1280,24 @@ suite("panel", function () {
     assert.match(panel.current?.error ?? "", /^The panel did not finish drawing it/);
   });
 
+  test("a render that ended before the page took it up is unfinished if it hangs the page then", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const timers = holdTimers(15_000);
+    void panel.render({ ...flowchart, source: "flowchart LR\n  A" }, "tool");
+    const { requestId } = webview.render;
+    const rendering = panel.render(flowchart, "tool");
+    // The page is still drawing the first.
+    timers.expire();
+    assert.ok(!(await rendering).ok);
+    assert.strictEqual(panel.current?.error, undefined);
+    await webview.receive({ type: "rendered", requestId, diagramType: "test" });
+    timers.expire();
+    assert.match(panel.current?.error ?? "", /^The panel did not finish drawing it/);
+    await webview.finishRender();
+    assert.strictEqual(panel.current?.error, undefined);
+  });
+
   test("a page that takes over 15 seconds to load draws the diagram once it does", async () => {
     const values = new Map<string, unknown>();
     const { panel } = await newFakePanel(values);

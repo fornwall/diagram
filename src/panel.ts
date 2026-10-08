@@ -142,11 +142,12 @@ export class DiagramPanel implements vscode.Disposable {
   /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
   /**
-   * The render that the page took up as soon as it got it, until it answers, and the last render
-   * sent to the page, until it answers that. Renders sent meanwhile wait for the page.
+   * The render that the page is drawing, which it took up as soon as it got it or once done with
+   * the one before, and the last render sent to the page, until it answers that. The page skips
+   * the renders sent between them.
    */
   private drawing: RenderMessage | undefined;
-  private lastSent: number | undefined;
+  private lastSent: RenderMessage | undefined;
   /** Why the last render did not finish, if the panel closed or stopped responding. */
   private unavailable: string | undefined;
   /**
@@ -344,8 +345,8 @@ export class DiagramPanel implements vscode.Disposable {
       // A page that is not ready yet gets the render again once it is, with the full time for it.
       this.startRenderTimer(message);
       if (this.webview.isReady) {
-        if (this.lastSent === undefined) this.drawing = message;
-        this.lastSent = message.requestId;
+        this.drawing ??= message;
+        this.lastSent = message;
       }
     }
     void this.webview.post(message).then((error) => {
@@ -553,23 +554,24 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Ends the pending render that the page did not answer in time. Its source may hang the page if
-   * the page is drawing it, but not if the page is busy with another source or is not ready yet.
+   * Ends the render if it is pending, as the page did not answer it in time. The current source
+   * may hang the page if the page is drawing it, also after its render ended so, but not if the
+   * page is busy with another source or is not ready yet.
    */
   private renderTimedOut(message: RenderMessage): void {
-    if (this.pendingRender?.message !== message) return;
     const { state, drawing } = this;
     if (
-      state?.source === message.source &&
+      state?.source !== undefined &&
       state.error !== UNFINISHED &&
       this.webview.isReady &&
-      drawing?.language === message.language &&
-      drawing.source === message.source
+      drawing?.language === state.language &&
+      drawing.source === state.source
     ) {
       // A late answer replaces the error.
       this.state = { ...state, error: UNFINISHED };
       void this.store.save(this.state);
     }
+    if (this.pendingRender?.message !== message) return;
     this.finishRender(
       message.requestId,
       notShown(
@@ -586,18 +588,13 @@ export class DiagramPanel implements vscode.Disposable {
   /**
    * Notes that the page answered a render: once it answers the last one, it is done with all. Done
    * with the one it was drawing, it skips the renders sent meanwhile but the last, which it takes
-   * up now, with the full time for it.
+   * up now, with the full time for it, even if the panel stopped waiting for it.
    */
   private pageAnswered(requestId: number): void {
-    if (requestId === this.lastSent) this.lastSent = undefined;
-    if (requestId !== this.drawing?.requestId && this.lastSent !== undefined) return;
-    const pending = this.pendingRender?.message;
-    if (this.lastSent !== undefined && pending?.requestId === this.lastSent) {
-      this.drawing = pending;
-      this.startRenderTimer(pending);
-    } else {
-      this.drawing = undefined;
-    }
+    if (requestId === this.lastSent?.requestId) this.lastSent = undefined;
+    if (requestId !== this.drawing?.requestId && this.lastSent) return;
+    this.drawing = this.lastSent;
+    if (this.drawing) this.startRenderTimer(this.drawing);
   }
 
   private finishRender(requestId: number, outcome: RenderOutcome): void {
