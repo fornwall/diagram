@@ -18,7 +18,15 @@ suite("describe", () => {
     assert.ok(description.includes(chart.source ?? ""));
     assert.ok(description.includes(JSON.stringify(chart.chart)));
     assert.strictEqual(description.match(/sales\.csv/g)?.length, 1);
-    assert.match(description, /use diagram_updateChart with the loaded data/);
+    assert.match(
+      description,
+      /Its data is not loaded, .* ask the user to press Refresh in the diagram panel first\./,
+    );
+    const chartTable = parseTable("name,value\nSales,42");
+    assert.match(
+      describeDiagram(chart, { chartTable }),
+      /use diagram_updateChart with the loaded data/,
+    );
   });
 
   test("points to diagram_inspectData for loaded chart data", () => {

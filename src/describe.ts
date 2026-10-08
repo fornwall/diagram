@@ -87,8 +87,11 @@ export function describeDiagram(
         `${UPDATE_CHART_TOOL} preserves supported manual styling. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must preserve those source customizations too.`,
       );
     }
+    // The table of a file or command is not kept when VS Code restarts.
     lines.push(
-      `To change this generated chart's type, columns, grouping, sort or limit, use ${UPDATE_CHART_TOOL} with the loaded data. Use ${CHART_TOOL} to change or reload its data source.`,
+      refresh && !chartTable
+        ? `Its data is not loaded, and ${UPDATE_CHART_TOOL} never rereads files or reruns commands. To change this generated chart's type, columns, grouping, sort or limit, ask the user to press Refresh in the diagram panel first. Use ${CHART_TOOL} to change its data source.`
+        : `To change this generated chart's type, columns, grouping, sort or limit, use ${UPDATE_CHART_TOOL} with the loaded data. Use ${CHART_TOOL} to change or reload its data source.`,
     );
   }
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
