@@ -148,8 +148,13 @@ suite("chartTools", function () {
     const link = path.join(root.uri.fsPath, "diagram-inspect-link.csv");
     fs.symlinkSync(file, link);
     afterTest(() => fs.rmSync(link));
-    assert.ok(
-      tool.prepareInvocation({ input: { file: path.basename(link) } }).confirmationMessages,
+    // A link in the workspace is read without asking only while it leads inside.
+    const linked = { file: path.basename(link) };
+    assert.ok(!tool.prepareInvocation({ input: linked }).confirmationMessages);
+    assert.strictEqual(
+      await invokeTool(tool, linked),
+      `Data could not be inspected: The file diagram-inspect-link.csv now leads out of the workspace, to ${file}, ` +
+        "so it was not read without asking the user. Call the tool again with the path that it leads to, which asks the user.",
     );
     assert.ok(!tool.prepareInvocation({ input: { file: "sizes.tsv" } }).confirmationMessages);
     assert.ok(tool.prepareInvocation({ input: { command: "printf data" } }).confirmationMessages);
@@ -163,6 +168,7 @@ suite("chartTools", function () {
   });
 
   test("inspection reads a file that it did not ask about only if it is still inside", async () => {
+    // Asking goes by the path alone, which the call tells again: preparing keeps no state.
     const file = path.join(tempDir("diagram-inspect-"), "data.csv");
     fs.writeFileSync(file, data);
     const { panel, webview } = await harness();
@@ -174,24 +180,15 @@ suite("chartTools", function () {
     afterTest(() => fs.rmSync(link));
     const input = { file: path.basename(link) };
     await draw(panel, { type: "pie", ...input });
-    // Each of two calls prepared before either runs is checked again.
-    for (let call = 0; call < 2; call++) {
-      assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
-    }
+    assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
     // A refresh of a chart of the file meanwhile leaves the check to the tool.
     await webview.receive({ type: "refresh" });
     fs.rmSync(link);
     fs.symlinkSync(file, link);
-    for (let call = 0; call < 2; call++) {
-      assert.strictEqual(
-        await invokeTool(tool, input),
-        "Data could not be inspected: The file diagram-inspect-swap.csv now leads out of the " +
-          "workspace, so it was not read without asking the user. Call the tool again to ask.",
-      );
-    }
-    // Once asked, it is read.
-    assert.ok(tool.prepareInvocation({ input }).confirmationMessages);
-    assert.match(await invokeTool(tool, input), /"rowCount":3/);
+    assert.match(await invokeTool(tool, input), /now leads out of the workspace, to /);
+    // The path it leads to is asked about, and then read.
+    assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
+    assert.match(await invokeTool(tool, { file }), /"rowCount":3/);
   });
 
   test("updates retain manual styling and loaded command data", async () => {

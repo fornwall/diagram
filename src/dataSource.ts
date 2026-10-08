@@ -8,7 +8,15 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
-import { decodeFile, decodeText, fileError, fileName, inWorkspace, resolveFile } from "./files";
+import {
+  decodeFile,
+  decodeText,
+  fileError,
+  fileName,
+  inWorkspace,
+  nearRoot,
+  resolveFile,
+} from "./files";
 
 /** The largest file or command output that is read. */
 const MAX_MIB = 10;
@@ -68,28 +76,33 @@ export function printsSiSizes(command: string): boolean {
   return false;
 }
 
-/**
- * The data files, by their path as given, that tool calls prepared meanwhile let through without
- * asking as they were inside the workspace, with how many such calls are still to run. Each one
- * checks the file again when it reads it, as a link may have changed meanwhile.
- */
-const unaskedFiles = new Map<string, number>();
-
 /** Whether reading a data file asks the user first, as for one outside the workspace. */
 export function readAsks(uri: vscode.Uri): boolean {
   return !vscode.workspace.isTrusted || !inWorkspace(uri);
 }
 
 /**
+ * Whether a tool asks before reading a data file: in an untrusted workspace, or for one outside it
+ * by its path. As a link may change between when a tool call is prepared and when it runs, this
+ * goes by the path alone, which the call can then tell again without the preparation keeping state.
+ */
+function toolAsks(uri: vscode.Uri): boolean {
+  const roots = vscode.workspace.workspaceFolders ?? [];
+  return !vscode.workspace.isTrusted || !roots.some((root) => nearRoot(root.uri, uri));
+}
+
+/**
  * For a tool invoked with `spec`, what {@link loadTable} takes if its data file was let through
- * without asking when the invocation was prepared, which this answers once for each such call.
+ * without asking, so that it is read only while it is inside the workspace, links followed.
  */
 export function toolUnasked({ file }: ChartSpec): { retry: string } | undefined {
-  const calls = file === undefined ? undefined : unaskedFiles.get(file);
-  if (file === undefined || calls === undefined) return undefined;
-  if (calls > 1) unaskedFiles.set(file, calls - 1);
-  else unaskedFiles.delete(file);
-  return { retry: "Call the tool again to ask." };
+  try {
+    if (file === undefined || toolAsks(resolveFile(file))) return undefined;
+  } catch {
+    // Reported when loading.
+    return undefined;
+  }
+  return { retry: "Call the tool again with the path that it leads to, which asks the user." };
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -107,19 +120,26 @@ export function prepareDataInvocation(
   } else if (spec?.file) {
     try {
       const uri = resolveFile(spec.file);
-      // A call that asks leaves the count, as a call prepared before it may run after it.
-      if (readAsks(uri)) {
+      if (toolAsks(uri)) {
         const message = new vscode.MarkdownString("Read this file's data?");
         message.appendCodeblock(fileName(uri), "text");
         prepared.confirmationMessages = { title: "Read a data file?", message };
-      } else {
-        unaskedFiles.set(spec.file, (unaskedFiles.get(spec.file) ?? 0) + 1);
       }
     } catch {
       // Invalid paths are reported when the tool is invoked.
     }
   }
   return prepared;
+}
+
+/** Where a file that is a link leads, e.g. ", to /tmp/data.csv", read without following it. */
+function linkTarget(uri: vscode.Uri): string {
+  try {
+    const target = fs.readlinkSync(uri.fsPath);
+    return `, to ${path.resolve(path.dirname(uri.fsPath), target)}`;
+  } catch {
+    return "";
+  }
 }
 
 /** Whether `bytes` have a character that UTF-8 encodes in more than one byte. */
@@ -153,8 +173,8 @@ export async function readDataFile(file: string, unasked?: { retry: string }): P
   const uri = resolveFile(file);
   if (unasked && readAsks(uri)) {
     throw new Error(
-      `The file ${fileName(uri)} now leads out of the workspace, so it was not read without ` +
-        `asking the user. ${unasked.retry}`,
+      `The file ${fileName(uri)} now leads out of the workspace${linkTarget(uri)}, so it was not ` +
+        `read without asking the user. ${unasked.retry}`,
     );
   }
   const checkSize = (size: number): void => {
