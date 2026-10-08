@@ -782,24 +782,27 @@ suite("Mermaid in the webview", function () {
   });
 
   test("selects sequence footer participants by identity when their labels match", async () => {
-    await draw({
-      source: "sequenceDiagram\n participant A as Service\n actor B as Service\n A->>B: Hello",
-    });
+    /** What clicking each footer copy selects. */
+    const footers = async (source: string) => {
+      await draw({ source });
+      return evaluate(`[...document.querySelectorAll('#diagram .actor-bottom')].map(footer => {
+        footer.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+        return [...document.querySelectorAll('#diagram [data-et="participant"].diagram-selected')]
+          .map(node => node.getAttribute('data-id')).join();
+      }).sort()`);
+    };
     assert.deepStrictEqual(
-      await evaluate(`(() => {
-        return [...document.querySelectorAll('#diagram .actor-bottom')].map(footer => {
-          footer.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-          return {
-            name: footer.getAttribute('name'),
-            selected: [...document.querySelectorAll('#diagram [data-et="participant"].diagram-selected')]
-              .map(node => node.getAttribute('data-id'))
-          };
-        }).sort((a, b) => a.name.localeCompare(b.name));
-      })()`),
-      [
-        { name: "A", selected: ["A"] },
-        { name: "B", selected: ["B"] },
-      ],
+      await footers(
+        "sequenceDiagram\n participant A as Service\n actor B as Service\n A->>B: Hello",
+      ),
+      ["A", "B"],
+    );
+    // Databases and queues draw no name on theirs.
+    assert.deepStrictEqual(
+      await footers(
+        'sequenceDiagram\n participant D@{ "type": "database" }\n participant Q@{ "type": "queue" }\n D->>Q: Put',
+      ),
+      ["D", "Q"],
     );
   });
 

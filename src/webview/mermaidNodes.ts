@@ -561,11 +561,16 @@ function sequence(f: Finder): void {
     participants.set(node.id, node);
     f.add(element, node);
   }
-  // Footer copies retain the participant's name, even when several share a display label.
+  // Footer copies retain the participant's name, even when several share a display label, but for
+  // databases, whose label is beside them, and queues: they go by a label that only they have.
+  const labeled = Map.groupBy(participants.values(), ({ label }) => label);
   for (const element of f.all(".actor-bottom")) {
-    const group = element.tagName === "g" ? element : element.parentElement;
-    const node = participants.get(element.getAttribute("name") ?? "");
-    if (group && node) f.add(group, node);
+    const group =
+      element.tagName === "g" && element.querySelector("text") ? element : element.parentElement;
+    const name = element.getAttribute("name");
+    const [node, other] =
+      name === null ? (labeled.get(group ? textOf(group) : "") ?? []) : [participants.get(name)];
+    if (group && node && !other) f.add(group, node);
   }
   // An actor's menu of links, when sequence.forceMenus shows it, is numbered like its lifeline.
   for (const menu of f.all('g.actorPopupMenu:not([display="none"])')) {
