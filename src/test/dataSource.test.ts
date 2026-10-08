@@ -8,6 +8,7 @@ import {
   printsSiSizes,
   readDataFile,
   runCommand,
+  unaskedError,
 } from "../dataSource";
 import { afterTest, cancellationSource, suiteTempDir } from "./afterTest";
 
@@ -21,6 +22,25 @@ suite("dataSource", () => {
     assert.strictEqual(env.LC_NUMERIC, "C");
     assert.strictEqual(env.LC_TIME, "de_DE.UTF-8");
     assert.strictEqual(env.HOME, "/home/x");
+  });
+
+  test("says whether a file not read leads out of the workspace or, by a link's text, inside", () => {
+    const root = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(root);
+    const unasked = { retry: "Retry.", unnamed: "Another way." };
+    const message = (outside: string | undefined) =>
+      unaskedError("data.csv", outside, unasked).message;
+    const inside = path.join(root.uri.fsPath, "data.csv");
+    assert.strictEqual(
+      message(inside),
+      `The file data.csv leads, through a symbolic link, to ${inside}, so it was not read without asking the user. Retry.`,
+    );
+    const away = path.join(path.dirname(root.uri.fsPath), "away.csv");
+    assert.strictEqual(
+      message(away),
+      `The file data.csv leads out of the workspace, to ${away}, so it was not read without asking the user. Retry.`,
+    );
+    assert.match(message(undefined), /cannot be named, .* Another way\.$/);
   });
 
   test("cancelled requests do not load or parse data", async () => {

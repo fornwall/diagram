@@ -154,7 +154,7 @@ suite("chartTools", function () {
     assert.strictEqual(
       await invokeTool(tool, linked),
       `Data could not be inspected: The file diagram-inspect-link.csv leads out of the workspace, to ${file}, ` +
-        "so it was not read without asking the user. Call the tool again with the path that it leads to, which asks the user.",
+        "so it was not read without asking the user. Call the tool again with the path that it leads to.",
     );
     assert.ok(!tool.prepareInvocation({ input: { file: "sizes.tsv" } }).confirmationMessages);
     assert.ok(tool.prepareInvocation({ input: { command: "printf data" } }).confirmationMessages);

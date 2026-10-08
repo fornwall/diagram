@@ -9,6 +9,7 @@ import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 import {
+  contains,
   decodeFile,
   decodeText,
   fileError,
@@ -104,7 +105,7 @@ export function toolUnasked({ file }: ChartSpec): Unasked | undefined {
     return undefined;
   }
   return {
-    retry: "Call the tool again with the path that it leads to, which asks the user.",
+    retry: "Call the tool again with the path that it leads to.",
     unnamed: "Ask the user to copy the file into the workspace, or to give its data another way.",
   };
 }
@@ -116,6 +117,29 @@ export function toolUnasked({ file }: ChartSpec): Unasked | undefined {
 export interface Unasked {
   retry: string;
   unnamed?: string;
+}
+
+/**
+ * Why a data file let through without asking was not read, by the path `outside` that it leads to
+ * through a link, if known. On Windows, that may be a path inside the workspace, which Windows may
+ * reach by the text of a link's target but the check does not take.
+ */
+export function unaskedError(
+  name: string,
+  outside: string | undefined,
+  unasked: Unasked,
+  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): Error {
+  const notRead = "so it was not read without asking the user.";
+  if (outside === undefined) {
+    return new Error(
+      `The file ${name} leads out of the workspace through a symbolic link whose target cannot be ` +
+        `named, such as one that is not UTF-8, ${notRead} ${unasked.unnamed ?? unasked.retry}`,
+    );
+  }
+  const inside = roots.some((root) => contains(root.uri, vscode.Uri.file(outside)));
+  const leads = inside ? "leads, through a symbolic link," : "leads out of the workspace,";
+  return new Error(`The file ${name} ${leads} to ${outside}, ${notRead} ${unasked.retry}`);
 }
 
 /** Shared consent for tools that expose file contents or command output to the model. */
@@ -175,14 +199,7 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
 export async function readDataFile(file: string, unasked?: Unasked): Promise<string> {
   const uri = resolveFile(file);
   if (unasked && readAsks(uri)) {
-    const outside = pathOutside(uri);
-    throw new Error(
-      `The file ${fileName(uri)} leads out of the workspace` +
-        (outside === undefined
-          ? " through a symbolic link whose target cannot be named, such as one that is not UTF-8, " +
-            `so it was not read without asking the user. ${unasked.unnamed ?? unasked.retry}`
-          : `, to ${outside}, so it was not read without asking the user. ${unasked.retry}`),
-    );
+    throw unaskedError(fileName(uri), pathOutside(uri), unasked);
   }
   const checkSize = (size: number): void => {
     if (size > MAX_BYTES) {
