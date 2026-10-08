@@ -1098,7 +1098,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     );
     let shown: unknown;
     const opened = await opening(async () => {
-      shown = await evaluate(`(() => {
+      shown = await evaluate(`(async () => {
+        ${UNTIL}
         const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
         const click = (element, init) =>
           element.dispatchEvent(new MouseEvent("click", {bubbles: true, ...init}));
@@ -1111,6 +1112,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         shown.selected = [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
           .map(element => element.getAttribute("data-diagram-id"));
         receive({type: "startPick", pickId: 90001, prompt: "Pick a node", multiple: false});
+        await until(() => !document.getElementById("pick").hidden, "the pick");
         click(node("A"));
         shown.picked = document.getElementById("pick").hidden;
         click(node("A"));
@@ -1164,7 +1166,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     );
     let shown: unknown;
     const opened = await opening(async () => {
-      shown = await evaluate(`(() => {
+      shown = await evaluate(`(async () => {
+        ${UNTIL}
         const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
         const click = (element, init) =>
           element.dispatchEvent(new MouseEvent("click", {bubbles: true, ...init}));

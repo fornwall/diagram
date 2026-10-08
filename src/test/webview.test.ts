@@ -179,31 +179,33 @@ suite("webview", function () {
   test("reveals node picks without losing source edits, describes the canvas by the prompt, and restores focus when finished", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
-      await evaluate(`(() => {
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const results = [];
         try {
           const source = document.getElementById("source");
-          return ["visual", "source"].flatMap(view => {
-            return ["pick-done", "pick-cancel"].map(id => {
-              document.getElementById("view-" + view).click();
-              const draft = source.value + "\\n%% Unapplied edit";
-              source.value = draft;
-              source.dispatchEvent(new Event("input"));
-              receive({type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true});
-              const canvas = document.getElementById("canvas");
-              const visible = canvas.getBoundingClientRect().height > 0;
-              const focused = document.activeElement === canvas &&
-                canvas.getAttribute("aria-describedby") === "pick-prompt";
-              const preserved = source.value === draft;
-              document.querySelector("#diagram .diagram-node[tabindex]")
-                .dispatchEvent(new MouseEvent("click", {bubbles: true}));
-              const button = document.getElementById(id);
-              button.focus();
-              button.click();
-              return visible && focused && preserved && document.getElementById("pick").hidden &&
-                document.activeElement === canvas && !canvas.hasAttribute("aria-describedby") &&
-                canvas.tabIndex === 0 && canvas.getAttribute("aria-label") === "Diagram preview";
-            });
-          });
+          for (const view of ["visual", "source"]) for (const id of ["pick-done", "pick-cancel"]) {
+            document.getElementById("view-" + view).click();
+            const draft = source.value + "\\n%% Unapplied edit";
+            source.value = draft;
+            source.dispatchEvent(new Event("input"));
+            receive({type: "startPick", pickId: 90000, prompt: "Pick a node", multiple: true});
+            await until(() => !document.getElementById("pick").hidden, "the pick");
+            const canvas = document.getElementById("canvas");
+            const visible = canvas.getBoundingClientRect().height > 0;
+            const focused = document.activeElement === canvas &&
+              canvas.getAttribute("aria-describedby") === "pick-prompt";
+            const preserved = source.value === draft;
+            document.querySelector("#diagram .diagram-node[tabindex]")
+              .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+            const button = document.getElementById(id);
+            button.focus();
+            button.click();
+            results.push(visible && focused && preserved && document.getElementById("pick").hidden &&
+              document.activeElement === canvas && !canvas.hasAttribute("aria-describedby") &&
+              canvas.tabIndex === 0 && canvas.getAttribute("aria-label") === "Diagram preview");
+          }
+          return results;
         } finally {
           document.getElementById("revert").click();
           document.getElementById("view-visual").click();
@@ -211,6 +213,33 @@ suite("webview", function () {
         }
       })()`),
       [true, true, true, true],
+    );
+  });
+
+  test("starts and ends a pick sent with a diagram on the diagram drawn", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const banner = document.getElementById("pick");
+        const pick = (type, pickId) => receive({type, pickId, prompt: "Pick", multiple: false});
+        const render = (language, source) => receive({type: "render", requestId: 900004,
+          language, source, title: "Picked"});
+        render("echarts", ${JSON.stringify(JSON.stringify(option))});
+        pick("startPick", 90001);
+        await until(() => !banner.hidden, "the chart's pick");
+        const focused = [document.activeElement.id, document.activeElement.getAttribute("aria-describedby")];
+        render("mermaid", "flowchart LR\\n A --> B");
+        pick("endPick", 90001);
+        pick("startPick", 90002);
+        pick("endPick", 90002);
+        receive({type: "annotate", marks: [], dim: false, caption: "Ended"});
+        await until(() => document.getElementById("annotation-caption").textContent === "Ended",
+          "the marks after the pick");
+        return {focused, ended: banner.hidden};
+      })()`),
+      { focused: ["chart", "pick-prompt chart-drawing"], ended: true },
     );
   });
 

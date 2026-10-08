@@ -392,13 +392,14 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       });
       break;
     }
+    // In the render queue, so that a pick sent with a diagram focuses its drawing, and in order.
     case "startPick":
-      startPick(message.pickId, message.prompt, message.multiple);
+      enqueue(() => startPick(message.pickId, message.prompt, message.multiple));
       break;
     case "endPick":
-      if (pick?.id === message.pickId) {
-        endPick();
-      }
+      enqueue(() => {
+        if (pick?.id === message.pickId) endPick();
+      });
       break;
   }
 });
