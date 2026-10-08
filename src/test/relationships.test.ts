@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import type { DiagramNode } from "../protocol";
 import { replace } from "./afterTest";
-import { DRAG_IMAGE, suitePage } from "./webviewHarness";
+import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 suite("relationships", function () {
   // The first render loads the webview and the libraries, which can take a while.
@@ -32,10 +32,8 @@ suite("relationships", function () {
   /** Waits until the expression holds in the page, which handles some messages asynchronously. */
   const until = (expression: string) =>
     evaluate(`(async () => {
-      for (let i = 0; i < 300 && !(${expression}); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      if (!(${expression})) throw new Error(${JSON.stringify(`Timed out waiting for ${expression}`)});
+      ${UNTIL}
+      await until(() => ${expression}, ${JSON.stringify(expression)});
     })()`);
 
   test("selects labeled and parallel flowchart edges by their ids, with endpoints whose ids hold underscores", async () => {
