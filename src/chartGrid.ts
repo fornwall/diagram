@@ -271,11 +271,17 @@ export function heatmapOption({
   table,
   columns,
   names,
-  rows,
+  rows: given,
   notes,
 }: Reading): Record<string, unknown> {
   const labelNames = columns.labels.map((index) => columnName(table, index));
   const pivot = labelNames.length >= 2;
+  const sorted = spec.sort !== undefined;
+  // Without a second label column every row is a row of its own, even one labeled like another,
+  // in the order of their labels where they have one, as a pivot's categories are.
+  const order = pivot || sorted ? undefined : labelOrder(given.map(label));
+  const keys = order && new Map(given.map((row) => [row, order(label(row))]));
+  const rows = keys ? given.toSorted((a, b) => (keys.get(a) ?? 0) - (keys.get(b) ?? 0)) : given;
   /** The index of each category of a pivot's axis, in the order they first appear. */
   const yIndices = new Map<string, number>();
   const xIndices = new Map<string, number>();
@@ -333,8 +339,6 @@ export function heatmapOption({
     min = Math.min(min, value);
     max = Math.max(max, value);
   }
-  // Without a second label column every row is a row of its own, even one labeled like another.
-  const sorted = spec.sort !== undefined;
   const yCategories = pivot ? pivotAxis(yIndices, data, 1, sorted) : rows.map(label);
   const xCategories = pivot ? pivotAxis(xIndices, data, 0, sorted) : names;
   const axis = (categories: string[], name: string | undefined) => ({

@@ -767,6 +767,16 @@ suite("charts", () => {
     ]);
     const dates = build(chart("heatmap"), "team,date,n\na,2026-03-01,1\na,2026-01-01,2");
     assert.deepStrictEqual(dates.xAxis.data, ["2026-01-01", "2026-03-01"]);
+    // A row per row of a matrix, the repeated label included.
+    const matrix = "day,cpu,io\nFri,1,2\nMon,3,4\nFri,5,6";
+    const rowsInOrder = build(chart("heatmap"), matrix);
+    assert.deepStrictEqual(rowsInOrder.yAxis.data, ["Mon", "Fri", "Fri"]);
+    assert.deepStrictEqual(rowsInOrder.series[0].data.slice(0, 2), [
+      [0, 0, 3],
+      [1, 0, 4],
+    ]);
+    const rowsSorted = build(chart("heatmap", { sort: "ascending" }), matrix);
+    assert.deepStrictEqual(rowsSorted.yAxis.data, ["Fri", "Mon", "Fri"]);
     const sorted = build({ ...spec, sort: "descending" }, commits);
     assert.deepStrictEqual(sorted.yAxis.data, ["Sunday", "Wed", "mon"]);
     assert.deepStrictEqual(sorted.xAxis.data, ["23", "9", "14"]);
