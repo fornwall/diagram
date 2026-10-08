@@ -758,6 +758,22 @@ suite("participant", () => {
     assert.ok(tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8, `${tokens}`);
   });
 
+  test("tells the tools the tokens left for their results, shared by the calls of a round", async () => {
+    const budgets: number[] = [];
+    replace(vscode.lm, "invokeTool", async (_name, { tokenizationOptions }) => {
+      budgets.push(tokenizationOptions?.tokenBudget ?? 0);
+      assert.strictEqual(await tokenizationOptions?.countTokens("12345678"), 2);
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    });
+    const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
+    await ask([[call("1")], [call("2"), call("3")], [text("Done.")]], { maxInputTokens: 10_000 });
+    const [first = 0, second = 0, third] = budgets;
+    // Up to 7/8 of the input, less the request so far.
+    assert.ok(first > 5_000 && first < 8_750, `${first}`);
+    assert.ok(second < first / 2, `${second}`);
+    assert.strictEqual(third, second);
+  });
+
   test("counts tool results that are not text, and leaves out or shortens those that don't fit", async () => {
     const small = new vscode.LanguageModelPromptTsxPart({ text: "small" });
     countToolCalls(

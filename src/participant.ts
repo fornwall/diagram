@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { DiagramPanel } from "./panel";
-import { escapeMarkdown, fitToolResults, promptMessages } from "./prompt";
+import { escapeMarkdown, fitToolResults, promptMessages, toolResultBudget } from "./prompt";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
@@ -269,6 +269,13 @@ async function streamReply(
     );
     const text = (value: string) => [new vscode.LanguageModelTextPart(value)];
     const results: vscode.LanguageModelToolResultPart[] = [];
+    // Tools that can, such as those with prompt-tsx results, fit their results to a share of the
+    // room left.
+    const share = (await toolResultBudget(request.model, messages, token)) / calls.length;
+    const tokenizationOptions: vscode.LanguageModelToolTokenizationOptions = {
+      tokenBudget: Math.max(1, Math.floor(share)),
+      countTokens: (value, countToken) => request.model.countTokens(value, countToken),
+    };
     for (const call of calls) {
       throwIfCancelled(token);
       let content: unknown[];
@@ -285,8 +292,12 @@ async function streamReply(
       } else {
         try {
           budget.calls++;
-          const input = { input: call.input, toolInvocationToken: request.toolInvocationToken };
-          content = (await vscode.lm.invokeTool(call.name, input, token)).content;
+          const invocation = {
+            input: call.input,
+            toolInvocationToken: request.toolInvocationToken,
+            tokenizationOptions,
+          };
+          content = (await vscode.lm.invokeTool(call.name, invocation, token)).content;
         } catch (error) {
           if (token.isCancellationRequested) {
             throw error;

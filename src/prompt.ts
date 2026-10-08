@@ -283,25 +283,19 @@ export async function fitToolResults(
       }
     });
   }
-  const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE / 2));
-  const earlier = messages.flatMap((message) => partTexts(message.content));
   const parts = results.flatMap(({ content }) =>
     content.flatMap((part, index) => {
       const text = partText(part);
       return text === undefined ? [] : [{ content, index, text, whole: wholePart(part) }];
     }),
   );
-  const counts = exactCounts.get(messages) ?? new Map<string, Promise<number>>();
-  exactCounts.set(messages, counts);
-  const tokens = tokenCounter(
+  const { room, tokens } = await toolResultRoom(
     model,
-    [...earlier, ...parts.map(({ text }) => text)],
-    budget,
+    messages,
+    results,
+    parts.map(({ text }) => text),
     token,
-    counts,
   );
-  const images = imageCount([...messages.flatMap((message) => message.content), ...results]);
-  const room = budget - sum(await Promise.all(earlier.map(tokens))) - images * IMAGE_TOKENS;
   const { texts, left } = await fitTexts(
     parts.map(({ text, whole }) =>
       whole
@@ -332,6 +326,39 @@ export async function fitToolResults(
       content[at] = new vscode.LanguageModelTextPart(fitted);
     }
   }
+}
+
+/**
+ * The tokens that a round's tool results may take, to tell the tools, which may then fit their
+ * results to it rather than have them shortened or left out.
+ */
+export async function toolResultBudget(
+  model: vscode.LanguageModelChat,
+  messages: readonly vscode.LanguageModelChatMessage[],
+  token: vscode.CancellationToken,
+): Promise<number> {
+  return (await toolResultRoom(model, messages, [], [], token)).room;
+}
+
+/**
+ * The tokens left for the text of tool results after the messages and all images, and a counter
+ * for the results' `texts`.
+ */
+async function toolResultRoom(
+  model: vscode.LanguageModelChat,
+  messages: readonly vscode.LanguageModelChatMessage[],
+  results: readonly vscode.LanguageModelToolResultPart[],
+  texts: string[],
+  token: vscode.CancellationToken,
+): Promise<{ room: number; tokens: (text: string) => Promise<number> }> {
+  const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE / 2));
+  const earlier = messages.flatMap((message) => partTexts(message.content));
+  const counts = exactCounts.get(messages) ?? new Map<string, Promise<number>>();
+  exactCounts.set(messages, counts);
+  const tokens = tokenCounter(model, [...earlier, ...texts], budget, token, counts);
+  const images = imageCount([...messages.flatMap((message) => message.content), ...results]);
+  const room = budget - sum(await Promise.all(earlier.map(tokens))) - images * IMAGE_TOKENS;
+  return { room, tokens };
 }
 
 /** The text of message parts, including tool calls and results. Images are left out. */
