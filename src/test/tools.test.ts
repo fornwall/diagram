@@ -10,7 +10,7 @@ import {
   RenderDiagramTool,
 } from "../tools";
 import { afterTest, cancellationSource, replace } from "./afterTest";
-import { newFakePanel, newPanel } from "./newPanel";
+import { newFakePanel, newPanel, openWebviewPanel, within } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
 
 const flowchart: DiagramState = {
@@ -222,8 +222,10 @@ suite("tools", () => {
     assert.strictEqual(values.get("diagram.state"), flowchart);
   });
 
-  test("diagram_getImage draws at most 1024 pixels a side", async function () {
+  test("diagram_getImage draws at most 1024 pixels a side, and a hidden chart as it was shown", async function () {
     this.timeout(20_000);
+    afterTest(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
+    const opened = openWebviewPanel(panel);
     const imageSize = async () => {
       const result = await new GetDiagramImageTool(panel).invoke(
         { input: {}, toolInvocationToken: undefined },
@@ -247,6 +249,12 @@ suite("tools", () => {
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
     const shown = await imageSize();
     assert.ok(Math.max(...shown) <= 1024 && Math.min(...shown) > 300, String(shown));
+    // The page of a hidden tab has the size of an empty frame, too small to lay the chart out for.
+    const { viewColumn } = opened;
+    assert.ok(viewColumn);
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), viewColumn);
+    assert.ok(await within(() => !opened.visible));
+    assert.deepStrictEqual(await imageSize(), shown);
   });
 
   test("diagram_getImage answers each of several calls at once", async () => {

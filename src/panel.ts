@@ -1243,7 +1243,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Asks the page for the drawing, answering with timedOut if it does not answer in time. */
   private requestExport(
-    request: Omit<Extract<ToWebview, { type: "export" }>, "type" | "requestId">,
+    request: Omit<Extract<ToWebview, { type: "export" }>, "type" | "requestId" | "tabHidden">,
     timedOut: string,
   ): Promise<ExportResult> {
     const requestId = this.nextRequestId++;
@@ -1256,7 +1256,8 @@ export class DiagramPanel implements vscode.Disposable {
         clearTimeout(timeout);
         resolve(result);
       });
-      this.post({ type: "export", requestId, ...request });
+      const tabHidden = this.webview.tab?.visible === false;
+      this.post({ type: "export", requestId, ...request, tabHidden });
     });
   }
 

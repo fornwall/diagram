@@ -176,13 +176,16 @@ export class EChartsRenderer implements Renderer {
    * An image of the chart as laid out for its current size, with its animations finished, so that
    * an early export includes every item, and without what the pointer and the toolbox add to it.
    */
-  async toImage(background: string): Promise<DiagramImage> {
+  async toImage(background: string, tabHidden = false): Promise<DiagramImage> {
     if (!this.chart) throw new Error("There is no chart to make an image of.");
     // Export can precede the resize observer or its debounced layout after changing views: lay out
-    // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
-    // dimensions of their last visible rendering.
-    this.apply(true);
-    this.cancelRelayout();
+    // for the size now, which leaves nothing to do once it settles. Charts hidden by the source
+    // view keep the dimensions of their last visible rendering. The page of a hidden tab has the
+    // size of an empty frame, 300 by 150 pixels: keep the layout it had while shown.
+    if (!tabHidden) {
+      this.apply(true);
+      this.cancelRelayout();
+    }
     const svg = this.container.querySelector("svg");
     if (!svg) throw new Error("There is no chart to make an image of.");
     // The pointer can still rest on the chart, as when the image is exported from the context menu

@@ -51,8 +51,11 @@ export interface Renderer {
   showLinks?(locations: ReadonlyMap<string, string>): void;
   /** Whether links in the source lead from some nodes. */
   readonly hasWebLinks?: boolean;
-  /** Exports a self-contained image on the given background. */
-  toImage?(background: string): Promise<DiagramImage>;
+  /**
+   * Exports a self-contained image on the given background, without laying it out again in a
+   * hidden tab, which has no size to lay it out for.
+   */
+  toImage?(background: string, tabHidden?: boolean): Promise<DiagramImage>;
   /** Whether the image can change while the source, theme and marks stay, as a chart's does. */
   readonly changesInPlace?: boolean;
   /** Renders the current diagram again with the current VS Code theme. */
