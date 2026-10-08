@@ -3,7 +3,12 @@
 
 import type { TextDocument } from "vscode";
 import type { DiagramBlock } from "./blocks";
-import { DIAGRAM_LANGUAGES, isDiagramLanguage, isPlainObject } from "./protocol";
+import {
+  DIAGRAM_LANGUAGES,
+  type DiagramLanguage,
+  isDiagramLanguage,
+  isPlainObject,
+} from "./protocol";
 
 /** CommonMark measures indentation in columns, with tab stops every 4 columns. */
 const TAB_STOP = 4;
@@ -615,6 +620,22 @@ export function rewriteFence(
     text: replaced,
     fence: { language, source, openingLine, lastLine, prefix: block.prefix },
   };
+}
+
+/** The diagram block holding no diagram that a line is in, from its opening to its closing fence. */
+export function emptyDiagramBlockAt(
+  text: string,
+  line: number,
+): { language: DiagramLanguage; openingLine: number } | undefined {
+  for (const { language, openingLine, lastLine, lines } of codeBlocks(text, isDiagramLanguage)) {
+    if (openingLine > line) {
+      break;
+    }
+    if (line <= lastLine + 1 && isDiagramLanguage(language) && !trimBlankLines(lines)) {
+      return { language, openingLine };
+    }
+  }
+  return undefined;
 }
 
 /** Open the enclosing fence, the next below the cursor, or the last in the document. */

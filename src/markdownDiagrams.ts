@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
 import {
   type DiagramFence,
+  emptyDiagramBlockAt,
   fenceAt,
   findDocumentDiagramFences,
   isDiagramFence,
@@ -103,8 +104,15 @@ async function openAtCursor(panel: DiagramPanel): Promise<void> {
     );
     return;
   }
-  const fences = findDocumentDiagramFences(editor.document);
-  const fence = fenceAt(fences, editor.selection.active.line);
+  const { line } = editor.selection.active;
+  const empty = emptyDiagramBlockAt(editor.document.getText(), line);
+  if (empty) {
+    void vscode.window.showInformationMessage(
+      `The ${empty.language} block at line ${empty.openingLine + 1} is empty. Write a ${diagramNoun(empty.language)} in it to open it.`,
+    );
+    return;
+  }
+  const fence = fenceAt(findDocumentDiagramFences(editor.document), line);
   if (!fence) {
     void vscode.window.showInformationMessage(
       `${vscode.workspace.asRelativePath(editor.document.uri)} holds no mermaid or echarts code block to open.`,

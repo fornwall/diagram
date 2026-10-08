@@ -135,12 +135,18 @@ suite("markdownDiagrams", function () {
     for (const [language, content] of [
       ["plaintext", "```mermaid\nflowchart TD\n```\n"],
       ["markdown", "# Notes\n\n```ts\nconst x = 1;\n```\n"],
+      // At the cursor, rather than the diagram below.
+      ["markdown", "```echarts\n\n```\n```mermaid\nA\n```\n"],
     ] as const) {
       const document = await vscode.workspace.openTextDocument({ language, content });
       await vscode.window.showTextDocument(document);
       await vscode.commands.executeCommand("diagram.openAtCursor");
     }
-    assert.strictEqual(messages.length, 2);
+    assert.strictEqual(messages.length, 3);
+    assert.strictEqual(
+      messages[2],
+      "The echarts block at line 1 is empty. Write a chart in it to open it.",
+    );
     assert.strictEqual(
       messages[0],
       "Open a Markdown file to open a diagram or chart that is written in it.",

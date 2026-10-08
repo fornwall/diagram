@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import {
   type DiagramFence,
+  emptyDiagramBlockAt,
   fenceAt,
   findDiagramFences,
   findDocumentDiagramFences,
@@ -444,6 +445,16 @@ suite("fences", () => {
       ["A", "A", "A", "A", "B", "B", "B", "B"],
     );
     assert.strictEqual(fenceAt([], 0), undefined);
+  });
+
+  test("finds the empty diagram block at the cursor", () => {
+    //         0  1            2   3     4      5     6       7
+    const text = "a\n```mermaid\n \n```\n```js\n```\n~~~echarts\n";
+    assert.deepStrictEqual(
+      [0, 1, 2, 3, 4, 5, 6, 7].map((line) => emptyDiagramBlockAt(text, line)?.openingLine),
+      [undefined, 1, 1, 1, undefined, undefined, 6, 6],
+    );
+    assert.strictEqual(emptyDiagramBlockAt("```mermaid\nA\n```\n", 1), undefined);
   });
 
   test("finds a block that moved, and nothing when it changed", () => {
