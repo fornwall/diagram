@@ -116,6 +116,36 @@ suite("workspaceTools", function () {
     assert.strictEqual(page.at(-1), 'Continue with "startLine" 502.');
   });
 
+  test("fits whole lines and matches to the tokens it is given, and says where to continue", async () => {
+    const file = await writeFile("budget.txt", "Needle line\n".repeat(100));
+    const tokenizationOptions = {
+      tokenBudget: 100,
+      countTokens: async (text: string) => Math.ceil(text.length / 4),
+    };
+    const fitted = async (tool: vscode.LanguageModelTool<never>, input: object) => {
+      const result = await tool.invoke(
+        { input: input as never, toolInvocationToken: undefined, tokenizationOptions },
+        source.token,
+      );
+      const text = (result?.content ?? [])
+        .map((part) => (part instanceof vscode.LanguageModelTextPart ? part.value : ""))
+        .join("");
+      assert.ok(text.length <= 400, text);
+      return text.split("\n");
+    };
+    const page = await fitted(reader, { file, endLine: 100 });
+    const shown = page.length - 2;
+    assert.ok(shown > 10, `${shown}`);
+    assert.strictEqual(page[0], `${relative}/budget.txt, lines 1-${shown} of 101:`);
+    assert.strictEqual(page.at(-1), `Continue with "startLine" ${shown + 1}.`);
+    const found = await fitted(searcher, { query: "Needle", glob: `${relative}/budget.txt` });
+    assert.match(
+      found[0] ?? "",
+      new RegExp(`^${found.length - 2} matches in 1 file .* Incomplete: .* size limit\\.`),
+    );
+    assert.strictEqual(found.at(-1), `  ${found.length - 2}: Needle line`);
+  });
+
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
     const files = vscode.workspace.getConfiguration("files");
     afterTest(() => files.update("exclude", undefined, vscode.ConfigurationTarget.Global));

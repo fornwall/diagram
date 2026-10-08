@@ -384,7 +384,8 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       throwIfCancelled(token);
-      return textResult(await this.run(toolInput(options.input, this.keys), token));
+      const output = await this.run(toolInput(options.input, this.keys), token);
+      return textResult(await fit(output, options.tokenizationOptions, token));
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;
       return textResult(`Error: ${errorMessage(error)}`);
@@ -397,7 +398,37 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
   protected abstract run(
     input: Record<string, unknown>,
     token: vscode.CancellationToken,
-  ): Promise<string>;
+  ): Promise<Paged>;
+}
+
+/**
+ * A result of `count` entries, such as lines, which `render` gives the first `shown` of, saying
+ * where to continue when that is fewer.
+ */
+interface Paged {
+  count: number;
+  render: (shown: number) => string;
+}
+
+/** Gives as many entries as fit the tokens the caller has room for, and at least one. */
+async function fit(
+  { count, render }: Paged,
+  options: vscode.LanguageModelToolTokenizationOptions | undefined,
+  token: vscode.CancellationToken,
+): Promise<string> {
+  let shown = count;
+  let text = render(shown);
+  if (!options) return text;
+  const { tokenBudget, countTokens } = options;
+  let size = await countTokens(text, token);
+  while (size > tokenBudget && shown > 1) {
+    // Tokens are not spread evenly over the entries, so this may take a few tries.
+    shown = Math.max(1, Math.floor(shown * Math.min(tokenBudget / size, 0.9)));
+    text = render(shown);
+    size = await countTokens(text, token);
+  }
+  throwIfCancelled(token);
+  return text;
 }
 
 /** A string input as the chat shows it, if the model gave one. */
@@ -442,22 +473,25 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
       }
       lines.push(line);
     }
-    const listed = lines.length;
-    if (listed === 0 && !truncated && outsideFiles === 0) {
-      lines.push(
-        `No files match ${JSON.stringify(glob)}.` +
-          (/[*?[{]/.test(glob)
-            ? ""
-            : ` To list the files in a folder, use the glob "${glob.replace(/\/$/, "")}/**".`),
-      );
-    }
-    if (outsideFiles > 0) {
-      lines.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);
-    }
-    if (truncated) {
-      lines.push(`Showing the first ${plural(listed, "file")}; narrow the glob to see more.`);
-    }
-    return lines.join("\n");
+    const render = (listed: number) => {
+      const shown = lines.slice(0, listed);
+      if (listed === 0 && !truncated && outsideFiles === 0) {
+        shown.push(
+          `No files match ${JSON.stringify(glob)}.` +
+            (/[*?[{]/.test(glob)
+              ? ""
+              : ` To list the files in a folder, use the glob "${glob.replace(/\/$/, "")}/**".`),
+        );
+      }
+      if (outsideFiles > 0) {
+        shown.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);
+      }
+      if (truncated || listed < lines.length) {
+        shown.push(`Showing the first ${plural(listed, "file")}; narrow the glob to see more.`);
+      }
+      return shown.join("\n");
+    };
+    return { count: lines.length, render };
   }
 }
 
@@ -496,8 +530,8 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     // A Unicode regexp keeps source offsets correct when case folding changes string length.
     const needle = new RegExp(RegExp.escape(query), caseSensitive ? "gu" : "giu");
     const output: string[] = [];
-    let matches = 0;
-    let matchedFiles = 0;
+    /** Where each file's matches start in `output`. */
+    const fileStarts: number[] = [];
     const tooLarge = `binary or over ${MAX_SEARCHED_BYTES / MIB} MiB`;
     const skipped = {
       [tooLarge]: 0,
@@ -548,7 +582,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       let lineStart = 0;
       let fileMatched = false;
       for (let match = needle.exec(text); match; match = needle.exec(text)) {
-        if (matches >= max) {
+        if (output.length >= max) {
           stopped = `it reached ${plural(max, "match", "matches")}`;
           break search;
         }
@@ -576,9 +610,8 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
           stopped = "its output reached the size limit";
           break search;
         }
+        if (!fileMatched) fileStarts.push(output.length);
         output.push(entry);
-        matches++;
-        if (!fileMatched) matchedFiles++;
         fileMatched = true;
         if (!newline) break;
         line++;
@@ -591,20 +624,25 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     }
     const reasons = Object.entries(skipped).filter(([, count]) => count > 0);
     const skippedFiles = reasons.reduce((sum, [, count]) => sum + count, 0);
-    const summary = [
-      matches > 0
-        ? `${plural(matches, "match", "matches")} in ${plural(matchedFiles, "file")}`
-        : "No matches",
-      ` (searched ${plural(scanned, "file")}`,
-      reasons.length > 0
-        ? `; skipped ${plural(skippedFiles, "file")}: ${reasons.map(([reason, count]) => (reasons.length > 1 ? `${formatCount(count)} ${reason}` : reason)).join(", ")}`
-        : "",
-      ").",
-      stopped
-        ? ` Incomplete: the search stopped because ${stopped}. Narrow the glob or use a more specific query.`
-        : "",
-    ].join("");
-    return [summary, ...output].join("\n");
+    const render = (matches: number) => {
+      const files = fileStarts.filter((start) => start < matches).length;
+      const end = matches < output.length ? "its output reached the size limit" : stopped;
+      const summary = [
+        matches > 0
+          ? `${plural(matches, "match", "matches")} in ${plural(files, "file")}`
+          : "No matches",
+        ` (searched ${plural(scanned, "file")}`,
+        reasons.length > 0
+          ? `; skipped ${plural(skippedFiles, "file")}: ${reasons.map(([reason, count]) => (reasons.length > 1 ? `${formatCount(count)} ${reason}` : reason)).join(", ")}`
+          : "",
+        ").",
+        end
+          ? ` Incomplete: the search stopped because ${end}. Narrow the glob or use a more specific query.`
+          : "",
+      ].join("");
+      return [summary, ...output.slice(0, matches)].join("\n");
+    };
+    return { count: output.length, render };
   }
 }
 
@@ -645,7 +683,8 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const { text } = content;
     const lines: string[] = [];
     let outputChars = 0;
-    let cutLines = false;
+    /** The index in `lines` of the first line that is cut. */
+    let firstCut = Infinity;
     let totalLines = 0;
     let lastLine = start - 1;
     let lineStart = 0;
@@ -665,7 +704,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
         const entry = `${totalLines}: ${text.slice(lineStart, cut ? lineStart + MAX_LINE_CHARS : lineEnd)}${cut ? `… (${plural(lineEnd - lineStart, "character")})` : ""}`;
         outputChars += entry.length + 1;
         if (outputChars <= MAX_OUTPUT_CHARS) {
-          cutLines ||= cut;
+          if (cut) firstCut = Math.min(firstCut, lines.length);
           lines.push(entry);
           lastLine = totalLines;
         }
@@ -681,14 +720,18 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
         `"startLine" ${start} is past the end of the file, which has ${plural(totalLines, "line")}.`,
       );
     }
-    const notes = [
-      cutLines ? `Lines longer than ${plural(MAX_LINE_CHARS, "character")} are cut.` : "",
-      lastLine < totalLines ? `Continue with "startLine" ${lastLine + 1}.` : "",
-    ].filter(Boolean);
-    return [
-      `${displayPath(uri, roots)}, lines ${start}-${lastLine} of ${totalLines}${content.unsaved ? ", with unsaved changes" : ""}:`,
-      ...lines,
-      ...notes,
-    ].join("\n");
+    const render = (shown: number) => {
+      const last = start + shown - 1;
+      const notes = [
+        firstCut < shown ? `Lines longer than ${plural(MAX_LINE_CHARS, "character")} are cut.` : "",
+        last < totalLines ? `Continue with "startLine" ${last + 1}.` : "",
+      ].filter(Boolean);
+      return [
+        `${displayPath(uri, roots)}, lines ${start}-${last} of ${totalLines}${content.unsaved ? ", with unsaved changes" : ""}:`,
+        ...lines.slice(0, shown),
+        ...notes,
+      ].join("\n");
+    };
+    return { count: lines.length, render };
   }
 }
