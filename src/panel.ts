@@ -1212,7 +1212,7 @@ export class DiagramPanel implements vscode.Disposable {
             throw new Error("The diagram changed or closed while choosing a format. Try again.");
           }
           return this.requestExport(
-            { format, renderRequestId: rendered },
+            { format, renderRequestId: rendered, forModel: false },
             `The diagram panel did not finish exporting within ${RENDER_TIMEOUT_MS / 1000} seconds. Try again or choose SVG.`,
           );
         },
@@ -1250,7 +1250,7 @@ export class DiagramPanel implements vscode.Disposable {
       return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
     }
     const result = await this.requestExport(
-      { format: "png", renderRequestId: rendered, maxSide },
+      { format: "png", renderRequestId: rendered, forModel: true, maxSide },
       `The diagram panel did not finish the image within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
     );
     if (result.type === "exportError") {

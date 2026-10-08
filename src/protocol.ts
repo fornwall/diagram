@@ -139,6 +139,8 @@ export type ToWebview =
       requestId: number;
       renderRequestId: number;
       format: ExportFormat;
+      /** Whether a model asks, which cannot export the drawing as SVG when a PNG fails. */
+      forModel: boolean;
       /** The most pixels a PNG may have on either side, by default the most it can have. */
       maxSide?: number | undefined;
     }

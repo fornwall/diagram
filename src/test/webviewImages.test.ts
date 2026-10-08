@@ -240,7 +240,7 @@ suite("images in the webview", function () {
       const failure = "The browser could not create a PNG at this image size.";
       assert.deepStrictEqual(
         [...errors, viewed],
-        [`Could not export the chart: ${failure} Try exporting it as SVG.`, failure],
+        [`Could not export the chart: ${failure} Try exporting as SVG.`, failure],
       );
     } finally {
       await evaluate("void (HTMLCanvasElement.prototype.toBlob = window.originalToBlob)");

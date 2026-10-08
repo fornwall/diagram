@@ -310,8 +310,8 @@ suite("tools", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const exports = webview.sent.filter((message) => message.type === "export");
     assert.deepStrictEqual(
-      exports.map(({ format, maxSide }) => ({ format, maxSide })),
-      Array(2).fill({ format: "png", maxSide: 1024 }),
+      exports.map(({ format, forModel, maxSide }) => ({ format, forModel, maxSide })),
+      Array(2).fill({ format: "png", forModel: true, maxSide: 1024 }),
     );
     // The page may answer them in any order.
     for (const [index, { requestId }] of exports.reverse().entries()) {

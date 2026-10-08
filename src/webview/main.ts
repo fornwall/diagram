@@ -770,7 +770,7 @@ writeToButton.addEventListener("click", () => {
 
 /** Exports the drawing from the render queue, but rasterizes a PNG outside it, not to hold it up. */
 async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
-  const { requestId, renderRequestId, format, maxSide } = message;
+  const { requestId, renderRequestId, format, forModel, maxSide } = message;
   const failed = (error: unknown) =>
     post({ type: "exportError", requestId, message: errorMessage(error) });
   try {
@@ -790,9 +790,7 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
     } else {
       void pngDataUrl(image, maxSide).then(
         (data) => post({ type: "exportImage", requestId, format, data }),
-        // Only a model asks for a smaller PNG, and it cannot take the drawing as SVG instead.
-        (error) =>
-          failed(maxSide === undefined ? `${errorMessage(error)} Try exporting it as SVG.` : error),
+        (error) => failed(forModel ? error : `${errorMessage(error)} Try exporting as SVG.`),
       );
     }
   } catch (error) {
