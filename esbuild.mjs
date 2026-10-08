@@ -130,6 +130,17 @@ function thirdPartyNotices(metafiles) {
       }
     }
   }
+  // roughjs's bundle has its dependencies built in, without naming them.
+  for (const path of sources) {
+    const match = /^(.*node_modules\/)roughjs\/bundled\//.exec(path);
+    if (!match) continue;
+    const dir = `${match[1]}roughjs`;
+    const { dependencies } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    for (const name of Object.keys(dependencies)) {
+      const nested = join(dir, "node_modules", name);
+      packages.add(statSync(nested, { throwIfNoEntry: false }) ? nested : match[1] + name);
+    }
+  }
   // Packages with the same license text, such as most d3 modules, share one copy of it.
   const namesByText = new Map();
   const add = (text, name) => namesByText.set(text, (namesByText.get(text) ?? new Set()).add(name));
