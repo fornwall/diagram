@@ -121,19 +121,19 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
-      if (char === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          quoted = false;
-          closedQuote = true;
-        }
+      // Up to the next quote at once, as a string built a character at a time is slow to read.
+      const close = text.indexOf('"', i);
+      const part = text.slice(i, close < 0 ? text.length : close);
+      field += part;
+      line += part.match(/\r\n?|\n/g)?.length ?? 0;
+      if (close < 0) break;
+      i = close;
+      if (text[i + 1] === '"') {
+        field += '"';
+        i++;
       } else {
-        field += char;
-        if (char === "\n" || (char === "\r" && text[i + 1] !== "\n")) {
-          line++;
-        }
+        quoted = false;
+        closedQuote = true;
       }
     } else if (char === '"' && fieldStart) {
       quoted = true;

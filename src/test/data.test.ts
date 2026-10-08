@@ -413,6 +413,11 @@ suite("data", () => {
         );
       }
     }
+    // Counting the lines in quoted fields, with any line ending, and in escaped quotes.
+    assert.throws(
+      () => parseTable('name,value\n"a\r\nb\rc""\n",1\n"d,2', "csv"),
+      /The quoted field that starts on line 6 is not closed/,
+    );
   });
 
   test("a quote error with one CSV delimiter does not reject the other", () => {
