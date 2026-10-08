@@ -256,7 +256,7 @@ export function buildHistogram(
         axisLabel: { hideOverlap: true },
       },
       yAxis: { type: "value", name: "count", min: 0, minInterval: 1 },
-      series: [{ type: "bar", name: "count", barCategoryGap: "0%", barGap: "0%", data }],
+      series: [{ type: "bar", name: "count", barCategoryGap: "0%", data }],
     },
     summary:
       `Charted ${plural(count, "observation")} of ${JSON.stringify(name)} in ` +
