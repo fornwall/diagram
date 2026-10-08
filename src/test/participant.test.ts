@@ -538,6 +538,34 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.origin, "tool");
   });
 
+  test("draws its diagram block although another request drew during the reply", async () => {
+    const other = { language: "mermaid", source: "flowchart TD\n  Other", title: "A" } as const;
+    const expected = { language: "mermaid", source: "flowchart TD\n  A --> B" };
+    const drawn = await ask([
+      async () => {
+        await panel.render(other, "tool");
+        return [text(valid)];
+      },
+    ]);
+    assert.deepStrictEqual(drawn.result?.metadata, expected);
+    assert.strictEqual(panel.current?.source, expected.source);
+
+    // Also over what its own tool call failed to draw, which the other request drew over.
+    replace(vscode.lm, "invokeTool", async () => {
+      const outcome = await panel.render(
+        { ...other, source: "flowchart TD\n  A --> --> B[" },
+        "tool",
+      );
+      assert.ok(!outcome.ok);
+      await panel.render(other, "tool");
+      return drawnResult("Failed.", outcome.revision);
+    });
+    const render = new vscode.LanguageModelToolCallPart("1", "diagram_render", {});
+    const repaired = await ask([[render], [text(valid)]]);
+    assert.deepStrictEqual(repaired.result?.metadata, expected);
+    assert.strictEqual(panel.current?.source, expected.source);
+  });
+
   test("makes the model call the tools that the user attached first, whose descriptors may be new objects", async () => {
     const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
     assert.ok(descriptor);
