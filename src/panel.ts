@@ -1047,6 +1047,7 @@ export class DiagramPanel implements vscode.Disposable {
     chart: ChartSpec,
     title: string,
   ): Promise<Awaited<ReturnType<typeof loadTable>> | undefined> {
+    const tab = this.webview.tab;
     const code = this.pageRanCode
       ? "\n\nThe panel ran JavaScript code from a chart, which can press Refresh as if you had."
       : "";
@@ -1072,6 +1073,8 @@ export class DiagramPanel implements vscode.Disposable {
       const message = "Run the chart's command again to reload its data?";
       if (!(await confirm(message, chart.command, "Run"))) return;
     }
+    // A panel closed while the user was asked takes the load with it.
+    if (this.webview.tab !== tab) return;
     this.reloading?.cancel();
     const reloading = new vscode.CancellationTokenSource();
     this.reloading = reloading;

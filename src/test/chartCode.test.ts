@@ -169,6 +169,27 @@ suite("chart code in the panel", function () {
     assert.strictEqual(warnings.length, 2);
   });
 
+  test("does not rerun a chart's command confirmed after the panel closed", async () => {
+    const marker = path.join(dir, "ran after close");
+    const chart: ChartSpec = {
+      type: "bar",
+      command: `echo >> ${JSON.stringify(marker)}; printf 'name,amount\\na,1\\n'`,
+    };
+    const table = parseTable("name,amount\na,1");
+    const source = JSON.stringify(buildChart(chart, table).option);
+    const { panel, webview } = await newFakePanel();
+    assert.ok((await renderChart(panel, codeChart)).ok);
+    const diagram = { language: "echarts", source, title: "Sizes", chart } as const;
+    assert.ok((await panel.render(diagram, "tool", table)).ok);
+    const asked = recordMessages("showWarningMessage", () => {
+      webview.panel.dispose();
+      return "Run";
+    });
+    await webview.receive({ type: "refresh" });
+    assert.deepStrictEqual(asked, ["Run the chart's command again to reload its data?"]);
+    assert.ok(!fs.existsSync(marker), "the command ran");
+  });
+
   test("asks before opening a diagram's link once the page ran chart code", async () => {
     const { panel, webview } = await newFakePanel();
     const details: string[] = [];
