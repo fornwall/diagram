@@ -376,7 +376,7 @@ suite("charts", () => {
       ["2026-03", 10],
     ]);
     const stacked = build(chart("stackedArea", { labelColumn: ["month", "region"] }), LONG);
-    assert.deepStrictEqual(stacked.series[1].data[1], ["2026-02", null]);
+    assert.deepStrictEqual(stacked.series[1].data[1], ["2026-02", 0]);
     // The labels sort by their total, though Jan has the single largest value, stacked or not.
     const totals = "month,region,sales\nJan,EU,10\nJan,US,2\nFeb,EU,8\nFeb,US,7\nMar,US,1";
     for (const type of ["stackedBar", "bar"] as const) {
@@ -1508,7 +1508,7 @@ suite("charts", () => {
       [
         [
           ["2026-01-01", 3],
-          ["2026-01-02", null],
+          ["2026-01-02", 0],
         ],
         [
           ["2026-01-01", 5],
