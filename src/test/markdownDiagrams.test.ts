@@ -116,6 +116,20 @@ suite("markdownDiagrams", function () {
     assert.strictEqual((await codeLenses(document)).length, 1);
   });
 
+  test("offers lenses where VS Code's preview draws Mermaid, following its setting", async () => {
+    const document = await untitled("```mermaid\nA\n```\n```mmd\nB\n```\n");
+    const lines = async () => (await codeLenses(document)).map((lens) => lens.range.start.line);
+    assert.deepStrictEqual(await lines(), [0]);
+    const settings = vscode.workspace.getConfiguration("markdown-mermaid");
+    await settings.update("languages", ["mmd"], vscode.ConfigurationTarget.Global);
+    try {
+      assert.deepStrictEqual(await lines(), [3]);
+    } finally {
+      await settings.update("languages", undefined, vscode.ConfigurationTarget.Global);
+    }
+    assert.deepStrictEqual(await lines(), [0]);
+  });
+
   test("Open Diagram at Cursor shows the diagram, in a panel named after the file", async () => {
     const file = path.join(dir, "flow.md");
     fs.writeFileSync(file, "# Notes\n\n```mermaid\nflowchart TD\n  A --> B\n```\n");

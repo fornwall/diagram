@@ -86,7 +86,7 @@ function parseRenderInput(
   const opening = firstNewline < 0 ? undefined : openingFence(trimmed.slice(0, firstNewline));
   if (opening && isClosingFence(trimmed.slice(lastNewline + 1), opening)) {
     source = trimmed.slice(firstNewline + 1, lastNewline);
-    language ??= isDiagramLanguage(opening.language) ? opening.language : undefined;
+    language ??= opening.language;
   }
   if (!source.trim()) {
     return 'Give "source", the complete diagram, as a string.';

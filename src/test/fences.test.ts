@@ -9,7 +9,9 @@ import {
   isDiagramFence,
   relocateFence,
   rewriteFence,
+  setMermaidLanguages,
 } from "../fences";
+import { afterTest } from "./afterTest";
 
 /**
  * The diagrams in a document, as "<opening fence line>-<last content line> <language> <prefix>".
@@ -116,8 +118,9 @@ suite("fences", () => {
   test("reads an info string with words after the language", () => {
     assertSources([
       ["```mermaid title=Flow {highlight}\nflowchart TD\n```", ['0-1 mermaid "": "flowchart TD"']],
-      // The language must be the whole first word.
+      // The first word must hold mermaid as a word, as for VS Code's preview, or be echarts.
       ["```mermaidx\nflowchart TD\n```", []],
+      ["```{mermaid}\nA\n```\n```echarts-x\n{}\n```", ['0-1 mermaid "": "A"']],
       // Only spaces and tabs are trimmed from the info string.
       ["``` \tmermaid\u00a0\nA\n```", ['0-1 mermaid "": "A"']],
       ["```\u00a0mermaid\nA\n```", []],
@@ -127,6 +130,28 @@ suite("fences", () => {
         ['0-1 mermaid "": "A"', '3-4 echarts "": "{}"'],
       ],
     ]);
+  });
+
+  test("reads fences as Mermaid by the words of VS Code's preview setting", () => {
+    let text = "```mermaid\nA\n```\n```MMD\nB\n```\n";
+    const document = { version: 1, getText: () => text };
+    assert.deepStrictEqual(sources(text), ['0-1 mermaid "": "A"']);
+    assert.strictEqual(findDocumentDiagramFences(document).length, 1);
+    afterTest(() => setMermaidLanguages(["mermaid"]));
+    setMermaidLanguages(["mmd"]);
+    // A container is a diagram whatever the setting; a scan of an unchanged document is not reused.
+    text += "::: mermaid\nC\n:::\n";
+    assert.deepStrictEqual(
+      findDocumentDiagramFences(document).map(({ source }) => source),
+      ["B", "C"],
+    );
+    assert.strictEqual(
+      rewritten(text.slice(text.indexOf("```MMD")), "D"),
+      "```MMD\nD\n```\n::: mermaid\nC\n:::\n",
+    );
+    // As in the preview, no words match every language.
+    setMermaidLanguages([]);
+    assert.deepStrictEqual(sources("```ts\nA\n```\n```\nB\n```\n"), ['0-1 mermaid "": "A"']);
   });
 
   test("finds mermaid containers, which VS Code's preview draws as Azure DevOps wikis do", () => {

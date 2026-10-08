@@ -7,6 +7,7 @@ import {
   findDocumentDiagramFences,
   isDiagramFence,
   relocateFence,
+  setMermaidLanguages,
 } from "./fences";
 import { openDocument } from "./files";
 import type { DiagramPanel } from "./panel";
@@ -17,6 +18,8 @@ const OPEN_FENCE_COMMAND = "diagram.openFence";
 const OPEN_AT_CURSOR_COMMAND = "diagram.openAtCursor";
 const SETTINGS_SECTION = "diagram";
 const CODE_LENS_SETTING = "codeLens.enabled";
+/** The fence languages that VS Code's preview draws as Mermaid, from its Mermaid extension. */
+const MERMAID_LANGUAGES_SETTING = "markdown-mermaid.languages";
 
 export function registerMarkdownDiagrams(panel: DiagramPanel): vscode.Disposable[] {
   const lenses = new DiagramCodeLensProvider();
@@ -39,8 +42,12 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
   private readonly settingListener: vscode.Disposable;
 
   constructor() {
+    readMermaidLanguages();
     this.settingListener = vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration(`${SETTINGS_SECTION}.${CODE_LENS_SETTING}`)) {
+      if (event.affectsConfiguration(MERMAID_LANGUAGES_SETTING)) {
+        readMermaidLanguages();
+        this.changed.fire();
+      } else if (event.affectsConfiguration(`${SETTINGS_SECTION}.${CODE_LENS_SETTING}`)) {
         this.changed.fire();
       }
     });
@@ -66,6 +73,14 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
     this.settingListener.dispose();
     this.changed.dispose();
   }
+}
+
+/** Finds diagrams where VS Code's preview draws them, with its default for an invalid setting. */
+function readMermaidLanguages(): void {
+  const words = vscode.workspace.getConfiguration().get<unknown>(MERMAID_LANGUAGES_SETTING);
+  setMermaidLanguages(
+    Array.isArray(words) && words.every((word) => typeof word === "string") ? words : ["mermaid"],
+  );
 }
 
 async function openFence(panel: DiagramPanel, uri: vscode.Uri, fence: DiagramFence): Promise<void> {

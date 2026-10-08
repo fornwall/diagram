@@ -3,12 +3,7 @@
 
 import type { TextDocument } from "vscode";
 import type { DiagramBlock } from "./blocks";
-import {
-  DIAGRAM_LANGUAGES,
-  type DiagramLanguage,
-  isDiagramLanguage,
-  isPlainObject,
-} from "./protocol";
+import { type DiagramLanguage, isDiagramLanguage, isPlainObject } from "./protocol";
 
 /** CommonMark measures indentation in columns, with tab stops every 4 columns. */
 const TAB_STOP = 4;
@@ -78,12 +73,48 @@ class Cursor {
   }
 }
 
-/** An opening code fence: its marker, its language as {@link fenceMarker} reads it and its indent. */
+/** An opening code fence: its marker, the diagram language it names, if any, and its indent. */
 interface OpeningFence {
   fence: string;
-  language: string;
+  language: DiagramLanguage | undefined;
   /** Columns from the start of the fence's container, which are removed from its content lines. */
   indent: number;
+}
+
+/** Which diagram language, if any, a fence's language as {@link fenceMarker} reads it names. */
+type LanguageOf = (language: string) => DiagramLanguage | undefined;
+
+/** As in chat, where VS Code draws mermaid fences alone. */
+const chatLanguage: LanguageOf = (language) => (isDiagramLanguage(language) ? language : undefined);
+
+/**
+ * How Markdown documents name languages: VS Code's preview draws a fence as Mermaid if its language
+ * contains a word of the markdown-mermaid.languages setting, given here.
+ */
+function documentLanguages(words: readonly string[]): {
+  languageOf: LanguageOf;
+  /** Whether a document may name a diagram language, without which it holds no diagram. */
+  mayName: RegExp;
+} {
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // No words, or an empty one, match every language.
+  const alternatives = escaped.length > 0 ? escaped : [""];
+  const mermaid = new RegExp(`\\b(?:${alternatives.join("|")})\\b`, "i");
+  return {
+    languageOf: (language) => {
+      if (language === "echarts") return language;
+      return language && mermaid.test(language) ? "mermaid" : undefined;
+    },
+    mayName: new RegExp(["mermaid", "echarts", ...alternatives].join("|"), "i"),
+  };
+}
+
+let documents = documentLanguages(["mermaid"]);
+
+/** Takes the words of the markdown-mermaid.languages setting, for documents read from now on. */
+export function setMermaidLanguages(words: readonly string[]): void {
+  documents = documentLanguages(words);
+  documentFences = new WeakMap();
 }
 
 /**
@@ -108,14 +139,23 @@ export function fenceMarker(text: string): { fence: string; language: string } |
 }
 
 /** Parses the fence marker at `start`, which is preceded by `indent` columns of indentation. */
-function opening(line: string, start: number, indent: number): OpeningFence | undefined {
+function opening(
+  line: string,
+  start: number,
+  indent: number,
+  languageOf: LanguageOf,
+): OpeningFence | undefined {
   const marker = fenceMarker(line.slice(start));
-  // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram, and
-  // other containers as text.
-  if (!marker || (marker.fence.startsWith(":") && marker.language !== "mermaid")) {
+  if (!marker) {
     return undefined;
   }
-  return { ...marker, indent };
+  const { fence, language } = marker;
+  if (fence.startsWith(":")) {
+    // VS Code's preview, as Azure DevOps wikis, draws a ::: mermaid container as a diagram,
+    // whatever the setting, and other containers as text.
+    return language === "mermaid" ? { fence, language, indent } : undefined;
+  }
+  return { fence, language: languageOf(language), indent };
 }
 
 /** Whether the text at `start` closes a block: the fence's character, as many or more, then spaces. */
@@ -132,11 +172,11 @@ function closes(line: string, start: number, fence: string): boolean {
   return true;
 }
 
-/** Parses a line that opens a code block outside block quotes and lists. */
+/** Parses a line of a model's reply that opens a code block outside block quotes and lists. */
 export function openingFence(line: string): OpeningFence | undefined {
   const cursor = new Cursor(line);
   const indent = cursor.indent();
-  return indent < 4 ? opening(line, cursor.nonspace(), indent) : undefined;
+  return indent < 4 ? opening(line, cursor.nonspace(), indent, chatLanguage) : undefined;
 }
 
 /** Whether a line outside block quotes and lists closes the block that the opening fence opened. */
@@ -291,6 +331,9 @@ export class FenceScanner {
   /** What ends the open HTML block. */
   private html: RegExp | "blank line" | undefined;
 
+  /** Reads lines of a model's reply, unless given how a document's fences name languages. */
+  constructor(private readonly languageOf = chatLanguage) {}
+
   /** Whether the lines so far end inside a code block. */
   get inCode(): boolean {
     return this.code !== undefined;
@@ -366,7 +409,7 @@ export class FenceScanner {
         continue;
       }
       if (char === "`" || char === "~" || char === ":") {
-        const fence = opening(line, at, indent);
+        const fence = opening(line, at, indent, this.languageOf);
         if (fence) {
           while (containers.length > depth) containers.pop();
           this.paragraph = false;
@@ -458,7 +501,7 @@ export interface DiagramFence extends DiagramBlock {
   prefix: string;
 }
 
-const documentFences = new WeakMap<
+let documentFences = new WeakMap<
   Pick<TextDocument, "version" | "getText">,
   { version: number; fences: readonly DiagramFence[] }
 >();
@@ -475,9 +518,9 @@ export function findDocumentDiagramFences(
   return fences;
 }
 
-/** A code block in a text, with its content lines if they were wanted. */
+/** A code block in a document, with its content lines if it is a diagram block. */
 interface CodeBlock {
-  language: string;
+  language: DiagramLanguage | undefined;
   prefix: string;
   openingLine: number;
   lastLine: number;
@@ -490,11 +533,10 @@ interface CodeBlock {
  */
 const FRONT_MATTER = /^---[^\S\n]*\n(?:[^\n]*\n)*?---[^\S\n]*(?:\n|$)/;
 
-/** Yields the code blocks in a document in order, collecting the lines of wanted languages only. */
-function* codeBlocks(text: string, wanted: (language: string) => boolean): Generator<CodeBlock> {
-  const scanner = new FenceScanner();
+/** Yields the code blocks in a document in order. */
+function* codeBlocks(text: string): Generator<CodeBlock> {
+  const scanner = new FenceScanner(documents.languageOf);
   let open: CodeBlock | undefined;
-  let collect = false;
   // A fence in front matter is YAML, not a code block.
   const frontMatter = FRONT_MATTER.exec(text)?.[0] ?? "";
   // Lines end at LF, as in VS Code, whose documents hold no lone CR, and not at Unicode separators.
@@ -506,7 +548,7 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
     const scanned = scanner.next(text.slice(start, end));
     start = end + 1;
     if (scanned.kind === "content") {
-      if (collect) open?.lines.push(scanned.text);
+      if (open?.language) open.lines.push(scanned.text);
       continue;
     }
     // Like CommonMark, a block that is never closed ends with its container or the document.
@@ -518,7 +560,6 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
     if (scanned.kind === "opening") {
       const { language } = scanned.fence;
       open = { language, prefix: scanned.prefix, openingLine: line, lastLine: line, lines: [] };
-      collect = wanted(language);
     }
   }
   if (open) {
@@ -527,18 +568,16 @@ function* codeBlocks(text: string, wanted: (language: string) => boolean): Gener
   }
 }
 
-const NAMES_DIAGRAM_LANGUAGE = new RegExp(DIAGRAM_LANGUAGES.join("|"), "i");
-
 /** Find nonempty diagram blocks in document order, skipping fences inside other code blocks. */
 export function findDiagramFences(text: string): DiagramFence[] {
   const fences: DiagramFence[] = [];
   // CodeLens scans every Markdown document on each edit, and most name no diagram language.
-  if (!NAMES_DIAGRAM_LANGUAGE.test(text)) {
+  if (!documents.mayName.test(text)) {
     return fences;
   }
-  for (const { language, lines, ...block } of codeBlocks(text, isDiagramLanguage)) {
+  for (const { language, lines, ...block } of codeBlocks(text)) {
     const source = trimBlankLines(lines);
-    if (isDiagramLanguage(language) && source) {
+    if (language && source) {
       fences.push({ language, source, ...block });
     }
   }
@@ -554,11 +593,15 @@ interface FenceRewrite {
   fence: DiagramFence;
 }
 
-/** The block in `text` that opens at a line, with the content lines of the given language. */
-function blockAt(text: string, language: string, openingLine: number): CodeBlock | undefined {
-  for (const block of codeBlocks(text, (found) => found === language)) {
+/** The block of a language in `text` that opens at a line. */
+function blockAt(
+  text: string,
+  language: DiagramLanguage,
+  openingLine: number,
+): CodeBlock | undefined {
+  for (const block of codeBlocks(text)) {
     if (block.openingLine >= openingLine) {
-      return block.openingLine === openingLine ? block : undefined;
+      return block.openingLine === openingLine && block.language === language ? block : undefined;
     }
   }
   return undefined;
@@ -627,11 +670,11 @@ export function emptyDiagramBlockAt(
   text: string,
   line: number,
 ): { language: DiagramLanguage; openingLine: number } | undefined {
-  for (const { language, openingLine, lastLine, lines } of codeBlocks(text, isDiagramLanguage)) {
+  for (const { language, openingLine, lastLine, lines } of codeBlocks(text)) {
     if (openingLine > line) {
       break;
     }
-    if (line <= lastLine + 1 && isDiagramLanguage(language) && !trimBlankLines(lines)) {
+    if (line <= lastLine + 1 && language && !trimBlankLines(lines)) {
       return { language, openingLine };
     }
   }

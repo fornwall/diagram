@@ -1,5 +1,7 @@
 import * as assert from "node:assert";
 import { codeFence, DiagramBlockFilter, guessTitle } from "../blocks";
+import { setMermaidLanguages } from "../fences";
+import { afterTest } from "./afterTest";
 
 suite("blocks", () => {
   test("collects each mermaid and echarts block with its language, but no empty or unfinished one", () => {
@@ -137,6 +139,13 @@ suite("blocks", () => {
       assert.strictEqual(shown, line);
       assert.ok(Date.now() - start < 1000);
     }
+  });
+
+  test("collects blocks by their language alone, as VS Code draws them in chat", () => {
+    afterTest(() => setMermaidLanguages(["mermaid"]));
+    setMermaidLanguages(["mmd", "mermaid"]);
+    const markdown = "```mmd\nA\n```\n```{mermaid}\nB\n```\n";
+    assertFiltered(markdown, markdown);
   });
 
   test("streams text before the end of its line", () => {

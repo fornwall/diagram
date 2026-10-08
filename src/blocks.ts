@@ -1,5 +1,5 @@
 import { FenceScanner, fenceMarker, trimBlankLines } from "./fences";
-import { DIAGRAM_LANGUAGES, type DiagramLanguage, isDiagramLanguage } from "./protocol";
+import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
 export interface DiagramBlock {
@@ -180,7 +180,7 @@ export class DiagramBlockFilter {
         return "";
       }
     }
-    if (scanned.kind === "opening" && isDiagramLanguage(scanned.fence.language)) {
+    if (scanned.kind === "opening" && scanned.fence.language) {
       // A line that may open a diagram block is held back by push, so none of it was shown.
       this.diagram = { language: scanned.fence.language, lines: [] };
       return "";
