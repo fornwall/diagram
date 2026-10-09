@@ -25,6 +25,7 @@ import {
 } from "./tools";
 import { WebviewChannel } from "./webviewChannel";
 import {
+  cacheIgnoreFiles,
   FindWorkspaceFilesTool,
   ReadWorkspaceFileTool,
   SearchWorkspaceTextTool,
@@ -51,6 +52,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(FIND_FILES_TOOL, new FindWorkspaceFilesTool()),
     vscode.lm.registerTool(SEARCH_TEXT_TOOL, new SearchWorkspaceTextTool()),
     vscode.lm.registerTool(READ_FILE_TOOL, new ReadWorkspaceFileTool()),
+    cacheIgnoreFiles(),
     vscode.lm.registerTool(INSPECT_DATA_TOOL, new InspectDataTool(panel)),
     vscode.lm.registerTool(UPDATE_CHART_TOOL, new UpdateChartTool(panel)),
     vscode.commands.registerCommand("diagram.show", () => panel.show()),

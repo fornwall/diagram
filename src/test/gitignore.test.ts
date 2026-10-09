@@ -4,7 +4,7 @@ import { type IgnoreFiles, ignoredGlobs, ignoreMatcher, ignoreRules } from "../g
 /** The paths that the ignore files, given by folder, ignore. */
 function ignoredOf(files: Record<string, string>, paths: readonly string[]): string[] {
   const ignored = ignoreMatcher(ignoreFilesOf(files));
-  return paths.filter(ignored);
+  return paths.filter((path) => ignored(path));
 }
 
 function ignoreFilesOf(files: Record<string, string>): IgnoreFiles {

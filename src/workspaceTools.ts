@@ -18,7 +18,13 @@ import {
   staysInside,
   virtualFolderPath,
 } from "./files";
-import { type IgnoreFiles, ignoredGlobs, ignoreMatcher, ignoreRules } from "./gitignore";
+import {
+  type IgnoreFiles,
+  type IgnoreRule,
+  ignoredGlobs,
+  ignoreMatcher,
+  ignoreRules,
+} from "./gitignore";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { formatCount, plural, quote, toolInput } from "./text";
 import { textResult } from "./tools";
@@ -329,20 +335,88 @@ async function withoutHiddenSiblings(
 }
 
 /**
+ * The ignore files found in each workspace folder, by the folder and the globs that excluded
+ * folders from the search, while {@link cacheIgnoreFiles} keeps them.
+ */
+let ignoreCache: Map<string, Promise<IgnoreFiles>> | undefined;
+
+/**
+ * Keeps the .gitignore files found in each workspace folder, until one is created, changed or
+ * deleted, rather than searching the folder for them on each call. A folder that is renamed or
+ * copied with ignore files in it may go unnoticed until another changes.
+ */
+export function cacheIgnoreFiles(): vscode.Disposable {
+  const cache = new Map<string, Promise<IgnoreFiles>>();
+  ignoreCache = cache;
+  const clear = () => cache.clear();
+  const watcher = vscode.workspace.createFileSystemWatcher(`**/${IGNORE_FILE}`);
+  const disposables = [
+    watcher,
+    watcher.onDidCreate(clear),
+    watcher.onDidChange(clear),
+    watcher.onDidDelete(clear),
+  ];
+  return new vscode.Disposable(() => {
+    if (ignoreCache === cache) ignoreCache = undefined;
+    for (const disposable of disposables) disposable.dispose();
+  });
+}
+
+/**
  * The .gitignore files of a workspace folder, by which VS Code's search leaves out what they
- * ignore, unless search.useIgnoreFiles is off: findFiles leaves ignore files to its caller. Those
- * in what `exclude` excludes are not looked for, and at most {@link MAX_IGNORE_FILES} are.
+ * ignore, unless search.useIgnoreFiles is off: findFiles leaves ignore files to its caller.
  */
 async function ignoreFiles(
   root: vscode.WorkspaceFolder,
-  exclude: string,
+  excludes: readonly string[],
   token: vscode.CancellationToken,
 ): Promise<IgnoreFiles> {
   if (!vscode.workspace.getConfiguration("search", root.uri).get("useIgnoreFiles", true)) {
     return new Map();
   }
+  const key = `${root.uri.toString()}\n${excludes.join(",")}`;
+  const cache = ignoreCache;
+  const cached = cache?.get(key);
+  if (cached) {
+    try {
+      return await unlessCancelled(() => cached, token);
+    } catch (error) {
+      // Another call that was cancelled while finding them; find them again for this one.
+      if (!(error instanceof vscode.CancellationError) || token.isCancellationRequested) {
+        throw error;
+      }
+    }
+  }
+  const finding = findIgnoreFiles(root, excludes, token);
+  if (cache) {
+    cache.set(key, finding);
+    finding.catch(() => {
+      if (cache.get(key) === finding) cache.delete(key);
+    });
+  }
+  return finding;
+}
+
+/**
+ * Finds and reads the .gitignore files of a workspace folder, at most {@link MAX_IGNORE_FILES}.
+ * It looks neither in what `excludes` exclude nor in what the top-level one ignores, as a large
+ * repository may have many in its dependencies and build output, and git reads none there; nor
+ * are those read that are in folders a shallower one ignores. A folder that the top-level one
+ * ignores but a deeper one includes again goes unsearched, as in a "!build/" pattern.
+ */
+async function findIgnoreFiles(
+  root: vscode.WorkspaceFolder,
+  excludes: readonly string[],
+  token: vscode.CancellationToken,
+): Promise<IgnoreFiles> {
+  const files = new Map<string, readonly IgnoreRule[]>();
   // The top-level one is read even where files.exclude hides it.
-  const top = vscode.Uri.joinPath(root.uri, IGNORE_FILE);
+  const top = await unlessCancelled(
+    () => readIgnoreFile(vscode.Uri.joinPath(root.uri, IGNORE_FILE)),
+    token,
+  );
+  if (top.length > 0) files.set("", top);
+  const exclude = `{${[...excludes, ...ignoredGlobs(files)].join(",")}}`;
   const found = await unlessCancelled(
     async () =>
       vscode.workspace.findFiles(
@@ -353,24 +427,30 @@ async function ignoreFiles(
       ),
     token,
   );
-  const files = [top, ...found.filter((uri) => uri.toString() !== top.toString())];
   const start = rootPath(root.uri).length + 1;
-  const read = await unlessCancelled(
-    () =>
-      Promise.all(
-        files.map(async (uri) => {
-          const bytes = await Promise.resolve(vscode.workspace.fs.readFile(uri)).catch(
-            () => new Uint8Array(),
-          );
-          const rules =
-            bytes.byteLength > MAX_SEARCHED_BYTES ? [] : ignoreRules(decodeText(bytes, false));
-          const folder = uri === top ? "" : uri.path.slice(start, -(IGNORE_FILE.length + 1));
-          return [folder, rules] as const;
-        }),
-      ),
+  // Shallower first, so that the files that say whether a folder is ignored are read before it.
+  const nested = found
+    .map((uri) => ({ uri, folder: uri.path.slice(start, -(IGNORE_FILE.length + 1)) }))
+    .filter(({ folder }) => folder !== "")
+    .sort((a, b) => a.folder.split("/").length - b.folder.split("/").length);
+  const rules = await unlessCancelled(
+    () => Promise.all(nested.map(({ uri }) => readIgnoreFile(uri))),
     token,
   );
-  return new Map(read.filter(([, rules]) => rules.length > 0));
+  const ignored = ignoreMatcher(files);
+  for (const [index, { folder }] of nested.entries()) {
+    const read = rules[index] ?? [];
+    if (read.length > 0 && !ignored(folder, true)) files.set(folder, read);
+  }
+  return files;
+}
+
+/** The patterns of an ignore file, or none if it cannot be read or is too large to be one. */
+async function readIgnoreFile(uri: vscode.Uri): Promise<IgnoreRule[]> {
+  const bytes = await Promise.resolve(vscode.workspace.fs.readFile(uri)).catch(
+    () => new Uint8Array(),
+  );
+  return bytes.byteLength > MAX_SEARCHED_BYTES ? [] : ignoreRules(decodeText(bytes, false));
 }
 
 async function candidates(
@@ -399,7 +479,7 @@ async function candidates(
     }
     // What the ignore files ignore is left out of the files found, and excluded from the search
     // where globs can say so, so that it does not take up the limit.
-    const ignores = await ignoreFiles(root, `{${[...patterns].join(",")}}`, token);
+    const ignores = await ignoreFiles(root, [...patterns], token);
     const ignored = ignoreMatcher(ignores);
     for (const glob of ignoredGlobs(ignores)) patterns.add(glob);
     // Nested workspace roots may return files already found in an earlier root.

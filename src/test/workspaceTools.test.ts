@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   boundary,
+  cacheIgnoreFiles,
   FindWorkspaceFilesTool,
   ReadWorkspaceFileTool,
   resolveWorkspaceFile,
@@ -209,6 +210,67 @@ suite("workspaceTools", function () {
         .map((name) => `ignore/${name}`)
         .join("\n"),
     );
+  });
+
+  test("looks for no ignore files in what the top-level one ignores, nor reads them", async () => {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await writeFile(".gitignore", "vendor/\nout*/\n!outlier\n*.log\n");
+    for (const folder of ["vendor", "vendor/lib", "out1"]) await make(folder);
+    // Read, either would let "!" include again what "*.log" ignores.
+    await writeFile("vendor/lib/.gitignore", "!*.log\n");
+    await writeFile("out1/.gitignore", "!*.log\n");
+    await writeFile("a.log", "");
+    const excludes: string[][] = [];
+    const findFiles = vscode.workspace.findFiles;
+    replace(vscode.workspace, "findFiles", (include, exclude, ...rest) => {
+      excludes.push(String(exclude).split(/[{},]/));
+      return findFiles(include, exclude, ...rest);
+    });
+    assert.strictEqual(await invoke(finder, { glob: "*.log" }), 'No files match "*.log".');
+    const [found, searched] = excludes;
+    // "out*/" is no exclude, as "!outlier" could include a folder it matches again.
+    assert.ok(found?.includes("**/vendor/**") && !found.includes("**/out*/**"), String(found));
+    assert.ok(searched?.includes("**/*.log"), String(searched));
+  });
+
+  test("keeps the ignore files found until one changes, when caching them", async () => {
+    const caching = cacheIgnoreFiles();
+    afterTest(() => caching.dispose());
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await make("cached");
+    await writeFile("cached/a.log", "");
+    await writeFile("cached/b.ts", "");
+    let searches = 0;
+    const findFiles = vscode.workspace.findFiles;
+    replace(vscode.workspace, "findFiles", (include, ...rest) => {
+      if (include instanceof vscode.RelativePattern && include.pattern === "**/.gitignore") {
+        searches++;
+      }
+      return findFiles(include, ...rest);
+    });
+    // A call after the first finds them again only if the watcher tells of a change, such as
+    // the removal of the files of earlier tests.
+    let reused = false;
+    for (let call = 0; call < 20 && !reused; call++) {
+      const before = searches;
+      assert.strictEqual(await invoke(finder, { glob: "cached/**" }), "cached/a.log\ncached/b.ts");
+      reused = call > 0 && searches === before;
+    }
+    assert.ok(reused);
+    await writeFile("cached/.gitignore", "*.log\n");
+    // The file watcher tells of the change soon after.
+    const expected = "cached/.gitignore\ncached/b.ts";
+    const deadline = Date.now() + 5000;
+    let listed: string;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      listed = await invoke(finder, { glob: "cached/**" });
+    } while (listed !== expected && Date.now() < deadline);
+    assert.strictEqual(listed, expected);
   });
 
   test("fills result limits across overlapping workspace roots", async () => {

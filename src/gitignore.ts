@@ -1,7 +1,7 @@
 // What .gitignore files ignore, matched as git matches them.
 
 /** A pattern of a .gitignore file, which matches paths relative to the folder of its file. */
-interface IgnoreRule {
+export interface IgnoreRule {
   /** Whether the pattern starts with "!", which includes again what it matches. */
   negated: boolean;
   /** Whether the pattern ends with "/", which matches only folders. */
@@ -140,23 +140,26 @@ function classSource(chars: readonly string[]): string {
 }
 
 /**
- * Whether git ignores a path, relative to the workspace folder: whether it or a folder it is in is
- * ignored, as nothing in an ignored folder can be included again. The answers for folders are kept,
- * so it is to be used while the files stay the same.
+ * Whether git ignores a path, relative to the workspace folder, of a file or else a folder: whether
+ * it or a folder it is in is ignored, as nothing in an ignored folder can be included again. The
+ * answers for folders are kept, so it is to be used while the files stay the same, other than
+ * gaining files in folders deeper than any it has answered for.
  */
-export function ignoreMatcher(files: IgnoreFiles): (path: string) => boolean {
+export function ignoreMatcher(files: IgnoreFiles): (path: string, folder?: boolean) => boolean {
   const folders = new Map<string, boolean>();
-  return (path) => {
-    for (let end = path.indexOf("/"); end >= 0; end = path.indexOf("/", end + 1)) {
-      const folder = path.slice(0, end);
-      let ignored = folders.get(folder);
-      if (ignored === undefined) {
-        ignored = decision(files, folder, true) === true;
-        folders.set(folder, ignored);
-      }
-      if (ignored) return true;
+  const folderIgnored = (folder: string): boolean => {
+    let ignored = folders.get(folder);
+    if (ignored === undefined) {
+      ignored = decision(files, folder, true) === true;
+      folders.set(folder, ignored);
     }
-    return decision(files, path, false) === true;
+    return ignored;
+  };
+  return (path, folder = false) => {
+    for (let end = path.indexOf("/"); end >= 0; end = path.indexOf("/", end + 1)) {
+      if (folderIgnored(path.slice(0, end))) return true;
+    }
+    return folder ? folderIgnored(path) : decision(files, path, false) === true;
   };
 }
 
