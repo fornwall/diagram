@@ -220,11 +220,14 @@ function quote(cursor: Cursor, indent: number): void {
   }
 }
 
-/** Consumes a line's continuation of a container: ">" or a list item's indentation. */
-function continues(cursor: Cursor, container: Container): boolean {
+/**
+ * Consumes a line's continuation of a container: ">" or a list item's indentation. Unlike CommonMark
+ * and VS Code's chat, VS Code's preview continues a block quote at a ">" indented 4 columns or more.
+ */
+function continues(cursor: Cursor, container: Container, preview: boolean): boolean {
   const indent = cursor.indent();
   if (container === ">") {
-    if (indent >= 4 || cursor.line[cursor.nonspace()] !== ">") {
+    if ((indent >= 4 && !preview) || cursor.line[cursor.nonspace()] !== ">") {
       return false;
     }
     quote(cursor, indent);
@@ -243,9 +246,12 @@ function continues(cursor: Cursor, container: Container): boolean {
 }
 
 /** Consumes the containers that a line continues, returning how many it continues. */
-function continued(cursor: Cursor, containers: readonly Container[]): number {
+function continued(cursor: Cursor, containers: readonly Container[], preview: boolean): number {
   let matched = 0;
-  while (matched < containers.length && continues(cursor, containers[matched] as Container)) {
+  while (
+    matched < containers.length &&
+    continues(cursor, containers[matched] as Container, preview)
+  ) {
     matched++;
   }
   return matched;
@@ -363,8 +369,14 @@ export class FenceScanner {
   /** What ends the open HTML block. */
   private html: RegExp | "blank line" | undefined;
 
-  /** Reads lines of a model's reply, unless given how a document's fences name languages. */
-  constructor(private readonly languageOf = chatLanguage) {}
+  /**
+   * Reads lines of a model's reply as VS Code's chat does, unless given how a document's fences
+   * name languages and to read block quotes as VS Code's Markdown preview does.
+   */
+  constructor(
+    private readonly languageOf = chatLanguage,
+    private readonly preview = false,
+  ) {}
 
   /** Whether the lines so far end inside a code block. */
   get inCode(): boolean {
@@ -382,7 +394,10 @@ export class FenceScanner {
     }
     const cursor = new Cursor(start);
     // Until a line has more than indentation, it may yet turn out to be blank or less indented.
-    return continued(cursor, containers) === containers.length && cursor.nonspace() < start.length;
+    return (
+      continued(cursor, containers, this.preview) === containers.length &&
+      cursor.nonspace() < start.length
+    );
   }
 
   /** Reads the next line, without its line break. */
@@ -390,7 +405,7 @@ export class FenceScanner {
     const line = text.endsWith("\r") ? text.slice(0, -1) : text;
     const cursor = new Cursor(line);
     const { containers } = this;
-    const matched = continued(cursor, containers);
+    const matched = continued(cursor, containers, this.preview);
     if (cursor.nonspace() < line.length) {
       // A list item that started with a blank line holds something now.
       for (const container of containers.slice(0, matched)) {
@@ -570,7 +585,7 @@ const FRONT_MATTER = /^---[^\S\n]*\n(?:[^\n]*\n)*?---[^\S\n]*(?:\n|$)/;
 
 /** Yields the code blocks in a document in order. */
 function* codeBlocks(text: string): Generator<CodeBlock> {
-  const scanner = new FenceScanner(documents.languageOf);
+  const scanner = new FenceScanner(documents.languageOf, true);
   let open: CodeBlock | undefined;
   // A fence in front matter is YAML, not a code block.
   const frontMatter = FRONT_MATTER.exec(text)?.[0] ?? "";

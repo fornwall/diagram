@@ -222,6 +222,8 @@ suite("blocks", () => {
       },
       // The end of a block quote ends a block in it.
       { markdown: "> ```mermaid\n> A\nEnd", source: "A", shown: "End" },
+      // Unlike in VS Code's Markdown preview, so does a ">" indented by 4 columns.
+      { markdown: "> ```mermaid\n> A\n    > B", source: "A", shown: "    > B" },
       // A line that ends a code block by leaving its block quote or list item may open a diagram.
       {
         markdown: "> ```js\n> x\n```mermaid\nA\n```\nEnd",

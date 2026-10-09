@@ -305,6 +305,10 @@ suite("fences", () => {
       ["> ```mermaid\n> A\nB\n> ```\n", ['0-1 mermaid "> ": "A"']],
       ["> > ```mermaid\n> > A\n> B\n", ['0-1 mermaid "> > ": "A"']],
       ["> ```mermaid\n> A\n\n> B\n", ['0-1 mermaid "> ": "A"']],
+      // Unlike CommonMark, VS Code's preview continues a block quote at a ">" however indented.
+      ["> ```mermaid\n    > A\n\t> B\n> ```\n", ['0-2 mermaid "> ": "A\\nB"']],
+      ["- > ```mermaid\n        > A\n  > ```\n", ['0-1 mermaid "  > ": "A"']],
+      ["> ```mermaid\n> A\n    B\n", ['0-1 mermaid "> ": "A"']],
       // A paragraph's lazy continuation line keeps the block quote open.
       ["> Text\nlazy\n> ```mermaid\n> A\n> ```\n", ['2-3 mermaid "> ": "A"']],
       // Block quotes and list items nest.
