@@ -516,6 +516,8 @@ suite("echartsLayout", () => {
       radius(bars({ series: [{ type: "bar", data: [{ value: -1 }] }] })),
       undefined,
     );
+    const polar = { type: "bar", coordinateSystem: "polar", data: [1, 2] };
+    assert.strictEqual(radius(bars({ series: [polar] })), undefined);
     const fromDataset = (source: unknown, extra: Option = {}) =>
       radius(
         bars({

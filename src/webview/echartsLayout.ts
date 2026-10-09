@@ -654,6 +654,8 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
         }
       } else if (
         itemStyle.borderRadius === undefined &&
+        // The corners of a polar bar's sector go in another order, and by angle and radius.
+        isCartesian(each) &&
         !(each.data == null
           ? hasNegativeValues(datasetSource(each, datasets), true)
           : hasNegativeValues(each.data))
