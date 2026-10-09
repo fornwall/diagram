@@ -253,6 +253,30 @@ suite("workspaceTools", function () {
     assert.strictEqual(await invoke(finder, { glob: "many/**" }), "many/kept.ts");
   });
 
+  test("reads as many nested ignore files when those in ignored folders are found too", async () => {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await writeFile(".gitignore", "vendor/\n");
+    await make("real");
+    await writeFile("real/.gitignore", "*.tmp\n");
+    for (const name of ["a.ts", "b.tmp"]) await writeFile(`real/${name}`, "");
+    // As where the exclude cannot say all that the top-level one ignores, and findFiles returns
+    // files in no fixed order.
+    const vendored = Array.from({ length: 1500 }, (_, index) =>
+      vscode.Uri.file(path.join(dir, "vendor", `p${index}`, ".gitignore")),
+    );
+    const findFiles = vscode.workspace.findFiles;
+    replace(vscode.workspace, "findFiles", async (include, exclude, maxResults, token) => {
+      const found = await findFiles(include, exclude, maxResults, token);
+      if (!(include instanceof vscode.RelativePattern) || include.pattern !== "**/.gitignore") {
+        return found;
+      }
+      return [...vendored, ...found].slice(0, maxResults);
+    });
+    assert.strictEqual(await invoke(finder, { glob: "real/**" }), "real/.gitignore\nreal/a.ts");
+  });
+
   test("reads nested ignore files that the top-level one ignores, as git does", async () => {
     replace(vscode.workspace, "workspaceFolders", [
       { uri: vscode.Uri.file(dir), name: relative, index: 0 },

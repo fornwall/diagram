@@ -49,6 +49,11 @@ const IGNORE_FILE = ".gitignore";
 /** The most ignore files read in a workspace folder, of which a large repository may have many. */
 const MAX_IGNORE_FILES = 1000;
 /**
+ * The most ignore files looked for, of which those in ignored folders are left out before
+ * reading the others, up to {@link MAX_IGNORE_FILES}.
+ */
+const MAX_FOUND_IGNORE_FILES = 10 * MAX_IGNORE_FILES;
+/**
  * The most characters of the globs that exclude what ignore files ignore from a search. VS Code
  * passes the exclude to ripgrep as one argument, which Linux allows up to 128 KiB of, and Windows
  * a command line of up to 32,767 characters; beyond them, the search fails.
@@ -431,25 +436,39 @@ async function findIgnoreFiles(
       vscode.workspace.findFiles(
         new vscode.RelativePattern(root, `**/${IGNORE_FILE}`),
         exclude,
-        MAX_IGNORE_FILES,
+        MAX_FOUND_IGNORE_FILES,
         token,
       ),
     token,
   );
   const start = rootPath(root.uri).length + 1;
-  // Shallower first, so that the files that say whether a folder is ignored are read before it.
-  const nested = found
-    .map((uri) => ({ uri, folder: uri.path.slice(start, -(IGNORE_FILE.length + 1)) }))
-    .filter(({ folder }) => folder !== "")
-    .sort((a, b) => a.folder.split("/").length - b.folder.split("/").length);
-  const rules = await unlessCancelled(
-    () => Promise.all(nested.map(({ uri }) => readIgnoreFile(uri))),
-    token,
-  );
+  // By depth, so that the files that say whether a folder is ignored are read before it.
+  const levels: { uri: vscode.Uri; folder: string }[][] = [];
+  for (const uri of found) {
+    const folder = uri.path.slice(start, -(IGNORE_FILE.length + 1));
+    if (folder === "") continue;
+    const depth = folder.split("/").length;
+    const level = levels[depth] ?? [];
+    level.push({ uri, folder });
+    levels[depth] = level;
+  }
   const ignored = ignoreMatcher(files);
-  for (const [index, { folder }] of nested.entries()) {
-    const read = rules[index] ?? [];
-    if (read.length > 0 && !ignored(folder, true)) files.set(folder, read);
+  let read = 0;
+  for (const level of levels) {
+    // Those in ignored folders, which the exclude may not have left out, are not read and do not
+    // count towards the limit.
+    const kept = (level ?? [])
+      .filter(({ folder }) => !ignored(folder, true))
+      .slice(0, MAX_IGNORE_FILES - read);
+    read += kept.length;
+    const rules = await unlessCancelled(
+      () => Promise.all(kept.map(({ uri }) => readIgnoreFile(uri))),
+      token,
+    );
+    for (const [index, { folder }] of kept.entries()) {
+      const folderRules = rules[index] ?? [];
+      if (folderRules.length > 0) files.set(folder, folderRules);
+    }
   }
   return files;
 }
