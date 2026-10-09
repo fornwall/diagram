@@ -22,7 +22,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 | Action | How |
 | --- | --- |
 | Select | Click an item, such as a node, edge, sequence message or chart item; Ctrl/Cmd+click or Shift+click adds to the selection. If the item has a link, or the agent set a click prompt, a plain click opens the link or asks in chat instead. Clicking a treemap or sunburst item also zooms into it. |
-| Keyboard | Tab to the drawing, move with the arrow keys (Home/End: first/last) and press Enter or Space to click. In charts, the arrow keys along the category axis follow a series and the others change series; pie slices go round, trees go to parent/child (←/→) and siblings (↑/↓), and scatter, graph and sankey items to the nearest one. |
+| Keyboard | Tab to the drawing, move with the arrow keys (Home/End: first/last) and press Enter or Space to click; with Ctrl/Cmd or Shift, to add to the selection. Escape closes a menu of links and Chart Options. In charts, the arrow keys along the category axis follow a series and the others change series; pie slices go round, trees go to parent/child (←/→) and siblings (↑/↓), and scatter, graph and sankey items to the nearest one. |
 | Highlight a path | Select two nodes of a flowchart, swimlane, agent flow or state diagram in order (start, then destination), then **Highlight Path**. Selects a shortest path, including its edges. |
 | Ask | **Send to chat** asks about your selection, addressed to the agent that drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |

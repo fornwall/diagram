@@ -496,6 +496,21 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("selects Mermaid nodes with Enter and Space, adding to the selection with a modifier", async () => {
+    await draw({ source: "flowchart LR\n  A --> B --> C" });
+    assert.deepStrictEqual(
+      await evaluate(`["A", "B", "C", "A"].map((id, n) => {
+        const node = document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+        node.focus();
+        const init = [{key: "Enter"}, {key: " ", shiftKey: true}, {key: "Enter", ctrlKey: true}, {key: " "}][n];
+        node.dispatchEvent(new KeyboardEvent("keydown", {...init, bubbles: true, cancelable: true}));
+        return document.getElementById("selection-label").textContent;
+      })`),
+      ["Selected: “A”", "Selected: “A”, “B”", "Selected: “A”, “B”, “C”", "Selected: “A”"],
+    );
+    await evaluate('document.getElementById("clear-selection").click()');
+  });
+
   test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
     await draw({ source: "flowchart LR\n  A --> B" });
     await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);
