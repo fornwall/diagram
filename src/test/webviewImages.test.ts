@@ -57,7 +57,11 @@ suite("images in the webview", function () {
           ${DRAG_IMAGE}
           const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
           const image = new DOMParser().parseFromString(svg, "image/svg+xml");
-          return [...image.querySelectorAll('path[fill="#123456"]')].map(path => path.getAttribute("d"));
+          // The bars are the filled paths: a bar under the system pointer, whose emphasis the export
+          // ends at once, has its color written as rgb(18,52,86) instead.
+          return [...image.querySelectorAll("path")]
+            .filter(path => path.getAttribute("fill") !== "none")
+            .map(path => path.getAttribute("d"));
         })()`),
       );
     }
