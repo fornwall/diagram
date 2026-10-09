@@ -713,8 +713,9 @@ const STATEMENT_ERROR =
 
 /**
  * The error for a statement that Mermaid's checks fail on, on its line: the first line that the
- * text up to fails on in the same way, which Mermaid runs the same statements up to. `parse`
- * rejects with the error that Mermaid fails to parse a text with.
+ * source up to fails on in the same way, which Mermaid runs the same statements up to. `parse`
+ * rejects with the error that Mermaid fails to parse a text with; it is given the source up to a
+ * line as the renderer gives Mermaid the whole source, so that lines count in the source.
  */
 export async function statementError(
   error: unknown,
@@ -725,7 +726,7 @@ export async function statementError(
   const normalized = source.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
   const failsUpTo = (line: number) =>
-    parse(lines.slice(0, line).join("\n")).then(
+    parse(parsableSource(lines.slice(0, line).join("\n"))).then(
       () => false,
       (failure: unknown) => failure instanceof Error && failure.message === error.message,
     );
