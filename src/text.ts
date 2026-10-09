@@ -14,9 +14,14 @@ export function joinWords(words: readonly string[], conjunction: "and" | "or"): 
     : (words[0] ?? "");
 }
 
-/** Text as quoted in a message: as JSON, shortened to `max` characters. */
+/**
+ * Text as quoted in a message: as JSON, shortened to `max` UTF-16 code units, without splitting a
+ * character in two, which JSON would show as an escape such as \ud83d.
+ */
 export function quote(text: string, max = 40): string {
-  return JSON.stringify(text.length > max ? `${text.slice(0, max)}…` : text);
+  return JSON.stringify(
+    text.length > max ? `${text.slice(0, max).replace(/[\uD800-\uDBFF]$/, "")}…` : text,
+  );
 }
 
 /** A count or limit as messages give it, e.g. "1,000,000". */
