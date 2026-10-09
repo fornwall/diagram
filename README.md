@@ -72,7 +72,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_inspectData` | `#diagramData` | Show a table's columns, inferred types and up to 20 sample rows without charting it. |
 | `diagram_updateChart` | `#diagramUpdate` | Change the current chart's settings using its loaded data, keeping supported styling. |
 
-Workspace tools stay inside the open workspace folders. Finding and searching leave out `.git`, `node_modules`, the files that `files.exclude` and `search.exclude` exclude and, as `search.useIgnoreFiles` sets, those that the `.gitignore` at the top of a workspace folder ignores.
+Workspace tools stay inside the open workspace folders. Finding and searching leave out `.git`, `node_modules`, the files that `files.exclude` and `search.exclude` exclude and, as `search.useIgnoreFiles` sets, those that `.gitignore` files ignore.
 
 `diagram_updateChart` keeps omitted settings; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update.
 

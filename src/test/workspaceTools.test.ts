@@ -172,26 +172,42 @@ suite("workspaceTools", function () {
     }
   });
 
-  test("leaves out what a folder's .gitignore ignores, unless search.useIgnoreFiles is off", async () => {
+  test("leaves out what .gitignore files ignore, unless search.useIgnoreFiles is off", async () => {
     replace(vscode.workspace, "workspaceFolders", [
       { uri: vscode.Uri.file(dir), name: relative, index: 0 },
     ]);
-    await writeFile(".gitignore", "# output\n*.log\n/ignore/out/\ncache\n!keep.log\n\\#odd\n");
-    for (const folder of ["ignore", "ignore/out", "ignore/cache", "ignore/sub", "ignore/sub/out"]) {
-      await make(folder);
+    await writeFile(
+      ".gitignore",
+      "# output\n*.log\n/ignore/out/\ncache\n!keep.log\n\\#odd\n/ignore/build/\n!/ignore/build/keep.ts\n",
+    );
+    await make("ignore");
+    for (const folder of ["out", "cache", "build", "sub", "sub/out", "sub/deep"]) {
+      await make(`ignore/${folder}`);
     }
-    const files = ["a.log", "cache/c.ts", "keep.log", "main.ts", "out/x.js", "sub/cache"];
-    for (const name of [...files, "sub/out/y.js"]) await writeFile(`ignore/${name}`, "");
+    await writeFile("ignore/sub/.gitignore", "out/\n!*.log\n/top.ts\n");
+    const files = ["a.log", "build/keep.ts", "cache/c.ts", "keep.log", "main.ts", "out/x.js"];
+    const nested = ["sub/b.log", "sub/cache", "sub/deep/top.ts", "sub/out/y.js", "sub/top.ts"];
+    for (const name of [...files, ...nested]) await writeFile(`ignore/${name}`, "");
     assert.strictEqual(
       await invoke(finder, { glob: "ignore/**" }),
-      "ignore/main.ts\nignore/sub/out/y.js",
+      ["keep.log", "main.ts", "sub/.gitignore", "sub/b.log", "sub/deep/top.ts"]
+        .map((name) => `ignore/${name}`)
+        .join("\n"),
+    );
+    // Searches leave them out too.
+    assert.match(
+      await invoke(searcher, { query: "out/", glob: "ignore/**" }),
+      /^1 match in 1 file \(searched 5 files\)\.\nignore\/sub\/\.gitignore\n {2}1: out\/$/,
     );
     const search = vscode.workspace.getConfiguration("search");
     await search.update("useIgnoreFiles", false, vscode.ConfigurationTarget.Global);
     afterTest(() => search.update("useIgnoreFiles", undefined, vscode.ConfigurationTarget.Global));
     assert.strictEqual(
       await invoke(finder, { glob: "ignore/**" }),
-      [...files, "sub/out/y.js"].map((name) => `ignore/${name}`).join("\n"),
+      [...files, ...nested, "sub/.gitignore"]
+        .sort()
+        .map((name) => `ignore/${name}`)
+        .join("\n"),
     );
   });
 
@@ -209,6 +225,7 @@ suite("workspaceTools", function () {
     replace(vscode.workspace, "workspaceFolders", roots);
     replace(vscode.workspace, "findFiles", async (include, _exclude, maxResults) => {
       assert.ok(include instanceof vscode.RelativePattern);
+      if (include.pattern === "**/.gitignore") return [];
       const matches = include.baseUri.fsPath === nested ? files.slice(0, 2) : files;
       return matches.slice(0, maxResults);
     });

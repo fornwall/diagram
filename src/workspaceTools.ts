@@ -18,6 +18,7 @@ import {
   staysInside,
   virtualFolderPath,
 } from "./files";
+import { type IgnoreFiles, ignoredGlobs, ignoreMatcher, ignoreRules } from "./gitignore";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { formatCount, plural, quote, toolInput } from "./text";
 import { textResult } from "./tools";
@@ -38,6 +39,9 @@ const DEFAULT_READ_LINES = 200;
 /** Files read ahead while searching, as reading them one by one waits on each. */
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
+const IGNORE_FILE = ".gitignore";
+/** The most ignore files read in a workspace folder, of which a large repository may have many. */
+const MAX_IGNORE_FILES = 1000;
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
   if (value === undefined) return fallback;
@@ -262,34 +266,48 @@ async function withoutHiddenSiblings(
 }
 
 /**
- * The globs that exclude what the top-level .gitignore of a workspace folder ignores, as VS Code's
- * search does, unless search.useIgnoreFiles is off: findFiles leaves ignore files to its caller.
- * A pattern with a "/" before its end is relative to the folder, others match at any depth, and
- * one that ends with "/" matches only folders. Patterns that a glob list cannot carry are left out,
- * as are those that include again with "!", so the files they include stay excluded.
+ * The .gitignore files of a workspace folder, by which VS Code's search leaves out what they
+ * ignore, unless search.useIgnoreFiles is off: findFiles leaves ignore files to its caller. Those
+ * in what `exclude` excludes are not looked for, and at most {@link MAX_IGNORE_FILES} are.
  */
-async function ignoredGlobs(
+async function ignoreFiles(
   root: vscode.WorkspaceFolder,
+  exclude: string,
   token: vscode.CancellationToken,
-): Promise<string[]> {
+): Promise<IgnoreFiles> {
   if (!vscode.workspace.getConfiguration("search", root.uri).get("useIgnoreFiles", true)) {
-    return [];
+    return new Map();
   }
-  const file = vscode.Uri.joinPath(root.uri, ".gitignore");
-  const bytes = await unlessCancelled(
-    async () => vscode.workspace.fs.readFile(file).then(undefined, () => new Uint8Array()),
+  // The top-level one is read even where files.exclude hides it.
+  const top = vscode.Uri.joinPath(root.uri, IGNORE_FILE);
+  const found = await unlessCancelled(
+    async () =>
+      vscode.workspace.findFiles(
+        new vscode.RelativePattern(root, `**/${IGNORE_FILE}`),
+        exclude,
+        MAX_IGNORE_FILES,
+        token,
+      ),
     token,
   );
-  return decodeText(bytes, false)
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      const pattern = line.trimEnd();
-      if (/^[#!]|[\\{},]/.test(pattern)) return [];
-      const name = pattern.replace(/^\/|\/$/g, "");
-      if (!name) return [];
-      const glob = pattern.slice(0, -1).includes("/") ? name : `**/${name}`;
-      return pattern.endsWith("/") ? [`${glob}/**`] : [glob, `${glob}/**`];
-    });
+  const files = [top, ...found.filter((uri) => uri.toString() !== top.toString())];
+  const start = rootPath(root.uri).length + 1;
+  const read = await unlessCancelled(
+    () =>
+      Promise.all(
+        files.map(async (uri) => {
+          const bytes = await Promise.resolve(vscode.workspace.fs.readFile(uri)).catch(
+            () => new Uint8Array(),
+          );
+          const rules =
+            bytes.byteLength > MAX_SEARCHED_BYTES ? [] : ignoreRules(decodeText(bytes, false));
+          const folder = uri === top ? "" : uri.path.slice(start, -(IGNORE_FILE.length + 1));
+          return [folder, rules] as const;
+        }),
+      ),
+    token,
+  );
+  return new Map(read.filter(([, rules]) => rules.length > 0));
 }
 
 async function candidates(
@@ -304,7 +322,7 @@ async function candidates(
     throwIfCancelled(token);
     // An exclude passed to findFiles replaces files.exclude, so pass both settings. It cannot
     // carry a condition on sibling files, which is checked on the files found.
-    const patterns = new Set([...DEFAULT_EXCLUDES, ...(await ignoredGlobs(root, token))]);
+    const patterns = new Set(DEFAULT_EXCLUDES);
     const conditions: [string, string][] = [];
     for (const section of ["files", "search"]) {
       const excludes = vscode.workspace
@@ -316,6 +334,11 @@ async function candidates(
         else if (enabled) patterns.add(pattern);
       }
     }
+    // What the ignore files ignore is left out of the files found, and excluded from the search
+    // where globs can say so, so that it does not take up the limit.
+    const ignores = await ignoreFiles(root, `{${[...patterns].join(",")}}`, token);
+    const ignored = ignoreMatcher(ignores);
+    for (const glob of ignoredGlobs(ignores)) patterns.add(glob);
     // Nested workspace roots may return files already found in an earlier root.
     const overlapping = files.filter((uri) => contains(root.uri, uri)).length;
     const limit = max + 1 - files.length + overlapping;
@@ -333,8 +356,10 @@ async function candidates(
       )
     ).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     throwIfCancelled(token);
+    const start = rootPath(root.uri).length + 1;
+    const kept = found.filter((uri) => !ignored(uri.path.slice(start)));
     const shown =
-      conditions.length > 0 ? await withoutHiddenSiblings(root, found, conditions, token) : found;
+      conditions.length > 0 ? await withoutHiddenSiblings(root, kept, conditions, token) : kept;
     for (const uri of shown) {
       if (!seen.has(uri.toString())) {
         seen.add(uri.toString());

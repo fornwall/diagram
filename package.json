@@ -484,7 +484,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
         "userDescription": "Find workspace files by glob",
-        "modelDescription": "Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Skips .git, node_modules and what files.exclude, search.exclude and each folder's .gitignore exclude.",
+        "modelDescription": "Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Skips .git, node_modules and what files.exclude, search.exclude and .gitignore files exclude.",
         "tags": [
           "diagram"
         ],
