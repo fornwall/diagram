@@ -41,6 +41,15 @@ suite("data", () => {
     }
   });
 
+  test("keeps quotes, spaces and other delimiters in unquoted fields beside quoted ones", () => {
+    const text = '"a",b "c" d,  "e"  ,f;g\n1,x"y,  2 ,\r\n"q""r",,\t"s"';
+    assert.deepStrictEqual(splitText(text, "csv").records, [
+      ["a", 'b "c" d', "e  ", "f;g"],
+      ["1", 'x"y', "  2 ", ""],
+      ['q"r', "", "s"],
+    ]);
+  });
+
   test("parses spaces between numbers and units in tabular exports", () => {
     const table = parseTable("name;size;share\na;1,5 MiB;12,5 %\nb;2\u00a0MiB;25\u202f%");
     assert.deepStrictEqual(table.rows, [

@@ -185,8 +185,19 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
           recordStart,
         );
       }
-      field += char;
-      if (char !== " " && char !== "\t") {
+      if (closedQuote || char === " " || char === "\t") {
+        field += char;
+      } else {
+        // Up to the end of the field at once, as a string built a character at a time is slow
+        // to read. Quotes within it are text.
+        let end = i + 1;
+        while (end < text.length) {
+          const next = text[end];
+          if (next === delimiter || next === "\n" || next === "\r") break;
+          end++;
+        }
+        field += text.slice(i, end);
+        i = end - 1;
         fieldStart = false;
       }
     }
