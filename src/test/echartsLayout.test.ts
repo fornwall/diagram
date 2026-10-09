@@ -304,6 +304,12 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual([top.top, top.bottom], [44, 8]);
   });
 
+  test("lays out the grid of an option with an empty list of grids", () => {
+    const option = layout(bars({ title: { text: "T" }, grid: [] }));
+    assert.deepStrictEqual(option.grid, layout(bars({ title: { text: "T" } })).grid);
+    assert.strictEqual(option.grid.top, 46);
+  });
+
   test("places sliders along the axis they control", () => {
     const option = layout(bars({ dataZoom: [{ type: "slider" }, { yAxisIndex: 0 }] }));
     assert.deepStrictEqual(option.dataZoom, [

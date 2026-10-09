@@ -493,7 +493,10 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
         grid.outerBoundsMode = "same";
       }
     }
-    base.grid ??= grid;
+    if (grids.length === 0) {
+      // Also in place of an empty list of grids, which ECharts would replace by its default grid.
+      base.grid = grid;
+    }
   }
 
   // Rotate category labels when they would overlap, and truncate very long ones.
