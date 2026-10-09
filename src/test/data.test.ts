@@ -1403,6 +1403,128 @@ suite("data", () => {
     ]);
   });
 
+  test("joins the lines of cells over several lines in tables drawn by sqlite3 and psql", () => {
+    const expected = {
+      columns: ["lang", "lines", "note"],
+      rows: [
+        ["ts", 1200, "line one\nline two"],
+        ["css", 300, "short"],
+        ["js", null, "x"],
+      ],
+    };
+    for (const table of [
+      // sqlite3 -box and -table draw a rule between each row and the next when one has a newline.
+      [
+        "╭──────┬───────┬──────────╮",
+        "│ lang │ lines │   note   │",
+        "╞══════╪═══════╪══════════╡",
+        "│ ts   │  1200 │ line one │",
+        "│      │       │ line two │",
+        "├──────┼───────┼──────────┤",
+        "│ css  │   300 │ short    │",
+        "├──────┼───────┼──────────┤",
+        "│ js   │       │ x        │",
+        "╰──────┴───────┴──────────╯",
+      ],
+      [
+        "+------+-------+----------+",
+        "| lang | lines |   note   |",
+        "+------+-------+----------+",
+        "| ts   |  1200 | line one |",
+        "|      |       | line two |",
+        "+------+-------+----------+",
+        "| css  |   300 | short    |",
+        "+------+-------+----------+",
+        "| js   |       | x        |",
+        "+------+-------+----------+",
+      ],
+      // psql marks a newline in a cell after its text, with "+" or, in unicode lines, "↵".
+      [
+        " lang | lines |   note   ",
+        "------+-------+----------",
+        " ts   |  1200 | line one+",
+        "      |       | line two",
+        " css  |   300 | short",
+        " js   |       | x",
+        "(3 rows)",
+      ],
+      [
+        " lang │ lines │   note   ",
+        "──────┼───────┼──────────",
+        " ts   │  1200 │ line one↵",
+        "      │       │ line two",
+        " css  │   300 │ short",
+        " js   │       │ x",
+        "(3 rows)",
+      ],
+    ]) {
+      assert.deepStrictEqual(parse(table.join("\n")), expected, table.join("\n"));
+    }
+    // In any column, and with "." where psql wraps text, at both ends of the break.
+    assert.deepStrictEqual(
+      parse(
+        [
+          "   note   | lines | wrapped ",
+          "----------+-------+---------",
+          " line one+|  1200 | a long .",
+          " line two |       |.note",
+          " short    |   300 | x",
+        ].join("\n"),
+      ).rows,
+      [
+        ["line one\nline two", 1200, "a long note"],
+        ["short", 300, "x"],
+      ],
+    );
+    // A "+" or "." in the text of a cell is not a mark, as psql writes a space after the text.
+    assert.deepStrictEqual(parse(" grade | n  \n-------+----\n A+    | 1.\n B     | 2\n").rows, [
+      ["A+", 1],
+      ["B", 2],
+    ]);
+    // psql draws no line at the left of the first column, which may be empty.
+    assert.deepStrictEqual(parse(" a | b\n---+---\n   | 1\n x | 2").rows, [
+      [null, 1],
+      ["x", 2],
+    ]);
+    // Rows above a rule over the totals are rows of their own, though some have empty cells.
+    assert.deepStrictEqual(
+      parse(
+        [
+          "+-------+---+",
+          "| name  | n |",
+          "+-------+---+",
+          "| a     | 1 |",
+          "| b     |   |",
+          "| c     | 2 |",
+          "+-------+---+",
+          "| total | 3 |",
+          "+-------+---+",
+        ].join("\n"),
+      ).rows,
+      [
+        ["a", 1],
+        ["b", null],
+        ["c", 2],
+        ["total", 3],
+      ],
+    );
+    // Without rules between the rows, a line with empty cells is a row of its own.
+    const rows = [
+      ["ts", "line one"],
+      [null, "line two"],
+    ];
+    assert.deepStrictEqual(
+      parse("| a  | b        |\n|----|----------|\n| ts | line one |\n|    | line two |").rows,
+      rows,
+    );
+    assert.deepStrictEqual(
+      parse(
+        "+----+----------+\n| a  | b        |\n+----+----------+\n| ts | line one |\n|    | line two |\n+----+----------+",
+      ).rows,
+      rows,
+    );
+  });
+
   test("reads the first Markdown table among text and other tables, and says so", () => {
     const answer = [
       "Here are the line counts:",

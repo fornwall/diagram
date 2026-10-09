@@ -55,24 +55,31 @@ const BOX_HEADER_RULE = /^\s*[\u251C\u255E]/;
 /**
  * Leaves out rules, and gives the one under the first line, making it a header, if any. DuckDB and
  * Polars print the types of the columns ("varchar", "i64") below their names, above the rule
- * between header and body ("├──┼──┤", "╞══╪══╡"), and those are left out too.
+ * between header and body ("├──┼──┤", "╞══╪══╡"), and those are left out too. Also tells which
+ * lines a rule is right above, as between rows that sqlite3 draws over several lines.
  */
-function withoutRules(lines: string[]): { lines: string[]; underline?: string } {
+function withoutRules(lines: string[]): { lines: string[]; ruled: boolean[]; underline?: string } {
   const kept: string[] = [];
+  const ruled: boolean[] = [];
   let underline: string | undefined;
   let boxHeader = false;
+  let rule = false;
   for (const line of lines) {
     if (isRule(line, kept.length === 1 ? kept[0] : undefined)) {
       if (!boxHeader && BOX_HEADER_RULE.test(line)) {
         boxHeader = true;
         kept.length = Math.min(kept.length, 1);
+        ruled.length = kept.length;
       }
       if (kept.length === 1) underline ??= line;
+      rule = true;
     } else {
       kept.push(line);
+      ruled.push(rule);
+      rule = false;
     }
   }
-  return underline === undefined ? { lines: kept } : { lines: kept, underline };
+  return underline === undefined ? { lines: kept, ruled } : { lines: kept, ruled, underline };
 }
 
 /** A quote in delimited text that is not closed as CSV quotes are. */
@@ -415,6 +422,138 @@ function pipeCells(line: string, box = false): string[] {
  */
 function escapeUnaligned(line: string, rule: string): string {
   return line.replace(/\|/g, (pipe, i: number) => (/[|+]/.test(rule[i] ?? "") ? pipe : "\\|"));
+}
+
+/** How a cell's text goes on in the line below: after a newline in it, or wrapped. */
+type Continuation = "newline" | "wrap" | undefined;
+
+/**
+ * How the cells of a line go on in the line below, and the text of each between the spaces around
+ * it, with the spaces in it, as wrapped text may have some at either end.
+ */
+interface MarkedLine {
+  marks: Continuation[];
+  texts: string[];
+}
+
+/** A horizontal line of a rule, as between the junctions of "+----+" or "├────┼". */
+const HORIZONTAL = /[-=\u2500\u2501\u2550]/;
+
+/** The marks after the text of a cell that goes on in the line below. */
+const NEWLINE_MARK = /[+\u21B5]/;
+const WRAP_MARK = /[.\u2026]/;
+
+/**
+ * Leaves out the marks that psql writes in the space after the text of a cell that goes on in the
+ * line below, "+" or "↵" for a newline in it and "." or "…" where it wraps, and those it writes in
+ * the space before the rest of wrapped text, and tells how the cells of each line go on. Only in
+ * tables aligned under a `rule` with "+" or box-drawing junctions, as psql, mysql and sqlite3 draw
+ * them, where that space is blank but for the marks, and not in Markdown tables, which need not be
+ * aligned.
+ */
+function continuationMarks(
+  lines: string[],
+  rule: string,
+  box: boolean,
+): { lines: string[]; marked: (MarkedLine | undefined)[] } {
+  const columns = [...rule.matchAll(new RegExp(`${HORIZONTAL.source}+`, "g"))].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  if (/[|:]/.test(rule) || columns.length === 0) {
+    return { lines, marked: [] };
+  }
+  const junctions = [...rule.trimEnd()].flatMap((char, i) =>
+    char === " " || HORIZONTAL.test(char) ? [] : [i],
+  );
+  const separator = box ? BOX_LINE : /\|/;
+  const marked: (MarkedLine | undefined)[] = [];
+  let above: Continuation[] = [];
+  const unmarked = lines.map((line) => {
+    // Lines with wide characters, or not drawn by such a tool, are not aligned with the rule.
+    if (!junctions.every((i) => i >= line.length || separator.test(line[i] ?? ""))) {
+      above = [];
+      marked.push(undefined);
+      return line;
+    }
+    const chars = line.split("");
+    const marks = columns.map(({ start, end }, column): Continuation => {
+      if (end - start < 3) return undefined;
+      if (above[column] === "wrap" && WRAP_MARK.test(chars[start] ?? "")) chars[start] = " ";
+      const mark = chars[end - 1] ?? "";
+      const continuation = NEWLINE_MARK.test(mark)
+        ? "newline"
+        : WRAP_MARK.test(mark)
+          ? "wrap"
+          : undefined;
+      if (continuation !== undefined) chars[end - 1] = " ";
+      return continuation;
+    });
+    above = marks;
+    marked.push({ marks, texts: columns.map(({ start, end }) => line.slice(start + 1, end - 1)) });
+    return chars.join("");
+  });
+  return { lines: unmarked, marked };
+}
+
+/**
+ * Joins the lines of rows over several lines into the rows: those below a line that psql marks
+ * as {@link continuationMarks} tells, and, in a table with rules between rows, as sqlite3 -box
+ * and -table draw one with text over several lines, those between two rules if each after the
+ * first has some cells empty, as the cells of other columns have fewer lines. Rows with all their
+ * cells between two rules, as above a rule over the totals, are rows of their own.
+ */
+function joinLines(
+  records: string[][],
+  marked: (MarkedLine | undefined)[],
+  ruled: boolean[],
+): string[][] {
+  const blank = (cell: string | undefined) => (cell ?? "").trim() === "";
+  const continues = records.map(() => false);
+  // The first line of the body, after the header, has the rule below the header above it.
+  if (ruled.some((rule, i) => rule && i > 1)) {
+    for (let start = 1; start < records.length; ) {
+      let end = start + 1;
+      while (end < records.length && !ruled[end]) end++;
+      const rest = records.slice(start + 1, end);
+      if (rest.every((record) => record.some(blank) && !record.every(blank))) {
+        continues.fill(true, start + 1, end);
+      }
+      start = end;
+    }
+  }
+  const rows: string[][] = [];
+  /** The line where the last row starts. */
+  let rowStart = 0;
+  for (const [i, record] of records.entries()) {
+    const above = marked[i - 1];
+    const last = rows.at(-1);
+    if (
+      last !== undefined &&
+      (above?.marks.some((mark) => mark !== undefined) === true || continues[i])
+    ) {
+      rows[rows.length - 1] = Array.from(
+        { length: Math.max(last.length, record.length) },
+        (_, column) => {
+          const top = last[column] ?? "";
+          const below = record[column] ?? "";
+          if (above?.marks[column] === "wrap") {
+            // Text wraps at any character, so the spaces at the ends of its parts are kept, from
+            // the line above unless it went on from an earlier line already joined.
+            const first = rowStart === i - 1 ? above.texts[column] : top;
+            return (first ?? top) + (marked[i]?.texts[column] ?? below);
+          }
+          if (blank(below)) return top;
+          if (blank(top)) return below;
+          return `${top.trim()}\n${below.trim()}`;
+        },
+      );
+    } else {
+      rows.push(record);
+      rowStart = i;
+    }
+  }
+  return rows;
 }
 
 /**
@@ -840,7 +979,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
  * as go test -bench.
  */
 function splitShown(text: string, all: string[], format: Exclude<DataFormat, "json">): Records {
-  const { lines, underline } = withoutRules(
+  const { lines, ruled, underline } = withoutRules(
     all.filter((line) => !isBlank(line) && !TABLE_SIZE.test(line)),
   );
   if (format === "auto") {
@@ -879,18 +1018,29 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
     if (diffStat !== undefined) {
       return diffStat;
     }
-    const records = lines.map((line) => pipeCells(line, box));
-    const width = records[0]?.length ?? 0;
+    const width = pipeCells(lines[0] ?? "", box).length;
     if (underline !== undefined) {
+      const { lines: unmarked, marked } = continuationMarks(lines, underline, box);
       // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
       // cells beyond it are left out, unless pipes in cells of an aligned table split them off.
-      const fit = (record: string[], i: number): string[] => {
+      // Without a line at the left, as psql draws tables, a line that starts with one has an empty
+      // first cell.
+      const unbordered = !/[|:]/.test(underline) && HORIZONTAL.test(underline.trim()[0] ?? "");
+      const cells = (line: string): string[] => {
+        const split = pipeCells(line, box);
+        return unbordered && (box ? BOX_LINE : PIPE).test(line.trim()[0] ?? "")
+          ? ["", ...split]
+          : split;
+      };
+      const fit = (line: string): string[] => {
+        const record = cells(line);
         if (record.length <= width) return record;
-        const aligned = box ? record : pipeCells(escapeUnaligned(lines[i] ?? "", underline));
+        const aligned = box ? record : cells(escapeUnaligned(line, underline));
         return aligned.length === width ? aligned : record.slice(0, width);
       };
-      return { records: records.map(fit), header: true };
+      return { records: joinLines(unmarked.map(fit), marked, ruled), header: true };
     }
+    const records = lines.map((line) => pipeCells(line, box));
     if (width > 1 && records.every((record) => record.length === width)) {
       return { records };
     }
