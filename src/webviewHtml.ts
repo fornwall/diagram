@@ -41,7 +41,9 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
     "img-src data:",
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'${vscode.workspace.isTrusted ? " 'unsafe-eval'" : ""}`,
-    // Spelled out because form-action does not fall back to default-src.
+    // Spelled out because neither falls back to default-src. The HTML of a chart's tooltip could
+    // otherwise add a <base>, which relative URLs such as the url(#arrowhead) of SVGs resolve to.
+    "base-uri 'none'",
     "form-action 'none'",
   ].join("; ");
 

@@ -790,6 +790,22 @@ suite("webview", function () {
     );
     assert.strictEqual(await evaluate(`document.getElementById("drag-out").hidden`), true);
   });
+
+  test("resolves relative URLs against the page, whatever <base> markup adds", async () => {
+    assert.strictEqual(
+      await evaluate(`(() => {
+        const base = document.createElement("base");
+        base.href = "https://example.com/";
+        document.head.prepend(base);
+        try {
+          return new URL(document.baseURI).origin === location.origin;
+        } finally {
+          base.remove();
+        }
+      })()`),
+      true,
+    );
+  });
 });
 
 suite("webview renderer loading", function () {
