@@ -1668,6 +1668,10 @@ suite("data", () => {
     };
     assert.deepStrictEqual(parse(lines), expected);
     assert.deepStrictEqual(parse(`[${lines.replaceAll("\n", ", ")}]`), expected);
+    // In linear time, also with a string left open: each quote in it may not start another.
+    for (const end of ["", "\\"]) {
+      assert.throws(() => parse(`NaN "${'\\"'.repeat(500_000)}${end}`, "json"), /not valid JSON/);
+    }
   });
 
   test("parses a JSON array of arrays with and without a header", () => {
@@ -2004,9 +2008,14 @@ suite("data", () => {
   test("throws helpful errors for empty or invalid data", () => {
     assert.throws(() => parseTable("  \n"), /^Error: The data is empty\. Give JSON, CSV/);
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);
+    // Lines and columns are counted in the whole text, not from the start of the value.
     assert.throws(
-      () => parseTable('{"a": 1}\n{"a": 2,}'),
-      /^Error: The JSON value on line 2 is not valid JSON: [^()]*\.$/,
+      () => parseTable('[\n  {"a": 1,}\n]'),
+      /^Error: The data is not valid JSON: Expected double-quoted property name on line 2, column 11\.$/,
+    );
+    assert.throws(
+      () => parseTable('{"a": 1}\n{\n  "a": 2,\n}'),
+      /^Error: The JSON value on line 2 is not valid JSON: Expected double-quoted property name on line 4, column 1\.$/,
     );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);

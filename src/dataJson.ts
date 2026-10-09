@@ -204,14 +204,15 @@ function recordsFromJson(value: unknown): Records {
   );
 }
 
-/** A JSON string up to its closing quote. */
-const OPEN_STRING = String.raw`"[^"\\]*(?:\\[\s\S][^"\\]*)*`;
+/** A JSON string, perhaps left open at the end. */
+const STRING = String.raw`"[^"\\]*(?:\\[\s\S]?[^"\\]*)*(?:"|$)`;
 
 /**
  * NaN and Infinity, as Python's json module writes numbers that are not finite, though JSON has
- * no such values; strings are matched to be kept as they are.
+ * no such values; strings are matched to be kept as they are. A string left open matches to the
+ * end, so that the quotes in it do not each start a match to the end, in quadratic time.
  */
-const NON_FINITE = new RegExp(String.raw`(${OPEN_STRING}")|-?\bInfinity\b|\bNaN\b`, "g");
+const NON_FINITE = new RegExp(String.raw`(${STRING})|-?\bInfinity\b|\bNaN\b`, "g");
 
 /** Parses a JSON value, reading NaN and Infinity as null. */
 function parseValue(text: string): unknown {
@@ -233,7 +234,7 @@ function parseValue(text: string): unknown {
  * A string, perhaps left open at the end, a bracket, or other text between them, such as "1",
  * "true" or ":".
  */
-const JSON_TOKEN = new RegExp(String.raw`${OPEN_STRING}"?|[[{]|[\]}]|[^\s"[\]{}]+`, "g");
+const JSON_TOKEN = new RegExp(String.raw`${STRING}|[[{]|[\]}]|[^\s"[\]{}]+`, "g");
 
 /**
  * Parses a stream of JSON values: JSON Lines, as jq -c and docker ps --format json print them, or
@@ -263,13 +264,35 @@ function parseJsonStream(text: string): unknown[] | undefined {
       values.push(parseValue(text.slice(start, ends[i])));
     } catch (error) {
       if (i === 0) return undefined;
-      const line = (text.slice(0, start).match(/\r\n?|\n/g)?.length ?? 0) + 1;
-      // Leaves out V8's "(line 1 column 8)", which counts lines from the value's first.
-      const message = errorClause(error).replace(/ \(line \d+ column \d+\)/, "");
-      throw new Error(`The JSON value on line ${line} is not valid JSON: ${message}.`);
+      const { line } = place(text, start);
+      throw new Error(
+        `The JSON value on line ${line} is not valid JSON: ${syntaxError(error, text, start)}.`,
+      );
     }
   }
   return values;
+}
+
+/** The line and column of `offset` in `text`, counted from 1. */
+function place(text: string, offset: number): { line: number; column: number } {
+  const before = text.slice(0, offset);
+  const lineStart = Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")) + 1;
+  const line = (before.match(/\r\n?|\n/g)?.length ?? 0) + 1;
+  return { line, column: offset - lineStart + 1 };
+}
+
+/** Where V8 says that JSON is not valid: "in JSON at position 7 (line 1 column 8)". */
+const POSITION = / in JSON at position (\d+)(?: \(line \d+ column \d+\))?/;
+
+/**
+ * The message of a JSON syntax error in the value at `start` in `text`, with the place of the error
+ * as the line and column in `text`, rather than V8's, which count from the value's start.
+ */
+function syntaxError(error: unknown, text: string, start: number): string {
+  return errorClause(error).replace(POSITION, (_, position: string) => {
+    const { line, column } = place(text, start + Number(position));
+    return ` on line ${line}, column ${column}`;
+  });
 }
 
 export function parseJson(text: string): Records {
@@ -279,7 +302,7 @@ export function parseJson(text: string): Records {
   } catch (error) {
     value = parseJsonStream(text);
     if (value === undefined) {
-      throw new Error(`The data is not valid JSON: ${errorClause(error)}.`);
+      throw new Error(`The data is not valid JSON: ${syntaxError(error, text, 0)}.`);
     }
   }
   const unwrapped = unwrap(value);
