@@ -382,15 +382,19 @@ suite("echartsLayout", () => {
   });
 
   test("keeps series laid out in a box clear of the title, with room for their labels", () => {
-    const box = (type: string) => {
-      const { top, left, right } = layout({ title: { text: "T" }, series: [{ type }] }).series[0];
-      return [top, left, right];
+    const box = (type: string, extra: Option = {}) => {
+      const { top, left, right, bottom } = layout({
+        title: { text: "T" },
+        series: [{ type, ...extra }],
+      }).series[0];
+      return [top, left, right, bottom];
     };
-    assert.deepStrictEqual(box("treemap"), [44, 12, 12]);
-    assert.deepStrictEqual(box("tree"), [44, 96, 96]);
-    assert.deepStrictEqual(box("funnel"), [44, 80, 80]);
-    assert.deepStrictEqual(box("sankey"), [44, 12, 144]);
-    assert.deepStrictEqual(box("chord"), [44, 12, 12]);
+    assert.deepStrictEqual(box("treemap"), [44, 12, 12, 36]);
+    assert.deepStrictEqual(box("treemap", { breadcrumb: { show: false } }), [44, 12, 12, 12]);
+    assert.deepStrictEqual(box("tree"), [44, 96, 96, 12]);
+    assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
+    assert.deepStrictEqual(box("sankey"), [44, 12, 144, 12]);
+    assert.deepStrictEqual(box("chord"), [44, 12, 12, 12]);
   });
 
   test("labels large values on value axes compactly, unless the axis formats them", () => {

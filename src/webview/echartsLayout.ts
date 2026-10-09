@@ -610,10 +610,12 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height
     }
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
+    const breadcrumb =
+      type === "treemap" && !(isPlainObject(each.breadcrumb) && each.breadcrumb.show === false);
     Object.assign(each, {
       top: reserved.top + 12,
       // Room for the breadcrumb below a treemap.
-      bottom: reserved.bottom + (type === "treemap" ? 36 : 12),
+      bottom: reserved.bottom + (breadcrumb ? 36 : 12),
       left: reserved.left + side,
       // Room for the labels right of the last column of sankey nodes.
       right: reserved.right + (type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side),
