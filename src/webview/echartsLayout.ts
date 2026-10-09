@@ -196,6 +196,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     layOut(base, series, cartesian, { width, height, compact, charWidth });
   }
   styleSeries(base, series, context.colors);
+  drawLargeSeries(option, series);
   showAxisLines(base);
   compactAxisLabels(base);
   addInteraction(base, series, cartesian, context.colors);
@@ -721,6 +722,65 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
         // A wash rather than a block, unless stacked areas need to read as bands.
         area.opacity = each.stack !== undefined ? 0.55 : 0.15;
       }
+    }
+  }
+}
+
+/**
+ * Series with this many points are thinned out or drawn as one shape, as generated charts are
+ * (see src/chartGrid.ts): ECharts' default `largeThreshold` for points. The SVG renderer would
+ * otherwise create an element per point, or a line through every one, which the browser takes
+ * seconds to draw again whenever the pointer moves over the chart.
+ */
+const LARGE_POINTS = 2000;
+
+/** The number of points of a series: of its data, or of the rows or columns of its dataset. */
+function pointCount(series: JsonObject, datasets: JsonObject[]): number {
+  const data = series.data ?? datasetSource(series, datasets);
+  if (Array.isArray(data)) return data.length;
+  // A typed array holds the values of its points one after the other: at least one each.
+  if (ArrayBuffer.isView(data)) return "length" in data ? Number(data.length) : 0;
+  const column = isPlainObject(data) ? Object.values(data).find(Array.isArray) : undefined;
+  return column?.length ?? 0;
+}
+
+/** Whether a series marks a statistic of its data, such as its average, which sampling would change. */
+const marksStatistics = (series: JsonObject) =>
+  ["markPoint", "markLine", "markArea"].some((key) => {
+    const marker = series[key];
+    return (
+      isPlainObject(marker) &&
+      Array.isArray(marker.data) &&
+      marker.data.flat().some((point) => isPlainObject(point) && point.type !== undefined)
+    );
+  });
+
+/**
+ * Lets ECharts draw series of many points as generated charts draw them, unless the option says
+ * otherwise: an unstacked line sampled with LTTB where its points outnumber the pixels, which
+ * keeps its shape, and a scatter series as one shape, when its points all look the same, as that
+ * draws them all alike. Series of fewer points stay as they are.
+ */
+function drawLargeSeries(option: JsonObject, series: JsonObject[]): void {
+  const base = baseOption(option);
+  const datasets = asArray(base.dataset);
+  // A visual map can color or size each point, which one shape cannot.
+  const visualMaps = optionVariants(option).some((variant) => variant.visualMap !== undefined);
+  for (const each of series) {
+    if (!isCartesian(each) || pointCount(each, datasets) < LARGE_POINTS) continue;
+    if (each.type === "line" && each.sampling === undefined) {
+      // Sampling each series of a stack on its own would misalign them.
+      if (each.stack === undefined && !marksStatistics(each)) each.sampling = "lttb";
+    } else if (each.type === "scatter" && each.large === undefined) {
+      const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
+      const alike =
+        !visualMaps &&
+        typeof each.symbol !== "function" &&
+        typeof each.symbolSize !== "function" &&
+        typeof itemStyle.color !== "function" &&
+        // Data items that are objects can style themselves.
+        !(Array.isArray(each.data) && each.data.some(isPlainObject));
+      if (alike) each.large = true;
     }
   }
 }

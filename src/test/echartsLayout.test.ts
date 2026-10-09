@@ -547,6 +547,43 @@ suite("echartsLayout", () => {
     assert.strictEqual(fromDataset([["A", -1]], { datasetIndex: 1 }), undefined);
   });
 
+  test("samples long lines and draws many alike points as one shape, as generated charts do", () => {
+    const many = Array.from({ length: 2000 }, (_, index) => [index, index % 7]);
+    const drawn = (series: Option, extra: Option = {}) => {
+      const [laidOut] = layout({ xAxis: {}, yAxis: {}, series: [series], ...extra }).series;
+      return { sampling: laidOut.sampling, large: laidOut.large };
+    };
+    const line = { type: "line", data: many };
+    const scatter = { type: "scatter", data: many };
+    assert.deepStrictEqual(drawn(line), { sampling: "lttb", large: undefined });
+    assert.deepStrictEqual(drawn(scatter), { sampling: undefined, large: true });
+    // Points from a dataset, by rows or by columns.
+    const fromDataset = (source: unknown) =>
+      drawn({ type: "line" }, { dataset: { source } }).sampling;
+    assert.strictEqual(fromDataset(many), "lttb");
+    assert.strictEqual(fromDataset({ x: many.map(([x]) => x), y: many.map(([, y]) => y) }), "lttb");
+    // Series of fewer points stay as they are, and so do explicit choices.
+    const asIs = { sampling: undefined, large: undefined };
+    assert.deepStrictEqual(drawn({ ...line, data: many.slice(1) }), asIs);
+    assert.deepStrictEqual(drawn({ ...scatter, data: many.slice(1) }), asIs);
+    assert.strictEqual(drawn({ ...line, sampling: false }).sampling, false);
+    assert.strictEqual(drawn({ ...scatter, large: false }).large, false);
+    // Stacked lines would misalign, and statistics of the points would change.
+    assert.strictEqual(drawn({ ...line, stack: "total" }).sampling, undefined);
+    const average = { data: [{ type: "average" }] };
+    assert.strictEqual(drawn({ ...line, markLine: average }).sampling, undefined);
+    assert.strictEqual(
+      drawn({ ...line, markLine: { data: [[{ xAxis: 1 }, { xAxis: 2 }]] } }).sampling,
+      "lttb",
+    );
+    // One shape draws every point alike.
+    const styled = many.map((value, index) => (index ? value : { value, itemStyle: {} }));
+    assert.strictEqual(drawn({ ...scatter, data: styled }).large, undefined);
+    assert.strictEqual(drawn({ ...scatter, symbolSize: () => 4 }).large, undefined);
+    assert.strictEqual(drawn(scatter, { visualMap: { dimension: 1 } }).large, undefined);
+    assert.strictEqual(drawn({ ...scatter, coordinateSystem: "polar" }).large, undefined);
+  });
+
   test("draws the axis lines that the theme hides on value axes outside a grid", () => {
     const option = layout({
       polar: {},
