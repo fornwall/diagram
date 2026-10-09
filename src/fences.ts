@@ -334,6 +334,22 @@ function matchesAt(regex: RegExp, line: string, index: number): boolean {
 }
 
 /**
+ * Where the end of a line made of one of "-", "*" and "_", and spaces and tabs, starts: a thematic
+ * break can start there or after, and nowhere before.
+ */
+function thematicBreakTail(line: string): number {
+  let index = line.length;
+  let char: string | undefined;
+  for (; index > 0; index--) {
+    const before = line[index - 1] as string;
+    if (before === " " || before === "\t" || before === char) continue;
+    if (char !== undefined || !"-*_".includes(before)) break;
+    char = before;
+  }
+  return index;
+}
+
+/**
  * Follows the block structure of Markdown line by line, as far as it decides where fenced code
  * blocks are: in block quotes and list items, but not in indented code, HTML or a paragraph. A
  * line that ends a container also ends a code block in it.
@@ -411,6 +427,8 @@ export class FenceScanner {
     // containers that the line does not continue, and new containers take their place.
     let depth = matched;
     let leaf = false;
+    // A line of list markers would otherwise be scanned to its end for a thematic break per marker.
+    let tail: number | undefined;
     for (;;) {
       const indent = cursor.indent();
       const at = cursor.nonspace();
@@ -451,7 +469,8 @@ export class FenceScanner {
         leaf = true;
         break;
       }
-      if (matchesAt(ATX_HEADING, line, at) || matchesAt(THEMATIC_BREAK, line, at)) {
+      tail ??= thematicBreakTail(line);
+      if (matchesAt(ATX_HEADING, line, at) || (at >= tail && matchesAt(THEMATIC_BREAK, line, at))) {
         leaf = true;
         break;
       }

@@ -371,6 +371,27 @@ suite("fences", () => {
     assert.ok(Date.now() - start < 1000);
   });
 
+  test("reads lines of nested list markers, each scanned once for a thematic break", () => {
+    const start = Date.now();
+    const markdown = `${"- ".repeat(100)}x\n`.repeat(20_000);
+    assertSources([[`${markdown}\`\`\`mermaid\nA\n\`\`\``, ['20000-20001 mermaid "": "A"']]]);
+    assert.ok(Date.now() - start < 1000);
+    // List markers nest until a thematic break, made of one character, ends the line.
+    const fence = "    ```mermaid\n    A\n    ```\n";
+    assertSources([
+      [`- - -\n${fence}`, []],
+      [`- -  -\t-\n${fence}`, []],
+      [`- - x\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`- - -x\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`- - - x\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`- * -\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`* - - -\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`- _ _ _\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`* *\n${fence}`, ['1-2 mermaid "    ": "A"']],
+      [`_ _ _\n${fence}`, []],
+    ]);
+  });
+
   test("skips long prose and code, keeping the positions of diagrams", () => {
     const prose = "A paragraph with an inline ```mermaid marker.\n".repeat(10_000);
     const code = "````text\n```mermaid\nNot a diagram\n```\n````\n";
