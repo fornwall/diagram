@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { captureChartPresentation, isChartPresentation, rebuildChart } from "../chartPresentation";
-import type { ChartSpec } from "../chartSpec";
+import { CHART_TYPES, type ChartSpec, type ChartType } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { Option } from "./echartsModel";
@@ -33,6 +33,31 @@ suite("chartPresentation", () => {
       captureChartPresentation(styled, direct),
       captureChartPresentation(JSON.stringify(styled), expected),
     );
+  });
+
+  test("captures each generated chart's option as it captures the option's source", () => {
+    // diagram_chart captures the option it generated, rather than parsing its source again.
+    const table = parseTable(
+      "region,city,day,sales,cost\nNorth,Paris,2025-01-01,2,1\nNorth,Rome,2025-01-02,4,3\n" +
+        "South,Oslo,2025-01-03,5,-0\nSouth,Paris,2025-01-04,1,0.5",
+    );
+    const levels = new Set<ChartType>(["sankey", "treemap", "sunburst", "heatmap"]);
+    for (const type of CHART_TYPES) {
+      const labels = levels.has(type)
+        ? ["region", "city"]
+        : type === "histogram"
+          ? undefined
+          : "day";
+      for (const labelColumn of [labels, undefined]) {
+        const chart: ChartSpec = { type, data: "unused", ...(labelColumn && { labelColumn }) };
+        const { option } = buildChart(chart, table);
+        assert.deepStrictEqual(
+          captureChartPresentation(option),
+          captureChartPresentation(JSON.stringify(option, null, 2)),
+          type,
+        );
+      }
+    }
   });
 
   test("canonical data hashes retain compatibility with saved nested and numeric keys", () => {

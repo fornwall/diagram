@@ -4,8 +4,8 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
 import type { ChartUpdateInput } from "./chartOptions";
+import { type ChartPresentation, rebuildChart } from "./chartPresentation";
 import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
-import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { DiagramPanel } from "./panel";
@@ -43,6 +43,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     let spec: ChartSpec;
     let chartTable: DataTable;
     let source: string;
+    let chartPresentation: ChartPresentation;
     let report: string;
     let description: string | undefined;
     try {
@@ -50,8 +51,11 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
       chartTable = table;
       description = `The data was read as: ${describeTable(table)}`;
-      const { option, summary } = buildChart(spec, table);
+      // The styling baseline comes from the option itself, rather than from parsing the source
+      // again, which takes long for a large chart.
+      const { option, summary, presentation } = rebuildChart(spec, table);
       source = JSON.stringify(option, null, 2);
+      chartPresentation = presentation;
       report = [summary, warning, description].filter(Boolean).join("\n\n");
     } catch (error) {
       if (error instanceof vscode.CancellationError) {
@@ -71,6 +75,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
             title: chartTitle(spec),
             clickPrompt: nonBlank(options.input.clickPrompt),
             chart: spec,
+            chartPresentation,
           },
           "tool",
           chartTable,
