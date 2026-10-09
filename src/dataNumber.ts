@@ -72,6 +72,14 @@ const PREFIX = `(${SIGN}?)(${CURRENCY}?)`;
 /** A currency symbol before a sign, as in "$-5", which is read as "-$5" is. */
 const CURRENCY_SIGN = new RegExp(`^(${CURRENCY})(${SIGN})`);
 
+/**
+ * `text` with the match of `pattern`, if any, replaced. Testing first is several times faster for
+ * text that does not match, as most cells do not.
+ */
+function replaceMatch(text: string, pattern: RegExp, replacement: string): string {
+  return pattern.test(text) ? text.replace(pattern, replacement) : text;
+}
+
 /** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
 const NUMBER = new RegExp(
   String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:[^\S\r\n]*(${SUFFIX}))?$`,
@@ -136,6 +144,9 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 /** A number as most cells write it, which reads the same in every format but decimal commas. */
 const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
 
+/** A digit, without which text is no number in any format, as most labels are not. */
+const DIGIT = /\d/;
+
 /**
  * A version with several dots, as "1.26.4", "v2.0.0-rc.1" or "2024.2.2". An IP address or a date
  * such as "24.12.2024" matches too, and is no number either. The lookahead keeps the dotted
@@ -156,12 +167,12 @@ export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
-  if (format.versions) return undefined;
+  if (format.versions || !DIGIT.test(text)) return undefined;
   if (PLAIN.test(text) && !(format.decimalComma && text.includes("."))) {
     const value = Number(text);
     return Number.isFinite(value) ? { value } : undefined;
   }
-  let trimmed = text.trim().replace(SINCE, "$1").replace(CURRENCY_SIGN, "$2$1");
+  let trimmed = replaceMatch(replaceMatch(text.trim(), SINCE, "$1"), CURRENCY_SIGN, "$2$1");
   if (format.millicores && /^\d+m$/.test(trimmed)) {
     return { value: Number(trimmed.slice(0, -1)) / 1000 };
   }
@@ -311,12 +322,12 @@ export function numberFormat(
   let formatted = false;
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
-    if (typeof cell !== "string") continue;
+    if (typeof cell !== "string" || !DIGIT.test(cell)) continue;
     if (PLAIN.test(cell)) {
       minus ||= cell.trimStart().startsWith("-");
       continue;
     }
-    let text = cell.trim().replace(CURRENCY_SIGN, "$2$1");
+    let text = replaceMatch(cell.trim(), CURRENCY_SIGN, "$2$1");
     const accounting = ACCOUNTING.exec(text);
     if (accounting) {
       text = `${accounting[1]}${accounting[2]}`;

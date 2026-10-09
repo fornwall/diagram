@@ -27,6 +27,8 @@ suite("dataNumber", () => {
       ["2GB", 2e9, "bytes"],
       ["$1,234.50", 1234.5],
       ["-€5", -5],
+      ["$-5", -5],
+      ["2 (3h ago)", 2],
       ["\u22124", -4],
     ];
     for (const [text, value, unit] of cases) {
@@ -59,6 +61,11 @@ suite("dataNumber", () => {
       "NaN",
       "$",
       "5 $ 5",
+      "Paris",
+      "Infinity",
+      "K",
+      "ms",
+      "%",
     ]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
