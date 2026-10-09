@@ -240,6 +240,9 @@ suite("fences", () => {
         ['3-4 mermaid "": "A"'],
       ],
       ["<!-- A comment -->\n```mermaid\nA\n```\n", ['1-2 mermaid "": "A"']],
+      // A declaration runs to a ">", and, in VS Code's preview, starts with an upper-case letter.
+      ["<!DOCTYPE\n```mermaid\nA\n```\n>\n", []],
+      ["<!doctype\n```mermaid\nA\n```\n>\n", ['1-2 mermaid "": "A"']],
       // Any other tag alone on its line cannot interrupt a paragraph.
       ['Text\n<img src="flow.png">\n```mermaid\nA\n```\n', ['2-3 mermaid "": "A"']],
       ['<img src="flow.png">\n```mermaid\nA\n```\n', []],

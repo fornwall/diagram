@@ -235,6 +235,11 @@ suite("blocks", () => {
         source: "A",
         shown: "- ```js\n  x\n\n  y\n",
       },
+      // Unlike in VS Code's Markdown preview, a declaration may start with a lower-case letter.
+      {
+        markdown: "<!doctype\n```mermaid\nA\n```\n>\n",
+        shown: "<!doctype\n```mermaid\nA\n```\n>\n",
+      },
       // Indentation is spaces and tabs only.
       { markdown: "\u00a0```mermaid\nA\n```\n", shown: "\u00a0```mermaid\nA\n```\n" },
       { markdown: "```\u00a0mermaid\nA\n```\n", shown: "```\u00a0mermaid\nA\n```\n" },

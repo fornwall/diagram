@@ -309,12 +309,15 @@ const BLOCK_TAGS =
   "hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|" +
   "search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 const ATTRIBUTE = `\\s+[A-Za-z_:][\\w.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
-/** HTML blocks: how they start, what ends them, and whether they interrupt a paragraph. */
-const HTML_BLOCKS: [start: RegExp, end: RegExp | "blank line", interrupts: boolean][] = [
+/** An HTML block: how it starts, what ends it, and whether it interrupts a paragraph. */
+type HtmlBlock = [start: RegExp, end: RegExp | "blank line", interrupts: boolean];
+
+/** The HTML blocks, where a declaration such as "<!DOCTYPE html>" starts as given. */
+const htmlBlocks = (declaration: RegExp): HtmlBlock[] => [
   [/^<(?:script|pre|style|textarea)(?=[\s>]|$)/i, /<\/(?:script|pre|style|textarea)>/i, true],
   [/^<!--/, /-->/, true],
   [/^<\?/, /\?>/, true],
-  [/^<![A-Za-z]/, />/, true],
+  [declaration, />/, true],
   [/^<!\[CDATA\[/, /\]\]>/, true],
   [new RegExp(`^</?(?:${BLOCK_TAGS})(?=\\s|/?>|$)`, "i"), "blank line", true],
   [
@@ -325,6 +328,10 @@ const HTML_BLOCKS: [start: RegExp, end: RegExp | "blank line", interrupts: boole
     false,
   ],
 ];
+/** In CommonMark and VS Code's chat, a declaration starts with "<!" and a letter. */
+const CHAT_HTML_BLOCKS = htmlBlocks(/^<![A-Za-z]/);
+/** VS Code's preview, with markdown-it, takes only an upper-case letter, as CommonMark 0.30 did. */
+const PREVIEW_HTML_BLOCKS = htmlBlocks(/^<![A-Z]/);
 
 /**
  * How many block quotes and list items deep a line is read for more of them. VS Code's preview
@@ -469,7 +476,7 @@ export class FenceScanner {
       if (char === "<") {
         const text = line.slice(at);
         // Any other tag cannot interrupt a paragraph, not even one that continues lazily (4.6).
-        const html = HTML_BLOCKS.find(
+        const html = (this.preview ? PREVIEW_HTML_BLOCKS : CHAT_HTML_BLOCKS).find(
           ([opens, , interrupts]) => opens.test(text) && (interrupts || !this.paragraph),
         );
         if (html) {
