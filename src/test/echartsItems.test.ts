@@ -271,9 +271,15 @@ suite("echartsItems", () => {
       });
       assert.deepStrictEqual(items.find("a"), [item(0, 0, "node"), item(2, 0, "node")]);
     });
-    // Another option, with other series, has items of its own.
+    // Another option, with other series or as many series of other items, has items of its own.
     withChart({ series: [option.series[0], option.series[0]] }, (chart) => {
       assert.strictEqual(items.rebind(chart), false);
     });
+    const [graph] = option.series;
+    withChart({ series: [{ ...graph, data: graph?.data.slice(0, 2) }] }, (chart) => {
+      assert.strictEqual(items.rebind(chart), false);
+    });
+    // Which leaves the items reading the chart they were last read from.
+    assert.deepStrictEqual(items.node(itemKey(item(2, 0, "node"))), { id: "3", label: "a" });
   });
 });

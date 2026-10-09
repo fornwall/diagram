@@ -15,7 +15,13 @@ import {
 } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
-import { type JsonObject, optionWarnings, parseOption, seriesTypes } from "./echartsOption";
+import {
+  type JsonObject,
+  optionVariants,
+  optionWarnings,
+  parseOption,
+  seriesTypes,
+} from "./echartsOption";
 import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage } from "./images";
@@ -323,6 +329,10 @@ export class EChartsRenderer implements Renderer {
     chart.on("selectchanged", (event) => {
       this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
     });
+    // Another step of a timeline shows other data, whose items the next use works out.
+    chart.on("timelinechanged", () => {
+      this.chartItems = undefined;
+    });
     // ECharts takes the blur off the whole chart for any other highlight or downplay, such as the
     // axis pointer's, and when the pointer leaves an item it emphasized, which would end the
     // dimming around the marks until they change: blur the rest again. The marks' own actions are
@@ -424,8 +434,10 @@ export class EChartsRenderer implements Renderer {
     this.laidOut = laidOut;
     // The items name the data of the model of the previous option, which they would keep alive. A
     // new layout of the same option has the same items, which take a while to work out for a large
-    // chart: read them from its own model instead.
-    if (!relayout || !this.chartItems?.rebind(this.chart)) this.chartItems = undefined;
+    // chart: read them from its own model instead. Not for an option whose timeline steps or media
+    // queries set other data, of which the chart may show another now than when they were.
+    const sameItems = relayout && optionVariants(this.option ?? {}).length === 1;
+    if (!sameItems || !this.chartItems?.rebind(this.chart)) this.chartItems = undefined;
     this.shownSelected = [];
     this.syncSelection();
     this.highlightMarks();

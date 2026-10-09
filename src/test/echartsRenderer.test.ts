@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import { init as initECharts } from "echarts";
 import type * as ECharts from "echarts/core";
-import { modelOf } from "../webview/echartsItems";
+import { type ChartItems, modelOf } from "../webview/echartsItems";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { item, itemsOf, withChart } from "./echartsModel";
 import { testColors } from "./themeColors";
@@ -362,6 +362,79 @@ suite("echartsRenderer", () => {
       assert.strictEqual(setOptions.length, 3);
     } finally {
       chart.dispose();
+    }
+  });
+
+  test("works out the items of another timeline step anew", () => {
+    const charts: ECharts.ECharts[] = [];
+    const slices = (...names: string[]) => [{ data: names.map((name) => ({ name, value: 1 })) }];
+    /** A renderer of a chart whose timeline steps show other items, and how to find them. */
+    const timelineRenderer = () => {
+      const container = { clientWidth: 400, clientHeight: 300 };
+      const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
+      Object.assign(renderer, {
+        echarts: {
+          init: (_: unknown, __: unknown, { width, height }: { width: number; height: number }) => {
+            const chart = initECharts(null, undefined, {
+              renderer: "svg",
+              ssr: true,
+              width,
+              height,
+            });
+            charts.push(chart as unknown as ECharts.ECharts);
+            return chart;
+          },
+        },
+        container,
+        option: {
+          baseOption: { timeline: { data: ["2025", "2026"] }, series: [{ type: "pie" }] },
+          options: [{ series: slices("Apples", "Pears") }, { series: slices("Kiwis", "Plums") }],
+        },
+        title: "",
+        theme: { colors: testColors, echarts: {} },
+        annotation: { marks: [], dim: false },
+        selectedKeys: new Set(),
+        reducedMotion: { matches: true },
+        tabHidden: () => false,
+        focus: { chartChanged: () => {}, chartDrawn: () => {} },
+        laidOut: "",
+      });
+      const internals = renderer as unknown as {
+        apply(relayout: boolean): void;
+        items(): ChartItems | undefined;
+        chart: ECharts.ECharts;
+      };
+      internals.apply(false);
+      assert.deepStrictEqual(internals.items()?.find("Apples"), [item(0)]);
+      return {
+        container,
+        renderer,
+        internals,
+        find: (name: string) => internals.items()?.find(name),
+      };
+    };
+    try {
+      // The user steps the timeline: its event drops the items, also when the layout stays.
+      const stepped = timelineRenderer();
+      stepped.internals.chart.dispatchAction({ type: "timelineChange", currentIndex: 1 });
+      assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
+      stepped.container.clientWidth = 380;
+      stepped.internals.apply(true);
+      assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
+      assert.deepStrictEqual(stepped.find("Apples"), []);
+      // A step shown without the event, which a new layout must not take the items of the last for.
+      const shown = timelineRenderer();
+      shown.internals.chart.setOption({
+        timeline: { currentIndex: 1 },
+      } as ECharts.EChartsCoreOption);
+      // As for a size that the chart is laid out differently for.
+      Object.assign(shown.renderer, { layout: undefined });
+      shown.container.clientWidth = 200;
+      shown.internals.apply(true);
+      assert.deepStrictEqual(shown.find("Kiwis"), [item(0)]);
+      assert.deepStrictEqual(shown.find("Apples"), []);
+    } finally {
+      for (const chart of charts) chart.dispose();
     }
   });
 });

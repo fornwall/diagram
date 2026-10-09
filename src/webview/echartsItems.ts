@@ -212,12 +212,25 @@ export class ChartItems {
   /**
    * Reads the items from a chart of a new layout of the same option, whose items go by the same
    * names, rather than from the chart they were worked out in, which they would keep alive.
-   * Returns whether the chart has the same series.
+   * Returns whether the chart has the same series, of as many items of each type, and else leaves
+   * the items as they are, to be worked out anew. The caller makes sure that the items have the
+   * same names: a timeline step can name as many items differently.
    */
   rebind(chart: ECharts.ECharts): boolean {
     const model = modelOf(chart);
     if (model.getSeriesCount() !== this.series.length) return false;
-    model.eachRawSeries((series) => this.series[series.componentIndex]?.rebind(series));
+    const datas: TypedData[][] = [];
+    let same = true;
+    model.eachRawSeries((series) => {
+      const index = series.componentIndex;
+      const next = typedData(series);
+      datas[index] = next;
+      same &&= this.series[index]?.holds(next) === true;
+    });
+    if (!same) return false;
+    datas.forEach((data, index) => {
+      this.series[index]?.rebind(data);
+    });
     return true;
   }
 
@@ -354,9 +367,26 @@ class SeriesItems {
     });
   }
 
+  /** Whether the data holds as many items of each type as the items were worked out from. */
+  holds(datas: TypedData[]): boolean {
+    return (
+      datas.length === this.datas.length &&
+      datas.every((data, index) => {
+        const own = this.datas[index];
+        return (
+          own !== undefined &&
+          data.dataType === own.dataType &&
+          data.raw === own.raw &&
+          data.first === own.first &&
+          data.end === own.end
+        );
+      })
+    );
+  }
+
   /** Reads the items from the same series in a new layout of the option, which has their names. */
-  rebind(series: SeriesModel): void {
-    this.datas = typedData(series);
+  rebind(datas: TypedData[]): void {
+    this.datas = datas;
   }
 
   each(callback: (item: Item) => void): void {
