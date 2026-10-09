@@ -70,6 +70,27 @@ suite("webview", function () {
     );
   });
 
+  test("sizes the source pane without restyling what the panes hold", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        document.getElementById("view-split").click();
+        const splitter = document.getElementById("splitter");
+        try {
+          splitter.dispatchEvent(new KeyboardEvent("keydown", {key: "End", bubbles: true}));
+          // A size that the elements in the panes inherited would restyle each of them.
+          const size = (id) => getComputedStyle(document.getElementById(id)).getPropertyValue("--source-size");
+          return {editor: getComputedStyle(document.getElementById("editor")).flexBasis,
+            source: size("source"), canvas: size("canvas")};
+        } finally {
+          splitter.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+          document.getElementById("view-visual").click();
+        }
+      })()`),
+      { editor: "85%", source: "40%", canvas: "40%" },
+    );
+  });
+
   test("shows why an action is disabled on hover", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

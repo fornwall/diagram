@@ -306,6 +306,15 @@ button.link:enabled:hover {
   font-size: var(--vscode-editor-font-size, 12px);
 }
 
+/* The editor's share of the split view. Not inherited, so that moving the splitter restyles the
+   editor alone rather than all it holds and the rendering beside it: a large source or chart
+   takes tens of milliseconds to restyle in each frame of a drag. */
+@property --source-size {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 40%;
+}
+
 /* The source editor and the rendering, side by side in the split view. */
 #panes {
   display: flex;

@@ -11,10 +11,14 @@ const percent = (fraction: number) => String(Math.round(fraction * 100));
 
 /**
  * Lets the user drag, or arrow-key, the handle to give the source editor more or less of the panel,
- * as the `--source-size` of the panes. A narrow panel stacks the panes, so the handle moves along
+ * as the `--source-size` of the editor. A narrow panel stacks the panes, so the handle moves along
  * whichever axis they are laid out on.
  */
-export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void {
+export function enableSplitter(
+  splitter: HTMLElement,
+  panes: HTMLElement,
+  editor: HTMLElement,
+): void {
   let fraction = DEFAULT_FRACTION;
 
   /** Whether the panes are stacked, which is the case in a narrow panel. */
@@ -25,7 +29,7 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
 
   const setFraction = (value: number): void => {
     fraction = Math.min(MAX_FRACTION, Math.max(MIN_FRACTION, value));
-    panes.style.setProperty("--source-size", `${(fraction * 100).toFixed(2)}%`);
+    editor.style.setProperty("--source-size", `${(fraction * 100).toFixed(2)}%`);
     splitter.setAttribute("aria-valuenow", percent(fraction));
     splitter.setAttribute("aria-valuetext", `Source editor ${percent(fraction)}%`);
   };

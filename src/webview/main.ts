@@ -89,7 +89,7 @@ const loadChartOptions = () =>
 
 // Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
-enableSplitter(splitter, panes);
+enableSplitter(splitter, panes, element("editor"));
 const forgetDragImage = enableDragOut(dragOutHandle, {
   imageMaker: () => {
     const toImage = active?.toImage?.bind(active);
