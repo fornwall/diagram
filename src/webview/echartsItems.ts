@@ -262,7 +262,7 @@ export class ChartItems {
         for (const name of item.label === item.id ? [item.id] : [item.id, item.label]) {
           if (!repeated.has(name)) continue;
           const id = series.idOf(item);
-          if ((series.counts.get(name) ?? 0) > 1) add(`${series.prefix}${name}`, id);
+          if (series.repeated.has(name)) add(`${series.prefix}${name}`, id);
           // A name without the series is ambiguous once one series has it more than once.
           if (series.prefix) add(name, id);
         }
@@ -285,8 +285,6 @@ interface TypedData {
 }
 
 class SeriesItems {
-  /** How many items go by each id or label. */
-  readonly counts = new Map<string, number>();
   /** The ids and labels that several items go by. */
   readonly repeated = new Set<string>();
   private readonly datas: TypedData[];
@@ -320,10 +318,14 @@ class SeriesItems {
         end: roots[1]?.getRawIndex() ?? data.count(),
       };
     });
+    // Only whether a name repeats matters. A chart can have hundreds of thousands of items, all
+    // named differently: one lookup each, in a set kept only while counting, takes a fraction of
+    // the time of counting each name in a map, and none of its memory afterwards.
+    const seen = new Set<string>();
     const count = (name: string) => {
-      const count = (this.counts.get(name) ?? 0) + 1;
-      this.counts.set(name, count);
-      if (count === 2) this.repeated.add(name);
+      const size = seen.size;
+      seen.add(name);
+      if (seen.size === size) this.repeated.add(name);
     };
     this.each(({ label, id }) => {
       count(id);
@@ -348,7 +350,7 @@ class SeriesItems {
 
   /** The item's id, told apart by its index from another item of the same name. */
   idOf({ ref, id }: Item): string {
-    if ((this.counts.get(id) ?? 0) < 2) return `${this.prefix}${id}`;
+    if (!this.repeated.has(id)) return `${this.prefix}${id}`;
     return `${this.prefix}${id} (${ref.dataType === "edge" ? "edge" : "item"} ${ref.dataIndex + 1})`;
   }
 
@@ -363,7 +365,7 @@ class SeriesItems {
         dataIndex: Number(position) - 1,
       };
       const item = this.item(ref);
-      if (item?.id === id && (this.counts.get(id) ?? 0) > 1) return [ref];
+      if (item?.id === id && this.repeated.has(id)) return [ref];
     }
     if (!this.byName) {
       const byName = new Map<string, ItemRef[]>();
