@@ -48,6 +48,12 @@ const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
 const IGNORE_FILE = ".gitignore";
 /** The most ignore files read in a workspace folder, of which a large repository may have many. */
 const MAX_IGNORE_FILES = 1000;
+/**
+ * The most characters of the globs that exclude what ignore files ignore from a search. VS Code
+ * passes the exclude to ripgrep as one argument, which Linux allows up to 128 KiB of, and Windows
+ * a command line of up to 32,767 characters; beyond them, the search fails.
+ */
+const MAX_IGNORED_GLOB_CHARS = 10_000;
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
   if (value === undefined) return fallback;
@@ -418,7 +424,7 @@ async function findIgnoreFiles(
   if (top.length > 0) files.set("", top);
   // Only what is in ignored folders, as git reads an ignore file that is itself ignored, as by
   // ".*" or ".gitignore".
-  const folders = ignoredGlobs(files).filter((glob) => glob.endsWith("/**"));
+  const folders = fittingGlobs(ignoredGlobs(files).filter((glob) => glob.endsWith("/**")));
   const exclude = `{${[...excludes, ...folders].join(",")}}`;
   const found = await unlessCancelled(
     async () =>
@@ -446,6 +452,22 @@ async function findIgnoreFiles(
     if (read.length > 0 && !ignored(folder, true)) files.set(folder, read);
   }
   return files;
+}
+
+/**
+ * The first of the globs that fit {@link MAX_IGNORED_GLOB_CHARS}, which are those of the shallower
+ * ignore files. What the others would exclude is still left out of the files found, only after
+ * the search.
+ */
+function fittingGlobs(globs: readonly string[]): string[] {
+  const fitting: string[] = [];
+  let chars = 0;
+  for (const glob of globs) {
+    chars += glob.length + 1;
+    if (chars > MAX_IGNORED_GLOB_CHARS) break;
+    fitting.push(glob);
+  }
+  return fitting;
 }
 
 /** The patterns of an ignore file, or none if it cannot be read or is too large to be one. */
@@ -484,7 +506,7 @@ async function candidates(
     // where globs can say so, so that it does not take up the limit.
     const ignores = await ignoreFiles(root, [...patterns], token);
     const ignored = ignoreMatcher(ignores);
-    for (const glob of ignoredGlobs(ignores)) patterns.add(glob);
+    for (const glob of fittingGlobs(ignoredGlobs(ignores))) patterns.add(glob);
     // Nested workspace roots may return files already found in an earlier root.
     const overlapping = files.filter((uri) => contains(root.uri, uri)).length;
     const limit = max + 1 - files.length + overlapping;

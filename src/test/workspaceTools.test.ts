@@ -235,6 +235,24 @@ suite("workspaceTools", function () {
     assert.ok(searched?.includes("**/*.log"), String(searched));
   });
 
+  test("finds files where the ignore files ignore more than a search can exclude", async () => {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    // Excluded in full, these would make arguments of ripgrep too long to start it with.
+    const names = Array.from({ length: 3000 }, (_, index) => `generated-${index}`);
+    await writeFile(
+      ".gitignore",
+      [...names.map((name) => `${name}.ts`), ...names.map((name) => `${name}/`)].join("\n"),
+    );
+    await make("many");
+    await make("many/generated-2999");
+    for (const name of ["kept.ts", "generated-0.ts", "generated-2999.ts", "generated-2999/a.ts"]) {
+      await writeFile(`many/${name}`, "");
+    }
+    assert.strictEqual(await invoke(finder, { glob: "many/**" }), "many/kept.ts");
+  });
+
   test("reads nested ignore files that the top-level one ignores, as git does", async () => {
     replace(vscode.workspace, "workspaceFolders", [
       { uri: vscode.Uri.file(dir), name: relative, index: 0 },
