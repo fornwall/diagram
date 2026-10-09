@@ -214,17 +214,35 @@ const STRING = String.raw`"[^"\\]*(?:\\[\s\S]?[^"\\]*)*(?:"|$)`;
  */
 const NON_FINITE = new RegExp(String.raw`(${STRING})|-?\bInfinity\b|\bNaN\b`, "g");
 
-/** Parses a JSON value, reading NaN and Infinity as null. */
+function hasNonFinite(text: string): boolean {
+  return text.includes("NaN") || text.includes("Infinity");
+}
+
+/**
+ * `text` with NaN and Infinity as 0 and spaces, as long as they are, so that the error that JSON
+ * still has is where it is in `text`.
+ */
+function finiteInPlace(text: string): string {
+  return hasNonFinite(text)
+    ? text.replace(NON_FINITE, (match, string?: string) => string ?? "0".padEnd(match.length))
+    : text;
+}
+
+/**
+ * Parses a JSON value, reading NaN and Infinity as null. If it is not valid with them either, the
+ * error is the one it has with them, not one about the first of them.
+ */
 function parseValue(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (error) {
     // Only when they occur, as JSON Lines, also invalid as a whole, are parsed again by value.
-    if (!text.includes("NaN") && !text.includes("Infinity")) throw error;
+    if (!hasNonFinite(text)) throw error;
     const finite = text.replace(NON_FINITE, (_, string?: string) => string ?? "null");
     try {
       return JSON.parse(finite);
     } catch {
+      JSON.parse(finiteInPlace(text));
       throw error;
     }
   }
@@ -371,9 +389,11 @@ function syntaxError(error: unknown, text: string, start: number): string {
   const message = errorClause(error);
   const token = UNEXPECTED_TOKEN.exec(message)?.[1];
   if (token !== undefined) {
-    // The text around it, which V8 gives instead, may be long and over several lines.
-    const offset = unexpectedCharacter(text.slice(start));
-    if (offset !== undefined && text.startsWith(token, start + offset)) {
+    // The text around it, which V8 gives instead, may be long and over several lines. The error
+    // may be in the text with NaN and Infinity read as numbers, which takes their places.
+    const source = finiteInPlace(text.slice(start));
+    const offset = unexpectedCharacter(source);
+    if (offset !== undefined && source.startsWith(token, offset)) {
       const { line, column } = lineAndColumn(text, start + offset);
       return `Unexpected token '${token}' on line ${line}, column ${column}`;
     }

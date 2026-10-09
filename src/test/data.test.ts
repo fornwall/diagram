@@ -2227,6 +2227,19 @@ suite("data", () => {
       () => parseTable('{"a": 1}\n{"a": [1,\n2,]}'),
       /^Error: The JSON value on line 2 is not valid JSON: Unexpected token '\]' on line 3, column 3\.$/,
     );
+    // The error in JSON with NaN or Infinity, as Python writes it, is not the first of them.
+    assert.throws(
+      () => parseTable('{"x": 1, "y": NaN, "z": bad}'),
+      /^Error: The data is not valid JSON: Unexpected token 'b' on line 1, column 25\.$/,
+    );
+    assert.throws(
+      () => parseTable('[{"a": NaN}, {"a": -Infinity, "b" 2}]'),
+      /^Error: The data is not valid JSON: Expected ':' after property name on line 1, column 35\.$/,
+    );
+    assert.throws(
+      () => parseTable('{"a": NaN}\n{"a": Infinity, }'),
+      /^Error: The JSON value on line 2 is not valid JSON: Expected double-quoted property name on line 2, column 17\.$/,
+    );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
     assert.throws(() => parseTable("[{}]"), /holds no values/);
