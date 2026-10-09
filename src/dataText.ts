@@ -376,27 +376,37 @@ function elisionNote(lines: string[], rows: boolean, columns: boolean): string {
   );
 }
 
-/**
- * A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM, or a
- * vertical line drawn with box-drawing characters ("│", or "┆" between the columns of Polars).
- */
-const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\||[\u2502\u2503\u2506\u2551]/;
+/** A pipe that is not escaped by a backslash, which itself may be escaped ("\\|"), as in GFM. */
+const PIPE = /(?<=(?:^|[^\\])(?:\\\\)*)\|/;
+
+/** A vertical line drawn with box-drawing characters: "│", or "┆" between the columns of Polars. */
+const BOX_LINE = /[\u2502\u2503\u2506\u2551]/;
 
 /** Markdown emphasis or code around a whole cell, as in "**Total**" or "`12`". */
 const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
 
 /**
- * Splits a row of a table with "|" or "│" between cells, as in Markdown, printed by psql, mysql,
- * sqlite3 and DuckDB, or by sqlite3 and psql -A without spaces. A leading and trailing pipe are
- * optional.
+ * Splits a row of a table with "|" between cells, as in Markdown, printed by psql, mysql and
+ * sqlite3, or by sqlite3 and psql -A without spaces, or with the `box` lines that sqlite3, DuckDB
+ * and Polars draw, between which a "|" is text. A leading and trailing separator are optional.
  */
-function pipeCells(line: string): string[] {
+function pipeCells(line: string, box = false): string[] {
   // Two more than a row may have, as a leading and a trailing pipe leave empty cells.
-  const cells = line.trim().split(PIPE, MAX_CELLS + 3);
+  const cells = line.trim().split(box ? BOX_LINE : PIPE, MAX_CELLS + 3);
   if (cells.length > 1 && cells[0] === "") cells.shift();
   if (cells.length > 1 && cells.at(-1) === "") cells.pop();
   checkTableSize(1, cells.length);
-  return cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
+  return box
+    ? cells
+    : cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
+}
+
+/**
+ * Escapes the pipes of `line` that are not at a "|" or "+" of the `rule` under the header, as a
+ * pipe in a cell of a table that psql, mysql or sqlite3 align is not.
+ */
+function escapeUnaligned(line: string, rule: string): string {
+  return line.replace(/\|/g, (pipe, i: number) => (/[|+]/.test(rule[i] ?? "") ? pipe : "\\|"));
 }
 
 /**
@@ -841,17 +851,23 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       return table;
     }
   }
-  if (format === "auto" && PIPE.test(lines[0] ?? "")) {
-    const diffStat = splitDiffStat(lines);
+  const box = BOX_LINE.test(lines[0] ?? "");
+  if (format === "auto" && (box || PIPE.test(lines[0] ?? ""))) {
+    const diffStat = box ? undefined : splitDiffStat(lines);
     if (diffStat !== undefined) {
       return diffStat;
     }
-    const records = lines.map(pipeCells);
+    const records = lines.map((line) => pipeCells(line, box));
     const width = records[0]?.length ?? 0;
-    // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
-    // cells beyond it are left out.
     if (underline !== undefined) {
-      return { records: records.map((record) => record.slice(0, width)), header: true };
+      // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
+      // cells beyond it are left out, unless pipes in cells of an aligned table split them off.
+      const fit = (record: string[], i: number): string[] => {
+        if (record.length <= width) return record;
+        const aligned = box ? record : pipeCells(escapeUnaligned(lines[i] ?? "", underline));
+        return aligned.length === width ? aligned : record.slice(0, width);
+      };
+      return { records: records.map(fit), header: true };
     }
     if (width > 1 && records.every((record) => record.length === width)) {
       return { records };

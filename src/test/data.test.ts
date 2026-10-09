@@ -1333,6 +1333,15 @@ suite("data", () => {
       ["y", null],
     ]);
     assert.deepStrictEqual(parse("|a|b|\n|-|-|\n||1|").rows, [[null, 1]]);
+    // A pipe off the junctions of the rule of an aligned table is text, as is one in a box.
+    for (const table of [
+      " a   | b\n-----+---\n x|y | 1",
+      "+-----+---+\n| a   | b |\n+-----+---+\n| x|y | 1 |\n+-----+---+",
+      "| a   | b |\n|-----|---|\n| x|y | 1 |",
+      "┌─────┬───┐\n│ a   │ b │\n├─────┼───┤\n│ x|y │ 1 │\n└─────┴───┘",
+    ]) {
+      assert.deepStrictEqual(parse(table).rows, [["x|y", 1]], table);
+    }
     // Emphasis or code around a whole cell, but not around parts of it.
     assert.deepStrictEqual(
       parse("| a | b |\n|---|---|\n| **Total** | **12** |\n| `x` and `y` | `3` |\n| *a*b* | *4* |")
