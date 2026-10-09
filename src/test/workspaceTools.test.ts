@@ -78,6 +78,10 @@ suite("workspaceTools", function () {
       await invoke(finder, { glob: `${relative}/**/*.ts` }),
       `${relative}/code.ts`,
     );
+    assert.strictEqual(
+      await invoke(finder, { glob: `${relative}/*.txt` }),
+      ["large", "literal", "long"].map((name) => `${relative}/${name}.txt`).join("\n"),
+    );
     const bounded = (await invoke(finder, { glob: `${relative}/*`, maxResults: 1 })).split("\n");
     assert.strictEqual(bounded.length, 2);
     assert.strictEqual(bounded[1], "Showing the first 1 file; narrow the glob to see more.");

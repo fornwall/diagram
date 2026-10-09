@@ -287,16 +287,19 @@ async function candidates(
     // Nested workspace roots may return files already found in an earlier root.
     const overlapping = files.filter((uri) => contains(root.uri, uri)).length;
     const limit = max + 1 - files.length + overlapping;
-    const found = await unlessCancelled(
-      async () =>
-        vscode.workspace.findFiles(
-          new vscode.RelativePattern(root, glob),
-          `{${[...patterns].join(",")}}`,
-          limit,
-          token,
-        ),
-      token,
-    );
+    // In path order, which groups files by folder, as findFiles returns them in no fixed order.
+    const found = (
+      await unlessCancelled(
+        async () =>
+          vscode.workspace.findFiles(
+            new vscode.RelativePattern(root, glob),
+            `{${[...patterns].join(",")}}`,
+            limit,
+            token,
+          ),
+        token,
+      )
+    ).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     throwIfCancelled(token);
     const shown =
       conditions.length > 0 ? await withoutHiddenSiblings(root, found, conditions, token) : found;
