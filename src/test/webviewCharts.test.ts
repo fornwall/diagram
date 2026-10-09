@@ -395,6 +395,10 @@ suite("ECharts in the webview", function () {
 
   test("draws no brush buttons for a brush component", async () => {
     const paths = async (extra: object) => {
+      // Away from the chart, which would draw an axis pointer at the item it focuses: also when
+      // VS Code, giving the page the focus again, has the page give it back to the chart that an
+      // earlier test focused last.
+      await evaluate('document.getElementById("ask-input").focus()');
       await draw({
         language: "echarts",
         source: JSON.stringify({
