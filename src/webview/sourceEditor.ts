@@ -177,8 +177,12 @@ export class SourceEditor {
   }
 
   private updateActions(): void {
-    this.elements.apply.disabled = !this.differs();
-    this.elements.revert.disabled = !this.differs();
+    const { apply, revert, input } = this.elements;
+    // Disabling the focused action, as the diagram that Apply sent comes back, would leave the
+    // focus on the page's body, from where Tab starts over: keep it in the source instead.
+    const actionFocused = document.activeElement === apply || document.activeElement === revert;
+    apply.disabled = revert.disabled = !this.differs();
+    if (actionFocused && apply.disabled) input.focus();
     this.onChange();
   }
 

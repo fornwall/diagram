@@ -536,6 +536,29 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("keeps the focus in the source when Apply, pressed, disables itself", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const source = document.getElementById("source");
+      source.value = "flowchart LR\\n A --> Applied";
+      source.dispatchEvent(new Event("input"));
+      document.getElementById("apply").focus();
+    })()`);
+    await nextRender(() => evaluate(`document.getElementById("apply").click()`));
+    try {
+      assert.deepStrictEqual(
+        await evaluate(`({
+          disabled: document.getElementById("apply").disabled,
+          focused: document.activeElement.id,
+        })`),
+        { disabled: true, focused: "source" },
+      );
+    } finally {
+      await evaluate('document.getElementById("view-visual").click()');
+    }
+  });
+
   test("reuses formatted source and only persists changed editor state", async () => {
     await evaluate('document.getElementById("view-visual").click()');
     const source = '{"series":[{"type":"pie","data":[3,7]}]}';
