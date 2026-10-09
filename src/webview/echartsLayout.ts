@@ -613,17 +613,34 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height
     }
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
-    const breadcrumb =
-      type === "treemap" && !(isPlainObject(each.breadcrumb) && each.breadcrumb.show === false);
+    // Room for the breadcrumb of a treemap.
+    const breadcrumb = type === "treemap" ? breadcrumbSide(each, height) : undefined;
     Object.assign(each, {
-      top: reserved.top + 12,
-      // Room for the breadcrumb below a treemap.
-      bottom: reserved.bottom + (breadcrumb ? 36 : 12),
+      top: reserved.top + (breadcrumb === "top" ? 36 : 12),
+      bottom: reserved.bottom + (breadcrumb === "bottom" ? 36 : 12),
       left: reserved.left + side,
       // Room for the labels right of the last column of sankey nodes.
       right: reserved.right + (type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side),
     });
   }
+}
+
+/** The side of the chart a treemap shows its breadcrumb on, which is the bottom unless moved. */
+function breadcrumbSide(treemap: JsonObject, height: number): "top" | "bottom" | undefined {
+  const breadcrumb = isPlainObject(treemap.breadcrumb) ? treemap.breadcrumb : {};
+  if (breadcrumb.show === false) {
+    return undefined;
+  }
+  // ECharts places the breadcrumb by its top when set, and by its bottom otherwise.
+  const { top } = breadcrumb;
+  if (top === undefined || top === "bottom") {
+    return "bottom";
+  }
+  if (top === "middle" || top === "center") {
+    return undefined;
+  }
+  const offset = top === "top" ? 0 : pixels(top, height);
+  return offset === undefined ? "bottom" : offset < height / 2 ? "top" : "bottom";
 }
 
 function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {

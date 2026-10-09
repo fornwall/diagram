@@ -397,6 +397,10 @@ suite("echartsLayout", () => {
     };
     assert.deepStrictEqual(box("treemap"), [44, 12, 12, 36]);
     assert.deepStrictEqual(box("treemap", { breadcrumb: { show: false } }), [44, 12, 12, 12]);
+    assert.deepStrictEqual(box("treemap", { breadcrumb: { top: 40 } }), [68, 12, 12, 12]);
+    assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "top" } }), [68, 12, 12, 12]);
+    assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "90%" } }), [44, 12, 12, 36]);
+    assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "middle" } }), [44, 12, 12, 12]);
     assert.deepStrictEqual(box("tree"), [44, 96, 96, 12]);
     assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
     assert.deepStrictEqual(box("sankey"), [44, 12, 144, 12]);
