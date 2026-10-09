@@ -337,7 +337,20 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
       })),
     ];
   }
-  // Use case diagrams give offsets in their message.
+  // Use case diagrams give offsets in their message, which their parser adds to Chevrotain's (see
+  // usecase.chevrotain.ts in Mermaid), and the line and column of invalid JSON data.
+  const { line, column } = error as { line?: unknown; column?: unknown };
+  if (error.name === "UsecaseJsonError" && typeof line === "number" && typeof column === "number") {
+    const start = Math.min(
+      (lineStarts(parsed)[line - 1] ?? parsed.length) + column - 1,
+      parsed.length,
+    );
+    // Leave out where in the JSON it failed, which the position in the diagram says better.
+    const message = error.message
+      .replace(/ \(line \d+, column \d+\)$/, "")
+      .replace(/ at position \d+(?: \(line \d+ column \d+\))?/, "");
+    return [{ start, end: start + 1, message: `${message}.` }];
+  }
   const span =
     /^Error (?:lexing|parsing) \w+ diagram: (.*) at line \d+, column \d+ \[(\d+),(\d+)\)$/s.exec(
       error.message,
@@ -626,6 +639,41 @@ const UNPLACED: [
       ];
     },
   ],
+  // A branch can be checked out only after it is created, and never deleted: the first checkout.
+  [
+    /^Trying to checkout branch which is not yet created\. \(Help try using "branch (.*)"\)$/,
+    ([, name = ""], normalized) => [
+      find(normalized, `^[^\\S\\n]*(?:checkout|switch)[^\\S\\n]+${word(name)}`),
+      `There is no branch "${name}" to check out: create it first, with "branch ${name}".`,
+    ],
+  ],
+  // A set can be in a union only after it is declared: the first union of the first one.
+  [
+    /^unknown set identifier: (.*)$/,
+    ([, list = ""], normalized) => {
+      const names = list.split(", ");
+      const quoted = joinWords(
+        names.map((name) => `"${name}"`),
+        "and",
+      );
+      return [
+        find(normalized, `^[^\\S\\n]*union[^\\S\\n]+[^\\[\\n:]*${word(names[0] as string)}`),
+        names.length > 1
+          ? `${quoted} are not sets: declare them, as in "set ${names[0]}", before the union.`
+          : `${quoted} is not a set: declare it, as in "set ${names[0]}", before the union.`,
+      ];
+    },
+  ],
+  // A timeline adds an event to the last period, and fails on one before any: the first event.
+  [
+    /^Cannot read properties of undefined \(reading 'events'\)$/,
+    (_, normalized) => {
+      const at = find(normalized, "^[^\\S\\n]*:");
+      return at === undefined || find(normalized, "^[^\\S\\n]*timeline\\b") === undefined
+        ? undefined
+        : [at, 'The event has no time period: start the line with one, as in "2024 : Launch".'];
+    },
+  ],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,
@@ -653,6 +701,35 @@ function unplacedError(message: string, normalized: string): Error | undefined {
     if (described) return errorAt(normalized, described[0], described[1] ?? message);
   }
   return undefined;
+}
+
+/**
+ * The error for a composite state with no states in it, which Mermaid's dagre layout draws as a
+ * state, failing to find a state shape for it. Mermaid leaves out the states that a composite
+ * state declares with nothing but "state B", which can leave it empty.
+ */
+export function emptyStateError(
+  error: unknown,
+  db: DiagramDb | undefined,
+  source: string,
+): Error | undefined {
+  if (!(error instanceof Error) || !/^No such shape: roundedWithTitle\b/.test(error.message)) {
+    return undefined;
+  }
+  const { nodes = [] } = db?.getData?.() ?? {};
+  const empty = nodes.find(
+    ({ id, isGroup }) => isGroup && !nodes.some((node) => node.parentId === id && node.id !== id),
+  );
+  if (!empty) return undefined;
+  const normalized = source.replace(/\r\n?/g, "\n");
+  return errorAt(
+    normalized,
+    find(
+      normalized,
+      `^[^\\S\\n]*state[^\\S\\n]+(?:"[^"\\n]*"[^\\S\\n]+as[^\\S\\n]+)?${word(empty.id)}[^\\S\\n]*\\{`,
+    ),
+    `The composite state "${empty.id}" has no states in it, which the dagre layout cannot draw: put states in it, or lay it out with elk.`,
+  );
 }
 
 /**

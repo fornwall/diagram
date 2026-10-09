@@ -5,7 +5,13 @@ import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";
 import { mix, type ThemeColors, toCss } from "./colors";
 import type { DiagramImage } from "./images";
-import { describeError, nestingError, parsableSource, undefinedEndError } from "./mermaidErrors";
+import {
+  describeError,
+  emptyStateError,
+  nestingError,
+  parsableSource,
+  undefinedEndError,
+} from "./mermaidErrors";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
@@ -438,6 +444,7 @@ export class MermaidRenderer implements Renderer {
       const result = await mermaid.render(id, text, container).catch((error: unknown) => {
         throw (
           undefinedEndError(parsed, source) ??
+          emptyStateError(error, parsed, source) ??
           describeError(error, source, () => mermaid.detectType(text))
         );
       });
