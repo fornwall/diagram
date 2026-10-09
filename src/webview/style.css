@@ -148,7 +148,12 @@ header button,
 header button:enabled:hover,
 .drag-out:hover {
   background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px solid var(--vscode-toolbar-hoverOutline, transparent);
+}
+
+/* Dashed in high contrast, as VS Code's toolbars are, and not over the focus ring. */
+header button:enabled:hover:not(:focus-visible),
+.drag-out:hover {
+  outline: 1px dashed var(--vscode-toolbar-hoverOutline, transparent);
   outline-offset: -1px;
 }
 
