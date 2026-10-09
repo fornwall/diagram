@@ -600,6 +600,37 @@ canvas.addEventListener("click", (event) => {
   }
 });
 
+// Links in HTML that a chart draws, such as in a tooltip, which even a JSON option can write: VS
+// Code opens where a link clicked in the page leads, a vscode: URL among them, without the checks
+// that the extension makes of a Mermaid diagram's links. Take the click, which a key also makes,
+// before VS Code's listener on the window does, and have the extension open the link. A middle
+// click opens nothing, as in VS Code. Mermaid's drawing keeps its links as data-href instead.
+const XLINK = "http://www.w3.org/1999/xlink";
+for (const type of ["click", "auxclick"] as const) {
+  window.addEventListener(
+    type,
+    (event) => {
+      const link = event
+        .composedPath()
+        .find(
+          (target): target is Element =>
+            target instanceof Element &&
+            (target.localName === "a" || target.localName === "area") &&
+            (target.hasAttribute("href") || target.hasAttributeNS(XLINK, "href")),
+        );
+      if (!link) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const url = (link.getAttribute("href") ?? link.getAttributeNS(XLINK, "href"))?.trim();
+      // A link to a place in the page leads nowhere: the page does not scroll.
+      if (type === "click" && current && url && !url.startsWith("#")) {
+        post({ type: "openUrl", requestId: current.requestId, url });
+      }
+    },
+    { capture: true },
+  );
+}
+
 // Annotations.
 
 function showAnnotation(next: Annotation): void {

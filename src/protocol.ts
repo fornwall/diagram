@@ -210,7 +210,10 @@ export type FromWebview =
   | { type: "clickToAsk"; requestId: number; node: DiagramNode }
   /** The host resolves this node's link; the webview cannot choose a path. */
   | { type: "clickToOpen"; requestId: number; node: DiagramNode }
-  /** A link that the Mermaid source drew, which the host checks: a model may have written it. */
+  /**
+   * A link that the Mermaid source drew, or the HTML of a chart, such as its tooltip's, which the
+   * host checks: a model may have written it.
+   */
   | { type: "openUrl"; requestId: number; url: string }
   | { type: "picked"; pickId: number; nodes: DiagramNode[] }
   | { type: "pickCancelled"; pickId: number }

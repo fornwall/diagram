@@ -712,7 +712,7 @@ suite("panel", function () {
     assert.strictEqual(errors.length, 6);
     assert.ok(errors.every((error) => /opens only http, https and mailto URLs/.test(error)));
     assert.match(errors[0] ?? "", /^Cannot open "javascript:alert\(1\)", which the diagram/);
-    // Only a Mermaid diagram draws links.
+    // The HTML of a chart's tooltip can hold links too.
     assert.ok(
       (
         await panel.render(
@@ -722,7 +722,9 @@ suite("panel", function () {
       ).ok,
     );
     await open("https://example.com/");
-    assert.strictEqual(clicks.length, 3);
+    await open("vscode://file/etc/passwd");
+    assert.deepStrictEqual(clicks.slice(3), ["url: https://example.com/"]);
+    assert.strictEqual(errors.length, 7);
   });
 
   test("opening a link shows the file beside the diagram with its lines selected", async () => {

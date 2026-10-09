@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
+import { afterTest, recordMessages } from "./afterTest";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -675,6 +676,59 @@ suite("ECharts in the webview", function () {
     };
     const tooltip = () => [...document.getElementById("chart-drawing").children]
       .find(child => !child.querySelector("svg") && child.style.display !== "none")?.textContent;`;
+
+  test("opens the links in a chart's tooltip through the extension, which checks them", async () => {
+    // What the page asks the extension to open, which asks first once a chart of an earlier test
+    // ran code in the page.
+    const opened: string[] = [];
+    const listener = page.webview.onDidReceiveMessage((message) => {
+      if (message.type === "openUrl") opened.push(message.url);
+    });
+    afterTest(() => listener.dispose());
+    const errors = recordMessages("showErrorMessage");
+    // A JSON option, which runs no code, writes the tooltip's HTML.
+    await renderChart({
+      ...SALES,
+      tooltip: {
+        enterable: true,
+        formatter:
+          '<a href="https://example.com/docs">Docs</a> <a href="vscode://file/etc/passwd">File</a> <a href="#top">Top</a> <a>None</a> <svg><a xlink:href="https://example.com/svg"><text>SVG</text></a></svg>',
+      },
+    });
+    const clicked = await evaluate(`(async () => {
+      ${UNTIL}
+      ${PRESS}
+      chart.focus();
+      press("Home");
+      const shown = await until(() => [...document.getElementById("chart-drawing").children]
+        .find(child => child.querySelector("a")), "the tooltip");
+      // What VS Code's listener on the window would see of the clicks.
+      let seen = 0;
+      const see = (event) => { if (event.composedPath().some(target => target.localName === "a")) seen++; };
+      for (const type of ["click", "auxclick"]) window.addEventListener(type, see);
+      try {
+        const links = [...shown.querySelectorAll("a")];
+        const click = (link, type = "click", init) =>
+          !link.dispatchEvent(new MouseEvent(type, {bubbles: true, cancelable: true, ...init}));
+        const prevented = links.map(link => click(link));
+        prevented.push(click(links[0], "auxclick", {button: 1}));
+        return {prevented, seen};
+      } finally {
+        for (const type of ["click", "auxclick"]) window.removeEventListener(type, see);
+        chart.blur();
+      }
+    })()`);
+    // A link without an href is no link, and is left alone.
+    assert.deepStrictEqual(clicked, { prevented: [true, true, true, false, true, true], seen: 1 });
+    assert.deepStrictEqual(opened, [
+      "https://example.com/docs",
+      "vscode://file/etc/passwd",
+      "https://example.com/svg",
+    ]);
+    // Which the extension does not open.
+    assert.strictEqual(errors.length, 1);
+    assert.match(errors[0] ?? "", /^Cannot open "vscode:\/\/file\/etc\/passwd"/);
+  });
 
   test("moves the focus between chart items with arrow keys from one tab stop", async () => {
     await renderChart(SALES);

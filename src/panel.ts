@@ -470,8 +470,7 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
       case "openUrl":
-        // Only a Mermaid diagram links to URLs.
-        if (this.state?.language === "mermaid" && this.showsDrawing(message.requestId)) {
+        if (this.showsDrawing(message.requestId)) {
           return openUrl(message.url, this.pageRanCode, (ask) => this.confirmForPage(ask));
         }
         break;

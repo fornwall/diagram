@@ -235,8 +235,8 @@ export async function openLink(
 const WEB_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
 /**
- * Opens a link that the Mermaid source drew, from a click directive or a label, which the page
- * posts as written. VS Code asks before opening a website outside its trusted domains, which it
+ * Opens a link that the Mermaid source drew, from a click directive or a label, or that the HTML of
+ * a chart holds, such as its tooltip's, which the page posts as written. VS Code asks before opening a website outside its trusted domains, which it
  * would not for a link clicked in the page itself. Another scheme could run a command or open a
  * file that a model chose. askFirst, once the page ran chart code that could post this as if the
  * user clicked, has the panel ask too, naming the whole URL, as VS Code shortens long ones.
