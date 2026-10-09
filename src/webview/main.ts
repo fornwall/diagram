@@ -755,22 +755,55 @@ clearSelectionButton.addEventListener("click", () => {
 });
 
 // Keep drafts when the webview reloads, e.g. when moved to another window.
+/** The size in characters of a state saved at once, which takes about a millisecond to send. */
+const SAVE_AT_ONCE = 100_000;
+/** How long typing pauses before a larger state is saved. */
+const SAVE_DELAY = 500;
 let savedState: State | undefined;
+/** A larger state waiting for typing to pause. */
+let unsavedState: State | undefined;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function saveState(): void {
   const next: State = { draft: askInput.value, ...editor.state() };
   // setState serializes the whole draft and sends it to the host. View and render updates can
   // reach here several times with the same state, including multi-megabyte source edits.
+  const last = unsavedState ?? savedState;
   if (
-    savedState?.draft === next.draft &&
-    savedState.view === next.view &&
-    savedState.editor?.source === next.editor?.source &&
-    savedState.editor?.base === next.editor?.base
+    last?.draft === next.draft &&
+    last.view === next.view &&
+    last.editor?.source === next.editor?.source &&
+    last.editor?.base === next.editor?.base
   ) {
     return;
   }
-  vscode.setState(next);
-  savedState = next;
+  unsavedState = next;
+  clearTimeout(saveTimer);
+  const size =
+    next.draft.length + (next.editor?.source.length ?? 0) + (next.editor?.base.length ?? 0);
+  // Sending a source of megabytes, twice with its base, on every key would slow typing down.
+  if (size <= SAVE_AT_ONCE) flushState();
+  else saveTimer = setTimeout(flushState, SAVE_DELAY);
 }
+function flushState(): void {
+  clearTimeout(saveTimer);
+  if (!unsavedState) return;
+  vscode.setState(unsavedState);
+  savedState = unsavedState;
+  unsavedState = undefined;
+}
+// VS Code takes the last state the page saved when it reloads the page, without warning the page
+// first. What reloads it, such as Reload Window or dragging the tab to another window, takes the
+// focus out of the page or is a key the page sees first, and the state sent then arrives before.
+window.addEventListener("blur", flushState);
+window.addEventListener("pagehide", flushState);
+document.addEventListener("visibilitychange", flushState);
+window.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || /^F\d+$/.test(event.key)) flushState();
+  },
+  { capture: true },
+);
 const restored = vscode.getState();
 const saved = isPlainObject(restored) ? restored : {};
 askInput.value = typeof saved.draft === "string" ? saved.draft : "";

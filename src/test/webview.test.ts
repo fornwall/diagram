@@ -610,6 +610,50 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("saves a large source edit once typing pauses, or before the page may reload", async () => {
+    const original = "flowchart LR\n A --> Original";
+    const large = `${original}\n%% ${"x".repeat(200_000)}`;
+    await draw({ source: original });
+    const type = (text: string) => `(() => {
+      window.testStateWrites = 0;
+      const input = document.getElementById("source");
+      input.value += ${JSON.stringify(text)};
+      input.dispatchEvent(new Event("input"));
+    })()`;
+    const saved = () =>
+      evaluate(`({writes: window.testStateWrites,
+        length: window.readTestState().editor?.source.length ?? 0})`);
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      document.getElementById("source").value = ${JSON.stringify(large)};
+    })()`);
+    await evaluate(type("a"));
+    assert.deepStrictEqual(await saved(), { writes: 0, length: 0 });
+    // A key that may run a command, such as Reload Window, saves first.
+    await evaluate(
+      'document.getElementById("source").dispatchEvent(new KeyboardEvent("keydown", {key: "r", ctrlKey: true, bubbles: true}))',
+    );
+    assert.deepStrictEqual(await saved(), { writes: 1, length: large.length + 1 });
+    await evaluate(type("b"));
+    await evaluate('window.dispatchEvent(new Event("blur"))');
+    assert.deepStrictEqual(await saved(), { writes: 1, length: large.length + 2 });
+    await evaluate(type("c"));
+    await evaluate(type("d"));
+    assert.deepStrictEqual(await saved(), { writes: 0, length: large.length + 2 });
+    await evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => window.testStateWrites === 1, "the paused edit to be saved");
+    })()`);
+    assert.deepStrictEqual(await saved(), { writes: 1, length: large.length + 4 });
+    // A small state is saved at once, replacing a large one still waiting.
+    await evaluate(type("e"));
+    await evaluate('document.getElementById("revert").click()');
+    assert.deepStrictEqual(await saved(), { writes: 1, length: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.deepStrictEqual(await saved(), { writes: 1, length: 0 });
+    await evaluate('document.getElementById("view-visual").click()');
+  });
+
   test("a reload ignores saved values that the page does not use", async () => {
     const source = "flowchart LR\n A --> B";
     await draw({ source });
