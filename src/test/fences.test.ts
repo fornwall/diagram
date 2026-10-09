@@ -163,6 +163,9 @@ suite("fences", () => {
       ["::: mermaid\nA\n:::\n", ['0-1 mermaid "": "A"']],
       // Closed by as many colons or more, and holding fences of other characters.
       [":::: Mermaid\n```\nA\n:::\n::::: \n", ['0-3 mermaid "": "```\\nA\\n:::"']],
+      // As in the preview, whose markdown-it skips spaces and tabs, but no other whitespace.
+      [":::\tmermaid\nA\n:::\t\nB\n:::\n", ['0-1 mermaid "": "A"']],
+      ["::: mermaid\nA\n:::\u00a0\nB\n:::\n", ['0-3 mermaid "": "A\\n:::\u00a0\\nB"']],
       ["> - :::mermaid\n>   A\n>   :::\n", ['0-1 mermaid ">   ": "A"']],
       // Like a fence, a container interrupts a paragraph.
       ["Text\n::: mermaid\nA\n:::\n", ['1-2 mermaid "": "A"']],
