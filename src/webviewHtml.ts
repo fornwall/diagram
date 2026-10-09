@@ -61,7 +61,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
     <h1 id="title">Diagram</h1>
     <div class="actions">
       <button id="zoom-out" title="Zoom out (Ctrl/Cmd+-)" aria-label="Zoom out">&minus;</button>
-      <button id="zoom-reset" title="Reset zoom (Ctrl/Cmd+0)">100%</button>
+      <button id="zoom-reset" title="Reset zoom (Ctrl/Cmd+0)" aria-label="100%: Reset zoom">100%</button>
       <button id="zoom-in" title="Zoom in (Ctrl/Cmd+=)" aria-label="Zoom in">+</button>
       <button id="refresh" hidden>Refresh</button>
       <button id="write-to" hidden></button>

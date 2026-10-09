@@ -830,7 +830,11 @@ export class MermaidRenderer implements Renderer {
       svg.setAttribute("width", String(natural.width * this.zoom));
       svg.setAttribute("height", String(natural.height * this.zoom));
     }
-    this.zoomButton.textContent = `${Math.round(this.zoom * 100)}%`;
-    this.zoomButton.title = `${this.fitting && this.zoom !== 1 ? "Show at actual size" : "Fit to the panel"} (Ctrl/Cmd+0)`;
+    const shown = `${Math.round(this.zoom * 100)}%`;
+    const action = this.fitting && this.zoom !== 1 ? "Show at actual size" : "Fit to the panel";
+    this.zoomButton.textContent = shown;
+    this.zoomButton.title = `${action} (Ctrl/Cmd+0)`;
+    // The name says what the button does, after the zoom it shows.
+    this.zoomButton.setAttribute("aria-label", `${shown}: ${action}`);
   }
 }

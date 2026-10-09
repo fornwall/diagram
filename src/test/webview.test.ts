@@ -372,6 +372,11 @@ suite("webview", function () {
     );
     assert.deepStrictEqual(await press("="), { prevented: true, forwarded: false });
     assert.strictEqual(await zoom(), "125%");
+    // Named by what it shows and what it does.
+    assert.strictEqual(
+      await evaluate(`document.getElementById("zoom-reset").ariaLabel`),
+      "125%: Fit to the panel",
+    );
     assert.deepStrictEqual(await press("-", false), { prevented: false, forwarded: true });
     assert.strictEqual(await zoom(), "125%");
     await press("-");
