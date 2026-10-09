@@ -277,11 +277,108 @@ function parseJsonStream(text: string): unknown[] | undefined {
 const POSITION = / in JSON at position (\d+)(?: \(line \d+ column \d+\))?/;
 
 /**
+ * V8's message for a character where JSON cannot have one, which gives text around it, possibly
+ * over several lines, rather than its position: `Unexpected token 'x', "[1, x]" is not valid JSON`.
+ */
+const UNEXPECTED_TOKEN = /^Unexpected token '([\s\S]{1,2})', [\s\S]* is not valid JSON$/;
+
+const JSON_NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+// Not checked further, as V8 says where a string is not valid.
+const JSON_STRING = new RegExp(STRING, "y");
+const JSON_SPACE = /[ \t\n\r]*/y;
+
+/**
+ * The offset of the first character in `text` where JSON cannot have one, or undefined if there is
+ * none or the JSON is not valid in another way, such as ending early.
+ */
+function unexpectedCharacter(text: string): number | undefined {
+  /** The containers open around `i`: "[" or "{". */
+  const open: string[] = [];
+  let i = 0;
+  const skipSpace = (): void => {
+    JSON_SPACE.lastIndex = i;
+    JSON_SPACE.test(text);
+    i = JSON_SPACE.lastIndex;
+  };
+  const match = (pattern: RegExp): boolean => {
+    pattern.lastIndex = i;
+    if (!pattern.test(text)) return false;
+    i = pattern.lastIndex;
+    return true;
+  };
+  // A value is expected at i, or with `key`, a property name.
+  let key = false;
+  for (;;) {
+    skipSpace();
+    if (i >= text.length) return undefined;
+    const char = text[i];
+    if (key) {
+      if (char !== '"' || !match(JSON_STRING)) return i;
+      skipSpace();
+      if (i >= text.length) return undefined;
+      if (text[i] !== ":") return i;
+      i++;
+      key = false;
+      continue;
+    }
+    if (char === "[" || char === "{") {
+      open.push(char);
+      i++;
+      skipSpace();
+      if (text[i] === (char === "[" ? "]" : "}")) {
+        open.pop();
+        i++;
+      } else {
+        key = char === "{";
+        continue;
+      }
+    } else if (char === '"') {
+      if (!match(JSON_STRING)) return undefined;
+    } else if (char === "-" || (char !== undefined && char >= "0" && char <= "9")) {
+      if (!match(JSON_NUMBER)) return undefined;
+    } else {
+      const literal = ["true", "false", "null"].find((word) => word[0] === char);
+      if (literal === undefined) return i;
+      for (const letter of literal) {
+        if (i >= text.length) return undefined;
+        if (text[i] !== letter) return i;
+        i++;
+      }
+    }
+    // After a value: a comma before the next, or the end of the containers around it.
+    for (;;) {
+      skipSpace();
+      if (i >= text.length) return undefined;
+      const container = open.at(-1);
+      if (container === undefined) return i;
+      if (text[i] === ",") {
+        i++;
+        key = container === "{";
+        break;
+      }
+      if (text[i] !== (container === "[" ? "]" : "}")) return i;
+      open.pop();
+      i++;
+    }
+  }
+}
+
+/**
  * The message of a JSON syntax error in the value at `start` in `text`, with the place of the error
  * as the line and column in `text`, rather than V8's, which count from the value's start.
  */
 function syntaxError(error: unknown, text: string, start: number): string {
-  return errorClause(error).replace(POSITION, (_, position: string) => {
+  const message = errorClause(error);
+  const token = UNEXPECTED_TOKEN.exec(message)?.[1];
+  if (token !== undefined) {
+    // The text around it, which V8 gives instead, may be long and over several lines.
+    const offset = unexpectedCharacter(text.slice(start));
+    if (offset !== undefined && text.startsWith(token, start + offset)) {
+      const { line, column } = lineAndColumn(text, start + offset);
+      return `Unexpected token '${token}' on line ${line}, column ${column}`;
+    }
+  }
+  return message.replace(POSITION, (_, position: string) => {
     const { line, column } = lineAndColumn(text, start + Number(position));
     return ` on line ${line}, column ${column}`;
   });

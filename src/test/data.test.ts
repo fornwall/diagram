@@ -2037,6 +2037,23 @@ suite("data", () => {
       () => parseTable('{"a": 1}\n{\n  "a": 2,\n}'),
       /^Error: The JSON value on line 2 is not valid JSON: Expected double-quoted property name on line 4, column 1\.$/,
     );
+    // V8 gives text around an unexpected token rather than its position.
+    for (const [json, place] of [
+      ['[\n  {"a": 1},\n  {"a": x}\n]', "'x' on line 3, column 9"],
+      ['{"a": [1, {"b": 2}, ]}', "']' on line 1, column 21"],
+      ['{"a": tru}', "'}' on line 1, column 10"],
+      [`[\n${'"long text", '.repeat(10)}nope]`, "'o' on line 2, column 132"],
+    ] as const) {
+      assert.throws(
+        () => parseTable(json),
+        new RegExp(`^Error: The data is not valid JSON: Unexpected token ${place}\\.$`),
+        json,
+      );
+    }
+    assert.throws(
+      () => parseTable('{"a": 1}\n{"a": [1,\n2,]}'),
+      /^Error: The JSON value on line 2 is not valid JSON: Unexpected token '\]' on line 3, column 3\.$/,
+    );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
     assert.throws(() => parseTable("[{}]"), /holds no values/);
