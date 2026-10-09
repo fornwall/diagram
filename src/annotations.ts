@@ -7,7 +7,7 @@ import {
   isPlainObject,
   MARK_KINDS,
 } from "./protocol";
-import { givenProperties, quoteAll, unknownProperties } from "./text";
+import { brief, givenProperties, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 export interface AnnotateInput {
@@ -101,7 +101,7 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
   marked.add(id);
   const kind = mark.mark ?? "current";
   if (!isMarkKind(kind)) {
-    return `"mark" must be one of ${quoteAll(MARK_KINDS)}.`;
+    return `"mark" is ${brief(kind)}; it must be one of ${quoteAll(MARK_KINDS)}.`;
   }
   if (mark.note === undefined) {
     return { id, kind };

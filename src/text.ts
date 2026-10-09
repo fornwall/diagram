@@ -27,6 +27,18 @@ export function shorten(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).replace(/[\uD800-\uDBFF]$/, "")}…` : text;
 }
 
+/** A value as an error message names it: as JSON, unless too long to quote. */
+export function brief(value: unknown): string {
+  if (value === undefined) {
+    return "missing";
+  }
+  if (typeof value === "string") {
+    return quote(value);
+  }
+  const json = JSON.stringify(value);
+  return json.length <= 40 ? json : Array.isArray(value) ? "an array" : "an object";
+}
+
 /** The line and column of `offset` in `text`, counted from 1, as an editor counts them. */
 export function lineAndColumn(text: string, offset: number): { line: number; column: number } {
   const before = text.slice(0, offset);

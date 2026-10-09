@@ -309,7 +309,7 @@ suite("extension", function () {
     );
     assert.match(
       await invoke("diagram_annotate", { marks: [{ id: "a", mark: "red" }] }),
-      /Nothing was marked: Invalid marks:\n- Mark 1: "mark" must be one of/,
+      /Nothing was marked: Invalid marks:\n- Mark 1: "mark" is "red"; it must be one of/,
     );
   });
 });

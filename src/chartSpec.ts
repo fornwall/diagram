@@ -1,7 +1,7 @@
 // A request to render data as a chart, as given to the diagram_chart tool, and its validation.
 
 import { isPlainObject } from "./protocol";
-import { givenProperties, quote, quoteAll, unknownProperties } from "./text";
+import { brief, givenProperties, quoteAll, unknownProperties } from "./text";
 
 export const CHART_TYPES = [
   "pie",
@@ -314,16 +314,4 @@ function filterProblems(filter: unknown, at: string): string[] {
     problems.push(given("a string, a finite number, or null for a missing cell"));
   }
   return problems;
-}
-
-/** A value as an error message names it: as JSON, unless too long to quote. */
-function brief(value: unknown): string {
-  if (value === undefined) {
-    return "missing";
-  }
-  if (typeof value === "string") {
-    return quote(value);
-  }
-  const json = JSON.stringify(value);
-  return json.length <= 40 ? json : Array.isArray(value) ? "an array" : "an object";
 }

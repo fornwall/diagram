@@ -77,8 +77,14 @@ suite("annotations", () => {
     );
     assert.match(
       problems({ marks: [{ id: "a", mark: "red" }] }),
-      /Mark 1: "mark" must be one of "current", "problem", "good", "info"\./,
+      /Mark 1: "mark" is "red"; it must be one of "current", "problem", "good", "info"\./,
     );
+    // Long or odd values are named briefly.
+    assert.match(
+      problems({ marks: [{ id: "a", mark: "x".repeat(50) }] }),
+      /Mark 1: "mark" is "x{40}…"; it must be one of/,
+    );
+    assert.match(problems({ marks: [{ id: "a", mark: 3 }] }), /Mark 1: "mark" is 3; it must be/);
     assert.match(
       problems({ marks: [{ id: "a", label: "Pay" }] }),
       /Mark 1: Unknown property "label"; the properties are "id", "mark", "note"\./,
