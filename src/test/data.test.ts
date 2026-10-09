@@ -1427,8 +1427,22 @@ suite("data", () => {
       table.note,
       "Only the Markdown table (lines 3\u20136) was read, not the text around it.",
     );
-    // Prose directly above the header, and a line without a pipe ending the table.
-    assert.deepStrictEqual(parse("Results:\na | b\n--|--\nx | 1\nDone.").rows, [["x", 1]]);
+    // Prose directly above the header. As in GFM, a line without a pipe below the table is a row,
+    // up to a blank line or the start of another block.
+    assert.deepStrictEqual(parse("Results:\na | b\n--|--\nx | 1\nDone.").rows, [
+      ["x", 1],
+      ["Done.", null],
+    ]);
+    for (const below of ["", "> Done.", "## Done", "- Done", "1. Done", "```", "***", "<p>"]) {
+      const text = `Results:\na | b\n--|--\nx | 1\n${below}\nDone.`;
+      const table = parseTable(text);
+      assert.deepStrictEqual(table.rows, [["x", 1]], text);
+      assert.strictEqual(
+        table.note,
+        "Only the Markdown table (lines 2\u20134) was read, not the text around it.",
+        text,
+      );
+    }
     assert.strictEqual(
       parseTable(`${answer}\n\n| a | b |\n|---|---|\n| y | 2 |`).note,
       "The data has 2 Markdown tables; only the first (lines 3\u20136) was read.",

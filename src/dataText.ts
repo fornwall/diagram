@@ -425,8 +425,17 @@ function escapeUnaligned(line: string, rule: string): string {
 const DELIMITER_ROW = /^\|?(?:[ \t]*:?-+:?[ \t]*\|)*[ \t]*:?-+:?[ \t]*\|?$/;
 
 /**
+ * A line that starts a block other than a paragraph, and so ends a table, in GFM: a block quote, a
+ * heading, a code fence, a list item, HTML or a thematic break. Unambiguous, so that a long line
+ * cannot take long to match.
+ */
+const BLOCK_START =
+  /^ {0,3}(?:>|#{1,6}(?:[ \t]|$)|`{3}|~{3}|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|<[a-zA-Z/!?]|(?:\*[ \t]*){3,}$|(?:-[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
+
+/**
  * Finds Markdown tables among `lines`: a header row above a delimiter row with as many cells, and
- * the rows below them up to a line without a pipe.
+ * the rows below them up to a blank line or the start of another block, as in GFM, where a line
+ * without a pipe below a table is a row of one cell.
  */
 function markdownTables(lines: string[]): { start: number; end: number }[] {
   const tables: { start: number; end: number }[] = [];
@@ -441,7 +450,13 @@ function markdownTables(lines: string[]): { start: number; end: number }[] {
       pipeCells(header).length === pipeCells(delimiter).length
     ) {
       let end = i + 2;
-      while (end < lines.length && PIPE.test(lines[end] ?? "")) end++;
+      while (
+        end < lines.length &&
+        !isBlank(lines[end] ?? "") &&
+        !BLOCK_START.test(lines[end] ?? "")
+      ) {
+        end++;
+      }
       tables.push({ start: i, end });
       i = end - 1;
     }
