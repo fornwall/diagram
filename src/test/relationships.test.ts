@@ -259,7 +259,7 @@ suite("relationships", function () {
     );
   });
 
-  test("highlights paths in swimlane, agent flow and state diagrams, but not in class diagrams", async () => {
+  test("highlights paths in swimlane, agent flow, ELK flowchart and state diagrams, but not in class diagrams", async () => {
     const path = async (source: string, from: string, to: string) => {
       await draw({ source });
       await click(node(from));
@@ -280,6 +280,13 @@ suite("relationships", function () {
       await path("agentflow-beta\n  start --> plan\n  plan --> done", "start", "done"),
       ["start", "edge:L_start_plan_0", "plan", "edge:L_plan_done_0", "done"],
     );
+    assert.deepStrictEqual(await path("flowchart-elk LR\n  a --> b\n  b --> c", "a", "c"), [
+      "a",
+      "edge:L_a_b_0",
+      "b",
+      "edge:L_b_c_0",
+      "c",
+    ]);
     // Through a choice, which shows no name, by its id.
     assert.deepStrictEqual(
       await path(

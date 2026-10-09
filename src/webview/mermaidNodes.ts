@@ -10,6 +10,7 @@ export const WITH_DATABASE = new Set([
   "gitGraph",
   "xychart",
   "flowchart-v2",
+  "flowchart-elk",
   "flowchart",
   "swimlane",
   "agentflow",
