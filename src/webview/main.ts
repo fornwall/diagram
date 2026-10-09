@@ -294,6 +294,8 @@ async function render(message: RenderMessage): Promise<void> {
     clearTimeout(statusTimer);
     renderStatus.textContent = "";
   }
+  // A drawing that replaces the one a pick was asked on is described by its question as well.
+  if (pick) describeByPick(drawingFocus(), true);
   // Only while the page has the focus: focus() would take it from wherever the user went meanwhile.
   // The canvas, which a chart does not render inert, keeps it, but takes the keys only for Mermaid.
   const lost = document.activeElement === document.body || document.activeElement === canvas;

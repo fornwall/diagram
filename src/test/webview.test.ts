@@ -272,6 +272,38 @@ suite("webview", function () {
     );
   });
 
+  test("describes a drawing that replaces the picked one by the pick's question", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const banner = document.getElementById("pick");
+        let requestId = 900010;
+        const render = async (language, source) => {
+          window.testRenderResults = [];
+          receive({type: "render", requestId: ++requestId, language, source, title: "Replaced"});
+          await until(() => window.testRenderResults.length > 0, "the replacing drawing");
+          return [document.activeElement.id, document.activeElement.getAttribute("aria-describedby")];
+        };
+        receive({type: "startPick", pickId: 90004, prompt: "Pick", multiple: false});
+        await until(() => !banner.hidden, "the pick");
+        const focused = [await render("echarts", ${JSON.stringify(JSON.stringify(option))}),
+          await render("mermaid", "flowchart LR\\n A --> B")];
+        receive({type: "endPick", pickId: 90004});
+        await until(() => banner.hidden, "the end of the pick");
+        return {focused, left: document.querySelectorAll("[aria-describedby~=pick-prompt]").length};
+      })()`),
+      {
+        focused: [
+          ["chart", "pick-prompt chart-drawing"],
+          ["canvas", "pick-prompt"],
+        ],
+        left: 0,
+      },
+    );
+  });
+
   test("zooms with Ctrl/Cmd and +, - and 0, and fits a new diagram but not a revision", async () => {
     const zoom = () => evaluate(`document.getElementById("zoom-reset").textContent`);
     /** Presses the key, with Cmd on macOS or Ctrl elsewhere, for whether VS Code saw it. */
