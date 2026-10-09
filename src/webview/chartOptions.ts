@@ -27,6 +27,19 @@ function select(choices: readonly (string | readonly [string, string])[]): HTMLS
   return element;
 }
 
+/** Whether the element can take the focus: shown, and enabled if a control. */
+const focusable = (element: Element | null | undefined): element is HTMLElement =>
+  element instanceof HTMLElement && element.checkVisibility() && !element.matches(":disabled");
+
+/** The indices of the children that lead from the container down to the element. */
+function pathTo(container: Element, element: Element): number[] {
+  const path: number[] = [];
+  for (let at = element; at !== container && at.parentElement; at = at.parentElement) {
+    path.unshift(Array.prototype.indexOf.call(at.parentElement.children, at));
+  }
+  return path;
+}
+
 /** Removes a row of a list, moving focus to the row after it, the one before it or `fallback`. */
 function removeRow(row: Element, fallback: HTMLElement): void {
   const next = row.nextElementSibling?.querySelector("select");
@@ -167,11 +180,11 @@ export class ChartOptionsForm {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       // The browser has checked the fields before it submits.
-      if (!this.state) return;
+      if (!this.state || this.applying) return;
       const labels = this.selected(this.labels);
       const values = this.selected(this.values);
       this.error.hidden = true;
-      this.apply.disabled = true;
+      this.setApplying(true);
       this.post({
         type: "applyChartOptions",
         revision: this.state.revision,
@@ -205,7 +218,10 @@ export class ChartOptionsForm {
 
   update(state: ChartOptionsState | undefined, visible: boolean): void {
     const opening = this.container.hidden && visible;
-    const hadFocus = this.container.contains(document.activeElement);
+    const focused = document.activeElement;
+    const hadFocus = focused !== null && this.container.contains(focused);
+    // Where the focus is in the form, which the rows made anew below no longer say.
+    const focusPath = hadFocus ? pathTo(this.container, focused) : [];
     this.state = state;
     this.container.hidden = !visible || state === undefined;
     if (this.container.hidden) {
@@ -236,6 +252,7 @@ export class ChartOptionsForm {
     this.updateAvailability();
     this.fields.disabled = state.unavailable !== undefined;
     this.apply.disabled = state.unavailable !== undefined;
+    this.setApplying(false);
     this.reset.textContent = state.unavailable ? "Reset styling and reload data" : "Reset styling";
     this.status.textContent =
       state.unavailable ??
@@ -244,12 +261,34 @@ export class ChartOptionsForm {
     this.replaceLabel.hidden = !state.edited;
     this.error.hidden = true;
     if (opening) this.type.focus();
+    else if (hadFocus && !this.container.contains(document.activeElement)) {
+      // The rows of columns and filters are made anew, as when the chart that the options applied
+      // comes back, and the fields are disabled while its data is not loaded. Keep the focus on
+      // the same place in the form, or else on the first control that takes it.
+      let same: Element | undefined = this.container;
+      for (const index of focusPath) same = same?.children[index];
+      const fallback = [this.type, ...this.container.querySelectorAll("button")].find(focusable);
+      (focusable(same) ? same : fallback)?.focus();
+    }
   }
 
   showError(message: string): void {
     this.error.textContent = message;
     this.error.hidden = false;
-    this.apply.disabled = false;
+    this.setApplying(false);
+  }
+
+  private get applying(): boolean {
+    return this.apply.getAttribute("aria-disabled") === "true";
+  }
+
+  /**
+   * Shows Apply as disabled until the options it sent are applied or fail to. Not disabled
+   * indeed, which would move the focus from it, when pressed, to the page's body.
+   */
+  private setApplying(applying: boolean): void {
+    if (applying) this.apply.setAttribute("aria-disabled", "true");
+    else this.apply.removeAttribute("aria-disabled");
   }
 
   private close(): void {

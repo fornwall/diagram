@@ -90,7 +90,7 @@ button {
   cursor: pointer;
 }
 
-button:enabled:hover {
+button:enabled:not([aria-disabled="true"]):hover {
   background: var(--vscode-button-hoverBackground);
 }
 
@@ -101,7 +101,7 @@ button:focus-visible,
 }
 
 /* Still hoverable, for a title that explains why. */
-button:disabled {
+button:is(:disabled, [aria-disabled="true"]) {
   opacity: 0.4;
   cursor: default;
 }

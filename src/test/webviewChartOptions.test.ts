@@ -126,6 +126,42 @@ suite("Chart Options in the webview", function () {
     );
   });
 
+  test("chart options keep the focus where it was as the options apply", async () => {
+    const chart: ChartSpec = {
+      type: "bar",
+      data: "name,value,other\na,1,2\nb,2,3",
+      valueColumns: ["value", "other"],
+      filters: [{ column: "name", op: "neq", value: "c" }],
+    };
+    await showChartOptions(chart);
+    const focus = `({
+      id: document.activeElement.id || document.activeElement.getAttribute("aria-label")
+        || document.activeElement.textContent,
+      applying: document.querySelector("#chart-options form button:default").ariaDisabled,
+    })`;
+    // Apply, pressed, shows itself disabled while the options apply, keeping the focus.
+    await nextRender(() =>
+      evaluate(`(() => {
+        const apply = document.querySelector("#chart-options form button:default");
+        apply.focus();
+        apply.click();
+        return ${focus};
+      })()`).then((pending) => assert.deepStrictEqual(pending, { id: "Apply", applying: "true" })),
+    );
+    assert.deepStrictEqual(await evaluate(focus), { id: "Apply", applying: null });
+    // Enter in a row of filters or columns, which the options apply make anew.
+    for (const label of ["Filter value", "Value column 2"]) {
+      await nextRender(() =>
+        evaluate(`(() => {
+          document.querySelector('#chart-options [aria-label="${label}"]').focus();
+          document.querySelector("#chart-options form").requestSubmit();
+        })()`),
+      );
+      assert.deepStrictEqual(await evaluate(focus), { id: label, applying: null });
+    }
+    await closeChartOptions();
+  });
+
   test("chat and chart option fields fit a narrow panel", async () => {
     const chart: ChartSpec = { type: "bar", data: "name,value\na,1\nb,2" };
     await showChartOptions(chart);
@@ -208,7 +244,7 @@ suite("Chart Options in the webview", function () {
       return {
         valueType: row.querySelector('[aria-label="Filter value type"]').value,
         valid: document.querySelector('#chart-options form').checkValidity(),
-        applying: apply.disabled,
+        applying: apply.disabled || apply.ariaDisabled === "true",
       };
     })()`),
       { valueType: "number", valid: false, applying: false },
