@@ -1486,98 +1486,6 @@ suite("data", () => {
       [null, 1],
       ["x", 2],
     ]);
-    // Also in the first column, with rules between each row and the next.
-    for (const [top, rule, bottom, line] of [
-      [
-        "╭──────────┬───────┬──────╮",
-        "├──────────┼───────┼──────┤",
-        "╰──────────┴───────┴──────╯",
-        "│",
-      ],
-      [
-        "+----------+-------+------+",
-        "+----------+-------+------+",
-        "+----------+-------+------+",
-        "|",
-      ],
-    ] as const) {
-      const row = (...cells: string[]) => `${line} ${cells.join(` ${line} `)} ${line}`;
-      const table = [
-        top,
-        row("note    ", "lines", "lang"),
-        rule.replaceAll("─", "═").replace("├", "╞").replace("┤", "╡").replaceAll("┼", "╪"),
-        row("line one", " 1200", "ts  "),
-        row("line two", "     ", "    "),
-        rule,
-        row("short   ", "  300", "css "),
-        rule,
-        row("x       ", "     ", "js  "),
-        bottom,
-      ].join("\n");
-      assert.deepStrictEqual(
-        parse(table).rows,
-        [
-          ["line one\nline two", 1200, "ts"],
-          ["short", 300, "css"],
-          ["x", null, "js"],
-        ],
-        table,
-      );
-    }
-    // Rows above a rule over the totals are rows of their own, though some have empty cells, also
-    // in the first column, as in a grouped report.
-    assert.deepStrictEqual(
-      parse(
-        [
-          "+-------+------+------+",
-          "| name  | q1   | q2   |",
-          "+-------+------+------+",
-          "| a     | 1    |      |",
-          "| b     |      | 2    |",
-          "| c     | 3    |      |",
-          "+-------+------+------+",
-          "| total | 4    | 2    |",
-          "+-------+------+------+",
-        ].join("\n"),
-      ).rows,
-      [
-        ["a", 1, null],
-        ["b", null, 2],
-        ["c", 3, null],
-        ["total", 4, 2],
-      ],
-    );
-    assert.deepStrictEqual(
-      parse(
-        "+---+---+\n| g | n |\n+---+---+\n| a | 1 |\n|   | 2 |\n+---+---+\n| t | 3 |\n+---+---+",
-      ).rows,
-      [
-        ["a", 1],
-        [null, 2],
-        ["t", 3],
-      ],
-    );
-    assert.deepStrictEqual(
-      parse(
-        [
-          "+-------+---+",
-          "| name  | n |",
-          "+-------+---+",
-          "| a     | 1 |",
-          "| b     |   |",
-          "| c     | 2 |",
-          "+-------+---+",
-          "| total | 3 |",
-          "+-------+---+",
-        ].join("\n"),
-      ).rows,
-      [
-        ["a", 1],
-        ["b", null],
-        ["c", 2],
-        ["total", 3],
-      ],
-    );
     // A table with a line at the left, under a rule without junctions, has no empty first cell.
     for (const rule of ["----------------", "================"]) {
       for (const right of [" |", ""]) {
@@ -1599,21 +1507,179 @@ suite("data", () => {
         [2, "b"],
       ],
     });
-    // Without rules between the rows, a line with empty cells is a row of its own.
-    const rows = [
-      ["ts", "line one"],
-      [null, "line two"],
+  });
+
+  test("tells rows that sqlite3 draws over several lines from groups of rows between rules", () => {
+    /** A table as sqlite3 -table or -box draws it, with a rule for each "-" among the `rows`. */
+    const draw = (box: boolean, header: string[], rows: (string[] | "-")[]): string => {
+      const lines = [header, ...rows].filter((row) => row !== "-");
+      const widths = header.map((_, i) => Math.max(...lines.map((row) => row[i]?.length ?? 0)));
+      const [v, h, left, cross, right] = box
+        ? ["│", "─", "├", "┼", "┤"]
+        : ["|", "-", "+", "+", "+"];
+      const rule = (l = left, c = cross, r = right, line = h) =>
+        `${l}${widths.map((w) => line.repeat(w + 2)).join(c)}${r}`;
+      const row = (cells: string[]) =>
+        `${v} ${widths.map((w, i) => (cells[i] ?? "").padEnd(w)).join(` ${v} `)} ${v}`;
+      return [
+        box ? rule("╭", "┬", "╮") : rule(),
+        row(header),
+        box ? rule("╞", "╪", "╡", "═") : rule(),
+        ...rows.map((cells) => (cells === "-" ? rule() : row(cells))),
+        box ? rule("╰", "┴", "╯") : rule(),
+      ].join("\n");
+    };
+    // Each shape: the lines between the header and the bottom rule, and the rows read from them.
+    const shapes: [string, (string[] | "-")[], (string | number | null)[][]][] = [
+      [
+        "sqlite3, a newline in a later column",
+        [
+          ["ts", "1200", "line one"],
+          ["", "", "line two"],
+          "-",
+          ["css", "300", "short"],
+          "-",
+          ["js", "", "x"],
+        ],
+        [
+          ["ts", 1200, "line one\nline two"],
+          ["css", 300, "short"],
+          ["js", null, "x"],
+        ],
+      ],
+      [
+        "sqlite3, newlines in every row",
+        [["a", "1", "x"], ["", "", "y"], "-", ["b", "2", "z"], ["", "", "w"]],
+        [
+          ["a", 1, "x\ny"],
+          ["b", 2, "z\nw"],
+        ],
+      ],
+      [
+        "sqlite3, a newline in the first column, between enough rows of one line",
+        [["one", "1"], ["two", ""], "-", ["b", "2"], "-", ["c", "3"], "-", ["d", "4"]],
+        [
+          ["one\ntwo", 1],
+          ["b", 2],
+          ["c", 3],
+          ["d", 4],
+        ],
+      ],
+      [
+        "sqlite3, a newline in the first column of few rows, which is as a group of rows",
+        [["one", "1"], ["two", ""], "-", ["b", "2"], "-", ["c", "3"]],
+        [
+          ["one", 1],
+          ["two", null],
+          ["b", 2],
+          ["c", 3],
+        ],
+      ],
+      [
+        "sqlite3, two rows, the first over two lines, which is as rows above a total",
+        [["ts", "1200", "line one"], ["", "", "line two"], "-", ["css", "300", "short"]],
+        [
+          ["ts", 1200, "line one"],
+          [null, null, "line two"],
+          ["css", 300, "short"],
+        ],
+      ],
+      [
+        "groups with missing values",
+        [["north", "10"], ["south", ""], "-", ["east", "30"], ["west", ""], "-", ["total", "40"]],
+        [
+          ["north", 10],
+          ["south", null],
+          ["east", 30],
+          ["west", null],
+          ["total", 40],
+        ],
+      ],
+      [
+        "groups with missing values in several columns",
+        [
+          ["north", "1", "3"],
+          ["south", "", "4"],
+          "-",
+          ["east", "2", "5"],
+          ["west", "", "6"],
+          "-",
+          ["total", "3", "18"],
+        ],
+        [
+          ["north", 1, 3],
+          ["south", null, 4],
+          ["east", 2, 5],
+          ["west", null, 6],
+          ["total", 3, 18],
+        ],
+      ],
+      [
+        "groups named only in their first row",
+        [
+          ["a", "oslo", "10"],
+          ["", "bergen", "20"],
+          "-",
+          ["b", "rome", "5"],
+          ["", "milan", "6"],
+          "-",
+          ["all", "", "41"],
+        ],
+        [
+          ["a", "oslo", 10],
+          [null, "bergen", 20],
+          ["b", "rome", 5],
+          [null, "milan", 6],
+          ["all", null, 41],
+        ],
+      ],
+      [
+        "sparse rows above a total",
+        [["a", "1", ""], ["b", "", "2"], ["c", "3", ""], "-", ["total", "4", "2"]],
+        [
+          ["a", 1, null],
+          ["b", null, 2],
+          ["c", 3, null],
+          ["total", 4, 2],
+        ],
+      ],
+      [
+        "a group named only in its first row above a total",
+        [["a", "1"], ["", "2"], "-", ["t", "3"]],
+        [
+          ["a", 1],
+          [null, 2],
+          ["t", 3],
+        ],
+      ],
+      [
+        "sparse rows with a rule between each",
+        [["a", "1"], "-", ["b", ""], "-", ["c", "3"]],
+        [
+          ["a", 1],
+          ["b", null],
+          ["c", 3],
+        ],
+      ],
+      [
+        "no rules between rows",
+        [
+          ["ts", "line one"],
+          ["", "line two"],
+        ],
+        [
+          ["ts", "line one"],
+          [null, "line two"],
+        ],
+      ],
     ];
-    assert.deepStrictEqual(
-      parse("| a  | b        |\n|----|----------|\n| ts | line one |\n|    | line two |").rows,
-      rows,
-    );
-    assert.deepStrictEqual(
-      parse(
-        "+----+----------+\n| a  | b        |\n+----+----------+\n| ts | line one |\n|    | line two |\n+----+----------+",
-      ).rows,
-      rows,
-    );
+    for (const [shape, rows, expected] of shapes) {
+      const header = ["name", "a", "b"].slice(0, rows.find((row) => row !== "-")?.length);
+      for (const box of [false, true]) {
+        const table = draw(box, header, rows);
+        assert.deepStrictEqual(parse(table).rows, expected, `${shape}:\n${table}`);
+      }
+    }
   });
 
   test("reads the first Markdown table among text and other tables, and says so", () => {

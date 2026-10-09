@@ -513,11 +513,15 @@ function continuationMarks(
 /**
  * Joins the lines of rows over several lines into the rows: those below a line that psql marks
  * as {@link continuationMarks} tells, and, in a table with rules between rows, as sqlite3 -box
- * and -table draw one with text over several lines, those between two rules if each after the
- * first has some cells empty and others not, as the cells of other columns have fewer lines. With
- * only one rule in the body, as above a total, below which the rows of a sparse table or a grouped
- * report have empty cells, the first cell must be empty too, and lines above a rule that sets off
- * only the last line are rows of their own.
+ * and -table draw one with text over several lines, the lines between two rules that go on the
+ * first: each has some cells empty, as the cells of other columns have fewer lines, and text but
+ * no numbers in the others, which have no newlines.
+ *
+ * Rules may also be between groups of rows, as in a report, where a row may lack values. Unless
+ * rules are surely between each row and the next, as rows of one line between them outnumber
+ * those of several, a line goes on only with an empty first cell, so that a row named in the
+ * first column is a row of its own: in sqlite3 tables of only a few rows, a first cell over several
+ * lines is not joined. Lines above a rule that sets off only the last line, as a total, are rows.
  */
 function joinLines(
   records: string[][],
@@ -529,17 +533,18 @@ function joinLines(
   // The first line of the body, after the header, has the rule below the header above it.
   const inner = ruled.flatMap((rule, i) => (rule && i > 1 ? [i] : []));
   if (inner.length > 1 || (inner.length === 1 && inner[0] !== records.length - 1)) {
-    // Rules between more rows than two are surely between each row and the next.
+    // The lines between each two rules, from the first line of the body.
+    const blocks = [1, ...inner].map((start, i) => ({ start, end: inner[i] ?? records.length }));
+    const single = blocks.filter(({ start, end }) => end - start === 1).length;
+    const perRow = single >= 3 && single > blocks.length - single;
     const goesOn = (record: string[]) =>
-      (inner.length > 1 ? record.some(blank) : blank(record[0])) && !record.every(blank);
-    for (let start = 1; start < records.length; ) {
-      let end = start + 1;
-      while (end < records.length && !ruled[end]) end++;
-      const rest = records.slice(start + 1, end);
-      if (rest.every(goesOn)) {
+      (perRow ? record.some(blank) : blank(record[0])) &&
+      !record.every(blank) &&
+      record.every((cell) => blank(cell) || parseNumber(cell.trim()) === undefined);
+    for (const { start, end } of blocks) {
+      if (records.slice(start + 1, end).every(goesOn)) {
         continues.fill(true, start + 1, end);
       }
-      start = end;
     }
   }
   const rows: string[][] = [];
