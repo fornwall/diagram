@@ -51,6 +51,17 @@ suite("chartColumns", () => {
     );
   });
 
+  test("shortens long text when describing a table", () => {
+    const long = "x".repeat(10_000);
+    const table = parseTable(
+      `title,body,n\n${Array.from({ length: 6 }, (_, i) => `t${i},${long},${i}`).join("\n")}\nt,${long},${long}`,
+    );
+    const description = describeTable(table);
+    assert.ok(description.length < 2_000, `${description.length} characters`);
+    assert.match(description, /\["t0","x{100}…",0\]/);
+    assert.match(description, /"n" \(numbers, 1 text cell: "x{40}…"\)/);
+  });
+
   test("points out the text cells of numeric columns when describing a table", () => {
     assert.match(
       describeTable(parseTable("size,file\n1,a\n1;5X,b\n3,c")),

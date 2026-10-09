@@ -19,9 +19,12 @@ export function joinWords(words: readonly string[], conjunction: "and" | "or"): 
  * character in two, which JSON would show as an escape such as \ud83d.
  */
 export function quote(text: string, max = 40): string {
-  return JSON.stringify(
-    text.length > max ? `${text.slice(0, max).replace(/[\uD800-\uDBFF]$/, "")}…` : text,
-  );
+  return JSON.stringify(shorten(text, max));
+}
+
+/** Text shortened to `max` UTF-16 code units and an ellipsis, without splitting a character. */
+export function shorten(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).replace(/[\uD800-\uDBFF]$/, "")}…` : text;
 }
 
 /** The line and column of `offset` in `text`, counted from 1, as an editor counts them. */

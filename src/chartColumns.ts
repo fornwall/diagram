@@ -4,7 +4,7 @@ import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject, UPDATE_CHART_TOOL } from "./protocol";
-import { plural, quoteAll } from "./text";
+import { plural, quote, quoteAll, shorten } from "./text";
 
 export function columnName(table: DataTable, index: number | undefined): string {
   return index === undefined ? "" : (table.columns[index]?.name ?? "");
@@ -412,6 +412,8 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
 
 const PREVIEW_ROWS = 5;
 const TEXT_EXAMPLES = 3;
+/** The most UTF-16 code units of a text cell shown in the first rows. */
+const PREVIEW_TEXT = 100;
 
 function describeColumn(table: DataTable, column: number): string {
   const { numeric, unit } = table.columns[column] ?? {};
@@ -428,7 +430,7 @@ function describeColumn(table: DataTable, column: number): string {
   if (texts.length === 0) {
     return kind;
   }
-  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => JSON.stringify(text));
+  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => quote(String(text)));
   if (texts.length > TEXT_EXAMPLES) {
     examples.push("…");
   }
@@ -466,6 +468,13 @@ export function describeTable(table: DataTable): string {
     `${plural(count, "row")}; columns: ${describeColumns(table)}`,
     ...(table.note === undefined ? [] : [table.note]),
     count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:",
-    ...table.rows.slice(0, PREVIEW_ROWS).map((row) => JSON.stringify(row)),
+    // Long text, as the bodies of issues, would crowd out the rest of a model's context.
+    ...table.rows
+      .slice(0, PREVIEW_ROWS)
+      .map((row) =>
+        JSON.stringify(
+          row.map((cell) => (typeof cell === "string" ? shorten(cell, PREVIEW_TEXT) : cell)),
+        ),
+      ),
   ].join("\n");
 }
