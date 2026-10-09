@@ -35,7 +35,9 @@ function fontStack(colors: ThemeColors): string {
 
 /**
  * Offline chart page with the renderer and theme inlined. CSP blocks resource loads and form
- * submissions, but JavaScript options still execute and can navigate the page.
+ * submissions, but JavaScript options still execute and can navigate the page. A link in a
+ * tooltip's HTML is left to the browser, as a link on any page is: unlike in the panel, there is no
+ * extension behind the page whose checks it could bypass, and the policy blocks javascript: URLs.
  */
 export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri): Promise<string> {
   const [echarts, script, style] = await Promise.all(
@@ -56,7 +58,9 @@ export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri
     `script-src 'nonce-${nonce}' 'unsafe-eval'`,
     "style-src 'unsafe-inline'",
     "img-src data:",
-    // Spelled out because form-action does not fall back to default-src.
+    // Spelled out because neither falls back to default-src. The HTML of a chart's tooltip could
+    // otherwise add a <base>, which relative URLs such as the url(#id) of SVGs resolve to.
+    "base-uri 'none'",
     "form-action 'none'",
   ].join("; ");
 

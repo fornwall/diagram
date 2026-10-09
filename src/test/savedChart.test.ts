@@ -47,6 +47,9 @@ suite("savedChart", () => {
     assert.ok(!body.includes("<!--"));
     assert.ok(!/\s(?:src|href)=/.test(html.slice(0, html.indexOf("<script"))));
     assert.ok(html.includes("default-src 'none'"));
+    // Neither falls back to default-src.
+    assert.ok(html.includes("base-uri 'none'"));
+    assert.ok(html.includes("form-action 'none'"));
     assert.ok(html.length > 500_000, `only ${html.length} bytes, without the chart script?`);
   });
 
