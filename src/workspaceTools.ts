@@ -58,18 +58,74 @@ function integer(value: unknown, fallback: number, name: string, max?: number): 
   return value;
 }
 
-function globInput(value: unknown): string {
-  if (value === undefined) return "**/*";
+/** Where to look for files: a glob to match in each of some workspace folders. */
+interface FileScope {
+  /** The glob as given, without a leading "./", for messages. */
+  given: string;
+  glob: string;
+  roots: readonly vscode.WorkspaceFolder[];
+}
+
+/**
+ * Where a glob looks for files. A relative glob applies to every workspace folder. An absolute
+ * one, as files outside the first folder are listed, applies to the folder whose path, taken
+ * literally, it starts with, the innermost where folders nest.
+ */
+function globInput(value: unknown, roots: readonly vscode.WorkspaceFolder[]): FileScope {
+  if (value === undefined) return { given: "**/*", glob: "**/*", roots };
   if (typeof value !== "string" || !value.trim() || value.length > 1000 || value.includes("\0")) {
     throw new Error(
       'Give "glob" as a nonempty workspace-relative glob of at most 1,000 characters.',
     );
   }
-  if (path.isAbsolute(value) || value.split(/[\\/]/).includes("..")) {
-    throw new Error('"glob" must be relative to workspace folders and cannot contain "..".');
+  const outside = new Error(
+    '"glob" must be relative to workspace folders, or start with the path of one, and cannot contain "..".',
+  );
+  if (value.split(/[\\/]/).includes("..")) throw outside;
+  if (!path.isAbsolute(value)) {
+    // A glob that starts with "./", as a shell path would, matches nothing.
+    const glob = value.replace(/^(?:\.\/)+/, "") || "**/*";
+    return { given: glob, glob, roots };
   }
-  // A glob that starts with "./", as a shell path would, matches nothing.
-  return value.replace(/^(?:\.\/)+/, "") || "**/*";
+  const typed = forwardSlashes(value);
+  let scope: { root: vscode.WorkspaceFolder; start: string } | undefined;
+  for (const root of roots) {
+    const start = absoluteRoot(root.uri, roots);
+    if (
+      start !== undefined &&
+      samePath(typed.slice(0, start.length), start) &&
+      (typed.length === start.length || typed[start.length] === "/") &&
+      start.length >= (scope?.start.length ?? 0)
+    ) {
+      scope = { root, start };
+    }
+  }
+  if (!scope) throw outside;
+  // The folder itself, which is no file, matches nothing, as a relative folder path does.
+  const glob = typed.slice(scope.start.length + 1);
+  return { given: value, glob, roots: glob ? [scope.root] : [] };
+}
+
+/** A path with "/" between names, as globs have, also on Windows. */
+function forwardSlashes(file: string): string {
+  return process.platform === "win32" ? file.replaceAll("\\", "/") : file;
+}
+
+/** Whether two paths are the same, ignoring case on Windows, as its file systems do. */
+function samePath(one: string, other: string): boolean {
+  return process.platform === "win32" ? one.toLowerCase() === other.toLowerCase() : one === other;
+}
+
+/**
+ * The absolute path of a workspace folder as files in it are listed, with "/" between names and
+ * without a trailing "/", if one names it.
+ */
+function absoluteRoot(
+  root: vscode.Uri,
+  roots: readonly vscode.WorkspaceFolder[],
+): string | undefined {
+  const absolute = root.scheme === "file" ? root.fsPath : absolutePath(root, roots);
+  return absolute === undefined ? undefined : forwardSlashes(absolute).replace(/\/$/, "");
 }
 
 const NO_FOLDER = "No workspace folder is open; ask the user to open one.";
@@ -114,20 +170,27 @@ export function resolveWorkspaceFile(
 }
 
 /**
- * The glob that lists a folder's files with diagram_findFiles, if it is in the workspace. VS Code
- * finds no folder for it in a virtual workspace folder whose path has "." or "..".
+ * The glob that lists a folder's files with diagram_findFiles, if it is in the workspace: relative
+ * inside the first workspace folder, else absolute, as the files are listed. VS Code finds no
+ * folder for it in a virtual workspace folder whose path has "." or "..".
  */
 export function filesGlob(
   folder: vscode.Uri,
   roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
 ): string | undefined {
+  const first = roots[0]?.uri;
   const root =
-    vscode.workspace.getWorkspaceFolder(folder)?.uri ??
-    roots.find((root) => contains(root.uri, folder))?.uri;
+    first && contains(first, folder)
+      ? first
+      : (vscode.workspace.getWorkspaceFolder(folder)?.uri ??
+        roots.find((root) => contains(root.uri, folder))?.uri);
   if (root === undefined) return undefined;
   // Names such as Next.js's "[id]" are matched literally, each glob character in brackets.
   const relative = folder.path.slice(rootPath(root).length + 1).replace(/[[\]{}*?]/g, "[$&]");
-  return relative ? `${relative}/**` : "**";
+  const glob = relative ? `${relative}/**` : "**";
+  if (root === first) return glob;
+  const start = absoluteRoot(root, roots);
+  return start === undefined ? undefined : `${start}/${glob}`;
 }
 
 /** The path of a workspace folder, as that of a file in it starts, without a trailing "/". */
@@ -513,10 +576,10 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
 
   protected async run(input: Record<string, unknown>, token: vscode.CancellationToken) {
     const max = integer(input.maxResults, 100, "maxResults", 200);
-    const glob = globInput(input.glob);
     const roots = folders();
+    const { given, glob, roots: searched } = globInput(input.glob, roots);
     const check = boundary(roots, token);
-    const found = await candidates(roots, glob, max, token);
+    const found = await candidates(searched, glob, max, token);
     const lines: string[] = [];
     let outsideFiles = 0;
     let outputChars = 0;
@@ -542,10 +605,10 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
       const shown = lines.slice(0, listed);
       if (listed === 0 && !truncated && outsideFiles === 0) {
         shown.push(
-          `No files match ${JSON.stringify(glob)}.` +
-            (/[*?[{]/.test(glob)
+          `No files match ${JSON.stringify(given)}.` +
+            (/[*?[{]/.test(given)
               ? ""
-              : ` To list the files in a folder, use the glob "${glob.replace(/\/$/, "")}/**".`),
+              : ` To list the files in a folder, use the glob "${given.replace(/\/$/, "")}/**".`),
         );
       }
       if (outsideFiles > 0) {
@@ -583,11 +646,11 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
       throw new Error('"caseSensitive" must be true or false.');
     }
     const max = integer(input.maxResults, 50, "maxResults", 100);
-    const glob = globInput(input.glob);
     const roots = folders();
+    const { glob, roots: searched } = globInput(input.glob, roots);
     const check = boundary(roots, token);
     const { files, truncated: tooManyFiles } = await candidates(
-      roots,
+      searched,
       glob,
       MAX_SCANNED_FILES,
       token,

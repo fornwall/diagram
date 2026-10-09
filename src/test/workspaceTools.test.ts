@@ -240,6 +240,49 @@ suite("workspaceTools", function () {
     );
   });
 
+  test("takes an absolute glob in the one workspace folder that it starts with", async () => {
+    const [first, second] = [await make("first"), await make("second")];
+    await make("second/sub");
+    for (const name of ["first/a.ts", "second/a.ts", "second/sub/b.ts"]) {
+      await writeFile(name, "Needle");
+    }
+    replace(
+      vscode.workspace,
+      "workspaceFolders",
+      [first, second].map((file, index) => ({
+        uri: vscode.Uri.file(file),
+        name: path.basename(file),
+        index,
+      })),
+    );
+    const secondFiles = [path.join(second, "a.ts"), path.join(second, "sub", "b.ts")];
+    assert.strictEqual(
+      await invoke(finder, { glob: "**/*.ts" }),
+      ["a.ts", ...secondFiles].join("\n"),
+    );
+    // As the files outside the first folder are listed.
+    assert.strictEqual(await invoke(finder, { glob: `${second}/**/*.ts` }), secondFiles.join("\n"));
+    assert.strictEqual(await invoke(finder, { glob: `${first}/*.ts` }), "a.ts");
+    assert.match(
+      await invoke(searcher, { query: "Needle", glob: `${second}/sub/*` }),
+      /^1 match in 1 file \(searched 1 file\)\.\n.*b\.ts\n {2}1: Needle$/,
+    );
+    assert.strictEqual(
+      await invoke(finder, { glob: second }),
+      `No files match ${JSON.stringify(second)}. To list the files in a folder, use the glob "${second}/**".`,
+    );
+    const refused =
+      'Error: "glob" must be relative to workspace folders, or start with the path of one, and cannot contain "..".';
+    for (const glob of [`${outside}/**`, `${second}2/**`, `${second}/../first/**`]) {
+      assert.strictEqual(await invoke(finder, { glob }), refused, glob);
+    }
+    assert.ok(
+      (await invoke(reader, { file: path.join(second, "sub") })).endsWith(
+        ` is a folder, not a file. List its files with diagram_findFiles and the glob "${second}/sub/**".`,
+      ),
+    );
+  });
+
   test("searches literal text with accurate lines and case control", async () => {
     assert.strictEqual(
       await invoke(searcher, { query: "needle", glob: `${relative}/code.ts` }),

@@ -493,7 +493,7 @@
           "properties": {
             "glob": {
               "type": "string",
-              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\". Defaults to \"**/*\".",
+              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\", or starting with the absolute path of one folder to match only in it, as files outside the first folder are listed. Defaults to \"**/*\".",
               "maxLength": 1000
             },
             "maxResults": {
@@ -528,7 +528,7 @@
             },
             "glob": {
               "type": "string",
-              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\". Defaults to \"**/*\".",
+              "description": "Glob relative to each workspace folder, e.g. \"**/*.ts\" or \"src/**\", or starting with the absolute path of one folder to match only in it, as files outside the first folder are listed. Defaults to \"**/*\".",
               "maxLength": 1000
             },
             "caseSensitive": {
