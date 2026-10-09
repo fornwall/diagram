@@ -12,7 +12,20 @@ interface Edit {
   path: Path;
   value?: unknown;
   remove?: boolean;
+  /** Whether the value is a title added after the generated titles of facets. */
+  append?: boolean;
 }
+
+/** What an edit was made to, which tells whether it applies to another chart. */
+interface EditTarget {
+  /** Its component in the chart it was made to: an array of panels, an object, or none. */
+  shape: "array" | "object" | "none";
+  /** The series or panel it was made to, by its id or name and its type, or by their number. */
+  item?: { key?: "id" | "name"; value?: unknown; type?: string; count: number } | undefined;
+}
+
+/** An edit that did not apply to a chart it was carried to, kept for one it applies to again. */
+type KeptEdit = Edit & EditTarget;
 
 /** Serializable, data-free baseline and manual styling changes, kept with the diagram. */
 export interface ChartPresentation {
@@ -25,6 +38,11 @@ export interface ChartPresentation {
    * type only if that is drawn alike. Styling saved without them follows any series of its name.
    */
   seriesTypes?: string[] | undefined;
+  /**
+   * Edits that did not apply to the chart, as the color of a bar series to a pie, which come back
+   * when a chart has what they were made to again.
+   */
+  kept?: KeptEdit[] | undefined;
 }
 
 /** Refresh, Chart Options, diagram_updateChart and diagram_getState all show this message. */
@@ -54,21 +72,37 @@ export function isChartPresentation(value: unknown): value is ChartPresentation 
     isPlainObject(value.baseline) &&
     typeof value.dataHash === "string" &&
     Array.isArray(value.edits) &&
-    value.edits.every(
-      (edit) =>
-        isPlainObject(edit) &&
-        Array.isArray(edit.path) &&
-        edit.path.length > 0 &&
-        edit.path.every(
-          (key) =>
-            (typeof key === "number" && Number.isSafeInteger(key) && key >= 0) ||
-            (typeof key === "string" && !UNSAFE_KEYS.has(key)),
-        ),
-    ) &&
+    value.edits.every(isEdit) &&
     (value.blocked === undefined || typeof value.blocked === "string") &&
     (value.seriesTypes === undefined ||
       (Array.isArray(value.seriesTypes) &&
-        value.seriesTypes.every((type) => typeof type === "string")))
+        value.seriesTypes.every((type) => typeof type === "string"))) &&
+    (value.kept === undefined ||
+      (Array.isArray(value.kept) &&
+        value.kept.every(
+          (edit) =>
+            isEdit(edit) &&
+            ["array", "object", "none"].includes(String(edit.shape)) &&
+            (edit.item === undefined ||
+              (isPlainObject(edit.item) &&
+                typeof edit.item.count === "number" &&
+                [undefined, "id", "name"].includes(edit.item.key as string | undefined) &&
+                (edit.item.type === undefined || typeof edit.item.type === "string"))),
+        )))
+  );
+}
+
+/** Whether a saved edit names properties by keys that capturing one allows, and array items. */
+function isEdit(edit: unknown): edit is Edit & ObjectOption {
+  return (
+    isPlainObject(edit) &&
+    Array.isArray(edit.path) &&
+    edit.path.length > 0 &&
+    edit.path.every(
+      (key) =>
+        (typeof key === "number" && Number.isSafeInteger(key) && key >= 0) ||
+        (typeof key === "string" && !UNSAFE_KEYS.has(key)),
+    )
   );
 }
 
@@ -177,7 +211,7 @@ function differences(before: unknown, after: unknown, path: Path = []): Edit[] {
     // Titles added after the generated ones of facets, which a refresh may change, add to them.
     return [
       ...before.flatMap((item, index) => differences(item, after[index], [...path, index])),
-      ...after.slice(before.length).map((value) => ({ path, value })),
+      ...after.slice(before.length).map((value) => ({ path, value, append: true })),
     ];
   }
   return [{ path, value: after }];
@@ -239,6 +273,34 @@ function componentItems(option: ObjectOption, component: string): ObjectOption[]
 
 const SKIP = Symbol("skip");
 
+/** The components of facets, whose panels are told apart by id, and series by name too. */
+const PANEL_COMPONENTS = ["series", "xAxis", "yAxis", "grid", "title"];
+
+/** What an edit of the baseline was made to. */
+function targetOf({ path }: Edit, presentation: ChartPresentation): EditTarget {
+  const component = String(path[0]);
+  const { baseline } = presentation;
+  const shape = !Object.hasOwn(baseline, component)
+    ? "none"
+    : Array.isArray(baseline[component])
+      ? "array"
+      : "object";
+  const index = path[1];
+  if (!PANEL_COMPONENTS.includes(component) || typeof index !== "number") return { shape };
+  const items = componentItems(baseline, component);
+  const old = items[index];
+  const key = old?.id !== undefined ? "id" : component === "series" ? "name" : undefined;
+  const type = component === "series" ? presentation.seriesTypes?.[index] : undefined;
+  return {
+    shape,
+    item: {
+      count: items.length,
+      ...(key !== undefined && old?.[key] !== undefined ? { key, value: old[key] } : {}),
+      ...(type === undefined ? {} : { type }),
+    },
+  };
+}
+
 /**
  * A component as a user's object of it, which the baseline did not generate, joins what the chart
  * now generates: its properties add to a generated object, a title adds to the titles of facets,
@@ -247,17 +309,18 @@ const SKIP = Symbol("skip");
  */
 function addedComponent(
   option: ObjectOption,
-  baseline: ObjectOption,
-  component: string,
-  value: ObjectOption,
+  { path, value, append }: Edit,
+  { shape }: EditTarget,
 ): unknown {
+  const component = String(path[0]);
+  if (path.length !== 1 || !isPlainObject(value)) return undefined;
   const generated = option[component];
-  if (component === "title") {
+  if (component === "title" && (append || shape === "none")) {
     // A title added after the titles of facets stands alone without them.
     if (generated === undefined) return structuredClone(value);
     if (Array.isArray(generated)) return [...generated, structuredClone(value)];
   }
-  if (Object.hasOwn(baseline, component)) return undefined;
+  if (shape !== "none") return undefined;
   if (isPlainObject(generated)) return merged(generated, value);
   return Array.isArray(generated) ? SKIP : undefined;
 }
@@ -274,58 +337,70 @@ function merged(target: ObjectOption, value: ObjectOption): ObjectOption {
   return result;
 }
 
-function applyEdits(option: ObjectOption, presentation: ChartPresentation): ObjectOption {
+/** Where in an option an edit applies, as its panel may have moved, or SKIP if it does not. */
+function placed(option: ObjectOption, path: Path, { shape, item }: EditTarget): Path | typeof SKIP {
+  const component = String(path[0]);
+  // Type/facet changes can remove a component or switch between a single object and panels.
+  // Recreating an old axis can invalidate the chart; object properties on arrays are lost.
+  if (
+    ["series", "xAxis", "yAxis", "grid", "title", "radar", "visualMap"].includes(component) &&
+    shape !== "none" &&
+    (!Object.hasOwn(option, component) || (shape === "array") !== Array.isArray(option[component]))
+  ) {
+    return SKIP;
+  }
+  if (item === undefined || typeof path[1] !== "number") return path;
+  const items = componentItems(option, component);
+  let index = path[1];
+  const { key, value } = item;
+  if (key !== undefined) {
+    const matches = items.flatMap((each, i) => (isDeepStrictEqual(each[key], value) ? [i] : []));
+    // A removed/renamed column must not transfer its styling to another series.
+    if (matches.length !== 1) return SKIP;
+    index = matches[0] as number;
+  } else if (item.count !== items.length) {
+    return SKIP;
+  }
+  // A bar's color would color every slice of a pie alike.
+  if (item.type !== undefined && !drawnAlike(item.type, items[index]?.type)) return SKIP;
+  return [component, index, ...path.slice(2)];
+}
+
+/**
+ * Applies the edits that were kept from earlier charts, and then the edits of the baseline, to a
+ * generated option. Returns the edits that apply to neither, with what they were made to.
+ */
+function applyEdits(
+  option: ObjectOption,
+  presentation: ChartPresentation,
+): { option: ObjectOption; kept: KeptEdit[] } {
   // Copy only edited branches. The bulk of an option is data, which styling never changes.
   const result = { ...option };
-  for (const edit of presentation.edits) {
-    const path = [...edit.path];
-    const component = path[0];
-    if (typeof component === "string" && path.length === 1 && isPlainObject(edit.value)) {
-      const added = addedComponent(result, presentation.baseline, component, edit.value);
-      if (added !== undefined) {
-        if (added !== SKIP) result[component] = added;
-        continue;
-      }
-    }
-    // Type/facet changes can remove a component or switch between a single object and panels.
-    // Recreating an old axis can invalidate the chart; object properties on arrays are lost.
-    if (
-      typeof component === "string" &&
-      ["series", "xAxis", "yAxis", "grid", "title", "radar", "visualMap"].includes(component) &&
-      Object.hasOwn(presentation.baseline, component) &&
-      (!Object.hasOwn(option, component) ||
-        Array.isArray(presentation.baseline[component]) !== Array.isArray(option[component]))
-    ) {
+  const kept: KeptEdit[] = [];
+  const edits: [Edit, EditTarget][] = [
+    ...(presentation.kept ?? []).map((edit): [Edit, EditTarget] => [edit, edit]),
+    ...presentation.edits.map((edit): [Edit, EditTarget] => [edit, targetOf(edit, presentation)]),
+  ];
+  for (const [edit, target] of edits) {
+    const keep = () => kept.push({ ...edit, ...target });
+    const added = addedComponent(result, edit, target);
+    if (added === SKIP) {
+      keep();
       continue;
     }
-    if (
-      typeof component === "string" &&
-      ["series", "xAxis", "yAxis", "grid", "title"].includes(component) &&
-      typeof path[1] === "number"
-    ) {
-      const oldItems = componentItems(presentation.baseline, component);
-      const newItems = componentItems(option, component);
-      const index = path[1];
-      const old = oldItems[index];
-      const key = old?.id !== undefined ? "id" : component === "series" ? "name" : undefined;
-      if (key !== undefined && old?.[key] !== undefined) {
-        const matches = newItems.flatMap((item, index) =>
-          isDeepStrictEqual(item[key], old[key]) ? [index] : [],
-        );
-        // A removed/renamed column must not transfer its styling to another series.
-        if (matches.length !== 1) continue;
-        path[1] = matches[0] as number;
-      } else if (oldItems.length !== newItems.length) {
-        continue;
-      }
-      // A bar's color would color every slice of a pie alike.
-      const type = component === "series" ? presentation.seriesTypes?.[index] : undefined;
-      if (type !== undefined && !drawnAlike(type, newItems[path[1]]?.type)) continue;
+    if (added !== undefined) {
+      result[String(edit.path[0])] = added;
+      continue;
     }
-    let target: ObjectOption | unknown[] = result;
+    const path = placed(option, edit.path, target);
+    if (path === SKIP) {
+      keep();
+      continue;
+    }
+    let at: ObjectOption | unknown[] = result;
     for (let i = 0; i < path.length - 1; i++) {
       const key = path[i] as string;
-      const record = target as ObjectOption;
+      const record = at as ObjectOption;
       const child = record[key];
       record[key] = Array.isArray(child)
         ? [...child]
@@ -334,13 +409,13 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
           : typeof path[i + 1] === "number"
             ? []
             : {};
-      target = record[key] as ObjectOption;
+      at = record[key] as ObjectOption;
     }
     const key = path.at(-1) as string;
-    if (edit.remove) delete (target as ObjectOption)[key];
-    else (target as ObjectOption)[key] = structuredClone(edit.value);
+    if (edit.remove) delete (at as ObjectOption)[key];
+    else (at as ObjectOption)[key] = structuredClone(edit.value);
   }
-  return result;
+  return { option: result, kept };
 }
 
 /** Build fresh data through ChartSpec.options, then apply only the user's presentation changes. */
@@ -348,11 +423,16 @@ export function rebuildChart(chart: ChartSpec, table: DataTable, presentation?: 
   assertChartPresentation(presentation);
   const built = buildChart(chart, table);
   const baseline = captureChartPresentation(built.option);
-  if (!presentation?.edits.length) return { ...built, presentation: baseline };
-  const option = applyEdits(built.option, presentation);
+  if (!presentation?.edits.length && !presentation?.kept?.length) {
+    return { ...built, presentation: baseline };
+  }
+  const { option, kept } = applyEdits(built.option, presentation);
   return {
     ...built,
     option,
-    presentation: captureChartPresentation(option, baseline),
+    presentation: {
+      ...captureChartPresentation(option, baseline),
+      ...(kept.length > 0 ? { kept } : {}),
+    },
   };
 }

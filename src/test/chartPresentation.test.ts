@@ -127,11 +127,16 @@ suite("chartPresentation", () => {
       reordered.title.find((item: Option) => item.id === axisId).textStyle.color,
       "blue",
     );
-    const removed = rebuildChart(chart, parseTable("service,day,latency\nb,Wed,20"), presentation)
-      .option as Option;
-    assert.strictEqual(removed.series[0].itemStyle, undefined);
-    assert.strictEqual(removed.yAxis[0].axisLabel?.formatter, undefined);
-    assert.notStrictEqual(removed.title[0].textStyle?.color, "blue");
+    const removed = rebuildChart(chart, parseTable("service,day,latency\nb,Wed,20"), presentation);
+    const removedOption = removed.option as Option;
+    assert.strictEqual(removedOption.series[0].itemStyle, undefined);
+    assert.strictEqual(removedOption.yAxis[0].axisLabel?.formatter, undefined);
+    assert.notStrictEqual(removedOption.title[0].textStyle?.color, "blue");
+    // The panel's styling comes back with the panel.
+    const back = rebuildChart(chart, original, removed.presentation).option as Option;
+    assert.strictEqual(back.series[0].itemStyle.color, "red");
+    assert.strictEqual(back.yAxis[0].axisLabel.formatter, "{value} ms");
+    assert.strictEqual(back.title[0].textStyle.color, "blue");
   });
 
   test("moving a facet axis to another grid is a structural edit", () => {
@@ -299,6 +304,49 @@ suite("chartPresentation", () => {
     const back = rebuildChart(single, table, refreshed.presentation).option as Option;
     assert.deepStrictEqual(back.title, title);
     assert.deepStrictEqual(back.legend, { top: 30 });
+    assert.deepStrictEqual(back.grid, { left: 80 });
+  });
+
+  test("a title that replaced the titles of facets replaces them again, and waits out a single chart", () => {
+    const single: ChartSpec = { type: "bar", data: "unused" };
+    const faceted: ChartSpec = { ...single, facetColumn: "service" };
+    const table = parseTable("service,day,latency\na,Mon,1\nb,Tue,2");
+    const option = buildChart(faceted, table).option as Option;
+    const baseline = captureChartPresentation(JSON.stringify(option));
+    const title = { text: "Latency" };
+    option.title = title;
+    const presentation = captureChartPresentation(JSON.stringify(option), baseline);
+    const more = parseTable("service,day,latency\na,Mon,1\nb,Tue,2\nc,Wed,3");
+    const refreshed = rebuildChart(faceted, more, presentation);
+    assert.deepStrictEqual((refreshed.option as Option).title, title);
+    const unfaceted = rebuildChart(single, table, refreshed.presentation);
+    assert.strictEqual((unfaceted.option as Option).title, undefined);
+    assert.ok(isChartPresentation(JSON.parse(JSON.stringify(unfaceted.presentation))));
+    const again = rebuildChart(faceted, table, unfaceted.presentation).option as Option;
+    assert.deepStrictEqual(again.title, title);
+  });
+
+  test("styling that a chart cannot use comes back with a chart that can", () => {
+    const presentation = edited((option) => {
+      option.series[0].itemStyle = { color: "red" };
+      option.xAxis.axisLabel = { rotate: 45 };
+    });
+    const pie = rebuildChart({ ...spec, type: "pie" }, newTable, presentation);
+    assert.strictEqual((pie.option as Option).series[0].itemStyle, undefined);
+    assert.strictEqual(pie.presentation.kept?.length, 2);
+    // Saved and loaded again, as the panel's state is.
+    const saved = JSON.parse(JSON.stringify(pie.presentation));
+    assert.ok(isChartPresentation(saved));
+    assert.ok(!isChartPresentation({ ...saved, kept: [{ path: ["series"], shape: "panels" }] }));
+    const bar = rebuildChart(spec, newTable, saved);
+    assert.deepStrictEqual((bar.option as Option).series[0].itemStyle, { color: "red" });
+    assert.deepStrictEqual((bar.option as Option).xAxis.axisLabel, { rotate: 45 });
+    assert.strictEqual(bar.presentation.kept, undefined);
+    assert.strictEqual(bar.presentation.edits.length, 2);
+    // A removed column's styling comes back with the column.
+    const without = rebuildChart({ ...spec, valueColumns: ["cost"] }, newTable, presentation);
+    const restored = rebuildChart(spec, newTable, without.presentation).option as Option;
+    assert.deepStrictEqual(restored.series[0].itemStyle, { color: "red" });
   });
 
   test("removing facets does not turn a single axis into a partial array", () => {
