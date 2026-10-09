@@ -294,6 +294,15 @@ suite("optionSource", () => {
     assert.match(message, /2 \| \t\t"series": \[\}\n {2}\| \t\t {11}\^/);
   });
 
+  test("counts lines as an editor does, also ended by a carriage return alone", () => {
+    for (const lineBreak of ["\r\n", "\r"]) {
+      const code = `{a: x => {${lineBreak}  return x${lineBreak}}}}`;
+      assert.match(errorOf(code), /'\}' \(line 3, column 3\)\..*\n3 \| \}\}\}\n {2}\| {3}\^$/s);
+      const literals = `{${lineBreak}  "a": [1,${lineBreak}  }${lineBreak}}`;
+      assert.match(errorOf(literals), /\(line 3, column 3\)\.\n3 \| {3}\}\n {2}\| {3}\^$/);
+    }
+  });
+
   test("crops long lines around the error", () => {
     const message = errorOf(`{"series": [${"1, ".repeat(100)}x, ${"2, ".repeat(100)}]}`);
     const [, excerpt = "", caret = ""] = message.split("\n");

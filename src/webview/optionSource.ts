@@ -3,6 +3,7 @@
 // error that says where it is wrong, for the model to repair its output.
 
 import { errorClause, errorMessage } from "../protocol";
+import { lineAndColumn } from "../text";
 
 /**
  * The source as a value: JSON when it parses, or a JavaScript object literal, read without
@@ -348,21 +349,12 @@ function unreadableTokenAt(
   return undefined;
 }
 
-function lineAndColumn(text: string, position: number) {
-  const lineStart = text.lastIndexOf("\n", position - 1) + 1;
-  return {
-    lineStart,
-    line: text.slice(0, lineStart).split("\n").length,
-    column: position - lineStart + 1,
-  };
-}
-
 /** " (line L, column C)", and on the next lines the source line with a caret under the position. */
 function located(text: string, position: number): { at: string; excerpt: string } {
-  const { lineStart, line, column } = lineAndColumn(text, position);
+  const { line, column } = lineAndColumn(text, position);
   return {
     at: ` (line ${line}, column ${column})`,
-    excerpt: `\n${excerpt(text, position, lineStart, line)}`,
+    excerpt: `\n${excerpt(text, position, position - column + 1, line)}`,
   };
 }
 
@@ -379,10 +371,13 @@ function offsetOf(text: string, line: number, column: number): number | undefine
     : undefined;
 }
 
+const LINE_BREAK = /[\r\n]/g;
+
 /** The line of the position with a caret under it, cropped around long lines. */
 function excerpt(text: string, position: number, lineStart: number, line: number): string {
-  const lineEnd = text.indexOf("\n", position);
-  const content = text.slice(lineStart, lineEnd < 0 ? undefined : lineEnd).replace(/\r$/, "");
+  LINE_BREAK.lastIndex = position;
+  const lineEnd = LINE_BREAK.exec(text)?.index;
+  const content = text.slice(lineStart, lineEnd);
   const column = position - lineStart;
   const width = 100;
   const start =
