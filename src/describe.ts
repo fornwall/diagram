@@ -94,7 +94,8 @@ export function describeDiagram(
         `${UPDATE_CHART_TOOL} preserves supported manual styling. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must preserve those source customizations too.`,
       );
     }
-    if (!state.chartPresentation?.blocked && state.chartPresentation?.kept?.length) {
+    // Not the kept edits that the chart shows already, such as a scale that it has too.
+    if (!state.chartPresentation?.blocked && state.chartPresentation?.kept?.some((e) => !e.shown)) {
       const type = state.chart.type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
       lines.push(
         `Manual styling that this ${type} chart cannot show comes back with a chart that can; replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} drops it.`,

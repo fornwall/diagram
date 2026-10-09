@@ -24,8 +24,11 @@ interface EditTarget {
   item?: { key?: "id" | "name"; value?: unknown; type?: string; count: number } | undefined;
 }
 
-/** An edit that did not apply to a chart it was carried to, kept for one it applies to again. */
-type KeptEdit = Edit & EditTarget;
+/**
+ * An edit that did not apply to a chart it was carried to, kept for one it applies to again, or
+ * that the chart shows already, kept for one that does not.
+ */
+type KeptEdit = Edit & EditTarget & { shown?: boolean };
 
 /** Serializable, data-free baseline and manual styling changes, kept with the diagram. */
 export interface ChartPresentation {
@@ -87,7 +90,8 @@ export function isChartPresentation(value: unknown): value is ChartPresentation 
               (isPlainObject(edit.item) &&
                 typeof edit.item.count === "number" &&
                 [undefined, "id", "name"].includes(edit.item.key as string | undefined) &&
-                (edit.item.type === undefined || typeof edit.item.type === "string"))),
+                (edit.item.type === undefined || typeof edit.item.type === "string"))) &&
+            (edit.shown === undefined || typeof edit.shown === "boolean"),
         )))
   );
 }
@@ -382,7 +386,10 @@ function applyEdits(
     ...presentation.edits.map((edit): [Edit, EditTarget] => [edit, targetOf(edit, presentation)]),
   ];
   for (const [edit, target] of edits) {
-    const keep = () => kept.push({ ...edit, ...target });
+    const keep = (shown = false) => {
+      const { shown: _, ...rest } = edit as KeptEdit;
+      kept.push({ ...rest, ...target, ...(shown ? { shown } : {}) });
+    };
     const added = addedComponent(result, edit, target);
     if (added === SKIP) {
       keep();
@@ -393,8 +400,9 @@ function applyEdits(
       continue;
     }
     const path = placed(option, edit.path, target);
-    if (path === SKIP || changesNothing(result, path, edit)) {
-      keep();
+    const unchanged = path === SKIP ? "waits" : changesNothing(result, path, edit);
+    if (path === SKIP || unchanged) {
+      keep(unchanged === "shown");
       continue;
     }
     let at: ObjectOption | unknown[] = result;
@@ -437,19 +445,20 @@ function newest(kept: KeptEdit[]): KeptEdit[] {
 
 /**
  * Whether an edit would leave an option as it is, which the edits of the next baseline could not
- * tell: removing what it does not have, setting what it has already, or styling a component that
- * it does not generate, as a legend that the webview leaves out where it has nothing to tell.
+ * tell: "shown" if the option is as the edit leaves it, removing what it does not have or setting
+ * what it has already, or "waits" if the edit styles a component that it does not generate, as a
+ * legend that the webview leaves out where it has nothing to tell. False if the edit changes it.
  */
-function changesNothing(option: ObjectOption, path: Path, edit: Edit): boolean {
-  if (!edit.remove && path.length > 1 && option[String(path[0])] === undefined) return true;
+function changesNothing(option: ObjectOption, path: Path, edit: Edit): "shown" | "waits" | false {
+  if (!edit.remove && path.length > 1 && option[String(path[0])] === undefined) return "waits";
   let value: unknown = option;
   for (const key of path) {
     if (!(isPlainObject(value) || Array.isArray(value)) || !Object.hasOwn(value, key)) {
-      return edit.remove === true;
+      return edit.remove ? "shown" : false;
     }
     value = (value as ObjectOption)[key];
   }
-  return !edit.remove && isDeepStrictEqual(value, edit.value);
+  return !edit.remove && isDeepStrictEqual(value, edit.value) ? "shown" : false;
 }
 
 /** Build fresh data through ChartSpec.options, then apply only the user's presentation changes. */

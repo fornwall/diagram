@@ -316,6 +316,21 @@ suite("chartTools", function () {
     assert.doesNotMatch(panel.describeForModel() ?? "", /comes back with a chart that can/);
   });
 
+  test("the model is not told of styling that waits as the chart shows it already", async () => {
+    const { panel, webview } = await harness();
+    const styled = JSON.parse(await draw(panel));
+    styled.yAxis.scale = true;
+    await webview.edit(JSON.stringify(styled));
+    const update = (input: object) =>
+      new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token);
+    // A line chart's axis has the scale too, which stays for a bar chart again.
+    assert.match(toolText(await update({ type: "line" })), /^Updated/);
+    assert.ok(panel.current?.chartPresentation?.kept?.length);
+    assert.doesNotMatch(panel.describeForModel() ?? "", /comes back with a chart that can/);
+    assert.match(toolText(await update({ type: "bar" })), /^Updated/);
+    assert.strictEqual(JSON.parse(panel.current?.source ?? "").yAxis.scale, true);
+  });
+
   test("updates reject stale revisions, missing caches and unsupported manual data edits", async () => {
     const { panel, webview, values } = await harness();
     const source = await draw(panel, { type: "bar", command: "never-run" });
