@@ -6,6 +6,7 @@ import {
   type ChartType,
   FACET_TYPES,
 } from "../chartSpec";
+import type { Column } from "../data";
 import type { FromWebview } from "../protocol";
 import { plural } from "../text";
 
@@ -26,6 +27,11 @@ function select(choices: readonly (string | readonly [string, string])[]): HTMLS
   }
   return element;
 }
+
+/** Whether the selects list the same columns for both, as they show only names and numeric. */
+const sameColumns = (a: readonly Column[] | undefined, b: readonly Column[]): boolean =>
+  a?.length === b.length &&
+  a.every((column, index) => column.name === b[index]?.name && column.numeric === b[index].numeric);
 
 /** Whether the element can take the focus: shown, and enabled if a control. */
 const focusable = (element: Element | null | undefined): element is HTMLElement =>
@@ -72,7 +78,20 @@ export class ChartOptionsForm {
     ["Independent", "independent"],
   ]);
   private readonly filters = document.createElement("div");
-  private readonly filterRows = new Map<HTMLElement, () => ChartFilter>();
+  /** The filter rows, in order, with what sets and reads each. */
+  private readonly filterRows = new Map<
+    HTMLElement,
+    { set: (filter: ChartFilter) => void; read: () => ChartFilter }
+  >();
+  /** Counts changes of the columns, to tell which selects list the current ones. */
+  private columnsVersion = 0;
+  private listedColumns: readonly Column[] | undefined;
+  private columnNames = new Set<string>();
+  /** The version of the columns that each select lists. */
+  private readonly filled = new WeakMap<HTMLSelectElement, number>();
+  private readonly fillLabels = this.columnList(this.labels);
+  private readonly fillValues = this.columnList(this.values);
+  private readonly fillFilters = this.filterList(this.filters);
   private readonly status = document.createElement("p");
   private readonly error = document.createElement("p");
   private readonly replace = document.createElement("input");
@@ -144,7 +163,7 @@ export class ChartOptionsForm {
         facetColumn: facet,
       };
       for (const key of unusableSettings(this.type.value as ChartType)) {
-        if (key === "labelColumn") this.fillColumns(this.labels, []);
+        if (key === "labelColumn") this.fillLabels([]);
         else fields[key].value = "";
       }
       this.updateAvailability();
@@ -201,7 +220,7 @@ export class ChartOptionsForm {
             this.facetColumns.value === "" ? undefined : Number(this.facetColumns.value),
           facetScales: this.facetScales.value || undefined,
           filters: this.filterRows.size
-            ? Array.from(this.filterRows.values(), (read) => read())
+            ? Array.from(this.filterRows.values(), ({ read }) => read())
             : undefined,
         },
         replaceSource: this.replace.checked,
@@ -220,7 +239,7 @@ export class ChartOptionsForm {
     const opening = this.container.hidden && visible;
     const focused = document.activeElement;
     const hadFocus = focused !== null && this.container.contains(focused);
-    // Where the focus is in the form, which the rows made anew below no longer say.
+    // Where the focus is in the form, which rows made anew below for other columns no longer say.
     const focusPath = hadFocus ? pathTo(this.container, focused) : [];
     this.state = state;
     this.container.hidden = !visible || state === undefined;
@@ -231,15 +250,19 @@ export class ChartOptionsForm {
     if (!state) return;
     const { controls } = state;
     this.type.value = controls.type;
-    this.fillColumns(
-      this.labels,
+    if (!sameColumns(this.listedColumns, state.columns)) {
+      this.listedColumns = state.columns;
+      this.columnsVersion++;
+      this.columnNames = new Set(state.columns.map((column) => column.name));
+    }
+    this.fillLabels(
       controls.labelColumn === undefined
         ? []
         : typeof controls.labelColumn === "string"
           ? [controls.labelColumn]
           : controls.labelColumn,
     );
-    this.fillColumns(this.values, controls.valueColumns ?? []);
+    this.fillValues(controls.valueColumns ?? []);
     this.aggregate.value = controls.aggregate ?? "";
     this.sort.value = controls.sort ?? "";
     this.limit.value = controls.limit?.toString() ?? "";
@@ -262,8 +285,8 @@ export class ChartOptionsForm {
     this.error.hidden = true;
     if (opening) this.type.focus();
     else if (hadFocus && !this.keeps(document.activeElement) && document.hasFocus()) {
-      // The rows of columns and filters are made anew, as when the chart that the options applied
-      // comes back, and the fields are disabled while its data is not loaded, which takes the
+      // The rows of columns and filters are made anew for other columns, or fewer remain, as when
+      // the chart that the options applied comes back, and the fields are disabled while its data is not loaded, which takes the
       // focus from them only later. Keep the focus on the same place in the form, or else on the
       // first control that takes it; not from elsewhere in VS Code, where the user went meanwhile.
       let same: Element | undefined = this.container;
@@ -322,31 +345,46 @@ export class ChartOptionsForm {
       this.facet.disabled || !this.facet.value;
   }
 
-  /** Preserve stored spelling and missing columns so opening the form never rewrites predicates. */
+  /**
+   * Preserve stored spelling and missing columns so opening the form never rewrites predicates. A
+   * select keeps its options while the columns stay the same, as making thousands anew is slow.
+   */
   private fillColumnSelect(select: HTMLSelectElement, selected?: string, empty?: string): void {
-    select.replaceChildren();
-    if (empty !== undefined) select.add(new Option(empty, ""));
-    for (const column of this.state?.columns ?? []) {
-      select.add(new Option(`${column.name}${column.numeric ? " (numeric)" : ""}`, column.name));
+    const columns = this.state?.columns ?? [];
+    const listed = columns.length + (empty === undefined ? 0 : 1);
+    if (this.filled.get(select) === this.columnsVersion) {
+      // All but a missing column that was selected before.
+      while (select.length > listed) select.remove(listed);
+    } else {
+      select.replaceChildren();
+      if (empty !== undefined) select.add(new Option(empty, ""));
+      for (const column of columns) {
+        select.add(new Option(`${column.name}${column.numeric ? " (numeric)" : ""}`, column.name));
+      }
+      this.filled.set(select, this.columnsVersion);
     }
-    if (selected !== undefined) {
-      if (!Array.from(select.options).some((option) => option.value === selected)) {
+    if (selected === undefined) {
+      select.selectedIndex = 0;
+    } else {
+      if (!this.columnNames.has(selected) && (empty === undefined || selected !== "")) {
         select.add(new Option(selected, selected));
       }
       select.value = selected;
     }
   }
 
-  private fillFilters(filters: ChartFilter[]): void {
-    this.filters.replaceChildren();
-    this.filterRows.clear();
+  /**
+   * Makes the container a list of filter rows, returning what fills it. Rows are kept, with their
+   * columns, while the columns stay the same; others are filled before they are in the page.
+   */
+  private filterList(container: HTMLElement): (filters: ChartFilter[]) => void {
     const add = button("Add filter");
+    let version = this.columnsVersion;
     const append = (filter?: ChartFilter): HTMLSelectElement => {
       const row = document.createElement("div");
       row.className = "chart-filter-row";
       const column = document.createElement("select");
       column.setAttribute("aria-label", "Filter column");
-      this.fillColumnSelect(column, filter?.column);
       const operator = select([
         ["Equals", "eq"],
         ["Does not equal", "neq"],
@@ -357,7 +395,6 @@ export class ChartOptionsForm {
         ["Contains", "contains"],
       ]);
       operator.setAttribute("aria-label", "Filter operator");
-      operator.value = filter?.op ?? "eq";
       const valueType = select([
         ["Text", "string"],
         ["Number", "number"],
@@ -368,14 +405,8 @@ export class ChartOptionsForm {
         this.state?.columns.find((entry) => entry.name === column.value)?.numeric
           ? "number"
           : "string";
-      valueType.value = filter
-        ? filter.value === null
-          ? "null"
-          : typeof filter.value
-        : columnValueType();
       const value = document.createElement("input");
       value.setAttribute("aria-label", "Filter value");
-      value.value = filter?.value === null ? "" : String(filter?.value ?? "");
       const updateValue = (): void => {
         value.type = valueType.value === "number" ? "number" : "text";
         value.step = "any";
@@ -398,7 +429,19 @@ export class ChartOptionsForm {
           updateValue();
         }
       });
-      updateOperator();
+      const set = (filter?: ChartFilter): void => {
+        this.fillColumnSelect(column, filter?.column);
+        operator.value = filter?.op ?? "eq";
+        valueType.value = filter
+          ? filter.value === null
+            ? "null"
+            : typeof filter.value
+          : columnValueType();
+        updateOperator();
+        // Once the input has the type of the value, as a number input would drop text.
+        value.value = filter?.value === null ? "" : String(filter?.value ?? "");
+      };
+      set(filter);
       const remove = button("−");
       remove.setAttribute("aria-label", "Remove filter");
       remove.addEventListener("click", () => {
@@ -407,36 +450,58 @@ export class ChartOptionsForm {
         removeRow(row, add);
       });
       row.append(column, operator, valueType, value, remove);
-      this.filters.insertBefore(row, add);
-      this.filterRows.set(row, () => ({
-        column: column.value,
-        op: operator.value as ChartFilter["op"],
-        value:
-          valueType.value === "null"
-            ? null
-            : valueType.value === "number"
-              ? Number(value.value)
-              : value.value,
-      }));
+      container.insertBefore(row, add);
+      this.filterRows.set(row, {
+        set,
+        read: () => ({
+          column: column.value,
+          op: operator.value as ChartFilter["op"],
+          value:
+            valueType.value === "null"
+              ? null
+              : valueType.value === "number"
+                ? Number(value.value)
+                : value.value,
+        }),
+      });
       add.disabled = this.filterRows.size >= 50;
       return column;
     };
     add.addEventListener("click", () => append().focus());
-    this.filters.append(add);
-    for (const filter of filters) append(filter);
+    container.append(add);
+    return (filters) => {
+      const rows = Array.from(this.filterRows);
+      const kept = version === this.columnsVersion ? filters.length : 0;
+      version = this.columnsVersion;
+      for (const [row] of rows.slice(kept)) {
+        row.remove();
+        this.filterRows.delete(row);
+      }
+      filters.forEach((filter, index) => {
+        const row = index < kept ? rows[index] : undefined;
+        if (row) row[1].set(filter);
+        else append(filter);
+      });
+      add.disabled = this.filterRows.size >= 50;
+    };
   }
 
-  private fillColumns(container: HTMLElement, selected: string[]): void {
-    container.replaceChildren();
+  /**
+   * Makes the container a list of column rows, returning what fills it with the columns selected.
+   * Rows are kept, with their columns, while the columns stay the same; others are filled before
+   * they are in the page.
+   */
+  private columnList(container: HTMLElement): (selected: string[]) => void {
     const add = button("");
+    let version = this.columnsVersion;
+    const rows = () => container.querySelectorAll(".chart-column-row");
     const update = (): void => {
-      const rows = container.querySelectorAll(".chart-column-row");
-      for (const [index, row] of rows.entries()) {
+      for (const [index, row] of rows().entries()) {
         const name = `${container === this.labels ? "Label" : "Value"} column ${index + 1}`;
         row.querySelector("select")?.setAttribute("aria-label", name);
         row.querySelector("button")?.setAttribute("aria-label", `Remove ${name.toLowerCase()}`);
       }
-      add.textContent = rows.length > 0 ? "Add column" : "Automatic · choose column";
+      add.textContent = rows().length > 0 ? "Add column" : "Automatic · choose column";
     };
     const append = (name?: string): HTMLSelectElement => {
       const row = document.createElement("div");
@@ -450,12 +515,25 @@ export class ChartOptionsForm {
       });
       row.append(select, remove);
       container.insertBefore(row, add);
-      update();
       return select;
     };
-    add.addEventListener("click", () => append().focus());
+    add.addEventListener("click", () => {
+      const select = append();
+      update();
+      select.focus();
+    });
     container.append(add);
-    for (const name of selected) append(name);
-    update();
+    return (selected) => {
+      const shown = Array.from(rows());
+      const kept = version === this.columnsVersion ? selected.length : 0;
+      version = this.columnsVersion;
+      for (const row of shown.slice(kept)) row.remove();
+      selected.forEach((name, index) => {
+        const select = index < kept ? shown[index]?.querySelector("select") : undefined;
+        if (select) this.fillColumnSelect(select, name);
+        else append(name);
+      });
+      update();
+    };
   }
 }

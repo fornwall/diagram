@@ -149,7 +149,7 @@ suite("Chart Options in the webview", function () {
       })()`).then((pending) => assert.deepStrictEqual(pending, { id: "Apply", applying: "true" })),
     );
     assert.deepStrictEqual(await evaluate(focus), { id: "Apply", applying: null });
-    // Enter in a row of filters or columns, which the options apply make anew.
+    // Enter in a row of filters or columns.
     for (const label of ["Filter value", "Value column 2"]) {
       await nextRender(() =>
         evaluate(`(() => {
@@ -159,19 +159,27 @@ suite("Chart Options in the webview", function () {
       );
       assert.deepStrictEqual(await evaluate(focus), { id: label, applying: null });
     }
-    // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave.
-    await nextRender(() =>
-      evaluate(`(() => {
-        document.querySelector('#chart-options [aria-label="Filter value"]').focus();
+    // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave, as when
+    // other columns make the rows anew.
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const value = document.querySelector('#chart-options [aria-label="Filter value"]');
+        value.focus();
         document.hasFocus = () => false;
-        document.querySelector("#chart-options form").requestSubmit();
+        try {
+          receive({type: "chartOptions", visible: true, state: {revision: 0, rowCount: 2,
+            controls: {type: "bar", filters: [{column: "name", op: "neq", value: "c"}]},
+            columns: [{name: "name", numeric: false}, {name: "renamed", numeric: true}],
+            edited: false}});
+          await until(() => !value.isConnected, "the row made anew");
+          return document.activeElement.tagName;
+        } finally {
+          delete document.hasFocus;
+        }
       })()`),
+      "BODY",
     );
-    try {
-      assert.strictEqual(await evaluate("document.activeElement.tagName"), "BODY");
-    } finally {
-      await evaluate("delete document.hasFocus");
-    }
     // Fields disabled, as without the data, which takes the focus from them only later.
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -326,6 +334,62 @@ suite("Chart Options in the webview", function () {
       assert.strictEqual(page.panel.current?.chart?.[key], undefined);
     }
     await closeChartOptions();
+  });
+
+  test("chart options keep the column lists of unchanged columns as the options apply", async () => {
+    await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const show = (names, controls) => receive({type: "chartOptions", visible: true,
+          state: {revision: 0, controls: {type: "bar", ...controls}, rowCount: 2, edited: false,
+            columns: names.map((name) => ({name, numeric: name === "b"}))}});
+        const selects = () => [...document.querySelectorAll("#chart-options select")];
+        const shown = () => {
+          const [label, value] = ["label", "value"].map((id) =>
+            document.querySelector("#chart-option-" + id + " select"));
+          const filters = [...document.querySelectorAll(".chart-filter-row")].map((row) =>
+            [...row.querySelectorAll("select, input")].map((control) =>
+              control.type === "number" ? "number:" + control.value : control.value));
+          return {label: label.value, values: label.options.length + "/" + (value?.options.length ?? 0),
+            facet: document.getElementById("chart-option-facet").value, filters};
+        };
+        show(["a", "b", "c"], {labelColumn: "a", valueColumns: ["gone", "b"], facetColumn: "c",
+          filters: [{column: "b", op: "gt", value: 2}, {column: "a", op: "eq", value: "x"}]});
+        await until(() => !document.getElementById("chart-options").hidden, "Chart Options");
+        const before = selects();
+        const first = shown();
+        show(["a", "b", "c"], {labelColumn: "c", valueColumns: ["b"],
+          filters: [{column: "a", op: "contains", value: "text"}]});
+        await until(() => document.querySelectorAll(".chart-filter-row").length === 1, "one filter");
+        const kept = selects().every((select) => before.includes(select));
+        const second = shown();
+        show(["a", "b", "d"], {labelColumn: "d"});
+        await until(() => document.querySelectorAll(".chart-filter-row").length === 0, "no filter");
+        const third = {...shown(), madeAnew: !before.includes(selects()[1])};
+        receive({type: "chartOptions", visible: false});
+        return {first, kept, second, third};
+      })()`),
+      {
+        first: {
+          label: "a",
+          values: "3/4",
+          facet: "c",
+          filters: [
+            ["b", "gt", "number", "number:2"],
+            ["a", "eq", "string", "x"],
+          ],
+        },
+        kept: true,
+        second: {
+          label: "c",
+          values: "3/3",
+          facet: "",
+          filters: [["a", "contains", "string", "text"]],
+        },
+        third: { label: "d", values: "3/0", facet: "", filters: [], madeAnew: true },
+      },
+    );
   });
 
   test("chart options count the rows and columns of the data", async () => {
