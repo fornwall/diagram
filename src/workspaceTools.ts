@@ -67,9 +67,11 @@ function globInput(value: unknown): string {
   return value.replace(/^(?:\.\/)+/, "") || "**/*";
 }
 
+const NO_FOLDER = "No workspace folder is open; ask the user to open one.";
+
 function folders(): readonly vscode.WorkspaceFolder[] {
   const roots = vscode.workspace.workspaceFolders;
-  if (!roots?.length) throw new Error("Open a workspace folder first.");
+  if (!roots?.length) throw new Error(NO_FOLDER);
   return roots;
 }
 
@@ -87,19 +89,20 @@ export function resolveWorkspaceFile(
     throw new Error('Give "file" as a workspace file path or URI.');
   }
   const firstRoot = roots[0];
-  if (!firstRoot) throw new Error("Open a workspace folder first.");
+  if (!firstRoot) throw new Error(NO_FOLDER);
   const uri = path.isAbsolute(file)
     ? absoluteFile(file, roots)
     : /^[a-zA-Z][\w+.-]+:\//.test(file)
       ? vscode.Uri.parse(file, true)
       : vscode.Uri.joinPath(firstRoot.uri, file);
-  if (
-    uri.query ||
-    uri.fragment ||
-    !(roots.some((root) => contains(root.uri, uri)) || inWorkspace(uri, roots))
-  ) {
+  if (uri.query || uri.fragment) {
     throw new Error(
-      "The file must be inside an open workspace folder, without a query or fragment.",
+      'Give "file" without a query or fragment, and its lines as "startLine" and "endLine".',
+    );
+  }
+  if (!(roots.some((root) => contains(root.uri, uri)) || inWorkspace(uri, roots))) {
+    throw new Error(
+      `${quote(file, 200)} is outside the open workspace folders; give a path that ${FIND_FILES_TOOL} lists.`,
     );
   }
   return uri;

@@ -348,9 +348,12 @@ suite("workspaceTools", function () {
   test("rejects outside paths and symlinks escaping the workspace", async function () {
     assert.match(
       await invoke(reader, { file: path.join(outside, "secret.txt") }),
-      /inside an open workspace/,
+      /outside the open workspace folders/,
     );
-    assert.match(await invoke(reader, { file: "../../../etc/passwd" }), /inside an open workspace/);
+    assert.strictEqual(
+      await invoke(reader, { file: "../../../etc/passwd" }),
+      'Error: "../../../etc/passwd" is outside the open workspace folders; give a path that diagram_findFiles lists.',
+    );
     if (process.platform === "win32") this.skip();
     const link = await make("external.txt", path.join(outside, "secret.txt"));
     assert.match(await invoke(reader, { file: link }), /symbolic link outside/);
@@ -424,7 +427,7 @@ suite("workspaceTools", function () {
       inward,
       "file://attacker.example/share/code.ts",
     ]) {
-      assert.match(await invoke(reader, { file }), /inside an open workspace/);
+      assert.match(await invoke(reader, { file }), /outside the open workspace folders/);
       await assert.rejects(
         check(file.startsWith("file:") ? vscode.Uri.parse(file) : vscode.Uri.file(file)),
         /^Error: The file is outside/,
@@ -454,7 +457,10 @@ suite("workspaceTools", function () {
       resolveWorkspaceFile(path.resolve("/two/b.ts"), roots).fsPath,
       path.resolve("/two/b.ts"),
     );
-    assert.throws(() => resolveWorkspaceFile(path.resolve("/two-else/b.ts"), roots), /inside/);
+    assert.throws(
+      () => resolveWorkspaceFile(path.resolve("/two-else/b.ts"), roots),
+      /outside the open workspace/,
+    );
     assert.throws(
       () => resolveWorkspaceFile("file:///one/a.ts#L4", roots),
       /without a query or fragment/,
@@ -471,7 +477,10 @@ suite("workspaceTools", function () {
       resolveWorkspaceFile("/owner/two/src/b.ts", roots).toString(),
       "vscode-vfs://github/owner/two/src/b.ts",
     );
-    assert.throws(() => resolveWorkspaceFile("/owner/three/c.ts", roots), /inside/);
+    assert.throws(
+      () => resolveWorkspaceFile("/owner/three/c.ts", roots),
+      /outside the open workspace/,
+    );
   });
 
   test("names files relative to a virtual workspace folder whose path has '.' and '..'", async () => {
@@ -518,7 +527,7 @@ suite("workspaceTools", function () {
       "memory:/root/..%5coutside",
       "memory:/root/sub%5c..%5c..%5coutside",
     ]) {
-      assert.throws(() => resolveWorkspaceFile(file, roots), /inside/);
+      assert.throws(() => resolveWorkspaceFile(file, roots), /outside the open workspace/);
     }
     const root = [{ uri: vscode.Uri.parse("memory:/"), name: "virtual", index: 0 }];
     assert.strictEqual(resolveWorkspaceFile("src/code.ts", root).path, "/src/code.ts");
