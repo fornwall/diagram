@@ -366,6 +366,9 @@ export class ChartFocus {
     if (!this.shown) return;
     this.shown = false;
     this.ring.hidden = true;
+    // Find in the webview, whose widget takes the focus, would match the text kept from sight.
+    // Screen readers do not announce the removal, and announce the item again on the next focus.
+    this.status.textContent = "";
     this.chart()?.dispatchAction({ type: "hideTip" });
   }
 

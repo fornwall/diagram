@@ -785,6 +785,31 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("empties the announcement while the chart is not focused, for find not to match it", async () => {
+    await renderChart(SALES);
+    const announced = await evaluate(`(() => {
+      ${PRESS}
+      const status = () => document.getElementById("chart-status").textContent;
+      chart.focus();
+      press("Home");
+      const moved = press("ArrowRight");
+      chart.blur();
+      const blurred = status();
+      chart.focus();
+      const refocused = status();
+      chart.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}));
+      const clicked = status();
+      chart.blur();
+      return [moved, blurred, refocused, clicked];
+    })()`);
+    assert.deepStrictEqual(announced, [
+      "Tue: 2, series A, 2 of 3",
+      "",
+      "Tue: 2, series A, 2 of 3",
+      "",
+    ]);
+  });
+
   test("announces pie slices, tree nodes and sankey flows as the focus moves", async () => {
     const charts: [Record<string, unknown>, string[]][] = [
       [
