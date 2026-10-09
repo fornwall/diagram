@@ -734,6 +734,38 @@ suite("ECharts in the webview", function () {
     assert.match(errors[0] ?? "", /^Cannot open "vscode:\/\/file\/etc\/passwd"/);
   });
 
+  test("keeps the tooltip shown while the focus is on its links, and hides it after", async () => {
+    await renderChart({
+      ...SALES,
+      tooltip: { formatter: '<a href="https://example.com/docs">Docs</a>' },
+    });
+    const states = await evaluate(`(async () => {
+      ${UNTIL}
+      ${PRESS}
+      chart.focus();
+      press("Home");
+      const tip = await until(() => [...document.getElementById("chart-drawing").children]
+        .find(child => child.querySelector("a")), "the tooltip");
+      const link = tip.querySelector("a");
+      const reachable = () => link.checkVisibility({visibilityProperty: true});
+      // Longer than the tooltip's transition, after which a hidden one takes no focus.
+      const settled = () => new Promise(resolve => setTimeout(resolve, 400));
+      const state = () => ({focused: document.activeElement === link || document.activeElement.id,
+        reachable: reachable(), status: Boolean(document.getElementById("chart-status").textContent)});
+      // As Tab from the chart does.
+      link.focus();
+      await settled();
+      const onLink = state();
+      document.getElementById("ask-input").focus();
+      await until(() => !reachable(), "the tooltip to hide");
+      return [onLink, state()];
+    })()`);
+    assert.deepStrictEqual(states, [
+      { focused: true, reachable: true, status: true },
+      { focused: "ask-input", reachable: false, status: false },
+    ]);
+  });
+
   test("moves the focus between chart items with arrow keys from one tab stop", async () => {
     await renderChart(SALES);
     const shown = (await evaluate(`(() => {

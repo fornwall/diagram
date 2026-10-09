@@ -308,7 +308,11 @@ export class ChartFocus {
       this.keyboard ||= element.matches(":focus-visible");
       if (this.keyboard) this.showCurrent();
     });
-    element.addEventListener("blur", () => this.hide());
+    // Not for the focus going into the tooltip, whose links Tab leads to, and which would hide
+    // with the focus on them, leaving it on the page's body.
+    element.addEventListener("focusout", ({ relatedTarget }) => {
+      if (!(relatedTarget instanceof Node && element.contains(relatedTarget))) this.hide();
+    });
     element.addEventListener("pointerdown", () => {
       this.keyboard = false;
       this.hide();
