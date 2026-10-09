@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
 
 const production = process.argv.includes("--production");
@@ -57,6 +57,28 @@ const noticesPlugin = {
   },
 };
 
+/**
+ * Resolves mermaid-elk-layout to the module of Mermaid's elk layout, which the panel loads alongside
+ * Mermaid (see src/webview/mermaidLayout.ts), and whose file name changes with each version of
+ * Mermaid. The panel and Mermaid then share its chunk.
+ * @type {import("esbuild").Plugin}
+ */
+const mermaidElkPlugin = {
+  name: "mermaid-elk-layout",
+  setup(build) {
+    build.onResolve({ filter: /^mermaid-elk-layout$/ }, async ({ resolveDir }) => {
+      const mermaid = await build.resolve("mermaid", { kind: "import-statement", resolveDir });
+      if (mermaid.errors.length > 0) return { errors: mermaid.errors };
+      const dir = join(dirname(mermaid.path), "chunks", "mermaid.core");
+      const files = readdirSync(dir).filter((file) => /^elk-\w+\.mjs$/.test(file));
+      if (files.length !== 1) {
+        return { errors: [{ text: `Expected one elk layout module in ${dir}, found: ${files}` }] };
+      }
+      return { path: join(dir, files[0]) };
+    });
+  },
+};
+
 const common = {
   bundle: true,
   minify: production,
@@ -110,6 +132,7 @@ const contexts = await Promise.all([
     chunkNames: "chunks/[name]-[hash]",
     platform: "browser",
     target: "chrome150",
+    plugins: [mermaidElkPlugin, problemMatcherPlugin],
   }),
   esbuild.context({
     ...savedPage,

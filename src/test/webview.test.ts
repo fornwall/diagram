@@ -1125,6 +1125,38 @@ suite("webview renderer loading", function () {
     const again = await panel.render(pie, "tool");
     assert.ok(again.ok, again.ok ? undefined : again.error);
   });
+
+  test("loads Mermaid's elk layout alongside Mermaid for a flowchart, and not for a sequence diagram", async () => {
+    const panel = newPanel();
+    afterTest(() => panel.dispose());
+    const { evaluate } = instrumentWebview(panel);
+    /** When the page started loading the chunks of each name, by name. */
+    const loads = async () =>
+      new Map(
+        (await evaluate(`performance.getEntriesByType("resource").map((entry) =>
+          [entry.name.split("/").pop().replace(/-\\w+\\.js$/, ""), entry.startTime])`)) as [
+          string,
+          number,
+        ][],
+      );
+    const draw = async (source: string) => {
+      const outcome = await panel.render({ language: "mermaid", source, title: "Test" }, "tool");
+      assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+    };
+
+    await draw(MERMAID.sequence);
+    const sequence = await loads();
+    assert.ok(sequence.has("mermaid.core"), [...sequence.keys()].join());
+    assert.ok(![...sequence.keys()].some((name) => name.startsWith("elk-")));
+
+    await draw(MERMAID["flowchart-v2"]);
+    const flowchart = await loads();
+    const elk = [...flowchart].find(([name]) => name.startsWith("elk-"))?.[1];
+    const diagram = [...flowchart].find(([name]) => name.startsWith("flowDiagram-"))?.[1];
+    assert.ok(elk !== undefined && diagram !== undefined, [...flowchart.keys()].join());
+    // Before Mermaid, which would load it once it has loaded the flowchart's code and parsed it.
+    assert.ok(elk < diagram, `elk at ${elk} ms, the flowchart's code at ${diagram} ms`);
+  });
 });
 
 suite("JavaScript in chart options", function () {

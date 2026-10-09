@@ -15,6 +15,7 @@ import { enableDragOut } from "./dragOut";
 import { loadECharts } from "./echartsLoader";
 import { pngDataUrl } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
+import { preloadLayout } from "./mermaidLayout";
 import { enablePanning } from "./pan";
 import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { type EditorState, SourceEditor } from "./sourceEditor";
@@ -415,6 +416,7 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       loadRenderer(message.language).catch(() => {
         // The render reports it.
       });
+      if (message.language === "mermaid") preloadLayout(message.source);
       enqueue(async () => {
         if (revision === renderRevision) await render(message);
       });
