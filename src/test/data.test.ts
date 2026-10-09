@@ -401,7 +401,10 @@ suite("data", () => {
       });
     }
     assert.deepStrictEqual(parse("sep=|\nname|value\na,b|1").rows, [["a,b", 1]]);
-    assert.throws(() => parseTable('sep=,\na,b\n"x,1'), /starts on line 3 is not closed/);
+    assert.throws(
+      () => parseTable('sep=,\na,b\n"x,1'),
+      /starts on line 3, column 1, is not closed/,
+    );
   });
 
   test("reports unclosed CSV quotes instead of falling back to whitespace", () => {
@@ -409,7 +412,7 @@ suite("data", () => {
       for (const delimiter of [",", ";"]) {
         assert.throws(
           () => parseTable(`name${delimiter}value\na${delimiter}"1\nb${delimiter}2`, format),
-          /The quoted field that starts on line 2 is not closed/,
+          /The quoted field that starts on line 2, column 3, is not closed/,
         );
       }
     }
@@ -418,7 +421,7 @@ suite("data", () => {
     for (const format of ["auto", "csv"] as const) {
       assert.throws(
         () => parseTable('name,value\n"a\r\nb\rc""\n",1\n"d,2', format),
-        /The quoted field that starts on line 6 is not closed/,
+        /The quoted field that starts on line 6, column 1, is not closed/,
       );
     }
     // Not for text with a quote below a single line with a comma.
@@ -447,7 +450,7 @@ suite("data", () => {
       for (const delimiter of [",", ";"]) {
         assert.throws(
           () => parseTable(`name${delimiter}value\na${delimiter}"12"3\nb${delimiter}4`, format),
-          /Unexpected text after the quoted field "12" on line 2\./,
+          /Unexpected text after the quoted field "12" on line 2, column 7\./,
         );
         assert.deepStrictEqual(
           parse(`name${delimiter}value\n"a"  ${delimiter}"12" \n"b"${delimiter}4`, format).rows,
@@ -1420,7 +1423,10 @@ suite("data", () => {
         /^Only the table from line \d was read, not the text above it\.$/,
       );
     }
-    assert.throws(() => parseTable('Sales by region\nregion,sales\n"a,1'), /starts on line 3 /);
+    assert.throws(
+      () => parseTable('Sales by region\nregion,sales\n"a,1'),
+      /starts on line 3, column 1,/,
+    );
     assert.strictEqual(
       parseTable("Sales by region\nregion,sales\na,1.5\n...\nb,2").note,
       "Only the table from line 2 was read, not the text above it. Only the rows that the " +
@@ -2041,7 +2047,7 @@ suite("data", () => {
     for (const newline of ["\n", "\r", "\r\n"]) {
       assert.throws(
         () => parseTable(["a,b", '"x', 'y",1', '"z"q,2'].join(newline), "csv"),
-        /on line 4\./,
+        /on line 4, column 4\./,
       );
     }
     assert.throws(
@@ -2051,7 +2057,7 @@ suite("data", () => {
     assert.throws(() => parseTable("1", "json"), /^Error: The JSON is a plain value, not an array/);
     assert.throws(
       () => parseTable('a,b\nc,"d\ne,f', "csv"),
-      /^Error: The quoted field that starts on line 2 is not closed\. A quote in a quoted field is written twice, as in "say ""hi"""\.$/,
+      /^Error: The quoted field that starts on line 2, column 3, is not closed\. A quote in a quoted field is written twice, as in "say ""hi"""\.$/,
     );
   });
 });

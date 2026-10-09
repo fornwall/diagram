@@ -3,7 +3,7 @@
 import type { Cell, Records } from "./data";
 import { checkTableSize } from "./dataLimits";
 import { errorClause, isPlainObject } from "./protocol";
-import { quoteAll } from "./text";
+import { lineAndColumn, quoteAll } from "./text";
 
 function jsonCell(value: unknown): Cell {
   if (value === null || value === undefined) {
@@ -264,21 +264,13 @@ function parseJsonStream(text: string): unknown[] | undefined {
       values.push(parseValue(text.slice(start, ends[i])));
     } catch (error) {
       if (i === 0) return undefined;
-      const { line } = place(text, start);
+      const { line } = lineAndColumn(text, start);
       throw new Error(
         `The JSON value on line ${line} is not valid JSON: ${syntaxError(error, text, start)}.`,
       );
     }
   }
   return values;
-}
-
-/** The line and column of `offset` in `text`, counted from 1. */
-function place(text: string, offset: number): { line: number; column: number } {
-  const before = text.slice(0, offset);
-  const lineStart = Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")) + 1;
-  const line = (before.match(/\r\n?|\n/g)?.length ?? 0) + 1;
-  return { line, column: offset - lineStart + 1 };
 }
 
 /** Where V8 says that JSON is not valid: "in JSON at position 7 (line 1 column 8)". */
@@ -290,7 +282,7 @@ const POSITION = / in JSON at position (\d+)(?: \(line \d+ column \d+\))?/;
  */
 function syntaxError(error: unknown, text: string, start: number): string {
   return errorClause(error).replace(POSITION, (_, position: string) => {
-    const { line, column } = place(text, start + Number(position));
+    const { line, column } = lineAndColumn(text, start + Number(position));
     return ` on line ${line}, column ${column}`;
   });
 }

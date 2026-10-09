@@ -6,7 +6,7 @@ import type { Cell, Records } from "./data";
 import { splitDiffStat, splitGoBenchmarks, splitLs } from "./dataCommands";
 import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
 import { parseNumber } from "./dataNumber";
-import { quote } from "./text";
+import { lineAndColumn, quote } from "./text";
 
 function isBlank(line: string): boolean {
   return line.trim() === "";
@@ -117,8 +117,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   let quoted = false;
   let closedQuote = false;
   let fieldStart = true;
-  let line = 1;
-  let quoteLine = 0;
+  let quoteStart = 0;
   let recordQuoted = false;
   let recordStart = 0;
   const finishRecord = (): void => {
@@ -135,9 +134,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     if (quoted) {
       // Up to the next quote at once, as a string built a character at a time is slow to read.
       const close = text.indexOf('"', i);
-      const part = text.slice(i, close < 0 ? text.length : close);
-      field += part;
-      line += part.match(/\r\n?|\n/g)?.length ?? 0;
+      field += text.slice(i, close < 0 ? text.length : close);
       if (close < 0) break;
       i = close;
       if (text[i + 1] === '"') {
@@ -150,7 +147,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     } else if (char === '"' && fieldStart) {
       quoted = true;
       recordQuoted = true;
-      quoteLine = line;
+      quoteStart = i;
       field = "";
       fieldStart = false;
     } else if (char === delimiter) {
@@ -163,14 +160,15 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       if (char === "\r" && text[i + 1] === "\n") {
         i++;
       }
-      line++;
       finishRecord();
       recordStart = i + 1;
     } else {
       if (closedQuote && char !== " " && char !== "\t") {
+        const { line, column } = lineAndColumn(text, i);
         throw new QuoteError(
-          `Unexpected text after the quoted field ${quote(field)} on line ${line}. Separate fields ` +
-            `with the delimiter, or write a quote inside a quoted field twice, as in "say ""hi""".`,
+          `Unexpected text after the quoted field ${quote(field)} on line ${line}, column ` +
+            `${column}. Separate fields with the delimiter, or write a quote inside a quoted ` +
+            `field twice, as in "say ""hi""".`,
           recordStart,
         );
       }
@@ -181,9 +179,10 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     }
   }
   if (quoted) {
+    const { line, column } = lineAndColumn(text, quoteStart);
     throw new QuoteError(
-      `The quoted field that starts on line ${quoteLine} is not closed. A quote in a ` +
-        `quoted field is written twice, as in "say ""hi""".`,
+      `The quoted field that starts on line ${line}, column ${column}, is not closed. A quote ` +
+        `in a quoted field is written twice, as in "say ""hi""".`,
       recordStart,
     );
   }

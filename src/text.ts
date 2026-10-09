@@ -24,6 +24,14 @@ export function quote(text: string, max = 40): string {
   );
 }
 
+/** The line and column of `offset` in `text`, counted from 1, as an editor counts them. */
+export function lineAndColumn(text: string, offset: number): { line: number; column: number } {
+  const before = text.slice(0, offset);
+  const lineStart = Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")) + 1;
+  const line = (before.match(/\r\n?|\n/g)?.length ?? 0) + 1;
+  return { line, column: offset - lineStart + 1 };
+}
+
 /** A count or limit as messages give it, e.g. "1,000,000". */
 export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
