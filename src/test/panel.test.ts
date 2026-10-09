@@ -45,7 +45,6 @@ const withoutSource: DiagramState = {
   editedByUser: false,
 };
 
-/** Holds back the timers of the given delay until the test expires them, or the test ends. */
 const PIE = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
 
 /** A pie chart of the workspace's sizes.tsv, which a refresh reads again, drawn as the source. */
