@@ -623,14 +623,17 @@ suite("webview", function () {
       series: [{ type: "bar", data: [1, 2] }],
     };
     const chart = { language: "echarts", source: JSON.stringify(option) } as const;
+    // What is shown, and what takes the keys of the drawing that had them.
     const shown = () =>
-      evaluate(`["diagram", "chart"].filter(id => document.getElementById(id)?.hidden === false)`);
+      evaluate(`[...["diagram", "chart"].filter(id => document.getElementById(id)?.hidden === false),
+        document.activeElement.id]`);
     await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(await shown(), ["diagram"]);
+    await evaluate(`document.getElementById("canvas").focus()`);
+    assert.deepStrictEqual(await shown(), ["diagram", "canvas"]);
     assert.deepStrictEqual(await render(chart), { ok: true, diagramType: "bar" });
-    assert.deepStrictEqual(await shown(), ["chart"]);
+    assert.deepStrictEqual(await shown(), ["chart", "chart"]);
     await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(await shown(), ["diagram"]);
+    assert.deepStrictEqual(await shown(), ["diagram", "canvas"]);
   });
 
   test("keeps recovery controls visible when a render error is long", async () => {

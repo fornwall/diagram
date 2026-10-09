@@ -295,13 +295,13 @@ async function render(message: RenderMessage): Promise<void> {
     renderStatus.textContent = "";
   }
   // Only while the page has the focus: focus() would take it from wherever the user went meanwhile.
-  if (focused && document.hasFocus() && document.activeElement === document.body) {
+  // The canvas, which a chart does not render inert, keeps it, but takes the keys only for Mermaid.
+  const lost = document.activeElement === document.body || document.activeElement === canvas;
+  if (focused && lost && document.hasFocus()) {
     const id = focused.getAttribute("data-diagram-id");
-    const node = id
-      ? canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`)
-      : focused;
-    node?.focus({ preventScroll: true });
-    if (document.activeElement === document.body) drawingFocus().focus({ preventScroll: true });
+    const node =
+      id && canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`);
+    (node || drawingFocus()).focus({ preventScroll: true });
   }
   diagramReplaced();
 }
