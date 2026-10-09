@@ -297,10 +297,11 @@ async function render(message: RenderMessage): Promise<void> {
   // A drawing that replaces the one a pick was asked on is described by its question as well.
   if (pick) describeByPick(drawingFocus(), true);
   // Only while the page has the focus: focus() would take it from wherever the user went meanwhile.
-  // The canvas, which a chart does not render inert, keeps it, but takes the keys only for Mermaid.
+  // The canvas, which a chart does not render inert, keeps it, but takes the keys only for Mermaid;
+  // it also has it from a control that the new drawing hid, such as a zoom button.
   const lost = document.activeElement === document.body || document.activeElement === canvas;
-  if (focused && lost && document.hasFocus()) {
-    const id = focused.getAttribute("data-diagram-id");
+  if ((focused || document.activeElement === canvas) && lost && document.hasFocus()) {
+    const id = focused?.getAttribute("data-diagram-id");
     const node =
       id && canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`);
     (node || drawingFocus()).focus({ preventScroll: true });
@@ -719,9 +720,22 @@ document.addEventListener("focusin", ({ target }) => {
   if (target instanceof HTMLElement || target instanceof SVGElement) lastFocused = target;
 });
 window.addEventListener("focus", () => {
-  if (document.activeElement === document.body && lastFocused?.isConnected) {
-    lastFocused.focus({ preventScroll: true });
-  }
+  if (document.activeElement !== document.body || !lastFocused) return;
+  lastFocused.focus({ preventScroll: true });
+  // What had the focus may have gone while the page had none, e.g. Clear for a new diagram.
+  if (document.activeElement === document.body) focusContent();
+});
+
+// A control that goes, or is hidden or disabled, while it has the focus, such as Clear or the zoom
+// buttons when another diagram comes, leaves the focus on the body, from where Tab starts over at
+// the top of the panel: move it to the content instead, unless something else took it meanwhile.
+// The drawing, which gets replaced, gives the focus back to its own items as it is drawn.
+document.addEventListener("focusout", ({ target, relatedTarget }) => {
+  if (relatedTarget || !(target instanceof HTMLElement) || canvas.contains(target)) return;
+  queueMicrotask(() => {
+    const gone = !target.isConnected || !target.checkVisibility() || target.matches(":disabled");
+    if (gone && document.activeElement === document.body && document.hasFocus()) focusContent();
+  });
 });
 
 pickDoneButton.addEventListener("click", () => {

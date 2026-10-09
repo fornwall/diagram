@@ -157,6 +157,41 @@ suite("webview", function () {
     );
   });
 
+  test("moves the focus to the drawing when a new diagram hides the focused control", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    await evaluate(`(() => {
+      document.querySelector("#diagram .diagram-node[tabindex]").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      document.getElementById("clear-selection").focus();
+    })()`);
+    await draw({ source: MERMAID.sequence });
+    const focused = `(async () => {
+      await new Promise(resolve => setTimeout(resolve));
+      return document.activeElement.id;
+    })()`;
+    assert.strictEqual(await evaluate(focused), "canvas");
+    // The zoom buttons, which a chart has none of, and which it takes the focus from.
+    await evaluate(`document.getElementById("zoom-in").focus()`);
+    await draw({ language: "echarts", source: '{"series":[{"type":"pie","data":[3,7]}]}' });
+    assert.strictEqual(await evaluate(focused), "chart");
+    // Hidden while the page had no focus, which VS Code gives back to the page alone.
+    await draw({ source: MERMAID["flowchart-v2"] });
+    await evaluate(`(() => {
+      document.getElementById("zoom-in").focus();
+      document.activeElement.blur();
+    })()`);
+    await draw({ language: "echarts", source: '{"series":[{"type":"pie","data":[3,7]}]}' });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const before = document.activeElement.tagName;
+        window.dispatchEvent(new FocusEvent("focus"));
+        return [before, document.activeElement.id];
+      })()`),
+      ["BODY", "chart"],
+    );
+    // The tests after this one draw charts without the focus on them.
+    await evaluate("document.activeElement.blur()");
+  });
+
   test("keeps the focus in the source view after highlighting a path from it", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     assert.strictEqual(
