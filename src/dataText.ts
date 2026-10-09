@@ -514,8 +514,9 @@ function continuationMarks(
  * Joins the lines of rows over several lines into the rows: those below a line that psql marks
  * as {@link continuationMarks} tells, and, in a table with rules between rows, as sqlite3 -box
  * and -table draw one with text over several lines, the lines between two rules that go on the
- * first: each has some cells empty, as the cells of other columns have fewer lines, and text but
- * no numbers in the others, which have no newlines.
+ * first: each has some cells empty, as the cells of other columns have fewer lines, and no
+ * numbers in the others below a number or nothing, as a number has no newlines, though text may
+ * go on with one, as an address with its postal code.
  *
  * Rules may also be between groups of rows, as in a report, where a row may lack values. Unless
  * rules are surely between each row and the next, as rows of one line between them outnumber
@@ -537,12 +538,17 @@ function joinLines(
     const blocks = [1, ...inner].map((start, i) => ({ start, end: inner[i] ?? records.length }));
     const single = blocks.filter(({ start, end }) => end - start === 1).length;
     const perRow = single >= 3 && single > blocks.length - single;
-    const goesOn = (record: string[]) =>
+    const isNumber = (cell: string | undefined) =>
+      !blank(cell) && parseNumber((cell ?? "").trim()) !== undefined;
+    const goesOn = (record: string[], first: string[]) =>
       (perRow ? record.some(blank) : blank(record[0])) &&
       !record.every(blank) &&
-      record.every((cell) => blank(cell) || parseNumber(cell.trim()) === undefined);
+      record.every(
+        (cell, column) => !isNumber(cell) || (!blank(first[column]) && !isNumber(first[column])),
+      );
     for (const { start, end } of blocks) {
-      if (records.slice(start + 1, end).every(goesOn)) {
+      const first = records[start] ?? [];
+      if (records.slice(start + 1, end).every((record) => goesOn(record, first))) {
         continues.fill(true, start + 1, end);
       }
     }

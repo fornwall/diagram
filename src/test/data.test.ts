@@ -1556,6 +1556,25 @@ suite("data", () => {
         ],
       ],
       [
+        "sqlite3, text that goes on with a number",
+        [
+          ["1", "Main St", "10"],
+          ["", "12345", ""],
+          "-",
+          ["2", "Elm", "20"],
+          "-",
+          ["3", "Oak", "30"],
+          "-",
+          ["4", "Pine", "40"],
+        ],
+        [
+          [1, "Main St\n12345", 10],
+          [2, "Elm", 20],
+          [3, "Oak", 30],
+          [4, "Pine", 40],
+        ],
+      ],
+      [
         "sqlite3, a newline in the first column, between enough rows of one line",
         [["one", "1"], ["two", ""], "-", ["b", "2"], "-", ["c", "3"], "-", ["d", "4"]],
         [
@@ -1673,6 +1692,39 @@ suite("data", () => {
         ],
       ],
     ];
+    // As sqlite3 3.53 prints a street address with its postal code on a line of its own.
+    for (const table of [
+      [
+        "╭────┬─────────┬────╮",
+        "│ id │  addr   │ n  │",
+        "╞════╪═════════╪════╡",
+        "│  1 │ Main St │ 10 │",
+        "│    │ 12345   │    │",
+        "├────┼─────────┼────┤",
+        "│  2 │ Elm     │ 20 │",
+        "├────┼─────────┼────┤",
+        "│  3 │ Oak     │ 30 │",
+        "├────┼─────────┼────┤",
+        "│  4 │ Pine    │ 40 │",
+        "╰────┴─────────┴────╯",
+      ],
+      [
+        "+----+---------+----+",
+        "| id |  addr   | n  |",
+        "+----+---------+----+",
+        "|  1 | Main St | 10 |",
+        "|    | 12345   |    |",
+        "+----+---------+----+",
+        "|  2 | Elm     | 20 |",
+        "+----+---------+----+",
+        "|  3 | Oak     | 30 |",
+        "+----+---------+----+",
+        "|  4 | Pine    | 40 |",
+        "+----+---------+----+",
+      ],
+    ]) {
+      assert.deepStrictEqual(parse(table.join("\n")).rows[0], [1, "Main St\n12345", 10]);
+    }
     for (const [shape, rows, expected] of shapes) {
       const header = ["name", "a", "b"].slice(0, rows.find((row) => row !== "-")?.length);
       for (const box of [false, true]) {
