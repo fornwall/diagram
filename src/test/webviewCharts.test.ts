@@ -534,6 +534,51 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("resizes a chart with each frame of a drag only while that is quick", async () => {
+    // Drawing it takes 40 ms while `window.slowChart` is set, as a chart of many items would.
+    await draw({
+      language: "echarts",
+      source: `{animation: false, series: [{type: "custom", coordinateSystem: null, data: [1],
+        renderItem: (params, api) => {
+          for (const end = performance.now() + (window.slowChart ? 40 : 0); performance.now() < end;);
+          return {type: "circle", shape: {cx: 20, cy: 20, r: 10}, style: api.style()};
+        }}]}`,
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${CHART_FITTED}
+        ${ROTATED}
+        const canvas = document.getElementById("canvas");
+        const width = () => document.querySelector("#chart svg").getAttribute("width");
+        // How many widths the chart takes as its container narrows by 20 pixels every third frame.
+        const drag = async (slow) => {
+          await chartFitted();
+          await settled();
+          window.slowChart = slow;
+          const widths = new Set();
+          try {
+            for (let step = 0; step < 6; step++) {
+              Object.assign(canvas.style, {width: (500 - step * 20) + "px", flex: "none"});
+              for (let frame = 0; frame < 3; frame++) await nextFrame();
+              widths.add(width());
+            }
+          } finally {
+            window.slowChart = false;
+          }
+          return widths.size;
+        };
+        try {
+          return {quick: await drag(false), slow: await drag(true), fitted: await chartFitted()};
+        } finally {
+          Object.assign(canvas.style, {width: "", flex: ""});
+          await chartFitted();
+        }
+      })()`),
+      // Laid out for the first width at once, and resized for the second, which was slow.
+      { quick: 6, slow: 2, fitted: true },
+    );
+  });
+
   test("fits a chart drawn while its container briefly had another size or was hidden", async () => {
     await draw({ language: "echarts", source: COUNTED_CHART });
     assert.deepStrictEqual(

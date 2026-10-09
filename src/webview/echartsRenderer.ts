@@ -19,6 +19,11 @@ import { readThemeColors } from "./vscodeTheme";
 
 /** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
 export const SETTLE_DELAY = 150;
+/**
+ * How long resizing a chart may take for it to be resized in each frame while its size keeps
+ * changing, as when dragging the splitter: about two frames.
+ */
+const RESIZE_BUDGET = 30;
 
 /** A zrender element, which can animate, and the group it is in. */
 interface Animated {
@@ -65,6 +70,8 @@ export class EChartsRenderer implements Renderer {
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
   private resizeFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Whether resizing the chart took longer than the budget since its size started changing. */
+  private resizesSlowly = false;
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   private readonly resizeObserver = new ResizeObserver(() => this.scheduleRelayout());
 
@@ -473,8 +480,16 @@ export class EChartsRenderer implements Renderer {
       // A change of size, such as showing the chart again, is laid out at once, as only resizing
       // a layout for another size can squeeze labels to a letter. While the size keeps changing,
       // as when dragging the splitter, the chart is only resized, and laid out once that settles.
-      if (this.relayoutTimer === undefined) this.relayout();
-      else this.resizeChart();
+      // A chart that is slow to resize, such as one of thousands of items, would make every frame
+      // of the drag slow: it keeps its size until then instead.
+      if (this.relayoutTimer === undefined) {
+        this.relayout();
+        this.resizesSlowly = false;
+      } else if (!this.resizesSlowly) {
+        const start = performance.now();
+        this.resizeChart();
+        this.resizesSlowly = performance.now() - start > RESIZE_BUDGET;
+      }
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => {
         this.relayoutTimer = undefined;
