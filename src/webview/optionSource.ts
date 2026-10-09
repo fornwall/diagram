@@ -188,7 +188,8 @@ const CUT_SHORT_ERRORS = new Set([
  * the shortest start of the source that it rejects with the same error ends, as one that ends
  * before the error is only incomplete. The start is ended with a reserved word, which it cannot be
  * continued by, for the engine not to read the end of the function as part of it. The search
- * starts from where the source goes beyond literals, as it holds no error before that.
+ * starts from where the source goes beyond literals, as it holds no error before that, and gives
+ * up when it would have the engine compile more than its budget.
  */
 function syntaxErrorAt(
   text: string,
@@ -196,7 +197,11 @@ function syntaxErrorAt(
   from: number,
   message: string,
 ): number | undefined {
+  let budget = SEARCH_BUDGET;
   const failsAlike = (end: number, ending = "enum") => {
+    // The engine compiles the start up to its end, or up to the error if that comes first.
+    budget -= end;
+    if (budget < 0) throw new OverBudget();
     try {
       new Function(`"use strict"; return ${open}\n${text.slice(0, end)}\n${ending}`);
       return false;
@@ -204,33 +209,62 @@ function syntaxErrorAt(
       return errorMessage(error) === message;
     }
   };
-  if (LINE_TOKEN_ERRORS.has(message)) {
-    return tokenErrorAt(text, from, (end) => failsAlike(end, "*/enum"));
+  try {
+    if (LINE_TOKEN_ERRORS.has(message)) {
+      return tokenErrorAt(text, from, (end) => failsAlike(end, "*/enum"));
+    }
+    if (CUT_SHORT_ERRORS.has(message)) return undefined;
+    const end = leastFailing(from, text.length, failsAlike);
+    if (end === undefined) return undefined;
+    // The search ends after the first character that makes the error, such as the "}" of an
+    // "Unexpected token '}'": point at the start of the word or number it is part of.
+    let position = Math.max(0, end - 1);
+    while (
+      position > from &&
+      /[\w$]/.test(text.charAt(position - 1)) &&
+      /[\w$]/.test(text.charAt(position))
+    ) {
+      position--;
+    }
+    return position;
+  } catch (thrown) {
+    if (thrown instanceof OverBudget) return undefined;
+    throw thrown;
   }
-  if (CUT_SHORT_ERRORS.has(message)) return undefined;
-  let low = from;
-  let high = text.length;
-  if (!failsAlike(high)) return undefined;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (failsAlike(middle)) high = middle;
-    else low = middle + 1;
-  }
-  // The search ends after the first character that makes the error, such as the "}" of an
-  // "Unexpected token '}'": point at the start of the word or number it is part of.
-  let position = Math.max(0, high - 1);
-  while (
-    position > from &&
-    /[\w$]/.test(text.charAt(position - 1)) &&
-    /[\w$]/.test(text.charAt(position))
-  ) {
-    position--;
-  }
-  return position;
 }
 
-/** How many characters the search back along a line may have the engine compile, about a second's worth. */
+/** How many characters the search for a syntax error may have the engine compile, about a second's worth. */
 const SEARCH_BUDGET = 20_000_000;
+
+/** Thrown when the search for a syntax error has used up its budget. */
+class OverBudget {}
+
+/**
+ * The least end from low to high that fails, if any, where every end after one that fails fails
+ * too. It is searched for by steps that double from low, as an error is often soon after where the
+ * search starts and compiling a start of the source takes as long as it is, then by halving.
+ */
+function leastFailing(
+  low: number,
+  high: number,
+  fails: (end: number) => boolean,
+): number | undefined {
+  for (let step = 1; ; step *= 2) {
+    const end = Math.min(high, low + step - 1);
+    if (fails(end)) {
+      high = end;
+      break;
+    }
+    if (end === high) return undefined;
+    low = end + 1;
+  }
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (fails(middle)) high = middle;
+    else low = middle + 1;
+  }
+  return high;
+}
 
 /**
  * Where a token that the engine cannot read starts, such as a string left open. A start of the
@@ -238,7 +272,7 @@ const SEARCH_BUDGET = 20_000_000;
  * end each start with the end of a comment too, for one cut short inside a comment to compile.
  * The token is on the first line whose end fails alike, right after the last start of that line
  * that does not. Reading the line finds that start at once, when the engine confirms it; else it
- * is searched for back from the end of the line, as far as is quick.
+ * is searched for back from the end of the line, for up to 500 characters.
  */
 function tokenErrorAt(
   text: string,
@@ -250,19 +284,15 @@ function tokenErrorAt(
     lineEnds.push(end);
   }
   lineEnds.push(text.length);
-  let low = 0;
-  let high = lineEnds.length - 1;
-  if (!failsAlike(text.length)) return undefined;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (failsAlike(lineEnds[middle] ?? text.length)) high = middle;
-    else low = middle + 1;
-  }
-  const lineEnd = lineEnds[high] ?? text.length;
+  const line = leastFailing(0, lineEnds.length - 1, (index) =>
+    failsAlike(lineEnds[index] ?? text.length),
+  );
+  if (line === undefined) return undefined;
+  const lineEnd = lineEnds[line] ?? text.length;
   const lineStart = Math.max(from, text.lastIndexOf("\n", lineEnd - 1) + 1);
   const token = unreadableTokenAt(text, lineStart, lineEnd);
   if (token && !failsAlike(token.start) && failsAlike(token.seen)) return token.start;
-  const last = Math.max(lineStart, lineEnd - Math.min(500, Math.floor(SEARCH_BUDGET / lineEnd)));
+  const last = Math.max(lineStart, lineEnd - 500);
   for (let end = lineEnd - 1; end >= last; end--) {
     // An escape that the engine cannot read starts at its backslash.
     if (!failsAlike(end)) return text[end - 1] === "\\" ? end - 1 : end;

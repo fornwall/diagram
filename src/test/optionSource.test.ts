@@ -193,6 +193,38 @@ suite("optionSource", () => {
     }
   });
 
+  test("stops locating a syntax error in a large source when it would take long", () => {
+    /** The error of the source, and how many characters of code the engine was given for it. */
+    const compiled = (source: string): [string, number] => {
+      const original = globalThis.Function;
+      let characters = 0;
+      globalThis.Function = function counted(...args: string[]) {
+        characters += args.reduce((sum, arg) => sum + arg.length, 0);
+        return original(...args);
+      } as unknown as FunctionConstructor;
+      try {
+        return [errorOf(source), characters];
+      } finally {
+        globalThis.Function = original;
+      }
+    };
+    const data = `[${"[1, 2, 3, 4],\n".repeat(200_000)}]`;
+    const error = "{a: 1,, b: 2}";
+    // An error soon after the code starts is found by compiling little more than it.
+    const [near, nearCharacters] = compiled(`{f: (p) => ${error}, data: ${data}}`);
+    assert.match(near, /Unexpected token ',' \(line 1, column 18\)/);
+    assert.ok(nearCharacters < data.length + 10_000, String(nearCharacters));
+    // One far into a large source is not located, rather than by compiling it over and over.
+    for (const source of [
+      `{f: (p) => p, data: ${data}, g: ${error}}`,
+      `{f: (p) => p, data: ${data}, c: "open}`,
+    ]) {
+      const [far, farCharacters] = compiled(source);
+      assert.match(far, /: (Unexpected token ','|Invalid or unexpected token)\. Write it/);
+      assert.ok(farCharacters < data.length + 21_000_000, String(farCharacters));
+    }
+  });
+
   test("blames what a JavaScript option throws, not its syntax", () => {
     assert.match(
       errorOf('{a: x => x, b: JSON.parse("{")}'),
