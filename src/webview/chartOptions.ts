@@ -261,10 +261,11 @@ export class ChartOptionsForm {
     this.replaceLabel.hidden = !state.edited;
     this.error.hidden = true;
     if (opening) this.type.focus();
-    else if (hadFocus && !this.container.contains(document.activeElement)) {
+    else if (hadFocus && !this.keeps(document.activeElement) && document.hasFocus()) {
       // The rows of columns and filters are made anew, as when the chart that the options applied
-      // comes back, and the fields are disabled while its data is not loaded. Keep the focus on
-      // the same place in the form, or else on the first control that takes it.
+      // comes back, and the fields are disabled while its data is not loaded, which takes the
+      // focus from them only later. Keep the focus on the same place in the form, or else on the
+      // first control that takes it; not from elsewhere in VS Code, where the user went meanwhile.
       let same: Element | undefined = this.container;
       for (const index of focusPath) same = same?.children[index];
       const fallback = [this.type, ...this.container.querySelectorAll("button")].find(focusable);
@@ -276,6 +277,11 @@ export class ChartOptionsForm {
     this.error.textContent = message;
     this.error.hidden = false;
     this.setApplying(false);
+  }
+
+  /** Whether the form keeps the focus that the element has: shown, and enabled if a control. */
+  private keeps(element: Element | null): boolean {
+    return this.container.contains(element) && focusable(element);
   }
 
   private get applying(): boolean {

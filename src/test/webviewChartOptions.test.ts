@@ -159,6 +159,31 @@ suite("Chart Options in the webview", function () {
       );
       assert.deepStrictEqual(await evaluate(focus), { id: label, applying: null });
     }
+    // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave.
+    await nextRender(() =>
+      evaluate(`(() => {
+        document.querySelector('#chart-options [aria-label="Filter value"]').focus();
+        document.hasFocus = () => false;
+        document.querySelector("#chart-options form").requestSubmit();
+      })()`),
+    );
+    try {
+      assert.strictEqual(await evaluate("document.activeElement.tagName"), "BODY");
+    } finally {
+      await evaluate("delete document.hasFocus");
+    }
+    // Fields disabled, as without the data, which takes the focus from them only later.
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        document.getElementById("chart-option-chart").focus();
+        receive({type: "chartOptions", visible: true, state: {revision: 0, controls: {type: "bar"},
+          columns: [], rowCount: 0, edited: false, unavailable: "Press Refresh."}});
+        await until(() => document.querySelector("#chart-options fieldset").disabled, "the fields disabled");
+        return ${focus};
+      })()`),
+      { id: "Close", applying: null },
+    );
     await closeChartOptions();
   });
 
