@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { lineAndColumn } from "../text";
 import { evaluateSource } from "../webview/optionSource";
 import { thrown } from "./thrown";
 
@@ -249,6 +250,12 @@ suite("optionSource", () => {
     const thrown = errorOf("(() => { const o = {}; return o.x.y; })()");
     assert.match(thrown, /Cannot read properties of undefined.*\(line 1, column 35\)\.\n/);
     assert.doesNotMatch(thrown, /in scope/);
+    // The engine also ends lines at a carriage return alone, U+2028 and U+2029.
+    for (const lineBreak of ["\r", "\r\n", "\u2028", "\u2029"]) {
+      const source = `{${lineBreak}  a: 1,${lineBreak}  b: echarts.x,${lineBreak}}`;
+      const { line, column } = lineAndColumn(source, source.indexOf("echarts"));
+      assert.match(errorOf(source), new RegExp(`\\(line ${line}, column ${column}\\)\\.`));
+    }
   });
 
   test("blames the JavaScript error, not number forms that only JSON forbids", () => {

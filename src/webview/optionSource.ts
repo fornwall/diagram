@@ -358,17 +358,20 @@ function located(text: string, position: number): { at: string; excerpt: string 
   };
 }
 
-/** The offset of a 1-based line and column, if the source has them. */
+/**
+ * The offset of a 1-based line and column as the engine counts them, which also ends lines at "\r",
+ * U+2028 and U+2029, if the source has them.
+ */
 function offsetOf(text: string, line: number, column: number): number | undefined {
+  if (line < 1 || column < 1) return undefined;
+  const lineBreaks = /\r\n?|[\n\u2028\u2029]/g;
   let start = 0;
   for (let each = 1; each < line; each++) {
-    start = text.indexOf("\n", start) + 1;
-    if (start === 0) return undefined;
+    if (!lineBreaks.exec(text)) return undefined;
+    start = lineBreaks.lastIndex;
   }
-  const end = text.indexOf("\n", start);
-  return line >= 1 && column >= 1 && start + column - 1 <= (end < 0 ? text.length : end)
-    ? start + column - 1
-    : undefined;
+  const end = lineBreaks.exec(text)?.index ?? text.length;
+  return start + column - 1 <= end ? start + column - 1 : undefined;
 }
 
 const LINE_BREAK = /[\r\n]/g;
