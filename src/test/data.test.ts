@@ -1486,7 +1486,39 @@ suite("data", () => {
       [null, 1],
       ["x", 2],
     ]);
-    // Rows above a rule over the totals are rows of their own, though some have empty cells.
+    // Rows above a rule over the totals are rows of their own, though some have empty cells, also
+    // in the first column, as in a grouped report.
+    assert.deepStrictEqual(
+      parse(
+        [
+          "+-------+------+------+",
+          "| name  | q1   | q2   |",
+          "+-------+------+------+",
+          "| a     | 1    |      |",
+          "| b     |      | 2    |",
+          "| c     | 3    |      |",
+          "+-------+------+------+",
+          "| total | 4    | 2    |",
+          "+-------+------+------+",
+        ].join("\n"),
+      ).rows,
+      [
+        ["a", 1, null],
+        ["b", null, 2],
+        ["c", 3, null],
+        ["total", 4, 2],
+      ],
+    );
+    assert.deepStrictEqual(
+      parse(
+        "+---+---+\n| g | n |\n+---+---+\n| a | 1 |\n|   | 2 |\n+---+---+\n| t | 3 |\n+---+---+",
+      ).rows,
+      [
+        ["a", 1],
+        [null, 2],
+        ["t", 3],
+      ],
+    );
     assert.deepStrictEqual(
       parse(
         [
@@ -1508,6 +1540,27 @@ suite("data", () => {
         ["total", 3],
       ],
     );
+    // A table with a line at the left, under a rule without junctions, has no empty first cell.
+    for (const rule of ["----------------", "================"]) {
+      for (const right of [" |", ""]) {
+        const lines = ["| Name | Score", "| Ann  | 90   ", "| Bob  | 85   "].map((l) => l + right);
+        assert.deepStrictEqual(parse([lines[0], rule, ...lines.slice(1)].join("\n")), {
+          columns: ["Name", "Score"],
+          rows: [
+            ["Ann", 90],
+            ["Bob", 85],
+          ],
+        });
+      }
+    }
+    // Marks are read only where a table has a space on each side of the text of a cell.
+    assert.deepStrictEqual(parse("No.|name\n---+----\n1  |a\n2  |b"), {
+      columns: ["No.", "name"],
+      rows: [
+        [1, "a"],
+        [2, "b"],
+      ],
+    });
     // Without rules between the rows, a line with empty cells is a row of its own.
     const rows = [
       ["ts", "line one"],
@@ -1550,12 +1603,35 @@ suite("data", () => {
       "Only the Markdown table (lines 3\u20136) was read, not the text around it.",
     );
     // Prose directly above the header. As in GFM, a line without a pipe below the table is a row,
-    // up to a blank line or the start of another block.
-    assert.deepStrictEqual(parse("Results:\na | b\n--|--\nx | 1\nDone.").rows, [
+    // up to a blank line or the start of another block, but not below the last row, where it is
+    // more likely a caption or a footer.
+    assert.deepStrictEqual(parse("Results:\na | b\n--|--\nx | 1\ngoes on\ny | 2\nDone.").rows, [
       ["x", 1],
-      ["Done.", null],
+      ["goes on", null],
+      ["y", 2],
     ]);
-    for (const below of ["", "> Done.", "## Done", "- Done", "1. Done", "```", "***", "<p>"]) {
+    for (const text of [
+      "| a | b |\n|---|---|\n| x | 1 |\nTotal rows: 1",
+      "| a |\n|---|\n| x |\ny",
+    ]) {
+      const table = parseTable(text);
+      assert.strictEqual(table.rows.length, text.includes("Total") ? 1 : 2, text);
+    }
+    assert.strictEqual(
+      parseTable("| a | b |\n|---|---|\n| x | 1 |\nSource: a survey").note,
+      "Only the Markdown table (lines 1\u20133) was read, not the text around it.",
+    );
+    for (const below of [
+      "Done.",
+      "",
+      "> Done.",
+      "## Done",
+      "- Done",
+      "1. Done",
+      "```",
+      "***",
+      "<p>",
+    ]) {
       const text = `Results:\na | b\n--|--\nx | 1\n${below}\nDone.`;
       const table = parseTable(text);
       assert.deepStrictEqual(table.rows, [["x", 1]], text);

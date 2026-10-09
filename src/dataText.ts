@@ -448,8 +448,8 @@ const WRAP_MARK = /[.\u2026]/;
  * line below, "+" or "↵" for a newline in it and "." or "…" where it wraps, and those it writes in
  * the space before the rest of wrapped text, and tells how the cells of each line go on. Only in
  * tables aligned under a `rule` with "+" or box-drawing junctions, as psql, mysql and sqlite3 draw
- * them, where that space is blank but for the marks, and not in Markdown tables, which need not be
- * aligned.
+ * them with a space on each side of the text of a cell, blank but for the marks, as the header
+ * shows, and not in Markdown tables, which need not be aligned.
  */
 function continuationMarks(
   lines: string[],
@@ -466,12 +466,26 @@ function continuationMarks(
   const junctions = [...rule.trimEnd()].flatMap((char, i) =>
     char === " " || HORIZONTAL.test(char) ? [] : [i],
   );
+  const blankAt = (line: string, i: number) => i >= line.length || line[i] === " ";
+  const header = lines[0] ?? "";
+  if (
+    junctions.length === 0 ||
+    !columns.every(({ start, end }) => blankAt(header, start) && blankAt(header, end - 1))
+  ) {
+    return { lines, marked: [] };
+  }
   const separator = box ? BOX_LINE : /\|/;
   const marked: (MarkedLine | undefined)[] = [];
   let above: Continuation[] = [];
   const unmarked = lines.map((line) => {
     // Lines with wide characters, or not drawn by such a tool, are not aligned with the rule.
-    if (!junctions.every((i) => i >= line.length || separator.test(line[i] ?? ""))) {
+    if (
+      !junctions.every((i) => i >= line.length || separator.test(line[i] ?? "")) ||
+      !columns.every(
+        ({ start }, column) =>
+          blankAt(line, start) || (above[column] === "wrap" && WRAP_MARK.test(line[start] ?? "")),
+      )
+    ) {
       above = [];
       marked.push(undefined);
       return line;
@@ -500,8 +514,9 @@ function continuationMarks(
  * Joins the lines of rows over several lines into the rows: those below a line that psql marks
  * as {@link continuationMarks} tells, and, in a table with rules between rows, as sqlite3 -box
  * and -table draw one with text over several lines, those between two rules if each after the
- * first has some cells empty, as the cells of other columns have fewer lines. Rows with all their
- * cells between two rules, as above a rule over the totals, are rows of their own.
+ * first has an empty first cell and others not, as the cells of other columns have fewer lines.
+ * Lines between rules are rows of their own if the only rule in the body sets off the last line,
+ * as it does a total, below which the rows of a sparse table or a grouped report have empty cells.
  */
 function joinLines(
   records: string[][],
@@ -511,12 +526,13 @@ function joinLines(
   const blank = (cell: string | undefined) => (cell ?? "").trim() === "";
   const continues = records.map(() => false);
   // The first line of the body, after the header, has the rule below the header above it.
-  if (ruled.some((rule, i) => rule && i > 1)) {
+  const inner = ruled.flatMap((rule, i) => (rule && i > 1 ? [i] : []));
+  if (inner.length > 1 || (inner.length === 1 && inner[0] !== records.length - 1)) {
     for (let start = 1; start < records.length; ) {
       let end = start + 1;
       while (end < records.length && !ruled[end]) end++;
       const rest = records.slice(start + 1, end);
-      if (rest.every((record) => record.some(blank) && !record.every(blank))) {
+      if (rest.every((record) => blank(record[0]) && !record.every(blank))) {
         continues.fill(true, start + 1, end);
       }
       start = end;
@@ -574,7 +590,7 @@ const BLOCK_START =
 /**
  * Finds Markdown tables among `lines`: a header row above a delimiter row with as many cells, and
  * the rows below them up to a blank line or the start of another block, as in GFM, where a line
- * without a pipe below a table is a row of one cell.
+ * without a pipe below a table is a row of one cell, unless it is below the last row.
  */
 function markdownTables(lines: string[]): { start: number; end: number }[] {
   const tables: { start: number; end: number }[] = [];
@@ -595,6 +611,11 @@ function markdownTables(lines: string[]): { start: number; end: number }[] {
         !BLOCK_START.test(lines[end] ?? "")
       ) {
         end++;
+      }
+      // GFM reads lines without a pipe as rows of one cell, but those at the end below a table
+      // of several columns are more likely its caption or a footer, as "Total rows: 2".
+      if (pipeCells(header).length > 1) {
+        while (end > i + 2 && !PIPE.test(lines[end - 1] ?? "")) end--;
       }
       tables.push({ start: i, end });
       i = end - 1;
@@ -1023,14 +1044,17 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       const { lines: unmarked, marked } = continuationMarks(lines, underline, box);
       // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
       // cells beyond it are left out, unless pipes in cells of an aligned table split them off.
-      // Without a line at the left, as psql draws tables, a line that starts with one has an empty
-      // first cell.
-      const unbordered = !/[|:]/.test(underline) && HORIZONTAL.test(underline.trim()[0] ?? "");
+      // Without a line at the left, as psql draws tables with "+" or "┼" between the columns of
+      // the rule, a line that starts with one has an empty first cell.
+      const separator = box ? BOX_LINE : PIPE;
+      const unbordered =
+        !/[|:]/.test(underline) &&
+        HORIZONTAL.test(underline.trim()[0] ?? "") &&
+        [...underline.trim()].some((char) => char !== " " && !HORIZONTAL.test(char)) &&
+        !separator.test((lines[0] ?? "").trim()[0] ?? "");
       const cells = (line: string): string[] => {
         const split = pipeCells(line, box);
-        return unbordered && (box ? BOX_LINE : PIPE).test(line.trim()[0] ?? "")
-          ? ["", ...split]
-          : split;
+        return unbordered && separator.test(line.trim()[0] ?? "") ? ["", ...split] : split;
       };
       const fit = (line: string): string[] => {
         const record = cells(line);
