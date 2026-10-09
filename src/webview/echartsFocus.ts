@@ -1,8 +1,10 @@
 // Keyboard access to the items of a chart. Like a Mermaid diagram, a chart is one tab stop: arrow
 // keys move the focus between its items, Home and End to the first and the last, and Enter or Space
-// act on the focused item as a click does. ECharts draws items without elements of their own, and
-// charts can have hundreds of thousands, so one ring is placed over the focused item, a live region
-// names it, and the item an arrow key leads to is worked out when the key is pressed.
+// act on the focused item as a click does, which expands, zooms in on or drills down into a node
+// of a hierarchy; Backspace goes back up a treemap or sunburst. ECharts draws items without
+// elements of their own, and charts can have hundreds of thousands, so one ring is placed over the
+// focused item, a live region names it, and the item an arrow key leads to is worked out when the
+// key is pressed.
 
 import type * as ECharts from "echarts/core";
 import { type ThemeColors, toCss } from "./colors";
@@ -16,6 +18,7 @@ import {
   itemValue,
   modelOf,
   parseItemKey,
+  type SeriesModel,
   type TreeNode,
 } from "./echartsItems";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
@@ -46,6 +49,19 @@ interface Spot {
 }
 
 const center = ({ x, y, width, height }: Box): Point => [x + width / 2, y + height / 2];
+
+/** The node of a tree, treemap or sunburst that the item is, with its series. */
+function treeNodeOf(
+  chart: ECharts.ECharts,
+  { seriesIndex, dataIndex }: ItemRef,
+): { series: SeriesModel; node: TreeNode } | undefined {
+  const series = modelOf(chart).getSeriesByIndex(seriesIndex);
+  const data = series?.getAllData()[0]?.data;
+  const index = data?.indexOfRawIndex(dataIndex) ?? -1;
+  return series && data?.tree && index > 0
+    ? { series, node: data.tree.getNodeByDataIndex(index) }
+    : undefined;
+}
 
 /**
  * Where the keyboard leads from one item of a chart to another: in a chart along categories, such
@@ -294,15 +310,24 @@ export class ChartFocus {
       const { key } = event;
       const activates = key === "Enter" || key === " ";
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
-      if (!(activates || (moves && !event.altKey && !event.ctrlKey && !event.metaKey))) return;
+      const unmodified = !event.altKey && !event.ctrlKey && !event.metaKey;
+      const up = key === "Backspace" && unmodified && !event.shiftKey;
+      if (!(activates || up || (moves && unmodified))) return;
       const navigation = this.navigationOf();
       const current = navigation && this.current(navigation);
       if (!navigation || !current) return;
       event.preventDefault();
       this.keyboard = true;
+      if (up) {
+        this.drillUp(current);
+        return;
+      }
       const to = activates ? current : (navigation.move(current, key) ?? current);
       this.show(to, navigation);
-      if (activates) activate(itemKey(to), event);
+      if (activates) {
+        activate(itemKey(to), event);
+        this.drillDown(to);
+      }
     });
     element.addEventListener("focus", () => {
       this.keyboard ||= element.matches(":focus-visible");
@@ -317,6 +342,60 @@ export class ChartFocus {
       this.keyboard = false;
       this.hide();
     });
+  }
+
+  /**
+   * Does to a node of a hierarchy what ECharts does when it is clicked: a tree expands or collapses
+   * it, a treemap zooms in on it, and a sunburst drills down into it, unless the series' options
+   * say otherwise.
+   */
+  private drillDown(ref: ItemRef): void {
+    const chart = this.chart();
+    const found = chart && treeNodeOf(chart, ref);
+    if (!chart || !found) return;
+    const { series, node } = found;
+    const seriesId = series.id;
+    if (series.subType === "tree") {
+      if (series.get("expandAndCollapse") !== true) return;
+      chart.dispatchAction({ type: "treeExpandAndCollapse", seriesId, dataIndex: node.dataIndex });
+    } else if (series.subType === "treemap") {
+      // A node that leafDepth draws as a leaf becomes the root, as its breadcrumb then shows.
+      if (node.getLayout()?.isLeafRoot) {
+        chart.dispatchAction({ type: "treemapRootToNode", seriesId, targetNode: node });
+      } else if (series.get("nodeClick") === "zoomToNode") {
+        chart.dispatchAction({ type: "treemapZoomToNode", seriesId, targetNode: node });
+      } else return;
+    } else if (series.subType === "sunburst") {
+      if (node.getModel().get("nodeClick") !== "rootToNode" || node === series.getViewRoot?.()) {
+        return;
+      }
+      chart.dispatchAction({ type: "sunburstRootToNode", seriesId, targetNode: node });
+    } else return;
+    // Where the item is now drawn, once it is.
+    this.chartChanged();
+  }
+
+  /**
+   * Goes up a level of a treemap or sunburst, as its breadcrumb or middle does when clicked: to the
+   * parent of the node it is drilled down to, or, from a treemap zoomed in on a node, to the whole.
+   */
+  private drillUp(ref: ItemRef): void {
+    const chart = this.chart();
+    const found = chart && treeNodeOf(chart, ref);
+    const root = found?.series.getViewRoot?.();
+    if (!chart || !found || !root) return;
+    const { series } = found;
+    const seriesId = series.id;
+    if (series.subType === "treemap") {
+      chart.dispatchAction(
+        root.parentNode
+          ? { type: "treemapRootToNode", seriesId, targetNode: root.parentNode }
+          : { type: "treemapZoomToNode", seriesId, targetNode: root },
+      );
+    } else if (series.subType === "sunburst" && root.parentNode) {
+      chart.dispatchAction({ type: "sunburstRootToNode", seriesId, targetNode: root.parentNode });
+    } else return;
+    this.chartChanged();
   }
 
   /** Moves the focus to a clicked item, without showing it: the pointer is there. */

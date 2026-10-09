@@ -56,7 +56,8 @@ suite("echartsItems", () => {
           if (dataTypes[0] === "main") {
             methods(tree, "Tree", ["getNodeByDataIndex"]);
             const node = tree?.getNodeByDataIndex(1);
-            methods(node, "TreeNode", ["getRawIndex"]);
+            methods(node, "TreeNode", ["getRawIndex", "getLayout", "getModel"]);
+            methods(series, "SeriesModel", ["getViewRoot"]);
             assert.strictEqual(node?.dataIndex, 1, "TreeNode.dataIndex");
             assert.strictEqual(node?.parentNode?.getRawIndex(), 0, "TreeNode.parentNode");
             assert.ok(!tree?.getNodeByDataIndex(0).parentNode, "the root is data index 0");

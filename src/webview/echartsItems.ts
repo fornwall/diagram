@@ -61,6 +61,10 @@ export interface TreeNode {
   /** Whether the node of a tree series shows its children, which a click on it toggles. */
   isExpand: boolean;
   getRawIndex(): number;
+  /** The layout of a treemap's node, which says whether leafDepth draws it as a leaf. */
+  getLayout(): { isLeafRoot?: boolean } | undefined;
+  /** The options of the node, such as a sunburst's nodeClick, with those of its series. */
+  getModel(): { get(key: string): unknown };
 }
 
 /** A zrender element, with the bounding box of what it draws in its own coordinates. */

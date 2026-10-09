@@ -935,6 +935,52 @@ suite("ECharts in the webview", function () {
     ]);
   });
 
+  test("drills into hierarchies with Enter, as a click does, and up with Backspace", async () => {
+    const color = (color: string) => ({ itemStyle: { color } });
+    const data = [
+      { name: "A", ...color("#0000aa"), children: [{ name: "a", value: 1, ...color("#0000ab") }] },
+      { name: "B", value: 1, ...color("#0000bb") },
+    ];
+    const shown: Record<string, unknown> = {};
+    for (const type of ["treemap", "sunburst", "tree"]) {
+      await renderChart({
+        series: [{ type, data: type === "tree" ? [{ name: "R", children: data }] : data }],
+      });
+      shown[type] = await evaluate(`(async () => {
+        ${PRESS}
+        ${UNTIL}
+        const tree = ${JSON.stringify(type)} === "tree";
+        // Whether B is in sight, which a treemap zoomed in on A moves out of the chart's area.
+        const inSight = () => {
+          const box = chart.getBoundingClientRect();
+          return [...chart.querySelectorAll('svg [fill="#0000bb"]')].some(element => {
+            const { x, y } = element.getBoundingClientRect();
+            return x >= box.x && x < box.right && y >= box.y && y < box.bottom;
+          });
+        };
+        const frame = () => new Promise(requestAnimationFrame);
+        chart.focus();
+        const steps = [press("Home")];
+        // A tree's root, R, comes first, and its first child is A.
+        if (tree) steps.push(press("ArrowRight"));
+        press("Enter");
+        if (!tree) await until(() => !inSight(), "B out of sight", frame);
+        steps.push(document.getElementById("chart-status").textContent);
+        // Collapsed, A of a tree has no child to go to.
+        steps.push(press("ArrowRight"));
+        press("Backspace");
+        if (!tree) await until(inSight, "B in sight again", frame);
+        chart.blur();
+        return steps;
+      })()`);
+    }
+    assert.deepStrictEqual(shown, {
+      treemap: ["A: 1, 1 of 2", "A: 1, 1 of 2", "a: 1, 1 of 1"],
+      sunburst: ["A: 1, 1 of 2", "A: 1, 1 of 2", "a: 1, 1 of 1"],
+      tree: ["R, 1 of 1", "A, 1 of 2", "A, 1 of 2", "A, 1 of 2"],
+    });
+  });
+
   test("picks a chart item with the keyboard", async () => {
     await renderChart(SALES);
     const tokens = new vscode.CancellationTokenSource();
