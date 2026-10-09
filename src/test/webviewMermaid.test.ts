@@ -787,6 +787,8 @@ suite("Mermaid in the webview", function () {
         "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev\n  branch other\n  merge main",
         'gitGraph\n  commit id: "A"\n  branch dev\n  commit id: "B"\n  checkout main\n  cherry-pick id: "B"\n  cherry-pick id: "C"',
         "gitGraph\n  commit\n  branch dev\n  checkout main\n  branch dev",
+        // The source up to a line inside accDescr { … } fails otherwise.
+        "gitGraph\n  commit\n  branch dev\n  checkout main\n  branch dev\n  accDescr {\n    a\n    b\n    c\n    d\n  }\n  commit",
         // Lines count in the source, with its line breaks, blank lines and comments.
         "gitGraph\r\n\r\n  %% Release\r\n  commit\r\n  branch dev\r\n\r\n  checkout main\r\n  branch dev",
         "---\ntitle: Sets\n---\nvenn-beta\n  set A\n  set B\n  union A,B\n  union A",
@@ -814,6 +816,7 @@ suite("Mermaid in the webview", function () {
         'Error on line 3: "B" and "C" are not sets: declare them, as in "set B", before the union.',
         "Error on line 8: Cannot merge branch 'main' into itself.",
         'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
+        'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
         'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
         'Error on line 8: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
         "Error on line 8: union requires multiple identifiers",

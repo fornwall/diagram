@@ -725,21 +725,38 @@ export async function statementError(
   if (!(error instanceof Error) || !STATEMENT_ERROR.test(error.message)) return undefined;
   const normalized = source.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
-  const failsUpTo = (line: number) =>
-    parse(parsableSource(lines.slice(0, line).join("\n"))).then(
-      () => false,
-      (failure: unknown) => failure instanceof Error && failure.message === error.message,
-    );
+  /** How the source up to the line parses: whether it fails the same way, or otherwise. */
+  const outcomes = new Map<number, Promise<"parses" | "same" | "other">>();
+  const outcome = (line: number) => {
+    let found = outcomes.get(line);
+    if (!found) {
+      found = parse(parsableSource(lines.slice(0, line).join("\n"))).then(
+        () => "parses" as const,
+        (failure: unknown) =>
+          failure instanceof Error && failure.message === error.message ? "same" : "other",
+      );
+      outcomes.set(line, found);
+    }
+    return found;
+  };
   // A search of the lines after the front matter, if the whole text fails so.
   let low = lineStarts(normalized.slice(0, frontMatterEnd(normalized))).length;
   let high = lines.length;
-  if (!(await failsUpTo(high))) return undefined;
+  if ((await outcome(high)) !== "same") return undefined;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
-    if (await failsUpTo(middle)) high = middle;
-    else low = middle + 1;
+    // The source up to a line inside a statement of several lines, such as "accDescr {", fails
+    // otherwise: take the last line before it that it does not.
+    let line = middle;
+    let found = await outcome(line);
+    while (found === "other" && line > low) found = await outcome(--line);
+    if (found === "same") high = line;
+    else low = found === "parses" ? line + 1 : middle + 1;
   }
-  return new Error(`Error on line ${high}: ${error.message}`);
+  // Without the line, the statements before it must run, or the search went astray.
+  return (await outcome(high - 1)) === "parses"
+    ? new Error(`Error on line ${high}: ${error.message}`)
+    : undefined;
 }
 
 /**
