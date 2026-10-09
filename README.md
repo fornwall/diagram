@@ -74,7 +74,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 
 Workspace tools stay inside the open workspace folders.
 
-`diagram_updateChart` keeps omitted settings; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update and leave the chart as it is.
+`diagram_updateChart` keeps omitted settings; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update.
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
 
@@ -139,7 +139,7 @@ Histograms count one numeric value column; omit `labelColumn`, `aggregate`, `sor
 - Attachments to `@diagram`: 50,000 characters each, and less if the model's context requires it.
 - Workspace tools: reads of files up to 16 MiB, 500 lines at a time. A search skips files over 1 MiB and scans at most 1,000 files and 16 MiB. Results are bounded and report truncation.
 - A chart of a file or command with a very large option is not kept when VS Code restarts; press **Refresh** to draw it again.
-- A diagram that the panel has not finished drawing within 15 seconds is not drawn again on its own when VS Code restarts, in case it hangs the panel; edit and apply it, or have it rendered again, to draw it.
+- When VS Code restarts, a diagram that the panel did not finish drawing within 15 seconds is not drawn again, in case it hangs the panel; edit and apply it, or have it rendered again.
 
 Summarize larger datasets before charting them.
 
