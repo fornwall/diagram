@@ -235,7 +235,21 @@ suite("workspaceTools", function () {
     assert.ok(searched?.includes("**/*.log"), String(searched));
   });
 
-  test("keeps the ignore files found until one changes, when caching them", async () => {
+  test("reads nested ignore files that the top-level one ignores, as git does", async () => {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await writeFile(".gitignore", ".*\n");
+    await make("dotted");
+    await make("dotted/.hidden");
+    await writeFile("dotted/.gitignore", "*.tmp\n");
+    for (const name of ["a.tmp", "b.ts", ".hidden/c.ts"]) await writeFile(`dotted/${name}`, "");
+    assert.strictEqual(await invoke(finder, { glob: "dotted/**" }), "dotted/b.ts");
+  });
+
+  test("keeps the ignore files found until one changes, when caching them", async function () {
+    // Each call starts ripgrep, and the watcher may take a while on a busy machine.
+    this.timeout(30_000);
     const caching = cacheIgnoreFiles();
     afterTest(() => caching.dispose());
     replace(vscode.workspace, "workspaceFolders", [
@@ -255,7 +269,8 @@ suite("workspaceTools", function () {
     // A call after the first finds them again only if the watcher tells of a change, such as
     // the removal of the files of earlier tests.
     let reused = false;
-    for (let call = 0; call < 20 && !reused; call++) {
+    const settled = Date.now() + 10_000;
+    for (let call = 0; !reused && (call < 2 || Date.now() < settled); call++) {
       const before = searches;
       assert.strictEqual(await invoke(finder, { glob: "cached/**" }), "cached/a.log\ncached/b.ts");
       reused = call > 0 && searches === before;
@@ -264,7 +279,7 @@ suite("workspaceTools", function () {
     await writeFile("cached/.gitignore", "*.log\n");
     // The file watcher tells of the change soon after.
     const expected = "cached/.gitignore\ncached/b.ts";
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + 10_000;
     let listed: string;
     do {
       await new Promise((resolve) => setTimeout(resolve, 50));

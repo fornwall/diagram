@@ -416,7 +416,10 @@ async function findIgnoreFiles(
     token,
   );
   if (top.length > 0) files.set("", top);
-  const exclude = `{${[...excludes, ...ignoredGlobs(files)].join(",")}}`;
+  // Only what is in ignored folders, as git reads an ignore file that is itself ignored, as by
+  // ".*" or ".gitignore".
+  const folders = ignoredGlobs(files).filter((glob) => glob.endsWith("/**"));
+  const exclude = `{${[...excludes, ...folders].join(",")}}`;
   const found = await unlessCancelled(
     async () =>
       vscode.workspace.findFiles(
