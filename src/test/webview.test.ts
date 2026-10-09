@@ -357,6 +357,19 @@ suite("webview", function () {
     const source = MERMAID["flowchart-v2"];
     await draw({ source, title: "Zoom" });
     assert.strictEqual(await zoom(), "100%");
+    assert.deepStrictEqual(
+      await evaluate(`["zoom-out", "zoom-reset", "zoom-in"].map(id => {
+        const button = document.getElementById(id);
+        const mac = navigator.userAgent.includes("Mac");
+        const [modifier, key] = button.getAttribute("aria-keyshortcuts").split("+");
+        return [key, modifier === (mac ? "Meta" : "Control"), button.title.endsWith("(Ctrl/Cmd+" + key + ")")];
+      })`),
+      [
+        ["-", true, true],
+        ["0", true, true],
+        ["=", true, true],
+      ],
+    );
     assert.deepStrictEqual(await press("="), { prevented: true, forwarded: false });
     assert.strictEqual(await zoom(), "125%");
     assert.deepStrictEqual(await press("-", false), { prevented: false, forwarded: true });

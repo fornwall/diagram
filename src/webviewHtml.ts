@@ -60,9 +60,9 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   <header>
     <h1 id="title">Diagram</h1>
     <div class="actions">
-      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
-      <button id="zoom-reset" title="Reset zoom">100%</button>
-      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-out" title="Zoom out (Ctrl/Cmd+-)" aria-label="Zoom out">&minus;</button>
+      <button id="zoom-reset" title="Reset zoom (Ctrl/Cmd+0)">100%</button>
+      <button id="zoom-in" title="Zoom in (Ctrl/Cmd+=)" aria-label="Zoom in">+</button>
       <button id="refresh" hidden>Refresh</button>
       <button id="write-to" hidden></button>
       <span id="drag-out" class="drag-out" draggable="true" role="img" aria-label="Drag the drawing into another application as an image" title="Drag into another app as an image (hold Shift to drag SVG)" hidden>${IMAGE_ICON}</span>

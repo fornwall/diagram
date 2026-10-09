@@ -911,6 +911,11 @@ const ZOOM_KEYS: Partial<Record<string, () => void>> = {
   "0": zoomReset,
 };
 const isMac = navigator.userAgent.includes("Mac");
+// The keys, which the buttons' titles name too, for screen readers to name with the buttons.
+const primaryKey = isMac ? "Meta" : "Control";
+zoomInButton.setAttribute("aria-keyshortcuts", `${primaryKey}+=`);
+zoomOutButton.setAttribute("aria-keyshortcuts", `${primaryKey}+-`);
+zoomResetButton.setAttribute("aria-keyshortcuts", `${primaryKey}+0`);
 window.addEventListener(
   "keydown",
   (event) => {
