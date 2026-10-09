@@ -3,7 +3,7 @@
 import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
-import { isPlainObject } from "./protocol";
+import { isPlainObject, UPDATE_CHART_TOOL } from "./protocol";
 import { plural, quoteAll } from "./text";
 
 export function columnName(table: DataTable, index: number | undefined): string {
@@ -291,6 +291,14 @@ function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): n
   return labels;
 }
 
+/**
+ * E.g. `Leave "limit" out (set it to null with diagram_updateChart)`: an update keeps the settings
+ * that it leaves out.
+ */
+export function leaveOut(key: keyof ChartSpec): string {
+  return `Leave "${key}" out (set it to null with ${UPDATE_CHART_TOOL})`;
+}
+
 /** Resolve explicit or inferred columns, recording omissions and inferred paths or dates. */
 export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]): Columns {
   const { type } = spec;
@@ -306,20 +314,20 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   if (type === "boxplot" && spec.aggregate !== undefined) {
     throw new Error(
       'A box plot summarizes the raw rows of each group itself, and "aggregate" would leave it ' +
-        'one number per group. Leave "aggregate" out, or chart the groups as a bar chart.',
+        `one number per group. ${leaveOut("aggregate")}, or chart the groups as a bar chart.`,
     );
   }
   if (type === "boxplot" && spec.limit !== undefined) {
     throw new Error(
       'A box plot summarizes every row of each group, and "limit" would leave out some of ' +
-        'them. Leave "limit" out, and select rows with "filters" instead.',
+        `them. ${leaveOut("limit")}, and select rows with "filters" instead.`,
     );
   }
   if (isCartesian(type) && labels.length >= 2 && spec.limit !== undefined) {
     throw new Error(
       `A series per label of ${JSON.stringify(name(labels[1]))} draws every row, and ` +
-        '"limit" would leave out parts of the series. Leave "limit" out, and select rows with ' +
-        '"filters" instead.',
+        `"limit" would leave out parts of the series. ${leaveOut("limit")}, and select rows ` +
+        'with "filters" instead.',
     );
   }
   const only = labels.length === 1 ? labels[0] : undefined;

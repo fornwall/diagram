@@ -259,6 +259,25 @@ suite("chartTools", function () {
     assert.match(panel.describeForModel() ?? "", new RegExp(`Revision: ${panel.revision}`));
   });
 
+  test("a refused update says how to clear the setting that it keeps", async () => {
+    const { panel } = await harness();
+    const scores = "name,team,score\na,x,1\nb,y,2\nc,x,3";
+    const table = parseTable(scores);
+    const chart: ChartSpec = { type: "bar", data: scores, limit: 2 };
+    const source = JSON.stringify(buildChart(chart, table).option);
+    const diagram = { language: "echarts", title: "Scores", source, chart } as const;
+    assert.ok((await panel.render(diagram, "tool", table)).ok);
+    const update = async (input: object) =>
+      toolText(
+        await new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token),
+      );
+    assert.match(
+      await update({ labelColumn: ["name", "team"] }),
+      /Leave "limit" out \(set it to null with diagram_updateChart\)/,
+    );
+    assert.match(await update({ labelColumn: ["name", "team"], limit: null }), /^Updated/);
+  });
+
   test("an update says in chat what it changes", async () => {
     const { panel } = await harness();
     const tool = new UpdateChartTool(panel);

@@ -1,6 +1,12 @@
 // Transforms of the raw rows: the filters of any chart, and the bins of a histogram.
 
-import { columnName, defaultValueColumns, describeColumns, findColumn } from "./chartColumns";
+import {
+  columnName,
+  defaultValueColumns,
+  describeColumns,
+  findColumn,
+  leaveOut,
+} from "./chartColumns";
 import { interpolate, roundStep, stepsOf } from "./chartRows";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
@@ -99,7 +105,7 @@ export function planHistogram(spec: ChartSpec, table: DataTable): HistogramPlan 
   for (const key of ["aggregate", "sort", "limit", "labelColumn"] as const) {
     if (spec[key] !== undefined) {
       throw new Error(
-        `A histogram bins the raw rows of one column. Leave "${key}" out; select rows with ` +
+        `A histogram bins the raw rows of one column. ${leaveOut(key)}; select rows with ` +
           '"filters", or compare groups with "facetColumn".',
       );
     }
