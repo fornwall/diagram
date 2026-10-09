@@ -109,6 +109,22 @@ suite("chart code in the panel", function () {
     );
   });
 
+  test("reads an option for code only until the page ran some", async () => {
+    const { panel } = await newFakePanel();
+    const literals = JSON.stringify({ series: [{ type: "pie", data: [1] }] });
+    const parse = JSON.parse;
+    let read = 0;
+    replace(JSON, "parse", (text: string, ...rest) => {
+      if (text === literals) read++;
+      return parse(text, ...rest);
+    });
+    assert.ok((await renderChart(panel, literals)).ok);
+    assert.strictEqual(read, 1);
+    assert.ok((await renderChart(panel, codeChart)).ok);
+    assert.ok((await renderChart(panel, literals)).ok);
+    assert.strictEqual(read, 1);
+  });
+
   test("asks before writing to a document once the page ran chart code", async () => {
     const file = path.join(dir, "notes.md");
     fs.writeFileSync(file, "```mermaid\nflowchart TD\n```\n");

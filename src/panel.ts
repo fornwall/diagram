@@ -348,11 +348,10 @@ export class DiagramPanel implements vscode.Disposable {
   private post(message: ToWebview): void {
     if (message.type === "render") {
       // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
-      // A render that waits when trust is granted is sent again, to a page that can.
+      // A render that waits when trust is granted is sent again, to a page that can. A page that
+      // ran code keeps it, so a large option need not be read for code again.
       const { language, source } = message;
-      if (language === "echarts" && vscode.workspace.isTrusted && runsCode(source)) {
-        this.pageRanCode = true;
-      }
+      this.pageRanCode ||= language === "echarts" && vscode.workspace.isTrusted && runsCode(source);
       // A page that is not ready yet gets the render again once it is, with the full time for it.
       this.startRenderTimer(message);
       if (this.webview.isReady) {
