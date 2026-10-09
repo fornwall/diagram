@@ -75,6 +75,28 @@ suite("extension", function () {
     }
   });
 
+  test("loads without formatting a number, which first loads locale data", () => {
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    // Activation waits on loading the bundle, which every Markdown file starts.
+    const bundle = require.resolve(`${extension.extensionPath}/dist/extension.js`);
+    const loaded = require.cache[bundle];
+    const format = Number.prototype.toLocaleString;
+    let formatted = 0;
+    Number.prototype.toLocaleString = function (...args) {
+      formatted++;
+      return format.apply(this, args);
+    };
+    try {
+      delete require.cache[bundle];
+      require(bundle);
+    } finally {
+      Number.prototype.toLocaleString = format;
+      require.cache[bundle] = loaded;
+    }
+    assert.strictEqual(formatted, 0);
+  });
+
   test("renders a diagram through the registered tool, which getState then describes", async () => {
     const text = await invoke("diagram_render", {
       source: "flowchart TD\n  A[Start] --> B{Valid?}\n  B -->|yes| C[Done]",
