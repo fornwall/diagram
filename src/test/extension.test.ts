@@ -20,7 +20,12 @@ suite("extension", function () {
   });
 
   test("registers the language model tools, described on one line each", () => {
-    const declared: { name: string; modelDescription: string; userDescription: string }[] =
+    const declared: {
+      name: string;
+      modelDescription: string;
+      userDescription: string;
+      inputSchema: Record<string, unknown>;
+    }[] =
       vscode.extensions.getExtension("fornwall.diagram")?.packageJSON.contributes
         .languageModelTools;
     const registered = vscode.lm.tools.filter((tool) => tool.name.startsWith("diagram_"));
@@ -28,10 +33,28 @@ suite("extension", function () {
       registered.map((tool) => tool.name).sort(),
       declared.map((tool) => tool.name).sort(),
     );
-    for (const { name, modelDescription, userDescription } of declared) {
+    // As Copilot's schema checks require for every model: Gemini takes no list of types, and
+    // Copilot drops "null" from one, so a nullable value is an anyOf.
+    const checkSchema = (schema: Record<string, unknown>, where: string) => {
+      assert.ok(typeof schema.type === "string" || Array.isArray(schema.anyOf), where);
+      if (schema.type === "array") assert.ok(schema.items, `${where} has no items`);
+      const children = [
+        ...Object.entries((schema.properties ?? {}) as Record<string, Record<string, unknown>>),
+        ...((schema.anyOf ?? []) as Record<string, unknown>[]).map((child, index) => [
+          `anyOf[${index}]`,
+          child,
+        ]),
+        ...(schema.items ? [["items", schema.items]] : []),
+      ] as [string, Record<string, unknown>][];
+      for (const [key, child] of children) checkSchema(child, `${where}.${key}`);
+    };
+    for (const { name, modelDescription, userDescription, inputSchema } of declared) {
       for (const description of [modelDescription, userDescription]) {
         assert.match(description, /^\S.*\S$/, name);
       }
+      assert.strictEqual(inputSchema.type, "object", name);
+      assert.ok(inputSchema.properties, name);
+      checkSchema(inputSchema, name);
     }
   });
 

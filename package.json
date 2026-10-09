@@ -309,10 +309,16 @@
                     ]
                   },
                   "value": {
-                    "type": [
-                      "string",
-                      "number",
-                      "null"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   }
                 },
@@ -829,10 +835,16 @@
                         ]
                       },
                       "value": {
-                        "type": [
-                          "string",
-                          "number",
-                          "null"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       }
                     },
