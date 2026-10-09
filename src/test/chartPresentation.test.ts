@@ -1,8 +1,8 @@
 import * as assert from "node:assert";
-import { captureChartPresentation, rebuildChart } from "../chartPresentation";
+import { captureChartPresentation, isChartPresentation, rebuildChart } from "../chartPresentation";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { parseTable } from "../data";
+import { type DataTable, parseTable } from "../data";
 import type { Option } from "./echartsModel";
 
 const spec: ChartSpec = { type: "bar", data: "unused" };
@@ -250,8 +250,55 @@ suite("chartPresentation", () => {
       for (const key of ["xAxis", "yAxis", "radar", "visualMap"]) {
         assert.ok(!Object.hasOwn(option, key), `${type} left an unused ${key} in the pie chart`);
       }
-      if (type === "bar") assert.deepStrictEqual(option.series[0].itemStyle, { color: "blue" });
+      // A bar's color would color every slice of the pie alike.
+      assert.strictEqual(option.series[0].itemStyle, undefined, type);
     }
+  });
+
+  test("series styling follows a series to a chart that draws it alike, and saved styling still loads", () => {
+    const presentation = edited((option) => {
+      option.series[0].itemStyle = { color: "blue" };
+    });
+    assert.deepStrictEqual(presentation.seriesTypes, ["bar", "bar"]);
+    for (const type of ["line", "stackedArea", "horizontalBar"] as const) {
+      const option = rebuildChart({ ...spec, type }, newTable, presentation).option as Option;
+      assert.deepStrictEqual(option.series[0].itemStyle, { color: "blue" }, type);
+    }
+    // Styling saved before series types were, which is matched by name alone.
+    const { seriesTypes: _, ...saved } = presentation;
+    assert.ok(isChartPresentation(saved));
+    assert.ok(!isChartPresentation({ ...saved, seriesTypes: [1] }));
+    const pie = rebuildChart({ ...spec, type: "pie" }, newTable, saved);
+    assert.deepStrictEqual((pie.option as Option).series[0].itemStyle, { color: "blue" });
+    assert.deepStrictEqual(pie.presentation.seriesTypes, ["pie"]);
+  });
+
+  test("a title or legend added to a chart joins the panel titles and legend of facets", () => {
+    const single: ChartSpec = { type: "bar", data: "unused", valueColumns: ["latency", "errors"] };
+    const faceted: ChartSpec = { ...single, facetColumn: "service" };
+    const table = parseTable("service,day,latency,errors\na,Mon,1,0\nb,Tue,2,1");
+    const option = buildChart(single, table).option as Option;
+    const baseline = captureChartPresentation(JSON.stringify(option));
+    const title = { text: "Latency", left: "center" };
+    option.title = title;
+    option.legend = { top: 30 };
+    option.grid = { left: 80 };
+    const presentation = captureChartPresentation(JSON.stringify(option), baseline);
+    const generated = (table: DataTable) => buildChart(faceted, table).option as Option;
+    const facets = rebuildChart(faceted, table, presentation);
+    const facetOption = facets.option as Option;
+    assert.deepStrictEqual(facetOption.title, [...generated(table).title, title]);
+    assert.deepStrictEqual(facetOption.legend, { ...generated(table).legend, top: 30 });
+    // One grid would lay the panels over each other.
+    assert.deepStrictEqual(facetOption.grid, generated(table).grid);
+    // A refresh with another facet titles every panel.
+    const more = parseTable("service,day,latency,errors\na,Mon,1,0\nb,Tue,2,1\nc,Wed,3,2");
+    const refreshed = rebuildChart(faceted, more, facets.presentation);
+    assert.deepStrictEqual((refreshed.option as Option).title, [...generated(more).title, title]);
+    assert.strictEqual((refreshed.option as Option).legend.top, 30);
+    const back = rebuildChart(single, table, refreshed.presentation).option as Option;
+    assert.deepStrictEqual(back.title, title);
+    assert.deepStrictEqual(back.legend, { top: 30 });
   });
 
   test("removing facets does not turn a single axis into a partial array", () => {

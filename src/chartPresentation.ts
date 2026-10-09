@@ -20,6 +20,11 @@ export interface ChartPresentation {
   dataHash: string;
   edits: Edit[];
   blocked?: string | undefined;
+  /**
+   * The type of each series of the baseline, which its styling may follow to a series of another
+   * type only if that is drawn alike. Styling saved without them follows any series of its name.
+   */
+  seriesTypes?: string[] | undefined;
 }
 
 /** Refresh, Chart Options, diagram_updateChart and diagram_getState all show this message. */
@@ -60,7 +65,10 @@ export function isChartPresentation(value: unknown): value is ChartPresentation 
             (typeof key === "string" && !UNSAFE_KEYS.has(key)),
         ),
     ) &&
-    (value.blocked === undefined || typeof value.blocked === "string")
+    (value.blocked === undefined || typeof value.blocked === "string") &&
+    (value.seriesTypes === undefined ||
+      (Array.isArray(value.seriesTypes) &&
+        value.seriesTypes.every((type) => typeof type === "string")))
   );
 }
 
@@ -120,7 +128,22 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
     dataHash: createHash("sha256")
       .update(JSON.stringify(sorted(data)))
       .digest("hex"),
+    ...(option.series === undefined
+      ? {}
+      : {
+          seriesTypes: componentItems(option, "series").map(({ type }) =>
+            typeof type === "string" ? type : "",
+          ),
+        }),
   };
+}
+
+/** The series types drawn as one color each along axes, whose styling suits one another. */
+const AXIS_SERIES = new Set(["bar", "line", "scatter", "effectScatter", "pictorialBar"]);
+
+/** Whether styling of a series of one type suits a series of another, as a bar's color a line. */
+function drawnAlike(before: string, after: unknown): boolean {
+  return before === after || (AXIS_SERIES.has(before) && AXIS_SERIES.has(String(after)));
 }
 
 function differences(before: unknown, after: unknown, path: Path = []): Edit[] {
@@ -141,6 +164,21 @@ function differences(before: unknown, after: unknown, path: Path = []): Edit[] {
     after.every(isPlainObject)
   ) {
     return before.flatMap((item, index) => differences(item, after[index], [...path, index]));
+  }
+  if (
+    path.length === 1 &&
+    path[0] === "title" &&
+    Array.isArray(before) &&
+    Array.isArray(after) &&
+    after.length > before.length &&
+    before.every(isPlainObject) &&
+    after.every(isPlainObject)
+  ) {
+    // Titles added after the generated ones of facets, which a refresh may change, add to them.
+    return [
+      ...before.flatMap((item, index) => differences(item, after[index], [...path, index])),
+      ...after.slice(before.length).map((value) => ({ path, value })),
+    ];
   }
   return [{ path, value: after }];
 }
@@ -199,12 +237,56 @@ function componentItems(option: ObjectOption, component: string): ObjectOption[]
   return Array.isArray(items) ? items.filter(isPlainObject) : [];
 }
 
+const SKIP = Symbol("skip");
+
+/**
+ * A component as a user's object of it, which the baseline did not generate, joins what the chart
+ * now generates: its properties add to a generated object, a title adds to the titles of facets,
+ * and other panels are left as they are, as a single grid or axis would lay them over each other.
+ * Undefined if the edit is to be applied as any other.
+ */
+function addedComponent(
+  option: ObjectOption,
+  baseline: ObjectOption,
+  component: string,
+  value: ObjectOption,
+): unknown {
+  const generated = option[component];
+  if (component === "title") {
+    // A title added after the titles of facets stands alone without them.
+    if (generated === undefined) return structuredClone(value);
+    if (Array.isArray(generated)) return [...generated, structuredClone(value)];
+  }
+  if (Object.hasOwn(baseline, component)) return undefined;
+  if (isPlainObject(generated)) return merged(generated, value);
+  return Array.isArray(generated) ? SKIP : undefined;
+}
+
+/** `value` merged into `target`, keeping null as an option value, unlike a merge patch. */
+function merged(target: ObjectOption, value: ObjectOption): ObjectOption {
+  const result = { ...target };
+  for (const [key, item] of Object.entries(value)) {
+    if (UNSAFE_KEYS.has(key)) continue;
+    const before = result[key];
+    result[key] =
+      isPlainObject(before) && isPlainObject(item) ? merged(before, item) : structuredClone(item);
+  }
+  return result;
+}
+
 function applyEdits(option: ObjectOption, presentation: ChartPresentation): ObjectOption {
   // Copy only edited branches. The bulk of an option is data, which styling never changes.
   const result = { ...option };
   for (const edit of presentation.edits) {
     const path = [...edit.path];
     const component = path[0];
+    if (typeof component === "string" && path.length === 1 && isPlainObject(edit.value)) {
+      const added = addedComponent(result, presentation.baseline, component, edit.value);
+      if (added !== undefined) {
+        if (added !== SKIP) result[component] = added;
+        continue;
+      }
+    }
     // Type/facet changes can remove a component or switch between a single object and panels.
     // Recreating an old axis can invalidate the chart; object properties on arrays are lost.
     if (
@@ -223,7 +305,8 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
     ) {
       const oldItems = componentItems(presentation.baseline, component);
       const newItems = componentItems(option, component);
-      const old = oldItems[path[1]];
+      const index = path[1];
+      const old = oldItems[index];
       const key = old?.id !== undefined ? "id" : component === "series" ? "name" : undefined;
       if (key !== undefined && old?.[key] !== undefined) {
         const matches = newItems.flatMap((item, index) =>
@@ -235,6 +318,9 @@ function applyEdits(option: ObjectOption, presentation: ChartPresentation): Obje
       } else if (oldItems.length !== newItems.length) {
         continue;
       }
+      // A bar's color would color every slice of a pie alike.
+      const type = component === "series" ? presentation.seriesTypes?.[index] : undefined;
+      if (type !== undefined && !drawnAlike(type, newItems[path[1]]?.type)) continue;
     }
     let target: ObjectOption | unknown[] = result;
     for (let i = 0; i < path.length - 1; i++) {
