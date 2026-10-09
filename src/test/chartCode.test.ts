@@ -42,7 +42,12 @@ suite("chart code in the panel", function () {
         ({ query, isPartialQuery }) => `${isPartialQuery ? "fill" : "send"}: ${query}`,
       );
     const { panel, webview } = await newFakePanel();
-    const click = () => webview.receive({ type: "clickToAsk", node: { id: "A", label: "Parser" } });
+    const click = () =>
+      webview.receive({
+        type: "clickToAsk",
+        requestId: webview.render.requestId,
+        node: { id: "A", label: "Parser" },
+      });
     const ask = () => webview.receive({ type: "ask", text: "Why?", nodes: [] });
     const clickPrompt = "Explain {label}";
     const drawFlowchart = async (on: DiagramPanel) =>
@@ -205,7 +210,8 @@ suite("chart code in the panel", function () {
     });
     // VS Code shortens a long URL when it asks, which the panel names in full.
     const url = `https://example.com/collect?data=${"x".repeat(200)}`;
-    const open = () => webview.receive({ type: "openUrl", url });
+    const open = () =>
+      webview.receive({ type: "openUrl", requestId: webview.render.requestId, url });
     assert.ok((await renderChart(panel, codeChart)).ok);
     assert.ok(
       (await panel.render({ language: "mermaid", source: flowchart, title: "Flow" }, "tool")).ok,

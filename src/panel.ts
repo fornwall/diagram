@@ -454,14 +454,14 @@ export class DiagramPanel implements vscode.Disposable {
       case "ask":
         return this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
       case "clickToAsk":
-        if (this.state?.clickPrompt && this.drawn) {
+        if (this.state?.clickPrompt && this.showsDrawing(message.requestId)) {
           return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
       case "clickToOpen": {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
-        const link = this.linkOf(message.node);
+        const link = this.showsDrawing(message.requestId) ? this.linkOf(message.node) : undefined;
         return (
           link &&
           openLink(link, message.node.label, this.webview.tab?.viewColumn, (ask) =>
@@ -471,7 +471,7 @@ export class DiagramPanel implements vscode.Disposable {
       }
       case "openUrl":
         // Only a Mermaid diagram links to URLs.
-        if (this.state?.language === "mermaid" && this.drawn) {
+        if (this.state?.language === "mermaid" && this.showsDrawing(message.requestId)) {
           return openUrl(message.url, this.pageRanCode, (ask) => this.confirmForPage(ask));
         }
         break;
@@ -1299,15 +1299,21 @@ export class DiagramPanel implements vscode.Disposable {
   private linkOf(node: DiagramNode): NodeLink | undefined {
     const links = this.state?.links;
     // Node ids are a model's words, so only the map's own entries count, not "constructor".
-    return links && this.drawn && Object.hasOwn(links, node.id) ? links[node.id] : undefined;
+    return links && Object.hasOwn(links, node.id) ? links[node.id] : undefined;
   }
 
   /**
-   * Whether the panel shows the current diagram drawn. One that fails to render has no nodes, so a
-   * click on a node was on the diagram it replaced.
+   * Whether the panel shows the current diagram as the render drew it, which a click on its drawing
+   * names. One that fails to render has no nodes, and a click on the drawing of an earlier render,
+   * sent just before the page drew the next, was on the diagram it replaced.
    */
-  private get drawn(): boolean {
-    return !this.state?.error && !this.pendingRender && !this.unavailable;
+  private showsDrawing(requestId: number): boolean {
+    return (
+      requestId === this.sourceRequestId &&
+      !this.state?.error &&
+      !this.pendingRender &&
+      !this.unavailable
+    );
   }
 
   /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */

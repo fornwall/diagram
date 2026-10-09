@@ -556,14 +556,16 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
   // node links to, open the URL that the source links it to (or offer a menu of several), ask the
   // diagram's clickPrompt in chat, or select the node. A modified click always selects, so that
   // every node can be selected whatever else a click does.
-  if (!pick && !modifier) {
+  if (!pick && !modifier && current) {
+    // The drawing clicked, which the host may have replaced while the click was on its way.
+    const { requestId } = current;
     if (!hit.node.relationship && links.has(hit.node.id)) {
-      post({ type: "clickToOpen", node: hit.node });
+      post({ type: "clickToOpen", requestId, node: hit.node });
       return;
     }
     if (hit.links) {
       const { targets, anchor } = hit.links;
-      const openUrl = (url: string) => post({ type: "openUrl", url });
+      const openUrl = (url: string) => post({ type: "openUrl", requestId, url });
       const [only] = targets;
       if (only && targets.length === 1) {
         openUrl(only.url);
@@ -573,7 +575,7 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
       return;
     }
     if (clickPrompt) {
-      post({ type: "clickToAsk", node: hit.node });
+      post({ type: "clickToAsk", requestId, node: hit.node });
       return;
     }
   }
