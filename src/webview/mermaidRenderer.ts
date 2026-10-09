@@ -282,6 +282,11 @@ export class MermaidRenderer implements Renderer {
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
   private displayedSource: string | undefined;
+  /**
+   * What the shown drawing was drawn from: its source, the width it was laid out at and Mermaid's
+   * configuration. Until redraw, a render of the same draws nothing new.
+   */
+  private drawnFrom: string | undefined;
   private diagramType: string | undefined;
   /** The width of the container that the drawing was laid out in. */
   private layoutWidth = 0;
@@ -413,7 +418,8 @@ export class MermaidRenderer implements Renderer {
       );
     }
     const mermaid = await loadMermaid();
-    mermaid.initialize(this.config());
+    const config = this.config();
+    mermaid.initialize(config);
     const id = `diagram-svg-${++this.renderCounter}`;
     const container = layoutContainer();
     // Gantt charts take the width of the element they are drawn in: give them the width they are
@@ -436,7 +442,17 @@ export class MermaidRenderer implements Renderer {
     }
     // A drawing that fails leaves the one shown, and the width it was laid out at.
     const shownWidth = container.style.width;
-    if (width > 0) container.style.width = `${width}px`;
+    const drawWidth = width > 0 ? `${width}px` : shownWidth;
+    // The extension sends the diagram shown again, such as with other links, or once the page
+    // answers a render that it gave up waiting for: keep the drawing, which takes seconds for a
+    // large diagram to make again.
+    const drawnFrom = JSON.stringify([source, drawWidth, config]);
+    if (drawnFrom === this.drawnFrom && this.displayedSource !== undefined && this.diagramType) {
+      this.setZoom(this.zoom);
+      if (this.fitting) this.fit();
+      return this.diagramType;
+    }
+    container.style.width = drawWidth;
     const text = parsableSource(source);
     const drawing = async () => {
       const parsed = await databaseOf(mermaid, text);
@@ -462,6 +478,7 @@ export class MermaidRenderer implements Renderer {
       throw error;
     });
     if (width > 0) this.layoutWidth = width;
+    this.drawnFrom = drawnFrom;
     this.diagram.replaceChildren(svg);
     // A click selects, and links open through the extension, which checks their URLs. A link that
     // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
@@ -554,6 +571,7 @@ export class MermaidRenderer implements Renderer {
     this.drawn = NOTHING_DRAWN;
     this.shown = nothingShown();
     this.displayedSource = undefined;
+    this.drawnFrom = undefined;
   }
 
   showSelection(keys: ReadonlySet<string>): void {
@@ -646,6 +664,8 @@ export class MermaidRenderer implements Renderer {
    */
   private async redraw(source: string): Promise<boolean> {
     const focused = this.diagram.contains(document.activeElement);
+    // Whatever changed, such as the theme, draw it anew rather than keep the drawing.
+    this.drawnFrom = undefined;
     try {
       await this.render(source);
     } catch {

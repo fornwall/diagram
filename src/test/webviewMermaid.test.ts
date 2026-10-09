@@ -590,6 +590,46 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("keeps the drawing of a diagram sent again as it is, as with other links", async () => {
+    // A large diagram takes seconds to draw again.
+    const source = MERMAID["flowchart-v2"];
+    await draw({ source });
+    await evaluate(`(() => {
+      window.testDrawing = document.querySelector("#diagram svg");
+      const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
+      node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      node.focus();
+    })()`);
+    page.panel.annotate({ marks: [{ id: "B", kind: "info" }], dim: true });
+    await draw({ source, links: { A: { file: "src/parser.ts", line: 42 } } });
+    const shown = () =>
+      evaluate(`(() => {
+        const node = document.querySelector('#diagram [data-diagram-id="A"][tabindex]');
+        return {
+          kept: testDrawing.isConnected,
+          focused: document.activeElement === node,
+          selected: document.querySelectorAll("#diagram .diagram-selected").length,
+          marked: document.querySelectorAll("#diagram .diagram-marked").length,
+          link: node.querySelector("title.diagram-link")?.textContent ?? null,
+        };
+      })()`);
+    assert.deepStrictEqual(await shown(), {
+      kept: true,
+      focused: true,
+      selected: 0,
+      marked: 0,
+      link: "Open src/parser.ts#L42",
+    });
+    await draw({ source: `${source}\n  B --> C` });
+    assert.deepStrictEqual(await shown(), {
+      kept: false,
+      focused: true,
+      selected: 0,
+      marked: 0,
+      link: null,
+    });
+  });
+
   test("leaves the drawing alone while VS Code shows its context menu over the panel", async () => {
     // A redraw would give the focus back to the node right-clicked, taking it from the export
     // format picker that the menu opened, which then closed.
@@ -1432,8 +1472,8 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.deepStrictEqual(await redraw(() => retheme('"test-theme-link-menu"')), shown);
     // The theme coming back redraws too, which the next render must not race.
     await retheme("testTheme");
-    // The render arrives once the menu is open.
-    assert.deepStrictEqual(await redraw(render), shown);
+    // The render arrives once the menu is open, and keeps the drawing of the same diagram.
+    assert.deepStrictEqual(await redraw(render), { ...shown, redrawn: false });
   });
 
   test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
