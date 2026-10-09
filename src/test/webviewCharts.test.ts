@@ -1031,6 +1031,44 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("drills into a treemap's leaves of leafDepth with Enter only as nodeClick allows", async () => {
+    const roots = [];
+    for (const nodeClick of [undefined, false]) {
+      await renderChart({
+        series: [
+          {
+            type: "treemap",
+            leafDepth: 1,
+            nodeClick,
+            data: [
+              { name: "A", children: [{ name: "a", value: 1 }] },
+              { name: "B", value: 1 },
+            ],
+          },
+        ],
+      });
+      roots.push(
+        await evaluate(`(async () => {
+          ${PRESS}
+          ${UNTIL}
+          chart.focus();
+          press("Home");
+          press("Enter");
+          // Drawn as the root, A shows its child, which the right arrow then leads to.
+          const end = performance.now() + 1000;
+          let to;
+          do {
+            await nextFrame();
+            to = press("ArrowRight");
+          } while (to.startsWith("A") && performance.now() < end);
+          chart.blur();
+          return to;
+        })()`),
+      );
+    }
+    assert.deepStrictEqual(roots, ["a: 1, 1 of 1", "A: 1, 1 of 2"]);
+  });
+
   test("keeps the last series shown with H, by the key's place, and shows all from none", async () => {
     await renderChart({
       legend: {},

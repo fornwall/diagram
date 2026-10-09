@@ -373,10 +373,12 @@ export class ChartFocus {
       if (series.get("expandAndCollapse") !== true) return;
       chart.dispatchAction({ type: "treeExpandAndCollapse", seriesId, dataIndex: node.dataIndex });
     } else if (series.subType === "treemap") {
+      const nodeClick = series.get("nodeClick");
+      if (!nodeClick) return;
       // A node that leafDepth draws as a leaf becomes the root, as its breadcrumb then shows.
       if (node.getLayout?.()?.isLeafRoot) {
         chart.dispatchAction({ type: "treemapRootToNode", seriesId, targetNode: node });
-      } else if (series.get("nodeClick") === "zoomToNode") {
+      } else if (nodeClick === "zoomToNode") {
         chart.dispatchAction({ type: "treemapZoomToNode", seriesId, targetNode: node });
       } else return;
     } else if (series.subType === "sunburst") {
