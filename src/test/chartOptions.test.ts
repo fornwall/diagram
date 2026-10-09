@@ -1,6 +1,8 @@
 import * as assert from "node:assert";
 import { chartControls, updatedChartSpec, withChartControls } from "../chartOptions";
 import { type ChartSpec, validateChartSpec } from "../chartSpec";
+import { buildChart } from "../charts";
+import { parseTable } from "../data";
 
 const data = "name,amount\na,1\nb,2";
 
@@ -127,6 +129,24 @@ suite("chartOptions", () => {
     assert.ok(!Object.hasOwn(pie, "bins"));
     assert.ok(!Object.hasOwn(pie, "facetColumn"));
     assert.strictEqual(updatedChartSpec(bar, { type: "histogram", limit: 2 }).limit, 2);
+    // A box plot summarizes every row of each group itself.
+    const grouped = { ...bar, data: "name,amount\na,1\na,2\nb,3\nb,4", aggregate: "sum" } as const;
+    const boxplot = updatedChartSpec(grouped, { type: "boxplot" });
+    for (const key of ["aggregate", "limit", "facetColumn"]) {
+      assert.ok(!Object.hasOwn(boxplot, key), key);
+    }
+    const { option } = buildChart(boxplot, parseTable(grouped.data));
+    assert.deepStrictEqual(option.series, [
+      {
+        type: "boxplot",
+        name: "amount",
+        data: [
+          [3, 3.25, 3.5, 3.75, 4],
+          [1, 1.25, 1.5, 1.75, 2],
+        ],
+      },
+    ]);
+    assert.strictEqual(updatedChartSpec(boxplot, { type: "bar" }).sort, "descending");
   });
 
   test("keeps the histogram, facet and filter settings of an update, or clears those set to null", () => {

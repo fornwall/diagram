@@ -102,7 +102,10 @@ export function unusableSettings(type: ChartType) {
   const keys =
     type === "histogram"
       ? (["labelColumn", "aggregate", "sort", "limit"] as const)
-      : (["bins"] as const);
+      : type === "boxplot"
+        ? // It summarizes every row of each group itself.
+          (["bins", "aggregate", "limit"] as const)
+        : (["bins"] as const);
   return FACET_TYPES.includes(type)
     ? keys
     : ([...keys, "facetColumn", "facetColumns", "facetScales"] as const);
