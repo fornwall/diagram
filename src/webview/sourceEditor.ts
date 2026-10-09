@@ -124,6 +124,7 @@ export class SourceEditor {
       this.load();
     } else {
       staleNote.hidden = this.formatted() === this.editedFrom;
+      this.updateActions();
     }
   }
 
@@ -167,16 +168,23 @@ export class SourceEditor {
     this.updateActions();
   }
 
+  /**
+   * Whether the source shown is not the diagram's: edited, or, though the edits were undone, the
+   * source they started from, which the diagram changed from since.
+   */
+  private differs(): boolean {
+    return this.elements.input.value !== this.editedFrom || !this.elements.staleNote.hidden;
+  }
+
   private updateActions(): void {
-    const edited = this.elements.input.value !== this.editedFrom;
-    this.elements.apply.disabled = !edited;
-    this.elements.revert.disabled = !edited;
+    this.elements.apply.disabled = !this.differs();
+    this.elements.revert.disabled = !this.differs();
     this.onChange();
   }
 
   private apply(): void {
     const source = this.elements.input.value;
-    if (!this.diagram || source === this.editedFrom) {
+    if (!this.diagram || !this.differs()) {
       return;
     }
     // The diagram that comes back is this edit, and not a change to warn about.

@@ -482,10 +482,24 @@ suite("webview", function () {
       })`),
       { source: "flowchart LR\n A --> Draft", stale: true },
     );
+    // Undoing the edits leaves the source that the diagram changed from, for Apply or Revert.
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const source = document.getElementById("source");
+        source.value = "flowchart LR\\n A --> B";
+        source.dispatchEvent(new Event("input"));
+        return ["apply", "revert"].map(id => document.getElementById(id).disabled);
+      })()`),
+      [false, false],
+    );
     await evaluate('document.getElementById("revert").click()');
-    assert.strictEqual(
-      await evaluate('document.getElementById("source").value'),
-      "flowchart LR\n A --> New",
+    assert.deepStrictEqual(
+      await evaluate(`({
+        source: document.getElementById("source").value,
+        stale: !document.getElementById("stale-note").hidden,
+        disabled: ["apply", "revert"].map(id => document.getElementById(id).disabled)
+      })`),
+      { source: "flowchart LR\n A --> New", stale: false, disabled: [true, true] },
     );
     await evaluate('document.getElementById("view-visual").click()');
   });
