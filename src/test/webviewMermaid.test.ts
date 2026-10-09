@@ -949,8 +949,16 @@ suite("Mermaid in the webview", function () {
         ],
       ],
       [
-        "sankey-beta\n  A,B,10\n  A,C,5",
-        ["A: A", "B: B", "C: C", "edge:A → B: A → B: 10", "edge:A → C: A → C: 5"],
+        "sankey-beta\n  A,B,10\n  A,C,5\n  A,B,3\n  A,B,2",
+        [
+          "A: A",
+          "B: B",
+          "C: C",
+          "edge:A → B (2): A → B: 3",
+          "edge:A → B (3): A → B: 2",
+          "edge:A → B: A → B: 10",
+          "edge:A → C: A → C: 5",
+        ],
       ],
       [
         'block-beta\n  columns 3\n  a b c\n  a --> b\n  b -- "go" --> c\n  c --- a',

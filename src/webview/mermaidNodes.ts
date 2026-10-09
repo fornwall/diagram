@@ -202,7 +202,10 @@ class Finder {
   private readonly labels = new Map<string, string>();
   /** The ids that uniqueId gave out. */
   private readonly given = new Set<string>();
-  /** The next number to try for each name, so that many equal names take linear time. */
+  /**
+   * The next number to try for each name and relationship id, so that many equal names, or
+   * relationships between the same ends, take linear time.
+   */
   private readonly next = new Map<string, number>();
 
   constructor(
@@ -277,8 +280,11 @@ class Finder {
     if (start && !end) [source, target] = [target, source];
     const direction = start && end ? "both" : !start && !end ? "undirected" : "forward";
     const arrow = direction === "both" ? "↔" : direction === "undirected" ? "—" : "→";
-    let unique = `${kind}:${id}`;
-    for (let n = 2; this.labels.has(unique); n++) unique = `${kind}:${id} (${n})`;
+    const base = `${kind}:${id}`;
+    let unique = base;
+    let n = this.next.get(base) ?? 2;
+    while (this.labels.has(unique)) unique = `${base} (${n++})`;
+    this.next.set(base, n);
     const name = (node: string) => this.labels.get(node) ?? node;
     return {
       id: unique,
