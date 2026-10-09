@@ -909,7 +909,7 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
-  test("finds icon and image shapes, architecture groups, sankey flows and the edges of block, agent flow, swimlane and use case diagrams, and event models", async () => {
+  test("finds icon and image shapes, architecture groups, lollipop interfaces, sankey flows and the edges of block, agent flow, swimlane and use case diagrams, and event models", async () => {
     const pixel =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
     const cases: [string, string[]][] = [
@@ -933,6 +933,19 @@ suite("Mermaid in the webview", function () {
           "m: Mail",
           "s: Shop",
           "u: User",
+        ],
+      ],
+      [
+        // Mermaid draws an interface for each class that has it, numbered as in the ids of edges.
+        "classDiagram\n  Bird --() Flyable\n  Plane --() Flyable\n  Bird --() Singing",
+        [
+          "Bird: Bird",
+          "Flyable: Flyable",
+          "Plane: Plane",
+          "Singing: Singing",
+          "edge:id_Bird_interface0_1: Bird — Flyable",
+          "edge:id_Bird_interface2_3: Bird — Singing",
+          "edge:id_Plane_interface1_2: Plane — Flyable",
         ],
       ],
       [

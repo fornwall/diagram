@@ -83,6 +83,8 @@ export interface DiagramDb {
     rhsInto?: boolean;
     title?: string;
   })[];
+  /** A class diagram's classes, which tell it from other diagrams. */
+  getClasses?(): unknown;
   /** A requirement diagram's relationships, which getData leaves the undefined ends out of. */
   getRelationships?(): { src?: unknown; dst?: unknown }[];
   /** A C4 diagram's relationships, in the order it draws them. */
@@ -324,7 +326,9 @@ class Finder {
  * columns, architecture services, …). Their element ids are the source ids, some decorated like
  * "flowchart-A-0". Mermaid makes up the ids of mind map nodes ("node_0"), notes ("note0",
  * "state-A----note-2") and subgraphs titled with spaces and no id ("subGraph0"), so those go by
- * their names. Returns the id of each node by the id that Mermaid draws it with.
+ * their names. So do the lollipop interfaces of class diagrams ("interface0"), which Mermaid draws
+ * for each class that has one: those of a name are one interface. Returns the id of each node by
+ * the id that Mermaid draws it with.
  */
 function shapes(f: Finder): Map<string, string> {
   const nodeIds = new Map<string, string>();
@@ -350,7 +354,9 @@ function shapes(f: Finder): Map<string, string> {
     if (!label) continue;
     const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
       ? f.uniqueId(label)
-      : sourceId;
+      : f.db?.getClasses && /^interface\d+$/.test(domId)
+        ? label
+        : sourceId;
     nodeIds.set(domId, id);
     f.add(element, { id, label });
   }
