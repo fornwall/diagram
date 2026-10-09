@@ -401,10 +401,19 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   }
   if (values.length < needed) {
     const one = JSON.stringify(name(values[0]));
-    throw new Error(
+    const needs =
       type === "scatter"
-        ? `A scatter chart needs two numeric columns (x and y), but there is only ${one}.`
-        : `A radar chart needs two numeric columns, one axis each, but there is only ${one}.`,
+        ? "A scatter chart needs two numeric columns (x and y)"
+        : "A radar chart needs two numeric columns, one axis each";
+    // "valueColumns" may name too few of the numeric columns.
+    const other = defaultValueColumns(table, labels, needed).find((i) => !values.includes(i));
+    if (given === undefined || other === undefined) {
+      throw new Error(`${needs}, but there is only ${one}.`);
+    }
+    const example = quoteAll([name(values[0]), name(other)]);
+    throw new Error(
+      `${needs}, but "valueColumns" names only ${one}. ` +
+        `${type === "scatter" ? "Give both, the x first" : "Give more"}, e.g. [${example}].`,
     );
   }
   return { labels, values, separator, times, timeAxis };

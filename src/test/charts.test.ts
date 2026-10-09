@@ -338,7 +338,19 @@ suite("charts", () => {
   });
 
   test("scatter needs two numeric columns", () => {
-    assert.throws(() => build(chart("scatter", { valueColumns: ["files"] })), /two numeric/);
+    assert.throws(() => build(chart("scatter", { valueColumns: ["files"] })), {
+      message:
+        'A scatter chart needs two numeric columns (x and y), but "valueColumns" names only ' +
+        '"files". Give both, the x first, e.g. ["files", "lines"].',
+    });
+    assert.throws(() => build(chart("scatter"), "k,n\na,1\nb,2"), {
+      message: 'A scatter chart needs two numeric columns (x and y), but there is only "n".',
+    });
+    assert.throws(() => build(chart("radar", { valueColumns: ["lines"] })), {
+      message:
+        'A radar chart needs two numeric columns, one axis each, but "valueColumns" names only ' +
+        '"lines". Give more, e.g. ["lines", "files"].',
+    });
   });
 
   test("a second label column draws a series per label, as rows in long format give", () => {
