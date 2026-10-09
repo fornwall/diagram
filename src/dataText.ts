@@ -3,7 +3,7 @@
 
 import type { DataFormat } from "./chartSpec";
 import type { Cell, Records } from "./data";
-import { splitDiffStat, splitGoBenchmarks, splitLs } from "./dataCommands";
+import { splitDiffStat, splitGoBenchmarks, splitLs, topSizes } from "./dataCommands";
 import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
 import { parseNumber } from "./dataNumber";
 import { lineAndColumn, quote } from "./text";
@@ -833,7 +833,7 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
     const table = splitShown(kept.join("\n"), kept, format);
     if ((table.records[0]?.length ?? 0) > 1) {
       const note = `Only the table from line ${preamble + 1} was read, not the text above it.`;
-      return { ...table, note };
+      return { ...(TOP_SUMMARY.test(all[0] ?? "") ? topSizes(table) : table), note };
     }
   }
   const tabs = lines.filter((line) => line.includes("\t")).length;

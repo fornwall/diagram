@@ -1,5 +1,6 @@
-// Reading the output of particular commands, which the general rules would split wrongly: ls -l,
-// go test -bench and git diff --stat. Each returns undefined unless the lines are that output.
+// Reading the output of particular commands, which the general rules would read wrongly: ls -l,
+// go test -bench, git diff --stat and top. Each split… function returns undefined unless the lines
+// are that output.
 
 import type { Records } from "./data";
 import { parseNumber, type Unit } from "./dataNumber";
@@ -157,4 +158,29 @@ export function splitGoBenchmarks(lines: string[]): Records | undefined {
   }
   const units = header.map((name): Unit | undefined => (name === "B/op" ? "bytes" : undefined));
   return records.length > 1 ? { records, header: true, units } : undefined;
+}
+
+/** The columns of top's processes that hold sizes, as VIRT and RES. */
+const TOP_SIZES = new Set(["VIRT", "RES", "SHR", "SWAP", "CODE", "DATA", "USED"]);
+
+/**
+ * Reads the sizes of the processes that procps top lists in KiB, or in larger units after a
+ * lowercase letter, as "1.2g", as bytes.
+ */
+export function topSizes(table: Records): Records {
+  const [header = [], ...rows] = table.records;
+  const units = header.map((name): Unit | undefined =>
+    TOP_SIZES.has(String(name)) ? "bytes" : undefined,
+  );
+  for (const row of rows) {
+    for (const [column, cell] of row.entries()) {
+      if (units[column] !== undefined && typeof cell === "string") {
+        row[column] = cell.replace(
+          /^(\d+(?:\.\d+)?)([mgtpe]?)$/,
+          (_, size: string, unit: string) => `${size}${(unit || "k").toUpperCase()}i`,
+        );
+      }
+    }
+  }
+  return { ...table, units };
 }

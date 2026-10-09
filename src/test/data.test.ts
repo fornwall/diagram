@@ -1140,16 +1140,21 @@ suite("data", () => {
       "Tasks: 312 total,   1 running, 311 sleeping,   0 stopped,   0 zombie",
       "MiB Swap:   2048.0 total,   2048.0 free,      0.0 used.  21005.1 avail Mem",
       "",
-      "    PID USER      %CPU COMMAND",
-      "   1234 fornwall  12.5 code",
-      "      1 root       0.0 systemd",
+      "    PID USER       VIRT    RES  %CPU COMMAND",
+      "   1234 fornwall   1.2g   2048  12.5 code",
+      "      1 root      27676   512m   0.0 systemd",
     ].join("\n");
     for (const format of ["auto", "whitespace"] as const) {
       const table = parseTable(top, format);
+      // Sizes are in KiB, or in larger units after a lowercase letter.
       assert.deepStrictEqual(table.rows, [
-        [1234, "fornwall", 12.5, "code"],
-        [1, "root", 0, "systemd"],
+        [1234, "fornwall", 1.2 * 1024 ** 3, 2048 * 1024, 12.5, "code"],
+        [1, "root", 27676 * 1024, 512 * 1024 ** 2, 0, "systemd"],
       ]);
+      assert.deepStrictEqual(
+        table.columns.map((column) => column.unit),
+        [undefined, undefined, "bytes", "bytes", "%", undefined],
+      );
       assert.strictEqual(table.note, "Only the table from line 5 was read, not the text above it.");
     }
     const rule = "-".repeat(60);
