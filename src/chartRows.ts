@@ -1,6 +1,13 @@
 // The rows a chart draws: labeled, without totals or parent rows, grouped, sorted and limited.
 
-import { type Columns, chained, columnName, isCartesian, readsLevels } from "./chartColumns";
+import {
+  type Columns,
+  chained,
+  columnName,
+  isCartesian,
+  isTotalsLabel,
+  readsLevels,
+} from "./chartColumns";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import { type Multiples, showInMultiples } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
@@ -108,12 +115,7 @@ export function stepsOf(step: number): { count(value: number): number; at(steps:
 function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: number[]): boolean {
   const last = table.rows.at(-1);
   const label = last?.[labelColumn];
-  if (
-    last === undefined ||
-    table.rows.length < 3 ||
-    typeof label !== "string" ||
-    !/^(?:total|totals|sum|grand total)\s*:?$/i.test(label)
-  ) {
+  if (last === undefined || table.rows.length < 3 || !isTotalsLabel(label)) {
     return false;
   }
   let checked = 0;
@@ -407,8 +409,9 @@ export function readRows(
   }
 
   if (columns.timeAxis) {
-    // A row without a date has nowhere to sit on a time axis.
-    const dated = rows.filter((row) => label(row) !== "");
+    // A row without a date has nowhere to sit on a time axis, as a last row named like a total
+    // that totals nothing.
+    const dated = rows.filter((row) => label(row) !== "" && !isTotalsLabel(label(row)));
     const left = rows.length - dated.length;
     if (left > 0) {
       notes.push(`left out ${plural(left, "row")} without a date`);

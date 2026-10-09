@@ -1719,6 +1719,23 @@ suite("charts", () => {
     }
   });
 
+  test("a totals row under dates leaves them on a time axis", () => {
+    const daily = "day,sales\n2026-01-01,5\n2026-01-02,7\n2026-01-05,1\nTotal,13";
+    const option = build(chart("line"), daily);
+    assert.strictEqual(option.xAxis.type, "time");
+    assert.deepStrictEqual(option.series[0].data, [
+      ["2026-01-01", 5],
+      ["2026-01-02", 7],
+      ["2026-01-05", 1],
+    ]);
+    assert.match(summary(chart("line"), daily), /left out the last row, "Total", a total/);
+    // A row named like a total that is none has no date to sit at.
+    const other = build(chart("bar"), daily.replace("13", "99"));
+    assert.strictEqual(other.xAxis.type, "time");
+    assert.strictEqual(other.series[0].data.length, 3);
+    assert.match(summary(chart("bar"), daily.replace("13", "99")), /left out 1 row without a date/);
+  });
+
   test("default value columns skip identifier columns", () => {
     const table = "id,name,score\n7,a,10\n3,b,20";
     assert.deepStrictEqual(seriesNames(build(chart("bar"), table)), ["score"]);

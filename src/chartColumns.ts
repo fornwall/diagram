@@ -43,6 +43,11 @@ export function findColumns(
   return indices;
 }
 
+/** Whether a label names a row of totals, as wc and cloc print last. */
+export function isTotalsLabel(label: Cell | undefined): boolean {
+  return typeof label === "string" && /^(?:total|totals|sum|grand total)\s*:?$/i.test(label);
+}
+
 /** Whether a chart draws a series per value column, or per label of a second label column. */
 export function isCartesian(type: ChartType): type is CartesianType {
   return (CARTESIAN_TYPES as readonly ChartType[]).includes(type);
@@ -330,8 +335,10 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   // given two value columns plots one against the other, and the dates name its points.
   const xy = type === "scatter" && (spec.valueColumns?.length ?? 0) >= 2;
   const axis = isCartesian(type) || (type === "scatter" && !xy) ? labels[0] : undefined;
-  const times =
-    axis === undefined ? undefined : dateFormat(table.rows.map((row) => String(row[axis] ?? "")));
+  const dates = axis === undefined ? [] : table.rows.map((row) => String(row[axis] ?? ""));
+  // A totals row under the dates has none: the rows leave it out as a total, or as undated.
+  if (dates.length >= 3 && isTotalsLabel(dates.at(-1))) dates.pop();
+  const times = axis === undefined ? undefined : dateFormat(dates);
   const timeAxis = times !== undefined && !categoryAxisOverride(spec);
   if (timeAxis) {
     notes.push(
