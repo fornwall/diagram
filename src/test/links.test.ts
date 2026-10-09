@@ -195,7 +195,7 @@ suite("links", () => {
       return true;
     });
     const url = "https://example.com/a%2Fb?q=C%2B%2B%26x%3Dy#a%20b";
-    await openUrl(url, false, async () => false);
+    await openUrl(url, "diagram", false, async () => false);
     assert.deepStrictEqual(opened, [url]);
   });
 });

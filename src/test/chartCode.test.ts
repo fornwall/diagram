@@ -211,12 +211,12 @@ suite("chart code in the panel", function () {
     assert.ok(!fs.existsSync(marker), "the command ran");
   });
 
-  test("asks before opening a diagram's link once the page ran chart code", async () => {
+  test("asks before opening a link once the page ran chart code", async () => {
     const { panel, webview } = await newFakePanel();
     const details: string[] = [];
     const opened: string[] = [];
     let answer: string | undefined = "Open";
-    recordMessages("showWarningMessage", (_, options) => {
+    const questions = recordMessages("showWarningMessage", (_, options) => {
       details.push((options as vscode.MessageOptions).detail ?? "");
       return answer;
     });
@@ -228,7 +228,9 @@ suite("chart code in the panel", function () {
     const url = `https://example.com/collect?data=${"x".repeat(200)}`;
     const open = () =>
       webview.receive({ type: "openUrl", requestId: webview.render.requestId, url });
+    // A link in the HTML of the chart's tooltip, and one that a diagram drew after it.
     assert.ok((await renderChart(panel, codeChart)).ok);
+    await open();
     assert.ok(
       (await panel.render({ language: "mermaid", source: flowchart, title: "Flow" }, "tool")).ok,
     );
@@ -236,8 +238,12 @@ suite("chart code in the panel", function () {
     answer = undefined;
     await open();
     await open();
-    assert.deepStrictEqual(opened, [url]);
-    assert.strictEqual(details.length, 2);
+    assert.deepStrictEqual(opened, [url, url]);
+    assert.deepStrictEqual(questions, [
+      "Open the link that you clicked in the chart?",
+      "Open the link that you clicked in the diagram?",
+      "Open the link that you clicked in the diagram?",
+    ]);
     assert.ok(details[0]?.startsWith(`${url}\n`));
   });
 

@@ -236,20 +236,22 @@ const WEB_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
 /**
  * Opens a link that the Mermaid source drew, from a click directive or a label, or that the HTML of
- * a chart holds, such as its tooltip's, which the page posts as written. VS Code asks before opening a website outside its trusted domains, which it
- * would not for a link clicked in the page itself. Another scheme could run a command or open a
- * file that a model chose. askFirst, once the page ran chart code that could post this as if the
- * user clicked, has the panel ask too, naming the whole URL, as VS Code shortens long ones.
+ * a chart holds, such as its tooltip's, which the page posts as written; noun names which drew it.
+ * VS Code asks before opening a website outside its trusted domains, which it would not for a link
+ * clicked in the page itself. Another scheme could run a command or open a file that a model chose.
+ * askFirst, once the page ran chart code that could post this as if the user clicked, has the panel
+ * ask too, naming the whole URL, as VS Code shortens long ones.
  */
 export async function openUrl(
   url: string,
+  noun: "diagram" | "chart",
   askFirst: boolean,
   confirm: (ask: () => Thenable<boolean>) => Promise<boolean>,
 ): Promise<void> {
   const parsed = URL.parse(url);
   if (!parsed || !WEB_PROTOCOLS.has(parsed.protocol)) {
     void vscode.window.showErrorMessage(
-      `Cannot open ${quote(url)}, which the diagram links to: the panel opens only http, https ` +
+      `Cannot open ${quote(url)}, which the ${noun} links to: the panel opens only http, https ` +
         'and mailto URLs, written in full, e.g. "https://example.com/docs".',
     );
     return;
@@ -259,7 +261,7 @@ export async function openUrl(
     askFirst &&
     !(await confirm(async () => {
       const open = await vscode.window.showWarningMessage(
-        "Open the link that you clicked in the diagram?",
+        `Open the link that you clicked in the ${noun}?`,
         {
           modal: true,
           detail: `${target}\n\nThe panel ran JavaScript code from a chart, which can click links as if you had.`,

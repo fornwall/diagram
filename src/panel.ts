@@ -469,8 +469,10 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
       case "openUrl":
-        if (this.showsDrawing(message.requestId)) {
-          return openUrl(message.url, this.pageRanCode, (ask) => this.confirmForPage(ask));
+        if (this.state && this.showsDrawing(message.requestId)) {
+          return openUrl(message.url, diagramNoun(this.state.language), this.pageRanCode, (ask) =>
+            this.confirmForPage(ask),
+          );
         }
         break;
       case "picked":

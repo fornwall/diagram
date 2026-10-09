@@ -725,6 +725,7 @@ suite("panel", function () {
     await open("vscode://file/etc/passwd");
     assert.deepStrictEqual(clicks.slice(3), ["url: https://example.com/"]);
     assert.strictEqual(errors.length, 7);
+    assert.match(errors[6] ?? "", /^Cannot open "vscode:\/\/file\/etc\/passwd", which the chart/);
   });
 
   test("opening a link shows the file beside the diagram with its lines selected", async () => {
