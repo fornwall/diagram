@@ -9,8 +9,14 @@ import { buildChart } from "./charts";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { DiagramPanel } from "./panel";
-import { CHART_TOOL, errorMessage, RENDER_TOOL, UPDATE_CHART_TOOL } from "./protocol";
-import { toolInput } from "./text";
+import {
+  CHART_TOOL,
+  errorMessage,
+  isPlainObject,
+  RENDER_TOOL,
+  UPDATE_CHART_TOOL,
+} from "./protocol";
+import { plural, quote, toolInput } from "./text";
 import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
@@ -202,11 +208,57 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
   }
 }
 
+/** The names of diagram_updateChart's settings in its progress message, in the schema's order. */
+const UPDATE_NAMES: Record<string, string> = {
+  labelColumn: "label column",
+  valueColumns: "value columns",
+  max: "maximum",
+  aggregate: "aggregate",
+  sort: "sort",
+  limit: "limit",
+  bins: "bins",
+  facetColumn: "facet column",
+  facetColumns: "facet columns",
+  facetScales: "facet scales",
+  filters: "filters",
+};
+
+/** E.g. `Updating the chart: line chart, sort "descending", filters cleared`. */
+function updateMessage(input: unknown): string {
+  const changes: string[] = [];
+  for (const [key, value] of Object.entries(isPlainObject(input) ? input : {})) {
+    const name = UPDATE_NAMES[key];
+    if (key === "type" && typeof value === "string") {
+      changes.push(`${chartTypeName(value as ChartType)} chart`);
+    } else if (key === "title" && typeof value === "string") {
+      changes.push(`title ${quote(value, 60)}`);
+    } else if (name !== undefined && value === null) {
+      changes.push(`${name} cleared`);
+    } else if (key === "filters" && Array.isArray(value)) {
+      changes.push(plural(value.length, "filter"));
+    } else if (name !== undefined && value !== undefined) {
+      changes.push(`${name} ${settingText(value)}`);
+    }
+  }
+  return changes.length > 0 ? `Updating the chart: ${changes.join(", ")}` : "Updating the chart";
+}
+
+/** E.g. `"region"`, `"q1", "q2"`, `5 columns` or `10`. */
+function settingText(value: unknown): string {
+  if (typeof value === "string") return quote(value);
+  if (!Array.isArray(value)) return typeof value === "object" ? "changed" : String(value);
+  return value.length <= 3 && value.every((item) => typeof item === "string")
+    ? value.map((item) => quote(item)).join(", ")
+    : plural(value.length, "column");
+}
+
 export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
-  prepareInvocation(): vscode.PreparedToolInvocation {
-    return { invocationMessage: "Updating the chart using its loaded data" };
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<ChartUpdateInput>,
+  ): vscode.PreparedToolInvocation {
+    return { invocationMessage: updateMessage(options.input) };
   }
 
   async invoke(

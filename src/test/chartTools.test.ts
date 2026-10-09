@@ -259,6 +259,27 @@ suite("chartTools", function () {
     assert.match(panel.describeForModel() ?? "", new RegExp(`Revision: ${panel.revision}`));
   });
 
+  test("an update says in chat what it changes", async () => {
+    const { panel } = await harness();
+    const tool = new UpdateChartTool(panel);
+    const message = (input: unknown) =>
+      tool.prepareInvocation({ input: input as never }).invocationMessage;
+    assert.strictEqual(
+      message({ type: "horizontalBar", sort: "descending", limit: 5, revision: 3 }),
+      'Updating the chart: horizontal bar chart, sort "descending", limit 5',
+    );
+    assert.strictEqual(
+      message({ title: "Sales", valueColumns: ["q1", "q2"], filters: null, max: 100 }),
+      'Updating the chart: title "Sales", value columns "q1", "q2", filters cleared, maximum 100',
+    );
+    assert.strictEqual(
+      message({ filters: [{ column: "a", op: "eq", value: 1 }], facetColumn: "region" }),
+      'Updating the chart: 1 filter, facet column "region"',
+    );
+    assert.strictEqual(message({ revision: 2 }), "Updating the chart");
+    assert.strictEqual(message("line"), "Updating the chart");
+  });
+
   test("updates reject stale revisions, missing caches and unsupported manual data edits", async () => {
     const { panel, webview, values } = await harness();
     const source = await draw(panel, { type: "bar", command: "never-run" });
