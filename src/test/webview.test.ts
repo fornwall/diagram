@@ -607,7 +607,27 @@ suite("webview", function () {
         })`),
         { disabled: true, focused: "source" },
       );
+      // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave.
+      await evaluate(`(() => {
+        const source = document.getElementById("source");
+        source.value = "flowchart LR\\n A --> Elsewhere";
+        source.dispatchEvent(new Event("input"));
+        document.getElementById("apply").focus();
+        document.hasFocus = () => false;
+      })()`);
+      await nextRender(() => evaluate(`document.getElementById("apply").click()`));
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const away = document.activeElement.tagName;
+          delete document.hasFocus;
+          // As VS Code gives the page the focus again.
+          window.dispatchEvent(new FocusEvent("focus"));
+          return [away, document.activeElement.id];
+        })()`),
+        ["BODY", "canvas"],
+      );
     } finally {
+      await evaluate("delete document.hasFocus");
       await evaluate('document.getElementById("view-visual").click()');
     }
   });

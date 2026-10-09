@@ -182,7 +182,8 @@ export class SourceEditor {
     // focus on the page's body, from where Tab starts over: keep it in the source instead.
     const actionFocused = document.activeElement === apply || document.activeElement === revert;
     apply.disabled = revert.disabled = !this.differs();
-    if (actionFocused && apply.disabled) input.focus();
+    // Not from elsewhere in VS Code, where the user went meanwhile.
+    if (actionFocused && apply.disabled && document.hasFocus()) input.focus();
     this.onChange();
   }
 
