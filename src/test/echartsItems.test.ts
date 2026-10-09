@@ -30,6 +30,7 @@ suite("echartsItems", () => {
           "getSeriesByIndex",
           "eachRawSeries",
           "eachSeries",
+          "getComponent",
         ]);
         assert.ok(Array.isArray(model.option.series), "GlobalModel.option");
         model.eachRawSeries((series) => {

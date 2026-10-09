@@ -112,6 +112,13 @@ interface GlobalModel {
   eachRawSeries(callback: (series: SeriesModel) => void): void;
   /** The series that a legend does not hide. */
   eachSeries(callback: (series: SeriesModel) => void): void;
+  /** The first legend, with its options, such as selectedMode, and its entries. */
+  getComponent(mainType: "legend"): LegendModel | undefined;
+}
+
+interface LegendModel {
+  get(key: string): unknown;
+  getData(): { get(key: "name"): unknown }[];
 }
 
 export const modelOf = (chart: ECharts.ECharts) =>

@@ -981,6 +981,56 @@ suite("ECharts in the webview", function () {
     });
   });
 
+  test("hides the focused series or slice with H, as its legend entry does, and shows all with Shift+H", async () => {
+    const pie = {
+      legend: {},
+      series: [{ type: "pie", data: ["X", "Y", "Z"].map((name, n) => ({ name, value: n + 1 })) }],
+    };
+    const announced = [];
+    for (const option of [{ ...SALES, legend: {} }, pie]) {
+      await renderChart(option);
+      announced.push(
+        await evaluate(`(async () => {
+          ${PRESS}
+          ${UNTIL}
+          const status = () => document.getElementById("chart-status").textContent;
+          chart.focus();
+          const steps = [press("Home"), press("h")];
+          // On to an item still shown, once the chart is drawn without the hidden one.
+          steps.push(await until(() => status() !== steps[1] && status(), "the next item", nextFrame));
+          steps.push(press("H", {shiftKey: true}));
+          // The focused item stays, and the hidden series is there again to go to.
+          for (let frame = 0; frame < 2; frame++) await nextFrame();
+          steps.push(press("ArrowUp"));
+          chart.blur();
+          return steps;
+        })()`),
+      );
+    }
+    assert.deepStrictEqual(announced, [
+      [
+        "Mon: 1, series A, 1 of 3",
+        "A hidden",
+        "Mon: 2, series B, 1 of 3",
+        "All shown",
+        "Mon: 1, series A, 1 of 3",
+      ],
+      ["X: 1, 1 of 3", "X hidden", "Y: 2, 1 of 2", "All shown", "X: 1, 1 of 3"],
+    ]);
+    // Without a legend shown, nothing hides.
+    await renderChart({ ...SALES, legend: { show: false } });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        ${PRESS}
+        chart.focus();
+        const steps = [press("Home"), press("h")];
+        chart.blur();
+        return steps;
+      })()`),
+      ["Mon: 1, series A, 1 of 3", "Mon: 1, series A, 1 of 3"],
+    );
+  });
+
   test("picks a chart item with the keyboard", async () => {
     await renderChart(SALES);
     const tokens = new vscode.CancellationTokenSource();

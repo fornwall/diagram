@@ -1,7 +1,8 @@
 // Keyboard access to the items of a chart. Like a Mermaid diagram, a chart is one tab stop: arrow
 // keys move the focus between its items, Home and End to the first and the last, and Enter or Space
 // act on the focused item as a click does, which expands, zooms in on or drills down into a node
-// of a hierarchy; Backspace goes back up a treemap or sunburst. ECharts draws items without
+// of a hierarchy; Backspace goes back up a treemap or sunburst, and H hides the item's series or
+// slice as its legend entry does, Shift+H showing all again. ECharts draws items without
 // elements of their own, and charts can have hundreds of thousands, so one ring is placed over the
 // focused item, a live region names it, and the item an arrow key leads to is worked out when the
 // key is pressed.
@@ -312,7 +313,8 @@ export class ChartFocus {
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
       const unmodified = !event.altKey && !event.ctrlKey && !event.metaKey;
       const up = key === "Backspace" && unmodified && !event.shiftKey;
-      if (!(activates || up || (moves && unmodified))) return;
+      const legend = key.toLowerCase() === "h" && unmodified;
+      if (!(activates || up || legend || (moves && unmodified))) return;
       const navigation = this.navigationOf();
       const current = navigation && this.current(navigation);
       if (!navigation || !current) return;
@@ -320,6 +322,10 @@ export class ChartFocus {
       this.keyboard = true;
       if (up) {
         this.drillUp(current);
+        return;
+      }
+      if (legend) {
+        this.hideInLegend(current, event.shiftKey);
         return;
       }
       const to = activates ? current : (navigation.move(current, key) ?? current);
@@ -395,6 +401,34 @@ export class ChartFocus {
     } else if (series.subType === "sunburst" && root.parentNode) {
       chart.dispatchAction({ type: "sunburstRootToNode", seriesId, targetNode: root.parentNode });
     } else return;
+    this.chartChanged();
+  }
+
+  /**
+   * Hides the series or slice of the item, as a click on its entry in the legend does, or shows
+   * every one again; the focus goes on to an item still shown.
+   */
+  private hideInLegend(ref: ItemRef, showAll: boolean): void {
+    const chart = this.chart();
+    const model = chart && modelOf(chart);
+    const legend = model?.getComponent("legend");
+    // Unless the legend is hidden, or selects one entry at a time, or none.
+    const mode = legend?.get("selectedMode");
+    const usable = legend?.get("show") !== false && (mode === true || mode === "multiple");
+    if (!chart || !model || !legend || !usable) return;
+    if (showAll) {
+      chart.dispatchAction({ type: "legendAllSelect" });
+      this.status.textContent = "All shown";
+    } else {
+      // A legend has entries for series, or for the items of a series such as a pie's.
+      const names = new Set(legend.getData().map((entry) => entry.get("name")));
+      const series = model.getSeriesByIndex(ref.seriesIndex);
+      const item = series?.getRawData().getName(ref.dataIndex);
+      const name = [item, series?.name].find((each) => each !== undefined && names.has(each));
+      if (name === undefined) return;
+      chart.dispatchAction({ type: "legendUnSelect", name });
+      this.status.textContent = `${name} hidden`;
+    }
     this.chartChanged();
   }
 
