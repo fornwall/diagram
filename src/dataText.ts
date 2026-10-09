@@ -212,25 +212,29 @@ function splitLeniently(
   }
 }
 
-/** The most common value, preferring the smallest on ties. */
-function mode(values: number[]): number {
+/**
+ * The most common number of fields of `records`, preferring the smallest on ties, and how many
+ * records have it.
+ */
+function shape(records: unknown[][]): { width: number; matching: number } {
   const counts = new Map<number, number>();
-  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  let best = 0;
-  for (const [value, count] of counts) {
-    const bestCount = counts.get(best) ?? 0;
-    if (count > bestCount || (count === bestCount && value < best)) best = value;
+  for (const { length } of records) counts.set(length, (counts.get(length) ?? 0) + 1);
+  let width = 0;
+  let matching = 0;
+  for (const [length, count] of counts) {
+    if (count > matching || (count === matching && length < width)) {
+      width = length;
+      matching = count;
+    }
   }
-  return best;
+  return { width, matching };
 }
 
 /**
  * Whether records split into several fields consistently: most into as many, or each into at least
  * two, as lines may have fewer or more fields than the header, as with cloc --csv.
  */
-function fits(records: Cell[][]): boolean {
-  const width = mode(records.map((record) => record.length));
-  const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
+function fits(records: Cell[][], { width, matching } = shape(records)): boolean {
   return width >= 2 && (matching >= records.length * 0.8 || records.every((r) => r.length >= 2));
 }
 
@@ -274,8 +278,7 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       quoteError ??= candidateError;
     }
     const { records } = table;
-    const width = mode(records.map((record) => record.length));
-    const matching = records.reduce((count, row) => count + (row.length === width ? 1 : 0), 0);
+    const { width, matching } = shape(records);
     const singleColumn =
       quotedColumn && candidateError === undefined && width === 1 && matching === records.length;
     if (candidateError !== undefined) {
@@ -290,7 +293,7 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       }
       continue;
     }
-    if (!singleColumn && !fits(records)) {
+    if (!singleColumn && !fits(records, { width, matching })) {
       continue;
     }
     const uniform = matching === records.length ? 1 : 0;
@@ -671,8 +674,7 @@ function splitWhitespace(lines: string[], underline: string | undefined): Record
       header: true,
     };
   }
-  const counts = tokens.map((line) => line.length);
-  if (textHeader && counts.some((c) => c !== counts[0])) {
+  if (textHeader && data.some((line) => line.length !== header.length)) {
     // Gaps in the header are the surest column boundaries, but df has single spaces between some.
     const aligned = splitAtHeaderGaps(lines) ?? splitMultiWordHeader(tokens);
     if (aligned !== undefined) {
@@ -683,7 +685,7 @@ function splitWhitespace(lines: string[], underline: string | undefined): Record
   const count =
     textHeader && data.length > 0 && data.every((line) => line.length >= header.length)
       ? header.length
-      : mode(counts);
+      : shape(tokens).width;
   const full = (textHeader ? data : tokens).filter((line) => line.length === count);
   const spans = full.length > 0 ? columnSpans(full, count) : undefined;
   return {
