@@ -26,10 +26,11 @@ jobs:
         with:
           path: .vscode-test/vscode-*
           key: vscode-${{ runner.os }}-${{ hashFiles('.vscode-test.mjs') }}
-      - name: Check types, lint, build, and test in VS Code
-        run: xvfb-run -a npm test
-      - name: Package extension
+      - name: Check types, lint, build, and package
         run: npm run vsix -- --out "diagram-${{ github.sha }}.vsix"
+      # Against the minified bundles just packaged, as npm test would test unminified ones.
+      - name: Test in VS Code
+        run: npm run compile-tests && xvfb-run -a npx vscode-test
       - name: Upload VSIX
         uses: actions/upload-artifact@v7
         with:
