@@ -127,6 +127,16 @@ function sorted(value: unknown): unknown {
   );
 }
 
+/**
+ * A value that is neither an array nor an object as JSON has it: -0 is 0, and infinities, NaN and
+ * undefined are null. An option captured as an object, as a generated one is, then compares equal to
+ * the same option captured from its source, rather than differing by edits that were never made.
+ */
+function jsonLeaf(value: unknown): unknown {
+  if (typeof value === "number") return Number.isFinite(value) ? value + 0 : null;
+  return value === undefined ? null : value;
+}
+
 function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: string } {
   const data: Record<string, unknown> = {};
   function visit(value: unknown, path: Path): unknown {
@@ -134,9 +144,11 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
       if (path.length === 1 && path[0] === "series") data["series.length"] = value.length;
       return value.map((item, index) => visit(item, [...path, index]));
     }
-    if (!isPlainObject(value)) return value;
+    if (!isPlainObject(value)) return jsonLeaf(value);
     return Object.fromEntries(
       Object.entries(value).flatMap(([key, item]) => {
+        // JSON leaves out undefined properties.
+        if (item === undefined) return [];
         if (UNSAFE_KEYS.has(key)) {
           const where = path.map((part) => (typeof part === "number" ? `[${part}]` : `.${part}`));
           throw new Error(

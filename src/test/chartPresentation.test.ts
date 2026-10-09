@@ -60,6 +60,24 @@ suite("chartPresentation", () => {
     }
   });
 
+  test("records only the edits of a source whose generated option has values JSON writes otherwise", () => {
+    // The heatmap's scale starts at -0, which its source writes as 0.
+    const chart: ChartSpec = { type: "heatmap", data: "unused", labelColumn: ["r", "c"] };
+    const table = parseTable("r,c,v\na,x,-0.0\na,y,2\nb,x,3\nb,y,1");
+    const { option, presentation } = rebuildChart(chart, table);
+    assert.ok(Object.is((option as { visualMap: { min: unknown } }).visualMap.min, -0));
+    const titled = JSON.stringify({ ...option, title: { text: "Heat" } }, null, 2);
+    assert.deepStrictEqual(captureChartPresentation(titled, presentation).edits, [
+      { path: ["title"], value: { text: "Heat" } },
+    ]);
+    // Nor do infinities and undefined properties of an option differ from their source.
+    const odd = { series: [{ type: "bar", data: [1] }], yAxis: { max: Infinity, name: undefined } };
+    assert.deepStrictEqual(
+      captureChartPresentation(odd),
+      captureChartPresentation(JSON.stringify(odd)),
+    );
+  });
+
   test("canonical data hashes retain compatibility with saved nested and numeric keys", () => {
     const option = {
       series: [
