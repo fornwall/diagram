@@ -10,6 +10,7 @@ import {
   absolutePath,
   contains,
   decodeFile,
+  decodeText,
   fileError,
   inWorkspace,
   type LocalRoot,
@@ -260,6 +261,37 @@ async function withoutHiddenSiblings(
   return files.filter((_, index) => !hidden[index]);
 }
 
+/**
+ * The globs that exclude what the top-level .gitignore of a workspace folder ignores, as VS Code's
+ * search does, unless search.useIgnoreFiles is off: findFiles leaves ignore files to its caller.
+ * A pattern with a "/" before its end is relative to the folder, others match at any depth, and
+ * one that ends with "/" matches only folders. Patterns that a glob list cannot carry are left out,
+ * as are those that include again with "!", so the files they include stay excluded.
+ */
+async function ignoredGlobs(
+  root: vscode.WorkspaceFolder,
+  token: vscode.CancellationToken,
+): Promise<string[]> {
+  if (!vscode.workspace.getConfiguration("search", root.uri).get("useIgnoreFiles", true)) {
+    return [];
+  }
+  const file = vscode.Uri.joinPath(root.uri, ".gitignore");
+  const bytes = await unlessCancelled(
+    async () => vscode.workspace.fs.readFile(file).then(undefined, () => new Uint8Array()),
+    token,
+  );
+  return decodeText(bytes, false)
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      const pattern = line.trimEnd();
+      if (/^[#!]|[\\{},]/.test(pattern)) return [];
+      const name = pattern.replace(/^\/|\/$/g, "");
+      if (!name) return [];
+      const glob = pattern.slice(0, -1).includes("/") ? name : `**/${name}`;
+      return pattern.endsWith("/") ? [`${glob}/**`] : [glob, `${glob}/**`];
+    });
+}
+
 async function candidates(
   roots: readonly vscode.WorkspaceFolder[],
   glob: string,
@@ -272,7 +304,7 @@ async function candidates(
     throwIfCancelled(token);
     // An exclude passed to findFiles replaces files.exclude, so pass both settings. It cannot
     // carry a condition on sibling files, which is checked on the files found.
-    const patterns = new Set(DEFAULT_EXCLUDES);
+    const patterns = new Set([...DEFAULT_EXCLUDES, ...(await ignoredGlobs(root, token))]);
     const conditions: [string, string][] = [];
     for (const section of ["files", "search"]) {
       const excludes = vscode.workspace

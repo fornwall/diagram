@@ -172,6 +172,29 @@ suite("workspaceTools", function () {
     }
   });
 
+  test("leaves out what a folder's .gitignore ignores, unless search.useIgnoreFiles is off", async () => {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await writeFile(".gitignore", "# output\n*.log\n/ignore/out/\ncache\n!keep.log\n\\#odd\n");
+    for (const folder of ["ignore", "ignore/out", "ignore/cache", "ignore/sub", "ignore/sub/out"]) {
+      await make(folder);
+    }
+    const files = ["a.log", "cache/c.ts", "keep.log", "main.ts", "out/x.js", "sub/cache"];
+    for (const name of [...files, "sub/out/y.js"]) await writeFile(`ignore/${name}`, "");
+    assert.strictEqual(
+      await invoke(finder, { glob: "ignore/**" }),
+      "ignore/main.ts\nignore/sub/out/y.js",
+    );
+    const search = vscode.workspace.getConfiguration("search");
+    await search.update("useIgnoreFiles", false, vscode.ConfigurationTarget.Global);
+    afterTest(() => search.update("useIgnoreFiles", undefined, vscode.ConfigurationTarget.Global));
+    assert.strictEqual(
+      await invoke(finder, { glob: "ignore/**" }),
+      [...files, "sub/out/y.js"].map((name) => `ignore/${name}`).join("\n"),
+    );
+  });
+
   test("fills result limits across overlapping workspace roots", async () => {
     const nested = await make("nested");
     const files = ["nested/a.ts", "nested/b.ts", "c.ts"].map((name) =>
