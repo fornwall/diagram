@@ -333,17 +333,21 @@ function shapes(f: Finder): Map<string, string> {
       element.getAttribute("data-usecase-id") ??
       element.getAttribute("data-id") ??
       f.withoutPrefix(element.id);
-    // A block diagram group without a label goes by its id, unless Mermaid made one up for it.
-    const group = element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId);
-    const label = nameOf(element) || (group ? domId : "");
-    // Start and end states, forks and joins, and groups without ids.
-    if (!label) continue;
     const decorated = /^(?:flowchart|agentflow|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(
       domId,
     );
+    const sourceId = decorated?.[1] ?? decorated?.[2] ?? domId;
+    // A block diagram group without a label goes by its id, unless Mermaid made one up for it, as
+    // do a state diagram's choices, forks and joins, which show none.
+    const unnamed =
+      (element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId)) ||
+      element.matches(".node.statediagram-state");
+    const label = nameOf(element) || (unnamed ? sourceId : "");
+    // Start and end states, and groups without ids.
+    if (!label) continue;
     const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
       ? f.uniqueId(label)
-      : (decorated?.[1] ?? decorated?.[2] ?? domId);
+      : sourceId;
     nodeIds.set(domId, id);
     f.add(element, { id, label });
   }

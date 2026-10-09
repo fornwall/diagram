@@ -280,13 +280,14 @@ suite("relationships", function () {
       await path("agentflow-beta\n  start --> plan\n  plan --> done", "start", "done"),
       ["start", "edge:L_start_plan_0", "plan", "edge:L_plan_done_0", "done"],
     );
+    // Through a choice, which shows no name, by its id.
     assert.deepStrictEqual(
       await path(
-        "stateDiagram-v2\n  [*] --> Still\n  Still --> Moving\n  Moving --> Crash",
+        "stateDiagram-v2\n  [*] --> Still\n  Still --> Moving\n  state hit <<choice>>\n  Moving --> hit\n  hit --> Crash",
         "Still",
         "Crash",
       ),
-      ["Still", "edge:edge1", "Moving", "edge:edge2", "Crash"],
+      ["Still", "edge:edge1", "Moving", "edge:edge2", "hit", "edge:edge3", "Crash"],
     );
     assert.strictEqual(await path("classDiagram\n  Animal <|-- Duck", "Duck", "Animal"), undefined);
   });
