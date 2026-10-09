@@ -56,6 +56,7 @@ function relayout<T>(
     reducedMotion: { matches: true },
     tabHidden: () => false,
     focus: { chartChanged: () => {} },
+    laidOut: "",
   });
   const apply = (relayout: boolean) =>
     (renderer as unknown as { apply(relayout: boolean): void }).apply(relayout);
@@ -64,6 +65,8 @@ function relayout<T>(
     change(shown);
     const before = read(shown);
     container.clientWidth = 360;
+    // As for a size that the chart is laid out differently for, which a resize alone cannot draw.
+    Object.assign(renderer, { layout: undefined });
     apply(true);
     return [before, read(shown)];
   } finally {
@@ -300,5 +303,65 @@ suite("echartsRenderer", () => {
     );
     assert.deepStrictEqual(changed, { selected: { One: true, Two: false }, start: 25 });
     assert.deepStrictEqual(kept, changed);
+  });
+
+  test("only resizes a chart for a size that it is laid out the same for", () => {
+    const chart = initECharts(null, undefined, {
+      renderer: "svg",
+      ssr: true,
+      width: 400,
+      height: 300,
+    });
+    const setOptions: unknown[] = [];
+    const setOption = chart.setOption.bind(chart);
+    chart.setOption = ((option: unknown, settings: unknown) => {
+      setOptions.push(option);
+      return setOption(option as ECharts.EChartsCoreOption, settings as boolean);
+    }) as typeof chart.setOption;
+    const container = { clientWidth: 400, clientHeight: 300 };
+    const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
+    const labels = ["Category A", "Category B", "Category C"];
+    Object.assign(renderer, {
+      echarts: {},
+      chart,
+      container,
+      option: {
+        xAxis: { type: "category", data: labels },
+        yAxis: {},
+        series: [{ type: "bar", data: [1, 2, 3] }],
+      },
+      title: "",
+      theme: { colors: testColors, echarts: {} },
+      annotation: { marks: [], dim: false },
+      selectedKeys: new Set(),
+      reducedMotion: { matches: true },
+      tabHidden: () => false,
+      focus: { chartChanged: () => {} },
+      laidOut: "",
+    });
+    const apply = (relayout: boolean) =>
+      (renderer as unknown as { apply(relayout: boolean): void }).apply(relayout);
+    try {
+      apply(false);
+      assert.strictEqual(setOptions.length, 1);
+      // The labels fit either way.
+      container.clientWidth = 380;
+      apply(true);
+      assert.strictEqual(setOptions.length, 1);
+      assert.strictEqual(chart.getWidth(), 380);
+      // The labels no longer fit side by side.
+      container.clientWidth = 200;
+      apply(true);
+      assert.strictEqual(setOptions.length, 2);
+      // Dimming around marks takes a layout of its own.
+      Object.assign(renderer, {
+        annotation: { marks: [{ id: "Category A", kind: "info" }], dim: true },
+      });
+      container.clientWidth = 210;
+      apply(true);
+      assert.strictEqual(setOptions.length, 3);
+    } finally {
+      chart.dispose();
+    }
   });
 });

@@ -6,7 +6,13 @@ import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { ChartFocus } from "./echartsFocus";
 import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
-import { disableAnimation, focusHighlighted, layoutOption, toolWarnings } from "./echartsLayout";
+import {
+  disableAnimation,
+  focusHighlighted,
+  layoutOption,
+  sameLayout,
+  toolWarnings,
+} from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
 import { type JsonObject, optionWarnings, parseOption, seriesTypes } from "./echartsOption";
@@ -61,6 +67,11 @@ export class EChartsRenderer implements Renderer {
   private title = "";
   /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
   private laidOut = "";
+  /**
+   * The last layout of the option, before the changes that setting it brings, which shares the
+   * option's data: a new layout that is the same only needs the chart resized.
+   */
+  private layout: JsonObject | undefined;
   private selectedKeys: ReadonlySet<string> = new Set();
   private selectionScheduled = false;
   /** The marks an agent put on the chart, which a new layout dispatches again. */
@@ -335,6 +346,7 @@ export class EChartsRenderer implements Renderer {
     this.shownSelected = [];
     this.hasHighlights = false;
     this.laidOut = "";
+    this.layout = undefined;
   }
 
   /**
@@ -353,7 +365,9 @@ export class EChartsRenderer implements Renderer {
     const width = (tabShown && this.container.clientWidth) || this.chart?.getWidth() || 800;
     const height = (tabShown && this.container.clientHeight) || this.chart?.getHeight() || 500;
     const reducedMotion = this.reducedMotion.matches;
-    const laidOut = `${width}:${height}:${reducedMotion}:${this.blurring()}`;
+    // What the layout is drawn with besides the option laid out.
+    const look = `${reducedMotion}:${this.blurring()}`;
+    const laidOut = `${width}:${height}:${look}`;
     // Check layout inputs before copying the data. Retaining a serialized option would also
     // duplicate every data point in memory just to detect unchanged layouts.
     if (relayout && this.theme && laidOut === this.laidOut) {
@@ -366,13 +380,21 @@ export class EChartsRenderer implements Renderer {
       const colors = this.readColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
     }
-    const option = layoutOption(this.option ?? {}, {
-      width,
-      height,
-      title: this.title,
-      colors: this.theme.colors,
-      reducedMotion,
-    });
+    const context = { width, height, title: this.title, colors: this.theme.colors, reducedMotion };
+    const layout = layoutOption(this.option ?? {}, context);
+    // Many charts are laid out the same for another size, such as one that only fills the space,
+    // or whose labels fit either way: resizing draws them as a layout would, keeping what the user
+    // changed, without setting the option and drawing the chart anew, which takes long for a
+    // large one. Not for another theme, motion preference or blur, of which the layout is not all.
+    const sameLook = !themeChanged && this.laidOut.endsWith(`:${look}`);
+    if (relayout && sameLook && sameLayout(layout, this.layout)) {
+      this.laidOut = laidOut;
+      this.resizeChart();
+      return;
+    }
+    this.layout = layout;
+    // Another copy to set, which the changes below make for this chart alone.
+    const option = layoutOption(this.option ?? {}, context);
     if (relayout) {
       disableAnimation(option);
     }

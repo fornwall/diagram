@@ -149,6 +149,27 @@ function cloneValue(value: unknown): unknown {
 }
 
 /**
+ * Whether two layouts of the same option are the same, as for many charts at another size: a
+ * treemap, or axes whose labels fit either way. Their data is the option's own, which they share,
+ * so this compares the settings around it.
+ */
+export function sameLayout(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, index) => sameLayout(item, b[index]));
+  }
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  // Not typed arrays, which a layout carries over rather than copies, nor values of other classes.
+  if (ArrayBuffer.isView(a) || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && sameLayout(a[key], b[key]))
+  );
+}
+
+/**
  * Gives the base option the series that the chart starts with but that only the current timeline
  * step or the default media option defines, as copies, for the layout to place, style and keep
  * them as any other: what the step or query sets is still merged in over them. Series that only
