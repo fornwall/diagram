@@ -287,6 +287,8 @@ export class MermaidRenderer implements Renderer {
    * configuration. Until redraw, a render of the same draws nothing new.
    */
   private drawnFrom: string | undefined;
+  /** The last image, and what it was drawn from, which an image of the same takes again. */
+  private image: { from: string; image: DiagramImage } | undefined;
   private diagramType: string | undefined;
   /** The width of the container that the drawing was laid out in. */
   private layoutWidth = 0;
@@ -525,13 +527,20 @@ export class MermaidRenderer implements Renderer {
     if (source === undefined) {
       throw new Error("There is no diagram to make an image of.");
     }
+    const config = this.config();
+    // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
+    // The image takes the color of the text around the drawing for labels that leave it to CSS.
+    const color = getComputedStyle(document.body).color;
+    const width = layoutContainer().style.width;
+    const from = JSON.stringify([source, background, color, width, config]);
+    if (this.image?.from === from) return this.image.image;
     const mermaid = await loadMermaid();
     const text = parsableSource(source);
     mermaid.initialize(
       FORMULA.test(text)
-        ? this.config()
+        ? config
         : {
-            ...this.config(),
+            ...config,
             htmlLabels: false,
             // Swimlane titles still follow this deprecated setting alone.
             flowchart: { htmlLabels: false },
@@ -554,7 +563,9 @@ export class MermaidRenderer implements Renderer {
       const drawing = await layOut(svg, diagramType, text, () => databaseOf(mermaid, text));
       try {
         inlineStyleSheets(drawing);
-        return standaloneSvg(drawing, background);
+        const image = standaloneSvg(drawing, background);
+        this.image = { from, image };
+        return image;
       } finally {
         drawing.remove();
       }
@@ -572,6 +583,7 @@ export class MermaidRenderer implements Renderer {
     this.shown = nothingShown();
     this.displayedSource = undefined;
     this.drawnFrom = undefined;
+    this.image = undefined;
   }
 
   showSelection(keys: ReadonlySet<string>): void {

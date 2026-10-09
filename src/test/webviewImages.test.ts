@@ -592,9 +592,10 @@ suite("images in the webview", function () {
 
   test("gives each Mermaid image its own ids, which its styles and arrowheads go by", async () => {
     const ids: { id: string; scoped: boolean }[] = [];
-    // Drawn again, as the same diagram in another session would be.
-    for (const _ of [1, 2]) {
-      await draw({ source: "flowchart LR\n A --> B" });
+    // Drawn again, as the same diagram in another session would be, which keeps no image from
+    // this one: written apart from the first, which this session would take the image of again.
+    for (const source of ["flowchart LR\n A --> B", "flowchart LR\n  A --> B"]) {
+      await draw({ source });
       const svg = (await evaluate(`(async () => {
         ${DRAG_IMAGE}
         return (await dragImage()).getData("image/svg+xml");
@@ -640,6 +641,38 @@ suite("images in the webview", function () {
       );
     }
     assert.deepStrictEqual(images, [1, 2]);
+  });
+
+  test("takes the image of a Mermaid diagram again while the diagram and theme stay", async () => {
+    // A large diagram takes seconds to draw, and the panel draws an image of it anew.
+    const source = "flowchart LR\n A[Again] --> B";
+    const drag = () =>
+      evaluate(`(async () => {
+        const original = XMLSerializer.prototype.serializeToString;
+        let drawn = 0;
+        XMLSerializer.prototype.serializeToString = function (node) {
+          if (node.localName === "svg") drawn++;
+          return original.call(this, node);
+        };
+        try {
+          ${DRAG_IMAGE}
+          const svg = (await dragImage()).getData("image/svg+xml");
+          return {drawn, svg};
+        } finally {
+          XMLSerializer.prototype.serializeToString = original;
+        }
+      })()`) as Promise<{ drawn: number; svg: string }>;
+    await draw({ source });
+    const first = await drag();
+    // Rendering the diagram again forgets the image prepared for a drag.
+    await draw({ source });
+    const again = await drag();
+    await draw({ source: `${source}\n B --> C` });
+    const changed = await drag();
+    assert.deepStrictEqual(
+      [first.drawn, again.drawn, changed.drawn, again.svg === first.svg, changed.svg === first.svg],
+      [1, 0, 1, true, false],
+    );
   });
 
   test("keeps Mermaid image export separate from an incoming render", async () => {
