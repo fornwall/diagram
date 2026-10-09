@@ -106,6 +106,11 @@ interface NumberFormat {
   durations?: boolean;
   /** "3.1G" is a count, as df -h on macOS prints those of inodes, rather than a size in bytes. */
   counts?: boolean;
+  /**
+   * No cell is a number, as some are versions with several dots ("1.26.4"), as pip list prints
+   * them, so that the others ("24.0") are versions too.
+   */
+  versions?: boolean;
 }
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
@@ -132,6 +137,13 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
 
 /**
+ * A version with several dots, as "1.26.4", "v2.0.0-rc.1" or "2024.2.2". An IP address or a date
+ * such as "24.12.2024" matches too, and is no number either. The lookahead keeps the dotted
+ * numbers from being split in several ways, which would take long to try in a long cell.
+ */
+const VERSION = /^v?\d+(?:\.\d+){2,}(?![.\d])[-+.\w]*$/;
+
+/**
  * Parses a number as written in data or command output: "1234", "1,234", "-3", "12.5", "1e3",
  * "$9.99", "9.99 €", "12.5%" (as 12.5), thousands to trillions ("1.2K", "$3.4M", "1.5bn", "2T")
  * and sizes in bytes: "3GiB", "128Mi" (in units of 1024), "1.2kB", "187MB" (in units of 1000, as
@@ -144,6 +156,7 @@ export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
+  if (format.versions) return undefined;
   if (PLAIN.test(text) && !(format.decimalComma && text.includes("."))) {
     const value = Number(text);
     return Number.isFinite(value) ? { value } : undefined;
@@ -267,7 +280,9 @@ export function statedUnit(
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is;
- * - in durations, if the column's name is of durations ("Elapsed", "AGE").
+ * - in durations, if the column's name is of durations ("Elapsed", "AGE");
+ * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
+ *   others are plain ("24.0").
  */
 export function numberFormat(
   records: Cell[][],
@@ -292,6 +307,8 @@ export function numberFormat(
   let ungrouped = false;
   let parenthesized = false;
   let minus = false;
+  let versions = false;
+  let formatted = false;
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string") continue;
@@ -312,7 +329,11 @@ export function numberFormat(
     const commaNumber = COMMA_NUMBER.test(text);
     if (grouping && (number || commaNumber)) grouped = true;
     else if (/\d[\s'\u2019]+\d/.test(cell)) ungrouped = true;
-    if (!number && !commaNumber) continue;
+    if (!number && !commaNumber) {
+      versions ||= VERSION.test(text);
+      continue;
+    }
+    formatted = true;
     sizes ||= !counts && BYTE_SUFFIX.test(/[a-zA-Z]+$/.exec(text)?.[0] ?? "");
     if (accounting) parenthesized = true;
     else if (/^[-\u2212]/.test(text)) minus = true;
@@ -332,5 +353,6 @@ export function numberFormat(
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
     durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
+    versions: versions && !formatted,
   };
 }

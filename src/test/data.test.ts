@@ -593,6 +593,38 @@ suite("data", () => {
     ]);
   });
 
+  test("keeps versions as text in a column with versions of several dots", () => {
+    const pip = parse(
+      "Package    Version\n---------- -------\npip        24.0\nsetuptools 69.0.3\nidna       3.10\nwheel      0.42.0",
+    );
+    assert.deepStrictEqual(pip.rows, [
+      ["pip", "24.0"],
+      ["setuptools", "69.0.3"],
+      ["idna", "3.10"],
+      ["wheel", "0.42.0"],
+    ]);
+    assert.deepStrictEqual(
+      parseTable("name,version,stars\na,1.0,12\nb,2.0.0-rc.1,3\nc,v1.2.3,4").rows,
+      [
+        ["a", "1.0", 12],
+        ["b", "2.0.0-rc.1", 3],
+        ["c", "v1.2.3", 4],
+      ],
+    );
+    // Numbers that only a decimal comma reads that way, or with units, are not versions.
+    assert.deepStrictEqual(parse("a;1.234.567\nb;12\nc;1.2.3").rows, [
+      ["a", 1234567],
+      ["b", 12],
+      ["c", "1.2.3"],
+    ]);
+    assert.deepStrictEqual(parse("a\t1.5 MB\nb\t2\nc\t10.0.0.1\nd\t3").rows, [
+      ["a", 1.5e6],
+      ["b", 2],
+      ["c", "10.0.0.1"],
+      ["d", 3],
+    ]);
+  });
+
   test("reads bare size units in powers of 1000 in columns with SI evidence", () => {
     // du --si and df -H write 1000 as a lowercase k, but 1000² as M.
     assert.deepStrictEqual(parse("4.1k\tsrc\n1.3M\tdist\n2.0G\tnode_modules\n").rows, [
