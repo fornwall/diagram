@@ -62,9 +62,9 @@ export interface TreeNode {
   isExpand: boolean;
   getRawIndex(): number;
   /** The layout of a treemap's node, which says whether leafDepth draws it as a leaf. */
-  getLayout(): { isLeafRoot?: boolean } | undefined;
+  getLayout?(): { isLeafRoot?: boolean } | undefined;
   /** The options of the node, such as a sunburst's nodeClick, with those of its series. */
-  getModel(): { get(key: string): unknown };
+  getModel?(): { get(key: string): unknown };
 }
 
 /** A zrender element, with the bounding box of what it draws in its own coordinates. */
@@ -116,9 +116,10 @@ interface GlobalModel {
   getComponent(mainType: "legend"): LegendModel | undefined;
 }
 
-interface LegendModel {
+export interface LegendModel {
   get(key: string): unknown;
   getData(): { get(key: "name"): unknown }[];
+  isSelected(name: string): boolean;
 }
 
 export const modelOf = (chart: ECharts.ECharts) =>

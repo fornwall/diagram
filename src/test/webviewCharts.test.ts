@@ -995,10 +995,10 @@ suite("ECharts in the webview", function () {
           ${UNTIL}
           const status = () => document.getElementById("chart-status").textContent;
           chart.focus();
-          const steps = [press("Home"), press("h")];
+          const steps = [press("Home"), press("h", {code: "KeyH"})];
           // On to an item still shown, once the chart is drawn without the hidden one.
           steps.push(await until(() => status() !== steps[1] && status(), "the next item", nextFrame));
-          steps.push(press("H", {shiftKey: true}));
+          steps.push(press("H", {code: "KeyH", shiftKey: true}));
           // The focused item stays, and the hidden series is there again to go to.
           for (let frame = 0; frame < 2; frame++) await nextFrame();
           steps.push(press("ArrowUp"));
@@ -1023,11 +1023,65 @@ suite("ECharts in the webview", function () {
       await evaluate(`(() => {
         ${PRESS}
         chart.focus();
-        const steps = [press("Home"), press("h")];
+        const steps = [press("Home"), press("h", {code: "KeyH"})];
         chart.blur();
         return steps;
       })()`),
       ["Mon: 1, series A, 1 of 3", "Mon: 1, series A, 1 of 3"],
+    );
+  });
+
+  test("keeps the last series shown with H, by the key's place, and shows all from none", async () => {
+    await renderChart({
+      legend: {},
+      series: [
+        {
+          type: "pie",
+          label: { show: false },
+          data: ["X", "Y"].map((name, n) => ({ name, value: n + 1 })),
+        },
+      ],
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${PRESS}
+        ${UNTIL}
+        const status = () => document.getElementById("chart-status").textContent;
+        // A click on the legend's entry, which the pie's labels, left out, do not share a name with.
+        const clickLegend = name => {
+          const svg = chart.querySelector("svg");
+          const entry = [...svg.querySelectorAll("text")].find(text => text.textContent === name);
+          const box = entry.getBoundingClientRect();
+          const init = {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
+          for (const type of ["mousedown", "mouseup", "click"]) svg.dispatchEvent(new MouseEvent(type, init));
+        };
+        chart.focus();
+        // Where H is on a Russian keyboard.
+        const steps = [press("Home"), press("р", {code: "KeyH"})];
+        steps.push(await until(() => status() !== steps[1] && status(), "the next item", nextFrame));
+        steps.push(press("р", {code: "KeyH"}));
+        // Not said with the focus unshown, as after a click, for find not to match it.
+        chart.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}));
+        steps.push(press("р", {code: "KeyH"}));
+        // With no slice shown, as a click on the legend can leave it.
+        clickLegend("Y");
+        for (let frame = 0; frame < 2; frame++) await nextFrame();
+        steps.push(press("Home"), press("H", {code: "KeyH", shiftKey: true}));
+        for (let frame = 0; frame < 2; frame++) await nextFrame();
+        steps.push(press("Home"));
+        chart.blur();
+        return steps;
+      })()`),
+      [
+        "X: 1, 1 of 2",
+        "X hidden",
+        "Y: 2, 1 of 1",
+        "Y is the last one shown",
+        "",
+        "",
+        "",
+        "X: 1, 1 of 2",
+      ],
     );
   });
 

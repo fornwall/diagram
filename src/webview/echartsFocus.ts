@@ -17,6 +17,7 @@ import {
   type ItemRef,
   itemKey,
   itemValue,
+  type LegendModel,
   modelOf,
   parseItemKey,
   type SeriesModel,
@@ -313,8 +314,15 @@ export class ChartFocus {
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
       const unmodified = !event.altKey && !event.ctrlKey && !event.metaKey;
       const up = key === "Backspace" && unmodified && !event.shiftKey;
-      const legend = key.toLowerCase() === "h" && unmodified;
+      // By where the key is, as on a keyboard without Latin letters.
+      const legend = event.code === "KeyH" && unmodified;
       if (!(activates || up || legend || (moves && unmodified))) return;
+      // Also with nothing shown, which no item has the focus in then.
+      if (legend && event.shiftKey) {
+        event.preventDefault();
+        this.showAllInLegend();
+        return;
+      }
       const navigation = this.navigationOf();
       const current = navigation && this.current(navigation);
       if (!navigation || !current) return;
@@ -325,7 +333,7 @@ export class ChartFocus {
         return;
       }
       if (legend) {
-        this.hideInLegend(current, event.shiftKey);
+        this.hideInLegend(current);
         return;
       }
       const to = activates ? current : (navigation.move(current, key) ?? current);
@@ -366,13 +374,13 @@ export class ChartFocus {
       chart.dispatchAction({ type: "treeExpandAndCollapse", seriesId, dataIndex: node.dataIndex });
     } else if (series.subType === "treemap") {
       // A node that leafDepth draws as a leaf becomes the root, as its breadcrumb then shows.
-      if (node.getLayout()?.isLeafRoot) {
+      if (node.getLayout?.()?.isLeafRoot) {
         chart.dispatchAction({ type: "treemapRootToNode", seriesId, targetNode: node });
       } else if (series.get("nodeClick") === "zoomToNode") {
         chart.dispatchAction({ type: "treemapZoomToNode", seriesId, targetNode: node });
       } else return;
     } else if (series.subType === "sunburst") {
-      if (node.getModel().get("nodeClick") !== "rootToNode" || node === series.getViewRoot?.()) {
+      if (node.getModel?.().get("nodeClick") !== "rootToNode" || node === series.getViewRoot?.()) {
         return;
       }
       chart.dispatchAction({ type: "sunburstRootToNode", seriesId, targetNode: node });
@@ -404,32 +412,50 @@ export class ChartFocus {
     this.chartChanged();
   }
 
-  /**
-   * Hides the series or slice of the item, as a click on its entry in the legend does, or shows
-   * every one again; the focus goes on to an item still shown.
-   */
-  private hideInLegend(ref: ItemRef, showAll: boolean): void {
+  /** The legend, with the chart, if it is shown and can hide several of its entries. */
+  private legend(): { chart: ECharts.ECharts; legend: LegendModel } | undefined {
     const chart = this.chart();
-    const model = chart && modelOf(chart);
-    const legend = model?.getComponent("legend");
-    // Unless the legend is hidden, or selects one entry at a time, or none.
+    const legend = chart && modelOf(chart).getComponent("legend");
     const mode = legend?.get("selectedMode");
     const usable = legend?.get("show") !== false && (mode === true || mode === "multiple");
-    if (!chart || !model || !legend || !usable) return;
-    if (showAll) {
-      chart.dispatchAction({ type: "legendAllSelect" });
-      this.status.textContent = "All shown";
-    } else {
-      // A legend has entries for series, or for the items of a series such as a pie's.
-      const names = new Set(legend.getData().map((entry) => entry.get("name")));
-      const series = model.getSeriesByIndex(ref.seriesIndex);
-      const item = series?.getRawData().getName(ref.dataIndex);
-      const name = [item, series?.name].find((each) => each !== undefined && names.has(each));
-      if (name === undefined) return;
-      chart.dispatchAction({ type: "legendUnSelect", name });
-      this.status.textContent = `${name} hidden`;
+    return chart && legend && usable ? { chart, legend } : undefined;
+  }
+
+  /**
+   * Hides the series or slice of the item, as a click on its entry in the legend does, unless it
+   * is the last one shown; the focus goes on to an item still shown.
+   */
+  private hideInLegend(ref: ItemRef): void {
+    const found = this.legend();
+    if (!found) return;
+    const { chart, legend } = found;
+    // A legend has entries for series, or for the items of a series such as a pie's.
+    const names = legend.getData().map((entry) => entry.get("name"));
+    const series = modelOf(chart).getSeriesByIndex(ref.seriesIndex);
+    const item = series?.getRawData().getName(ref.dataIndex);
+    const name = [item, series?.name].find((each) => each !== undefined && names.includes(each));
+    if (typeof name !== "string") return;
+    if (names.filter((each) => typeof each === "string" && legend.isSelected(each)).length < 2) {
+      this.announce(`${name} is the last one shown`);
+      return;
     }
+    chart.dispatchAction({ type: "legendUnSelect", name });
+    this.announce(`${name} hidden`);
     this.chartChanged();
+  }
+
+  /** Shows every series or slice again that the legend hides. */
+  private showAllInLegend(): void {
+    const found = this.legend();
+    if (!found) return;
+    found.chart.dispatchAction({ type: "legendAllSelect" });
+    this.announce("All shown");
+    this.chartChanged();
+  }
+
+  /** Says what a key did, while the focus is shown: else find would match the text kept. */
+  private announce(text: string): void {
+    if (this.shown) this.status.textContent = text;
   }
 
   /** Moves the focus to a clicked item, without showing it: the pointer is there. */
