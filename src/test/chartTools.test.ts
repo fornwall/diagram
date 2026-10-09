@@ -299,6 +299,23 @@ suite("chartTools", function () {
     assert.strictEqual(message("line"), "Updating the chart");
   });
 
+  test("the model learns of styling that waits for a chart that can show it", async () => {
+    const { panel, webview } = await harness();
+    const styled = JSON.parse(await draw(panel));
+    styled.series[0].itemStyle = { color: "red" };
+    await webview.edit(JSON.stringify(styled));
+    const update = (input: object) =>
+      new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token);
+    assert.match(toolText(await update({ type: "pie" })), /^Updated/);
+    assert.match(
+      panel.describeForModel() ?? "",
+      /Manual styling that this pie chart cannot show comes back with a chart that can; replacing the chart with diagram_chart or diagram_render drops it\./,
+    );
+    assert.match(toolText(await update({ type: "bar" })), /^Updated/);
+    assert.strictEqual(JSON.parse(panel.current?.source ?? "").series[0].itemStyle.color, "red");
+    assert.doesNotMatch(panel.describeForModel() ?? "", /comes back with a chart that can/);
+  });
+
   test("updates reject stale revisions, missing caches and unsupported manual data edits", async () => {
     const { panel, webview, values } = await harness();
     const source = await draw(panel, { type: "bar", command: "never-run" });

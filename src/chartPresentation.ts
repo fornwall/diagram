@@ -393,7 +393,7 @@ function applyEdits(
       continue;
     }
     const path = placed(option, edit.path, target);
-    if (path === SKIP) {
+    if (path === SKIP || changesNothing(result, path, edit)) {
       keep();
       continue;
     }
@@ -415,7 +415,41 @@ function applyEdits(
     if (edit.remove) delete (at as ObjectOption)[key];
     else (at as ObjectOption)[key] = structuredClone(edit.value);
   }
-  return { option: result, kept };
+  return { option: result, kept: newest(kept) };
+}
+
+/** The most edits kept for a chart that can use them, as of series that may never return. */
+const MOST_KEPT = 100;
+
+/** The newest kept edit of each property of each target, and the newest of them all. */
+function newest(kept: KeptEdit[]): KeptEdit[] {
+  const seen = new Set<string>();
+  const result: KeptEdit[] = [];
+  for (const edit of kept.toReversed()) {
+    const key = JSON.stringify([edit.path, edit.shape, edit.item]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(edit);
+    if (result.length === MOST_KEPT) break;
+  }
+  return result.reverse();
+}
+
+/**
+ * Whether an edit would leave an option as it is, which the edits of the next baseline could not
+ * tell: removing what it does not have, setting what it has already, or styling a component that
+ * it does not generate, as a legend that the webview leaves out where it has nothing to tell.
+ */
+function changesNothing(option: ObjectOption, path: Path, edit: Edit): boolean {
+  if (!edit.remove && path.length > 1 && option[String(path[0])] === undefined) return true;
+  let value: unknown = option;
+  for (const key of path) {
+    if (!(isPlainObject(value) || Array.isArray(value)) || !Object.hasOwn(value, key)) {
+      return edit.remove === true;
+    }
+    value = (value as ObjectOption)[key];
+  }
+  return !edit.remove && isDeepStrictEqual(value, edit.value);
 }
 
 /** Build fresh data through ChartSpec.options, then apply only the user's presentation changes. */

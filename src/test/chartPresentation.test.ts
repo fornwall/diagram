@@ -301,10 +301,13 @@ suite("chartPresentation", () => {
     const refreshed = rebuildChart(faceted, more, facets.presentation);
     assert.deepStrictEqual((refreshed.option as Option).title, [...generated(more).title, title]);
     assert.strictEqual((refreshed.option as Option).legend.top, 30);
-    const back = rebuildChart(single, table, refreshed.presentation).option as Option;
-    assert.deepStrictEqual(back.title, title);
-    assert.deepStrictEqual(back.legend, { top: 30 });
-    assert.deepStrictEqual(back.grid, { left: 80 });
+    const back = rebuildChart(single, table, refreshed.presentation);
+    assert.deepStrictEqual((back.option as Option).title, title);
+    assert.deepStrictEqual((back.option as Option).grid, { left: 80 });
+    // The place of a legend that the chart does not generate waits for one that does.
+    assert.strictEqual((back.option as Option).legend, undefined);
+    const again = rebuildChart(faceted, table, back.presentation).option as Option;
+    assert.strictEqual(again.legend.top, 30);
   });
 
   test("a title that replaced the titles of facets replaces them again, and waits out a single chart", () => {
@@ -347,6 +350,63 @@ suite("chartPresentation", () => {
     const without = rebuildChart({ ...spec, valueColumns: ["cost"] }, newTable, presentation);
     const restored = rebuildChart(spec, newTable, without.presentation).option as Option;
     assert.deepStrictEqual(restored.series[0].itemStyle, { color: "red" });
+  });
+
+  test("edits that a chart has nothing for, or generates already, wait for one that differs", () => {
+    const pie: ChartSpec = { ...spec, type: "pie" };
+    // A legend deleted in a pie, which a bar chart does not generate.
+    const hidden = edited((option) => {
+      delete option.legend;
+    }, pie);
+    const bar = rebuildChart(spec, newTable, hidden);
+    assert.strictEqual((bar.option as Option).legend, undefined);
+    assert.strictEqual(rebuildChart(pie, newTable, bar.presentation).option.legend, undefined);
+    // A legend placed in a pie, which a bar chart does not get.
+    const placed = edited((option) => {
+      option.legend.top = 30;
+    }, pie);
+    const unplaced = rebuildChart(spec, newTable, placed);
+    assert.strictEqual((unplaced.option as Option).legend, undefined);
+    const replaced = rebuildChart(pie, newTable, unplaced.presentation).option as Option;
+    assert.deepStrictEqual(replaced.legend, { top: 30 });
+    // A scale set in a bar chart, which a line chart has already.
+    const scaled = edited((option) => {
+      option.yAxis.scale = true;
+    });
+    const line = rebuildChart({ ...spec, type: "line" }, newTable, scaled);
+    assert.strictEqual((line.option as Option).yAxis.scale, true);
+    const rescaled = rebuildChart(spec, newTable, line.presentation).option as Option;
+    assert.strictEqual(rescaled.yAxis.scale, true);
+  });
+
+  test("keeps the newest of the edits that wait for a chart, and a bounded number of them", () => {
+    const presentation = edited((option) => {
+      option.series[0].itemStyle = { color: "red" };
+    });
+    const target = { shape: "array", item: { key: "name", value: "gone", type: "bar", count: 2 } };
+    const waiting = (count: number, color: (i: number) => string) =>
+      Array.from({ length: count }, (_, i) => ({
+        ...target,
+        path: ["series", 0, "itemStyle", "color"],
+        value: color(i),
+        item: { ...target.item, value: `gone ${i}` },
+      }));
+    const many = rebuildChart(spec, newTable, {
+      ...presentation,
+      kept: waiting(150, (i) => `#${i}`) as never,
+    }).presentation.kept;
+    assert.strictEqual(many?.length, 100);
+    assert.strictEqual(many?.at(-1)?.value, "#149");
+    const repeated = [
+      { ...target, path: ["series", 0, "itemStyle", "color"], value: "red" },
+      { ...target, path: ["series", 0, "itemStyle", "color"], value: "blue" },
+    ];
+    const once = rebuildChart(spec, newTable, { ...presentation, kept: repeated as never })
+      .presentation.kept;
+    assert.deepStrictEqual(
+      once?.map(({ value }) => value),
+      ["blue"],
+    );
   });
 
   test("removing facets does not turn a single axis into a partial array", () => {
