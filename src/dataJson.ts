@@ -291,6 +291,24 @@ function parseJsonStream(text: string): unknown[] | undefined {
   return values;
 }
 
+/**
+ * Parses JSON Lines, a value on each line that is not blank, several times faster than
+ * {@link parseJsonStream} finds where values start and end. Returns undefined unless there are
+ * several lines and each is a valid value, to be parsed as a stream instead.
+ */
+function parseJsonLines(text: string): unknown[] | undefined {
+  const values: unknown[] = [];
+  for (const line of text.split(/\r\n?|\n/)) {
+    if (line.trim() === "") continue;
+    try {
+      values.push(parseValue(line));
+    } catch {
+      return undefined;
+    }
+  }
+  return values.length < 2 ? undefined : values;
+}
+
 /** Where V8 says that JSON is not valid: "in JSON at position 7 (line 1 column 8)". */
 const POSITION = / in JSON at position (\d+)(?: \(line \d+ column \d+\))?/;
 
@@ -409,7 +427,7 @@ export function parseJson(text: string): Records {
   try {
     value = parseValue(text);
   } catch (error) {
-    value = parseJsonStream(text);
+    value = parseJsonLines(text) ?? parseJsonStream(text);
     if (value === undefined) {
       throw new Error(`The data is not valid JSON: ${syntaxError(error, text, 0)}.`);
     }

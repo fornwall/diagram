@@ -2073,6 +2073,11 @@ suite("data", () => {
         /The JSON value on line 3 is not valid/,
       );
     }
+    // Also with several values on a line, or one over several lines, below whole lines.
+    assert.deepStrictEqual(parse('{"n": 1}\n{"n": 2} {"n": 3}\n{"n":\n4}\n{"n": NaN}'), {
+      columns: ["n"],
+      rows: [[1], [2], [3], [4], [null]],
+    });
     assert.throws(() => parse('{"n": 1}\n\n{"n": 2}\n\n{"n": }'), /value on line 5 /);
     assert.throws(() => parse('\n\n{"n": 1}\n\n{"n": '), /value on line 5 /);
   });
