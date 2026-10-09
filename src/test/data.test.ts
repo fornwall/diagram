@@ -2033,6 +2033,10 @@ suite("data", () => {
       () => parseTable("| a | b |\n|---|---|"),
       /^Error: The data has a header \("a", "b"\) but no rows below it\.$/,
     );
+    assert.throws(
+      () => parseTable(`${"|a".repeat(10)}|\n${"|-".repeat(10)}|`),
+      /\("a", "a \(2\)", "a \(3\)", "a \(4\)", "a \(5\)", 5 more\) but no rows/,
+    );
     // Quoted line breaks count as lines, however they are written.
     for (const newline of ["\n", "\r", "\r\n"]) {
       assert.throws(

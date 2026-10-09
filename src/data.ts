@@ -6,7 +6,7 @@ import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
 import { numberFormat, parseNumber, scale, statedUnit, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
-import { quoteAll } from "./text";
+import { formatCount, quote } from "./text";
 
 /** A table cell: text, a number, or null when empty. */
 export type Cell = string | number | null;
@@ -281,9 +281,10 @@ export function parseTable(text: string, format: DataFormat = "auto", si = false
     throw new Error("The data holds no values.");
   }
   if (table.rows.length === 0) {
-    throw new Error(
-      `The data has a header (${quoteAll(table.columns.map((column) => column.name))}) but no rows below it.`,
-    );
+    const names = table.columns.slice(0, 5).map((column) => quote(column.name));
+    const more = table.columns.length - names.length;
+    if (more > 0) names.push(`${formatCount(more)} more`);
+    throw new Error(`The data has a header (${names.join(", ")}) but no rows below it.`);
   }
   return table;
 }
