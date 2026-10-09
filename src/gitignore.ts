@@ -188,23 +188,33 @@ function decision(files: IgnoreFiles, path: string, folder: boolean): boolean | 
  * with the same name, is left out, as are those that globs cannot say.
  */
 export function ignoredGlobs(files: IgnoreFiles): string[] {
-  const negations = [...files].flatMap(([folder, rules]) =>
-    rules.flatMap((rule, index) => (rule.negated ? [{ folder, rule, index }] : [])),
-  );
+  // The negations of each file, and those of the files in folders below each folder, found from
+  // the files up rather than for each folder, as a large repository may have many files.
+  const negations = new Map<string, { rule: IgnoreRule; index: number }[]>();
+  const deeper = new Map<string, IgnoreRule[]>();
+  for (const [folder, rules] of files) {
+    const negated = rules.flatMap((rule, index) => (rule.negated ? [{ rule, index }] : []));
+    if (negated.length === 0) continue;
+    negations.set(folder, negated);
+    // Up to the workspace folder, which is "".
+    for (let above = folder; above !== ""; ) {
+      above = above.slice(0, Math.max(above.lastIndexOf("/"), 0));
+      const list = deeper.get(above) ?? [];
+      deeper.set(above, list);
+      for (const { rule } of negated) list.push(rule);
+    }
+  }
   return [...files].flatMap(([folder, rules]) => {
     // The globs are joined in braces, in which VS Code takes the first "}" to end them.
     if (/[{}]/.test(folder)) return [];
     const prefix = folder ? `${folder.replace(/[[\]*?,]/g, "[$&]")}/` : "";
+    const own = negations.get(folder) ?? [];
+    const below = deeper.get(folder) ?? [];
     return rules.flatMap((rule, index) => {
       if (rule.negated || !rule.globs) return [];
-      const overridden = negations.some(
-        (negation) =>
-          (negation.folder === folder
-            ? negation.index > index
-            : folder === ""
-              ? true
-              : negation.folder.startsWith(`${folder}/`)) && sameName(rule, negation.rule),
-      );
+      const overridden =
+        own.some((negation) => negation.index > index && sameName(rule, negation.rule)) ||
+        below.some((negation) => sameName(rule, negation));
       return overridden ? [] : rule.globs.map((glob) => prefix + glob);
     });
   });
