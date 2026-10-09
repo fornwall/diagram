@@ -783,6 +783,11 @@ suite("Mermaid in the webview", function () {
         "gitGraph\n  commit\n  branch dev\n  checkout main\n  switch feature\n  commit",
         'venn-beta\n  set A\n  set B\n  union A,B["C"]\n  union A,C',
         'venn-beta\n  set A\n  union A,"B",C',
+        // Others depend on the statements before: the first part of the text that fails so.
+        "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev\n  branch other\n  merge main",
+        'gitGraph\n  commit id: "A"\n  branch dev\n  commit id: "B"\n  checkout main\n  cherry-pick id: "B"\n  cherry-pick id: "C"',
+        "gitGraph\n  commit\n  branch dev\n  checkout main\n  branch dev",
+        "---\ntitle: Sets\n---\nvenn-beta\n  set A\n  set B\n  union A,B\n  union A",
         // Use case diagrams count lines in the text after the front matter.
         '---\ntitle: Shop\n---\nusecase-beta\n  actor A\n\n  json data@{\n    "a": 1,\n  }',
         // The dagre layout fails on a composite state that Mermaid finds no states in.
@@ -805,6 +810,10 @@ suite("Mermaid in the webview", function () {
         'Error on line 5: There is no branch "feature" to check out: create it first, with "branch feature".',
         'Error on line 5: "C" is not a set: declare it, as in "set C", before the union.',
         'Error on line 3: "B" and "C" are not sets: declare them, as in "set B", before the union.',
+        "Error on line 8: Cannot merge branch 'main' into itself.",
+        'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
+        'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
+        "Error on line 8: union requires multiple identifiers",
         "Error on line 9, column 3: Invalid JSON: Expected double-quoted property name in JSON.",
         'Error on line 7: The composite state "A" has no states in it, which the dagre layout cannot draw: put states in it, or lay it out with elk.',
       ],

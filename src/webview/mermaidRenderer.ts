@@ -10,6 +10,7 @@ import {
   emptyStateError,
   nestingError,
   parsableSource,
+  statementError,
   undefinedEndError,
 } from "./mermaidErrors";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
@@ -441,10 +442,11 @@ export class MermaidRenderer implements Renderer {
       const parsed = await databaseOf(mermaid, text);
       const nesting = nestingError(parsed, source);
       if (nesting) throw nesting;
-      const result = await mermaid.render(id, text, container).catch((error: unknown) => {
+      const result = await mermaid.render(id, text, container).catch(async (error: unknown) => {
         throw (
           undefinedEndError(parsed, source) ??
           emptyStateError(error, parsed, source) ??
+          (await statementError(error, source, (part) => mermaid.parse(part))) ??
           describeError(error, source, () => mermaid.detectType(text))
         );
       });

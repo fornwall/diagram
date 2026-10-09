@@ -704,6 +704,44 @@ function unplacedError(message: string, normalized: string): Error | undefined {
 }
 
 /**
+ * Errors of Mermaid's checks of the statements of a git graph or a Venn diagram, as it runs them
+ * in order, which depend on the statements before them: of merges, cherry-picks, branches that
+ * exist, and unions and texts.
+ */
+const STATEMENT_ERROR =
+  /^(?:Incorrect usage of "?(?:merge|cherryPick|cherry-pick)\b|Cannot merge branch |Invalid operation: The specified parent commit |Trying to create an existing branch\.|union requires multiple identifiers$|text requires set$)/;
+
+/**
+ * The error for a statement that Mermaid's checks fail on, on its line: the first line that the
+ * text up to fails on in the same way, which Mermaid runs the same statements up to. `parse`
+ * rejects with the error that Mermaid fails to parse a text with.
+ */
+export async function statementError(
+  error: unknown,
+  source: string,
+  parse: (text: string) => Promise<unknown>,
+): Promise<Error | undefined> {
+  if (!(error instanceof Error) || !STATEMENT_ERROR.test(error.message)) return undefined;
+  const normalized = source.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n");
+  const failsUpTo = (line: number) =>
+    parse(lines.slice(0, line).join("\n")).then(
+      () => false,
+      (failure: unknown) => failure instanceof Error && failure.message === error.message,
+    );
+  // A search of the lines after the front matter, if the whole text fails so.
+  let low = lineStarts(normalized.slice(0, frontMatterEnd(normalized))).length;
+  let high = lines.length;
+  if (!(await failsUpTo(high))) return undefined;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (await failsUpTo(middle)) high = middle;
+    else low = middle + 1;
+  }
+  return new Error(`Error on line ${high}: ${error.message}`);
+}
+
+/**
  * The error for a composite state with no states in it, which Mermaid's dagre layout draws as a
  * state, failing to find a state shape for it. Mermaid leaves out the states that a composite
  * state declares with nothing but "state B", which can leave it empty.
