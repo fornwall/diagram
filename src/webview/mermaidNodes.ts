@@ -82,6 +82,8 @@ export interface DiagramDb {
     rhsInto?: boolean;
     title?: string;
   })[];
+  /** A requirement diagram's relationships, which getData leaves the undefined ends out of. */
+  getRelationships?(): { src?: unknown; dst?: unknown }[];
   /** A C4 diagram's relationships, in the order it draws them. */
   getRels?(): { from: string; to: string; label?: { text?: string } }[];
   /** A C4 diagram's boundaries in the boundary with the alias, the whole diagram being "global". */

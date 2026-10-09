@@ -602,13 +602,6 @@ const UNPLACED: [
       `Mermaid cannot lay out the edges of "${id}": give the groups and the nodes different ids.`,
     ],
   ],
-  [
-    /^org\.eclipse\.elk\..*: Id must be a string or an integer: 'null'\.$/,
-    () => [
-      undefined,
-      "An edge or relationship refers to something that the diagram does not define.",
-    ],
-  ],
   // Mermaid gives its cose-bilkent layout the root node that it needs for mind maps alone.
   [
     /^Root node is required$/,
@@ -660,6 +653,26 @@ function unplacedError(message: string, normalized: string): Error | undefined {
     if (described) return errorAt(normalized, described[0], described[1] ?? message);
   }
   return undefined;
+}
+
+/**
+ * The error for a relationship to something that the diagram does not define, such as an
+ * undeclared requirement, on which Mermaid's layouts fail without saying what it is.
+ */
+export function undefinedEndError(db: DiagramDb | undefined, source: string): Error | undefined {
+  const { nodes = [], edges = [] } = db?.getData?.() ?? {};
+  const ids = new Set(nodes.map(({ id }) => id));
+  const missing = [
+    ...edges.flatMap(({ start, end }) => [start, end]),
+    ...(db?.getRelationships?.() ?? []).flatMap(({ src, dst }) => [src, dst]),
+  ].find((id) => typeof id === "string" && !ids.has(id));
+  if (typeof missing !== "string") return undefined;
+  const normalized = source.replace(/\r\n?/g, "\n");
+  return errorAt(
+    normalized,
+    find(normalized, word(missing)),
+    `A relationship refers to "${missing}", which the diagram does not define: define it, or correct the name.`,
+  );
 }
 
 /**
