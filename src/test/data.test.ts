@@ -79,7 +79,12 @@ suite("data", () => {
   test("rejects oversized records during parsing before converting cells", () => {
     assert.throws(
       () => splitText("\t".repeat(1_000_005), "tsv"),
-      /1 row × 1,000,001 columns, counting any header row and empty cells, exceeding the 1,000,000 cell limit/,
+      /^Error: A row of the data has more than 1,000,000 cells, exceeding the 1,000,000 cell limit by itself\. Select fewer columns/,
+    );
+    // Lines of whitespace-separated values are counted before they are split into columns.
+    assert.throws(
+      () => splitText("a 1\n".repeat(1_000_001), "whitespace"),
+      /^Error: The data has 1,000,001 rows, counting any header row, exceeding the 1,000,000 cell limit even with one column\. Select fewer rows/,
     );
     for (const line of ["a ".repeat(1_000_005), `|${"a|".repeat(1_000_005)}`]) {
       assert.throws(() => splitText(line, "auto"), /exceeding the 1,000,000 cell limit/);

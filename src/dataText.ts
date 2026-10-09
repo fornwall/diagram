@@ -4,7 +4,13 @@
 import type { DataFormat } from "./chartSpec";
 import type { Cell, Records } from "./data";
 import { splitDiffStat, splitGoBenchmarks, splitLs, topSizes } from "./dataCommands";
-import { checkTableSize, MAX_CELLS, TableSizeError } from "./dataLimits";
+import {
+  checkRowCount,
+  checkRowWidth,
+  checkTableSize,
+  MAX_CELLS,
+  TableSizeError,
+} from "./dataLimits";
 import { parseNumber } from "./dataNumber";
 import { lineAndColumn, quote } from "./text";
 
@@ -107,7 +113,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     for (const line of text.split(/\r\n?|\n/)) {
       // Stop at the first excess cell, as the parser below does.
       const record = line.split(delimiter, MAX_CELLS + 1);
-      checkTableSize(1, record.length);
+      checkRowWidth(record.length);
       add(record, line);
     }
     return { records, header: underlined || undefined };
@@ -152,7 +158,7 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
       fieldStart = false;
     } else if (char === delimiter) {
       record.push(field);
-      checkTableSize(1, record.length + 1);
+      checkRowWidth(record.length + 1);
       field = "";
       fieldStart = true;
       closedQuote = false;
@@ -397,7 +403,7 @@ function pipeCells(line: string, box = false): string[] {
   const cells = line.trim().split(box ? BOX_LINE : PIPE, MAX_CELLS + 3);
   if (cells.length > 1 && cells[0] === "") cells.shift();
   if (cells.length > 1 && cells.at(-1) === "") cells.pop();
-  checkTableSize(1, cells.length);
+  checkRowWidth(cells.length);
   return box
     ? cells
     : cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
@@ -458,7 +464,7 @@ function tokenize(line: string): Token[] {
   for (let match = WORD.exec(line); match !== null; match = WORD.exec(line)) {
     tokens.push({ text: match[0], start: match.index, end: WORD.lastIndex });
     // No row has more cells, so a longer line is refused before it is read further.
-    if (tokens.length > MAX_CELLS) checkTableSize(1, tokens.length);
+    checkRowWidth(tokens.length);
   }
   return tokens;
 }
@@ -644,7 +650,7 @@ function splitWhitespace(lines: string[], underline: string | undefined): Record
     return splitWhitespace(lines.slice(1), underline);
   }
   // Each line is a record, so too many lines need not be split to be refused.
-  checkTableSize(lines.length, 1);
+  checkRowCount(lines.length);
   const ruled =
     underline === undefined
       ? undefined
