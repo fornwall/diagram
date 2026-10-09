@@ -54,16 +54,19 @@ suite("webview", function () {
               focused: document.activeElement === splitter
             });
           }
-          return values;
+          return {range: [splitter.ariaValueMin, splitter.ariaValueMax], values};
         } finally {
           document.getElementById("view-visual").click();
         }
       })()`),
-      [
-        { value: "15", prevented: true, focused: true },
-        { value: "85", prevented: true, focused: true },
-        { value: "40", prevented: true, focused: true },
-      ],
+      {
+        range: ["15", "85"],
+        values: [
+          { value: "15", prevented: true, focused: true },
+          { value: "85", prevented: true, focused: true },
+          { value: "40", prevented: true, focused: true },
+        ],
+      },
     );
   });
 

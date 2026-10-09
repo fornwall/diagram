@@ -7,6 +7,8 @@ const MAX_FRACTION = 0.85;
 const KEY_STEP = 0.05;
 const DEFAULT_FRACTION = 0.4;
 
+const percent = (fraction: number) => String(Math.round(fraction * 100));
+
 /**
  * Lets the user drag, or arrow-key, the handle to give the source editor more or less of the panel,
  * as the `--source-size` of the panes. A narrow panel stacks the panes, so the handle moves along
@@ -24,8 +26,8 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
   const setFraction = (value: number): void => {
     fraction = Math.min(MAX_FRACTION, Math.max(MIN_FRACTION, value));
     panes.style.setProperty("--source-size", `${(fraction * 100).toFixed(2)}%`);
-    splitter.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-    splitter.setAttribute("aria-valuetext", `Source editor ${Math.round(fraction * 100)}%`);
+    splitter.setAttribute("aria-valuenow", percent(fraction));
+    splitter.setAttribute("aria-valuetext", `Source editor ${percent(fraction)}%`);
   };
 
   splitter.addEventListener("pointerdown", (event) => {
@@ -70,6 +72,8 @@ export function enableSplitter(splitter: HTMLElement, panes: HTMLElement): void 
   // Double-clicking the handle puts it back where it started, as it does with a VS Code sash.
   splitter.addEventListener("dblclick", () => setFraction(DEFAULT_FRACTION));
 
+  splitter.setAttribute("aria-valuemin", percent(MIN_FRACTION));
+  splitter.setAttribute("aria-valuemax", percent(MAX_FRACTION));
   updateOrientation();
   setFraction(fraction);
   // Crossing the responsive breakpoint changes the separator's orientation without a drag.

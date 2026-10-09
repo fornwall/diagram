@@ -314,7 +314,7 @@ button.link:enabled:hover {
   gap: 6px;
   box-sizing: border-box;
   /* Fills the panel in the source view, and the handle's share of it in the split view. */
-  flex: 0 0 var(--source-size, 40%);
+  flex: 0 0 var(--source-size);
   min-width: 0;
   min-height: 0;
   padding: 6px 12px;
