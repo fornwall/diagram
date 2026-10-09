@@ -514,9 +514,10 @@ function continuationMarks(
  * Joins the lines of rows over several lines into the rows: those below a line that psql marks
  * as {@link continuationMarks} tells, and, in a table with rules between rows, as sqlite3 -box
  * and -table draw one with text over several lines, those between two rules if each after the
- * first has an empty first cell and others not, as the cells of other columns have fewer lines.
- * Lines between rules are rows of their own if the only rule in the body sets off the last line,
- * as it does a total, below which the rows of a sparse table or a grouped report have empty cells.
+ * first has some cells empty and others not, as the cells of other columns have fewer lines. With
+ * only one rule in the body, as above a total, below which the rows of a sparse table or a grouped
+ * report have empty cells, the first cell must be empty too, and lines above a rule that sets off
+ * only the last line are rows of their own.
  */
 function joinLines(
   records: string[][],
@@ -528,11 +529,14 @@ function joinLines(
   // The first line of the body, after the header, has the rule below the header above it.
   const inner = ruled.flatMap((rule, i) => (rule && i > 1 ? [i] : []));
   if (inner.length > 1 || (inner.length === 1 && inner[0] !== records.length - 1)) {
+    // Rules between more rows than two are surely between each row and the next.
+    const goesOn = (record: string[]) =>
+      (inner.length > 1 ? record.some(blank) : blank(record[0])) && !record.every(blank);
     for (let start = 1; start < records.length; ) {
       let end = start + 1;
       while (end < records.length && !ruled[end]) end++;
       const rest = records.slice(start + 1, end);
-      if (rest.every((record) => blank(record[0]) && !record.every(blank))) {
+      if (rest.every(goesOn)) {
         continues.fill(true, start + 1, end);
       }
       start = end;

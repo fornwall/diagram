@@ -1486,6 +1486,44 @@ suite("data", () => {
       [null, 1],
       ["x", 2],
     ]);
+    // Also in the first column, with rules between each row and the next.
+    for (const [top, rule, bottom, line] of [
+      [
+        "╭──────────┬───────┬──────╮",
+        "├──────────┼───────┼──────┤",
+        "╰──────────┴───────┴──────╯",
+        "│",
+      ],
+      [
+        "+----------+-------+------+",
+        "+----------+-------+------+",
+        "+----------+-------+------+",
+        "|",
+      ],
+    ] as const) {
+      const row = (...cells: string[]) => `${line} ${cells.join(` ${line} `)} ${line}`;
+      const table = [
+        top,
+        row("note    ", "lines", "lang"),
+        rule.replaceAll("─", "═").replace("├", "╞").replace("┤", "╡").replaceAll("┼", "╪"),
+        row("line one", " 1200", "ts  "),
+        row("line two", "     ", "    "),
+        rule,
+        row("short   ", "  300", "css "),
+        rule,
+        row("x       ", "     ", "js  "),
+        bottom,
+      ].join("\n");
+      assert.deepStrictEqual(
+        parse(table).rows,
+        [
+          ["line one\nline two", 1200, "ts"],
+          ["short", 300, "css"],
+          ["x", null, "js"],
+        ],
+        table,
+      );
+    }
     // Rows above a rule over the totals are rows of their own, though some have empty cells, also
     // in the first column, as in a grouped report.
     assert.deepStrictEqual(
