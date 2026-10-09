@@ -785,6 +785,28 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("shows no focus on a chart that lost the focus while it was drawn anew", async () => {
+    await renderChart({ series: [{ type: "pie", data: [3, 7] }] });
+    await evaluate('document.getElementById("chart").focus()');
+    await renderChart(SALES);
+    const state = `(async () => {
+      ${PRESS}
+      for (let frame = 0; frame < 2; frame++) await nextFrame();
+      return {ring: Boolean(ring()), status: document.getElementById("chart-status").textContent};
+    })()`;
+    const UNSHOWN = { ring: false, status: "" };
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        document.getElementById("chart").blur();
+        return ${state};
+      })()`),
+      UNSHOWN,
+    );
+    await renderChart({ ...SALES, yAxis: { max: 20 } });
+    assert.deepStrictEqual(await evaluate(`(async () => {${UNTIL} return ${state}; })()`), UNSHOWN);
+  });
+
   test("empties the announcement while the chart is not focused, for find not to match it", async () => {
     await renderChart(SALES);
     const announced = await evaluate(`(() => {

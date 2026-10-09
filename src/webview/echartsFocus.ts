@@ -363,6 +363,8 @@ export class ChartFocus {
 
   /** Hides the ring and tooltip, keeping the item to show when the chart gets the focus again. */
   hide(): void {
+    // Nor show it once the chart, changed while it was shown, is drawn.
+    this.stale = false;
     if (!this.shown) return;
     this.shown = false;
     this.ring.hidden = true;
