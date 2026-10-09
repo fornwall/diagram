@@ -321,8 +321,9 @@ suite("images in the webview", function () {
         const unstyled = await pixels(svg.replace(/<style[^]*?<\\/style>/g, ""));
         return {
           same: styled.every((value, index) => value === unstyled[index]),
-          // Such as a quoted url() or a transparent color, which not every application reads.
-          portable: !/url\\("|rgba\\(/.test(svg),
+          // Such as a quoted url(), in a style attribute or sheet, or a transparent color, which
+          // not every application reads.
+          portable: !/url\\((?:&quot;|")|rgba\\(/.test(svg),
           // A style sheet is left only for the keyframes of an animation.
           keyframes: /<style>@keyframes/.test(svg) === svg.includes("animation-name"),
         };

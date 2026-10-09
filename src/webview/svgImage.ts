@@ -91,13 +91,20 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
 }
 
 /**
- * A computed value as applications that read SVG 1.1 also know it: they may not read a quoted
- * url() or a transparent color, which would paint black.
+ * A computed value as applications that read SVG 1.1 also know it: they may not read a
+ * transparent color, which would paint black.
  */
 function portable(property: string, value: string): string {
-  if ((property === "fill" || property === "stroke") && value === "rgba(0, 0, 0, 0)") return "none";
-  return value.replace(/url\("(#[\w-]+)"\)/g, "url($1)");
+  return (property === "fill" || property === "stroke") && value === "rgba(0, 0, 0, 0)"
+    ? "none"
+    : value;
 }
+
+/**
+ * A quoted url() of an element in the image, as a style attribute that CSSOM wrote holds it in
+ * markup, which applications that read SVG 1.1 may not read: CSSOM quotes it whatever it is given.
+ */
+const QUOTED_URL = /url\(&quot;(#[^&()\s]+)&quot;\)/g;
 
 /**
  * Writes what the drawing's style sheets give each element into its style attribute, and leaves
@@ -239,6 +246,9 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
 
   // The serializer keeps characters that XML does not allow, such as control characters in labels,
   // for which strict parsers, and browsers drawing the SVG as an image, refuse all of it.
-  const markup = new XMLSerializer().serializeToString(svg).replace(NOT_IN_XML, "");
+  const markup = new XMLSerializer()
+    .serializeToString(svg)
+    .replace(NOT_IN_XML, "")
+    .replace(QUOTED_URL, "url($1)");
   return { svg: markup, width, height };
 }
