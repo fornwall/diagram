@@ -39,7 +39,7 @@ function guessChartTitle(source: string): string {
 
 /** Types with title statements; in other types, a "title" line may be a node. */
 const TITLED_TYPE =
-  /^(?:architecture|C4|cynefin|gantt|gitGraph|info|journey|packet|pie|quadrantChart|radar|railroad-(?:ebnf-|peg-)?beta|requirement|sequenceDiagram|timeline|treemap|treeView|venn|wardley|xychart)/;
+  /^(?:architecture|C4|cynefin|eventmodeling|gantt|gitGraph|info|journey|packet|pie|quadrantChart|radar|railroad-(?:abnf-|ebnf-|peg-)?beta|requirement|sequenceDiagram|timeline|treemap|treeView|venn|wardley|xychart)/;
 /** A title statement, up to a comment, after a pie's "showData" and with a sequence's colon. */
 const TITLE_STATEMENT = /^(?:showData\s+)?title(?:\s+|:\s*)(.*?)\s*(?:%%.*)?$/i;
 

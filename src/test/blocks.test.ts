@@ -58,6 +58,11 @@ suite("blocks", () => {
     assert.strictEqual(mermaidTitle('xychart-beta\n  title "Sales Revenue"'), "Sales Revenue");
     assert.strictEqual(mermaidTitle("sequenceDiagram\n  title: Login\n  A->>B: hi"), "Login");
     assert.strictEqual(
+      mermaidTitle("eventmodeling\n  title Checkout\n  tf 01 evt Start"),
+      "Checkout",
+    );
+    assert.strictEqual(mermaidTitle("railroad-abnf-beta\n  title Syntax\n  a = b"), "Syntax");
+    assert.strictEqual(
       mermaidTitle('---\ntitle: "Front"\n---\njourney\n  title Statement'),
       "Front",
     );
@@ -67,6 +72,11 @@ suite("blocks", () => {
     assert.strictEqual(mermaidTitle("flowchart LR\n  title Here --> B"), "flowchart");
     assert.strictEqual(mermaidTitle("mindmap\n  root\n    title Here"), "mindmap");
     assert.strictEqual(mermaidTitle("gantt\n  section title\n  title"), "gantt");
+    // An Ishikawa diagram's first line is its effect, and the rest are causes.
+    assert.strictEqual(mermaidTitle("ishikawa-beta\n  title Here"), "ishikawa-beta");
+    assert.strictEqual(mermaidTitle("swimlane-beta LR\n  title Here --> B"), "swimlane-beta");
+    assert.strictEqual(mermaidTitle("usecase-beta\n  title Here"), "usecase-beta");
+    assert.strictEqual(mermaidTitle("agentflow-beta\n  title Here"), "agentflow-beta");
   });
 
   test("titles an untitled diagram by its type", () => {
