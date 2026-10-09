@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { modelOf } from "../webview/echartsItems";
+import { ChartItems, itemKey, modelOf } from "../webview/echartsItems";
 import { item, itemsOf, withChart } from "./echartsModel";
 
 suite("echartsItems", () => {
@@ -232,5 +232,48 @@ suite("echartsItems", () => {
     const [repeated] = items.repeatedNames();
     assert.strictEqual(repeated?.ids.length, 20);
     assert.strictEqual(repeated?.count, 30);
+  });
+
+  test("reads the same items from a new layout of the option, without working them out again", () => {
+    const option = {
+      series: [
+        {
+          type: "graph",
+          layout: "circular",
+          data: [
+            { id: "1", name: "a" },
+            { id: "2", name: "b" },
+            { id: "3", name: "a" },
+          ],
+          links: [{ source: 0, target: 1 }],
+        },
+      ],
+    };
+    const items = withChart(option, (chart) => new ChartItems(chart));
+    withChart(option, (chart) => {
+      assert.ok(items.rebind(chart));
+      // The items no longer read the data of the chart they were worked out in.
+      const series = modelOf(chart).getSeriesByIndex(0);
+      for (const data of [
+        series?.getRawData(),
+        ...(series?.getAllData() ?? []).map((each) => each.data),
+      ]) {
+        if (data) data.getName = () => assert.fail("read the new chart");
+      }
+      assert.throws(() => items.node(itemKey(item(1, 0, "node"))), /read the new chart/);
+    });
+    withChart(option, (chart) => {
+      items.rebind(chart);
+      assert.deepStrictEqual(items.node(itemKey(item(1, 0, "node"))), { id: "2", label: "b" });
+      assert.deepStrictEqual(items.node(itemKey(item(0, 0, "edge"))), {
+        id: "0 → 1",
+        label: "a → b",
+      });
+      assert.deepStrictEqual(items.find("a"), [item(0, 0, "node"), item(2, 0, "node")]);
+    });
+    // Another option, with other series, has items of its own.
+    withChart({ series: [option.series[0], option.series[0]] }, (chart) => {
+      assert.strictEqual(items.rebind(chart), false);
+    });
   });
 });

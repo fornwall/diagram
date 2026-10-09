@@ -400,8 +400,10 @@ export class EChartsRenderer implements Renderer {
       this.chart.setOption(option, { notMerge: true });
     }
     this.laidOut = laidOut;
-    // The items name the data of the model of the previous option, which they would keep alive.
-    this.chartItems = undefined;
+    // The items name the data of the model of the previous option, which they would keep alive. A
+    // new layout of the same option has the same items, which take a while to work out for a large
+    // chart: read them from its own model instead.
+    if (!relayout || !this.chartItems?.rebind(this.chart)) this.chartItems = undefined;
     this.shownSelected = [];
     this.syncSelection();
     this.highlightMarks();

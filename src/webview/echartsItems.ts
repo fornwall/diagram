@@ -209,6 +209,18 @@ export class ChartItems {
     });
   }
 
+  /**
+   * Reads the items from a chart of a new layout of the same option, whose items go by the same
+   * names, rather than from the chart they were worked out in, which they would keep alive.
+   * Returns whether the chart has the same series.
+   */
+  rebind(chart: ECharts.ECharts): boolean {
+    const model = modelOf(chart);
+    if (model.getSeriesCount() !== this.series.length) return false;
+    model.eachRawSeries((series) => this.series[series.componentIndex]?.rebind(series));
+    return true;
+  }
+
   /** The name of the series, when the chart has several. */
   seriesName(seriesIndex: number): string | undefined {
     return this.series[seriesIndex]?.prefix.slice(0, -1) || undefined;
@@ -284,10 +296,33 @@ interface TypedData {
   end: number;
 }
 
+/** The trees in the data of a tree series, of which ECharts lays out and draws the first. */
+const treeRoots = (series: SeriesModel): TreeNode[] =>
+  (series.subType === "tree" && series.getRawData().tree?.root.children) || [];
+
+/** The data of each type in a series. */
+function typedData(series: SeriesModel): TypedData[] {
+  const raw = series.getRawData();
+  const roots = treeRoots(series);
+  // Legends and data zoom filter items out, but they can be marked once shown again.
+  return series.getAllData().map((shown) => {
+    const all = shown.data.dataType === raw.dataType;
+    const data = all ? raw : shown.data;
+    return {
+      data,
+      raw: all,
+      dataType: actionDataType(data.dataType),
+      first: data.tree ? 1 : 0,
+      // The nodes of a tree come in depth-first order.
+      end: roots[1]?.getRawIndex() ?? data.count(),
+    };
+  });
+}
+
 class SeriesItems {
   /** The ids and labels that several items go by. */
   readonly repeated = new Set<string>();
-  private readonly datas: TypedData[];
+  private datas: TypedData[];
   /** How many trees a tree series has in its data, of which ECharts lays out and draws the first. */
   readonly trees: number;
   /** A graph's edges name their nodes by id or name, or by index. */
@@ -302,22 +337,8 @@ class SeriesItems {
     readonly prefix: string,
     series: SeriesModel,
   ) {
-    const raw = series.getRawData();
-    // Legends and data zoom filter items out, but they can be marked once shown again.
-    const roots = (series.subType === "tree" && raw.tree?.root.children) || [];
-    this.trees = roots.length;
-    this.datas = series.getAllData().map((shown) => {
-      const all = shown.data.dataType === raw.dataType;
-      const data = all ? raw : shown.data;
-      return {
-        data,
-        raw: all,
-        dataType: actionDataType(data.dataType),
-        first: data.tree ? 1 : 0,
-        // The nodes of a tree come in depth-first order.
-        end: roots[1]?.getRawIndex() ?? data.count(),
-      };
-    });
+    this.trees = treeRoots(series).length;
+    this.datas = typedData(series);
     // Only whether a name repeats matters. A chart can have hundreds of thousands of items, all
     // named differently: one lookup each, in a set kept only while counting, takes a fraction of
     // the time of counting each name in a map, and none of its memory afterwards.
@@ -331,6 +352,11 @@ class SeriesItems {
       count(id);
       if (label !== id) count(label);
     });
+  }
+
+  /** Reads the items from the same series in a new layout of the option, which has their names. */
+  rebind(series: SeriesModel): void {
+    this.datas = typedData(series);
   }
 
   each(callback: (item: Item) => void): void {
