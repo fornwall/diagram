@@ -27,7 +27,7 @@ export function ignoreRules(text: string): IgnoreRule[] {
     try {
       return ignoreRule(line) ?? [];
     } catch {
-      // A range such as "[z-a]", which matches nothing.
+      // A range such as "[z-a]", or a class that git does not know, which match nothing.
       return [];
     }
   });
@@ -59,7 +59,8 @@ function ignoreRule(line: string): IgnoreRule | undefined {
       source += last.source;
     }
   }
-  const body = /[\\{},]/.test(text) || /[^/]\*\*|\*\*[^/]/.test(text) ? undefined : text;
+  // Globs have no named classes either, such as "[:digit:]".
+  const body = /[\\{},]|\[:/.test(text) || /[^/]\*\*|\*\*[^/]/.test(text) ? undefined : text;
   const glob = body === undefined ? undefined : anchored ? body : `**/${body}`;
   return {
     negated,
@@ -105,6 +106,40 @@ function segmentSource(segment: string): { source: string; literal: string | und
   return { source, literal };
 }
 
+/** The characters of the classes that git knows by name, in the C locale, as in "[[:digit:]]". */
+const NAMED_CLASSES = new Map([
+  ["alnum", "0-9A-Za-z"],
+  ["alpha", "A-Za-z"],
+  ["blank", " \\t"],
+  ["cntrl", "\\x00-\\x1f\\x7f"],
+  ["digit", "0-9"],
+  ["graph", "\\x21-\\x7e"],
+  ["lower", "a-z"],
+  ["print", "\\x20-\\x7e"],
+  ["punct", "\\x21-\\x2f\\x3a-\\x40\\x5b-\\x60\\x7b-\\x7e"],
+  ["space", " \\t\\n\\v\\f\\r"],
+  ["upper", "A-Z"],
+  ["xdigit", "0-9A-Fa-f"],
+]);
+
+/**
+ * Where a named class, such as "[:digit:]", that starts at `index` in a bracket expression ends,
+ * and its characters. Without a ":" before the next "]", the "[" is a character, as in git.
+ *
+ * @throws Error for a name that git does not know, which makes the pattern match nothing.
+ */
+function namedClass(
+  chars: readonly string[],
+  index: number,
+): { end: number; members: string } | undefined {
+  if (chars[index] !== "[" || chars[index + 1] !== ":") return undefined;
+  const end = chars.indexOf("]", index + 2);
+  if (end < index + 3 || chars[end - 1] !== ":") return undefined;
+  const members = NAMED_CLASSES.get(chars.slice(index + 2, end - 1).join(""));
+  if (members === undefined) throw new Error("Unknown character class");
+  return { end, members };
+}
+
 /** Where the bracket expression that starts at `start` ends, or -1 when it does not. */
 function classEnd(chars: readonly string[], start: number): number {
   let index = start + 1;
@@ -114,6 +149,7 @@ function classEnd(chars: readonly string[], start: number): number {
   for (; index < chars.length; index++) {
     if (chars[index] === "\\") index++;
     else if (chars[index] === "]") return index;
+    else index = namedClass(chars, index)?.end ?? index;
   }
   return -1;
 }
@@ -124,7 +160,11 @@ function classSource(chars: readonly string[]): string {
   let members = "";
   for (let index = negated ? 1 : 0; index < chars.length; index++) {
     const char = chars[index] ?? "";
-    if (char === "\\" && index + 1 < chars.length) {
+    const named = namedClass(chars, index);
+    if (named) {
+      members += named.members;
+      index = named.end;
+    } else if (char === "\\" && index + 1 < chars.length) {
       index++;
       members += RegExp.escape(chars[index] ?? "");
     } else {

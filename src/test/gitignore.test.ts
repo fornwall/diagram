@@ -51,6 +51,16 @@ suite("gitignore", () => {
     );
   });
 
+  test("matches the classes that brackets name as git does, and nothing for an unknown one", () => {
+    const files = { "": "v[[:digit:]]\nw[![:alpha:]_]\nx[[:punct:]]\ny[:]\nz[[:nope:]]\n" };
+    assert.deepStrictEqual(
+      ignoredOf(files, ["v1", "vx", "w1", "wa", "w_", "x!", "x`", "x~", "xa", "y:", "y]", "z1"]),
+      ["v1", "w1", "x!", "x`", "x~", "y:"],
+    );
+    // Globs, by which a search excludes, have no such classes.
+    assert.deepStrictEqual(ignoredGlobs(ignoreFilesOf({ "": "v[[:digit:]]\n" })), []);
+  });
+
   test("includes again with !, except in an ignored folder, and deeper files override", () => {
     const files = {
       "": "*.log\n!keep.log\nout/\n!out/a.js\n.vscode/*\n!.vscode/settings.json\n",
