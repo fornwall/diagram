@@ -144,7 +144,8 @@ export function prepareDataInvocation(
   invocationMessage: string,
 ): vscode.PreparedToolInvocation {
   const prepared: vscode.PreparedToolInvocation = { invocationMessage };
-  if (spec?.command && vscode.workspace.isTrusted) {
+  // Not for a command that is refused unrun.
+  if (spec?.command && typeof commandFolder() === "string") {
     const folder = vscode.workspace.workspaceFolders?.[0];
     const message = new vscode.MarkdownString("Run this command and read its output?");
     if (folder) message.appendText(` Working folder: ${folder.name}.`);
@@ -240,6 +241,27 @@ function tail(text: string): string {
 }
 
 /**
+ * The folder that commands run in, the first workspace folder or else the home folder, or why
+ * commands are not run.
+ */
+export function commandFolder(folder = vscode.workspace.workspaceFolders?.[0]): string | Error {
+  if (!vscode.workspace.isTrusted) {
+    return new Error(
+      "Commands are not run in an untrusted workspace. Trust the workspace (Workspaces: " +
+        'Manage Workspace Trust), or give the data with "data" or "file" instead.',
+    );
+  }
+  if (folder !== undefined && folder.uri.scheme !== "file") {
+    return new Error(
+      `Commands run on this computer, but the workspace folder ${folder.name} is not on it. ` +
+        'Give the data with "data" or "file" instead.',
+    );
+  }
+  const cwd = folder?.uri.fsPath ?? os.homedir();
+  return fs.existsSync(cwd) ? cwd : new Error(`Commands run in ${cwd}, which does not exist.`);
+}
+
+/**
  * Runs a shell command (with /bin/sh, or cmd.exe on Windows) in the first workspace folder and
  * returns its standard output, with a warning if it failed but printed something anyway (as du
  * does for unreadable directories).
@@ -249,23 +271,8 @@ export async function runCommand(
   token: vscode.CancellationToken,
   timeoutMs = COMMAND_TIMEOUT_MS,
 ): Promise<{ output: string; warning?: string }> {
-  if (!vscode.workspace.isTrusted) {
-    throw new Error(
-      "Commands are not run in an untrusted workspace. Trust the workspace (Workspaces: " +
-        'Manage Workspace Trust), or give the data with "data" or "file" instead.',
-    );
-  }
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (folder !== undefined && folder.uri.scheme !== "file") {
-    throw new Error(
-      `Commands run on this computer, but the workspace folder ${folder.name} is not on it. ` +
-        'Give the data with "data" or "file" instead.',
-    );
-  }
-  const cwd = folder?.uri.fsPath ?? os.homedir();
-  if (!fs.existsSync(cwd)) {
-    throw new Error(`Commands run in ${cwd}, which does not exist.`);
-  }
+  const cwd = commandFolder();
+  if (cwd instanceof Error) throw cwd;
   throwIfCancelled(token);
   const windows = process.platform === "win32";
   return new Promise((resolve, reject) => {

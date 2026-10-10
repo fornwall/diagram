@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import {
   commandEnvironment,
+  commandFolder,
   loadTable,
   printsSiSizes,
   readDataFile,
@@ -61,6 +62,15 @@ suite("dataSource", () => {
       if (process.platform === "win32") {
         this.skip();
       }
+    });
+
+    test("runs commands in the workspace folder, or says why not, without asking first", () => {
+      assert.strictEqual(commandFolder(), workspaceRoot().uri.fsPath);
+      const folder = (uri: vscode.Uri) => ({ uri, name: "data", index: 0 });
+      const virtual = commandFolder(folder(vscode.Uri.parse("vscode-vfs://host/a/data")));
+      assert.match(String(virtual), /the workspace folder data is not on it/);
+      const missing = commandFolder(folder(vscode.Uri.file(path.join(dir, "missing"))));
+      assert.match(String(missing), /which does not exist\.$/);
     });
 
     test("loads chart data from a command's output", async () => {
