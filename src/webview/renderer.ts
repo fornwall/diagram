@@ -52,9 +52,9 @@ export interface Renderer {
   /** Whether links in the source lead from some nodes. */
   readonly hasWebLinks?: boolean;
   /** Lays the drawing out for the size of the tab, shown again after being hidden. */
-  tabShown?(): void;
+  tabShown(): void;
   /** Exports a self-contained image on the given background. */
-  toImage?(background: string): Promise<DiagramImage>;
+  toImage(background: string): Promise<DiagramImage>;
   /** Whether the image can change while the source, theme and marks stay, as a chart's does. */
   readonly changesInPlace?: boolean;
   /** Renders the current diagram again with the current VS Code theme. */
@@ -68,7 +68,7 @@ export interface Renderer {
    * Fits the next drawing to the panel, dropping a zoom chosen for the previous diagram, and shows
    * it from the start rather than scrolled as far as the previous one was.
    */
-  fitToPanel?(): void;
+  fitToPanel(): void;
 }
 
 /** Initial or cleared annotations. */

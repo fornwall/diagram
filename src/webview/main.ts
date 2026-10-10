@@ -96,8 +96,8 @@ enablePanning(canvas);
 const split = enableSplitter(splitter, panes, element("editor"), saveState);
 const forgetDragImage = enableDragOut(dragOutHandle, {
   imageMaker: () => {
-    const toImage = active?.toImage?.bind(active);
-    return toImage && (() => toImage(imageBackground()));
+    const drawing = active;
+    return drawing && (() => drawing.toImage(imageBackground()));
   },
   changesInPlace: () => active?.changesInPlace === true,
   enqueue,
@@ -280,7 +280,7 @@ async function render(message: RenderMessage): Promise<void> {
   current = { language, renderer, requestId };
   // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
   const another = renderedDiagram === undefined || message.diagram !== renderedDiagram;
-  if (another) renderer.fitToPanel?.();
+  if (another) renderer.fitToPanel();
   renderedDiagram = message.diagram;
   editor.diagramChanged(renderer, source, requestId, another);
   emptyElement.hidden = true;
@@ -394,7 +394,7 @@ function drawingFocus(): HTMLElement {
 
 function updateToolbar(): void {
   zoomGroup.hidden = !active?.zoomBy;
-  dragOutHandle.hidden = active?.toImage === undefined;
+  dragOutHandle.hidden = active === undefined;
   viewsGroup.hidden = current === undefined;
 }
 updateToolbar();
@@ -433,7 +433,7 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "tabVisibility": {
       const shown = tabHidden && !message.hidden;
       tabHidden = message.hidden;
-      if (shown) active?.tabShown?.();
+      if (shown) active?.tabShown();
       break;
     }
     case "chartOptions":
@@ -918,7 +918,6 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
       post({ type: "exportTheme", requestId, colors: readThemeColors() });
       return;
     }
-    if (!active.toImage) throw new Error("This drawing cannot be exported as an image.");
     const image = await active.toImage(imageBackground());
     if (format === "svg") {
       post({ type: "exportImage", requestId, format, data: image.svg });
