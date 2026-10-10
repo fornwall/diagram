@@ -21,6 +21,7 @@ import {
   confirmWrite,
   type DocumentBinding,
   documentName,
+  reportUnshownWrite,
   reportWriteFailure,
   writeFence,
 } from "./documentDiagram";
@@ -897,6 +898,7 @@ export class DiagramPanel implements vscode.Disposable {
       // Follow the written block, unless another diagram acquired its own binding while writing.
       const moved = { uri: current.uri, fence: outcome.fence };
       this.movedBindings.set(current, moved);
+      void reportUnshownWrite(moved);
       const state = this.state;
       if (state?.document === current) {
         this.state = { ...state, document: moved };

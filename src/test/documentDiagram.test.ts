@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { type DocumentBinding, documentName, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
-import { recordMessages, replace, setting, suiteTempDir } from "./afterTest";
+import { afterTest, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 suite("documentDiagram", function () {
@@ -348,6 +348,45 @@ suite("documentDiagram", function () {
     assert.strictEqual(panel.current?.document?.fence.lastLine, 4);
     await webview.edit("flowchart TD");
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n```\n");
+  });
+
+  test("says that it wrote to a document that no editor shows, and shows it if asked", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
+    const name = path.basename(document.uri.fsPath);
+    const { webview } = await restored(openedState(binding(document)));
+    const notice = Promise.withResolvers<string>();
+    recordMessages("showInformationMessage", (message, ...actions) => {
+      notice.resolve(message);
+      return actions[0];
+    });
+    const shown = Promise.withResolvers<[vscode.TextDocument, vscode.TextDocumentShowOptions]>();
+    replace(vscode.window, "showTextDocument", (async (
+      document: vscode.TextDocument,
+      options: vscode.TextDocumentShowOptions,
+    ) => shown.resolve([document, options])) as unknown as typeof vscode.window.showTextDocument);
+    await webview.edit("flowchart LR");
+    assert.strictEqual(
+      await notice.promise,
+      `The diagram was written to ${name}, which is not open in an editor. Save it to keep the change.`,
+    );
+    const [opened, options] = await shown.promise;
+    assert.strictEqual(opened, document);
+    assert.deepStrictEqual(options.selection, new vscode.Range(2, 0, 2, 0));
+  });
+
+  test("says nothing of a write to a document that a tab shows", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
+    await vscode.window.showTextDocument(document);
+    afterTest(async () => {
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    });
+    const { webview } = await restored(openedState(binding(document)));
+    const notices = recordMessages("showInformationMessage");
+    await webview.edit("flowchart LR");
+    assert.ok(document.isDirty);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepStrictEqual(notices, []);
   });
 
   test("writes the diagram as shown, which needs no edit, twice to the block it left", async () => {

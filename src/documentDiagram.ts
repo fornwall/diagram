@@ -216,11 +216,42 @@ export async function reportWriteFailure(
   if (action === undefined) {
     return;
   }
+  if (action !== copy) return showBlock(binding);
   try {
-    if (action === copy) {
-      await vscode.env.clipboard.writeText(source);
-      return;
-    }
+    await vscode.env.clipboard.writeText(source);
+  } catch (error) {
+    void vscode.window.showErrorMessage(errorMessage(error));
+  }
+}
+
+/**
+ * Tells the user of a write to a document that no tab shows, as when its tab was closed, which
+ * VS Code keeps unsaved with only the Explorer to mark it, and offers to show it.
+ */
+export async function reportUnshownWrite(binding: DocumentBinding): Promise<void> {
+  const { path } = vscode.Uri.parse(binding.uri);
+  const document = vscode.workspace.textDocuments.find(({ uri }) => uri.toString() === binding.uri);
+  // By path, as a notebook's tab shows the documents of its cells.
+  const shown = vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some(
+      ({ input }) =>
+        (input instanceof vscode.TabInputText || input instanceof vscode.TabInputNotebook) &&
+        input.uri.path === path,
+    ),
+  );
+  if (shown || !document?.isDirty) return;
+  const name = documentName(binding);
+  const show = `Show ${name}`;
+  const action = await vscode.window.showInformationMessage(
+    `The ${diagramNoun(binding.fence.language)} was written to ${name}, which is not open in an editor. Save it to keep the change.`,
+    show,
+  );
+  if (action === show) await showBlock(binding);
+}
+
+/** Opens the bound document at its block, saying why if it cannot. */
+async function showBlock(binding: DocumentBinding): Promise<void> {
+  try {
     const document = await openBound(binding);
     const line = new vscode.Position(binding.fence.openingLine, 0);
     await vscode.window.showTextDocument(document, { selection: new vscode.Range(line, line) });
