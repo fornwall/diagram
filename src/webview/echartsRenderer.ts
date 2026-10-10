@@ -52,6 +52,13 @@ interface Animated {
   stopAnimation(scope: undefined, forwardToLast: boolean): unknown;
 }
 
+/**
+ * Whether ECharts threw in the middle of an action or a draw, which it marks the start and end of
+ * on the instance, and then refuses to take an option or a size.
+ */
+const stuck = (chart: ECharts.ECharts) =>
+  (chart as unknown as { __flagInMainProcess?: boolean }).__flagInMainProcess === true;
+
 /** Whether the event is a click after the first of a double click. */
 const repeated = (event: unknown) => event instanceof MouseEvent && event.detail > 1;
 
@@ -139,6 +146,7 @@ export class EChartsRenderer implements Renderer {
         if (node) this.itemClicked({ key, node }, withModifier(event));
         this.scheduleSelection();
       },
+      (action) => this.guard(action),
     );
     this.resizeObserver.observe(this.container);
     // ECharts adds the toolbox's data view to the element it draws in: mark it, for chart.css to
@@ -226,7 +234,7 @@ export class EChartsRenderer implements Renderer {
     ) {
       // Notes, mark kinds and order live outside the chart. Re-highlighting unchanged items
       // would downplay every graphic, which is expensive with large series.
-      this.highlightMarks(previousIds);
+      this.guard(() => this.highlightMarks(previousIds));
     }
   }
 
@@ -403,6 +411,8 @@ export class EChartsRenderer implements Renderer {
     if (!echarts) {
       return;
     }
+    // As after ECharts threw in a handler of its own, such as of a click.
+    if (this.chart && stuck(this.chart)) this.disposeChart();
     // Source view has no DOM dimensions, and a hidden tab none to go by. Keep an existing chart's
     // size, or use an initial size for both the SVG and its layout; the resize observer fits it
     // when the rendering is shown.
@@ -542,11 +552,26 @@ export class EChartsRenderer implements Renderer {
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */
   private relayout(): void {
-    if (this.chart && this.option) {
+    if (this.chart && this.option) this.guard(() => this.apply(true));
+  }
+
+  /**
+   * Runs what calls on ECharts, drawing the chart anew once if it throws in the middle of an
+   * action or a draw, after which ECharts refuses every later option and size: the panel would go
+   * on showing what it drew last.
+   */
+  private guard(action: () => void): void {
+    try {
+      action();
+    } catch (error) {
+      console.error(error);
+      if (!this.chart || !stuck(this.chart)) return;
+      this.disposeChart();
       try {
-        this.apply(true);
-      } catch (error) {
-        console.error(error);
+        this.apply(false);
+      } catch (again) {
+        console.error(again);
+        this.disposeChart();
       }
     }
   }
@@ -564,7 +589,7 @@ export class EChartsRenderer implements Renderer {
         this.resizesSlowly = false;
       } else if (!this.resizesSlowly) {
         const start = performance.now();
-        this.resizeChart();
+        this.guard(() => this.resizeChart());
         this.resizesSlowly = performance.now() - start > RESIZE_BUDGET;
       }
       clearTimeout(this.relayoutTimer);
@@ -644,7 +669,7 @@ export class EChartsRenderer implements Renderer {
     this.selectionScheduled = true;
     queueMicrotask(() => {
       this.selectionScheduled = false;
-      this.syncSelection();
+      this.guard(() => this.syncSelection());
     });
   }
 

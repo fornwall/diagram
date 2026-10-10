@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { init as initECharts } from "echarts";
+import { init as initECharts, registerAction } from "echarts";
 import type * as ECharts from "echarts/core";
 import { type ChartItems, modelOf } from "../webview/echartsItems";
 import { EChartsRenderer } from "../webview/echartsRenderer";
@@ -343,6 +343,54 @@ suite("echartsRenderer", () => {
     container.clientWidth = 210;
     internals.apply(true);
     assert.strictEqual(setOptions, 2);
+  });
+
+  test("draws a chart anew that ECharts left refusing every option by throwing in an action", () => {
+    // An action whose handler throws, as ECharts' own can on an option it did not foresee.
+    registerAction({ type: "diagramTestThrow", event: "diagramTestThrow", update: "none" }, () => {
+      throw new Error("Thrown in an action");
+    });
+    const ssr = () =>
+      initECharts(null, undefined, { renderer: "svg", ssr: true, width: 400, height: 300 });
+    const [stuck, fresh] = [ssr(), ssr()];
+    const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
+    Object.assign(renderer, {
+      echarts: {},
+      chart: stuck,
+      createChart: () => fresh,
+      container: { clientWidth: 400, clientHeight: 300 },
+      option: { series: [{ type: "pie", data: [{ name: "A", value: 1 }] }] },
+      title: "",
+      theme: { colors: testColors, echarts: {} },
+      annotation: { marks: [], dim: false },
+      selectedKeys: new Set(),
+      reducedMotion: { matches: true },
+      tabHidden: () => false,
+      focus: { chartChanged: () => {}, hide: () => {} },
+      laidOut: "",
+    });
+    const guard = (action: () => void) =>
+      (renderer as unknown as { guard(action: () => void): void }).guard(action);
+    const { cancelAnimationFrame } = globalThis;
+    globalThis.cancelAnimationFrame ??= () => {};
+    try {
+      stuck.setOption({ series: [{ type: "pie", data: [{ name: "B", value: 1 }] }] });
+      // An error that leaves ECharts able to draw is only reported.
+      guard(() => {
+        throw new Error("Thrown outside");
+      });
+      assert.strictEqual(Object.getOwnPropertyDescriptor(renderer, "chart")?.value, stuck);
+      guard(() => stuck.dispatchAction({ type: "diagramTestThrow" }));
+      assert.ok(stuck.isDisposed());
+      const shown = Object.getOwnPropertyDescriptor(renderer, "chart")?.value;
+      assert.strictEqual(shown, fresh);
+      const model = modelOf(fresh as unknown as ECharts.ECharts);
+      assert.strictEqual(model.getSeriesByIndex(0)?.getRawData().getName(0), "A");
+    } finally {
+      globalThis.cancelAnimationFrame = cancelAnimationFrame;
+      stuck.dispose();
+      fresh.dispose();
+    }
   });
 
   test("works out the items of another timeline step anew", () => {

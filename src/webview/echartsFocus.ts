@@ -298,6 +298,8 @@ export class ChartFocus {
     private readonly items: () => ChartItems | undefined,
     private readonly colors: () => ThemeColors | undefined,
     activate: (key: string, event: KeyboardEvent) => void,
+    /** Runs what calls on ECharts, drawing the chart anew if ECharts throws. */
+    guard: (action: () => void) => void,
   ) {
     element.tabIndex = 0;
     element.setAttribute("role", "application");
@@ -308,58 +310,60 @@ export class ChartFocus {
     this.ring.hidden = true;
     this.status.setAttribute("role", "status");
     element.append(this.ring, this.status);
-    element.addEventListener("keydown", (event) => {
-      // The data view covers the chart, which the keys would otherwise move about unseen.
-      const dataView = this.dataView();
-      if (dataView) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          this.closeDataView(dataView, element);
+    element.addEventListener("keydown", (event) =>
+      guard(() => {
+        // The data view covers the chart, which the keys would otherwise move about unseen.
+        const dataView = this.dataView();
+        if (dataView) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            this.closeDataView(dataView, element);
+          }
+          return;
         }
-        return;
-      }
-      if (event.target !== element) return;
-      const { key } = event;
-      const activates = key === "Enter" || key === " ";
-      const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
-      const unmodified = !event.altKey && !event.ctrlKey && !event.metaKey;
-      const up = key === "Backspace" && unmodified && !event.shiftKey;
-      // By where the key is, as on a keyboard without Latin letters.
-      const legend = event.code === "KeyH" && unmodified;
-      if (!(activates || up || legend || (moves && unmodified))) return;
-      // Also with nothing shown, which no item has the focus in then.
-      if (legend && event.shiftKey) {
+        if (event.target !== element) return;
+        const { key } = event;
+        const activates = key === "Enter" || key === " ";
+        const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
+        const unmodified = !event.altKey && !event.ctrlKey && !event.metaKey;
+        const up = key === "Backspace" && unmodified && !event.shiftKey;
+        // By where the key is, as on a keyboard without Latin letters.
+        const legend = event.code === "KeyH" && unmodified;
+        if (!(activates || up || legend || (moves && unmodified))) return;
+        // Also with nothing shown, which no item has the focus in then.
+        if (legend && event.shiftKey) {
+          event.preventDefault();
+          this.showAllInLegend();
+          return;
+        }
+        const navigation = this.navigationOf();
+        const current = navigation && this.current(navigation);
+        if (!navigation || !current) return;
         event.preventDefault();
-        this.showAllInLegend();
-        return;
-      }
-      const navigation = this.navigationOf();
-      const current = navigation && this.current(navigation);
-      if (!navigation || !current) return;
-      event.preventDefault();
-      this.keyboard = true;
-      if (up) {
-        this.drillUp(current);
-        return;
-      }
-      if (legend) {
-        this.hideInLegend(current);
-        return;
-      }
-      const to = activates ? current : (navigation.move(current, key) ?? current);
-      this.show(to, navigation);
-      // Into view in a chart taller than the panel, which scrolls it.
-      if (!this.ring.hidden && element.scrollHeight > element.clientHeight) {
-        this.ring.scrollIntoView({ block: "nearest", inline: "nearest" });
-      }
-      if (activates) {
-        activate(itemKey(to), event);
-        this.drillDown(to);
-      }
-    });
+        this.keyboard = true;
+        if (up) {
+          this.drillUp(current);
+          return;
+        }
+        if (legend) {
+          this.hideInLegend(current);
+          return;
+        }
+        const to = activates ? current : (navigation.move(current, key) ?? current);
+        this.show(to, navigation);
+        // Into view in a chart taller than the panel, which scrolls it.
+        if (!this.ring.hidden && element.scrollHeight > element.clientHeight) {
+          this.ring.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+        if (activates) {
+          activate(itemKey(to), event);
+          this.drillDown(to);
+        }
+      }),
+    );
     element.addEventListener("focus", () => {
       this.keyboard ||= element.matches(":focus-visible");
-      if (this.keyboard && !this.dataView()) this.showCurrent();
+      if (this.keyboard && !this.dataView()) guard(() => this.showCurrent());
     });
     // Not for the focus going into the tooltip, whose links Tab leads to, and which would hide
     // with the focus on them, leaving it on the page's body.
