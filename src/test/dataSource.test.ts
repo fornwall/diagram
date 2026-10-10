@@ -235,6 +235,12 @@ suite("dataSource", () => {
         /^Error: You do not have permission to read \S+data\.csv\.$/,
       );
     }
+    if (process.platform !== "win32") {
+      await assert.rejects(readDataFile("/dev/zero"), {
+        message:
+          "/dev/zero is a device or a pipe, not a regular file, so it was not read. Use a command that reads part of it, such as head.",
+      });
+    }
     const large = path.join(dir, "large.csv");
     fs.writeFileSync(large, Buffer.alloc(10 * 1024 * 1024 + 1));
     await assert.rejects(readDataFile(large), {
