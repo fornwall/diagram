@@ -2,19 +2,11 @@
 // and checks them for mistakes that ECharts would silently render as nothing, with actionable
 // errors.
 
-import { isPlainObject } from "../protocol";
+import { asArray, isPlainObject } from "../protocol";
 import { joinWords } from "../text";
 import { evaluateSource, isFunction } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
-
-/** ECharts accepts most components as a single object or an array of them. */
-export function asArray(value: unknown): JsonObject[] {
-  if (Array.isArray(value)) {
-    return value.filter(isPlainObject);
-  }
-  return isPlainObject(value) ? [value] : [];
-}
 
 /** The option that holds the components: the base option of a timeline, or the option itself. */
 export function baseOption(option: JsonObject): JsonObject {

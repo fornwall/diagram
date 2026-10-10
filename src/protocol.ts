@@ -37,6 +37,14 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** The objects of an ECharts component, which an option may give as one object or an array. */
+export function asArray(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.filter(isPlainObject);
+  }
+  return isPlainObject(value) ? [value] : [];
+}
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

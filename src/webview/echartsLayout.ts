@@ -2,11 +2,10 @@
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
 import { facetBoxes } from "../chartFacetLayout";
-import { isPlainObject } from "../protocol";
+import { asArray, isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
 import {
   allSeries,
-  asArray,
   baseOption,
   isCartesian,
   type JsonObject,

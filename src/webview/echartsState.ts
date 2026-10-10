@@ -3,8 +3,9 @@
 // the option it shows, and some only in its model.
 
 import type * as ECharts from "echarts/core";
+import { asArray } from "../protocol";
 import { modelOf, type SeriesModel } from "./echartsItems";
-import { asArray, baseOption, type JsonObject } from "./echartsOption";
+import { baseOption, type JsonObject } from "./echartsOption";
 
 /** What the user can change in a shown chart, by component: besides the zoom ranges. */
 const USER_STATE: Record<string, string[]> = {

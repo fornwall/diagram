@@ -7,16 +7,13 @@ import { inLabelOrder, roundStep, stepsOf } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
-import { errorMessage, isPlainObject } from "./protocol";
+import { asArray, errorMessage, isPlainObject } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
 
 type Option = Record<string, unknown>;
 const MAX_FACETS = 12;
 /** More rows of panels would leave each too short to read in a panel of usual height. */
 const MAX_ROWS = 4;
-
-const objects = (value: unknown): Option[] =>
-  Array.isArray(value) ? value.filter(isPlainObject) : isPlainObject(value) ? [value] : [];
 
 /** Exclude the facet column from inference, unless it is also a label or value column. */
 function facetTable(spec: ChartSpec, table: DataTable, index: number): DataTable {
@@ -118,9 +115,9 @@ export function buildFacetedChart(
       // The webview truncates the title to the width of the panel's grid, of the same id.
       textStyle: { fontSize: 13 },
     });
-    xAxes.push({ ...objects(panel.option.xAxis)[0], id, gridIndex: i });
-    yAxes.push({ ...objects(panel.option.yAxis)[0], id, gridIndex: i });
-    objects(panel.option.series).forEach((each, seriesIndex) => {
+    xAxes.push({ ...asArray(panel.option.xAxis)[0], id, gridIndex: i });
+    yAxes.push({ ...asArray(panel.option.yAxis)[0], id, gridIndex: i });
+    asArray(panel.option.series).forEach((each, seriesIndex) => {
       // ECharts colors series and lists them in the legend by name, so a measure keeps its name,
       // color and legend entry in every panel. Selection tells the panels apart by series id.
       const name = String(each.name ?? `Series ${seriesIndex + 1}`);
@@ -169,7 +166,7 @@ function shareAxes(
   dimension: number,
   ordered: boolean,
 ): void {
-  const axes = panels.map((panel) => objects(panel.option[key])[0] ?? {});
+  const axes = panels.map((panel) => asArray(panel.option[key])[0] ?? {});
   // Negative values in one panel extend every panel's range, so all keep this axis at the edge.
   if (axes.some((axis) => axis.axisLine !== undefined)) {
     for (const axis of axes) axis.axisLine = { onZero: false };
@@ -200,7 +197,7 @@ function shareAxes(
       if (!axis) return;
       axis.data = categories;
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
-      for (const series of objects(panel.option.series)) {
+      for (const series of asArray(panel.option.series)) {
         const data = Array.isArray(series.data) ? series.data : [];
         series.data = keys.map((key) => {
           const index = indices.get(key);
@@ -236,7 +233,7 @@ function shareAxes(
   };
   for (const panel of panels) {
     const stacks = new Map<unknown, [number, number][]>();
-    for (const series of objects(panel.option.series)) {
+    for (const series of asArray(panel.option.series)) {
       if (!Array.isArray(series.data)) continue;
       let stack: [number, number][] | undefined;
       if (series.stack !== undefined && type !== "time") {
