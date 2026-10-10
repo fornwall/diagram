@@ -17,6 +17,10 @@ import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 /** A one-line chart option as the source view shows it. */
 const formatted = (source: string) => EChartsRenderer.prototype.formatForEditing(source);
 
+/** A flowchart in the direction of a chain of `length` edges, from node `${name}0` on. */
+const chain = (direction: string, length: number, name = "n") =>
+  `flowchart ${direction}${Array.from({ length }, (_, i) => `\n  ${name}${i} --> ${name}${i + 1}`).join("")}`;
+
 suite("webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
   this.timeout(20_000);
@@ -629,8 +633,7 @@ suite("webview", function () {
   });
 
   test("moves the focus from the canvas of a pick to the nodes with the first arrow key", async () => {
-    const chain = Array.from({ length: 20 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    await draw({ source: `flowchart TD\n  ${chain}`, title: "Pick by keys" });
+    await draw({ source: chain("TD", 20), title: "Pick by keys" });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${UNTIL}
@@ -898,8 +901,7 @@ suite("webview", function () {
   });
 
   test("zooms at the pointer in proportion to Ctrl+scrolling, and as much as a pinch", async () => {
-    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    await draw({ source: `flowchart LR\n  ${chain}` });
+    await draw({ source: chain("LR", 30) });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
@@ -949,20 +951,17 @@ suite("webview", function () {
   });
 
   test("shows a new diagram from its top, where a revision stays scrolled", async () => {
-    const chain = (name: string) =>
-      Array.from({ length: 20 }, (_, i) => `${name}${i} --> ${name}${i + 1}`).join("\n  ");
     const scrolled = () => evaluate(`document.getElementById("canvas").scrollTop`);
-    await draw({ source: `flowchart TD\n  ${chain("a")}`, title: "Tall" });
+    await draw({ source: chain("TD", 20, "a"), title: "Tall" });
     await evaluate(`document.getElementById("canvas").scrollTop = 200`);
-    await draw({ source: `flowchart TD\n  ${chain("a")}\n  a20 --> a21`, title: "Tall" });
+    await draw({ source: `${chain("TD", 20, "a")}\n  a20 --> a21`, title: "Tall" });
     assert.strictEqual(await scrolled(), 200, "A revision stays where it was scrolled to.");
-    await draw({ source: `flowchart TD\n  ${chain("b")}`, title: "Another" });
+    await draw({ source: chain("TD", 20, "b"), title: "Another" });
     assert.strictEqual(await scrolled(), 0, "A new diagram shows from its top.");
   });
 
   test("keeps the middle of the drawing in place when toggling between fit and actual size", async () => {
-    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    await draw({ source: `flowchart LR\n  ${chain}`, title: "Fit and actual size" });
+    await draw({ source: chain("LR", 30), title: "Fit and actual size" });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
@@ -984,8 +983,7 @@ suite("webview", function () {
   });
 
   test("keeps a zoom made while fitting the diagram to a resized panel is pending", async () => {
-    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    await draw({ source: `flowchart LR\n  ${chain}` });
+    await draw({ source: chain("LR", 30) });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
@@ -1085,8 +1083,7 @@ suite("webview", function () {
   });
 
   test("leaves a drag on the canvas's scrollbar to the scrollbar", async () => {
-    const chain = Array.from({ length: 20 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
-    await draw({ source: `flowchart TD\n  ${chain}`, title: "Scrollbar" });
+    await draw({ source: chain("TD", 20), title: "Scrollbar" });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
@@ -1666,8 +1663,7 @@ suite("webview", function () {
   });
 
   test("links the place of a render error to it in the source, scrolled into view", async () => {
-    const lines = Array.from({ length: 60 }, (_, i) => `  N${i} --> N${i + 1}`).join("\n");
-    const source = `flowchart TD\n${lines}\n  N60 --> [oops`;
+    const source = `${chain("TD", 60, "N")}\n  N60 --> [oops`;
     const reveal = () =>
       evaluate(`(() => {
         const link = document.querySelector("#error button.link");
