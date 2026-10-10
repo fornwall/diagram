@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { ChartItems, itemKey, modelOf } from "../webview/echartsItems";
+import { itemKey, modelOf } from "../webview/echartsItems";
 import { item, itemsOf, withChart } from "./echartsModel";
 
 suite("echartsItems", () => {
@@ -274,7 +274,7 @@ suite("echartsItems", () => {
         },
       ],
     };
-    const items = withChart(option, (chart) => new ChartItems(chart));
+    const items = itemsOf(option);
     withChart(option, (chart) => {
       assert.ok(items.rebind(chart));
       // The items no longer read the data of the chart they were worked out in.

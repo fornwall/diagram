@@ -1,17 +1,11 @@
 import * as assert from "node:assert";
 import { keepUserState } from "../webview/echartsState";
-import { layout, type Option } from "./echartsModel";
-
-const bars = {
-  xAxis: { type: "category", data: ["A", "B"] },
-  yAxis: { type: "value" },
-  series: [{ type: "bar", data: [1, 2] }],
-};
+import { bars, layout, type Option } from "./echartsModel";
 
 suite("echartsState", () => {
   test("carries a legend's selection and scroll, and the zoom range, over to a new layout", () => {
     const option: Option = layout({
-      ...bars,
+      ...bars(),
       legend: {},
       dataZoom: [{ type: "inside", startValue: 2, endValue: 5 }],
     });
@@ -26,7 +20,7 @@ suite("echartsState", () => {
 
   test("carries the timeline step and the visual map's range over to a new layout", () => {
     const option: Option = layout({
-      baseOption: { ...bars, timeline: { data: ["2025", "2026"] }, visualMap: {} },
+      baseOption: { ...bars(), timeline: { data: ["2025", "2026"] }, visualMap: {} },
       options: [{}, {}],
     });
     keepUserState(option, {

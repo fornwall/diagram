@@ -23,6 +23,14 @@ export function builtOption(spec: ChartSpec, table: DataTable | string): Option 
 export const seriesData = (option: Option): unknown[] =>
   option.series.map((series: Option) => series.data);
 
+/** A bar chart of two categories, with any other properties. */
+export const bars = (extra: Option = {}): Option => ({
+  xAxis: { type: "category", data: ["A", "B"] },
+  yAxis: { type: "value" },
+  series: [{ type: "bar", data: [1, 2] }],
+  ...extra,
+});
+
 /** Reads a chart of the option as ECharts lays it out, without a browser. */
 export function withChart<T>(
   option: Record<string, unknown>,

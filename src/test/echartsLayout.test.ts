@@ -3,15 +3,8 @@ import type { ChartSpec } from "../chartSpec";
 import { modelOf } from "../webview/echartsItems";
 import { toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
-import { builtOption, layout, type Option, withChart } from "./echartsModel";
+import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
-
-const bars = (extra: Option = {}): Option => ({
-  xAxis: { type: "category", data: ["A", "B"] },
-  yAxis: { type: "value" },
-  series: [{ type: "bar", data: [1, 2] }],
-  ...extra,
-});
 
 suite("echartsLayout", () => {
   test("leaves out the toolbox features that a new layout would undo", () => {
@@ -444,10 +437,7 @@ suite("echartsLayout", () => {
     );
     assert.deepStrictEqual([heatmap.yAxis.name, heatmap.yAxis.nameLocation], ["day", "start"]);
     assert.strictEqual(heatmap.xAxis.nameLocation, undefined);
-    const svg = withChart(heatmap, (chart) => chart.renderToSVGString(), {
-      width: 800,
-      height: 500,
-    });
+    const svg = svgOf(heatmap, { width: 800, height: 500 });
     const top = (text: string) =>
       Number(new RegExp(String.raw`translate\([\d.]+ ([\d.]+)\)[^>]*>${text}<`).exec(svg)?.[1]);
     assert.ok(top("day") < top("Mon"), `${top("day")} < ${top("Mon")}`);
@@ -571,9 +561,7 @@ suite("echartsLayout", () => {
       [...option.singleAxis, ...option.parallelAxis].map((axis: Option) => axis.axisLabel),
       [undefined, { formatter: "{value} ms" }, undefined, { formatter: format }],
     );
-    const svg = withChart(option, (chart) =>
-      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
-    );
+    const svg = svgOf(option);
     assert.match(svg, />3T</);
     assert.doesNotMatch(svg, /000,000/);
   });
@@ -596,9 +584,7 @@ suite("echartsLayout", () => {
       ],
     };
     const option = layout(source);
-    const svg = withChart(option, (chart) =>
-      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
-    );
+    const svg = svgOf(option);
     assert.match(svg, />A &amp; B: 0\.3</);
     assert.match(svg, />C: 1,234,567\.5</);
     const tooltip = option.tooltip.formatter;
@@ -618,9 +604,7 @@ suite("echartsLayout", () => {
   test("labels years on the value axis of a scatter chart as years", () => {
     const data = "year,sales\n2015,10\n2016,12\n2017,9\n2018,15";
     const option = layout(builtOption({ data, type: "scatter" } as ChartSpec, data));
-    const svg = withChart(option, (chart) =>
-      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
-    );
+    const svg = svgOf(option);
     assert.match(svg, />2015</);
     assert.match(svg, />2016\.5</);
     assert.doesNotMatch(svg, /K</);
