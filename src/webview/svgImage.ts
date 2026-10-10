@@ -7,6 +7,10 @@ export const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 /** The namespace of the targets of links that SVG draws, as Mermaid writes them. */
 export const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
+/** Where a link leads, as HTML or SVG writes it, if it has a target at all. */
+export const hrefOf = (link: Element): string | null =>
+  link.getAttribute("href") ?? link.getAttributeNS(XLINK_NAMESPACE, "href");
+
 /** Attributes that only make the rendering interactive in the panel, which an image does not need. */
 const INTERACTION_ATTRIBUTES = ["tabindex", "role", "aria-pressed", "data-diagram-id"];
 

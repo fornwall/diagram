@@ -26,7 +26,13 @@ import {
   type WebLink,
   withModifier,
 } from "./renderer";
-import { inlineStyleSheets, SVG_NAMESPACE, standaloneSvg, XLINK_NAMESPACE } from "./svgImage";
+import {
+  hrefOf,
+  inlineStyleSheets,
+  SVG_NAMESPACE,
+  standaloneSvg,
+  XLINK_NAMESPACE,
+} from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
@@ -564,9 +570,7 @@ export class MermaidRenderer implements Renderer {
     // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
     // that same click, in a trusted workspace without asking. Keep where it leads as data.
     for (const link of this.diagram.querySelectorAll("a")) {
-      const href = (
-        link.getAttribute("href") ?? link.getAttributeNS(XLINK_NAMESPACE, "href")
-      )?.trim();
+      const href = hrefOf(link)?.trim();
       link.removeAttribute("href");
       link.removeAttributeNS(XLINK_NAMESPACE, "href");
       if (href) link.setAttribute("data-href", href);
