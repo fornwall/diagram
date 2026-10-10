@@ -563,7 +563,12 @@ suite("panel", function () {
       opened = Promise.withResolvers<void>();
       await select({ id: "A", label: "Parser" });
       webview.sent.length = 0;
-      const asking = webview.receive({ type: "ask", text: "Explain the selection", nodes: [] });
+      const asking = webview.receive({
+        type: "ask",
+        requestId,
+        text: "Explain the selection",
+        nodes: [],
+      });
       if (changed) {
         await select({ id: "B", label: "Checker" });
       }
@@ -575,6 +580,22 @@ suite("panel", function () {
         changed ? /selected these nodes in the panel: "Checker"/ : /no nodes selected/,
       );
     }
+  });
+
+  test("leaves a message about a replaced drawing in the chat input for the user to review", async () => {
+    const { panel, webview } = await newFakePanel();
+    const chat = recordChat();
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    const { requestId } = webview.render;
+    const next = { ...flowchart, source: `${flowchart.source}\n  B --> C` };
+    assert.ok((await panel.render(next, "tool")).ok);
+    const nodes = [{ id: "A", label: "Parser" }];
+    await webview.receive({ type: "ask", requestId, text: "Why?", nodes });
+    await webview.ask("Why?");
+    assert.deepStrictEqual(chat.requests, [
+      { query: 'Regarding "Parser" in the diagram: Why?', isPartialQuery: true },
+      { query: "Regarding the diagram: Why?", isPartialQuery: false },
+    ]);
   });
 
   test("a reloaded webview starts without a selection", async () => {
@@ -1249,7 +1270,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     const chat = recordChat();
     const errors = recordMessages("showErrorMessage");
-    const ask = () => webview.receive({ type: "ask", text: "Why?", nodes: [] });
+    const ask = () => webview.ask("Why?");
     for (const origin of ["tool", "participant"] as const) {
       assert.ok((await panel.render(flowchart, origin)).ok);
       await ask();
@@ -1260,11 +1281,11 @@ suite("panel", function () {
     );
     const nodes = [{ id: "A", label: "Parser" }];
     await webview.select(nodes);
-    webview.sent.length = 0;
+    const sent = webview.sent.length;
     chat.fail = true;
     await ask();
     assert.deepStrictEqual(errors, ["Could not send the request to chat: Chat is disabled."]);
-    assert.deepStrictEqual(webview.sent, []);
+    assert.strictEqual(webview.sent.length, sent);
     assert.match(panel.describeForModel() ?? "", /selected these nodes in the panel: "Parser"/);
   });
 

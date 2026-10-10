@@ -48,7 +48,7 @@ suite("chart code in the panel", function () {
         requestId: webview.render.requestId,
         node: { id: "A", label: "Parser" },
       });
-    const ask = () => webview.receive({ type: "ask", text: "Why?", nodes: [] });
+    const ask = () => webview.ask("Why?");
     const clickPrompt = "Explain {label}";
     const drawFlowchart = async (on: DiagramPanel) =>
       assert.ok(
@@ -83,7 +83,7 @@ suite("chart code in the panel", function () {
     // A new panel's page holds no code.
     const fresh = await newFakePanel();
     await drawFlowchart(fresh.panel);
-    await fresh.webview.receive({ type: "ask", text: "Why?", nodes: [] });
+    await fresh.webview.ask("Why?");
     assert.strictEqual(requests().at(-1), "send: Regarding the diagram: Why?");
   });
 
@@ -102,7 +102,7 @@ suite("chart code in the panel", function () {
     webview.answer = answer;
     await webview.receive({ type: "ready" });
     assert.ok((await rendering).ok);
-    await webview.receive({ type: "ask", text: "Why?", nodes: [] });
+    await webview.ask("Why?");
     assert.deepStrictEqual(
       chat.requests.map((request) => request.isPartialQuery),
       [true],

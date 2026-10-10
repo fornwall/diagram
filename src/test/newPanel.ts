@@ -136,6 +136,11 @@ export class FakeWebview {
     return this.receive({ type: "selectionChanged", requestId: this.render.requestId, nodes });
   }
 
+  /** Sends what the user typed to chat, about the nodes selected in the diagram shown. */
+  ask(text: string, nodes: DiagramNode[] = []): Promise<void> {
+    return this.receive({ type: "ask", requestId: this.render.requestId, text, nodes });
+  }
+
   /** Applies an edit of the source shown, as the page's Apply does. */
   edit(source: string): Promise<void> {
     return this.receive({ type: "sourceEdited", requestId: this.render.requestId, source });

@@ -207,7 +207,11 @@ export type FromWebview =
   | { type: "renderUnavailable"; requestId: number; message: string }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
   | { type: "sourceEdited"; requestId: number; source: string }
-  | { type: "ask"; text: string; nodes: DiagramNode[] }
+  /**
+   * What the user typed, about the nodes selected in the drawing of the render, if the page shows
+   * one.
+   */
+  | { type: "ask"; requestId?: number | undefined; text: string; nodes: DiagramNode[] }
   /**
    * Clicks name the render whose drawing was clicked, as a click on a drawing sent just before the
    * page drew its replacement is on a diagram that is gone.
@@ -300,7 +304,7 @@ const FROM_WEBVIEW_FIELDS: {
   renderUnavailable: { requestId: isId, message: isString },
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },
-  ask: { text: isString, nodes: isNodes },
+  ask: { requestId: optional(isId), text: isString, nodes: isNodes },
   clickToAsk: { requestId: isId, node: isNode },
   clickToOpen: { requestId: isId, node: isNode },
   openUrl: { requestId: isId, url: isString },

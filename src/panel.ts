@@ -473,7 +473,10 @@ export class DiagramPanel implements vscode.Disposable {
         );
         break;
       case "ask":
-        return this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
+        return this.askInChat(
+          `${this.regarding(message.nodes)}${message.text}`,
+          message.requestId !== this.sourceRequestId,
+        );
       case "clickToAsk":
         if (this.state?.clickPrompt && message.requestId === this.renderedRequestId) {
           return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
@@ -1370,15 +1373,15 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Sends a request about the diagram to chat, routed to whoever produced the diagram. Once chart
-   * code could have sent it, it only fills in the chat input, for the user to send.
+   * code could have sent it, or to review, it only fills in the chat input, for the user to send.
    */
-  private async askInChat(text: string): Promise<void> {
+  private async askInChat(text: string, review = false): Promise<void> {
     const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
     const selection = this.selection;
     try {
       await vscode.commands.executeCommand("workbench.action.chat.open", {
         query,
-        isPartialQuery: this.pageRanCode,
+        isPartialQuery: review || this.pageRanCode,
       });
     } catch (error) {
       // E.g. chat is disabled. The selection is kept, to try again.

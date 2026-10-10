@@ -886,7 +886,12 @@ askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const text = askInput.value.trim();
   if (text) {
-    post({ type: "ask", text, nodes: Array.from(selection.values()) });
+    post({
+      type: "ask",
+      requestId: current?.requestId,
+      text,
+      nodes: Array.from(selection.values()),
+    });
     askInput.value = "";
     updateAskSubmit();
     askInput.focus();
