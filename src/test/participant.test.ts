@@ -1132,6 +1132,8 @@ suite("participant", () => {
         pasted("image/jpeg", new Uint8Array([1, 2, 3])),
         pasted("image/png", new Uint8Array(3 * 1024 * 1024 + 1)),
         pasted("application/pdf", new Uint8Array([1])),
+        pasted("image/bmp", new Uint8Array([1])),
+        pasted("image/jpg", new Uint8Array([4])),
         { id: "problems", value: { diagnostics: [] } },
         { id: "file", value: file },
         pasted("image/jpeg", new Uint8Array([1, 2, 3])),
@@ -1145,6 +1147,8 @@ suite("participant", () => {
         "Attached by the user: image[image/jpeg]",
         "Attached by the user: image, which could not be read: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image.",
         "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
+        "Attached by the user: image, which could not be read: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image.",
+        "Attached by the user: image[image/jpeg]",
         "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
         "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
         "Attached by the user, but not read: gone.png does not exist.",
@@ -1153,6 +1157,7 @@ suite("participant", () => {
         shown,
         "Left out image: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image. " +
           "Left out image: @diagram does not support application/pdf attachments. " +
+          "Left out image: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image. " +
           "Left out problems, symbol: @diagram does not support this kind of attachment. " +
           "Left out: gone.png does not exist.\n\nDrawing.",
       );
@@ -1166,7 +1171,14 @@ suite("participant", () => {
           ["image/jpeg", [1, 2, 3]],
         ],
       );
-      assert.ok(images?.slice(2).every((part) => part === undefined));
+      // An image/jpg as models accept it.
+      assert.deepStrictEqual(images?.[5]?.mimeType, "image/jpeg");
+      assert.ok(
+        images
+          ?.toSpliced(5, 1)
+          .slice(2)
+          .every((part) => part === undefined),
+      );
     } finally {
       await vscode.workspace.fs.delete(file);
     }

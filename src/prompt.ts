@@ -31,7 +31,7 @@ const MIB = 1024 * 1024;
 const MAX_IMAGE_BYTES = 3 * MIB;
 /** Assume an image takes this many tokens, about the most that models scale them to. */
 const IMAGE_TOKENS = 1_600;
-/** The image formats that common models accept, by file extension. */
+/** The image formats that common models accept, by file extension or MIME subtype. */
 const IMAGE_TYPES = new Map([
   ["gif", "image/gif"],
   ["jpeg", "image/jpeg"],
@@ -699,6 +699,14 @@ async function readImage(
   if (!mimeType.startsWith("image/")) {
     return { name, error: `@diagram does not support ${mimeType} attachments` };
   }
+  // Model APIs reject the request with an image of another type, such as BMP or SVG.
+  const type = IMAGE_TYPES.get(mimeType.slice("image/".length).toLowerCase());
+  if (!type) {
+    return {
+      name,
+      error: `the image is ${mimeType}, which models do not accept. Attach a PNG, JPEG, GIF or WebP image.`,
+    };
+  }
   if (!model) {
     // An image attached again is given with the current request.
     const attachedNow =
@@ -737,7 +745,7 @@ async function readImage(
       contentKey(data),
       ...(reference ? [reference.toString()] : []),
     ];
-    return { name, image: vscode.LanguageModelDataPart.image(data, mimeType), keys };
+    return { name, image: vscode.LanguageModelDataPart.image(data, type), keys };
   } catch (error) {
     // A file system error is explained in a sentence that names the file.
     const explained = source instanceof vscode.Uri ? fileError(error, source) : error;
