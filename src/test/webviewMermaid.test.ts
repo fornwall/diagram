@@ -983,8 +983,9 @@ suite("Mermaid in the webview", function () {
         'packet\n  +16: "Port"\n  +0: "None"',
         // The field repeated, after front matter, rather than the first with its bits.
         '---\ntitle: Header\n---\npacket\n  0-7: "A"\n  8-15: "B"\n  8-15: "C"',
-        // Mermaid draws a journey's score that is not a number out of place.
+        // Mermaid draws a journey's score or a sankey flow's value that is not a number out of place.
         "journey\n  section Work\n    Make tea: 5: Me\n    Rest: high: Me, Cat",
+        "sankey\n  a,b,10\n  a,c, 5\n  a,c, $5\n  b,c,2",
         // Others depend on the statements before: the first part of the text that fails so.
         "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev\n  branch other\n  merge main",
         'gitGraph\n  commit id: "A"\n  branch dev\n  commit id: "B"\n  checkout main\n  cherry-pick id: "B"\n  cherry-pick id: "C"',
@@ -1022,6 +1023,7 @@ suite("Mermaid in the webview", function () {
         "Error on line 3: Packet block 16 is invalid. Cannot have a zero bit field.",
         "Error on line 7: Packet block 8 - 15 is not contiguous. It should start from 16.",
         'Error on line 4: The score of "Rest" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".',
+        'Error on line 4: The value of the flow from "a" to "c" is not a number: write it without units or other text, as in "a,c,10".',
         "Error on line 8: Cannot merge branch 'main' into itself.",
         'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
         'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',

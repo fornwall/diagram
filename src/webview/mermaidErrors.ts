@@ -831,19 +831,32 @@ export function undefinedEndError(db: DiagramDb | undefined, source: string): Er
 }
 
 /**
- * The error for a user journey task whose score is not a number, which Mermaid would draw as a
- * face out of place and a broken line to it.
+ * The error for a number that is not one, which Mermaid would draw out of place: the score of a
+ * user journey task, drawn as a face out of place and a broken line to it, or the value of a
+ * sankey flow, for which it draws no flows and every node at one place.
  */
-export function scoreError(db: DiagramDb | undefined, source: string): Error | undefined {
-  // Not the tasks of a Gantt chart, which it fails on invalid dates in, to describe as it draws.
-  if (!/^journey\b/.test(diagramHeader(source).typeLine ?? "")) return undefined;
-  const task = db?.getTasks?.().find(({ score }) => Number.isNaN(score))?.task;
-  if (task === undefined) return undefined;
+export function numberError(db: DiagramDb | undefined, source: string): Error | undefined {
+  const type = diagramHeader(source).typeLine ?? "";
   const normalized = source.replace(/\r\n?/g, "\n");
+  // Not the tasks of a Gantt chart, which it fails on invalid dates in, to describe as it draws.
+  const tasks = /^journey\b/.test(type) ? (db?.getTasks?.() ?? []) : [];
+  const task = tasks.find(({ score }) => Number.isNaN(score))?.task?.trim();
+  if (task !== undefined) {
+    return errorAt(
+      normalized,
+      find(normalized, `^[^\\S\\n]*${literal(task)}[^\\S\\n]*:`),
+      `The score of "${task}" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".`,
+    );
+  }
+  const flows = /^sankey\b/.test(type) ? (db?.getGraph?.().links ?? []) : [];
+  const flow = flows.find(({ value }) => Number.isNaN(value));
+  if (flow === undefined) return undefined;
+  // The value is the last field, which Mermaid reads the number at the start of.
+  const ends = [flow.source, flow.target].map((end) => `(?=.*${literal(end)})`).join("");
   return errorAt(
     normalized,
-    find(normalized, `^[^\\S\\n]*${literal(task.trim())}[^\\S\\n]*:`),
-    `The score of "${task.trim()}" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".`,
+    find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`),
+    `The value of the flow from "${flow.source}" to "${flow.target}" is not a number: write it without units or other text, as in "${flow.source},${flow.target},10".`,
   );
 }
 
