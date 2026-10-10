@@ -256,7 +256,7 @@ export class ChartItems {
         );
       }
     });
-    if (this.series.every((series) => series.empty)) {
+    if (this.series.length > 0 && this.series.every((series) => series.empty)) {
       this.warnings.push(
         'The chart has no data to draw, as every series is empty: give a series its "data", or a "dataset" with a "source" for the series to read.',
       );

@@ -258,6 +258,8 @@ suite("echartsItems", () => {
       warnings({ series: [{ type: "pie" }, { type: "treemap", data: [] }] }).join(),
       /no data/,
     );
+    // Nor a chart of no series at all, such as of a graphic alone.
+    assert.deepStrictEqual(warnings({ title: { text: "T" }, graphic: [{ type: "text" }] }), []);
     assert.deepStrictEqual(
       warnings(
         bars({
