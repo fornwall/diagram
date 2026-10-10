@@ -575,9 +575,9 @@ export function findDocumentDiagramFences(
   return fences;
 }
 
-/** A code block in a document, with its content lines if it is a diagram block. */
+/** A diagram block in a document, with its content lines, which may all be blank. */
 interface CodeBlock {
-  language: DiagramLanguage | undefined;
+  language: DiagramLanguage;
   prefix: string;
   openingLine: number;
   lastLine: number;
@@ -590,8 +590,8 @@ interface CodeBlock {
  */
 const FRONT_MATTER = /^---[^\S\n]*\n(?:[^\n]*\n)*?---[^\S\n]*(?:\n|$)/;
 
-/** Yields the code blocks in a document in order. */
-function* codeBlocks(text: string): Generator<CodeBlock> {
+/** Yields the diagram blocks in a document in order. */
+function* diagramBlocks(text: string): Generator<CodeBlock> {
   const scanner = new FenceScanner(documents.languageOf, true);
   let open: CodeBlock | undefined;
   // A fence in front matter is YAML, not a code block.
@@ -605,7 +605,7 @@ function* codeBlocks(text: string): Generator<CodeBlock> {
     const scanned = scanner.next(text.slice(start, end));
     start = end + 1;
     if (scanned.kind === "content") {
-      if (open?.language) open.lines.push(scanned.text);
+      open?.lines.push(scanned.text);
       continue;
     }
     // Like CommonMark, a block that is never closed ends with its container or the document.
@@ -614,7 +614,7 @@ function* codeBlocks(text: string): Generator<CodeBlock> {
       yield open;
       open = undefined;
     }
-    if (scanned.kind === "opening") {
+    if (scanned.kind === "opening" && scanned.fence.language) {
       const { language } = scanned.fence;
       open = { language, prefix: scanned.prefix, openingLine: line, lastLine: line, lines: [] };
     }
@@ -632,10 +632,10 @@ export function findDiagramFences(text: string): DiagramFence[] {
   if (!documents.mayName.test(text)) {
     return fences;
   }
-  for (const { language, lines, ...block } of codeBlocks(text)) {
+  for (const { lines, ...block } of diagramBlocks(text)) {
     const source = trimBlankLines(lines);
-    if (language && source) {
-      fences.push({ language, source, ...block });
+    if (source) {
+      fences.push({ source, ...block });
     }
   }
   return fences;
@@ -656,7 +656,7 @@ function blockAt(
   language: DiagramLanguage,
   openingLine: number,
 ): CodeBlock | undefined {
-  for (const block of codeBlocks(text)) {
+  for (const block of diagramBlocks(text)) {
     if (block.openingLine >= openingLine) {
       return block.openingLine === openingLine && block.language === language ? block : undefined;
     }
@@ -727,11 +727,11 @@ export function emptyDiagramBlockAt(
   text: string,
   line: number,
 ): { language: DiagramLanguage; openingLine: number } | undefined {
-  for (const { language, openingLine, lastLine, lines } of codeBlocks(text)) {
+  for (const { language, openingLine, lastLine, lines } of diagramBlocks(text)) {
     if (openingLine > line) {
       break;
     }
-    if (line <= lastLine + 1 && language && !trimBlankLines(lines)) {
+    if (line <= lastLine + 1 && !trimBlankLines(lines)) {
       return { language, openingLine };
     }
   }
