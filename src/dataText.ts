@@ -214,25 +214,18 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
   return { records, header: underlined || undefined };
 }
 
-/**
- * Splits delimited text, ignoring quotes if they are not closed as CSV quotes are. Then the records
- * `above` the one with the quote error are split with quotes.
- */
+/** Splits delimited text, ignoring quotes if they are not closed as CSV quotes are. */
 function splitLeniently(
   text: string,
   delimiter: string,
-): { table: Records; quoteError?: QuoteError; above?: Records } {
+): { table: Records; quoteError?: QuoteError } {
   try {
     return { table: splitDelimited(text, delimiter) };
   } catch (error) {
     if (!(error instanceof QuoteError)) {
       throw error;
     }
-    return {
-      table: splitDelimited(text, delimiter, false),
-      quoteError: error,
-      above: splitDelimited(text.slice(0, error.recordStart), delimiter),
-    };
+    return { table: splitDelimited(text, delimiter, false), quoteError: error };
   }
 }
 
@@ -273,18 +266,18 @@ const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
  * field also permits single-column CSV.
  */
 function splitCsv(text: string, firstLine: string, strict: boolean): Records | undefined {
-  let best: { table: Records; uniform: number; width: number } | undefined;
-  let quoteError: unknown;
+  let best: { table: Records; uniform: boolean; width: number } | undefined;
+  let quoteError: QuoteError | undefined;
   let sizeError: TableSizeError | undefined;
   const quotedColumn = firstLine.trimStart().startsWith('"');
   for (const delimiter of [",", ";"]) {
-    if (
-      !quotedColumn &&
-      (!text.includes(delimiter) ||
-        (!strict &&
-          (!firstLine.includes(delimiter) ||
-            (delimiter === "," && !text.replace(THOUSANDS_IN_TEXT, "").includes(",")))))
-    ) {
+    const candidate =
+      quotedColumn ||
+      (strict
+        ? text.includes(delimiter)
+        : firstLine.includes(delimiter) &&
+          (delimiter !== "," || text.replace(THOUSANDS_IN_TEXT, "").includes(",")));
+    if (!candidate) {
       continue;
     }
     let split: ReturnType<typeof splitLeniently>;
@@ -297,36 +290,33 @@ function splitCsv(text: string, firstLine: string, strict: boolean): Records | u
       sizeError ??= error;
       continue;
     }
-    const { table, quoteError: candidateError, above } = split;
-    if (strict) {
-      quoteError ??= candidateError;
-    }
+    const { table, quoteError: candidateError } = split;
     const { records } = table;
-    const { width, matching } = shape(records);
-    const singleColumn =
-      quotedColumn && candidateError === undefined && width === 1 && matching === records.length;
     if (candidateError !== undefined) {
       // In auto mode, literal quotes in command output are not CSV errors unless the unquoted
       // rows also fit this delimiter, or the rows above the error do, as when a quoted field
       // over several lines splits the unquoted rows apart.
-      if (
-        fits(records) ||
-        (above !== undefined && above.records.length > 1 && fits(above.records))
-      ) {
+      const { records: above } = splitDelimited(
+        text.slice(0, candidateError.recordStart),
+        delimiter,
+      );
+      if (strict || fits(records) || (above.length > 1 && fits(above))) {
         quoteError ??= candidateError;
       }
       continue;
     }
+    const { width, matching } = shape(records);
+    const uniform = matching === records.length;
+    const singleColumn = quotedColumn && width === 1 && uniform;
     if (!singleColumn && !fits(records, { width, matching })) {
       continue;
     }
-    const uniform = matching === records.length ? 1 : 0;
     // Semicolons, tried last, win ties, as for "a;1,5": a comma is more likely a decimal comma than
     // a semicolon is part of a field. They also win over more columns split at commas when every
     // field is a number with a decimal comma, as in "1,5;2,5".
     if (
       best === undefined ||
-      uniform > best.uniform ||
+      (uniform && !best.uniform) ||
       (uniform === best.uniform &&
         (width >= best.width ||
           records.every((row) =>
