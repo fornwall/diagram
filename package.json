@@ -639,7 +639,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Change the current chart's settings without reloading its data",
-        "modelDescription": "Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
+        "modelDescription": "Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept, except those a new type cannot use, and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
         "tags": [
           "diagram"
         ],
