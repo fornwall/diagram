@@ -138,6 +138,45 @@ suite("webview", function () {
     );
   });
 
+  test("highlights hovered toolbar buttons as toolbars do, not as primary buttons", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        // The page's rules, with :hover as a class that the test can set.
+        const page = [...document.styleSheets].find(sheet => sheet.href?.endsWith("webview.css"));
+        const hovered = new CSSStyleSheet();
+        hovered.replaceSync([...page.cssRules].map(rule => rule.cssText.replaceAll(":hover", ".test-hover")).join("\\n"));
+        const probe = document.createElement("div");
+        document.body.append(probe);
+        const color = (value) => {
+          probe.style.background = value;
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const buttons = ["zoom-in", "view-split", "apply"].map(id => document.getElementById(id));
+        // Apply is enabled only once the source is edited.
+        buttons[2].disabled = false;
+        page.disabled = true;
+        document.adoptedStyleSheets = [hovered];
+        try {
+          for (const button of buttons) button.classList.add("test-hover");
+          const [zoom, view, apply] = buttons.map(button => getComputedStyle(button).backgroundColor);
+          return {
+            zoom: zoom === color("var(--vscode-toolbar-hoverBackground)"),
+            view: view === color("var(--vscode-toolbar-hoverBackground)"),
+            apply: apply === color("var(--vscode-button-hoverBackground)"),
+          };
+        } finally {
+          for (const button of buttons) button.classList.remove("test-hover");
+          buttons[2].disabled = true;
+          document.adoptedStyleSheets = [];
+          page.disabled = false;
+          probe.remove();
+        }
+      })()`),
+      { zoom: true, view: true, apply: true },
+    );
+  });
+
   test("only enables sending to chat when the message contains text", async () => {
     assert.deepStrictEqual(
       await evaluate(`(() => {

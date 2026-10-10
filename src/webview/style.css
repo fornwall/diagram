@@ -90,7 +90,9 @@ button {
   cursor: pointer;
 }
 
-button:enabled:not([aria-disabled="true"]):hover {
+/* Without specificity of its own beyond button:hover, so that the hover of toolbar, link and menu
+   buttons replaces it. */
+button:where(:enabled:not([aria-disabled="true"])):hover {
   background: var(--vscode-button-hoverBackground);
 }
 
