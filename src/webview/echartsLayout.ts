@@ -990,6 +990,12 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height
       each.preserveAspect ??= true;
       continue;
     }
+    if (type === "graph" && each.layout === "force")
+      spreadForce(
+        each,
+        width - reserved.left - reserved.right,
+        height - reserved.top - reserved.bottom,
+      );
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
     // Room for the breadcrumb of a treemap.
@@ -1002,6 +1008,23 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height
       right: reserved.right + (type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side),
     });
   }
+}
+
+/**
+ * Spreads the nodes of a force layout over the space there is for them, unless the option says how
+ * far. ECharts' defaults are for no size, and huddle a few nodes in the middle of a chart: edges as
+ * long as half the room each node has, with the repulsion that ECharts' defaults have to them.
+ */
+function spreadForce(graph: JsonObject, width: number, height: number): void {
+  const force = isPlainObject(graph.force) ? graph.force : {};
+  if (force.edgeLength !== undefined || force.repulsion !== undefined) return;
+  const nodes: unknown = graph.data ?? graph.nodes;
+  const count = Array.isArray(nodes) ? Math.max(1, nodes.length) : 1;
+  const edgeLength = Math.round(
+    Math.min(200, Math.max(10, 0.5 * Math.sqrt((width * height) / count))),
+  );
+  // ECharts' defaults: an edge length of 30 and a repulsion of 50.
+  graph.force = { ...force, edgeLength, repulsion: Math.round(50 * (edgeLength / 30) ** 2) };
 }
 
 /** The side of the chart a treemap shows its breadcrumb on, which is the bottom unless moved. */

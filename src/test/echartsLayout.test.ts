@@ -597,6 +597,29 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("spreads the nodes of a force layout over the space there is, unless the option says", () => {
+    const graph = (count: number, force?: Option) => ({
+      series: [
+        {
+          type: "graph",
+          layout: "force",
+          ...(force && { force }),
+          data: Array.from({ length: count }, (_, index) => ({ name: `N${index}` })),
+        },
+      ],
+    });
+    const force = (count: number, size: { width: number; height: number }) =>
+      layout(graph(count), size).series[0].force;
+    // Longer edges for fewer nodes and more room, and repulsion to match.
+    const few = force(4, { width: 1200, height: 800 });
+    assert.ok(few.edgeLength > 150 && few.repulsion > 1000, JSON.stringify(few));
+    const narrow = force(4, { width: 360, height: 400 });
+    assert.ok(narrow.edgeLength < few.edgeLength && narrow.edgeLength > 60, JSON.stringify(narrow));
+    assert.ok(force(200, { width: 360, height: 400 }).edgeLength < 30);
+    assert.deepStrictEqual(layout(graph(4, { repulsion: 80 })).series[0].force, { repulsion: 80 });
+    assert.deepStrictEqual(layout(graph(4, { gravity: 0.2 })).series[0].force.gravity, 0.2);
+  });
+
   test("gives sankey nodes their own palette colors, also beyond eight", () => {
     const nodes = Array.from({ length: 10 }, (_, index) => ({ name: `N${index}` }));
     const option = layout({ series: [{ type: "sankey", data: nodes }] });
