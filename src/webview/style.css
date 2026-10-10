@@ -375,13 +375,25 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
 }
 
 /* The source editor and the rendering, side by side in the split view. */
+/* A panel too short for its bars still leaves the drawing some height, below which the page
+   scrolls to the footer. */
 #panes {
   display: flex;
   flex: 1;
-  min-height: 0;
-  /* A panel too short for its bars leaves the panes no height, less than the padding of the
-     drawing's: what they hold stays off the footer below them. */
+  min-height: 100px;
+  /* What the panes hold stays off the footer below them. */
   overflow: hidden;
+}
+
+/* A short panel leaves out the hint about clicking the drawing, for the drawing's sake. */
+@media (max-height: 300px) {
+  #selection-label.hint {
+    display: none;
+  }
+
+  #selection {
+    min-height: 0;
+  }
 }
 
 #editor {

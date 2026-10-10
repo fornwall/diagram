@@ -389,7 +389,7 @@ suite("webview", function () {
     );
   });
 
-  test("keeps the drawing off the footer of a panel too short for it", async () => {
+  test("keeps some room for the drawing of a panel too short for its bars, off the footer", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
@@ -398,13 +398,13 @@ suite("webview", function () {
         try {
           const box = footer.getBoundingClientRect();
           const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 3);
-          return {noRoom: document.getElementById("panes").getBoundingClientRect().height < 32,
-            footer: footer.contains(hit)};
+          const panes = document.getElementById("panes").getBoundingClientRect();
+          return {room: panes.height, footer: footer.contains(hit) && box.top >= panes.bottom};
         } finally {
           document.body.style.height = "";
         }
       })()`),
-      { noRoom: true, footer: true },
+      { room: 100, footer: true },
     );
   });
 
