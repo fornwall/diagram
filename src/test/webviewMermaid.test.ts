@@ -872,8 +872,8 @@ suite("Mermaid in the webview", function () {
       ],
       // A lexer error, which Jison reports without a column.
       [
-        ["quadrantChart", "  x-axis Low --> High", "  Point A: [0.3, 0.6] !"],
-        'Parse error on line 10, column 23: unexpected "!".',
+        ["quadrantChart", "  x-axis Low --> High", "  Point A: [0.3, 0.6] {"],
+        'Parse error on line 10, column 23: unexpected "{".',
       ],
       // The sankey parser drops blank lines.
       [
