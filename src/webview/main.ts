@@ -523,7 +523,7 @@ function updateSelectionUi(): void {
   // The source view hides a hint about clicking the drawing, as it does not show the drawing.
   selectionLabel.classList.toggle("hint", labels.length === 0);
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
-  highlightPathButton.hidden = !active?.supportsPaths || pick !== undefined;
+  highlightPathButton.hidden = !active?.supportsPaths || pick !== undefined || nothingToClick();
   const endpoints = Array.from(selection.values());
   highlightPathButton.disabled =
     endpoints.length !== 2 || endpoints.some((node) => node.relationship);
@@ -560,7 +560,7 @@ function hint(noun: string): string {
       : `Click a ${noun} to pick it.`;
   }
   // Without a drawing, as before the first or after an error, there is nothing to click.
-  if (!active) return "";
+  if (!active || nothingToClick()) return "";
   const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
   if (links.size > 0 || active.hasWebLinks) {
     const open = active.hasWebLinks ? "open its link" : "open its code";
@@ -576,6 +576,9 @@ function hint(noun: string): string {
     : `${noun}s`;
   return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
 }
+
+/** Whether the drawing has no parts to click, as a flowchart without nodes, unlike a chart. */
+const nothingToClick = () => active?.drawnNodes?.().length === 0;
 
 function selectionChanged(): void {
   forgetDragImage();

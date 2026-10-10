@@ -177,6 +177,13 @@ suite("webview", function () {
       },
     );
     assert.strictEqual(failed, "");
+    // Nor for a drawing without nodes, which has nothing to click.
+    await draw({ source: "flowchart TD" });
+    assert.deepStrictEqual(
+      await evaluate(`({hint: document.getElementById("selection-label").textContent,
+        path: document.getElementById("highlight-path").hidden})`),
+      { hint: "", path: true },
+    );
   });
 
   test("hides the drawing's actions in the source view, keeping the header's layout", async () => {
