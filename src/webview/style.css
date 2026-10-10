@@ -607,8 +607,10 @@ select:focus {
   opacity: 0.35;
 }
 
+/* The actions go below a hint or selection too long to share its line with them. */
 #selection {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   min-height: 1.5em;
@@ -622,7 +624,7 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
-/* The selection's actions keep to one line, beside a hint that wraps in a narrow panel. */
+/* The selection's actions keep to one line each. */
 #selection button {
   flex-shrink: 0;
   white-space: nowrap;

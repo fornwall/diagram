@@ -268,7 +268,7 @@ suite("webview", function () {
     );
   });
 
-  test("keeps the selection's actions on one line in a narrow panel", async () => {
+  test("keeps the selection's actions on one line, below the hint in a narrow panel", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
@@ -278,12 +278,15 @@ suite("webview", function () {
         const wide = height();
         footer.style.width = "320px";
         try {
-          return {shown: !button.hidden, wraps: height() > wide};
+          const hint = document.getElementById("selection-label").getBoundingClientRect();
+          return {shown: !button.hidden, wraps: height() > wide,
+            hintWhole: Math.round(hint.width) === document.getElementById("selection").clientWidth,
+            below: button.getBoundingClientRect().top >= hint.bottom};
         } finally {
           footer.style.width = "";
         }
       })()`),
-      { shown: true, wraps: false },
+      { shown: true, wraps: false, hintWhole: true, below: true },
     );
   });
 
