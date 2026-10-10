@@ -401,6 +401,15 @@ suite("echartsLayout", () => {
     };
     assert.strictEqual(layout(scatter, { width: 240 }).xAxis.splitNumber, 2);
     assert.strictEqual(layout(scatter).xAxis.splitNumber, undefined);
+    // The bounds, interval and name of the option's own axis stay as they are.
+    const bounded = { type: "value", name: "Count", min: 0, max: 7, interval: 1 };
+    for (const height of [130, 160, 200]) {
+      const axis = layout(bars({ yAxis: bounded }), { width: 900, height }).yAxis;
+      assert.deepStrictEqual(
+        { ...axis, axisLabel: undefined },
+        { ...bounded, axisLabel: undefined },
+      );
+    }
   });
 
   test("hides a visual map below a chart too short for it and a plot to read", () => {

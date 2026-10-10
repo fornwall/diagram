@@ -669,23 +669,24 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   }
   // A short or narrow plot, as of a facet or in a small panel, has room for fewer value labels.
   if (panel !== undefined) {
+    const faceted = facetGrid !== undefined;
     const xAxes = asArray(base.xAxis);
     for (const axis of xAxes) {
       // Value labels as wide as the longest bound's, beside each other.
       const digits = [axis.min, axis.max].map((bound) =>
         typeof bound === "number" ? compactLabel(bound).length : 4,
       );
-      fewerTicks(axis, panel.width - 50, (Math.max(...digits) + 1) * charWidth + 16);
+      fewerTicks(axis, panel.width - 50, (Math.max(...digits) + 1) * charWidth + 16, faceted);
     }
     for (const axis of asArray(base.yAxis)) {
       const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
       let plot = panel.height - (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0);
-      // The name above the plot, unless the plot would be too short for it.
+      // The name above the plot, unless a facet's plot would be too short for it.
       if (typeof axis.name === "string" && axis.name && axis.nameLocation === undefined) {
-        if (plot - AXIS_NAME_HEIGHT < MIN_NAMED_FACET) axis.name = "";
+        if (faceted && plot - AXIS_NAME_HEIGHT < MIN_NAMED_FACET) axis.name = "";
         else plot -= AXIS_NAME_HEIGHT;
       }
-      fewerTicks(axis, plot, MIN_TICK_GAP);
+      fewerTicks(axis, plot, MIN_TICK_GAP, faceted);
     }
   }
   for (const axis of asArray(base.yAxis)) {
@@ -880,14 +881,20 @@ function facetValue(id: unknown): { value: unknown } | undefined {
 }
 
 /**
- * Gives a value axis of a facet fewer labels than the facets' shared ones when they would pile
- * on each other along its length, at least `gap` apart.
+ * Gives a value axis fewer labels when they would pile on each other along its length, at least
+ * `gap` apart. A facet's axis with the bounds and interval that the facets share gets wider ones;
+ * the bounds and interval of any other axis are the option's own, which this leaves alone.
  */
-function fewerTicks(axis: JsonObject, length: number, gap: number): void {
+function fewerTicks(axis: JsonObject, length: number, gap: number, faceted: boolean): void {
   if (axisType(axis) !== "value") return;
   const parts = Math.max(2, Math.floor(length / gap));
   const { min, max, interval } = axis;
-  if (typeof min !== "number" || typeof max !== "number" || typeof interval !== "number") {
+  if (
+    !faceted ||
+    typeof min !== "number" ||
+    typeof max !== "number" ||
+    typeof interval !== "number"
+  ) {
     // ECharts rounds the interval to a nice one, which can make half as many ticks again as the
     // split number asks for: 7 for 5 from 0 to 6.
     const asked = Math.max(2, Math.floor(parts / 1.5));
