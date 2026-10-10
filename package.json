@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives, HTML, colors, backgrounds and fonts: the panel applies the theme and sizing."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors, backgrounds and fonts unless the user asks for them: the panel applies the theme and sizing."
             },
             "language": {
               "type": "string",
@@ -255,7 +255,7 @@
             },
             "options": {
               "type": "object",
-              "description": "ECharts option to merge: objects merge, null removes a setting, other values replace it. A \"series\" object applies to every series, and an array merges by index, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Omit colors, backgrounds and fonts. JSON only; for callbacks use diagram_render."
+              "description": "ECharts option to merge: objects merge, null removes a setting, other values replace it. A \"series\" object applies to every series, and an array merges by index, e.g. {\"series\": [{\"label\": {\"show\": false}}]}. Omit colors, backgrounds and fonts unless the user asks for them. JSON only; for callbacks use diagram_render."
             },
             "clickPrompt": {
               "type": "string",
