@@ -404,6 +404,59 @@ suite("Mermaid in the webview", function () {
     assert.strictEqual(ratios.length, sections.length + 1);
   });
 
+  test("draws the headings of kanban columns legibly in a high contrast theme", async () => {
+    await draw({
+      source: "kanban\n  Todo\n    [Write docs]\n  Doing\n    [Fix bug]\n  Done\n    [Ship]",
+    });
+    const ratios = (await evaluate(`(async () => {
+      ${UNTIL}
+      const root = document.documentElement;
+      const { dataset } = document.body;
+      const style = root.getAttribute("style");
+      const kind = dataset.vscodeThemeKind;
+      const redraw = async (change) => {
+        const drawn = document.querySelector("#diagram svg");
+        change();
+        await until(() => !drawn.isConnected && document.querySelector("#diagram svg"), "the diagram drawn again");
+      };
+      // The colors of the Dark High Contrast theme that the headings and columns take.
+      await redraw(() => {
+        dataset.vscodeThemeKind = "vscode-high-contrast";
+        root.setAttribute("style", style + ";--vscode-foreground: #ffffff; --vscode-editor-background: #000000");
+      });
+      try {
+        const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
+        const rgb = (css) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = css;
+          context.fillRect(0, 0, 1, 1);
+          return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        };
+        const luminance = (color) => color.map((value) => {
+          const c = value / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+        return [...document.querySelectorAll("#diagram svg g.cluster")].map((column) => {
+          const heading = [...column.querySelectorAll(".cluster-label *")].find((e) => e.childElementCount === 0 && e.textContent.trim());
+          const [a, b] = [luminance(rgb(getComputedStyle(heading).color)), luminance(rgb(getComputedStyle(column.querySelector("rect")).fill))]
+            .sort((x, y) => y - x);
+          return [heading.textContent.trim(), Math.round(((a + 0.05) / (b + 0.05)) * 10) / 10];
+        });
+      } finally {
+        await redraw(() => {
+          root.setAttribute("style", style);
+          dataset.vscodeThemeKind = kind;
+        });
+      }
+    })()`)) as [string, number][];
+    assert.deepStrictEqual(
+      ratios.filter(([, ratio]) => ratio < 4.5),
+      [],
+      `Contrast of the headings: ${JSON.stringify(ratios)}`,
+    );
+    assert.strictEqual(ratios.length, 3);
+  });
+
   test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {
     await draw({ source: 'flowchart LR\n  A --> B\n  click A callback "A tooltip"' });
     const colors = await evaluate(`(async () => {

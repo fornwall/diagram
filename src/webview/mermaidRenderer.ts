@@ -65,7 +65,7 @@ const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
  * VS Code's chart colors, mixed into the background as far as leaves the theme's text legible on
  * them. Mermaid's dark theme colors them almost black, and both of its themes draw some labels
  * illegibly, such as white on pastel or light grey on light colors. Kanban columns are drawn 10
- * points lighter, which their labels must be legible on too.
+ * points lighter, which their labels and headings must be legible on too.
  */
 function sectionColors({
   dark,
@@ -82,7 +82,9 @@ function sectionColors({
     return mix(background, hue, amount);
   });
   const label = toCss(foreground);
-  const variables: Record<string, string> = { pieSectionTextColor: label };
+  // Kanban column headings, like other text outside nodes, read in the text color, which in
+  // Mermaid's dark theme is a fixed light grey that the high contrast themes' white outshines.
+  const variables: Record<string, string> = { pieSectionTextColor: label, textColor: label };
   scale.forEach((color, i) => {
     variables[`cScale${i}`] = toCss(color);
     variables[`cScaleLabel${i}`] = label;
