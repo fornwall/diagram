@@ -204,8 +204,8 @@ class Finder {
   readonly nodes = new Map<string, DiagramNode>();
   /** The elements that show each node, by id. */
   readonly elements = new Map<string, Element[]>();
-  /** The ids that uniqueId gave out, which may not have been added yet. */
-  private readonly given = new Set<string>();
+  /** The ids that uniqueId gave out, or that nodes yet to be added take. */
+  readonly taken = new Set<string>();
   /**
    * The next number to try for each name and relationship id, so that many equal names, or
    * relationships between the same ends, take linear time.
@@ -264,9 +264,9 @@ class Finder {
   uniqueId(name: string): string {
     let id = name;
     let n = this.next.get(name) ?? 2;
-    while (this.given.has(id) || this.nodes.has(id)) id = `${name} (${n++})`;
+    while (this.taken.has(id) || this.nodes.has(id)) id = `${name} (${n++})`;
     this.next.set(name, n);
-    this.given.add(id);
+    this.taken.add(id);
     return id;
   }
 
@@ -338,36 +338,43 @@ class Finder {
  * "flowchart-A-0". Mermaid makes up the ids of mind map nodes ("node_0"), notes ("note0",
  * "state-A----note-2") and subgraphs titled with spaces and no id ("subGraph0"), so those go by
  * their names. So do the lollipop interfaces of class diagrams ("interface0"), which Mermaid draws
- * for each class that has one: those of a name are one interface. Returns the id of each node by
- * the id that Mermaid draws it with.
+ * for each class that has one: those of a name are one interface. Names take no id of the others,
+ * wherever they are drawn: a note "B" is not state B. Returns the id of each node by the id that
+ * Mermaid draws it with.
  */
 function shapes(f: Finder): Map<string, string> {
+  const found = Array.from(
+    f.all(
+      "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
+    ),
+    (element) => {
+      // A use case diagram keeps the source id in an attribute of its own.
+      const domId =
+        element.getAttribute("data-usecase-id") ??
+        element.getAttribute("data-id") ??
+        f.withoutPrefix(element.id);
+      const decorated =
+        /^(?:flowchart|agentflow|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(domId);
+      const sourceId = decorated?.[1] ?? decorated?.[2] ?? domId;
+      // A block diagram group without a label goes by its id, unless Mermaid made one up for it, as
+      // do a state diagram's choices, forks and joins, which show none.
+      const unnamed =
+        (element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId)) ||
+        element.matches(".node.statediagram-state");
+      const label = nameOf(element) || (unnamed ? sourceId : "");
+      const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
+        ? undefined
+        : f.db?.getClasses && /^interface\d+$/.test(domId)
+          ? label
+          : sourceId;
+      if (id !== undefined) f.taken.add(id);
+      return { element, domId, label, id };
+    },
+  );
   const nodeIds = new Map<string, string>();
-  for (const element of f.all(
-    "g.node, g.rough-node, g.icon-shape, g.image-shape, g.cluster, g.statediagram-cluster, g.architecture-service",
-  )) {
-    // A use case diagram keeps the source id in an attribute of its own.
-    const domId =
-      element.getAttribute("data-usecase-id") ??
-      element.getAttribute("data-id") ??
-      f.withoutPrefix(element.id);
-    const decorated = /^(?:flowchart|agentflow|state|classId|entity)-(.+)-\d+$|^service-(.+)$/.exec(
-      domId,
-    );
-    const sourceId = decorated?.[1] ?? decorated?.[2] ?? domId;
-    // A block diagram group without a label goes by its id, unless Mermaid made one up for it, as
-    // do a state diagram's choices, forks and joins, which show none.
-    const unnamed =
-      (element.querySelector(":scope > rect.composite") && !/^id-\w+-\d+$/.test(domId)) ||
-      element.matches(".node.statediagram-state");
-    const label = nameOf(element) || (unnamed ? sourceId : "");
-    // Start and end states, and groups without ids.
-    if (!label) continue;
-    const id = /^(?:node_\d+|note\d+|subGraph\d+|state-.+----note-\d+)?$/.test(domId)
-      ? f.uniqueId(label)
-      : f.db?.getClasses && /^interface\d+$/.test(domId)
-        ? label
-        : sourceId;
+  // Not start and end states, nor groups without ids.
+  const shown = found.filter(({ label }) => label);
+  for (const { element, domId, label, id = f.uniqueId(label) } of shown) {
     nodeIds.set(domId, id);
     f.add(element, { id, label });
   }

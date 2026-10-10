@@ -1140,6 +1140,25 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
+  test("names notes apart from the nodes whose ids their texts are, drawn before them or after", async () => {
+    const ids = async (source: string) => {
+      await draw({ source });
+      return evaluate(`[...document.querySelectorAll("#diagram [data-diagram-id][tabindex]")]
+        .filter((node) => !node.classList.contains("diagram-relationship"))
+        .map((node) => node.getAttribute("data-diagram-id") + " = " + node.getAttribute("aria-label"))
+        .sort()`);
+    };
+    assert.deepStrictEqual(await ids("stateDiagram-v2\n  A --> B\n  note right of A : B"), [
+      "A = A",
+      "B (2) = B",
+      "B = B",
+    ]);
+    // The note, inside the composite state, is drawn before the state that it names.
+    const inside =
+      "stateDiagram-v2\n  state S {\n    A --> B\n    note right of A : C\n  }\n  C --> S";
+    assert.deepStrictEqual(await ids(inside), ["A = A", "B = B", "C (2) = C", "C = C", "S = S"]);
+  });
+
   test("finds icon and image shapes, architecture groups, lollipop interfaces, sankey flows and the edges of block, agent flow, swimlane and use case diagrams, and event models", async () => {
     const pixel =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
