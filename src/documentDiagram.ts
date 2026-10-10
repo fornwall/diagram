@@ -189,7 +189,7 @@ export async function confirmWrite(
   const why =
     cause === "replaced"
       ? `An agent replaced the ${noun} that was opened from ${name}.`
-      : "The panel ran JavaScript code from a chart, which can apply edits and press Write as if you had.";
+      : `The panel ran JavaScript code from a chart, which can apply edits and press Write to ${name} as if you had.`;
   const write = await vscode.window.showWarningMessage(
     `Write this ${noun} to ${name}?`,
     {

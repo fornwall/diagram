@@ -116,7 +116,7 @@ export function describeDiagram(
   }
   if (state.document) {
     lines.push(
-      `Opened from a code block in ${documentName(state.document)}. Only the user's Apply or Write action writes to that file; rendering changes the panel.`,
+      `Opened from a code block in ${documentName(state.document)}. Only the user's Apply or Write to action writes to that file; rendering changes the panel.`,
     );
   }
   if (state.error) {

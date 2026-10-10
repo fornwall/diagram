@@ -902,7 +902,7 @@ suite("panel", function () {
     await webview.receive({ type: "refresh" });
     assert.strictEqual(loads, 0);
     assert.strictEqual(panel.current?.source, edited);
-    assert.match(errors.join(), /source is kept.*Reset Styling/);
+    assert.match(errors.join(), /source is kept.*Reset styling/);
   });
 
   test("a failed refresh render restores the previous source and presentation", async () => {

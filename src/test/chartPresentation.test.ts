@@ -483,7 +483,7 @@ suite("chartPresentation", () => {
       const presentation = edited(change);
       assert.throws(
         () => rebuildChart(spec, newTable, presentation),
-        /source is kept.*Reset Styling/,
+        /source is kept.*Reset styling/,
       );
       const restored = captureChartPresentation(
         JSON.stringify(buildChart(spec, oldTable).option),

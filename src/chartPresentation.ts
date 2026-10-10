@@ -50,7 +50,7 @@ export interface ChartPresentation {
 
 /** Refresh, Chart Options, diagram_updateChart and diagram_getState all show this message. */
 function blocked(reason: string): string {
-  return `Your chart styling can't be kept, because ${reason}. Your source is kept. Revert these source changes, or use Reset Styling in Chart Options to return to the generated chart.`;
+  return `Your chart styling can't be kept, because ${reason}. Your source is kept. Revert these source changes, or use Reset styling in Chart Options to return to the generated chart.`;
 }
 
 const DATA_KEYS = new Set([
