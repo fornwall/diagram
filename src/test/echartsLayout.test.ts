@@ -249,6 +249,27 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(subtextStyle, { width: 284, overflow: "truncate" });
   });
 
+  test("cuts a title short of the toolbox beside it", () => {
+    const width = (title: Option, toolbox: Option) =>
+      layout(bars({ title: { text: "T", ...title }, toolbox }), { width: 300 }).title.textStyle
+        .width;
+    // Three icons of 15 pixels, 8 apart, and the padding around them, and a gap to the title.
+    const feature = { saveAsImage: {}, dataView: {}, restore: {}, magicType: { type: ["line"] } };
+    assert.strictEqual(width({}, { feature }), 284 - 71 - 8);
+    assert.strictEqual(width({ left: "center" }, { feature }), 284 - 2 * (71 + 8));
+    assert.strictEqual(width({}, { feature, itemSize: 20, itemGap: 4 }), 284 - 78 - 8);
+    // Not beside a toolbox placed elsewhere, nor one without icons, nor below it.
+    for (const [title, toolbox] of [
+      [{}, { feature, top: "bottom" }],
+      [{}, { feature, orient: "vertical" }],
+      [{}, { feature, show: false }],
+      [{}, { feature: { magicType: { type: ["line"] }, restore: { show: false } } }],
+      [{ top: "bottom" }, { feature }],
+    ] as const) {
+      assert.strictEqual(width(title, toolbox), 284, JSON.stringify([title, toolbox]));
+    }
+  });
+
   test("adds a legend for several named series, beside non-grid charts when there is room", () => {
     const named = bars({
       series: [

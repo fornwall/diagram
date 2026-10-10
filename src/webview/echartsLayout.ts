@@ -328,6 +328,7 @@ const pixels = (value: unknown, width: number): number | undefined =>
 /** Places the components around the plot, and fits the grid and series into the space left. */
 function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size: Size): void {
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
+  const tools = toolboxWidth(base);
   for (const title of asArray(base.title)) {
     if (title.show === false || !(title.text || title.subtext)) {
       continue;
@@ -344,9 +345,13 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
       reserved[side] = Math.max(reserved[side], height);
     }
     // A title wider than the panel, or than the grid it names, such as a facet's, is cut short
-    // rather than cut off.
+    // rather than cut off, or than the room the toolbox leaves beside it at the top.
     const grid = asArray(base.grid).find((grid) => title.id !== undefined && grid.id === title.id);
-    const titleWidth = (pixels(grid?.width, size.width) ?? size.width) - 16;
+    const besideTools =
+      grid === undefined && side === "top" && tools > 0
+        ? (tools + 8) * (centered(title) ? 2 : 1)
+        : 0;
+    const titleWidth = (pixels(grid?.width, size.width) ?? size.width) - 16 - besideTools;
     for (const key of ["textStyle", "subtextStyle"]) {
       const style = isPlainObject(title[key]) ? title[key] : {};
       style.width ??= titleWidth;
@@ -367,6 +372,31 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
   layOutPie(base, series, reserved, size);
   layOutBoxSeries(series, reserved, size);
   layOutRadar(base, reserved, size);
+}
+
+/** Whether a title is centered, which keeps it clear of a toolbox on the right on both sides. */
+const centered = (title: JsonObject) => title.left === "center" || title.left === "middle";
+
+/**
+ * The width of the toolbox that ECharts places across the top right of the chart, as it does
+ * unless told otherwise, of the features that the panel keeps: 0 without one.
+ */
+function toolboxWidth(base: JsonObject): number {
+  let width = 0;
+  for (const toolbox of asArray(base.toolbox)) {
+    if (toolbox.show === false || toolbox.orient === "vertical" || has(toolbox, BOX_KEYS)) continue;
+    const features = Object.entries(isPlainObject(toolbox.feature) ? toolbox.feature : {}).filter(
+      ([name, settings]) =>
+        !Object.hasOwn(PASSING_TOOLS, name) &&
+        !(isPlainObject(settings) && settings.show === false),
+    );
+    if (features.length === 0) continue;
+    // ECharts' default icon size, gap between icons and padding.
+    const size = typeof toolbox.itemSize === "number" ? toolbox.itemSize : 15;
+    const gap = typeof toolbox.itemGap === "number" ? toolbox.itemGap : 8;
+    width = Math.max(width, features.length * (size + gap) - gap + 10);
+  }
+  return width;
 }
 
 /** Adds a legend where the chart needs one, and places it beside the plot. */
