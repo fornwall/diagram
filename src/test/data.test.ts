@@ -499,6 +499,23 @@ suite("data", () => {
     ]);
   });
 
+  test("reads short CSV with a short row under a header as CSV, not as decimal commas", () => {
+    assert.deepStrictEqual(parse("x,y\n1,2\n3,4\n5"), {
+      columns: ["x", "y"],
+      rows: [
+        [1, 2],
+        [3, 4],
+        [5, null],
+      ],
+    });
+    // Without a header of names, the commas are decimal commas.
+    assert.deepStrictEqual(parse("Jan 1,5\nFeb 2,5\nMar 3").rows, [
+      ["Jan", 1.5],
+      ["Feb", 2.5],
+      ["Mar", 3],
+    ]);
+  });
+
   test("parses decimal commas in semicolon-separated values", () => {
     assert.deepStrictEqual(parse("a;1,5;x\nb;2,25;\nc;1,234;"), {
       columns: ["Column 1", "Column 2", "Column 3"],

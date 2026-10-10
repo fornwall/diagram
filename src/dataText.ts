@@ -249,10 +249,22 @@ function shape(records: unknown[][]): { width: number; matching: number } {
 
 /**
  * Whether records split into several fields consistently: most into as many, or each into at least
- * two, as lines may have fewer or more fields than the header, as with cloc --csv.
+ * two, as lines may have fewer or more fields than the header, as with cloc --csv, or more than
+ * half into as many as a first record of names, as "x,y" above "1,2" and a short row, which would
+ * otherwise be read as numbers with a decimal comma.
  */
 function fits(records: Cell[][], { width, matching } = shape(records)): boolean {
-  return width >= 2 && (matching >= records.length * 0.8 || records.every((r) => r.length >= 2));
+  const [first = []] = records;
+  const named =
+    first.length === width &&
+    matching > records.length / 2 &&
+    first.every((cell) => {
+      const name = String(cell ?? "").trim();
+      return name !== "" && parseNumber(name) === undefined;
+    });
+  return (
+    width >= 2 && (matching >= records.length * 0.8 || records.every((r) => r.length >= 2) || named)
+  );
 }
 
 /** A number with thousands separators within text, as in "apples 1,234". */
