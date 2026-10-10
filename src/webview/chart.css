@@ -35,3 +35,8 @@
   /* Above the buttons, which ECharts places 5 pixels from the bottom. */
   margin-bottom: 32px;
 }
+
+/* A chart taller than the view, such as of many facets in a short one, scrolls up and down. */
+#chart.scrolls {
+  overflow: hidden auto;
+}

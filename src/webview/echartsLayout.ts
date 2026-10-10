@@ -715,6 +715,9 @@ const MIN_FACET_WIDTH = 140;
 const FACET_TITLE_HEIGHT = 26;
 const FACET_ROW_GAP = 12;
 const FACET_COLUMN_GAP = 24;
+/** The size of facets below which the panel scrolls the chart, rather than crush them further. */
+const MIN_SCROLLED_FACET_HEIGHT = 100;
+const MIN_SCROLLED_FACET_WIDTH = 80;
 
 interface Facet {
   grid: JsonObject;
@@ -751,6 +754,34 @@ function facetPanels(base: JsonObject): Facet[] | undefined {
   return facets;
 }
 
+/** The columns that chartFacets places facets in. */
+const facetColumns = (facets: Facet[]) =>
+  facets.filter(({ grid }) => grid.top === facets[0]?.grid.top).length;
+
+/** The rows of facets in a number of columns, and their width, in the width there is for them. */
+const facetGrid = (facets: Facet[], areaWidth: number) => ({
+  rows: (columns: number) => Math.ceil(facets.length / columns),
+  panelWidth: (columns: number) => (areaWidth - (columns - 1) * FACET_COLUMN_GAP) / columns,
+});
+
+/**
+ * The least height at which a chart can be read, for the panel to scroll to when it is shorter,
+ * or 0 for any height: a row of facets for every few of them, as narrow as they can be.
+ */
+export function minimumHeight(option: JsonObject, width: number): number {
+  const base = baseOption(option);
+  const facets = option.media === undefined ? facetPanels(base) : undefined;
+  if (!facets) return 0;
+  const { rows, panelWidth } = facetGrid(facets, width - 32);
+  let least = rows(facetColumns(facets));
+  for (let more = facetColumns(facets) + 1; more <= facets.length; more++) {
+    if (panelWidth(more) >= MIN_SCROLLED_FACET_WIDTH) least = Math.min(least, rows(more));
+  }
+  // The legend of several measures below the facets.
+  const legend = asArray(base.legend).some(({ show }) => show !== false) ? 32 : 0;
+  return least * MIN_SCROLLED_FACET_HEIGHT + 12 + legend;
+}
+
 /**
  * Lays out the panels of a faceted chart in pixels, in the space left: the percentages of the
  * option would leave a short panel's plot hardly any of its height. Rows too short to read go in
@@ -765,9 +796,7 @@ function layOutFacets(
   const left = reserved.left + 16;
   const areaWidth = width - left - reserved.right - 16;
   const areaHeight = height - top - reserved.bottom - 4;
-  const count = facets.length;
-  const rows = (columns: number) => Math.ceil(count / columns);
-  const panelWidth = (columns: number) => (areaWidth - (columns - 1) * FACET_COLUMN_GAP) / columns;
+  const { rows, panelWidth } = facetGrid(facets, areaWidth);
   // How near a number of columns comes to panels of the least readable size, at most 1.
   const fit = (columns: number) =>
     Math.min(
@@ -775,8 +804,8 @@ function layOutFacets(
       areaHeight / rows(columns) / MIN_FACET_HEIGHT,
       panelWidth(columns) / MIN_FACET_WIDTH,
     );
-  let columns = facets.filter(({ grid }) => grid.top === facets[0]?.grid.top).length;
-  for (let more = columns + 1; more <= count; more++) {
+  let columns = facetColumns(facets);
+  for (let more = columns + 1; more <= facets.length; more++) {
     if (fit(more) > fit(columns)) columns = more;
   }
   const rowHeight = areaHeight / rows(columns);
@@ -793,7 +822,47 @@ function layOutFacets(
       height: gridHeight,
     });
   });
+  shortenFacetTitles(facets, gridWidth - 16);
   return { width: gridWidth, height: gridHeight };
+}
+
+/**
+ * Leaves out the facet column's name, as in "region = ", from the titles of facets when one of
+ * them would not fit its panel: the values tell the panels apart, and the panel's header or the
+ * chart's title usually names the column.
+ */
+function shortenFacetTitles(facets: Facet[], width: number): void {
+  const texts = facets.map(({ title }) => (typeof title.text === "string" ? title.text : ""));
+  const style = facets[0]?.title.textStyle;
+  const fontSize = isPlainObject(style) && typeof style.fontSize === "number" ? style.fontSize : 13;
+  // Bold characters, a little wider than others.
+  if (texts.every((text) => text.length * fontSize * 0.62 <= width)) return;
+  const values = facets.map(({ grid }) => facetValue(grid.id));
+  // chartFacets titles a facet "<column> = <value>", the value quoted when values would collide.
+  const prefixes = texts.map((text, index) => {
+    const value = values[index];
+    if (value === undefined) return undefined;
+    const label = value.value === null ? "(missing)" : String(value.value);
+    const suffix = [label, JSON.stringify(value.value)].find(
+      (each) => text.endsWith(each) && text.slice(0, -each.length).endsWith(" = "),
+    );
+    return suffix === undefined ? undefined : text.slice(0, -suffix.length);
+  });
+  const prefix = prefixes[0];
+  if (prefix === undefined || prefixes.some((each) => each !== prefix)) return;
+  facets.forEach(({ title }, index) => {
+    title.text = texts[index]?.slice(prefix.length);
+  });
+}
+
+/** The value of a facet, by the id that chartFacets gives its grid. */
+function facetValue(id: unknown): { value: unknown } | undefined {
+  if (typeof id !== "string" || !id.startsWith("facet:")) return undefined;
+  try {
+    return { value: JSON.parse(id.slice("facet:".length)) };
+  } catch {
+    return undefined;
+  }
 }
 
 /**

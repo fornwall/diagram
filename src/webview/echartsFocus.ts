@@ -348,6 +348,10 @@ export class ChartFocus {
       }
       const to = activates ? current : (navigation.move(current, key) ?? current);
       this.show(to, navigation);
+      // Into view in a chart taller than the panel, which scrolls it.
+      if (!this.ring.hidden && element.scrollHeight > element.clientHeight) {
+        this.ring.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
       if (activates) {
         activate(itemKey(to), event);
         this.drillDown(to);

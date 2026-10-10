@@ -3,6 +3,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
+import { minimumHeight } from "../webview/echartsLayout";
 import { builtOption, itemsOf, layout, type Option, withChart } from "./echartsModel";
 
 const build = (data: string, spec: Partial<ChartSpec> = {}) =>
@@ -451,6 +452,47 @@ suite("chartFacets", () => {
       );
     assert.deepStrictEqual(widths(1), [952, 952]);
     assert.deepStrictEqual(widths(2), [456, 456]);
+  });
+
+  test("panel titles leave out the facet column's name when one would not fit its panel", () => {
+    const data = "a long name of a service,ms\napi,2\nworker,30\n,4";
+    const texts = (
+      width: number,
+      option = build(data, { facetColumn: "a long name of a service" }),
+    ) => layout(option, { width }).title.map((title: Option) => title.text);
+    assert.deepStrictEqual(texts(1000), [
+      "a long name of a service = api",
+      "a long name of a service = worker",
+      "a long name of a service = (missing)",
+    ]);
+    assert.deepStrictEqual(texts(400), ["api", "worker", "(missing)"]);
+    // Values quoted to tell them apart, and titles of the user's own, which it leaves as they are.
+    const mixed = parseTable("service,ms\n1,2\n2,3");
+    mixed.rows[1] = ["1", 3];
+    const ambiguous = buildChart(
+      { type: "bar", data: "", facetColumn: "service" } as ChartSpec,
+      mixed,
+    ).option as Option;
+    assert.deepStrictEqual(texts(150, ambiguous), ["1", '"1"']);
+    const own = build(data, {
+      facetColumn: "a long name of a service",
+      options: { title: [{ text: "My own title for the first panel" }] },
+    });
+    assert.deepStrictEqual(texts(400, own), [
+      "My own title for the first panel",
+      "a long name of a service = worker",
+      "a long name of a service = (missing)",
+    ]);
+  });
+
+  test("asks for a view tall enough for a row of facets for every few of them", () => {
+    assert.strictEqual(minimumHeight(build(regions(5)), 1100), 112);
+    assert.strictEqual(minimumHeight(build(regions(5)), 360), 212);
+    assert.strictEqual(minimumHeight(build(regions(12)), 360), 412);
+    assert.strictEqual(
+      minimumHeight(builtOption({ type: "bar" } as ChartSpec, regions(5)), 360),
+      0,
+    );
   });
 
   const regions = (count: number) =>

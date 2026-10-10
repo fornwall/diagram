@@ -17,6 +17,7 @@ import {
   disableAnimation,
   focusHighlighted,
   layoutOption,
+  minimumHeight,
   sameLayout,
   toolWarnings,
 } from "./echartsLayout";
@@ -95,6 +96,8 @@ export class EChartsRenderer implements Renderer {
   private hasHighlights = false;
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
+  /** The height of a drawing taller than the container, which scrolls it. */
+  private scrolledHeight: number | undefined;
   private resizeFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether resizing the chart took longer than the budget since its size started changing. */
@@ -172,6 +175,7 @@ export class EChartsRenderer implements Renderer {
   hide(): void {
     this.disposeChart();
     this.option = undefined;
+    this.scrolls(undefined);
     this.container.hidden = true;
     this.canvas.classList.remove("chart-mode");
   }
@@ -390,9 +394,9 @@ export class EChartsRenderer implements Renderer {
     // Source view has no DOM dimensions, and a hidden tab none to go by. Keep an existing chart's
     // size, or use an initial size for both the SVG and its layout; the resize observer fits it
     // when the rendering is shown.
-    const tabShown = !this.tabHidden();
-    const width = (tabShown && this.container.clientWidth) || this.chart?.getWidth() || 800;
-    const height = (tabShown && this.container.clientHeight) || this.chart?.getHeight() || 500;
+    const measured = this.tabHidden() ? { width: 0, height: 0 } : this.drawingSize();
+    const width = measured.width || this.chart?.getWidth() || 800;
+    const height = measured.height || this.chart?.getHeight() || 500;
     const reducedMotion = this.reducedMotion.matches;
     // What the layout is drawn with besides the option laid out.
     const look = `${reducedMotion}:${this.blurring()}`;
@@ -559,12 +563,36 @@ export class EChartsRenderer implements Renderer {
     this.relayoutTimer = undefined;
   }
 
+  /**
+   * The size to draw the chart at: the container's, but no shorter than the chart can be read at,
+   * such as one of many facets, which the container then scrolls. Zero for a container without a
+   * size, as in the source view.
+   */
+  private drawingSize(): { width: number; height: number } {
+    const { clientWidth, clientHeight } = this.container;
+    if (clientWidth === 0 || clientHeight === 0) return { width: 0, height: 0 };
+    const least = this.option ? minimumHeight(this.option, clientWidth) : 0;
+    this.scrolls(least > clientHeight ? least : undefined);
+    // Measured again, without the scroll bar's width. A narrower chart is no shorter to read.
+    return { width: this.container.clientWidth, height: Math.max(clientHeight, least) };
+  }
+
+  /** Makes the drawing taller than the container, which scrolls it, or fits it to the container. */
+  private scrolls(height: number | undefined): void {
+    if (height === this.scrolledHeight) return;
+    this.scrolledHeight = height;
+    this.container.classList.toggle("scrolls", height !== undefined);
+    Object.assign(this.drawing.style, {
+      bottom: height === undefined ? "0" : "auto",
+      height: height === undefined ? "" : `${height}px`,
+    });
+  }
+
   private resizeChart(): void {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    if (this.tabHidden()) return;
+    const { width, height } = this.drawingSize();
     if (
       this.chart &&
-      !this.tabHidden() &&
       width > 0 &&
       height > 0 &&
       (this.chart.getWidth() !== width || this.chart.getHeight() !== height)

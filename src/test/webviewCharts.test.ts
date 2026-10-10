@@ -1,6 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { validateAnnotation } from "../annotations";
+import { buildChart } from "../charts";
+import { parseTable } from "../data";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
 import { afterTest, recordMessages } from "./afterTest";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
@@ -455,6 +457,55 @@ suite("ECharts in the webview", function () {
       treemap: { selected, breadcrumb: selected, root: selected, empty },
       sunburst: { selected, root: selected, drilledUp: true, empty },
     });
+  });
+
+  test("scrolls facets in a view too short for them, keeping the scroll on a new layout", async () => {
+    const data = `service,ms\n${Array.from({ length: 12 }, (_, i) => `s${i},${i + 1}`).join("\n")}`;
+    const spec = { type: "bar", data, facetColumn: "service" } as const;
+    const faceted = JSON.stringify(buildChart(spec, parseTable(data)).option);
+    const plain = JSON.stringify(buildChart({ type: "bar", data }, parseTable(data)).option);
+    const shown = () =>
+      evaluate(`(async () => {
+        ${UNTIL}
+        const chart = document.getElementById("chart");
+        const drawing = document.getElementById("chart-drawing");
+        // Once the chart is drawn at the size of its drawing, which may be taller than the view.
+        await until(() => {
+          const svg = chart.querySelector("svg");
+          return svg && svg.getAttribute("width") === String(chart.clientWidth) &&
+            svg.getAttribute("height") === String(drawing.clientHeight);
+        }, "the chart to be drawn for its container", nextFrame);
+        await nextFrame();
+        return {scrolls: chart.classList.contains("scrolls"), top: chart.scrollTop,
+          taller: chart.scrollHeight > chart.clientHeight,
+          wider: chart.scrollWidth > chart.clientWidth};
+      })()`);
+    const resize = (height: string) =>
+      evaluate(`document.getElementById("canvas").style.height = "${height}"`);
+    try {
+      await draw({ language: "echarts", source: faceted });
+      assert.deepStrictEqual(await shown(), {
+        scrolls: false,
+        top: 0,
+        taller: false,
+        wider: false,
+      });
+      await resize("140px");
+      assert.deepStrictEqual(await shown(), { scrolls: true, top: 0, taller: true, wider: false });
+      await evaluate('document.getElementById("chart").scrollTop = 40');
+      await draw({ language: "echarts", source: faceted });
+      assert.deepStrictEqual(await shown(), { scrolls: true, top: 40, taller: true, wider: false });
+      // Other charts fit the view, however short.
+      await draw({ language: "echarts", source: plain });
+      assert.deepStrictEqual(await shown(), {
+        scrolls: false,
+        top: 0,
+        taller: false,
+        wider: false,
+      });
+    } finally {
+      await resize("");
+    }
   });
 
   test("renders custom shapes without a coordinate system", async () => {
