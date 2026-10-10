@@ -80,9 +80,12 @@ function replaceMatch(text: string, pattern: RegExp, replacement: string): strin
   return pattern.test(text) ? text.replace(pattern, replacement) : text;
 }
 
-/** A number with optional thousands separators, as "1,234.5", and prefix and suffix. */
+/**
+ * A number with optional thousands separators, as "1,234.5", or as India groups them above the
+ * thousands, in twos ("12,34,567"), and prefix and suffix.
+ */
 const NUMBER = new RegExp(
-  String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:[^\S\r\n]*(${SUFFIX}))?$`,
+  String.raw`^${PREFIX}((?:(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d\d)+,\d{3}|\d+)(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:[^\S\r\n]*(${SUFFIX}))?$`,
 );
 
 /**
