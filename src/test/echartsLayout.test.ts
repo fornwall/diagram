@@ -387,6 +387,22 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(at(100), { ...full, zoom: "inside", title: false });
   });
 
+  test("gives the value axis of a short or narrow plot fewer labels, which would pile up", () => {
+    const short = layout(bars(), { width: 900, height: 160 });
+    assert.strictEqual(short.yAxis.splitNumber, 3);
+    // Nor in a plot of the usual size, nor where the option says.
+    assert.strictEqual(layout(bars()).yAxis.splitNumber, undefined);
+    const placed = bars({ yAxis: { type: "value", splitNumber: 6 } });
+    assert.strictEqual(layout(placed, { width: 900, height: 160 }).yAxis.splitNumber, 6);
+    const scatter = {
+      xAxis: { type: "value" },
+      yAxis: { type: "value" },
+      series: [{ type: "scatter", data: [[1, 2]] }],
+    };
+    assert.strictEqual(layout(scatter, { width: 240 }).xAxis.splitNumber, 2);
+    assert.strictEqual(layout(scatter).xAxis.splitNumber, undefined);
+  });
+
   test("hides a visual map below a chart too short for it and a plot to read", () => {
     const visualMap = { min: 0, max: 10 };
     const short = layout(bars({ title: { text: "T" }, visualMap }), { height: 220 });

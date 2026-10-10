@@ -600,6 +600,8 @@ function isContinuous(visualMap: JsonObject): boolean {
 function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   const { width, height, compact, charWidth } = size;
   const grids = asArray(base.grid);
+  /** The size of the plot of each grid, with its labels, where the layout places the grids. */
+  let panel: { width: number; height: number } | undefined;
   if (grids.length <= 1) {
     const grid = grids[0] ?? {};
     if (!has(grid, [...BOX_KEYS, "outerBounds", "outerBoundsMode"])) {
@@ -609,6 +611,10 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
         top: reserved.top + 14,
         bottom: reserved.bottom + 8,
       });
+      panel = {
+        width: width - reserved.left - reserved.right - 28,
+        height: height - reserved.top - reserved.bottom - 22,
+      };
       // The ECharts 6 way to keep axis labels and names inside the grid rectangle.
       if (grid.containLabel === undefined) {
         grid.outerBoundsMode = "same";
@@ -621,6 +627,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   }
   const facets = facetPanels(base);
   const facetGrid = facets && layOutFacets(facets, reserved, size);
+  panel ??= facetGrid;
 
   // Rotate category labels when they would overlap, and truncate very long ones.
   const labelHeights = new Map<JsonObject, number>();
@@ -659,18 +666,19 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       labelHeights.set(axis, LABEL_HEIGHT + Math.round(slanted));
     }
   }
-  if (facetGrid !== undefined) {
+  // A short or narrow plot, as of a facet or in a small panel, has room for fewer value labels.
+  if (panel !== undefined) {
     const xAxes = asArray(base.xAxis);
     for (const axis of xAxes) {
       // Value labels as wide as the longest bound's, beside each other.
       const digits = [axis.min, axis.max].map((bound) =>
         typeof bound === "number" ? compactLabel(bound).length : 4,
       );
-      fewerTicks(axis, facetGrid.width - 50, (Math.max(...digits) + 1) * charWidth + 16);
+      fewerTicks(axis, panel.width - 50, (Math.max(...digits) + 1) * charWidth + 16);
     }
     for (const axis of asArray(base.yAxis)) {
       const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
-      let plot = facetGrid.height - (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0);
+      let plot = panel.height - (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0);
       // The name above the plot, unless the plot would be too short for it.
       if (typeof axis.name === "string" && axis.name && axis.nameLocation === undefined) {
         if (plot - AXIS_NAME_HEIGHT < MIN_NAMED_FACET) axis.name = "";
@@ -879,8 +887,11 @@ function fewerTicks(axis: JsonObject, length: number, gap: number): void {
   const parts = Math.max(2, Math.floor(length / gap));
   const { min, max, interval } = axis;
   if (typeof min !== "number" || typeof max !== "number" || typeof interval !== "number") {
-    if (axis.interval === undefined && axis.splitNumber === undefined && parts < 5) {
-      axis.splitNumber = parts;
+    // ECharts rounds the interval to a nice one, which can make half as many ticks again as the
+    // split number asks for: 7 for 5 from 0 to 6.
+    const asked = Math.max(2, Math.floor(parts / 1.5));
+    if (axis.interval === undefined && axis.splitNumber === undefined && asked < 5) {
+      axis.splitNumber = asked;
     }
     return;
   }
