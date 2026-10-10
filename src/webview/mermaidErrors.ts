@@ -675,17 +675,8 @@ const UNPLACED: [
         : [at, 'The event has no time period: start the line with one, as in "2024 : Launch".'];
     },
   ],
-  // A packet field given by its bits, out of order or backwards, or as "+0": the first such.
-  [
-    /^Packet block (\d+)(?: - (\d+))? is (.*)$/,
-    ([, start, end = start, problem = ""], normalized) => {
-      const space = "[^\\S\\n]*";
-      const bits = problem.includes("zero bit")
-        ? `\\+${space}0+`
-        : `0*${start}(?:${space}-${space}0*${end})${end === start ? "?" : ""}`;
-      return [find(normalized, `^${space}${bits}${space}:`)];
-    },
-  ],
+  // A packet field given by its bits, out of order or backwards, or as "+0".
+  [/^Packet block \d+(?: - \d+)? is /, (_, normalized) => [badPacketField(normalized)]],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,
@@ -698,6 +689,25 @@ const UNPLACED: [
     },
   ],
 ];
+
+/**
+ * Where the first packet field is that does not start where the one before ends, ends before it
+ * starts, or has no bits, as Mermaid checks the fields in order.
+ */
+function badPacketField(normalized: string): number | undefined {
+  const start = frontMatterEnd(normalized);
+  const fields = /^[^\S\n]*(?:(\d+)(?:[^\S\n]*-[^\S\n]*(\d+))?|\+[^\S\n]*(\d+))[^\S\n]*:/gm;
+  let last = -1;
+  for (const { 1: from, 2: to, 3: bits, index } of normalized.slice(start).matchAll(fields)) {
+    const first = from === undefined ? last + 1 : Number(from);
+    const end = to === undefined ? first + Number(bits ?? 1) - 1 : Number(to);
+    if (first !== last + 1 || end < first || Number(bits) === 0) {
+      return start + index;
+    }
+    last = end;
+  }
+  return undefined;
+}
 
 /** Where the group is declared, and the error for it being inside itself. */
 const insideItself = (normalized: string, id: string): [number | undefined, string] => [
