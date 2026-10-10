@@ -183,7 +183,9 @@ export class ChartOptionsForm {
     this.replaceLabel.hidden = true;
     this.reset.title = "Remove manual styling changes and return to the generated chart";
     this.reset.addEventListener("click", () => {
-      if (this.state) {
+      if (this.state && !this.applying) {
+        this.error.hidden = true;
+        this.setApplying(true);
         this.post({
           type: "resetChartStyling",
           revision: this.state.revision,
@@ -316,12 +318,14 @@ export class ChartOptionsForm {
   }
 
   /**
-   * Shows Apply as disabled until the options it sent are applied or fail to. Not disabled
-   * indeed, which would move the focus from it, when pressed, to the page's body.
+   * Shows Apply and Reset as disabled until what one sent is applied or fails to. Not disabled
+   * indeed, which would move the focus from the button, when pressed, to the page's body.
    */
   private setApplying(applying: boolean): void {
-    if (applying) this.apply.setAttribute("aria-disabled", "true");
-    else this.apply.removeAttribute("aria-disabled");
+    for (const button of [this.apply, this.reset]) {
+      if (applying) button.setAttribute("aria-disabled", "true");
+      else button.removeAttribute("aria-disabled");
+    }
   }
 
   private close(): void {

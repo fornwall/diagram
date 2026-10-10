@@ -1026,7 +1026,8 @@ export class DiagramPanel implements vscode.Disposable {
           state.chart,
           "Resetting chart styling and reloading data",
         );
-        if (!loaded) return;
+        // Declined or cancelled, which ends the reset in the form, as the options do.
+        if (!loaded) return this.sendChartOptions();
         if (message.revision !== this.shownRevision || this.webview.tab !== tab || !tab) return;
         table = loaded.table;
         if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);

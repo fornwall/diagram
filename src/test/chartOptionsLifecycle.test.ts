@@ -200,6 +200,32 @@ suite("chart options lifecycle", function () {
     assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
   });
 
+  test("a reset that the user declines to reload the data for ends with the options as they were", async () => {
+    const file = path.join(dir, "declined.csv");
+    fs.writeFileSync(file, data);
+    const chart: ChartSpec = { type: "bar", file };
+    const source = JSON.stringify(buildChart(chart, parseTable(data)).option);
+    const initial: DiagramState = {
+      language: "echarts",
+      title: "Restored chart",
+      chart,
+      source,
+      chartPresentation: captureChartPresentation(source),
+      origin: "tool",
+      editedByUser: false,
+    };
+    const { panel, webview } = await newFakePanel(new Map([["diagram.state", initial]]));
+    const asked = recordMessages("showWarningMessage");
+    webview.sent.length = 0;
+    await applyOptions(panel, webview, { type: "resetChartStyling" });
+    assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
+    assert.strictEqual(panel.current?.source, source);
+    assert.deepStrictEqual(
+      webview.sent.map((message) => message.type),
+      ["chartOptions"],
+    );
+  });
+
   test("a restored blocked external chart can explicitly reset and reload its data", async () => {
     const file = path.join(dir, "recovery.csv");
     const chart: ChartSpec = { type: "bar", file };

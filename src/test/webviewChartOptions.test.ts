@@ -423,6 +423,30 @@ suite("Chart Options in the webview", function () {
     await closeChartOptions();
   });
 
+  test("chart options show Apply and Reset busy until a reset is done, which a second click does not repeat", async () => {
+    await showChartOptions({ type: "bar", data: "name,amount\na,1" });
+    const revision = page.panel.revision;
+    const busy = `[...document.querySelectorAll("#chart-options .actions button")]
+      .map((button) => button.getAttribute("aria-disabled"))`;
+    let during: unknown;
+    await nextRender(async () => {
+      during = await evaluate(`(() => {
+        const reset = document.querySelectorAll("#chart-options .actions button")[1];
+        reset.click();
+        reset.click();
+        return ${busy};
+      })()`);
+    });
+    assert.deepStrictEqual(during, ["true", "true"]);
+    assert.strictEqual(page.panel.revision, revision + 1);
+    assert.ok(
+      await evaluate(`(async () => {${UNTIL}
+        return until(() => ${busy}.every((state) => state === null), "Apply and Reset");
+      })()`),
+    );
+    await closeChartOptions();
+  });
+
   test("chart options show disabled fields of every kind alike", async () => {
     await showChartOptions({ type: "bar", data: "name,amount\na,1" });
     assert.deepStrictEqual(
