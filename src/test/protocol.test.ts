@@ -9,6 +9,8 @@ suite("protocol", () => {
     assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
     const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
     assert.ok(isFromWebview({ ...options, replaceSource: false }));
+    // Without controls, a reset of the chart's styling.
+    assert.ok(isFromWebview({ type: "applyChartOptions", revision: 1, replaceSource: true }));
     const malformed = [
       null,
       "ready",

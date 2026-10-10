@@ -461,7 +461,6 @@ export class DiagramPanel implements vscode.Disposable {
       case "closeChartOptions":
         this.chartOptionsVisible = false;
         break;
-      case "resetChartStyling":
       case "applyChartOptions":
         return this.applyChartOptions(message);
       case "refresh":
@@ -1026,7 +1025,7 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   private async applyChartOptions(
-    message: Extract<FromWebview, { type: "applyChartOptions" | "resetChartStyling" }>,
+    message: Extract<FromWebview, { type: "applyChartOptions" }>,
   ): Promise<void> {
     const state = this.state;
     const tab = this.webview.tab;
@@ -1035,7 +1034,8 @@ export class DiagramPanel implements vscode.Disposable {
         throw new Error("The chart changed. Reopen Chart Options and try again.");
       }
       if (!message.replaceSource) assertChartPresentation(state.chartPresentation);
-      const reset = message.type === "resetChartStyling";
+      const { controls } = message;
+      const reset = controls === undefined;
       let table = this.chartTable;
       if (!table && reset) {
         const loaded = await this.reloadTable(
@@ -1049,7 +1049,7 @@ export class DiagramPanel implements vscode.Disposable {
         if (loaded.warning) void vscode.window.showWarningMessage(loaded.warning);
       }
       if (!table) throw new Error("Press Refresh to load the chart data first.");
-      const chart = reset ? state.chart : withChartControls(state.chart, message.controls);
+      const chart = reset ? state.chart : withChartControls(state.chart, controls);
       const kept = reset || message.replaceSource ? undefined : state.chartPresentation;
       this.userChanges++;
       const outcome = await this.showChart(

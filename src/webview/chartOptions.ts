@@ -186,7 +186,7 @@ export class ChartOptionsForm {
         this.error.hidden = true;
         this.setApplying(true);
         this.post({
-          type: "resetChartStyling",
+          type: "applyChartOptions",
           revision: this.state.revision,
           replaceSource: this.replace.checked,
         });

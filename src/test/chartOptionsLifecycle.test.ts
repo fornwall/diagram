@@ -16,15 +16,21 @@ function agreeToRead(): string[] {
   return recordMessages("showWarningMessage", () => "Read");
 }
 
-/** Changes the chart options in the panel, as the webview's Chart Options form does. */
+/**
+ * Changes the chart options in the panel, as the webview's Chart Options form does, or, without
+ * controls, resets the chart's styling.
+ */
 function applyOptions(
   panel: DiagramPanel,
   webview: FakeWebview,
-  change:
-    | { type: "applyChartOptions"; controls: Record<string, unknown>; replaceSource?: boolean }
-    | { type: "resetChartStyling"; replaceSource?: boolean },
+  change: { controls?: Record<string, unknown>; replaceSource?: boolean },
 ): Promise<void> {
-  return webview.receive({ replaceSource: false, ...change, revision: panel.revision });
+  return webview.receive({
+    type: "applyChartOptions",
+    replaceSource: false,
+    ...change,
+    revision: panel.revision,
+  });
 }
 
 suite("chart options lifecycle", function () {
@@ -91,7 +97,7 @@ suite("chart options lifecycle", function () {
     assert.strictEqual(panel.current, shown);
 
     webview.failNextRender("Bad.");
-    await applyOptions(panel, webview, { type: "applyChartOptions", controls: { type: "line" } });
+    await applyOptions(panel, webview, { controls: { type: "line" } });
     assert.deepStrictEqual(errors().slice(1), [
       "Could not apply the chart options: Bad. The previous chart is kept.",
     ]);
@@ -108,7 +114,6 @@ suite("chart options lifecycle", function () {
     await webview.edit(JSON.stringify(styled));
     assert.strictEqual(panel.current?.editedByUser, true);
     await applyOptions(panel, webview, {
-      type: "applyChartOptions",
       controls: { type: "horizontalBar", sort: "descending" },
     });
     assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
@@ -132,7 +137,7 @@ suite("chart options lifecycle", function () {
     const previous = panel.current;
     agreeToRead();
     webview.nextRender(() => panel.dispose());
-    await applyOptions(panel, webview, { type: "resetChartStyling" });
+    await applyOptions(panel, webview, {});
     assert.strictEqual(panel.current, previous);
     assert.strictEqual(panel.loadedChartData, undefined);
     assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
@@ -203,7 +208,7 @@ suite("chart options lifecycle", function () {
     const { panel, webview } = await newFakePanel(new Map([["diagram.state", initial]]));
     const asked = recordMessages("showWarningMessage");
     webview.sent.length = 0;
-    await applyOptions(panel, webview, { type: "resetChartStyling" });
+    await applyOptions(panel, webview, {});
     assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
     assert.strictEqual(panel.current?.source, source);
     assert.deepStrictEqual(
@@ -232,7 +237,7 @@ suite("chart options lifecycle", function () {
     const { panel, webview } = await newFakePanel(values);
     const { sent } = webview;
     assert.strictEqual(panel.loadedChartData, undefined);
-    await applyOptions(panel, webview, { type: "resetChartStyling" });
+    await applyOptions(panel, webview, {});
     assert.strictEqual(panel.current?.source, source);
     assert.ok(
       sent.some(
@@ -243,7 +248,7 @@ suite("chart options lifecycle", function () {
     // The first reset was rejected before trying to read this still-missing file.
     fs.writeFileSync(file, "name,amount\na,41\nb,42");
     agreeToRead();
-    await applyOptions(panel, webview, { type: "resetChartStyling", replaceSource: true });
+    await applyOptions(panel, webview, { replaceSource: true });
     const expected = JSON.stringify(
       buildChart(chart, parseTable("name,amount\na,41\nb,42")).option,
       null,

@@ -178,11 +178,11 @@ export type ToWebview =
 
 export type FromWebview =
   | { type: "closeChartOptions" }
-  | { type: "resetChartStyling"; revision: number; replaceSource: boolean }
+  /** Rebuilds the chart with the controls, or without them resets its styling. */
   | {
       type: "applyChartOptions";
       revision: number;
-      controls: Record<string, unknown>;
+      controls?: Record<string, unknown> | undefined;
       replaceSource: boolean;
     }
   | { type: "ready" }
@@ -291,8 +291,11 @@ const FROM_WEBVIEW_FIELDS: {
 } = {
   ready: {},
   closeChartOptions: {},
-  resetChartStyling: { revision: isId, replaceSource: isBoolean },
-  applyChartOptions: { revision: isId, controls: isPlainObject, replaceSource: isBoolean },
+  applyChartOptions: {
+    revision: isId,
+    controls: optional(isPlainObject),
+    replaceSource: isBoolean,
+  },
   rendered: {
     requestId: isId,
     diagramType: isString,
