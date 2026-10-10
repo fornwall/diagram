@@ -77,17 +77,20 @@ export function describeDiagram(
     describeSource(state, detail, has(GET_STATE_TOOL)),
     "",
   ];
-  // A model that cannot update a generated chart can still change its option as a whole.
-  if (state.chart && has(UPDATE_CHART_TOOL)) {
-    const { file, command } = state.chart;
-    const refresh = file !== undefined || command !== undefined;
+  const refresh = state.chart?.file !== undefined || state.chart?.command !== undefined;
+  if (state.chart) {
     lines.push(
-      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.` +
+      `${has(CHART_TOOL) ? CHART_TOOL : "Chart"} parameters: ${describeChartParameters(state.chart)}.` +
         (refresh ? " Refresh reloads the data." : "") +
-        (chartTable ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.` : ""),
+        (chartTable && has(INSPECT_DATA_TOOL)
+          ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.`
+          : ""),
     );
     const units = chartTable && describeUnits(chartTable);
     if (units) lines.push(units);
+  }
+  // A model that cannot update a generated chart can still change its option as a whole.
+  if (state.chart && has(UPDATE_CHART_TOOL)) {
     if (state.chartPresentation?.blocked) {
       lines.push(state.chartPresentation.blocked);
     } else if (state.chartPresentation?.edits.length) {

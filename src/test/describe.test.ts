@@ -129,6 +129,11 @@ suite("describe", () => {
     assert.match(describeDiagram(state, drawing), /diagram_annotate.*\n.*diagram_annotate/);
     const described = describeDiagram(state, { ...drawing, tools: new Set<string>() });
     assert.doesNotMatch(described, /diagram_/);
+    assert.match(described, /Chart parameters: \{"type":"pie","file":"sales\.csv"\}\. Refresh/);
+    // As for /explain, which may read the chart but not update it.
+    const readOnly = describeDiagram(state, { ...drawing, tools: new Set(["diagram_getState"]) });
+    assert.match(readOnly, /^Chart parameters: \{"type":"pie","file":"sales\.csv"\}\./m);
+    assert.doesNotMatch(readOnly, /diagram_(updateChart|chart|render|inspectData)/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
     assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);
     assert.match(described, /Marked chart items: "A" \(problem\)\./);
