@@ -32,14 +32,20 @@ export class StateStore {
    */
   save(state: DiagramState): Promise<void> {
     if (this.lastSave?.state.deref() === state) return this.lastSave.promise;
-    const saved =
+    let saved: unknown = state;
+    if (
       state.chart &&
       (state.chart.file !== undefined || state.chart.command !== undefined) &&
       !state.editedByUser &&
       state.source !== undefined &&
       state.source.length > MAX_SAVED_CHART_SOURCE
-        ? { ...state, source: undefined, error: undefined }
-        : state;
+    ) {
+      saved = { ...state, source: undefined, error: undefined };
+    } else if (state.document && state.document.fence.source === state.source) {
+      // The block holds the diagram shown, as when it was opened or written: save it once.
+      const { source: _, ...fence } = state.document.fence;
+      saved = { ...state, document: { ...state.document, fence } };
+    }
     const saving = { state: new WeakRef(state), promise: Promise.resolve() };
     this.lastSave = saving;
     saving.promise = (async () => {
@@ -82,7 +88,8 @@ function restoredState(saved: unknown): DiagramState | undefined {
   if (typeof saved.error === "string") state.error = saved.error;
   if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
   if (isNodeLinks(saved.links)) state.links = saved.links;
-  if (isDocumentBinding(saved.document)) state.document = saved.document;
+  const document = documentBinding(saved.document, state.source);
+  if (document) state.document = document;
   if (typeof saved.openedFrom === "string") state.openedFrom = saved.openedFrom;
   const chart = language === "echarts" ? chartSpec(saved.chart) : undefined;
   const presentation = isChartPresentation(saved.chartPresentation)
@@ -122,7 +129,14 @@ function isNodeLinks(value: unknown): value is NodeLinks {
   );
 }
 
-/** Older versions saved fences with other properties, which a write to the document cannot use. */
-function isDocumentBinding(value: unknown): value is DocumentBinding {
-  return isPlainObject(value) && typeof value.uri === "string" && isDiagramFence(value.fence);
+/**
+ * The binding, with the source of its block, which is saved without it when it is the diagram's.
+ * Older versions saved fences with other properties, which a write to the document cannot use.
+ */
+function documentBinding(value: unknown, source: string | undefined): DocumentBinding | undefined {
+  if (!isPlainObject(value) || typeof value.uri !== "string" || !isPlainObject(value.fence)) {
+    return undefined;
+  }
+  const fence = { source, ...value.fence };
+  return isDiagramFence(fence) ? ({ ...value, fence } as DocumentBinding) : undefined;
 }

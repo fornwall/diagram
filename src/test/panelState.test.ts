@@ -145,4 +145,26 @@ suite("panelState", () => {
     );
     assert.strictEqual((saved[0] as DiagramState).error, undefined);
   });
+
+  test("saves the source of a diagram that its document's block holds once", async () => {
+    const saved: unknown[] = [];
+    const store = new StateStore(memento(async (value) => void saved.push(value)));
+    const source = "flowchart LR\n  A --> B";
+    const fence = { language: "mermaid", source, openingLine: 2, lastLine: 4, prefix: "" } as const;
+    const document = { uri: "file:///a.md", fence };
+    await store.save({ ...state, source, document });
+    // An edit that the block does not hold yet.
+    const edited: DiagramState = { ...state, source: "flowchart TD", editedByUser: true, document };
+    await store.save(edited);
+    const [once, twice] = saved as DiagramState[];
+    assert.strictEqual(once?.document?.fence.source, undefined);
+    assert.strictEqual(twice?.document?.fence.source, state.source);
+    assert.deepStrictEqual(load(once), { ...state, document });
+    assert.deepStrictEqual(load(twice), edited);
+    // Without the diagram's source either, the binding is left out.
+    const chart = { type: "pie", file: "a" };
+    const restored = load({ ...once, language: "echarts", source: undefined, chart });
+    assert.deepStrictEqual(restored?.chart, chart);
+    assert.strictEqual(restored?.document, undefined);
+  });
 });
