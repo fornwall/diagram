@@ -596,6 +596,10 @@ suite("panel", function () {
   });
 
   test("opening the panel replaces a diagram tab left from before a reload, and no other", async () => {
+    // Without the tabs that earlier tests left open, such as the page that the webview suites share,
+    // which the panel takes for left over as well: in the extension, no other panel owns one.
+    await vscode.window.tabGroups.close(await webviewTabs(() => true));
+    await webviewTabs((labels) => labels.length === 0);
     const other = vscode.window.createWebviewPanel("a.diagram.panel", "Other", {
       viewColumn: vscode.ViewColumn.One,
       preserveFocus: true,
