@@ -78,16 +78,18 @@ export class ChartNavigation {
     // Series hidden by the legend, and items filtered out by data zoom, are not shown.
     modelOf(chart).eachSeries((series) => {
       for (const { data } of series.getAllData()) {
-        // Categories run up a vertical axis, and the other way along an inverse one.
+        // Categories run up a vertical axis, and the other way along an inverse one. Round a polar
+        // chart, which ECharts takes as inverse when clockwise, the right arrow key goes on.
         const axis = series.getBaseAxis();
-        const forward = axis?.inverse ? -1 : 1;
+        const horizontal = axis?.isHorizontal?.();
+        const forward = horizontal !== undefined && axis?.inverse ? -1 : 1;
         this.tracks.push({
           seriesIndex: series.componentIndex,
           type: series.subType,
           data,
           dataType: actionDataType(data.dataType),
           first: data.tree ? 1 : 0,
-          along: axis?.isHorizontal?.() === false ? [0, -forward] : [forward, 0],
+          along: horizontal === false ? [0, -forward] : [forward, 0],
         });
       }
     });

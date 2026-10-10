@@ -44,6 +44,18 @@ suite("echartsFocus", () => {
     assert.strictEqual(walk(bars(true), "Up Up Right Down"), "0::1 0::2 1::2 1::1");
   });
 
+  test("moves round a polar chart with the right arrow key, clockwise or not", () => {
+    for (const clockwise of [true, false]) {
+      const option = {
+        polar: {},
+        angleAxis: { type: "category", data: ["N", "E", "S"], clockwise },
+        radiusAxis: {},
+        series: [{ type: "bar", coordinateSystem: "polar", data: [1, 2, 3] }],
+      };
+      assert.strictEqual(walk(option, "Right Right Left"), "0::1 0::2 0::1", String(clockwise));
+    }
+  });
+
   test("steps round the slices of pies with every arrow key", () => {
     const pie = (center: string) => ({
       type: "pie",
