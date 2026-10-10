@@ -136,7 +136,7 @@ export async function confirmWrite(
     `Write this ${noun} to ${name}?`,
     {
       modal: true,
-      detail: `${why} Applying replaces the ${binding.fence.language} block it came from with what the panel shows now.`,
+      detail: `${why} Writing replaces the ${binding.fence.language} block it came from with what the panel shows now.`,
     },
     "Write",
   );

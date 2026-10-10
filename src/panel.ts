@@ -800,13 +800,14 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state?.document || state.source === undefined) {
       return;
     }
+    const noun = diagramNoun(state.language);
     let warning: string;
     if (this.pendingRender) {
-      warning = "Wait for the diagram to finish rendering before writing it.";
+      warning = `Wait for the ${noun} to finish rendering before writing it.`;
     } else if (this.unavailable) {
-      warning = `The diagram was not written: ${this.unavailable} Reopen the panel and try again.`;
+      warning = `The ${noun} was not written: ${this.unavailable} Reopen the panel and try again.`;
     } else if (state.error) {
-      warning = `The diagram is not written, as it fails to render: ${state.error}`;
+      warning = `The ${noun} was not written, as it fails to render: ${state.error}`;
     } else {
       return this.writeToDocument(state.document, state.source);
     }
@@ -1201,17 +1202,18 @@ export class DiagramPanel implements vscode.Disposable {
 
   private async exportShown(): Promise<void> {
     const state = this.state;
+    const noun = state && diagramNoun(state.language);
     let warning: string | undefined;
     if (!state) {
       warning = "Open or draw a diagram before exporting it.";
     } else if (this.pendingRender) {
-      warning = "Wait for the diagram to finish rendering before exporting it.";
+      warning = `Wait for the ${noun} to finish rendering before exporting it.`;
     } else if (state.source === undefined) {
       warning = "Press Refresh to draw the chart again, then export it.";
     } else if (state.error) {
-      warning = `There is nothing to export, as the diagram fails to render: ${state.error}`;
+      warning = `There is nothing to export, as the ${noun} fails to render: ${state.error}`;
     } else if (this.unavailable || !this.webview.isReady || this.renderedRequestId === undefined) {
-      warning = `${this.unavailable ?? "The diagram panel is not showing the diagram."} Use Diagram: Show Panel and try again.`;
+      warning = `${this.unavailable ?? `The diagram panel is not showing the ${noun}.`} Use Diagram: Show Panel and try again.`;
     }
     if (warning || state?.source === undefined) {
       void vscode.window.showWarningMessage(warning ?? "There is no diagram to export.");

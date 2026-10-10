@@ -806,7 +806,10 @@ suite("panel", function () {
     const rendering = panel.render(chart, "tool");
     await panel.exportDiagram();
     assert.strictEqual(dialogs, 0);
-    assert.match(warnings.at(-1) ?? "", /Wait.*rendering/);
+    assert.strictEqual(
+      warnings.at(-1),
+      "Wait for the chart to finish rendering before exporting it.",
+    );
     webview.deliver = (message) => message.type !== "render";
     assert.ok(!(await panel.render(chart, "tool")).ok);
     await rendering;
@@ -1224,10 +1227,14 @@ suite("panel", function () {
     webview.failNextRender("Oops");
     assert.ok(!(await panel.render(flowchart, "tool")).ok);
     await panel.exportDiagram();
+    webview.failNextRender("Bad option");
+    assert.ok(!(await panel.render({ language: "echarts", source: PIE, title: "Pie" }, "tool")).ok);
+    await panel.exportDiagram();
     await restored.panel.exportDiagram();
     assert.deepStrictEqual(warnings, [
       "Open or draw a diagram before exporting it.",
       "There is nothing to export, as the diagram fails to render: Oops",
+      "There is nothing to export, as the chart fails to render: Bad option",
       "Press Refresh to draw the chart again, then export it.",
     ]);
   });

@@ -352,7 +352,7 @@ suite("documentDiagram", function () {
 
   const notWritten = {
     unfinished: "Wait for the diagram to finish rendering before writing it.",
-    invalid: "The diagram is not written, as it fails to render: Parse error",
+    invalid: "The diagram was not written, as it fails to render: Parse error",
     unavailable:
       "The diagram was not written: The diagram panel is unavailable. Reopen the panel and try again.",
   };
