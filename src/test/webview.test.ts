@@ -239,6 +239,35 @@ suite("webview", function () {
     );
   });
 
+  test("shows the whole placeholder of the message, moving its button below in a narrow panel", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const footer = document.querySelector("footer");
+        const form = document.getElementById("ask-form");
+        const input = document.getElementById("ask-input");
+        const context = document.createElement("canvas").getContext("2d");
+        const layout = (width) => {
+          footer.style.width = width;
+          const style = getComputedStyle(input);
+          context.font = style.font;
+          const room = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+          return {fits: context.measureText(input.placeholder).width <= room,
+            rows: Math.round(form.getBoundingClientRect().height / input.getBoundingClientRect().height)};
+        };
+        try {
+          return [layout("300px"), layout("400px")];
+        } finally {
+          footer.style.width = "";
+        }
+      })()`),
+      [
+        { fits: true, rows: 2 },
+        { fits: true, rows: 1 },
+      ],
+    );
+  });
+
   test("keeps the selection's actions on one line in a narrow panel", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

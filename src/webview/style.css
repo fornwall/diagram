@@ -634,9 +634,14 @@ select:focus {
   flex-wrap: wrap;
 }
 
+/* Wide enough for its placeholder, or else the button goes below it, at the right. */
 #ask-form input {
-  flex: 1 1 160px;
+  flex: 1 1 17em;
   min-width: 0;
+}
+
+#ask-form button {
+  margin-left: auto;
 }
 
 #chart-options {
