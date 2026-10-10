@@ -11,6 +11,7 @@ import {
   unaskedError,
 } from "../dataSource";
 import { cancellationSource, setting, suiteTempDir, workspaceRoot } from "./afterTest";
+import { within } from "./newPanel";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -170,9 +171,7 @@ suite("dataSource", () => {
         `sleep 30 & echo $! > '${pidFile}.tmp'; mv '${pidFile}.tmp' '${pidFile}'; wait`,
         source.token,
       );
-      for (let i = 0; i < 500 && !fs.existsSync(pidFile); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await within(() => fs.existsSync(pidFile));
       source.cancel();
       await assert.rejects(running, vscode.CancellationError);
       const pid = Number(fs.readFileSync(pidFile, "utf8"));
@@ -184,10 +183,7 @@ suite("dataSource", () => {
           return false;
         }
       };
-      for (let i = 0; i < 250 && alive(); i++) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      assert.ok(!alive(), `process ${pid} is still running`);
+      assert.ok(await within(() => !alive()), `process ${pid} is still running`);
     });
   });
 
