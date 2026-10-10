@@ -39,13 +39,17 @@ footer {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  flex-wrap: wrap;
   flex-shrink: 0;
   min-width: 0;
 }
 
+/* The title and the actions share the rows, so that a narrow panel wraps only the actions that do
+   not fit beside a shortened title, rather than give the title and each group a row of their own.
+   Wrapped actions keep to the right, as on a toolbar. */
 header {
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
@@ -56,7 +60,10 @@ footer {
 }
 
 h1 {
-  margin: 0;
+  /* Grows into the space the actions leave, down to a few words before they wrap. */
+  flex: 1 1 8em;
+  min-width: 0;
+  margin: 0 4px 0 0;
   font-size: 1.1em;
   font-weight: 600;
   overflow: hidden;
@@ -73,11 +80,18 @@ h1 {
   align-items: center;
 }
 
+header .actions {
+  display: contents;
+}
+
+/* Shortened before it wraps, and growing back to its whole label where there is room. */
 #write-to {
+  flex: 1 1 8em;
+  min-width: 0;
+  max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: min(100%, 24em);
 }
 
 button {
