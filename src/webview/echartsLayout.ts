@@ -976,7 +976,12 @@ function compactAxisLabels(base: JsonObject): void {
   }
 }
 
-/** Adds tooltips, selection in the VS Code focus color, and a description for screen readers. */
+/**
+ * Adds tooltips, selection outlined in the foreground color in a glow of the VS Code focus color,
+ * and a description for screen readers. An outline of the focus color itself would hardly show on
+ * an item of a color like it, as the blue of the first series in most themes, or the orange of
+ * the second in high contrast ones.
+ */
 function addInteraction(
   base: JsonObject,
   series: JsonObject[],
@@ -994,12 +999,12 @@ function addInteraction(
   for (const tooltip of asArray(base.tooltip)) {
     tooltip.confine ??= true;
   }
-  const focus = toCss(colors.focus);
+  const outline = toCss(colors.foreground);
   const glow = toCss({ ...colors.focus, a: 0.7 });
   for (const each of series) {
     each.selectedMode ??= "multiple";
     each.select ??= {
-      itemStyle: { borderColor: focus, borderWidth: 2.5, shadowBlur: 14, shadowColor: glow },
+      itemStyle: { borderColor: outline, borderWidth: 2.5, shadowBlur: 14, shadowColor: glow },
       label: { fontWeight: "bold" },
     };
   }

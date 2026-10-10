@@ -593,7 +593,10 @@ suite("echartsLayout", () => {
       confine: true,
     });
     assert.strictEqual(option.series[0].selectedMode, "multiple");
-    assert.strictEqual(option.series[0].select.itemStyle.borderColor, "#0078d4");
+    // Outlined in the foreground color, which stands out on items of any color, as one of the
+    // focus color would not on an item of a color like it, and in a glow of the focus color.
+    const { borderColor, shadowColor } = option.series[0].select.itemStyle;
+    assert.deepStrictEqual([borderColor, shadowColor], ["#cccccc", "rgba(0, 120, 212, 0.7)"]);
     assert.deepStrictEqual(option.aria, { enabled: true });
   });
 
