@@ -1026,6 +1026,48 @@ suite("webview", function () {
     );
   });
 
+  test("links the place of a render error to it in the source, scrolled into view", async () => {
+    const lines = Array.from({ length: 60 }, (_, i) => `  N${i} --> N${i + 1}`).join("\n");
+    const source = `flowchart TD\n${lines}\n  N60 --> [oops`;
+    const reveal = () =>
+      evaluate(`(() => {
+        const link = document.querySelector("#error button.link");
+        if (!link) return null;
+        link.click();
+        const input = document.getElementById("source");
+        const line = input.value.slice(0, input.selectionStart).split("\\n").length;
+        return {link: link.textContent, view: document.getElementById("view-split").ariaPressed,
+          focused: document.activeElement === input, line,
+          selected: input.value.slice(input.selectionStart, input.selectionEnd),
+          // The last line, with the error, at the bottom of the scrolled editor.
+          shown: input.scrollTop > 0 && input.scrollTop + input.clientHeight >= input.scrollHeight - 1};
+      })()`);
+    try {
+      assert.ok(!(await render({ source })).ok);
+      assert.deepStrictEqual(await reveal(), {
+        link: "line 62, column 11",
+        view: "true",
+        focused: true,
+        line: 62,
+        selected: "[",
+        shown: true,
+      });
+      // Not into edits of another diagram, which the source holds.
+      await evaluate(`(() => {
+        const input = document.getElementById("source");
+        input.value = "flowchart TD\\n  Draft";
+        input.dispatchEvent(new Event("input"));
+      })()`);
+      assert.ok(!(await render({ source: `${source}\n` })).ok);
+      assert.strictEqual(await reveal(), null);
+    } finally {
+      await evaluate(`(() => {
+        document.getElementById("revert").click();
+        document.getElementById("view-visual").click();
+      })()`);
+    }
+  });
+
   test("shows a diagram that it is not to draw as failing, with its source to edit", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     assert.deepStrictEqual(

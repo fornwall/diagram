@@ -300,6 +300,11 @@ button.link:enabled:hover {
   overflow-wrap: anywhere;
 }
 
+/* The place of the error in the source, a link within the text. */
+#error button.link {
+  padding: 0;
+}
+
 #error pre {
   margin: 4px 0 0;
   font-family: var(--vscode-editor-font-family, monospace);

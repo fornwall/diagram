@@ -182,7 +182,30 @@ let renderedIdentity: string | undefined;
 function showError(renderer: Renderer, message: string): void {
   // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
   const [summary = "", ...details] = message.split("\n");
-  errorElement.textContent = `This ${renderer.noun} failed to render: ${summary}`;
+  errorElement.textContent = `This ${renderer.noun} failed to render: `;
+  // Where the error is, which the message names as "(line 3, column 5)", or as "on line 3":
+  // a link to that place in the source, unless the editor holds edits of another diagram.
+  const place = editor.showsDiagram()
+    ? (/(?<=\()line (\d+), column (\d+)(?=\))/.exec(summary) ??
+      /(?<=\bon )line (\d+)(?:, column (\d+))?/.exec(summary))
+    : null;
+  if (place) {
+    const [text, line, column] = place;
+    const link = document.createElement("button");
+    link.className = "link";
+    link.textContent = text;
+    link.title = "Show this place in the source";
+    link.addEventListener("click", () =>
+      editor.reveal(Number(line), column === undefined ? undefined : Number(column)),
+    );
+    errorElement.append(
+      summary.slice(0, place.index),
+      link,
+      summary.slice(place.index + text.length),
+    );
+  } else {
+    errorElement.append(summary);
+  }
   if (details.length > 0) {
     const pre = document.createElement("pre");
     pre.textContent = details.join("\n");

@@ -129,6 +129,36 @@ export class SourceEditor {
     }
   }
 
+  /** Whether the editor shows the diagram's source, or edits of it, rather than edits of another. */
+  showsDiagram(): boolean {
+    return this.diagram !== undefined && this.elements.staleNote.hidden === true;
+  }
+
+  /**
+   * Selects a place in the source, from line and column 1, as an error names it: the character at
+   * the column, or the line without its indentation. The drawing alone gives way to the split view.
+   */
+  reveal(line: number, column: number | undefined): void {
+    if (this.view === "visual") this.setView("split");
+    const { input } = this.elements;
+    const text = input.value;
+    let start = 0;
+    for (let each = 1; each < line && start >= 0; each++) {
+      start = text.indexOf("\n", start);
+      if (start >= 0) start++;
+    }
+    if (start < 0) start = text.length;
+    const lineEnd = text.indexOf("\n", start) < 0 ? text.length : text.indexOf("\n", start);
+    const from =
+      column === undefined
+        ? start + (/^\s*/.exec(text.slice(start, lineEnd))?.[0].length ?? 0)
+        : Math.min(start + column - 1, lineEnd);
+    const to = column === undefined ? lineEnd : Math.min(from + 1, lineEnd);
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(from, to);
+    scrollToSelection(input);
+  }
+
   /** Shows the drawing alone, as before the first diagram, keeping unapplied edits for the next. */
   diagramGone(): void {
     this.diagram = undefined;
@@ -242,4 +272,44 @@ function replaceText(input: HTMLTextAreaElement, text: string, undoable: boolean
   input.setSelectionRange(moved(selectionStart), moved(selectionEnd), selectionDirection);
   input.scrollTop = scrollTop;
   input.scrollLeft = scrollLeft;
+}
+
+/**
+ * Scrolls the selection into the middle of the editor, unless it shows already: neither selecting
+ * nor focusing scrolls a textarea to its selection. Where the selection is, with lines wrapped as
+ * the editor wraps them, is measured on a hidden copy of its text up to there.
+ */
+function scrollToSelection(input: HTMLTextAreaElement): void {
+  const style = getComputedStyle(input);
+  const copy = document.createElement("div");
+  for (const property of [
+    "font",
+    "letterSpacing",
+    "wordSpacing",
+    "lineHeight",
+    "tabSize",
+    "whiteSpace",
+    "overflowWrap",
+    "wordBreak",
+  ] as const) {
+    copy.style[property] = style[property];
+  }
+  const padding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+  Object.assign(copy.style, {
+    position: "absolute",
+    visibility: "hidden",
+    top: "0",
+    left: "0",
+    width: `${input.clientWidth - padding}px`,
+  });
+  const mark = document.createElement("span");
+  mark.textContent = input.value.slice(input.selectionStart, input.selectionEnd) || "​";
+  copy.append(input.value.slice(0, input.selectionStart), mark);
+  document.body.append(copy);
+  const top = mark.offsetTop + Number.parseFloat(style.paddingTop);
+  const height = mark.offsetHeight;
+  copy.remove();
+  if (top < input.scrollTop || top + height > input.scrollTop + input.clientHeight) {
+    input.scrollTop = top - (input.clientHeight - height) / 2;
+  }
 }
