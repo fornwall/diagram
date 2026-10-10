@@ -3,6 +3,7 @@ import { init as initECharts } from "echarts";
 import type * as ECharts from "echarts/core";
 import { type ChartItems, modelOf } from "../webview/echartsItems";
 import { EChartsRenderer } from "../webview/echartsRenderer";
+import { afterTest } from "./afterTest";
 import { item, itemsOf, withChart } from "./echartsModel";
 import { testColors } from "./themeColors";
 
@@ -27,26 +28,20 @@ function interactionRenderer() {
 }
 
 /**
- * Draws the option, changes the chart as a user would, and lays it out again for another width as
- * a resize of the panel does, reading the chart before and after.
+ * A renderer that has drawn the option at 400 × 300 as the panel lays it out, its container, and
+ * the internals that a test reaches into.
  */
-function relayout<T>(
-  option: Record<string, unknown>,
-  change: (chart: ECharts.ECharts) => void,
-  read: (chart: ECharts.ECharts) => T,
-): [T, T] {
-  const chart = initECharts(null, undefined, {
-    renderer: "svg",
-    ssr: true,
-    width: 400,
-    height: 300,
-  });
-  const shown = chart as unknown as ECharts.ECharts;
+function drawnRenderer(option: Record<string, unknown>) {
   const container = { clientWidth: 400, clientHeight: 300 };
   const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
   Object.assign(renderer, {
-    echarts: {},
-    chart,
+    echarts: {
+      init: (_: unknown, __: unknown, size: { width: number; height: number }) => {
+        const chart = initECharts(null, undefined, { renderer: "svg", ssr: true, ...size });
+        afterTest(() => chart.dispose());
+        return chart;
+      },
+    },
     container,
     option,
     title: "",
@@ -55,23 +50,35 @@ function relayout<T>(
     selectedKeys: new Set(),
     reducedMotion: { matches: true },
     tabHidden: () => false,
-    focus: { chartChanged: () => {} },
+    focus: { chartChanged: () => {}, chartDrawn: () => {} },
     laidOut: "",
   });
-  const apply = (relayout: boolean) =>
-    (renderer as unknown as { apply(relayout: boolean): void }).apply(relayout);
-  try {
-    apply(false);
-    change(shown);
-    const before = read(shown);
-    container.clientWidth = 360;
-    // As for a size that the chart is laid out differently for, which a resize alone cannot draw.
-    Object.assign(renderer, { layout: undefined });
-    apply(true);
-    return [before, read(shown)];
-  } finally {
-    chart.dispose();
-  }
+  const internals = renderer as unknown as {
+    apply(relayout: boolean): void;
+    items(): ChartItems | undefined;
+    chart: ECharts.ECharts;
+  };
+  internals.apply(false);
+  return { container, renderer, internals };
+}
+
+/**
+ * Draws the option, changes the chart as a user would, and lays it out again for another width as
+ * a resize of the panel does, reading the chart before and after.
+ */
+function relayout<T>(
+  option: Record<string, unknown>,
+  change: (chart: ECharts.ECharts) => void,
+  read: (chart: ECharts.ECharts) => T,
+): [T, T] {
+  const { container, renderer, internals } = drawnRenderer(option);
+  change(internals.chart);
+  const before = read(internals.chart);
+  container.clientWidth = 360;
+  // As for a size that the chart is laid out differently for, which a resize alone cannot draw.
+  Object.assign(renderer, { layout: undefined });
+  internals.apply(true);
+  return [before, read(internals.chart)];
 }
 
 suite("echartsRenderer", () => {
@@ -307,135 +314,65 @@ suite("echartsRenderer", () => {
   });
 
   test("only resizes a chart for a size that it is laid out the same for", () => {
-    const chart = initECharts(null, undefined, {
-      renderer: "svg",
-      ssr: true,
-      width: 400,
-      height: 300,
-    });
-    const setOptions: unknown[] = [];
-    const setOption = chart.setOption.bind(chart);
-    chart.setOption = ((option: unknown, settings: unknown) => {
-      setOptions.push(option);
-      return setOption(option as ECharts.EChartsCoreOption, settings as boolean);
-    }) as typeof chart.setOption;
-    const container = { clientWidth: 400, clientHeight: 300 };
-    const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
     const labels = ["Category A", "Category B", "Category C"];
-    Object.assign(renderer, {
-      echarts: {},
-      chart,
-      container,
-      option: {
-        xAxis: { type: "category", data: labels },
-        yAxis: {},
-        series: [{ type: "bar", data: [1, 2, 3] }],
-      },
-      title: "",
-      theme: { colors: testColors, echarts: {} },
-      annotation: { marks: [], dim: false },
-      selectedKeys: new Set(),
-      reducedMotion: { matches: true },
-      tabHidden: () => false,
-      focus: { chartChanged: () => {} },
-      laidOut: "",
+    const { container, renderer, internals } = drawnRenderer({
+      xAxis: { type: "category", data: labels },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2, 3] }],
     });
-    const apply = (relayout: boolean) =>
-      (renderer as unknown as { apply(relayout: boolean): void }).apply(relayout);
-    try {
-      apply(false);
-      assert.strictEqual(setOptions.length, 1);
-      // The labels fit either way.
-      container.clientWidth = 380;
-      apply(true);
-      assert.strictEqual(setOptions.length, 1);
-      assert.strictEqual(chart.getWidth(), 380);
-      // The labels no longer fit side by side.
-      container.clientWidth = 200;
-      apply(true);
-      assert.strictEqual(setOptions.length, 2);
-      // Dimming around marks takes a layout of its own.
-      Object.assign(renderer, {
-        annotation: { marks: [{ id: "Category A", kind: "info" }], dim: true },
-      });
-      container.clientWidth = 210;
-      apply(true);
-      assert.strictEqual(setOptions.length, 3);
-    } finally {
-      chart.dispose();
-    }
+    const { chart } = internals;
+    let setOptions = 0;
+    const setOption = chart.setOption.bind(chart);
+    chart.setOption = ((option: ECharts.EChartsCoreOption, settings: boolean) => {
+      setOptions++;
+      return setOption(option, settings);
+    }) as typeof chart.setOption;
+    // The labels fit either way.
+    container.clientWidth = 380;
+    internals.apply(true);
+    assert.strictEqual(setOptions, 0);
+    assert.strictEqual(chart.getWidth(), 380);
+    // The labels no longer fit side by side.
+    container.clientWidth = 200;
+    internals.apply(true);
+    assert.strictEqual(setOptions, 1);
+    // Dimming around marks takes a layout of its own.
+    Object.assign(renderer, {
+      annotation: { marks: [{ id: "Category A", kind: "info" }], dim: true },
+    });
+    container.clientWidth = 210;
+    internals.apply(true);
+    assert.strictEqual(setOptions, 2);
   });
 
   test("works out the items of another timeline step anew", () => {
-    const charts: ECharts.ECharts[] = [];
     const slices = (...names: string[]) => [{ data: names.map((name) => ({ name, value: 1 })) }];
     /** A renderer of a chart whose timeline steps show other items, and how to find them. */
     const timelineRenderer = () => {
-      const container = { clientWidth: 400, clientHeight: 300 };
-      const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
-      Object.assign(renderer, {
-        echarts: {
-          init: (_: unknown, __: unknown, { width, height }: { width: number; height: number }) => {
-            const chart = initECharts(null, undefined, {
-              renderer: "svg",
-              ssr: true,
-              width,
-              height,
-            });
-            charts.push(chart as unknown as ECharts.ECharts);
-            return chart;
-          },
-        },
-        container,
-        option: {
-          baseOption: { timeline: { data: ["2025", "2026"] }, series: [{ type: "pie" }] },
-          options: [{ series: slices("Apples", "Pears") }, { series: slices("Kiwis", "Plums") }],
-        },
-        title: "",
-        theme: { colors: testColors, echarts: {} },
-        annotation: { marks: [], dim: false },
-        selectedKeys: new Set(),
-        reducedMotion: { matches: true },
-        tabHidden: () => false,
-        focus: { chartChanged: () => {}, chartDrawn: () => {} },
-        laidOut: "",
+      const drawn = drawnRenderer({
+        baseOption: { timeline: { data: ["2025", "2026"] }, series: [{ type: "pie" }] },
+        options: [{ series: slices("Apples", "Pears") }, { series: slices("Kiwis", "Plums") }],
       });
-      const internals = renderer as unknown as {
-        apply(relayout: boolean): void;
-        items(): ChartItems | undefined;
-        chart: ECharts.ECharts;
-      };
-      internals.apply(false);
-      assert.deepStrictEqual(internals.items()?.find("Apples"), [item(0)]);
-      return {
-        container,
-        renderer,
-        internals,
-        find: (name: string) => internals.items()?.find(name),
-      };
+      const find = (name: string) => drawn.internals.items()?.find(name);
+      assert.deepStrictEqual(find("Apples"), [item(0)]);
+      return { ...drawn, find };
     };
-    try {
-      // The user steps the timeline: its event drops the items, also when the layout stays.
-      const stepped = timelineRenderer();
-      stepped.internals.chart.dispatchAction({ type: "timelineChange", currentIndex: 1 });
-      assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
-      stepped.container.clientWidth = 380;
-      stepped.internals.apply(true);
-      assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
-      assert.deepStrictEqual(stepped.find("Apples"), []);
-      // A step shown without the event, which a new layout must not take the items of the last for.
-      const shown = timelineRenderer();
-      shown.internals.chart.setOption({
-        timeline: { currentIndex: 1 },
-      } as ECharts.EChartsCoreOption);
-      // As for a size that the chart is laid out differently for.
-      Object.assign(shown.renderer, { layout: undefined });
-      shown.container.clientWidth = 200;
-      shown.internals.apply(true);
-      assert.deepStrictEqual(shown.find("Kiwis"), [item(0)]);
-      assert.deepStrictEqual(shown.find("Apples"), []);
-    } finally {
-      for (const chart of charts) chart.dispose();
-    }
+    // The user steps the timeline: its event drops the items, also when the layout stays.
+    const stepped = timelineRenderer();
+    stepped.internals.chart.dispatchAction({ type: "timelineChange", currentIndex: 1 });
+    assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
+    stepped.container.clientWidth = 380;
+    stepped.internals.apply(true);
+    assert.deepStrictEqual(stepped.find("Kiwis"), [item(0)]);
+    assert.deepStrictEqual(stepped.find("Apples"), []);
+    // A step shown without the event, which a new layout must not take the items of the last for.
+    const shown = timelineRenderer();
+    shown.internals.chart.setOption({ timeline: { currentIndex: 1 } } as ECharts.EChartsCoreOption);
+    // As for a size that the chart is laid out differently for.
+    Object.assign(shown.renderer, { layout: undefined });
+    shown.container.clientWidth = 200;
+    shown.internals.apply(true);
+    assert.deepStrictEqual(shown.find("Kiwis"), [item(0)]);
+    assert.deepStrictEqual(shown.find("Apples"), []);
   });
 });
