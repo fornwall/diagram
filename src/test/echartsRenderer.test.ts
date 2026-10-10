@@ -142,9 +142,10 @@ suite("echartsRenderer", () => {
       hasHighlights: true,
     });
     renderer.showMarks({ marks: [{ id: "B", kind: "info" }], dim: true });
+    // Once more without blurring, which another mark's blur would cover.
     assert.deepStrictEqual(actions, [
       { type: "downplay", batch: [item(0)] },
-      { type: "highlight", batch: [item(1)] },
+      { type: "highlight", batch: [item(1), { ...item(1), notBlur: true }] },
     ]);
   });
 

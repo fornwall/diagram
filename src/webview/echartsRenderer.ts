@@ -515,8 +515,14 @@ export class EChartsRenderer implements Renderer {
   private highlightMarked(): void {
     const batch = this.find(this.annotation.marks.map(({ id }) => id));
     if (batch.length > 0) {
-      // One action, so that ECharts works out what to blur once, around all of the marks.
-      this.chart?.dispatchAction({ type: "highlight", batch }, { silent: true });
+      // One action, as each takes the blur off the whole chart first. ECharts blurs a dimmed
+      // chart around each item of a batch in turn, which blurs the marks of other series again:
+      // the batch highlights them all once more at its end without blurring.
+      const again = this.blurring() ? batch.map((item) => ({ ...item, notBlur: true })) : [];
+      this.chart?.dispatchAction(
+        { type: "highlight", batch: [...batch, ...again] },
+        { silent: true },
+      );
     }
   }
 

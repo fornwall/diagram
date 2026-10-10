@@ -117,6 +117,41 @@ suite("ECharts in the webview", function () {
     }
   });
 
+  test("dims the chart around marks in several series, not around the last series' alone", async () => {
+    const colors = ["#0000ff", "#00ff00", "#ff0000"];
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        xAxis: { type: "category", data: ["A", "B"] },
+        yAxis: {},
+        series: colors.map((color, index) => ({
+          name: `S${index}`,
+          type: "bar",
+          itemStyle: { color },
+          data: [10, 10],
+        })),
+      }),
+    });
+    page.panel.annotate({
+      marks: [
+        { id: "S0/A", kind: "info" },
+        { id: "S1/B", kind: "info" },
+      ],
+      dim: true,
+    });
+    const faded = await evaluate(`(async () => {
+      ${UNTIL}
+      // How many bars of each series fade: a marked bar is drawn in a color of its emphasis.
+      const faded = () => ${JSON.stringify(colors)}.map((color) =>
+        [...document.querySelectorAll('#chart svg path[fill="' + color + '"]')].filter((path) =>
+          Number(path.getAttribute("fill-opacity") ?? path.getAttribute("opacity") ?? 1) < 1).length);
+      await until(() => faded()[2] === 2, "the chart dimmed");
+      return faded();
+    })()`);
+    assert.deepStrictEqual(faded, [1, 1, 2]);
+  });
+
   test("lays out a chart drawn in a hidden tab at an initial size, and for the tab once shown", async () => {
     // Mermaid leaves no chart whose size a new one would keep.
     await draw({ source: "flowchart LR\n A --> B" });
