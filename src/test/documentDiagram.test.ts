@@ -512,10 +512,10 @@ suite("documentDiagram", function () {
     await webview.edit('{"title": {}}');
     // The write does not wait for the warning to be answered.
     let copied = "";
-    for (let tries = 0; tries < 100 && !copied; tries++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    await within(async () => {
       copied = await vscode.env.clipboard.readText();
-    }
+      return copied !== "";
+    });
     assert.strictEqual(copied, '{"title": {}}');
     assert.match(warnings[0] ?? "", /^The echarts block .* Copy the chart to paste it/);
     assert.strictEqual(document.getText(), '```echarts\n{"series": []}\n```\n');

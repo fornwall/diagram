@@ -21,6 +21,7 @@ import {
   setting,
   workspaceRoot,
 } from "./afterTest";
+import { within } from "./newPanel";
 import { invokeTool as invoke, toolText } from "./toolText";
 
 suite("workspaceTools", function () {
@@ -330,12 +331,11 @@ suite("workspaceTools", function () {
     await writeFile("cached/.gitignore", "*.log\n");
     // The file watcher tells of the change soon after.
     const expected = "cached/.gitignore\ncached/b.ts";
-    const deadline = Date.now() + 10_000;
-    let listed: string;
-    do {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    let listed = "";
+    await within(async () => {
       listed = await invoke(finder, { glob: "cached/**" });
-    } while (listed !== expected && Date.now() < deadline);
+      return listed === expected;
+    });
     assert.strictEqual(listed, expected);
   });
 
