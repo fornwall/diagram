@@ -551,6 +551,43 @@ suite("echartsLayout", () => {
     assert.doesNotMatch(svg, /000,000/);
   });
 
+  test("groups and rounds the values that labels and item tooltips fill into templates", () => {
+    const source = {
+      tooltip: { formatter: "{a}<br/>{b}: {c} ({d}%)" },
+      series: [
+        {
+          type: "pie",
+          name: "Size <MiB>",
+          label: { formatter: "{b}: {c}" },
+          data: [
+            { name: "A & B", value: 0.1 + 0.2 },
+            { name: "C", value: 1234567.5 },
+          ],
+        },
+        // Placeholders that only ECharts fills in, and a template without a value.
+        { type: "funnel", label: { formatter: "{@score}: {c}" }, tooltip: { formatter: "{b}" } },
+      ],
+    };
+    const option = layout(source);
+    const svg = withChart(option, (chart) =>
+      (chart as unknown as { renderToSVGString(): string }).renderToSVGString(),
+    );
+    assert.match(svg, />A &amp; B: 0\.3</);
+    assert.match(svg, />C: 1,234,567\.5</);
+    const tooltip = option.tooltip.formatter;
+    const params = { seriesName: "Size <MiB>", name: "A & B", value: 0.1 + 0.2, percent: 12.5 };
+    assert.strictEqual(tooltip(params), "Size &lt;MiB&gt;<br/>A &amp; B: 0.3 (12.5%)");
+    assert.deepStrictEqual(
+      [option.series[1].label.formatter, option.series[1].tooltip.formatter],
+      ["{@score}: {c}", "{b}"],
+    );
+    // The same formatters in each layout, which only needs the chart resized.
+    assert.strictEqual(layout(source, { width: 900 }).tooltip.formatter, tooltip);
+    // Not that of a tooltip of axes, which lists every series.
+    const axis = layout(bars({ tooltip: { trigger: "axis", formatter: "{b}: {c}" } }));
+    assert.strictEqual(axis.tooltip.formatter, "{b}: {c}");
+  });
+
   test("labels years on the value axis of a scatter chart as years", () => {
     const data = "year,sales\n2015,10\n2016,12\n2017,9\n2018,15";
     const option = layout(builtOption({ data, type: "scatter" } as ChartSpec, data));

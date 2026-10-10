@@ -247,6 +247,7 @@ function layOutAround(
   drawLargeSeries(option, series);
   showAxisLines(base);
   compactAxisLabels(base);
+  formatTemplateValues(option);
   addInteraction(base, series, cartesian, context.colors);
   // A timeline step or media query can set a toolbox of its own too.
   for (const toolbox of optionVariants(option).flatMap((variant) => asArray(variant.toolbox))) {
@@ -1267,6 +1268,78 @@ function compactAxisLabels(base: JsonObject): void {
         label.formatter = compactLabel;
         axis.axisLabel = label;
       }
+    }
+  }
+}
+
+/** What a template's placeholders stand for, of what ECharts gives a formatter of an item. */
+const TEMPLATE_PARAMS: Record<string, string> = {
+  a: "seriesName",
+  b: "name",
+  c: "value",
+  d: "percent",
+};
+const groupedNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 20 });
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+/** By template and whether it is HTML, so that a layout of the same option has the same ones. */
+const templateFormatters = new Map<string, (params: unknown) => string>();
+
+/**
+ * A formatter in place of a template of an item's value, such as "{b}: {c}" or a pie's
+ * "{b}: {c} ({d}%)", that writes a number as ECharts' templates do not: grouped by thousands and
+ * without the leftovers of adding fractions, as "1,234.3" rather than "1234.3000000000002".
+ * Undefined for a template without "{c}", or with placeholders the panel leaves to ECharts, such
+ * as a dimension's "{@score}" or a series' "{c1}" in an axis tooltip.
+ */
+function templateFormatter(template: unknown, html: boolean) {
+  if (typeof template !== "string" || !template.includes("{c}")) return undefined;
+  const placeholders = template.match(/\{[^{}|]*\}/g) ?? [];
+  if (!placeholders.every((each) => Object.hasOwn(TEMPLATE_PARAMS, each.slice(1, -1)))) {
+    return undefined;
+  }
+  const key = `${html}:${template}`;
+  let formatter = templateFormatters.get(key);
+  if (!formatter) {
+    formatter = (params: unknown) => {
+      const item = (Array.isArray(params) ? params[0] : params) as JsonObject;
+      return template.replace(/\{([abcd])\}/g, (_, name: string) => {
+        const value = item?.[TEMPLATE_PARAMS[name] ?? ""];
+        const text =
+          typeof value === "number" && Number.isFinite(value)
+            ? groupedNumber.format(Number(value.toPrecision(12)))
+            : String(value ?? "-");
+        return html ? text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char) : text;
+      });
+    };
+    templateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * Formats the values in the templates of labels and item tooltips (see {@link templateFormatter}),
+ * as of the pies and funnels that diagram_chart makes, which an option sent as JSON cannot do.
+ */
+function formatTemplateValues(option: JsonObject): void {
+  const replace = (owner: unknown, html: boolean) => {
+    if (!isPlainObject(owner)) return;
+    const formatter = templateFormatter(owner.formatter, html);
+    if (formatter) owner.formatter = formatter;
+  };
+  for (const series of allSeries(option)) {
+    replace(series.label, false);
+    replace(series.tooltip, true);
+  }
+  // The tooltip of an axis lists the items of every series at once.
+  for (const variant of optionVariants(option)) {
+    for (const tooltip of asArray(variant.tooltip)) {
+      if ((tooltip.trigger ?? "item") === "item") replace(tooltip, true);
     }
   }
 }
