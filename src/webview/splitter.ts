@@ -70,7 +70,12 @@ export function enableSplitter(
       return;
     }
     event.preventDefault();
-    setFraction(fraction + step * KEY_STEP);
+    // From where the editor is, which a short panel keeps lower than the handle's limit, so that
+    // each key moves it.
+    const shown = stacked()
+      ? editor.offsetHeight / panes.clientHeight
+      : editor.offsetWidth / panes.clientWidth;
+    setFraction((Number.isFinite(shown) ? Math.max(fraction, shown) : fraction) + step * KEY_STEP);
   });
 
   // Double-clicking the handle puts it back where it started, as it does with a VS Code sash.

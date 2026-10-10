@@ -329,8 +329,9 @@ button.link:enabled:hover {
   box-sizing: border-box;
   /* Fills the panel in the source view, and the handle's share of it in the split view. */
   flex: 0 0 var(--source-size);
+  /* Not narrower than the panel allows, but, stacked in a short panel, not lower than its content:
+     the actions would spill out of it onto the drawing, which covers them. */
   min-width: 0;
-  min-height: 0;
   padding: 6px 12px;
 }
 

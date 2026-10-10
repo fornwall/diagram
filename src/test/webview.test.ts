@@ -70,6 +70,38 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the source's actions clear of the drawing in a short stacked split view", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        // A short panel, narrow enough to stack the panes.
+        document.body.style.height = "400px";
+        const panes = document.getElementById("panes");
+        panes.style.flexDirection = "column";
+        document.getElementById("view-split").click();
+        const splitter = document.getElementById("splitter");
+        const key = (key) => splitter.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
+        const height = () => document.getElementById("editor").getBoundingClientRect().height;
+        try {
+          key("Home");
+          const apply = document.getElementById("apply").getBoundingClientRect();
+          const clickable = document.elementFromPoint(apply.left + 5, apply.top + 5)?.id;
+          const clear = apply.bottom <= splitter.getBoundingClientRect().top;
+          const smallest = height();
+          key("ArrowDown");
+          // From where the editor is, not from the limit below it that it keeps to.
+          return {clickable, clear, grows: height() > smallest};
+        } finally {
+          key("Enter");
+          document.getElementById("view-visual").click();
+          panes.style.flexDirection = "";
+          document.body.style.height = "";
+        }
+      })()`),
+      { clickable: "apply", clear: true, grows: true },
+    );
+  });
+
   test("sizes the source pane without restyling what the panes hold", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
