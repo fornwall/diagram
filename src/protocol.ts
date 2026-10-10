@@ -202,9 +202,13 @@ export type FromWebview =
       /** Parts of the source that the rendering leaves out. */
       warnings?: string[] | undefined;
     }
-  | { type: "renderError"; requestId: number; message: string }
-  /** The page could not render at all, e.g. as the code of its renderer did not load. */
-  | { type: "renderUnavailable"; requestId: number; message: string }
+  | {
+      type: "renderError";
+      requestId: number;
+      message: string;
+      /** The page could not render at all, e.g. as the code of its renderer did not load. */
+      unavailable?: boolean | undefined;
+    }
   | { type: "selectionChanged"; requestId: number; nodes: DiagramNode[] }
   | { type: "sourceEdited"; requestId: number; source: string }
   /**
@@ -300,8 +304,7 @@ const FROM_WEBVIEW_FIELDS: {
     repeatedNames: optional(isRepeatedNames),
     warnings: optional(isStrings),
   },
-  renderError: { requestId: isId, message: isString },
-  renderUnavailable: { requestId: isId, message: isString },
+  renderError: { requestId: isId, message: isString, unavailable: optional(isBoolean) },
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },
   ask: { requestId: optional(isId), text: isString, nodes: isNodes },

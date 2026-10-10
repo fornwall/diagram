@@ -272,7 +272,7 @@ async function render(message: RenderMessage): Promise<void> {
     emptyElement.hidden = true;
     errorElement.textContent = text;
     errorElement.hidden = false;
-    post({ type: "renderUnavailable", requestId, message: text });
+    post({ type: "renderError", requestId, message: text, unavailable: true });
     diagramReplaced();
     return;
   }
