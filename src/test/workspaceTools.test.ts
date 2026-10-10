@@ -328,7 +328,7 @@ suite("workspaceTools", function () {
     await within(async () => {
       listed = await invoke(finder, { glob: "cached/**" });
       return listed === expected;
-    });
+    }, 10_000);
     assert.strictEqual(listed, expected);
   });
 

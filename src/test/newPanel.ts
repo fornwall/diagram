@@ -204,9 +204,12 @@ export async function drawChart(
   return source;
 }
 
-/** Waits for `done()` to hold, checking it every 10 ms for up to ten seconds; says whether it does. */
-export async function within(done: () => boolean | Promise<boolean>): Promise<boolean> {
-  const end = Date.now() + 10_000;
+/**
+ * Waits for `done()` to hold, checking it every 10 ms for up to `ms`, by default five seconds,
+ * well within the timeouts of the suites; says whether it does.
+ */
+export async function within(done: () => boolean | Promise<boolean>, ms = 5000): Promise<boolean> {
+  const end = Date.now() + ms;
   while (!(await done())) {
     if (Date.now() > end) return false;
     await new Promise((resolve) => setTimeout(resolve, 10));
