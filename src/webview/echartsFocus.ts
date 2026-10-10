@@ -118,10 +118,18 @@ export class ChartNavigation {
     return this.spot(ref) !== undefined;
   }
 
-  /** The item at the same place in the first series that shows one, as for a series hidden. */
-  samePlace({ dataType, dataIndex }: ItemRef): ItemRef | undefined {
+  /**
+   * The item at the same place in the nearest series that shows one, its own first and then the
+   * next, as for a series hidden.
+   */
+  samePlace({ seriesIndex: own, dataType, dataIndex }: ItemRef): ItemRef | undefined {
+    const distance = (seriesIndex: number) => Math.abs(seriesIndex - own);
     return this.tracks
       .map(({ seriesIndex }) => ({ seriesIndex, dataType, dataIndex }))
+      .sort(
+        (a, b) =>
+          distance(a.seriesIndex) - distance(b.seriesIndex) || b.seriesIndex - a.seriesIndex,
+      )
       .find((ref) => this.shows(ref));
   }
 

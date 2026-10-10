@@ -146,6 +146,28 @@ suite("echartsFocus", () => {
     });
   });
 
+  test("finds the item at the same place in the nearest series shown, the next one first", () => {
+    const series = ["A", "B", "C", "D"].map((name) => ({ type: "bar", name, data: [1, 2, 3] }));
+    const places = (hidden: string[]) =>
+      withChart(
+        {
+          legend: { selected: Object.fromEntries(hidden.map((name) => [name, false])) },
+          xAxis: { type: "category", data: ["a", "b", "c"] },
+          yAxis: {},
+          series,
+        },
+        (chart) => {
+          const navigation = new ChartNavigation(chart);
+          return [0, 1, 2, 3].map((seriesIndex) => {
+            const to = navigation.samePlace({ seriesIndex, dataIndex: 1 });
+            return to ? itemKey(to) : "none";
+          });
+        },
+      );
+    assert.deepStrictEqual(places(["B"]), ["0::1", "2::1", "2::1", "3::1"]);
+    assert.deepStrictEqual(places(["C", "D"]), ["0::1", "1::1", "1::1", "1::1"]);
+  });
+
   test("says what an item's value is and where it is", () => {
     withChart(bars(false), (chart) => {
       const navigation = new ChartNavigation(chart);
