@@ -161,6 +161,28 @@ suite("webview", function () {
     assert.strictEqual(failed, "");
   });
 
+  test("hides the drawing's actions in the source view, keeping the header's layout", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const ids = ["zoom-out", "zoom-reset", "zoom-in", "drag-out"];
+        const state = () => ({
+          shown: ids.filter(id => getComputedStyle(document.getElementById(id)).visibility === "visible"),
+          layout: [...document.querySelectorAll("header button, header .drag-out")].map(element => {
+            const box = element.getBoundingClientRect();
+            return box.left + "," + box.top;
+          }).join(" "),
+        });
+        const drawn = state();
+        document.getElementById("view-source").click();
+        const source = state();
+        document.getElementById("view-visual").click();
+        return {drawn: drawn.shown, source: source.shown, sameLayout: source.layout === drawn.layout};
+      })()`),
+      { drawn: ["zoom-out", "zoom-reset", "zoom-in", "drag-out"], source: [], sameLayout: true },
+    );
+  });
+
   test("shows why an action is disabled on hover", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

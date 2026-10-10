@@ -187,6 +187,12 @@ button.link:enabled:hover {
   text-decoration: underline;
 }
 
+/* The source view shows no drawing to zoom or drag out. Still taking their space, so that the
+   header keeps its layout across views. */
+body:has(#panes.view-source) :is(#zoom, #drag-out) {
+  visibility: hidden;
+}
+
 /* The zoom buttons, which wrap together. */
 .zoom {
   display: flex;
