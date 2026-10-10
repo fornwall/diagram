@@ -385,27 +385,20 @@ async function ignoreFiles(
   if (!vscode.workspace.getConfiguration("search", root.uri).get("useIgnoreFiles", true)) {
     return new Map();
   }
-  const key = `${root.uri.toString()}\n${excludes.join(",")}`;
   const cache = ignoreCache;
-  const cached = cache?.get(key);
-  if (cached) {
-    try {
-      return await unlessCancelled(() => cached, token);
-    } catch (error) {
-      // Another call that was cancelled while finding them; find them again for this one.
-      if (!(error instanceof vscode.CancellationError) || token.isCancellationRequested) {
-        throw error;
-      }
-    }
-  }
-  const finding = findIgnoreFiles(root, excludes, token);
-  if (cache) {
-    cache.set(key, finding);
-    finding.catch(() => {
-      if (cache.get(key) === finding) cache.delete(key);
+  if (!cache) return findIgnoreFiles(root, excludes, token);
+  const key = `${root.uri.toString()}\n${excludes.join(",")}`;
+  let finding = cache.get(key);
+  if (!finding) {
+    // Finished for later calls, also when this one is cancelled.
+    const found = findIgnoreFiles(root, excludes, new vscode.CancellationTokenSource().token);
+    cache.set(key, found);
+    found.catch(() => {
+      if (cache.get(key) === found) cache.delete(key);
     });
+    finding = found;
   }
-  return finding;
+  return unlessCancelled(() => finding, token);
 }
 
 /**

@@ -899,6 +899,40 @@ suite("workspaceTools", function () {
     assert.match(String(prepared.invocationMessage), /"a{80}…"$/);
   });
 
+  test("finds the ignore files for later calls also when the call that started it is cancelled", async function () {
+    this.timeout(30_000);
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
+    await make("halted");
+    await writeFile("halted/b.ts", "");
+    let searches = 0;
+    let cancelled = cancellationSource();
+    const findFiles = vscode.workspace.findFiles;
+    replace(vscode.workspace, "findFiles", (include, ...rest) => {
+      if (include instanceof vscode.RelativePattern && include.pattern === "**/.gitignore") {
+        searches++;
+        cancelled.cancel();
+      }
+      return findFiles(include, ...rest);
+    });
+    // The watcher may clear the cache meanwhile, as it tells of the files of earlier tests.
+    let reused = false;
+    for (let attempt = 0; !reused && attempt < 5; attempt++) {
+      const caching = cacheIgnoreFiles();
+      afterTest(() => caching.dispose());
+      cancelled = cancellationSource();
+      searches = 0;
+      await assert.rejects(
+        invoke(finder, { glob: "halted/**" }, cancelled.token),
+        vscode.CancellationError,
+      );
+      assert.strictEqual(await invoke(finder, { glob: "halted/**" }), "halted/b.ts");
+      reused = searches === 1;
+    }
+    assert.ok(reused);
+  });
+
   test("propagates cancellation before inspecting files", async () => {
     const cancelled = cancellationSource();
     cancelled.cancel();
