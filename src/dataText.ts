@@ -269,8 +269,8 @@ function fits(records: Cell[][], { width, matching } = shape(records)): boolean 
   );
 }
 
-/** A number with thousands separators within text, as in "apples 1,234" or "rice 12,34,567". */
-const THOUSANDS_IN_TEXT = /(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d\d)+,\d{3})(?![\d,])/g;
+/** A number with thousands separators within text, as in "apples 1,234". */
+const THOUSANDS_IN_TEXT = /(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])/g;
 
 /**
  * Splits comma- or semicolon-separated values with the delimiter that splits the lines more

@@ -610,9 +610,11 @@ suite("data", () => {
       ["apples", 1234],
       ["pears", 5678],
     ]);
-    assert.deepStrictEqual(parse("rice 12,34,567\nwheat 1,23,456").rows, [
-      ["rice", 1234567],
-      ["wheat", 123456],
+    // Rows of CSV, not numbers with commas between groups of digits.
+    assert.deepStrictEqual(parse("1,10,100\n2,20,200\n3,30,300\n").rows, [
+      [1, 10, 100],
+      [2, 20, 200],
+      [3, 30, 300],
     ]);
     // "1,234.5" can only have a thousands separator, so "12,5" is not a number here.
     assert.deepStrictEqual(parse('a,"1,234.5"\nb,"12,5"', "csv").rows, [
