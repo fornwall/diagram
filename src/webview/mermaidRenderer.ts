@@ -325,7 +325,6 @@ export class MermaidRenderer implements Renderer {
   readonly sourceName = "Mermaid source";
 
   private renderCounter = 0;
-  supportsPaths = false;
   private drawn = NOTHING_DRAWN;
   private shown = nothingShown();
   /** The selection, code links and marks, which a new drawing of the diagram shows again. */
@@ -529,7 +528,7 @@ export class MermaidRenderer implements Renderer {
     // answers a render that it gave up waiting for: keep the drawing, which takes seconds for a
     // large diagram to make again.
     const drawnFrom = JSON.stringify([source, drawWidth, config]);
-    if (drawnFrom === this.drawnFrom && this.displayedSource !== undefined && this.diagramType) {
+    if (drawnFrom === this.drawnFrom && this.diagramType) {
       this.setZoom(this.zoom);
       if (this.fitting) this.fit();
       this.scrollStart();
@@ -581,7 +580,6 @@ export class MermaidRenderer implements Renderer {
     this.diagram.hidden = false;
     this.displayedSource = source;
     this.diagramType = result.diagramType;
-    this.supportsPaths = PATH_DIAGRAMS.test(result.diagramType);
     this.prepareSvg(svg, id, db);
     // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
     this.setZoom(this.zoom);
@@ -735,6 +733,10 @@ export class MermaidRenderer implements Renderer {
       for (const element of this.drawn.elements.get(id) ?? []) show(element, after, before);
     }
     return next;
+  }
+
+  get supportsPaths(): boolean {
+    return PATH_DIAGRAMS.test(this.diagramType ?? "");
   }
 
   findPath(from: string, to: string): DiagramNode[] | undefined {
