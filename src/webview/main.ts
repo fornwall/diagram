@@ -183,17 +183,28 @@ let active: Renderer | undefined;
 /** The language, title and document of the last diagram rendered, which a revision keeps. */
 let renderedIdentity: string | undefined;
 
+/** Where an error is, which its message names as "(line 3, column 5)", or as "on line 3". */
+const placeOf = (text: string) =>
+  /(?<=\()line (\d+), column (\d+)(?=\))/.exec(text) ??
+  /(?<=\bon )line (\d+)(?:, column (\d+))?/.exec(text);
+
 function showError(renderer: Renderer, message: string): void {
-  // Details after the first line, like an excerpt of the source with a caret, need a fixed font.
-  const [summary = "", ...details] = message.split("\n");
+  // The first line, and those after it that name places of further problems, as a Mermaid error
+  // does on several lines. Details after them, like an excerpt of the source with a caret, need a
+  // fixed font.
+  const lines = message.split("\n");
+  let problems = 1;
+  while (problems < lines.length && placeOf(lines[problems] as string)) problems++;
+  const details = lines.slice(problems);
   errorElement.textContent = `This ${renderer.noun} failed to render: `;
-  // Where the error is, which the message names as "(line 3, column 5)", or as "on line 3":
-  // a link to that place in the source, unless the editor holds edits of another diagram.
-  const place = editor.showsDiagram()
-    ? (/(?<=\()line (\d+), column (\d+)(?=\))/.exec(summary) ??
-      /(?<=\bon )line (\d+)(?:, column (\d+))?/.exec(summary))
-    : null;
-  if (place) {
+  for (const [i, problem] of lines.slice(0, problems).entries()) {
+    if (i > 0) errorElement.append(document.createElement("br"));
+    // A link to the place in the source, unless the editor holds edits of another diagram.
+    const place = editor.showsDiagram() ? placeOf(problem) : null;
+    if (!place) {
+      errorElement.append(problem);
+      continue;
+    }
     const [text, line, column] = place;
     const link = document.createElement("button");
     link.className = "link";
@@ -203,12 +214,10 @@ function showError(renderer: Renderer, message: string): void {
       editor.reveal(Number(line), column === undefined ? undefined : Number(column)),
     );
     errorElement.append(
-      summary.slice(0, place.index),
+      problem.slice(0, place.index),
       link,
-      summary.slice(place.index + text.length),
+      problem.slice(place.index + text.length),
     );
-  } else {
-    errorElement.append(summary);
   }
   if (details.length > 0) {
     const pre = document.createElement("pre");

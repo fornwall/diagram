@@ -1622,6 +1622,18 @@ suite("webview", function () {
     }
   });
 
+  test("links each place of a render error on several lines, as the first", async () => {
+    assert.ok(!(await render({ source: 'pie\n  "A" : abc\n  "B" : 3\n  "C" : def' })).ok);
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const error = document.getElementById("error");
+        return {links: [...error.querySelectorAll("button.link")].map((link) => link.textContent),
+          lines: error.querySelectorAll("br").length, details: error.querySelector("pre") !== null};
+      })()`),
+      { links: ["line 2, column 9", "line 4, column 9"], lines: 1, details: false },
+    );
+  });
+
   test("shows a diagram that it is not to draw as failing, with its source to edit", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     assert.deepStrictEqual(
