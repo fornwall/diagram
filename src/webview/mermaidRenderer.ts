@@ -11,6 +11,7 @@ import {
   emptyStateError,
   nestingError,
   parsableSource,
+  scoreError,
   statementError,
   undefinedEndError,
 } from "./mermaidErrors";
@@ -538,8 +539,9 @@ export class MermaidRenderer implements Renderer {
     const text = parsableSource(source);
     const drawing = async () => {
       const parsed = await databaseOf(mermaid, text);
-      const nesting = nestingError(parsed, source);
-      if (nesting) throw nesting;
+      // Mermaid would lay out the first forever, and draw the second out of place.
+      const invalid = nestingError(parsed, source) ?? scoreError(parsed, source);
+      if (invalid) throw invalid;
       const result = await mermaid.render(id, text, container).catch(async (error: unknown) => {
         throw (
           undefinedEndError(parsed, source) ??

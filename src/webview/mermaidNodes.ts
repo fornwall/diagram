@@ -68,6 +68,8 @@ export interface DiagramDb {
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];
   getDirection?(): string;
+  /** A user journey's tasks, with their scores. */
+  getTasks?(): { task?: string; score?: number }[];
   /** A Gantt chart's task links, by task id; a sankey diagram's flows, as an array. */
   getLinks?(): Map<string, unknown> | unknown[];
   /** A sequence diagram's actors, by id, with their labels and links by name. */

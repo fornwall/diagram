@@ -1,6 +1,7 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
 import { joinWords } from "../text";
+import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
 /** The words that start each kind of diagram that Mermaid detects, the common ones first. */
@@ -816,6 +817,23 @@ export function undefinedEndError(db: DiagramDb | undefined, source: string): Er
     normalized,
     find(normalized, word(missing)),
     `A relationship refers to "${missing}", which the diagram does not define: define it, or correct the name.`,
+  );
+}
+
+/**
+ * The error for a user journey task whose score is not a number, which Mermaid would draw as a
+ * face out of place and a broken line to it.
+ */
+export function scoreError(db: DiagramDb | undefined, source: string): Error | undefined {
+  // Not the tasks of a Gantt chart, which it fails on invalid dates in, to describe as it draws.
+  if (!/^journey\b/.test(diagramHeader(source).typeLine ?? "")) return undefined;
+  const task = db?.getTasks?.().find(({ score }) => Number.isNaN(score))?.task;
+  if (task === undefined) return undefined;
+  const normalized = source.replace(/\r\n?/g, "\n");
+  return errorAt(
+    normalized,
+    find(normalized, `^[^\\S\\n]*${literal(task.trim())}[^\\S\\n]*:`),
+    `The score of "${task.trim()}" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".`,
   );
 }
 

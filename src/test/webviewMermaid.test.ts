@@ -977,6 +977,8 @@ suite("Mermaid in the webview", function () {
         'packet\n  0-15: "Port"\n  16: "Flag"\n  18: "Flag"',
         'packet\n  0-15: "Port"\n  20-16: "Seq"',
         'packet\n  +16: "Port"\n  +0: "None"',
+        // Mermaid draws a journey's score that is not a number out of place.
+        "journey\n  section Work\n    Make tea: 5: Me\n    Rest: high: Me, Cat",
         // Others depend on the statements before: the first part of the text that fails so.
         "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev\n  branch other\n  merge main",
         'gitGraph\n  commit id: "A"\n  branch dev\n  commit id: "B"\n  checkout main\n  cherry-pick id: "B"\n  cherry-pick id: "C"',
@@ -1012,6 +1014,7 @@ suite("Mermaid in the webview", function () {
         "Error on line 4: Packet block 18 - 18 is not contiguous. It should start from 17.",
         "Error on line 3: Packet block 20 - 16 is invalid. End must be greater than start.",
         "Error on line 3: Packet block 16 is invalid. Cannot have a zero bit field.",
+        'Error on line 4: The score of "Rest" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".',
         "Error on line 8: Cannot merge branch 'main' into itself.",
         'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
         'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
