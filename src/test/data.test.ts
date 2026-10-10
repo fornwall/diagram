@@ -2344,6 +2344,8 @@ suite("data", () => {
     for (const text of ["name,value\na,\nb,", "name\tvalue\na\tN/A\nb\t-"]) {
       assert.deepStrictEqual(parse(text).columns, ["name", "value"], text);
     }
+    // A first row whose text recurs below it is data, with a value that the others lack.
+    assert.strictEqual(parseTable("Alice,Paris,VIP\nBob,Rome,\nCarl,Paris,").rows.length, 3);
   });
 
   test("detects a CSV header above columns of categories", () => {

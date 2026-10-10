@@ -74,11 +74,14 @@ export function isYear(cell: Cell | undefined): boolean {
 
 /**
  * Whether the first row names columns of text: none of its cells is empty or recurs in its column,
- * in which some text does recur, as categories do ("city" above "Paris", "Rome" and "Paris").
+ * in which some text does recur, as categories do ("city" above "Paris", "Rome" and "Paris"), if
+ * `categories`, or which has no values at all below a name, as numbers not filled in ("value" above
+ * nothing).
  */
-function namesCategories(rows: Cell[][]): boolean {
+function namesColumns(rows: Cell[][], counts: ColumnCounts[], categories: boolean): boolean {
   const [first = [], ...rest] = rows;
   let recurs = false;
+  let unfilled = false;
   for (const [column, name] of first.entries()) {
     if (name === null) return false;
     const seen = new Set<Cell>();
@@ -90,16 +93,18 @@ function namesCategories(rows: Cell[][]): boolean {
         seen.add(cell);
       }
     }
+    const { numbers = 0, others = 0 } = counts[column] ?? {};
+    unfilled ||= numbers === 0 && others === 0 && !MISSING.test(String(name));
   }
-  return recurs;
+  return (categories && recurs) || unfilled;
 }
 
 /**
  * Whether the first row names the columns: it has text or years in order, and no other numbers
  * (as in "region,2024,2025", or ",2024,2025" as pandas writes a pivot table), and some column
- * below it holds numbers, or no values at all, as a column of numbers not yet known. CSV of text
- * only has a header if it {@link namesCategories}. A single row of text only is a header, as a
- * query or command prints when it finds nothing.
+ * below it holds numbers. A first row of text alone is a header if it {@link namesColumns}, of
+ * categories only in CSV. A single row of text only is a header, as a query or command prints when
+ * it finds nothing.
  */
 function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolean {
   const first = rows[0];
@@ -141,16 +146,7 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolea
       return false;
     }
   }
-  const named = (cell: Cell, column: number) =>
-    typeof cell === "string" &&
-    !MISSING.test(cell) &&
-    counts[column]?.numbers === 0 &&
-    counts[column]?.others === 0;
-  return (
-    counts.some(isNumeric) ||
-    first.some(named) ||
-    (csv && numbers.length === 0 && namesCategories(rows))
-  );
+  return counts.some(isNumeric) || (numbers.length === 0 && namesColumns(rows, counts, csv));
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */
