@@ -513,7 +513,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
         "userDescription": "Search workspace files for text",
-        "modelDescription": "Search workspace text files, including unsaved editor changes, for a literal string. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
+        "modelDescription": "Search workspace text files, including unsaved editor changes, for a literal string, in the files that diagram_findFiles lists. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
         "tags": [
           "diagram"
         ],
