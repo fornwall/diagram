@@ -206,11 +206,8 @@ suite("ECharts in the webview", function () {
     assert.strictEqual(
       await evaluate(`(async () => {
         document.getElementById("view-visual").click();
-        const chart = document.getElementById("chart");
-        const svg = chart.querySelector("svg");
-        ${UNTIL}
-        return until(() => chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
-          svg.height.baseVal.value === chart.clientHeight, "the chart to take the size of its container");
+        ${CHART_FITTED}
+        return chartFitted();
       })()`),
       true,
     );
@@ -1379,15 +1376,11 @@ suite("ECharts in the webview", function () {
       await evaluate(`(async () => {
         ${PRESS}
         ${UNTIL}
+        ${CLICK_CHART}
         const status = () => document.getElementById("chart-status").textContent;
         // A click on the legend's entry, which the pie's labels, left out, do not share a name with.
-        const clickLegend = name => {
-          const svg = chart.querySelector("svg");
-          const entry = [...svg.querySelectorAll("text")].find(text => text.textContent === name);
-          const box = entry.getBoundingClientRect();
-          const init = {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2};
-          for (const type of ["mousedown", "mouseup", "click"]) svg.dispatchEvent(new MouseEvent(type, init));
-        };
+        const clickLegend = name =>
+          clickChart([...chart.querySelectorAll("svg text")].find(text => text.textContent === name));
         chart.focus();
         // Where H is on a Russian keyboard.
         const steps = [press("Home"), press("р", {code: "KeyH"})];
