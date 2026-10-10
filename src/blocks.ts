@@ -88,11 +88,11 @@ function mayOpenDiagramBlock(partialLine: string): boolean {
   if (/^(?:[-+*]|\d{1,9}[.)]?)?$/.test(rest)) {
     return true;
   }
-  const [, fence = "", info] = /^(`+|~+|:+)(.*)$/s.exec(rest) ?? [];
-  if (info === "") {
+  // A fence, maybe still short, whose info string has not started.
+  if (/^(?:`+|~+|:+)$/.test(rest)) {
     return true;
   }
-  const language = fence.length >= 3 ? fenceMarker(rest)?.language : undefined;
+  const language = fenceMarker(rest)?.language;
   return (
     language !== undefined && DIAGRAM_LANGUAGES.some((diagram) => diagram.startsWith(language))
   );
