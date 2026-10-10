@@ -948,8 +948,13 @@ suite("charts", () => {
     const exact = chart("gauge", { max: 0.7 });
     assert.strictEqual(build(exact, "metric,Latency (ms)\np99,120").series[0].max, 700);
     const balance = "month,balance\njan,-3";
-    assert.strictEqual(build(chart("gauge"), balance).series[0].min, -3);
-    assert.match(summary(chart("gauge"), balance), /scaled it from -3 to 1, rounded up/);
+    // A negative value lies within a round scale up to zero, rather than at its start.
+    assert.deepStrictEqual(
+      [build(chart("gauge"), balance).series[0].min, build(chart("gauge"), balance).series[0].max],
+      [-5, 0],
+    );
+    assert.match(summary(chart("gauge"), balance), /scaled it from -5 to 0, rounded down from the/);
+    assert.strictEqual(build(chart("gauge", { max: 10 }), balance).series[0].min, -5);
   });
 
   test("gauge preserves missing readings instead of replacing them with zero", () => {

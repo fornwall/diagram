@@ -143,9 +143,12 @@ export function gaugeOption({
         ? [100, "as the values are percentages"]
         : total > value
           ? [total, `the total of ${JSON.stringify(name)}`]
-          : [niceMax(value), "rounded up from the value"];
+          : value < 0
+            ? [0, "rounded down from the value"]
+            : [niceMax(value), "rounded up from the value"];
+  // A negative value lies on a scale from a round number below it, rather than at its very start.
+  const min = value < 0 ? -niceMax(-value) : 0;
   // A scale needs room: a gauge from 0 to 0 draws nothing.
-  const min = Math.min(0, value);
   const scale = top > min ? top : min + 1;
   notes.push(`scaled it ${min < 0 ? `from ${min} ` : ""}to ${scale}, ${reason}`);
   if (value > scale) {
