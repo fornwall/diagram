@@ -868,20 +868,17 @@ suite("webview", function () {
     await draw({ source, title: guessed });
     await evaluate(`document.getElementById("zoom-in").click()`);
     assert.deepStrictEqual(await state(), { zoom: "125%", title: guessed });
-    try {
-      await apply(`---\ntitle: Login\n---\n${source}`);
-      assert.deepStrictEqual(await state(), { zoom: "125%", title: "Login" });
-      assert.strictEqual(page.panel.current?.title, "Login");
-      await webviewTabs((labels) => labels.includes("Login"));
-      await apply(`---\ntitle: Sign in\n---\n${source}`);
-      assert.deepStrictEqual(await state(), { zoom: "125%", title: "Sign in" });
-      // A title that a model gave stays.
-      await draw({ source, title: "Overview" });
-      await apply(`---\ntitle: Login\n---\n${source}`);
-      assert.deepStrictEqual(await state(), { zoom: "100%", title: "Overview" });
-    } finally {
-      await evaluate('document.getElementById("view-visual").click()');
-    }
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    await apply(`---\ntitle: Login\n---\n${source}`);
+    assert.deepStrictEqual(await state(), { zoom: "125%", title: "Login" });
+    assert.strictEqual(page.panel.current?.title, "Login");
+    await webviewTabs((labels) => labels.includes("Login"));
+    await apply(`---\ntitle: Sign in\n---\n${source}`);
+    assert.deepStrictEqual(await state(), { zoom: "125%", title: "Sign in" });
+    // A title that a model gave stays.
+    await draw({ source, title: "Overview" });
+    await apply(`---\ntitle: Login\n---\n${source}`);
+    assert.deepStrictEqual(await state(), { zoom: "100%", title: "Overview" });
   });
 
   test("zooms at the pointer in proportion to Ctrl+scrolling, and as much as a pinch", async () => {
@@ -1213,33 +1210,30 @@ suite("webview", function () {
       input.scrollTop = 300;
       return start;
     })()`);
-    try {
-      // A line inserted before the caret moves it along.
-      await draw({ source: `flowchart LR\n  X --> Y\n${lines}` });
-      assert.deepStrictEqual(
-        await evaluate(`(() => {
-          const input = document.getElementById("source");
-          return {selection: [input.selectionStart, input.selectionEnd, input.selectionDirection],
-            selected: input.value.slice(input.selectionStart, input.selectionEnd), top: input.scrollTop};
-        })()`),
-        {
-          selection: [Number(caret) + 10, Number(caret) + 13, "backward"],
-          selected: "N40",
-          top: 300,
-        },
-      );
-      // Another diagram's source shows from its start, as its drawing does.
-      await draw({ title: "Another", source: `flowchart LR\n  Z --> W\n${lines}` });
-      assert.deepStrictEqual(
-        await evaluate(`(() => {
-          const input = document.getElementById("source");
-          return {selection: [input.selectionStart, input.selectionEnd], top: input.scrollTop};
-        })()`),
-        { selection: [0, 0], top: 0 },
-      );
-    } finally {
-      await evaluate('document.getElementById("view-visual").click()');
-    }
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    // A line inserted before the caret moves it along.
+    await draw({ source: `flowchart LR\n  X --> Y\n${lines}` });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const input = document.getElementById("source");
+        return {selection: [input.selectionStart, input.selectionEnd, input.selectionDirection],
+          selected: input.value.slice(input.selectionStart, input.selectionEnd), top: input.scrollTop};
+      })()`),
+      {
+        selection: [Number(caret) + 10, Number(caret) + 13, "backward"],
+        selected: "N40",
+        top: 300,
+      },
+    );
+    // Another diagram's source shows from its start, as its drawing does.
+    await draw({ title: "Another", source: `flowchart LR\n  Z --> W\n${lines}` });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const input = document.getElementById("source");
+        return {selection: [input.selectionStart, input.selectionEnd], top: input.scrollTop};
+      })()`),
+      { selection: [0, 0], top: 0 },
+    );
   });
 
   test("undoes Revert, as the edits it discards stay in the source's history", async () => {
@@ -1336,26 +1330,23 @@ suite("webview", function () {
     const shown = () => `({source: document.getElementById("source").value,
       stale: !document.getElementById("stale-note").hidden,
       disabled: document.getElementById("apply").disabled})`;
-    try {
-      assert.deepStrictEqual(
-        await evaluate(`(() => {
-          document.getElementById("revert").click();
-          const reverted = ${shown()};
-          document.execCommand("undo");
-          const undone = ${shown()};
-          document.execCommand("redo");
-          return {reverted, undone, redone: ${shown()}};
-        })()`),
-        {
-          reverted: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
-          // Apply would replace the newer diagram with the edits, which the note says.
-          undone: { source: draft, stale: true, disabled: false },
-          redone: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
-        },
-      );
-    } finally {
-      await evaluate('document.getElementById("view-visual").click()');
-    }
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        document.getElementById("revert").click();
+        const reverted = ${shown()};
+        document.execCommand("undo");
+        const undone = ${shown()};
+        document.execCommand("redo");
+        return {reverted, undone, redone: ${shown()}};
+      })()`),
+      {
+        reverted: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
+        // Apply would replace the newer diagram with the edits, which the note says.
+        undone: { source: draft, stale: true, disabled: false },
+        redone: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
+      },
+    );
   });
 
   test("keeps the focus in the source when Apply, pressed, disables itself", async () => {

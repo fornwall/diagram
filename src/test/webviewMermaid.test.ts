@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
 import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
-import { replace } from "./afterTest";
+import { afterTest, replace } from "./afterTest";
 import { webviewTabs } from "./newPanel";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
@@ -220,39 +220,36 @@ suite("Mermaid in the webview", function () {
   });
 
   test("draws Gantt charts at the width of the canvas they are shown in", async () => {
-    try {
-      for (const view of ["split", "visual", "source"]) {
-        if (view === "source") {
-          // The first chart drawn in the Source view takes the width of the Visual view.
-          await evaluate(`(() => {
-            document.querySelector(".mermaid-layout").style.width = "";
-            document.getElementById("view-source").click();
-          })()`);
-          await draw({ source: MERMAID.gantt });
-          // The canvas fits the drawing in the frame after the one in which it sees its new size.
-          await evaluate(`(async () => {
-            document.getElementById("view-visual").click();
-            for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
-          })()`);
-        } else {
-          await evaluate(`document.getElementById("view-${view}").click()`);
-          await draw({ source: MERMAID.gantt });
-        }
-        const { drawn, room, zoom } = (await evaluate(`(() => {
-          const canvas = document.getElementById("canvas");
-          const style = getComputedStyle(canvas);
-          return {
-            drawn: document.querySelector("#diagram svg").viewBox.baseVal.width,
-            room: canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-            zoom: document.getElementById("zoom-reset").textContent,
-          };
-        })()`)) as { drawn: number; room: number; zoom: string };
-        assert.ok(Math.abs(drawn - room) < 1, `${view}: drawn ${drawn} wide in ${room}`);
-        assert.strictEqual(zoom, "100%", view);
+    // The view that the tests share.
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    for (const view of ["split", "visual", "source"]) {
+      if (view === "source") {
+        // The first chart drawn in the Source view takes the width of the Visual view.
+        await evaluate(`(() => {
+          document.querySelector(".mermaid-layout").style.width = "";
+          document.getElementById("view-source").click();
+        })()`);
+        await draw({ source: MERMAID.gantt });
+        // The canvas fits the drawing in the frame after the one in which it sees its new size.
+        await evaluate(`(async () => {
+          document.getElementById("view-visual").click();
+          for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame);
+        })()`);
+      } else {
+        await evaluate(`document.getElementById("view-${view}").click()`);
+        await draw({ source: MERMAID.gantt });
       }
-    } finally {
-      // The view that the tests share.
-      await evaluate(`document.getElementById("view-visual").click()`);
+      const { drawn, room, zoom } = (await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const style = getComputedStyle(canvas);
+        return {
+          drawn: document.querySelector("#diagram svg").viewBox.baseVal.width,
+          room: canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          zoom: document.getElementById("zoom-reset").textContent,
+        };
+      })()`)) as { drawn: number; room: number; zoom: string };
+      assert.ok(Math.abs(drawn - room) < 1, `${view}: drawn ${drawn} wide in ${room}`);
+      assert.strictEqual(zoom, "100%", view);
     }
   });
 

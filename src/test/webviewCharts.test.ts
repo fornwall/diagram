@@ -193,32 +193,29 @@ suite("ECharts in the webview", function () {
   test("sizes a chart first rendered in Source view and resizes it when revealed", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate('document.getElementById("view-source").click()');
-    try {
-      await draw({
-        language: "echarts",
-        source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
-      });
-      assert.strictEqual(
-        await evaluate(`(() => {
-          const svg = document.querySelector("#chart svg");
-          return svg.width.baseVal.value > 0 && svg.height.baseVal.value > 0;
-        })()`),
-        true,
-      );
-      assert.strictEqual(
-        await evaluate(`(async () => {
-          document.getElementById("view-visual").click();
-          const chart = document.getElementById("chart");
-          const svg = chart.querySelector("svg");
-          ${UNTIL}
-          return until(() => chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
-            svg.height.baseVal.value === chart.clientHeight, "the chart to take the size of its container");
-        })()`),
-        true,
-      );
-    } finally {
-      await evaluate('document.getElementById("view-visual").click()');
-    }
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    await draw({
+      language: "echarts",
+      source: '{"series": [{"type": "pie", "data": [1, 2]}]}',
+    });
+    assert.strictEqual(
+      await evaluate(`(() => {
+        const svg = document.querySelector("#chart svg");
+        return svg.width.baseVal.value > 0 && svg.height.baseVal.value > 0;
+      })()`),
+      true,
+    );
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        document.getElementById("view-visual").click();
+        const chart = document.getElementById("chart");
+        const svg = chart.querySelector("svg");
+        ${UNTIL}
+        return until(() => chart.clientWidth > 0 && svg.width.baseVal.value === chart.clientWidth &&
+          svg.height.baseVal.value === chart.clientHeight, "the chart to take the size of its container");
+      })()`),
+      true,
+    );
   });
 
   test("reports a chart option it cannot draw as invalid, with the reason", async () => {
