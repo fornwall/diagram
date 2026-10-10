@@ -1,6 +1,6 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
-import { joinWords } from "../text";
+import { joinWords, quote } from "../text";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
@@ -413,7 +413,7 @@ function position(text: string, offset: number): { line: number; column: number 
 function describe(source: string, start: number, end: number, expected?: string[]): string {
   const span = source.slice(start, end).split("\n", 1)[0] as string;
   const text = span.trim();
-  let found = JSON.stringify(text.length > 30 ? `${text.slice(0, 30)}…` : text);
+  let found = quote(text, 30);
   if (!text) {
     // Spaces at the end of a line, or of the diagram, are not what the parser stopped at.
     const rest = source.slice(start);
