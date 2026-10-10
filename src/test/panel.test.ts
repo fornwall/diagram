@@ -17,6 +17,7 @@ import {
   recordMessages,
   replace,
   tempDir,
+  workspaceLink,
 } from "./afterTest";
 import {
   FakeWebview,
@@ -974,13 +975,9 @@ suite("panel", function () {
    * instead, of the item "Out".
    */
   async function linkedChart() {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
     const outside = path.join(tempDir("diagram-refresh-"), "data.csv");
     fs.writeFileSync(outside, "name,value\nOut,7");
-    const link = path.join(root.uri.fsPath, "diagram-refresh-link.tsv");
-    fs.symlinkSync("sizes.tsv", link);
-    afterTest(() => fs.rmSync(link));
+    const link = workspaceLink("diagram-refresh-link.tsv", "sizes.tsv");
     const { panel, webview } = await newFakePanel();
     const chart = { type: "pie", file: path.basename(link) } as const;
     const diagram = { language: "echarts", source: PIE, title: "Sizes", chart } as const;

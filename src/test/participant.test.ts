@@ -4,7 +4,7 @@ import { ChartTool, UpdateChartTool } from "../chartTools";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
 import { drawnResult } from "../tools";
-import { afterTest, cancellationSource, replace } from "./afterTest";
+import { afterTest, cancellationSource, replace, workspaceRoot } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
@@ -1011,8 +1011,7 @@ suite("participant", () => {
   });
 
   test("attaches referenced files, selections and text in prompt order", async () => {
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-    assert.ok(folder);
+    const folder = workspaceRoot().uri;
     const file = vscode.Uri.joinPath(folder, "sizes.tsv");
     const references = [
       { id: "folder", value: folder },
@@ -1078,8 +1077,7 @@ suite("participant", () => {
   });
 
   test("points the model to the workspace tools for an attached folder", async () => {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-    assert.ok(root);
+    const root = workspaceRoot().uri;
     const folder = vscode.Uri.joinPath(root, "attached-folder");
     await vscode.workspace.fs.createDirectory(folder);
     try {
@@ -1131,8 +1129,7 @@ suite("participant", () => {
   });
 
   test("gives the model attached images once, and says why others are left out", async () => {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-    assert.ok(root);
+    const root = workspaceRoot().uri;
     const file = vscode.Uri.joinPath(root, "whiteboard.PNG");
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     await vscode.workspace.fs.writeFile(file, png);
@@ -1235,8 +1232,7 @@ suite("participant", () => {
   });
 
   test("does not note an earlier request's image that is attached again", async () => {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-    assert.ok(root);
+    const root = workspaceRoot().uri;
     const file = vscode.Uri.joinPath(root, "again.png");
     await vscode.workspace.fs.writeFile(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     const pasted = (bytes: number[]) => ({
@@ -1269,8 +1265,7 @@ suite("participant", () => {
   });
 
   test("gives the model earlier turns, with their diagrams and attachments", async () => {
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-    assert.ok(folder);
+    const folder = workspaceRoot().uri;
     const references = [{ id: "file", value: vscode.Uri.joinPath(folder, "sizes.tsv") }];
     const history = exchange(
       "Draw #file:sizes.tsv",
