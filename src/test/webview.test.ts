@@ -177,6 +177,29 @@ suite("webview", function () {
     );
   });
 
+  test("tells the pressed view button apart in high contrast themes", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        // The colors of the Dark High Contrast theme, which borders buttons and toggles alike.
+        const views = document.getElementById("views");
+        views.style.cssText = "--vscode-contrastBorder: #6fc3df; --vscode-inputOption-activeBorder: #6fc3df;" +
+          "--vscode-inputOption-activeBackground: transparent";
+        try {
+          const look = (id) => {
+            const style = getComputedStyle(document.getElementById(id));
+            return style.borderColor + " " + style.backgroundColor;
+          };
+          return {pressed: document.getElementById("view-visual").ariaPressed,
+            distinct: look("view-visual") !== look("view-split") && look("view-split") === look("view-source")};
+        } finally {
+          views.style.cssText = "";
+        }
+      })()`),
+      { pressed: "true", distinct: true },
+    );
+  });
+
   test("only enables sending to chat when the message contains text", async () => {
     assert.deepStrictEqual(
       await evaluate(`(() => {

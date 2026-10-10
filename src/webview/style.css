@@ -186,6 +186,12 @@ button.link:enabled:hover {
   padding: 3px 6px;
 }
 
+/* High contrast themes outline every toolbar button in the color that marks the pressed one, and
+   give it no background: outline the pressed one alone, as VS Code does its toggles. */
+.views button[aria-pressed="false"] {
+  border-color: transparent;
+}
+
 .views button[aria-pressed="true"] {
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   background: var(--vscode-inputOption-activeBackground);
