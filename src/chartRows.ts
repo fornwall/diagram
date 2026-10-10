@@ -430,6 +430,13 @@ export function readRows(
       notes.push(`left out ${plural(left, "row")} without ${without}`);
     }
     rows = charted;
+  } else if (
+    shared !== undefined &&
+    rows.every(({ values }) => values.every((value) => value === null))
+  ) {
+    // A facet without a number to draw is an empty panel, as one without a point of a scatter is.
+    empty = `No row has a number in ${quoteAll(valueIndices.map(name))} to chart.`;
+    notes.push("no row has a number to draw");
   }
   const beforeLimit = rows.length;
   const combineOther = type === "pie" || type === "doughnut";

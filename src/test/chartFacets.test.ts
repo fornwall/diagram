@@ -207,6 +207,20 @@ suite("chartFacets", () => {
     }
   });
 
+  test("a bar facet without a number says so, and fails the chart when every facet has none", () => {
+    const data = "service,operation,ms\napi,read,2\nworker,write,\nworker,read,";
+    const chart = buildChart({ type: "bar", data, facetColumn: "service" }, parseTable(data));
+    assert.match(chart.summary, /"worker": Charted "ms" by "operation"; no row has a number/);
+    assert.doesNotMatch(chart.summary, /"api": [^"]*no row/);
+    // Numbers of "ms" only in rows that a filter leaves out of every facet's time axis.
+    const undated = "service,date,ms\napi,2026-01-01,\napi,,3\nworker,2026-01-02,";
+    assert.throws(
+      () =>
+        buildChart({ type: "line", data: undated, facetColumn: "service" }, parseTable(undated)),
+      new Error('No row has a number in "ms" to chart.'),
+    );
+  });
+
   test("facets that alone would read their labels differently share one axis type", () => {
     // Alone, "api" reads as dates and "worker" as categories.
     const data = "service,when,ms\napi,2026-01-01,2\napi,2026-01-02,3\nworker,soon,30";
