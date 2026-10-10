@@ -1288,9 +1288,10 @@ suite("ECharts in the webview", function () {
           ${UNTIL}
           const status = () => document.getElementById("chart-status").textContent;
           chart.focus();
-          const steps = [press("Home"), press("h", {code: "KeyH"})];
-          // On to an item still shown, once the chart is drawn without the hidden one.
-          steps.push(await until(() => status() !== steps[1] && status(), "the next item", nextFrame));
+          const steps = [press("Home"), press("ArrowRight"), press("h", {code: "KeyH"})];
+          // On to an item still shown, at the same place in another series, once the chart is
+          // drawn without the hidden one.
+          steps.push(await until(() => status() !== steps[2] && status(), "the next item", nextFrame));
           steps.push(press("H", {code: "KeyH", shiftKey: true}));
           // The focused item stays, and the hidden series is there again to go to.
           for (let frame = 0; frame < 2; frame++) await nextFrame();
@@ -1303,12 +1304,13 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(announced, [
       [
         "Mon: 1, series A, 1 of 3",
+        "Tue: 2, series A, 2 of 3",
         "A hidden",
-        "Mon: 2, series B, 1 of 3",
+        "Tue: 3, series B, 2 of 3",
         "All shown",
-        "Mon: 1, series A, 1 of 3",
+        "Tue: 2, series A, 2 of 3",
       ],
-      ["X: 1, 1 of 3", "X hidden", "Y: 2, 1 of 2", "All shown", "X: 1, 1 of 3"],
+      ["X: 1, 1 of 3", "Y: 2, 2 of 3", "Y hidden", "X: 1, 1 of 2", "All shown", "Z: 3, 3 of 3"],
     ]);
     // Without a legend shown, nothing hides.
     await renderChart({ ...SALES, legend: { show: false } });

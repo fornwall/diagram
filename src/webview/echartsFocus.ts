@@ -118,6 +118,13 @@ export class ChartNavigation {
     return this.spot(ref) !== undefined;
   }
 
+  /** The item at the same place in the first series that shows one, as for a series hidden. */
+  samePlace({ dataType, dataIndex }: ItemRef): ItemRef | undefined {
+    return this.tracks
+      .map(({ seriesIndex }) => ({ seriesIndex, dataType, dataIndex }))
+      .find((ref) => this.shows(ref));
+  }
+
   /** The item a key leads to from the given one: an arrow key, Home or End. */
   move(from: ItemRef, key: string): ItemRef | undefined {
     if (key === "Home") return this.first();
@@ -567,7 +574,10 @@ export class ChartFocus {
     return current !== undefined;
   }
 
-  /** The focused item if the chart still shows it, the first item otherwise. */
+  /**
+   * The focused item if the chart still shows it, else an item of its id, or one at its place in
+   * another series, as when the legend hid its series, else the first item.
+   */
   private current(navigation: ChartNavigation): ItemRef | undefined {
     const items = this.items();
     if (!items) return undefined;
@@ -575,7 +585,8 @@ export class ChartFocus {
       const { key, id } = this.focused;
       const ref = parseItemKey(key);
       if (navigation.shows(ref) && items.node(key)?.id === id) return ref;
-      const same = items.find(id).find((each) => navigation.shows(each));
+      const same =
+        items.find(id).find((each) => navigation.shows(each)) ?? navigation.samePlace(ref);
       if (same) return same;
     }
     return navigation.first();
