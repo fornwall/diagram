@@ -25,7 +25,7 @@ suite("images in the webview", function () {
         document.getElementById("view-source").click();
         try {
           ${DRAG_IMAGE}
-          const svg = (await dragImage()).getData("image/svg+xml");
+          const svg = await dragImage();
           const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
           return {
             hidden: chart.getBoundingClientRect().width === 0,
@@ -55,7 +55,7 @@ suite("images in the webview", function () {
       paths.push(
         await evaluate(`(async () => {
           ${DRAG_IMAGE}
-          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const svg = await dragImage({shiftKey: true});
           const image = new DOMParser().parseFromString(svg, "image/svg+xml");
           // The bars are the filled paths: a bar under the system pointer, whose emphasis the export
           // ends at once, has its color written as rgb(18,52,86) instead.
@@ -79,7 +79,7 @@ suite("images in the webview", function () {
     });
     const labels = await evaluate(`(async () => {
       ${DRAG_IMAGE}
-      const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+      const svg = await dragImage({shiftKey: true});
       const image = new DOMParser().parseFromString(svg, "image/svg+xml");
       return [...image.querySelectorAll("text")].map(text =>
         text.textContent + " " + (text.getAttribute("fill-opacity") ?? text.getAttribute("opacity") ?? 1));
@@ -110,7 +110,7 @@ suite("images in the webview", function () {
       ${DRAG_IMAGE}
       ${UNTIL}
       // What is drawn, without the ids that ECharts numbers anew in each drawing.
-      const image = async () => (await dragImage({shiftKey: true})).getData("image/svg+xml")
+      const image = async () => (await dragImage({shiftKey: true}))
         .replace(/ (id|clip-path)="[^"]*"/g, "");
       const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
       const marked = await until(() => red() === 1, "the marked item");
@@ -139,7 +139,7 @@ suite("images in the webview", function () {
       drawn.push(
         await evaluate(`(async () => {
           ${DRAG_IMAGE}
-          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const svg = await dragImage({shiftKey: true});
           const image = new DOMParser().parseFromString(svg, "image/svg+xml");
           await new Promise(requestAnimationFrame);
           return {
@@ -167,7 +167,7 @@ suite("images in the webview", function () {
           chart.style.height = "234px";
           const expected = [chart.clientWidth, chart.clientHeight];
           ${DRAG_IMAGE}
-          const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+          const svg = await dragImage({shiftKey: true});
           const image = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
           return {expected, actual: [Number(image.getAttribute("width")), Number(image.getAttribute("height"))]};
         } finally {
@@ -206,7 +206,8 @@ suite("images in the webview", function () {
           ${DRAG_IMAGE}
           ${UNTIL}
           // Without Shift, which an earlier drag may have held, to ask for a PNG.
-          let dataTransfer = await dragImage({shiftKey: false});
+          await dragImage({shiftKey: false});
+          let dataTransfer;
           await until(() => {
             dataTransfer = new DataTransfer();
             document.getElementById("drag-out")
@@ -309,7 +310,7 @@ suite("images in the webview", function () {
       await draw({ source });
       const drawn = (await evaluate(`(async () => {
         ${DRAG_IMAGE}
-        const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+        const svg = await dragImage({shiftKey: true});
         const pixels = async (markup) => {
           const image = new Image();
           image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup);
@@ -341,7 +342,7 @@ suite("images in the webview", function () {
       await draw({ source });
       return evaluate(`(async () => {
         ${DRAG_IMAGE}
-        const svg = (await dragImage()).getData("image/svg+xml");
+        const svg = await dragImage();
         const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
         return {
           htmlLabels: parsed.querySelectorAll("foreignObject").length,
@@ -391,7 +392,7 @@ suite("images in the webview", function () {
       const exported = await evaluate(`(async () => {
         ${DRAG_IMAGE}
         const host = document.createElement("div");
-        host.innerHTML = (await dragImage()).getData("image/svg+xml");
+        host.innerHTML = await dragImage();
         document.body.append(host);
         /** The boxes in the drawing's units, rounded. */
         const boxes = (svg, rects) => rects.map(rect => {
@@ -432,7 +433,7 @@ suite("images in the webview", function () {
       const shown = document.querySelector("#diagram switch .label");
       ${DRAG_IMAGE}
       const host = document.createElement("div");
-      host.innerHTML = (await dragImage()).getData("image/svg+xml");
+      host.innerHTML = await dragImage();
       document.body.append(host);
       try {
         const text = Array.from(host.querySelectorAll("switch > text"))
@@ -464,7 +465,7 @@ suite("images in the webview", function () {
       const offCenter = await evaluate(`(async () => {
         ${DRAG_IMAGE}
         const host = document.createElement("div");
-        host.innerHTML = (await dragImage()).getData("image/svg+xml");
+        host.innerHTML = await dragImage();
         document.body.append(host);
         const center = (box) => (box.left + box.right) / 2;
         const problems = Array.from(host.querySelectorAll("g.node:has(text)"), node => {
@@ -510,7 +511,7 @@ suite("images in the webview", function () {
       await draw(drawing);
       const image = await evaluate(`(async () => {
         ${DRAG_IMAGE}
-        const svg = (await dragImage({shiftKey: true})).getData("image/svg+xml");
+        const svg = await dragImage({shiftKey: true});
         const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
         return {
           error: parsed.querySelector("parsererror")?.textContent ?? null,
@@ -531,7 +532,7 @@ suite("images in the webview", function () {
     await draw({ source });
     const exported = await evaluate(`(async () => {
       ${DRAG_IMAGE}
-      const image = (await dragImage()).getData("image/svg+xml");
+      const image = await dragImage();
       const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
       return Array.from(parsed.querySelectorAll("text"), text =>
         Array.from(text.querySelectorAll(".text-outer-tspan"), line => line.textContent.replace(/\\s+/g, " ").trim()).join("|"));
@@ -552,7 +553,7 @@ suite("images in the webview", function () {
       const shown = getComputedStyle(document.querySelector("#diagram foreignObject")).overflow;
       ${DRAG_IMAGE}
       const host = document.createElement("div");
-      host.innerHTML = (await dragImage()).getData("image/svg+xml");
+      host.innerHTML = await dragImage();
       document.body.append(host);
       const exported = Array.from(host.querySelectorAll("foreignObject"), box => getComputedStyle(box).overflow);
       host.remove();
@@ -575,7 +576,7 @@ suite("images in the webview", function () {
         const formulas = root => Array.from(root.querySelectorAll("math"), math => math.textContent).sort();
         const shown = formulas(document.querySelector("#diagram svg"));
         ${DRAG_IMAGE}
-        const image = (await dragImage()).getData("image/svg+xml");
+        const image = await dragImage();
         const parsed = new DOMParser().parseFromString(image, "image/svg+xml");
         // A formula's text fallback in a switch is its TeX.
         const tex = Array.from(parsed.querySelectorAll("text"))
@@ -602,7 +603,7 @@ suite("images in the webview", function () {
       await draw({ source });
       const svg = (await evaluate(`(async () => {
         ${DRAG_IMAGE}
-        return (await dragImage()).getData("image/svg+xml");
+        return await dragImage();
       })()`)) as string;
       const id = /<svg[^>]* id="([^"]+)"/.exec(svg)?.[1] ?? "";
       const references = [...svg.matchAll(/url\(#([^)]+)\)/g)].map((match) => match[1] ?? "");
@@ -629,7 +630,7 @@ suite("images in the webview", function () {
       };
       try {
         ${DRAG_IMAGE}
-        const svg = (await dragImage()).getData("image/svg+xml");
+        const svg = await dragImage();
         return {drawn, svg};
       } finally {
         XMLSerializer.prototype.serializeToString = original;

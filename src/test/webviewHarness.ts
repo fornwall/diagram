@@ -244,8 +244,9 @@ export const FOCUSED = `${UNTIL}
   await until(() => document.hasFocus(), "the focus in the page");`;
 
 /**
- * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
- * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
+ * Webview code defining `dragImage(init)`: the SVG that dragging the drawing out of the panel
+ * carries, once the image is ready, with the pointer pressed on the handle as `init` says, such as
+ * with Shift.
  * It keeps its `until` to itself, for expressions that define their own.
  */
 export const DRAG_IMAGE = `
@@ -258,7 +259,7 @@ export const DRAG_IMAGE = `
       return until(() => {
         const dataTransfer = new DataTransfer();
         handle.dispatchEvent(new DragEvent("dragstart", {dataTransfer, cancelable: true}));
-        return dataTransfer.getData("image/svg+xml") && dataTransfer;
+        return dataTransfer.getData("image/svg+xml");
       }, "the drag image");
     };
   })();`;

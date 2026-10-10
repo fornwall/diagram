@@ -270,7 +270,7 @@ suite("relationships", function () {
     await draw({ source: "flowchart LR\n A edge@-->|Exported| B" });
     const svg = (await evaluate(`(async () => {
       ${DRAG_IMAGE}
-      return (await dragImage()).getData("image/svg+xml");
+      return await dragImage();
     })()`)) as string;
     assert.match(svg, /Exported/);
     assert.doesNotMatch(svg, /diagram-relationship-hit|data-diagram-id|aria-pressed/);

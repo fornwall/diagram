@@ -152,7 +152,7 @@ suite("Mermaid in the webview", function () {
         const labels = shown(document.querySelector("#diagram svg"));
         const boxes = labels.map(text => text.getBoundingClientRect());
         ${DRAG_IMAGE}
-        const image = (await dragImage()).getData("image/svg+xml");
+        const image = await dragImage();
         return {
           panel: labels.map(text => text.textContent),
           apart: boxes.every((box, i) => i === 0 || box.left > boxes[i - 1].right),
@@ -417,7 +417,7 @@ suite("Mermaid in the webview", function () {
           .filter(text => text.width && (text.left < drawing.left - 1 || text.right > drawing.right + 1
             || text.top < drawing.top - 1 || text.bottom > drawing.bottom + 1)).length;
         ${DRAG_IMAGE}
-        const image = (await dragImage()).getData("image/svg+xml");
+        const image = await dragImage();
         const exported = new DOMParser().parseFromString(image, "image/svg+xml").documentElement;
         return {clipped, viewBox: svg.getAttribute("viewBox") === exported.getAttribute("viewBox")};
       })()`)) as { clipped: number; viewBox: boolean };
@@ -1773,7 +1773,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
       await draw({ source, title: "Links" });
       const svg = await evaluate(`(async () => {
         ${DRAG_IMAGE}
-        return (await dragImage()).getData("image/svg+xml");
+        return await dragImage();
       })()`);
       assert.ok(typeof svg === "string" && /Docs|Wiki/.test(svg));
       assert.doesNotMatch(svg, /example\.com|href/);
