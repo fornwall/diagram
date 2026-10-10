@@ -361,6 +361,32 @@ suite("echartsLayout", () => {
     assert.strictEqual(itemHeight({ categories: ["A", "B"] }), undefined);
   });
 
+  test("gives up a zoom slider, a subtitle and a title in turn for a plot too short to read", () => {
+    const at = (height: number) => {
+      const option = layout(
+        bars({
+          title: { text: "Latency", subtext: "p50 and p99" },
+          dataZoom: [{ type: "slider" }],
+          series: ["p50", "p99"].map((name) => ({ type: "bar", name, data: [1, 2] })),
+        }),
+        { height },
+      );
+      return {
+        zoom: option.dataZoom[0].type,
+        subtext: option.title.subtext,
+        title: option.title.show !== false,
+        legend: option.legend.show !== false,
+      };
+    };
+    const full = { zoom: "slider", subtext: "p50 and p99", title: true, legend: true };
+    assert.deepStrictEqual(at(500), full);
+    assert.deepStrictEqual(at(240), { ...full, zoom: "inside" });
+    assert.deepStrictEqual(at(210), { ...full, zoom: "inside", subtext: "" });
+    assert.deepStrictEqual(at(190), { ...full, zoom: "inside", title: false });
+    // Where nothing more can be given up, the legend stays.
+    assert.deepStrictEqual(at(100), { ...full, zoom: "inside", title: false });
+  });
+
   test("hides a visual map below a chart too short for it and a plot to read", () => {
     const visualMap = { min: 0, max: 10 };
     const short = layout(bars({ title: { text: "T" }, visualMap }), { height: 220 });

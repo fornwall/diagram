@@ -194,7 +194,31 @@ function adoptStartingSeries(option: JsonObject, base: JsonObject): void {
   if (series.length > seriesOf(base).length) base.series = series;
 }
 
+/**
+ * How far a chart too short for its plot to be read gives up what is around the plot, step by
+ * step, each giving up what the one before did as well: a visual map below the chart, which then
+ * only colors the items, whose values the tooltip gives; a zoom slider below it, for zooming
+ * with the wheel and panning with the pointer inside the plot instead; a subtitle; and a title,
+ * which the panel's header goes with. A legend stays, which tells the series apart.
+ */
+const SQUEEZES = 4;
+
 export function layoutOption(source: JsonObject, context: LayoutContext): JsonObject {
+  for (let squeeze = 0; ; squeeze++) {
+    const option = layOutAround(source, context, squeeze);
+    if (option) return option;
+  }
+}
+
+/**
+ * The option laid out for the context, giving up as much as the squeeze says around the plot,
+ * unless that leaves the plot too short to read and a further squeeze could help.
+ */
+function layOutAround(
+  source: JsonObject,
+  context: LayoutContext,
+  squeeze: number,
+): JsonObject | undefined {
   const option = cloneOption(source);
   const base = baseOption(option);
   adoptStartingSeries(option, base);
@@ -214,7 +238,8 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
     const { width, height } = context;
     const compact = width < 560 || height < 340;
     const charWidth = context.colors.fontSize * 0.6;
-    layOut(base, series, cartesian, { width, height, compact, charWidth });
+    const room = layOut(base, series, cartesian, { width, height, compact, charWidth }, squeeze);
+    if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
   styleSeries(base, series, context.colors);
   drawLargeSeries(option, series);
@@ -325,14 +350,28 @@ const pixels = (value: unknown, width: number): number | undefined =>
       ? (Number.parseFloat(value) * width) / 100
       : undefined;
 
-/** Places the components around the plot, and fits the grid and series into the space left. */
-function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size: Size): void {
+/**
+ * Places the components around the plot, giving up as much as the squeeze says (see
+ * {@link SQUEEZES}), and fits the grid and series into the space left, whose height it returns.
+ */
+function layOut(
+  base: JsonObject,
+  series: JsonObject[],
+  cartesian: boolean,
+  size: Size,
+  squeeze: number,
+): number {
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
   const tools = toolboxWidth(base);
   for (const title of asArray(base.title)) {
     if (title.show === false || !(title.text || title.subtext)) {
       continue;
     }
+    if (squeeze >= 4) {
+      title.show = false;
+      continue;
+    }
+    if (squeeze >= 3 && title.text) title.subtext = "";
     const { top, bottom } = title;
     const side =
       bottom !== undefined || top === "bottom"
@@ -365,13 +404,14 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
     reserved.bottom = 44;
   }
   placeLegend(base, series, cartesian, reserved, size);
-  placeSliders(base, reserved, size);
+  placeSliders(base, reserved, size, squeeze);
   if (cartesian) {
     layOutGrid(base, reserved, size);
   }
   layOutPie(base, series, reserved, size);
   layOutBoxSeries(series, reserved, size);
   layOutRadar(base, reserved, size);
+  return size.height - reserved.top - reserved.bottom;
 }
 
 /** Whether a title is centered, which keeps it clear of a toolbox on the right on both sides. */
@@ -478,10 +518,9 @@ const VISUAL_MAP_HEIGHT = 52;
 
 /**
  * Places data zoom sliders along the axis they control, and visual maps below the chart, unless
- * the plot would be left too short to read: the visual map then only colors the items, whose
- * values the tooltip gives.
+ * the squeeze gives them up (see {@link SQUEEZES}).
  */
-function placeSliders(base: JsonObject, reserved: Insets, { width, height }: Size): void {
+function placeSliders(base: JsonObject, reserved: Insets, { width }: Size, squeeze: number): void {
   for (const zoom of asArray(base.dataZoom)) {
     if (
       zoom.show === false ||
@@ -496,7 +535,9 @@ function placeSliders(base: JsonObject, reserved: Insets, { width, height }: Siz
       (zoom.orient === undefined &&
         (zoom.yAxisIndex ?? zoom.yAxisId) !== undefined &&
         (zoom.xAxisIndex ?? zoom.xAxisId) === undefined);
-    if (vertical) {
+    if (!vertical && squeeze >= 2) {
+      zoom.type = "inside";
+    } else if (vertical) {
       Object.assign(zoom, { right: reserved.right + 8, width: 22 });
       reserved.right += 38;
     } else {
@@ -509,7 +550,7 @@ function placeSliders(base: JsonObject, reserved: Insets, { width, height }: Siz
       continue;
     }
     if (!has(visualMap, [...BOX_KEYS, "orient"])) {
-      if (height - reserved.top - reserved.bottom - VISUAL_MAP_HEIGHT < MIN_PLOT_HEIGHT) {
+      if (squeeze >= 1) {
         visualMap.show = false;
         continue;
       }

@@ -44,7 +44,7 @@ Chart Options uses the loaded data without rerunning commands. After VS Code res
 
 Diagrams follow your VS Code theme. Agents can mark items with notes, for example to walk you through a diagram.
 
-Charts leave out the toolbox's chart type switch, box zoom and brush, as laying the chart out again on a resize would undo them, and show its data view read-only.
+Charts leave out the toolbox's chart type switch, box zoom and brush, as laying the chart out again on a resize would undo them, and show its data view read-only. In a panel too short to read the plot, a chart gives up, in turn, its visual map below it, its zoom slider (zoom with the wheel and drag in the plot instead), its subtitle and its title.
 
 ## Edit Markdown diagrams
 
