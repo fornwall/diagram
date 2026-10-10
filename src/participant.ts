@@ -92,17 +92,6 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
     const callsTools = capabilities?.supportsToolCalling !== false;
     const viewsImages = acceptsImages(request.model);
-    const description =
-      request.command === "new" ? undefined : panel.describeForModel({ callsTools });
-    const current =
-      description === undefined ? undefined : { description, source: panel.current?.source };
-    // Until the request draws, or ends without drawing.
-    panel.startsNew = request.command === "new";
-    if (explain && !current) {
-      stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");
-      return;
-    }
-
     // Drawing may also use the tools the user attached; /explain only the read-only tools.
     const attachedNames = new Set(request.toolReferences.map((reference) => reference.name));
     const tools = callsTools
@@ -114,6 +103,19 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
               : attachedNames.has(tool.name) || DEFAULT_TOOLS.has(tool.name)),
         )
       : [];
+    const description =
+      request.command === "new"
+        ? undefined
+        : panel.describeForModel({ tools: new Set(tools.map(({ name }) => name)) });
+    const current =
+      description === undefined ? undefined : { description, source: panel.current?.source };
+    // Until the request draws, or ends without drawing.
+    panel.startsNew = request.command === "new";
+    if (explain && !current) {
+      stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");
+      return;
+    }
+
     const attached = tools.filter((tool) => attachedNames.has(tool.name));
     const leftOut = explain ? [...attachedNames].filter((name) => !READ_ONLY_TOOLS.has(name)) : [];
     if (!callsTools && attachedNames.size > 0) {

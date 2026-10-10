@@ -96,8 +96,26 @@ suite("describe", () => {
       summary,
       /It has 100 selectable relationships, .*diagram_getState lists their ids/,
     );
-    assert.doesNotMatch(describeDiagram(state, { relationships, callsTools: false }), /relation/);
+    assert.doesNotMatch(
+      describeDiagram(state, { relationships, tools: new Set<string>() }),
+      /relation/,
+    );
     assert.match(describeDiagram(state, { relationships, detail: "full" }), /L_A_B_99";/);
+    // As for /explain, which may read the diagram but not mark it.
+    const readOnly = describeDiagram(state, {
+      relationships,
+      tools: new Set(["diagram_getState"]),
+    });
+    assert.match(
+      readOnly,
+      /It has 100 selectable relationships, .*diagram_getState lists their ids/,
+    );
+    const long = flowchart(`flowchart LR\n%% ${"x".repeat(40_000)}`);
+    assert.match(
+      describeDiagram(long, { tools: new Set(["diagram_getState"]) }),
+      /too long to repeat in every request; diagram_getState gives it in full/,
+    );
+    assert.match(describeDiagram(long, { tools: new Set() }), /too long to show here/);
   });
 
   test("a model that calls no tools is told of the drawing, but of no tool", () => {
@@ -109,7 +127,7 @@ suite("describe", () => {
     };
     const state = { ...chart, links: { A: { file: "src/a.ts", line: 3 } } };
     assert.match(describeDiagram(state, drawing), /diagram_annotate.*\n.*diagram_annotate/);
-    const described = describeDiagram(state, { ...drawing, callsTools: false });
+    const described = describeDiagram(state, { ...drawing, tools: new Set<string>() });
     assert.doesNotMatch(described, /diagram_/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
     assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);

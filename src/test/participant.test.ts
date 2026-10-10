@@ -710,7 +710,12 @@ suite("participant", () => {
 
   test("/explain rejects mutating and unknown tools even when explicitly attached", async () => {
     await panel.render(
-      { language: "mermaid", source: "flowchart TD\n A --> B", title: "Original" },
+      {
+        language: "mermaid",
+        source: "flowchart TD\n A --> B",
+        title: "Original",
+        links: { A: { file: "sizes.tsv" } },
+      },
       "participant",
     );
     const before = panel.current;
@@ -746,6 +751,10 @@ suite("participant", () => {
     assert.strictEqual(result, undefined);
     assert.ok(sent[0]?.options.tools?.every((tool) => readOnlyTools.includes(tool.name)));
     assert.strictEqual(sent[0]?.options.toolMode, undefined);
+    // Nor does the description of the diagram tell the model to call them.
+    const described = sent[0]?.messages.map(messageText).find((m) => m.includes("Original"));
+    assert.match(described ?? "", /Code links: A → sizes\.tsv\.\n/);
+    assert.doesNotMatch(described ?? "", /Revision|diagram_render/);
     // Not "in this round", as no round of the request offers them.
     assert.match(
       messageText(sent[1]?.messages.at(-1)),

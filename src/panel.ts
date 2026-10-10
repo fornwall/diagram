@@ -250,16 +250,16 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `detail` says how much of a long source and relationship list to give. Without `callsTools`, the
-   * model is not told to call a tool for them, nor the revision, which only diagram_updateChart
-   * takes.
+   * `detail` says how much of a long source and relationship list to give. The model is told to
+   * call only the `tools` it has, if not all, and is not told the revision without
+   * diagram_updateChart, which alone takes it.
    */
   describeForModel({
     detail = "brief",
-    callsTools = true,
+    tools,
   }: {
     detail?: Detail;
-    callsTools?: boolean;
+    tools?: ReadonlySet<string>;
   } = {}): string | undefined {
     if (!this.state) return undefined;
     let chartTable: DataTable | undefined;
@@ -279,9 +279,11 @@ export class DiagramPanel implements vscode.Disposable {
         : this.warnings,
       chartTable,
       detail,
-      callsTools,
+      tools,
     });
-    return callsTools ? `Revision: ${this.shownRevision}.\n\n${description}` : description;
+    return !tools || tools.has(UPDATE_CHART_TOOL)
+      ? `Revision: ${this.shownRevision}.\n\n${description}`
+      : description;
   }
 
   /** Opens and renders a diagram. */

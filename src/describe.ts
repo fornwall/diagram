@@ -51,8 +51,8 @@ interface Drawing {
    */
   chartTable?: DataTable | undefined;
   detail?: Detail;
-  /** Whether the model calls tools, and so is told which ones to call. */
-  callsTools?: boolean;
+  /** The tools that the model may call, if not all of them: it is told to call only these. */
+  tools?: ReadonlySet<string> | undefined;
 }
 
 /** Describes a diagram, its marks and the user's interactions with it, for a language model. */
@@ -66,18 +66,19 @@ export function describeDiagram(
     warnings = [],
     chartTable,
     detail = "brief",
-    callsTools = true,
+    tools,
   }: Drawing = {},
 ): string {
+  const has = (tool: string) => !tools || tools.has(tool);
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, detail, callsTools),
+    describeSource(state, detail, has(GET_STATE_TOOL)),
     "",
   ];
-  // A model that calls no tools can still change a generated chart's option as a whole.
-  if (state.chart && callsTools) {
+  // A model that cannot update a generated chart can still change its option as a whole.
+  if (state.chart && has(UPDATE_CHART_TOOL)) {
     const { file, command } = state.chart;
     const refresh = file !== undefined || command !== undefined;
     lines.push(
@@ -111,7 +112,7 @@ export function describeDiagram(
   if (links.length > 0) {
     lines.push(
       `Code links: ${links.join(", ")}.` +
-        (callsTools ? ` Pass them to ${RENDER_TOOL} when changing the diagram.` : ""),
+        (has(RENDER_TOOL) ? ` Pass them to ${RENDER_TOOL} when changing the diagram.` : ""),
     );
   }
   if (state.document) {
@@ -129,9 +130,9 @@ export function describeDiagram(
   const listed = nodeList(relationships);
   if (listed && (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
     lines.push(
-      `Selectable relationships${callsTools ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,
+      `Selectable relationships${has(ANNOTATE_TOOL) ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,
     );
-  } else if (listed && callsTools) {
+  } else if (listed && has(GET_STATE_TOOL)) {
     const many = plural(relationships.length, "selectable relationship");
     lines.push(
       detail === "summary"
@@ -139,7 +140,7 @@ export function describeDiagram(
         : `It has ${many}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
     );
   }
-  if (repeatedNames.length > 0 && callsTools) {
+  if (repeatedNames.length > 0 && has(ANNOTATE_TOOL)) {
     lines.push(
       `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
     );
@@ -147,7 +148,7 @@ export function describeDiagram(
   const parts = selection.some((node) => node.relationship)
     ? "items"
     : `${nodeNoun(state.language)}s`;
-  const marked = describeMarks(annotation, parts, callsTools);
+  const marked = describeMarks(annotation, parts, has(ANNOTATE_TOOL));
   if (marked) {
     lines.push(marked);
   }
@@ -182,7 +183,7 @@ export function describeChartParameters(chart: unknown): string {
 function describeMarks(
   annotation: Annotation | undefined,
   parts: string,
-  callsTools: boolean,
+  annotates: boolean,
 ): string | undefined {
   if (!annotation || (annotation.marks.length === 0 && annotation.caption === undefined)) {
     return undefined;
@@ -200,7 +201,7 @@ function describeMarks(
     lines.push(
       `Marked ${parts}: ${listed.join(", ")}.` +
         (dim ? " Everything else is faded." : "") +
-        (callsTools
+        (annotates
           ? ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
           : ""),
     );
@@ -212,12 +213,12 @@ function describeMarks(
  * A long source is left out of every chat request, but given in full when asked for, as a model has
  * to read a source to change it. A chart generated from a large file or command output is the
  * exception: it can be too large for the model's context, and the chart tools change it instead.
- * A model that calls no tools is not told to read it with {@link GET_STATE_TOOL}.
+ * A model without {@link GET_STATE_TOOL} is not told to read it with that.
  */
 function describeSource(
   { source, language, chart }: DiagramState,
   detail: Detail,
-  callsTools: boolean,
+  getsState: boolean,
 ): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
@@ -232,7 +233,7 @@ function describeSource(
   if (source.length <= MAX_SOURCE_LENGTH || (detail === "full" && !chart)) {
     return codeFence(source, language);
   }
-  return chart || !callsTools
+  return chart || !getsState
     ? `(The source is ${formatCount(source.length)} characters long, too long to show here.)`
     : `(The source is ${formatCount(source.length)} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
 }
