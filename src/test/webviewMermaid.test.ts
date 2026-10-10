@@ -1492,6 +1492,28 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.deepStrictEqual(await redraw(render), { ...shown, redrawn: false });
   });
 
+  test("closes an actor's menu when the drawing zooms, keeping the focus on the actor", async () => {
+    assert.ok(
+      (await page.panel.render({ language: "mermaid", source: actorLinks, title: "Zoom" }, "tool"))
+        .ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        const menu = () => document.querySelector("#canvas .link-menu");
+        const mac = navigator.userAgent.includes("Mac");
+        bob.focus();
+        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        const opened = menu()?.contains(document.activeElement);
+        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {key: "=", bubbles: true,
+          cancelable: true, metaKey: mac, ctrlKey: !mac}));
+        return {opened, zoomed: document.getElementById("zoom-reset").textContent !== "100%",
+          menu: menu() !== null, focused: document.activeElement === bob};
+      })()`),
+      { opened: true, zoomed: true, menu: false, focused: true },
+    );
+  });
+
   test("shows an actor's menu in the visible part of the canvas, scrolling nothing", async () => {
     // Carol's menu at the right edge, and her footer box at the bottom of the canvas scrolled.
     const messages = Array.from({ length: 30 }, (_, i) => `  Alice->>Carol: message ${i}`);

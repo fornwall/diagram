@@ -5,6 +5,7 @@ import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";
 import { mix, type ThemeColors, toCss } from "./colors";
 import type { DiagramImage } from "./images";
+import { closeLinkMenu } from "./linkMenu";
 import {
   describeError,
   emptyStateError,
@@ -873,10 +874,13 @@ export class MermaidRenderer implements Renderer {
 
   /**
    * Scales the drawing by its size, rather than by CSS zoom, which would leave the client
-   * coordinates of its elements unscaled.
+   * coordinates of its elements unscaled. Closes a node's menu of links, which would stay behind
+   * where the node was.
    */
   private setZoom(value: number): void {
-    this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+    const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+    if (zoom !== this.zoom) closeLinkMenu();
+    this.zoom = zoom;
     const svg = this.diagram.querySelector("svg");
     const natural = svg?.viewBox.baseVal;
     if (svg && natural?.width && natural.height) {
