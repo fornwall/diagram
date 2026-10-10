@@ -1,11 +1,5 @@
 import { type ChartOptionsState, unusableSettings } from "../chartOptions";
-import {
-  AGGREGATIONS,
-  CHART_TYPES,
-  type ChartFilter,
-  type ChartType,
-  FACET_TYPES,
-} from "../chartSpec";
+import { AGGREGATIONS, CHART_TYPES, type ChartFilter, type ChartType } from "../chartSpec";
 import type { Column } from "../data";
 import type { FromWebview } from "../protocol";
 import { plural } from "../text";
@@ -330,17 +324,22 @@ export class ChartOptionsForm {
     return Array.from(container.querySelectorAll("select"), (select) => select.value);
   }
 
-  private canFacet(): boolean {
-    return (FACET_TYPES as readonly string[]).includes(this.type.value);
-  }
-
+  /**
+   * Hides the fields that the chart type cannot use, such as the aggregation and row limit of a box
+   * plot, which summarizes every row itself, and disables the facets of a type without panels.
+   */
   private updateAvailability(): void {
-    const histogram = this.type.value === "histogram";
-    for (const control of [this.labels, this.aggregate, this.sort, this.limit]) {
-      if (control.parentElement) control.parentElement.hidden = histogram;
+    const unusable = new Set<string>(unusableSettings(this.type.value as ChartType));
+    for (const [key, control] of [
+      ["labelColumn", this.labels],
+      ["aggregate", this.aggregate],
+      ["sort", this.sort],
+      ["limit", this.limit],
+      ["bins", this.bins],
+    ] as const) {
+      if (control.parentElement) control.parentElement.hidden = unusable.has(key);
     }
-    if (this.bins.parentElement) this.bins.parentElement.hidden = !histogram;
-    this.facet.disabled = !this.canFacet();
+    this.facet.disabled = unusable.has("facetColumn");
     this.facetColumns.disabled = this.facetScales.disabled =
       this.facet.disabled || !this.facet.value;
   }

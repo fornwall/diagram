@@ -406,6 +406,50 @@ suite("Chart Options in the webview", function () {
     }
   });
 
+  test("chart options leave out the fields that a box plot refuses", async () => {
+    const data = "name,amount\na,1\na,2\nb,3\nb,4";
+    const chart: ChartSpec = { type: "bar", data, aggregate: "sum", limit: 5 };
+    await showChartOptions(chart, parseTable(data));
+    const shown = `[...document.querySelectorAll('.chart-options-fields > div')]
+      .filter(field => !field.hidden).map(field => field.querySelector('label').textContent)`;
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const type = document.getElementById('chart-option-chart');
+        type.value = 'boxplot';
+        type.dispatchEvent(new Event('change'));
+        return ${shown};
+      })()`),
+      [
+        "Chart type",
+        "Label columns (in order)",
+        "Value columns (in order)",
+        "Sort by first value",
+        "Facet column",
+        "Panels per row",
+        "Axis scales",
+        "Filters (all must match)",
+      ],
+    );
+    await nextRender(() =>
+      evaluate(`document.querySelector('#chart-options .actions button').click()`),
+    );
+    const { type, aggregate, limit } = page.panel.current?.chart ?? {};
+    assert.deepStrictEqual(
+      { type, aggregate, limit },
+      { type: "boxplot", aggregate: undefined, limit: undefined },
+    );
+    // Back on a bar chart, they are there to set again.
+    assert.ok(
+      await evaluate(`(() => {
+        const type = document.getElementById('chart-option-chart');
+        type.value = 'bar';
+        type.dispatchEvent(new Event('change'));
+        return ${shown}.includes("Aggregation");
+      })()`),
+    );
+    await closeChartOptions();
+  });
+
   test("chart options show explicitly shared facet scales as the default", async () => {
     const data = "name,service,amount\na,api-a,1\nb,api-b,3";
     const table = parseTable(data);
