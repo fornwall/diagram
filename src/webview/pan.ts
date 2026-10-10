@@ -130,16 +130,18 @@ export function enablePanning(canvas: HTMLElement): void {
   canvas.addEventListener("lostpointercapture", stopDrag);
   window.addEventListener("blur", () => stopDrag());
 
-  // The click that ends a pan or a drag across text reaches the canvas and its nodes: swallow it
-  // before they see it. Listeners on the canvas itself only lose it to this one if they are added
-  // later, hence enablePanning before them.
+  // The click that ends a pan or a drag that selected text reaches the canvas and its nodes:
+  // swallow it before they see it. Not one that moved but selected nothing, a click that the hand
+  // shook, as on a chart, whose text cannot be selected, or on a button. Listeners on the canvas
+  // itself only lose it to this one if they are added later, hence enablePanning before them.
   canvas.addEventListener(
     "click",
     (event) => {
       const dragged =
         pressed !== undefined &&
         (Math.abs(event.clientX - pressed.x) >= PAN_THRESHOLD ||
-          Math.abs(event.clientY - pressed.y) >= PAN_THRESHOLD);
+          Math.abs(event.clientY - pressed.y) >= PAN_THRESHOLD) &&
+        document.getSelection()?.isCollapsed === false;
       pressed = undefined;
       if ((panned || dragged) && event.detail !== 0) {
         panned = false;

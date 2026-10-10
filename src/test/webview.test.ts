@@ -1055,15 +1055,18 @@ suite("webview", function () {
           return [box.left + box.width / 2, box.top + box.height / 2];
         };
         // As Chromium ends a drag: in a click on what the press and the release have in common.
-        const drag = (from, [x, y], target) => {
+        // A drag that selects text selects that of what it ends on.
+        const drag = (from, [x, y], target, selects = true) => {
           const [fromX, fromY] = from;
           const init = {clientX: fromX, clientY: fromY, pointerType: "mouse", button: 0,
             isPrimary: true, bubbles: true, cancelable: true};
           node(target === "svg" ? "A" : target).dispatchEvent(new PointerEvent("pointerdown", init));
           const ends = target === "svg" ? document.querySelector("#diagram svg") : node(target);
+          if (selects) getSelection().selectAllChildren(ends);
           ends.dispatchEvent(new PointerEvent("pointerup", {...init, clientX: x, clientY: y}));
           ends.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1,
             clientX: x, clientY: y}));
+          getSelection().removeAllRanges();
         };
         const selected = () => [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
           .map(element => element.getAttribute("data-diagram-id"));
@@ -1072,13 +1075,17 @@ suite("webview", function () {
         const [ax, ay] = at("A");
         drag([ax, ay], [ax + 1, ay + 1], "A");
         const clicked = selected();
+        // As does one that moves further but selects no text, as on a button.
+        drag([ax, ay], [ax + 4, ay], "A", false);
+        const moved = selected();
+        drag([ax, ay], [ax + 1, ay + 1], "A");
         // Across the labels of A and C, ending on the drawing; within B's label.
         drag([ax, ay], at("C"), "svg");
         const [bx, by] = at("B");
         drag([bx - 10, by], [bx + 10, by], "B");
-        return {pannable, clicked, dragged: selected()};
+        return {pannable, clicked, moved, dragged: selected()};
       })()`),
-      { pannable: false, clicked: ["A"], dragged: ["A"] },
+      { pannable: false, clicked: ["A"], moved: [], dragged: ["A"] },
     );
   });
 

@@ -309,6 +309,43 @@ suite("ECharts in the webview", function () {
     await evaluate(`document.getElementById("clear-selection").click()`);
   });
 
+  test("selects a chart item with a click that the hand shakes a little", async () => {
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        series: [
+          {
+            type: "pie",
+            data: ["A", "B"].map((name) => ({ name, value: 1 })),
+            itemStyle: { color: "#0000ff" },
+            emphasis: { disabled: true },
+          },
+        ],
+      }),
+    });
+    assert.strictEqual(
+      await evaluate(`(async () => {
+        const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
+        const box = slice.getBoundingClientRect();
+        const [x, y] = [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2)];
+        const at = dx => ({bubbles: true, cancelable: true, clientX: x + dx, clientY: y, detail: 1,
+          pointerType: "mouse", button: 0, isPrimary: true});
+        // Pressed in one place and released 3 pixels further, which ECharts takes for a click.
+        slice.dispatchEvent(new PointerEvent("pointerdown", at(0)));
+        slice.dispatchEvent(new MouseEvent("mousedown", at(0)));
+        slice.dispatchEvent(new PointerEvent("pointerup", at(3)));
+        slice.dispatchEvent(new MouseEvent("mouseup", at(3)));
+        slice.dispatchEvent(new MouseEvent("click", at(3)));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const label = document.getElementById("selection-label").textContent;
+        document.getElementById("clear-selection").click();
+        return label;
+      })()`),
+      "Selected: “A”",
+    );
+  });
+
   test("clears every selected chart item together", async () => {
     await draw({
       language: "echarts",
