@@ -130,10 +130,15 @@ function defaultLabelColumn(table: DataTable, type: ChartType): number | undefin
 /** The most text columns read as the levels of a hierarchy, the stages of a flow or a pivot. */
 const MOST_LEVELS = 3;
 
-/** Use a few text columns as levels; many text columns (ls -l, ps aux) suggest flat records. */
-function defaultLabelColumns(table: DataTable, type: ChartType, most: number): number[] {
+/**
+ * Use a few text columns as levels; many text columns (ls -l, ps aux) suggest flat records. A
+ * Cartesian chart takes a second label column for its series only when given one: two text columns
+ * are as often a name and a description.
+ */
+function defaultLabelColumns(table: DataTable, type: ChartType): number[] {
+  const most = MOST_LABELS[type];
   const text = textColumns(table);
-  if (text.length >= 2 && text.length <= MOST_LEVELS) {
+  if (most > 1 && !isCartesian(type) && text.length >= 2 && text.length <= MOST_LEVELS) {
     return text.slice(0, most);
   }
   const single = defaultLabelColumn(table, type);
@@ -272,16 +277,10 @@ function categoryAxisOverride(spec: ChartSpec): boolean {
 }
 
 function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): number[] {
-  const most = MOST_LABELS[spec.type];
   if (spec.labelColumn === undefined) {
-    // A Cartesian chart takes a second label column for its series only when given one: two text
-    // columns are as often a name and a description.
-    if (most > 1 && !isCartesian(spec.type)) {
-      return defaultLabelColumns(table, spec.type, most);
-    }
-    const single = defaultLabelColumn(table, spec.type);
-    return single === undefined ? [] : [single];
+    return defaultLabelColumns(table, spec.type);
   }
+  const most = MOST_LABELS[spec.type];
   const given = findColumns(table, [spec.labelColumn].flat(), "labelColumn");
   const labels = given.slice(0, most);
   if (labels.length < given.length) {
