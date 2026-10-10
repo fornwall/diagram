@@ -3,14 +3,13 @@
 import { columnName } from "./chartColumns";
 import { timeOrder, timeValue } from "./chartDates";
 import {
-  addValues,
   inLabelOrder,
   label,
   noteRepeatedLabels,
   quantile,
   type Reading,
   type Row,
-  withoutNoise,
+  Sum,
 } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
 import { formatCount, plural, quoteAll } from "./text";
@@ -71,8 +70,8 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
     ]),
   );
   let added = 0;
-  // The sums of the points of rows of the same labels, as they are before they are shown.
-  const sums = new Map<string, number>();
+  // The sums of the points of rows of the same labels.
+  const sums = new Map<string, Sum>();
   for (const row of rows) {
     const value = row.values[0] ?? null;
     const values = series.get(row.labels[1] ?? "")?.values;
@@ -83,9 +82,9 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
       values[point] = value;
     } else {
       const key = JSON.stringify([row.labels[1] ?? "", point]);
-      const sum = addValues(sums.get(key) ?? previous, value);
+      const sum = (sums.get(key) ?? new Sum().add(previous)).add(value);
       sums.set(key, sum);
-      values[point] = withoutNoise(sum);
+      values[point] = sum.value;
       added++;
     }
   }
@@ -293,8 +292,8 @@ export function heatmapOption({
     return index;
   };
   const cells = new Map<string, [number, number, number]>();
-  // The sums of the cells of rows of the same labels, as they are before they are shown.
-  const sums = new Map<string, number>();
+  // The sums of the cells of rows of the same labels.
+  const sums = new Map<string, Sum>();
   const data: [number, number, number][] = [];
   let empty = 0;
   let summed = 0;
@@ -314,9 +313,9 @@ export function heatmapOption({
         cells.set(key, cell);
         data.push(cell);
       } else {
-        const sum = addValues(sums.get(key) ?? cell[2], value);
+        const sum = (sums.get(key) ?? new Sum().add(cell[2])).add(value);
         sums.set(key, sum);
-        cell[2] = withoutNoise(sum);
+        cell[2] = sum.value;
         summed++;
       }
       continue;

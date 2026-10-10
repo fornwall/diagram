@@ -1,6 +1,6 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
-import { addValues, label, noteRepeatedLabels, type Reading, withoutNoise } from "./chartRows";
+import { label, noteRepeatedLabels, type Reading, Sum } from "./chartRows";
 import { formatCount, quoteAll } from "./text";
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
@@ -133,7 +133,7 @@ export function gaugeOption({
   }
   const total =
     max === undefined && !percent
-      ? rows.reduce((sum, { values }) => addValues(sum, values[0] ?? 0), 0)
+      ? rows.reduce((sum, { values }) => sum.add(values[0] ?? 0), new Sum()).value
       : value;
   const [top, reason] =
     max !== undefined
@@ -142,7 +142,7 @@ export function gaugeOption({
       : percent
         ? [100, "as the values are percentages"]
         : total > value
-          ? [withoutNoise(total), `the total of ${JSON.stringify(name)}`]
+          ? [total, `the total of ${JSON.stringify(name)}`]
           : [niceMax(value), "rounded up from the value"];
   // A scale needs room: a gauge from 0 to 0 draws nothing.
   const min = Math.min(0, value);

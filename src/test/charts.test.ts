@@ -1062,7 +1062,7 @@ suite("charts", () => {
       build(chart("bar", { aggregate: "median" }), "k,n\na,1\na,2\na,6\nb,5").series[0].data,
       [2, 5],
     );
-    // Without the leftovers of adding fractions, which tooltips would show, and whole numbers in full.
+    // A sum shows no more decimals than the values summed up have, and whole numbers in full.
     const fractions = "k,n\na,0.1\na,0.2\nb,0.1\nb,0.2\nb,0.4\nc,9007199254740991\nc,1";
     for (const [how, values] of [
       ["sum", [0.3, 0.7, 9007199254740992]],
@@ -1075,25 +1075,40 @@ suite("charts", () => {
         how,
       );
     }
-    const pie = build(chart("pie", { limit: 1 }), "k,n\na,5\nb,0.1\nc,0.2");
+    const values = (option: Option) => option.series[0].data.map(({ value }: Option) => value);
     assert.deepStrictEqual(
-      pie.series[0].data.map(({ value }: { value: number }) => value),
+      values(build(chart("pie", { limit: 1 }), "k,n\na,5\nb,0.1\nc,0.2")),
       [5, 0.3],
     );
-    // Only the finished sums, as rounding each partial one would add up its errors.
+    const sums = (data: string, how: "sum" | "mean" = "sum") =>
+      build(chart("bar", { aggregate: how }), data).series[0].data;
+    // Values that cancel each other out, and partial sums that would lose small values.
+    assert.deepStrictEqual(sums("k,n\na,0.1\na,0.2\na,-0.3\nb,0\nb,0\nb,0", "mean"), [0, 0]);
+    assert.deepStrictEqual(sums("k,n\na,0.1\na,0.2\na,-0.3"), [0]);
+    assert.deepStrictEqual(sums("k,n\na,10000000000\na,0.37\na,-10000000000"), [0.37]);
     const many = ["k,n", "a,10000000000", ...Array.from({ length: 1000 }, () => "a,0.04")];
-    const sums = (data: string) => build(chart("bar", { aggregate: "sum" }), data).series[0].data;
     assert.deepStrictEqual(sums(many.join("\n")), [10000000040]);
-    const [difference] = sums("k,n\na,10000000000.37\na,-10000000000");
-    assert.ok(Math.abs(difference - 0.37) < 1e-5, String(difference));
+    const cells = build(chart("heatmap"), "row,column,value\na,x,0.1\na,x,0.2\na,x,-0.3");
+    assert.deepStrictEqual(cells.series[0].data, [[0, 0, 0]]);
     const tree = build(chart("treemap"), "path,n\nr/a,0.1\nr/b,0.2\nr/b,0.4");
+    assert.deepStrictEqual(values(tree), [0.1, 0.6]);
+    // A single value is its own sum, however many digits it has.
+    const flow = build(chart("sankey"), "from,to,n\na,b,12345678901.23");
+    assert.deepStrictEqual(values({ series: [{ data: flow.series[0].links }] }), [12345678901.23]);
+    // Totals that tie order rows as they come, and decide which rows a limit keeps.
+    const stacked = "k,s,n\nB,x,0.3\nA,x,0.1\nA,y,0.2";
+    const sorted = { sort: "descending" as const, labelColumn: ["k", "s"] };
+    assert.deepStrictEqual(build(chart("stackedBar", sorted), stacked).xAxis.data, ["B", "A"]);
     assert.deepStrictEqual(
-      tree.series[0].data.map(({ value }: { value: number }) => value),
-      [0.1, 0.6],
+      build(chart("stackedBar", { sort: "descending", limit: 1 }), "k,a,b\nB,0.3,0\nA,0.1,0.2")
+        .xAxis.data,
+      ["B"],
     );
-    // A gauge's total that is its value is no scale above it.
-    const gauge = build(chart("gauge"), "k,n\nA,0.6666666666666666\nB,0").series[0];
-    assert.strictEqual(gauge.max, 1);
+    // A gauge's scale from the total of its values, which is no higher than the one shown.
+    const gauge = (data: string) => build(chart("gauge"), `k,n\n${data}`).series[0].max;
+    assert.strictEqual(gauge("A,0.6666666666666666\nB,0"), 1);
+    assert.strictEqual(gauge("A,0.3\nB,0.1\nC,0.2\nD,-0.3"), 0.5);
+    assert.strictEqual(gauge("A,1234.56789012345\nB,1e-10"), 1234.56789012355);
     assert.strictEqual(
       summary(chart("bar", { aggregate: "mean" }), AMOUNTS),
       'Charted "amount" by "region"; grouped 5 rows into 3 by "region", averaging their values.',

@@ -78,7 +78,7 @@ export function noteRepeatedLabels(
   }
 }
 
-export function addValues(left: number, right: number): number {
+function addValues(left: number, right: number): number {
   const sum = left + right;
   if (!Number.isFinite(sum)) {
     throw new Error(
@@ -88,13 +88,39 @@ export function addValues(left: number, right: number): number {
   return sum;
 }
 
+/** The decimals of a number as written out in full: 2 for 0.25, 7 for 1e-7, 0 for 1e21. */
+function decimalsOf(value: number): number {
+  const [digits = "", exponent = "0"] = String(value).split("e");
+  return Math.max(0, (digits.split(".")[1]?.length ?? 0) - Number(exponent));
+}
+
 /**
- * A number worked out of fractions without the leftovers of floating point, which a chart would
- * show, as 0.3 for 0.1 + 0.2 rather than 0.30000000000000004: to 12 significant digits. A whole
- * number stays as it is, however large. Only for a finished sum, as rounding each partial one
- * would add up its errors.
+ * A sum of numbers that shows no more decimals than they have, as 0.3 for 0.1 + 0.2 rather than
+ * 0.30000000000000004, and 0 for 0.1 + 0.2 - 0.3: added up exactly, and rounded once finished. A
+ * sum of one number is that number.
  */
-export const withoutNoise = (value: number) =>
+export class Sum {
+  private exact = 0;
+  private decimals = 0;
+
+  add(value: number | Sum): this {
+    const [exact, decimals] =
+      value instanceof Sum ? [value.exact, value.decimals] : [value, decimalsOf(value)];
+    this.exact = addValues(this.exact, exact);
+    this.decimals = Math.max(this.decimals, decimals);
+    return this;
+  }
+
+  get value(): number {
+    // Beyond what toFixed writes out, a number has no leftovers to round off.
+    return this.decimals > 20 || Math.abs(this.exact) >= 1e21
+      ? this.exact
+      : Number(this.exact.toFixed(this.decimals));
+  }
+}
+
+/** A number worked out by division, such as a mean, to 12 significant digits, without leftovers. */
+const withoutNoise = (value: number) =>
   Number.isInteger(value) ? value : Number(value.toPrecision(12));
 
 /** The quantile of sorted numbers, interpolating between them, as R's default quantile does. */
@@ -215,21 +241,23 @@ function sortRows(
 
 /** The sum of a row's values, or null without any. */
 function rowTotal({ values }: Row): number | null {
-  let total: number | null = null;
+  let total: Sum | undefined;
   for (const value of values) {
-    if (value !== null) total = addValues(total ?? 0, value);
+    if (value !== null) total = (total ?? new Sum()).add(value);
   }
-  return total;
+  return total?.value ?? null;
 }
 
 /** Keys rows by the total of the first values of the rows with their first label. */
 function labelTotals(rows: Row[]): (row: Row) => number | null {
-  const totals = new Map<string, number>();
+  const totals = new Map<string, Sum>();
   for (const row of rows) {
     const value = row.values[0] ?? null;
-    if (value !== null) totals.set(label(row), addValues(totals.get(label(row)) ?? 0, value));
+    if (value === null) continue;
+    totals.set(label(row), (totals.get(label(row)) ?? new Sum()).add(value));
   }
-  return (row) => totals.get(label(row)) ?? null;
+  const finished = new Map([...totals].map(([key, total]) => [key, total.value]));
+  return (row) => finished.get(label(row)) ?? null;
 }
 
 /** Drop parent rows to avoid counting both directory totals and their files in du -a output. */
@@ -274,6 +302,8 @@ const AGGREGATED: Record<Aggregation, string> = {
 
 interface GroupColumn {
   value: number | null;
+  /** The sum of a column summed or averaged, unless the mean's sum would overflow. */
+  sum?: Sum;
   count: number;
   /** A power-of-two scale used only when a mean's running sum would overflow. */
   scale?: number;
@@ -318,6 +348,9 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
           value /= 2;
         }
       }
+      if (how === "sum" || (how === "mean" && column.scale === undefined)) {
+        column.sum = (column.sum ?? new Sum()).add(value);
+      }
       column.value =
         how === "min"
           ? Math.min(column.value ?? value, value)
@@ -331,7 +364,7 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
     values:
       how === "count"
         ? [count]
-        : columns.map(({ value, count, scale, samples }) => {
+        : columns.map(({ value, sum, count, scale, samples }) => {
             if (count === 0) {
               return null;
             }
@@ -343,8 +376,12 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
                 ),
               );
             }
-            if (how === "mean") return withoutNoise((value ?? 0) / count / (scale ?? 1));
-            return how === "sum" ? withoutNoise(value ?? 0) : value;
+            if (how === "mean") {
+              return withoutNoise(
+                scale === undefined ? (sum?.value ?? 0) / count : (value ?? 0) / count / scale,
+              );
+            }
+            return how === "sum" ? (sum?.value ?? 0) : value;
           }),
   }));
 }
@@ -499,17 +536,17 @@ export function readRows(
     if (combineOther) {
       // A row named "Other" in the data is summed up too, rather than becoming a second slice.
       const kept: Row[] = [];
-      let other = 0;
+      const other = new Sum();
       let summed = 0;
       for (const row of rows) {
         if (kept.length < spec.limit && label(row) !== "Other") {
           kept.push(row);
         } else {
-          other = addValues(other, row.values[0] ?? 0);
+          other.add(row.values[0] ?? 0);
           summed++;
         }
       }
-      rows = [...kept, { labels: ["Other"], values: [withoutNoise(other)] }];
+      rows = [...kept, { labels: ["Other"], values: [other.value] }];
       notes.push(
         `kept the first ${plural(spec.limit, "row")} and summed up the other ${formatCount(summed)} as "Other"`,
       );

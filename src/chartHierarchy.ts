@@ -1,14 +1,14 @@
 // Charts of rows read as paths of levels: treemap and sunburst nest them, sankey flows along them.
 
 import { chained, columnName } from "./chartColumns";
-import { addValues, label, type Reading, type Row, withoutNoise } from "./chartRows";
+import { label, type Reading, type Row, Sum } from "./chartRows";
 import { formatCount, plural, quoteAll } from "./text";
 
 /** A node of a hierarchy, before the values of the rows under it are summed up into it. */
 interface Level {
   name: string;
   /** The value of the rows that named it, which a leaf alone has, as parent rows are left out. */
-  own: number;
+  own: Sum;
   children: Map<string, Level>;
 }
 
@@ -28,29 +28,27 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
     for (const name of labels) {
       let level = siblings.get(name);
       if (level === undefined) {
-        level = { name, own: 0, children: new Map() };
+        level = { name, own: new Sum(), children: new Map() };
         siblings.set(name, level);
       }
       node = level;
       siblings = level.children;
     }
     if (node !== undefined) {
-      node.own = addValues(node.own, values[0] ?? 0);
+      node.own.add(values[0] ?? 0);
     }
   }
   let depth = 0;
-  // A node, and its value as summed up, which its parent sums up in turn.
-  const total = (level: Level, deep: number): [Node, number] => {
+  // A node, and the sum of its value, which its parent sums up in turn.
+  const total = (level: Level, deep: number): [Node, Sum] => {
     depth = Math.max(depth, deep);
     if (level.children.size === 0) {
-      return [{ name: level.name, value: withoutNoise(level.own) }, level.own];
+      return [{ name: level.name, value: level.own.value }, level.own];
     }
     const children = [...level.children.values()].map((child) => total(child, deep + 1));
-    const sum = children.reduce((sum, [, value]) => addValues(sum, value), 0);
-    return [
-      { name: level.name, value: withoutNoise(sum), children: children.map(([node]) => node) },
-      sum,
-    ];
+    const sum = new Sum();
+    for (const [, value] of children) sum.add(value);
+    return [{ name: level.name, value: sum.value, children: children.map(([node]) => node) }, sum];
   };
   return { nodes: [...roots.values()].map((root) => total(root, 1)[0]), depth };
 }
@@ -99,17 +97,14 @@ interface FlowNode {
 /** The nodes, and the flows between them by node key, summed up per pair. */
 interface Graph {
   nodes: Map<string, FlowNode>;
-  flows: Map<string, { source: string; target: string; value: number }>;
+  flows: Map<string, { source: string; target: string; sum: Sum }>;
 }
 
-function addFlow({ flows }: Graph, source: string, target: string, value: number): void {
+function addFlow({ flows }: Graph, source: string, target: string, value: number | Sum): void {
   const key = JSON.stringify([source, target]);
-  const flow = flows.get(key);
-  if (flow === undefined) {
-    flows.set(key, { source, target, value });
-  } else {
-    flow.value = addValues(flow.value, value);
-  }
+  const flow = flows.get(key) ?? { source, target, sum: new Sum() };
+  flows.set(key, flow);
+  flow.sum.add(value);
 }
 
 /** Join the nodes of the same name, as two columns that list the edges of a graph mean them. */
@@ -121,8 +116,8 @@ function joinByName({ nodes, flows }: Graph): Graph {
     joined.nodes.set(joinedKey, { name, distinct: name });
     return joinedKey;
   };
-  for (const { source, target, value } of flows.values()) {
-    addFlow(joined, keyOf(source), keyOf(target), value);
+  for (const { source, target, sum } of flows.values()) {
+    addFlow(joined, keyOf(source), keyOf(target), sum);
   }
   return joined;
 }
@@ -167,15 +162,18 @@ function foldColumns(
   stage: (depth: number) => string,
 ): { graph: Graph; folded: number } {
   const { nodes, flows } = graph;
-  const inflow = new Map<string, number>();
-  const outflow = new Map<string, number>();
-  for (const { source, target, value } of flows.values()) {
-    outflow.set(source, addValues(outflow.get(source) ?? 0, value));
-    inflow.set(target, addValues(inflow.get(target) ?? 0, value));
+  const inflow = new Map<string, Sum>();
+  const outflow = new Map<string, Sum>();
+  const addTo = (sums: Map<string, Sum>, key: string, sum: Sum) => {
+    sums.set(key, (sums.get(key) ?? new Sum()).add(sum));
+  };
+  for (const { source, target, sum } of flows.values()) {
+    addTo(outflow, source, sum);
+    addTo(inflow, target, sum);
   }
   const columns = Map.groupBy(depths.keys(), (key) => depths.get(key) ?? 0);
   const explicit = [...nodes.values()].some((node) => node.depth !== undefined);
-  const size = (key: string) => Math.max(inflow.get(key) ?? 0, outflow.get(key) ?? 0);
+  const size = (key: string) => Math.max(inflow.get(key)?.value ?? 0, outflow.get(key)?.value ?? 0);
   const folded = new Map<string, string>();
   for (const [depth, keys] of columns) {
     if (keys.length <= MAX_COLUMN_NODES) continue;
@@ -200,8 +198,8 @@ function foldColumns(
     return { graph, folded: 0 };
   }
   const result: Graph = { nodes, flows: new Map() };
-  for (const { source, target, value } of flows.values()) {
-    addFlow(result, folded.get(source) ?? source, folded.get(target) ?? target, value);
+  for (const { source, target, sum } of flows.values()) {
+    addFlow(result, folded.get(source) ?? source, folded.get(target) ?? target, sum);
   }
   return { graph: result, folded: folded.size };
 }
@@ -340,10 +338,10 @@ function nodesAndLinks({ nodes, flows }: Graph): {
     ids.set(key, id);
     return { ...(id === name ? {} : { id }), name, ...(depth === undefined ? {} : { depth }) };
   });
-  const links = [...flows.values()].map(({ source, target, value }) => ({
+  const links = [...flows.values()].map(({ source, target, sum }) => ({
     source: ids.get(source),
     target: ids.get(target),
-    value: withoutNoise(value),
+    value: sum.value,
   }));
   return { data, links };
 }
