@@ -134,8 +134,7 @@ function describeError(
     found && error instanceof SyntaxError
       ? syntaxErrorAt(text, open, found.position, message)
       : undefined;
-  const { at, excerpt } =
-    position === undefined ? { at: "", excerpt: "" } : located(text, position);
+  const { at, excerpt } = located(text, position);
   return (
     `The ECharts option is neither valid JSON nor a valid JavaScript object literal: ${errorClause(error)}` +
     `${at}. Write it as one object, as JSON or as JavaScript when a callback needs a function.` +
@@ -156,8 +155,7 @@ function describeThrown(text: string, error: unknown): string {
         '"x2": 0, "y2": 1, "colorStops": [{"offset": 0, "color": "…"}, ...]}.'
       : "";
   const message = `The ECharts option threw while being evaluated as JavaScript: ${errorClause(error)}`;
-  const { at, excerpt } =
-    position === undefined ? { at: "", excerpt: "" } : located(text, position);
+  const { at, excerpt } = located(text, position);
   return `${message}${at}.${hint}${excerpt}`;
 }
 
@@ -349,12 +347,29 @@ function unreadableTokenAt(
   return undefined;
 }
 
-/** " (line L, column C)", and on the next lines the source line with a caret under the position. */
-function located(text: string, position: number): { at: string; excerpt: string } {
+/**
+ * " (line L, column C)", and on the next lines the source line with a caret under the position,
+ * cropped around a long line. Nothing for no position.
+ */
+function located(text: string, position: number | undefined): { at: string; excerpt: string } {
+  if (position === undefined) return { at: "", excerpt: "" };
   const { line, column } = lineAndColumn(text, position);
+  const content = text.slice(position - column + 1).split(/[\r\n]/, 1)[0] ?? "";
+  const width = 100;
+  const start =
+    content.length > width
+      ? Math.max(0, Math.min(column - 1 - width / 2, content.length - width))
+      : 0;
+  const before = `${start > 0 ? "…" : ""}${content.slice(start, column - 1)}`;
+  const shown = `${start > 0 ? "…" : ""}${content.slice(start, start + width)}${
+    start + width < content.length ? "…" : ""
+  }`;
+  const gutter = `${line} | `;
+  // Tabs stay tabs below the line, so that the caret lines up whatever the tab width.
+  const indent = before.replace(/[^\t]/g, " ");
   return {
     at: ` (line ${line}, column ${column})`,
-    excerpt: `\n${excerpt(text, position, position - column + 1, line)}`,
+    excerpt: `\n${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${indent}^`,
   };
 }
 
@@ -372,27 +387,6 @@ function offsetOf(text: string, line: number, column: number): number | undefine
   }
   const end = lineBreaks.exec(text)?.index ?? text.length;
   return start + column - 1 <= end ? start + column - 1 : undefined;
-}
-
-const LINE_BREAK = /[\r\n]/g;
-
-/** The line of the position with a caret under it, cropped around long lines. */
-function excerpt(text: string, position: number, lineStart: number, line: number): string {
-  LINE_BREAK.lastIndex = position;
-  const lineEnd = LINE_BREAK.exec(text)?.index;
-  const content = text.slice(lineStart, lineEnd);
-  const column = position - lineStart;
-  const width = 100;
-  const start =
-    content.length > width ? Math.max(0, Math.min(column - width / 2, content.length - width)) : 0;
-  const before = `${start > 0 ? "…" : ""}${content.slice(start, column)}`;
-  const shown = `${start > 0 ? "…" : ""}${content.slice(start, start + width)}${
-    start + width < content.length ? "…" : ""
-  }`;
-  const gutter = `${line} | `;
-  // Tabs stay tabs below the line, so that the caret lines up whatever the tab width.
-  const indent = before.replace(/[^\t]/g, " ");
-  return `${gutter}${shown}\n${" ".repeat(gutter.length - 2)}| ${indent}^`;
 }
 
 class SourceError {
