@@ -6,7 +6,7 @@ import { type DataTable, parseTable } from "../data";
 import { DiagramPanel, type Drawn, type RenderOutcome } from "../panel";
 import type { DiagramNode, FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
-import { afterTest, replace } from "./afterTest";
+import { afterTest, interceptCommand } from "./afterTest";
 
 type Render = Extract<ToWebview, { type: "render" }>;
 
@@ -162,14 +162,11 @@ interface ChatRequest {
  * While `fail` is set, opening chat fails, as when chat is disabled.
  */
 export function recordChat(): { requests: ChatRequest[]; fail: boolean } {
-  const execute = vscode.commands.executeCommand;
   const chat = { requests: [] as ChatRequest[], fail: false };
-  replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
-    if (command !== "workbench.action.chat.open") return execute(command, ...args);
+  interceptCommand("workbench.action.chat.open", (request) => {
     if (chat.fail) throw new Error("Chat is disabled.");
-    chat.requests.push(args[0] as ChatRequest);
-    return undefined;
-  }) as typeof execute);
+    chat.requests.push(request as ChatRequest);
+  });
   return chat;
 }
 

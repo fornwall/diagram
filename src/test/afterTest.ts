@@ -43,6 +43,13 @@ export async function setting(key: string, value: unknown): Promise<void> {
   await settings.update(key, value, vscode.ConfigurationTarget.Global);
 }
 
+/** Answers the command with `handle` instead of running it, until the current test ends. */
+export function interceptCommand(id: string, handle: (...args: unknown[]) => unknown): void {
+  const execute = vscode.commands.executeCommand;
+  replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) =>
+    command === id ? handle(...args) : execute(command, ...args)) as typeof execute);
+}
+
 /** A source of cancellation, disposed once the current test ends. */
 export function cancellationSource(): vscode.CancellationTokenSource {
   const source = new vscode.CancellationTokenSource();

@@ -12,6 +12,7 @@ import { WebviewChannel } from "../webviewChannel";
 import {
   afterTest,
   cancellationSource,
+  interceptCommand,
   recordFilePaths,
   recordMessages,
   replace,
@@ -111,17 +112,14 @@ function pick(panel: DiagramPanel, token = new vscode.CancellationTokenSource().
  * the test ends.
  */
 function recordClicks(): string[] {
-  const execute = vscode.commands.executeCommand;
   const actions: string[] = [];
   replace(vscode.env, "openExternal", async (uri) => {
     actions.push(`url: ${uri.toString(true)}`);
     return true;
   });
-  replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
-    if (command !== "workbench.action.chat.open") return execute(command, ...args);
-    actions.push(`chat: ${(args[0] as { query: string }).query}`);
-    return undefined;
-  }) as typeof execute);
+  interceptCommand("workbench.action.chat.open", (request) => {
+    actions.push(`chat: ${(request as { query: string }).query}`);
+  });
   replace(vscode.window, "showTextDocument", (async (
     document: vscode.TextDocument,
     options: vscode.TextDocumentShowOptions,
@@ -150,14 +148,10 @@ suite("panel", function () {
   });
 
   test("offers Export and Chart Options once there is something to act on", async () => {
-    const execute = vscode.commands.executeCommand;
     const contexts: Record<string, unknown> = {};
-    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
-      if (command !== "setContext") return execute(command, ...args);
-      const [key, value] = args as [string, unknown];
-      contexts[key] = value;
-      return undefined;
-    }) as typeof execute);
+    interceptCommand("setContext", (key, value) => {
+      contexts[key as string] = value;
+    });
     const { panel } = await newFakePanel();
     assert.deepStrictEqual(contexts, {
       "diagram.hasDiagram": false,

@@ -5,7 +5,7 @@ import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ToWebview } from "../protocol";
-import { fileSystem, recordMessages, replace, tempDir } from "./afterTest";
+import { fileSystem, interceptCommand, recordMessages, replace, tempDir } from "./afterTest";
 import {
   type FakeWebview,
   newFakePanel,
@@ -244,13 +244,8 @@ suite("export", function () {
 
   test("says where it saved an image, and opens it in VS Code if asked", async () => {
     const { panel } = await exportingPanel();
-    const execute = vscode.commands.executeCommand;
     const opened = Promise.withResolvers<unknown>();
-    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
-      if (command !== "vscode.open") return execute(command, ...args);
-      opened.resolve(args[0]);
-      return undefined;
-    }) as typeof execute);
+    interceptCommand("vscode.open", (uri) => opened.resolve(uri));
     const saved = recordMessages("showInformationMessage", (_, action) => action);
     assert.ok((await panel.render(diagram, "tool")).ok);
     await panel.exportDiagram();
