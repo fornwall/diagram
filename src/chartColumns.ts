@@ -183,26 +183,26 @@ export function defaultValueColumns(
   return preferring(values, needed, (i) => table.columns[i]?.unit === unit);
 }
 
-/** Maximum label/value columns and minimum value columns for each chart type. */
-const COLUMN_COUNTS: Record<ChartType, { labels: number; values: number; needed: number }> = {
-  histogram: { labels: 0, values: 1, needed: 1 },
-  pie: { labels: 1, values: 1, needed: 1 },
-  doughnut: { labels: 1, values: 1, needed: 1 },
-  funnel: { labels: 1, values: 1, needed: 1 },
-  bar: { labels: 2, values: Infinity, needed: 1 },
-  horizontalBar: { labels: 2, values: Infinity, needed: 1 },
-  stackedBar: { labels: 2, values: Infinity, needed: 1 },
-  line: { labels: 2, values: Infinity, needed: 1 },
-  area: { labels: 2, values: Infinity, needed: 1 },
-  stackedArea: { labels: 2, values: Infinity, needed: 1 },
-  scatter: { labels: 1, values: 2, needed: 2 },
-  radar: { labels: 1, values: Infinity, needed: 2 },
-  treemap: { labels: Infinity, values: 1, needed: 1 },
-  sunburst: { labels: Infinity, values: 1, needed: 1 },
-  sankey: { labels: Infinity, values: Infinity, needed: 1 },
-  heatmap: { labels: 2, values: Infinity, needed: 1 },
-  boxplot: { labels: 1, values: Infinity, needed: 1 },
-  gauge: { labels: 1, values: 1, needed: 1 },
+/** The most label columns that each type of chart reads. */
+const MOST_LABELS: Record<ChartType, number> = {
+  histogram: 0,
+  pie: 1,
+  doughnut: 1,
+  funnel: 1,
+  bar: 2,
+  horizontalBar: 2,
+  stackedBar: 2,
+  line: 2,
+  area: 2,
+  stackedArea: 2,
+  scatter: 1,
+  radar: 1,
+  treemap: Infinity,
+  sunburst: Infinity,
+  sankey: Infinity,
+  heatmap: 2,
+  boxplot: 1,
+  gauge: 1,
 };
 
 /** Which columns of a table a chart reads, and in which role. */
@@ -231,15 +231,17 @@ function columnCount(count: number, role: string): string {
 }
 
 /**
- * Sankey, heatmap, boxplot and Cartesian charts read one value column when labels identify each
- * flow, cell, group or series; otherwise they read one value column per target, heatmap column, box
- * or series.
+ * The most value columns that a chart shows. Sankey, heatmap, boxplot and Cartesian charts read one
+ * value column when labels identify each flow, cell, group or series; otherwise they read one value
+ * column per target, heatmap column, box or series. A radar draws an axis per value column.
  */
 function shownValues(type: ChartType, labels: number, separator: boolean, times: boolean): number {
   switch (type) {
     case "scatter":
       // Dates in the label column are the x, so one column of values gives the y.
       return times ? 1 : 2;
+    case "radar":
+      return Infinity;
     case "sankey":
       return labels >= 2 || separator ? 1 : Infinity;
     case "heatmap":
@@ -253,7 +255,7 @@ function shownValues(type: ChartType, labels: number, separator: boolean, times:
     case "boxplot":
       return labels >= 1 ? 1 : Infinity;
     default:
-      return COLUMN_COUNTS[type].values;
+      return 1;
   }
 }
 
@@ -270,7 +272,7 @@ function categoryAxisOverride(spec: ChartSpec): boolean {
 }
 
 function readLabelColumns(spec: ChartSpec, table: DataTable, notes: string[]): number[] {
-  const most = COLUMN_COUNTS[spec.type].labels;
+  const most = MOST_LABELS[spec.type];
   if (spec.labelColumn === undefined) {
     // A Cartesian chart takes a second label column for its series only when given one: two text
     // columns are as often a name and a description.
@@ -356,7 +358,8 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   }
 
   const given = spec.valueColumns && findColumns(table, spec.valueColumns, "valueColumns");
-  const needed = type === "scatter" && times !== undefined ? 1 : COLUMN_COUNTS[type].needed;
+  // An x and a y, or two axes of a radar, unless dates give the x.
+  const needed = type === "radar" || (type === "scatter" && times === undefined) ? 2 : 1;
   if (spec.aggregate === "count") {
     // Counting rows gives one number per group, which a chart of two values cannot use.
     if (needed > 1) {
