@@ -96,9 +96,8 @@ export function describeDiagram(
     }
     // Not the kept edits that the chart shows already, such as a scale that it has too.
     if (!state.chartPresentation?.blocked && state.chartPresentation?.kept?.some((e) => !e.shown)) {
-      const type = state.chart.type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
       lines.push(
-        `Manual styling that this ${type} chart cannot show comes back with a chart that can; replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} drops it.`,
+        `Manual styling that this ${chartTypeName(state.chart.type)} chart cannot show comes back with a chart that can; replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} drops it.`,
       );
     }
     // The table of a file or command is not kept when VS Code restarts.
@@ -158,6 +157,11 @@ export function describeDiagram(
       : `The user has no ${parts} selected in the panel.`,
   );
   return lines.join("\n");
+}
+
+/** E.g. "horizontal bar" for "horizontalBar". */
+export function chartTypeName(type: string): string {
+  return type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
 }
 
 /** Inline data is already represented by the chart; don't repeat it in every chat turn. */

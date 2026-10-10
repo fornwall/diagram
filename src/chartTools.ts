@@ -5,9 +5,10 @@ import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
 import type { ChartUpdateInput } from "./chartOptions";
 import { type ChartPresentation, rebuildChart } from "./chartPresentation";
-import { type ChartSpec, type ChartType, dataOrigin, validateChartSpec } from "./chartSpec";
+import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
+import { chartTypeName } from "./describe";
 import type { DiagramPanel } from "./panel";
 import {
   CHART_TOOL,
@@ -96,11 +97,6 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       outcome.revision,
     );
   }
-}
-
-/** E.g. "horizontal bar" for "horizontalBar". */
-function chartTypeName(type: ChartType): string {
-  return type.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
 }
 
 /** The chart's title, by default e.g. "Horizontal bar chart of sales.csv". */
@@ -234,7 +230,7 @@ function updateMessage(input: unknown): string {
   for (const [key, value] of Object.entries(isPlainObject(input) ? input : {})) {
     const name = UPDATE_NAMES[key];
     if (key === "type" && typeof value === "string") {
-      changes.push(`${chartTypeName(value as ChartType)} chart`);
+      changes.push(`${chartTypeName(value)} chart`);
     } else if (key === "title" && typeof value === "string") {
       changes.push(`title ${quote(value, 60)}`);
     } else if (name !== undefined && value === null) {
