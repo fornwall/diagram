@@ -116,10 +116,11 @@ export async function promptMessages(
   context: vscode.ChatContext,
   explain: boolean,
   callsTools: boolean,
-  current: string | undefined,
+  shown: { description: string; source: string | undefined } | undefined,
   token: vscode.CancellationToken,
 ): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice: string | undefined } | string> {
   const { model } = request;
+  const current = shown?.description;
   const prompt = promptText(request);
   const instructions = explain
     ? EXPLAIN_INSTRUCTIONS
@@ -129,7 +130,13 @@ export async function promptMessages(
   throwIfCancelled(token);
   const images = attachments.filter((attachment) => "image" in attachment);
   const imageKeys = new Set(images.flatMap((image) => image.keys));
-  const exchanges = await pastExchanges(context.history, documents, callsTools, imageKeys, current);
+  const exchanges = await pastExchanges(
+    context.history,
+    documents,
+    callsTools,
+    imageKeys,
+    shown?.source,
+  );
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -482,13 +489,16 @@ function sum(numbers: number[]): number {
   return numbers.reduce((total, n) => total + n, 0);
 }
 
-/** `current` describes the current diagram, so that a reply that drew it need not repeat it. */
+/**
+ * A reply that drew the current diagram, whose `currentSource` the request describes, or says is too
+ * long to repeat, need not repeat it.
+ */
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
   callsTools: boolean,
   imageKeys: ReadonlySet<string>,
-  current: string | undefined,
+  currentSource: string | undefined,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
@@ -522,10 +532,10 @@ async function pastExchanges(
     const language: unknown = turn.result.metadata?.language;
     const chart: unknown = turn.result.metadata?.chart;
     if (typeof source === "string" && isDiagramLanguage(language)) {
-      const fenced = codeFence(source, language);
-      exchange.diagram = current?.includes(fenced)
-        ? `\n\n(I drew the current ${diagramNoun(language)}, described below.)`
-        : `\n\n${fenced}`;
+      exchange.diagram =
+        source === currentSource
+          ? `\n\n(I drew the current ${diagramNoun(language)}, described below.)`
+          : `\n\n${codeFence(source, language)}`;
     } else if (chart) {
       exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${describeChartParameters(chart)})`;
     }

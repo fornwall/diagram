@@ -1266,6 +1266,14 @@ suite("participant", () => {
       "Drawn.\n\n(I drew the current diagram, described below.)",
       `Drawn.\n\n\`\`\`mermaid\n${flowchart.source}\n  B --> C\n\`\`\``,
     ]);
+
+    // Nor is one too long for the request to repeat.
+    const long = `${flowchart.source}\n%% ${"x".repeat(40_000)}`;
+    assert.ok((await panel.render({ ...flowchart, source: long, title: "Flow" }, "tool")).ok);
+    const later = await ask([[text("Hm.")]], { history: turn(long) });
+    const laterMessages = later.sent[0]?.messages.map(messageText) ?? [];
+    assert.ok(laterMessages.includes("Drawn.\n\n(I drew the current diagram, described below.)"));
+    assert.ok(!laterMessages.some((message) => message.includes("x".repeat(40_000))));
   });
 
   test("leaves /show out of the history, and gives a command without a message by its name", async () => {

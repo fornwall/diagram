@@ -92,7 +92,10 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
     const callsTools = capabilities?.supportsToolCalling !== false;
     const viewsImages = acceptsImages(request.model);
-    const current = request.command === "new" ? undefined : panel.describeForModel({ callsTools });
+    const description =
+      request.command === "new" ? undefined : panel.describeForModel({ callsTools });
+    const current =
+      description === undefined ? undefined : { description, source: panel.current?.source };
     // Until the request draws, or ends without drawing.
     panel.startsNew = request.command === "new";
     if (explain && !current) {
