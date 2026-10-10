@@ -977,7 +977,8 @@ window.addEventListener(
   (event) => {
     const zoom = ZOOM_KEYS[event.key];
     const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-    if (zoom && primary && !event.altKey && active?.zoomBy) {
+    // Not in the source view, which shows no drawing, nor the buttons, to zoom.
+    if (zoom && primary && !event.altKey && active?.zoomBy && editor.view !== "source") {
       event.preventDefault();
       event.stopPropagation();
       zoom();

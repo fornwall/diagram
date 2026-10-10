@@ -834,6 +834,11 @@ suite("webview", function () {
     await press("+");
     await press("0");
     assert.strictEqual(await zoom(), "100%", "0 fits the diagram to the panel again.");
+    // Not in the source view, whose keys VS Code takes, to zoom the window.
+    await evaluate(`document.getElementById("view-source").click()`);
+    assert.deepStrictEqual(await press("="), { prevented: false, forwarded: true });
+    await evaluate(`document.getElementById("view-visual").click()`);
+    assert.strictEqual(await zoom(), "100%");
 
     await press("+");
     await draw({ source: `${source}\n  B --> C`, title: "Zoom" });
