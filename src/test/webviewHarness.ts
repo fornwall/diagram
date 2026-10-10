@@ -236,6 +236,14 @@ export const UNTIL = `
   };`;
 
 /**
+ * Webview code, with {@link UNTIL}, that waits for the page to have the focus, for code that moves
+ * or reads it: VS Code focuses a panel, as showing Chart Options does, by taking the focus out of
+ * the page and, 50 ms later, giving it back to what had it, and meanwhile the page has none.
+ */
+export const FOCUSED = `${UNTIL}
+  await until(() => document.hasFocus(), "the focus in the page");`;
+
+/**
  * Webview code defining `dragImage(init)`: what dragging the drawing out of the panel carries, once
  * the image is ready, with the pointer pressed on the handle as `init` says, such as with Shift.
  * It keeps its `until` to itself, for expressions that define their own.

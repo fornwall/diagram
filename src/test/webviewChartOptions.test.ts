@@ -3,7 +3,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { Diagram } from "../panel";
-import { suitePage, UNTIL } from "./webviewHarness";
+import { FOCUSED, suitePage, UNTIL } from "./webviewHarness";
 
 suite("Chart Options in the webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
@@ -89,7 +89,8 @@ suite("Chart Options in the webview", function () {
     };
     await showChartOptions(chart);
     assert.deepStrictEqual(
-      await evaluate(`(() => {
+      await evaluate(`(async () => {
+        ${FOCUSED}
         const columns = document.getElementById("chart-option-value");
         const addColumn = columns.querySelector(":scope > button");
         const selects = () => [...columns.querySelectorAll("select")];
@@ -148,29 +149,32 @@ suite("Chart Options in the webview", function () {
     })`;
     // Apply, pressed, shows itself disabled while the options apply, keeping the focus.
     await nextRender(() =>
-      evaluate(`(() => {
+      evaluate(`(async () => {
+        ${FOCUSED}
         const apply = document.querySelector("#chart-options form button:default");
         apply.focus();
         apply.click();
         return ${focus};
       })()`).then((pending) => assert.deepStrictEqual(pending, { id: "Apply", applying: "true" })),
     );
-    assert.deepStrictEqual(await evaluate(focus), { id: "Apply", applying: null });
+    const focused = () => evaluate(`(async () => {${FOCUSED} return ${focus}; })()`);
+    assert.deepStrictEqual(await focused(), { id: "Apply", applying: null });
     // Enter in a row of filters or columns.
     for (const label of ["Filter value", "Value column 2"]) {
       await nextRender(() =>
-        evaluate(`(() => {
+        evaluate(`(async () => {
+          ${FOCUSED}
           document.querySelector('#chart-options [aria-label="${label}"]').focus();
           document.querySelector("#chart-options form").requestSubmit();
         })()`),
       );
-      assert.deepStrictEqual(await evaluate(focus), { id: label, applying: null });
+      assert.deepStrictEqual(await focused(), { id: label, applying: null });
     }
     // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave, as when
     // the row goes.
     assert.strictEqual(
       await evaluate(`(async () => {
-        ${UNTIL}
+        ${FOCUSED}
         const value = document.querySelector('#chart-options [aria-label="Filter value"]');
         value.focus();
         document.hasFocus = () => false;
@@ -188,7 +192,7 @@ suite("Chart Options in the webview", function () {
     // Fields disabled, as without the data, which takes the focus from them only later.
     assert.deepStrictEqual(
       await evaluate(`(async () => {
-        ${UNTIL}
+        ${FOCUSED}
         document.getElementById("chart-option-chart").focus();
         receive({type: "chartOptions", visible: true, state: {revision: 0, controls: {type: "bar"},
           columns: [], rowCount: 0, edited: false, unavailable: "Press Refresh."}});
