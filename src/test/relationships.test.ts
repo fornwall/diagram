@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import type { DiagramNode } from "../protocol";
-import { replace } from "./afterTest";
+import { cancellationSource } from "./afterTest";
+import { recordChat, within } from "./newPanel";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 suite("relationships", function () {
@@ -35,17 +36,27 @@ suite("relationships", function () {
       ${UNTIL}
       await until(() => ${expression}, ${JSON.stringify(expression)});
     })()`);
+  const selectedIds = () => selection.map((n) => n.id);
+  const selectionLabel = async () =>
+    (await evaluate('document.querySelector("#selection-label").textContent')) as string;
+  const relationshipIds = async () =>
+    (await evaluate(
+      `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
+    )) as string[];
+  /** Selects the two nodes and highlights the path between them, unless the page offers none. */
+  const highlightPath = async (from: string, to: string) => {
+    await click(node(from));
+    await click(node(to), true);
+    if (await evaluate('document.querySelector("#highlight-path").hidden')) return false;
+    await click("#highlight-path");
+    return true;
+  };
 
   test("selects labeled and parallel flowchart edges by their ids, with endpoints whose ids hold underscores", async () => {
     const source =
       "flowchart LR\n A_B[Origin] first@-->|First| B_C[Target]\n A_B second@--> B_C\n B_C back@--> A_B";
     await draw({ source });
-    assert.deepStrictEqual(
-      await evaluate(
-        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
-      ),
-      ["edge:first", "edge:second", "edge:back"],
-    );
+    assert.deepStrictEqual(await relationshipIds(), ["edge:first", "edge:second", "edge:back"]);
     await click('.edgeLabel .label[data-id="first"]');
     assert.deepStrictEqual(selection[0]?.relationship, {
       kind: "edge",
@@ -55,10 +66,7 @@ suite("relationships", function () {
     });
     assert.match(selection[0]?.label ?? "", /First/);
     await click(node("edge:second"), true);
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ["edge:first", "edge:second"],
-    );
+    assert.deepStrictEqual(selectedIds(), ["edge:first", "edge:second"]);
     assert.match(page.panel.describeForModel() ?? "", /"edge:first"; edge; from: "A_B"; to: "B_C"/);
     assert.ok(
       page.panel.annotate({
@@ -77,38 +85,22 @@ suite("relationships", function () {
       "rgba(0, 0, 0, 0)",
     );
     await draw({ source });
-    assert.deepStrictEqual(
-      await evaluate(
-        `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
-      ),
-      ["edge:first", "edge:second", "edge:back"],
-    );
+    assert.deepStrictEqual(await relationshipIds(), ["edge:first", "edge:second", "edge:back"]);
   });
 
   test("selects unlabeled edges by a wide hit target and with the keyboard, together with nodes", async () => {
     await draw({ source: "flowchart LR\n A --> B\n A --> B" });
-    const ids = (await evaluate(
-      `Array.from(document.querySelectorAll('.diagram-relationship[tabindex]'), e => e.dataset.diagramId)`,
-    )) as string[];
+    const ids = await relationshipIds();
     assert.strictEqual(ids.length, 2);
     assert.notStrictEqual(ids[0], ids[1]);
     await click(".diagram-relationship-hit");
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      [ids[0]],
-    );
+    assert.deepStrictEqual(selectedIds(), [ids[0]]);
     await evaluate(
       `document.querySelector(${JSON.stringify(node(ids[1] ?? ""))}).dispatchEvent(new KeyboardEvent('keydown', {key:' ',ctrlKey:true,bubbles:true}))`,
     );
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ids,
-    );
+    assert.deepStrictEqual(selectedIds(), ids);
     await click(node("A"), true);
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      [...ids, "A"],
-    );
+    assert.deepStrictEqual(selectedIds(), [...ids, "A"]);
     await click(node("B"));
     assert.deepStrictEqual(selection, [{ id: "B", label: "B" }]);
   });
@@ -134,10 +126,7 @@ suite("relationships", function () {
     await evaluate(
       `document.querySelector(${JSON.stringify(node(ids[1] ?? ""))}).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}))`,
     );
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ids.slice(0, 2),
-    );
+    assert.deepStrictEqual(selectedIds(), ids.slice(0, 2));
     await click(`text.messageText[data-diagram-id="${ids[2]}"]`);
     assert.strictEqual(selection[0]?.id, ids[2]);
     assert.match(selection[0]?.label ?? "", /Reply again/);
@@ -145,14 +134,12 @@ suite("relationships", function () {
       page.panel.annotate({ marks: [{ id: ids[2] ?? "", kind: "current" }], dim: false }).ok,
     );
     assert.match(page.panel.describeForModel() ?? "", /message; from: "B"; to: "A"/);
-    const token = new vscode.CancellationTokenSource();
-    const picking = page.panel.pickNodes("Which message?", false, token.token);
+    const picking = page.panel.pickNodes("Which message?", false, cancellationSource().token);
     await until("document.querySelector('.picking')");
     await click(node(ids[3] ?? ""));
     const result = await picking;
     assert.ok(result.picked);
     if (result.picked) assert.strictEqual(result.nodes[0]?.id, ids[3]);
-    token.dispose();
   });
 
   test("sends relationship IDs, endpoints and aliases with a chat request", async () => {
@@ -160,14 +147,7 @@ suite("relationships", function () {
       source: "sequenceDiagram\n participant A as Client\n participant B as Server\n A->>B: Retry",
     });
     await click('[data-et="message"]');
-    const asked = Promise.withResolvers<string>();
-    replace(vscode.commands, "executeCommand", (async (
-      command: string,
-      args: { query: string },
-    ) => {
-      assert.strictEqual(command, "workbench.action.chat.open");
-      asked.resolve(args.query);
-    }) as typeof vscode.commands.executeCommand);
+    const chat = recordChat();
     await evaluate(`(() => {
       // As a user does: a synthetic submit event would not show if the form could not submit.
       const input = document.querySelector('#ask-input');
@@ -175,7 +155,8 @@ suite("relationships", function () {
       input.dispatchEvent(new Event('input'));
       document.querySelector('#ask-submit').click();
     })()`);
-    const query = await asked.promise;
+    assert.ok(await within(() => chat.requests.length > 0));
+    const query = chat.requests[0]?.query ?? "";
     assert.match(query, /Client → Server: Retry/);
     assert.match(query, /id: "message:i\d+"; message; from: "A"; to: "B"; direction: forward/);
     assert.match(query, /Add a timeout here/);
@@ -216,10 +197,7 @@ suite("relationships", function () {
     );
     const id = drawnRelationships[0]?.id;
     await click(`[data-diagram-id="${id}"][tabindex]`);
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      [id],
-    );
+    assert.deepStrictEqual(selectedIds(), [id]);
   });
 
   test("highlights the shortest path from the first selected node to the second, or says there is none", async () => {
@@ -231,42 +209,19 @@ suite("relationships", function () {
     await click(node("D"), true);
     assert.strictEqual(await evaluate('document.querySelector("#highlight-path").disabled'), false);
     await click("#highlight-path");
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ["A", "edge:first", "B", "edge:third", "D"],
-    );
-    assert.match(
-      (await evaluate('document.querySelector("#selection-label").textContent')) as string,
-      /shortest path.*2 edges/,
-    );
-    await click(node("D"));
-    await click(node("A"), true);
-    await click("#highlight-path");
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ["D", "A"],
-    );
-    assert.match(
-      (await evaluate('document.querySelector("#selection-label").textContent')) as string,
-      /No path from D to A/,
-    );
-    await click(node("A"));
-    await click(node("E"), true);
-    await click("#highlight-path");
-    assert.match(
-      (await evaluate('document.querySelector("#selection-label").textContent')) as string,
-      /No path/,
-    );
+    assert.deepStrictEqual(selectedIds(), ["A", "edge:first", "B", "edge:third", "D"]);
+    assert.match(await selectionLabel(), /shortest path.*2 edges/);
+    assert.ok(await highlightPath("D", "A"));
+    assert.deepStrictEqual(selectedIds(), ["D", "A"]);
+    assert.match(await selectionLabel(), /No path from D to A/);
+    assert.ok(await highlightPath("A", "E"));
+    assert.match(await selectionLabel(), /No path/);
   });
 
   test("highlights paths in swimlane, agent flow, ELK flowchart and state diagrams, but not in class diagrams", async () => {
     const path = async (source: string, from: string, to: string) => {
       await draw({ source });
-      await click(node(from));
-      await click(node(to), true);
-      if (await evaluate('document.querySelector("#highlight-path").hidden')) return undefined;
-      await click("#highlight-path");
-      return selection.map((n) => n.id);
+      return (await highlightPath(from, to)) ? selectedIds() : undefined;
     };
     assert.deepStrictEqual(
       await path(
@@ -301,24 +256,14 @@ suite("relationships", function () {
 
   test("respects bidirectional, undirected and invisible flowchart edges", async () => {
     await draw({ source: "flowchart LR\n A both@<--> B\n B plain@--- C\n C ~~~ D" });
-    await click(node("C"));
-    await click(node("A"), true);
-    await click("#highlight-path");
-    assert.deepStrictEqual(
-      selection.map((n) => n.id),
-      ["C", "edge:plain", "B", "edge:both", "A"],
-    );
+    assert.ok(await highlightPath("C", "A"));
+    assert.deepStrictEqual(selectedIds(), ["C", "edge:plain", "B", "edge:both", "A"]);
     assert.strictEqual(
       await evaluate('document.querySelectorAll(".diagram-relationship[tabindex]").length'),
       2,
     );
-    await click(node("C"));
-    await click(node("D"), true);
-    await click("#highlight-path");
-    assert.match(
-      (await evaluate('document.querySelector("#selection-label").textContent')) as string,
-      /No path/,
-    );
+    assert.ok(await highlightPath("C", "D"));
+    assert.match(await selectionLabel(), /No path/);
   });
 
   test("keeps interaction hit targets and metadata out of SVG exports", async () => {
