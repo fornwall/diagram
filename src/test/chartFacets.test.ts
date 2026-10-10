@@ -4,7 +4,15 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
 import { minimumHeight } from "../webview/echartsLayout";
-import { builtOption, itemsOf, layout, type Option, seriesData, withChart } from "./echartsModel";
+import {
+  builtOption,
+  itemsOf,
+  layout,
+  type Option,
+  seriesData,
+  svgOf,
+  withChart,
+} from "./echartsModel";
 
 const build = (data: string, spec: Partial<ChartSpec> = {}) =>
   builtOption({ type: "bar", data, facetColumn: "service", ...spec } as ChartSpec, data);
@@ -685,10 +693,7 @@ suite("chartFacets", () => {
       }
       assert.strictEqual(option.series[0].data[2], null);
       assert.strictEqual(option.series[1].data[0], null);
-      const svg = withChart(option, (chart) => chart.renderToSVGString(), {
-        width: 600,
-        height: 400,
-      });
+      const svg = svgOf(option, { width: 600, height: 400 });
       assert.match(svg, />2024-01-03</, type);
     }
   });

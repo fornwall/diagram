@@ -4,7 +4,7 @@ import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from ".
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { afterTest } from "./afterTest";
-import { builtOption, type Option, seriesData, withChart } from "./echartsModel";
+import { builtOption, type Option, seriesData, svgOf } from "./echartsModel";
 import { newPanel, withoutRevision } from "./newPanel";
 
 const LANGUAGES = parseTable(
@@ -293,10 +293,7 @@ suite("charts", () => {
     assert.strictEqual(large(chart("scatter"), 2000), true);
     // The SVG renderer draws them, as one path each rather than an element per item.
     for (const spec of [bar, chart("scatter")]) {
-      const svg = withChart(build(spec, rows(3000)), (rendered) => rendered.renderToSVGString(), {
-        width: 800,
-        height: 600,
-      });
+      const svg = svgOf(build(spec, rows(3000)), { width: 800, height: 600 });
       assert.ok(svg.split("<path").length < 300, spec.type);
     }
   });
@@ -650,10 +647,7 @@ suite("charts", () => {
       { source: "Yes (q2)", target: "Yes (q3)", value: 2 },
     ]);
     // ECharts identifies the nodes by id, and labels them by name.
-    const svg = withChart({ ...option, animation: false }, (chart) => chart.renderToSVGString(), {
-      width: 800,
-      height: 600,
-    });
+    const svg = svgOf({ ...option, animation: false }, { width: 800, height: 600 });
     assert.strictEqual(svg.match(/>Yes</g)?.length, 3);
     assert.doesNotMatch(svg, /\(q\d\)/);
     // An empty answer skips its stage, rather than moving the next answer into it.
@@ -1471,10 +1465,7 @@ suite("charts", () => {
       for (const override of [{ type: "category" }, [{ type: "category" }]]) {
         const option = build(chart(type, { options: { [axis]: override } }), data);
         assert.deepStrictEqual(option.series[0].data, [3, 3]);
-        const svg = withChart(option, (rendered) => rendered.renderToSVGString(), {
-          width: 1200,
-          height: 800,
-        });
+        const svg = svgOf(option, { width: 1200, height: 800 });
         for (const date of dates) {
           assert.ok(svg.includes(date), `${type} must display the original label ${date}`);
         }

@@ -3,7 +3,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { filterTable, planHistogram } from "../chartTransforms";
 import { type DataTable, parseTable } from "../data";
-import { builtOption, withChart } from "./echartsModel";
+import { builtOption, svgOf } from "./echartsModel";
 
 const build = (data: string | DataTable, extra: Partial<ChartSpec> = {}) =>
   builtOption({ data: "unused", type: "histogram", ...extra } as ChartSpec, data);
@@ -131,10 +131,7 @@ suite("chartTransforms", () => {
     assert.deepStrictEqual(option.xAxis.data, ["[-2, 0)", "[0, 2]"]);
     assert.deepStrictEqual(option.series[0].data, [2, 3]);
     assert.strictEqual(option.series[0].barCategoryGap, "0%");
-    const svg = withChart(option, (chart) => chart.renderToSVGString(), {
-      width: 600,
-      height: 400,
-    });
+    const svg = svgOf(option, { width: 600, height: 400 });
     assert.match(svg, />\[-2, 0\)</);
     assert.match(svg, />\[0, 2\]</);
   });

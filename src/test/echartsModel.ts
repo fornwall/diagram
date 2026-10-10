@@ -38,6 +38,10 @@ export function withChart<T>(
   }
 }
 
+/** The SVG of a chart of the option, by default at 400 × 300. */
+export const svgOf = (option: Record<string, unknown>, size?: { width: number; height: number }) =>
+  withChart(option, (chart) => chart.renderToSVGString(), size);
+
 /** The items of an option as ECharts lays them out. */
 export const itemsOf = (option: Record<string, unknown>) =>
   withChart(option, (chart) => new ChartItems(chart));
