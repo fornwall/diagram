@@ -99,6 +99,17 @@ export class ChartOptionsForm {
   private readonly replaceLabel = document.createElement("label");
   private readonly apply = button("Apply", "");
   private readonly reset = button("Reset styling");
+  /** The fields of the settings that some chart types cannot use. */
+  private readonly settings = {
+    labelColumn: this.labels,
+    aggregate: this.aggregate,
+    sort: this.sort,
+    limit: this.limit,
+    bins: this.bins,
+    facetColumn: this.facet,
+    facetColumns: this.facetColumns,
+    facetScales: this.facetScales,
+  };
 
   constructor(
     private readonly container: HTMLElement,
@@ -154,19 +165,9 @@ export class ChartOptionsForm {
     }
     this.filters.parentElement?.classList.add("chart-filter-field");
     this.type.addEventListener("change", () => {
-      const { aggregate, sort, limit, bins, facet, facetColumns, facetScales } = this;
-      const fields = {
-        aggregate,
-        sort,
-        limit,
-        bins,
-        facetColumns,
-        facetScales,
-        facetColumn: facet,
-      };
       for (const key of unusableSettings(this.type.value as ChartType)) {
         if (key === "labelColumn") this.fillLabels([]);
-        else fields[key].value = "";
+        else this.settings[key].value = "";
       }
       this.updateAvailability();
     });
@@ -288,9 +289,10 @@ export class ChartOptionsForm {
     if (opening) this.type.focus();
     else if (hadFocus && !this.keeps(document.activeElement) && document.hasFocus()) {
       // The rows of columns and filters are made anew for other columns, or fewer remain, as when
-      // the chart that the options applied comes back, and the fields are disabled while its data is not loaded, which takes the
-      // focus from them only later. Keep the focus on the same place in the form, or else on the
-      // first control that takes it; not from elsewhere in VS Code, where the user went meanwhile.
+      // the chart that the options applied comes back, and the fields are disabled while its data
+      // is not loaded, which takes the focus from them only later. Keep the focus on the same place
+      // in the form, or else on the first control that takes it; not from elsewhere in VS Code,
+      // where the user went meanwhile.
       let same: Element | undefined = this.container;
       for (const index of focusPath) same = same?.children[index];
       const fallback = [this.type, ...this.container.querySelectorAll("button")].find(focusable);
@@ -338,14 +340,10 @@ export class ChartOptionsForm {
    */
   private updateAvailability(): void {
     const unusable = new Set<string>(unusableSettings(this.type.value as ChartType));
-    for (const [key, control] of [
-      ["labelColumn", this.labels],
-      ["aggregate", this.aggregate],
-      ["sort", this.sort],
-      ["limit", this.limit],
-      ["bins", this.bins],
-    ] as const) {
-      if (control.parentElement) control.parentElement.hidden = unusable.has(key);
+    for (const [key, control] of Object.entries(this.settings)) {
+      if (!key.startsWith("facet") && control.parentElement) {
+        control.parentElement.hidden = unusable.has(key);
+      }
     }
     this.facet.disabled = unusable.has("facetColumn");
     this.facetColumns.disabled = this.facetScales.disabled =
