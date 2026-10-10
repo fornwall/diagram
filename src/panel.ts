@@ -171,7 +171,11 @@ export class DiagramPanel implements vscode.Disposable {
   private confirming = false;
   /** Whether the user declined what the page asked for while it held chart code. */
   private pageRefused = false;
-  /** The request that drew the current diagram, which is what an export captures. */
+  /**
+   * The request that drew the current diagram, which is what an export captures and what a click
+   * on the drawing names. One that fails to render has no drawing, and a click on the drawing of an
+   * earlier render, sent just before the page drew the next, was on the diagram it replaced.
+   */
   private renderedRequestId: number | undefined;
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
@@ -466,14 +470,15 @@ export class DiagramPanel implements vscode.Disposable {
       case "ask":
         return this.askInChat(`${this.regarding(message.nodes)}${message.text}`);
       case "clickToAsk":
-        if (this.state?.clickPrompt && this.showsDrawing(message.requestId)) {
+        if (this.state?.clickPrompt && message.requestId === this.renderedRequestId) {
           return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
       case "clickToOpen": {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
-        const link = this.showsDrawing(message.requestId) ? this.linkOf(message.node) : undefined;
+        const link =
+          message.requestId === this.renderedRequestId ? this.linkOf(message.node) : undefined;
         return (
           link &&
           openLink(link, message.node.label, this.webview.tab?.viewColumn, (ask) =>
@@ -482,7 +487,7 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
       case "openUrl":
-        if (this.state && this.showsDrawing(message.requestId)) {
+        if (this.state && message.requestId === this.renderedRequestId) {
           return openUrl(message.url, diagramNoun(this.state.language), this.pageRanCode, (ask) =>
             this.confirmForPage(ask),
           );
@@ -1347,20 +1352,6 @@ export class DiagramPanel implements vscode.Disposable {
     const links = this.state?.links;
     // Node ids are a model's words, so only the map's own entries count, not "constructor".
     return links && Object.hasOwn(links, node.id) ? links[node.id] : undefined;
-  }
-
-  /**
-   * Whether the panel shows the current diagram as the render drew it, which a click on its drawing
-   * names. One that fails to render has no nodes, and a click on the drawing of an earlier render,
-   * sent just before the page drew the next, was on the diagram it replaced.
-   */
-  private showsDrawing(requestId: number): boolean {
-    return (
-      requestId === this.sourceRequestId &&
-      !this.state?.error &&
-      !this.pendingRender &&
-      !this.unavailable
-    );
   }
 
   /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */
