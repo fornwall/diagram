@@ -505,6 +505,24 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(name({ series: [{ ...treemap, type: "sunburst" }] }), [undefined]);
   });
 
+  test("leaves room beside a radar for the names of its indicators", () => {
+    const radius = (names: string[], width: number) =>
+      layout(
+        {
+          radar: { indicator: names.map((name) => ({ name, max: 10 })) },
+          series: [{ type: "radar", data: [{ value: names.map(() => 5) }] }],
+        },
+        { width, height: 500 },
+      ).radar.radius;
+    const short = ["Speed", "Cost", "Size"];
+    const long = ["Speed", "Intelligence", "Size"];
+    // In a narrow chart, the names take from the width of the radar.
+    assert.ok(radius(long, 360) < radius(short, 360));
+    assert.ok(radius(long, 360) <= (360 - 2 * 12 * colors.fontSize * 0.6) / 2 - 20);
+    // In a wide one, the height decides.
+    assert.strictEqual(radius(long, 1200), radius(short, 1200));
+  });
+
   test("keeps series laid out in a box clear of the title, with room for their labels", () => {
     const box = (type: string, extra: Option = {}) => {
       const { top, left, right, bottom } = layout({

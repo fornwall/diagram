@@ -1055,8 +1055,9 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
   const boxWidth = size.width - reserved.left - reserved.right;
   const boxHeight = size.height - reserved.top - reserved.bottom;
   radar.center = [reserved.left + boxWidth / 2, reserved.top + boxHeight / 2];
-  // Leave room around the radar for the indicator names.
-  radar.radius = Math.max(40, Math.min(boxWidth - 140, boxHeight - 56) / 2);
+  // Leave room beside the radar for the names of its indicators, of up to a fourth of the width.
+  const nameWidth = Math.min(longestText(radar.indicator) * size.charWidth, boxWidth / 4);
+  radar.radius = Math.max(40, Math.min(boxWidth - 2 * nameWidth - 40, boxHeight - 56) / 2);
 }
 
 /** The type of an axis, which ECharts makes "category" for one with data. */
