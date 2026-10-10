@@ -157,7 +157,14 @@ export const modelOf = (chart: ECharts.ECharts) =>
   (chart as unknown as { getModel(): GlobalModel }).getModel();
 
 function valueText(value: unknown): string | undefined {
-  if (value === null || value === undefined || value === "") {
+  // Also what ECharts takes for a missing value, and draws nothing for.
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "-" ||
+    Number.isNaN(value)
+  ) {
     return undefined;
   }
   if (Array.isArray(value)) {

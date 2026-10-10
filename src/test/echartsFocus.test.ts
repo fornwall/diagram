@@ -182,6 +182,10 @@ suite("echartsFocus", () => {
       ],
     };
     assert.strictEqual(values(boxplot), "(2, 3, 4, 5, 6)");
+    // No value, rather than one that ECharts takes for none.
+    for (const missing of [null, "-", Number.NaN]) {
+      assert.strictEqual(values({ type: "bar", data: [1, missing] }), undefined, String(missing));
+    }
     // Numbers that are categories themselves, on an axis that lists none.
     const about = (option: Record<string, unknown>) =>
       withChart(option, (chart) => {
