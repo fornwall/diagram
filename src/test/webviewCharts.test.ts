@@ -459,7 +459,7 @@ suite("ECharts in the webview", function () {
     });
   });
 
-  test("scrolls facets in a view too short for them, keeping the scroll on a new layout", async () => {
+  test("scrolls facets in a view too short for them, keeping the scroll of a revision", async () => {
     const data = `service,ms\n${Array.from({ length: 12 }, (_, i) => `s${i},${i + 1}`).join("\n")}`;
     const spec = { type: "bar", data, facetColumn: "service" } as const;
     const faceted = JSON.stringify(buildChart(spec, parseTable(data)).option);
@@ -495,6 +495,9 @@ suite("ECharts in the webview", function () {
       await evaluate('document.getElementById("chart").scrollTop = 40');
       await draw({ language: "echarts", source: faceted });
       assert.deepStrictEqual(await shown(), { scrolls: true, top: 40, taller: true, wider: false });
+      // Another chart, by its title, shows from its top.
+      await draw({ language: "echarts", source: faceted, title: "Another" });
+      assert.deepStrictEqual(await shown(), { scrolls: true, top: 0, taller: true, wider: false });
       // Other charts fit the view, however short.
       await draw({ language: "echarts", source: plain });
       assert.deepStrictEqual(await shown(), {

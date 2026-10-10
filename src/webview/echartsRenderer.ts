@@ -98,6 +98,8 @@ export class EChartsRenderer implements Renderer {
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
   /** The height of a drawing taller than the container, which scrolls it. */
   private scrolledHeight: number | undefined;
+  /** Whether the next chart is another, to show from its top. */
+  private scrollToStart = false;
   private resizeFrame = 0;
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   /** Whether resizing the chart took longer than the budget since its size started changing. */
@@ -163,6 +165,10 @@ export class EChartsRenderer implements Renderer {
       this.disposeChart();
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
+    if (this.scrollToStart) {
+      this.scrollToStart = false;
+      this.container.scrollTop = 0;
+    }
     // ResizeObserver reports a size in a frame when it differs from the one it reported last, so it
     // misses a container that changes size and back between frames, such as for a status line
     // shown while rendering, or a hidden view shown again. Observing anew reports the size in the
@@ -170,6 +176,11 @@ export class EChartsRenderer implements Renderer {
     this.resizeObserver.unobserve(this.container);
     this.resizeObserver.observe(this.container);
     return seriesTypes(option);
+  }
+
+  /** Shows another chart from its top, where a revision keeps the scroll of a tall chart. */
+  fitToPanel(): void {
+    this.scrollToStart = true;
   }
 
   hide(): void {

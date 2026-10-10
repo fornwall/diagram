@@ -276,7 +276,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 4,
-              "description": "Facet panels per row; automatic by default, and raised so that the panels take at most 4 rows."
+              "description": "Facet panels per row; automatic by default, and raised so that the panels take at most 4 rows; the view also shows more per row when rows would be too short to read at its height."
             },
             "facetScales": {
               "type": "string",

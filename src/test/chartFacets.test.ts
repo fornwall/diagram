@@ -9,6 +9,17 @@ import { builtOption, itemsOf, layout, type Option, withChart } from "./echartsM
 const build = (data: string, spec: Partial<ChartSpec> = {}) =>
   builtOption({ type: "bar", data, facetColumn: "service", ...spec } as ChartSpec, data);
 
+/** A box laid out in percent of a size, in whole pixels. */
+const inPixels = (box: Option, width: number, height: number): Option =>
+  Object.fromEntries(
+    ["left", "top", "width", "height"].map((key) => [
+      key,
+      Math.round(
+        (Number.parseFloat(box[key]) * (key === "left" || key === "width" ? width : height)) / 100,
+      ),
+    ]),
+  );
+
 suite("chartFacets", () => {
   test("shares category order without changing the values' categories", () => {
     const option = build(
@@ -435,7 +446,10 @@ suite("chartFacets", () => {
     );
     const laidOut = layout(option, { width: 600, title: "My chart" });
     assert.deepStrictEqual(
-      laidOut.grid.map(({ left, top, width, height }: Option) => [left, top, width, height]),
+      laidOut.grid.map((grid: Option) => {
+        const { left, top, width, height } = inPixels(grid, 600, 500);
+        return [left, top, width, height];
+      }),
       [
         [16, 34, 272, 450],
         [312, 34, 272, 450],
@@ -505,25 +519,23 @@ suite("chartFacets", () => {
   test("lays the panels out in pixels, each title above its grid and clear of the row above", () => {
     const option = build(regions(5));
     const laidOut = layout(option, { width: 1100, height: 540 });
-    const boxes = laidOut.grid.map(({ left, top, width, height }: Option) => ({
-      left,
-      top,
-      width,
-      height,
-    }));
+    // In percent of the size laid out for, which a chart resized without a new layout scales.
+    assert.match(laidOut.grid[1].left, /^[\d.]+%$/);
+    const boxes = laidOut.grid.map((grid: Option) => inPixels(grid, 1100, 540));
+    const titles = laidOut.title.map((title: Option) => inPixels(title, 1100, 540));
     assert.deepStrictEqual(new Set(boxes.map(({ left }: Option) => left)).size, 2);
     assert.deepStrictEqual(new Set(boxes.map(({ top }: Option) => top)).size, 3);
-    laidOut.title.forEach((title: Option, i: number) => {
+    titles.forEach((title: Option, i: number) => {
       assert.deepStrictEqual([title.left, title.top + 26], [boxes[i].left, boxes[i].top]);
     });
-    assert.ok(boxes[0].top + boxes[0].height < laidOut.title[2].top, JSON.stringify(boxes));
+    assert.ok(boxes[0].top + boxes[0].height < titles[2].top, JSON.stringify(boxes));
     // Plots of over 80 pixels, rather than the 40 that percentages of the chart left them.
     withChart(
       laidOut,
       (chart) => {
         const y = (value: number) => Number(chart.convertToPixel({ yAxisIndex: 4 }, value));
         assert.ok(y(0) - y(100) > 80, String(y(0) - y(100)));
-        assert.ok(y(100) > laidOut.title[4].top + 40, "below the title and the axis name");
+        assert.ok(y(100) > titles[4].top + 40, "below the title and the axis name");
       },
       { width: 1100, height: 540 },
     );

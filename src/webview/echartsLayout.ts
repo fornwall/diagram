@@ -783,9 +783,10 @@ export function minimumHeight(option: JsonObject, width: number): number {
 }
 
 /**
- * Lays out the panels of a faceted chart in pixels, in the space left: the percentages of the
- * option would leave a short panel's plot hardly any of its height. Rows too short to read go in
- * more columns, unless that makes the panels too narrow instead. Returns the size of a grid.
+ * Lays out the panels of a faceted chart for its size in pixels, in the space left: the
+ * percentages of the option would leave a short panel's plot hardly any of its height. Rows too
+ * short to read go in more columns, unless that makes the panels too narrow instead. Returns the
+ * size of a grid in pixels.
  */
 function layOutFacets(
   facets: Facet[],
@@ -814,12 +815,16 @@ function layOutFacets(
   facets.forEach(({ grid, title }, index) => {
     const x = Math.round(left + (index % columns) * (panelWidth(columns) + FACET_COLUMN_GAP));
     const y = Math.round(top + Math.floor(index / columns) * rowHeight);
-    Object.assign(title, { left: x, top: y });
+    // In percent of the size laid out for, which a chart resized without a new layout, as while
+    // dragging the splitter, scales, rather than cut off panels or leave room beside them.
+    const across = (pixels: number) => `${(pixels / width) * 100}%`;
+    const down = (pixels: number) => `${(pixels / height) * 100}%`;
+    Object.assign(title, { left: across(x), top: down(y) });
     Object.assign(grid, {
-      left: x,
-      top: y + FACET_TITLE_HEIGHT,
-      width: gridWidth,
-      height: gridHeight,
+      left: across(x),
+      top: down(y + FACET_TITLE_HEIGHT),
+      width: across(gridWidth),
+      height: down(gridHeight),
     });
   });
   shortenFacetTitles(facets, gridWidth - 16);
