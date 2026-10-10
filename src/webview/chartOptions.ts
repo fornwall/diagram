@@ -22,6 +22,12 @@ function select(choices: readonly (string | readonly [string, string])[]): HTMLS
   return element;
 }
 
+/** A name in camel case, such as "horizontalBar", in words as the other choices read: "Horizontal bar". */
+function words(name: string): string {
+  const spaced = name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 /** Whether the selects list the same columns for both, as they show only names and numeric. */
 const sameColumns = (a: readonly Column[] | undefined, b: readonly Column[]): boolean =>
   a?.length === b.length &&
@@ -52,12 +58,13 @@ function removeRow(row: Element, fallback: HTMLElement): void {
 export class ChartOptionsForm {
   private state: ChartOptionsState | undefined;
   private readonly fields = document.createElement("fieldset");
-  private readonly type = select(
-    CHART_TYPES.map((type) => [type.replace(/([a-z])([A-Z])/g, "$1 $2"), type] as const),
-  );
+  private readonly type = select(CHART_TYPES.map((type) => [words(type), type] as const));
   private readonly labels = document.createElement("div");
   private readonly values = document.createElement("div");
-  private readonly aggregate = select([["None", ""], ...AGGREGATIONS]);
+  private readonly aggregate = select([
+    ["None", ""],
+    ...AGGREGATIONS.map((aggregation) => [words(aggregation), aggregation] as const),
+  ]);
   private readonly sort = select([
     ["Data order", ""],
     ["Ascending", "ascending"],

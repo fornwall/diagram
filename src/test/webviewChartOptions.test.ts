@@ -406,6 +406,34 @@ suite("Chart Options in the webview", function () {
     }
   });
 
+  test("chart options name the chart types and aggregations in words, as the other choices", async () => {
+    await showChartOptions({ type: "horizontalBar", data: "name,amount\na,1" });
+    const texts = (id: string) =>
+      evaluate(
+        `[...document.getElementById("${id}").selectedOptions, ...document.getElementById("${id}").options].map(option => option.text)`,
+      );
+    const types = (await texts("chart-option-chart")) as string[];
+    assert.deepStrictEqual(types.slice(0, 6), [
+      "Horizontal bar",
+      "Pie",
+      "Doughnut",
+      "Bar",
+      "Horizontal bar",
+      "Stacked bar",
+    ]);
+    assert.deepStrictEqual(await texts("chart-option-aggregation"), [
+      "None",
+      "None",
+      "Sum",
+      "Mean",
+      "Count",
+      "Min",
+      "Max",
+      "Median",
+    ]);
+    await closeChartOptions();
+  });
+
   test("chart options leave out the fields that a box plot refuses", async () => {
     const data = "name,amount\na,1\na,2\nb,3\nb,4";
     const chart: ChartSpec = { type: "bar", data, aggregate: "sum", limit: 5 };
