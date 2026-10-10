@@ -2,8 +2,6 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { buildChart } from "../charts";
-import { parseTable } from "../data";
 import { linkTexts } from "../links";
 import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
 import type { ToWebview } from "../protocol";
@@ -20,6 +18,7 @@ import {
   workspaceLink,
 } from "./afterTest";
 import {
+  drawChart,
   FakeWebview,
   memento,
   newFakePanel,
@@ -28,9 +27,10 @@ import {
   recordChat,
   showInFake,
   webviewTabs,
+  within,
 } from "./newPanel";
 import { testColors } from "./themeColors";
-import { toolText } from "./toolText";
+import { invokeTool } from "./toolText";
 
 const flowchart: Diagram = {
   language: "mermaid",
@@ -239,21 +239,8 @@ suite("panel", function () {
     assert.ok(!revealed, "An annotation should not reveal a panel that is already visible");
     assert.strictEqual(vscode.window.activeTextEditor, editor);
 
-    await new Promise<void>((resolve, reject) => {
-      const listener = opened.onDidChangeViewState(({ webviewPanel }) => {
-        if (webviewPanel.active) {
-          clearTimeout(timeout);
-          listener.dispose();
-          resolve();
-        }
-      });
-      const timeout = setTimeout(() => {
-        listener.dispose();
-        reject(new Error("Show Panel did not activate the diagram"));
-      }, 5000);
-      panel.show();
-    });
-    assert.ok(opened.active, "Show Panel should focus the diagram");
+    panel.show();
+    assert.ok(await within(() => opened.active), "Show Panel should focus the diagram");
   });
 
   test("a diagram with no panel to render in is still a new revision", async () => {
@@ -846,15 +833,7 @@ suite("panel", function () {
     const values = new Map<string, unknown>();
     let { panel, webview } = await newFakePanel(values);
     const chart = { type: "bar", data: "name,value\nC,20\nD,40" } as const;
-    const option = buildChart(chart, parseTable("name,value\nA,2\nB,4")).option;
-    assert.ok(
-      (
-        await panel.render(
-          { language: "echarts", source: JSON.stringify(option), title: "Sales", chart },
-          "tool",
-        )
-      ).ok,
-    );
+    const option = JSON.parse(await drawChart(panel, chart, "name,value\nA,2\nB,4", "Sales"));
     option.yAxis = {
       ...(option.yAxis as object),
       name: "Revenue",
@@ -903,15 +882,7 @@ suite("panel", function () {
   test("a failed refresh render restores the previous source and presentation", async () => {
     const { panel, webview } = await newFakePanel();
     const chart = { type: "pie", data: "name,value\nA,9" } as const;
-    await panel.render(
-      {
-        language: "echarts",
-        source: JSON.stringify(buildChart(chart, parseTable("name,value\nA,1")).option),
-        title: "Chart",
-        chart,
-      },
-      "tool",
-    );
+    await drawChart(panel, chart, "name,value\nA,1");
     assert.ok(panel.annotate({ marks: [{ id: "A", kind: "good" }], dim: false }).ok);
     const before = panel.current;
     webview.failNextRender("test refresh failure");
@@ -1125,12 +1096,12 @@ suite("panel", function () {
     assert.deepStrictEqual(outcome.annotation.marks, [{ id: "A", kind: "good" }]);
     // The links of a diagram are checked against the same ids, once it is drawn.
     const links = { A: { file: "sizes.tsv" }, Checker: { file: "sizes.tsv" } };
-    const result = await new RenderDiagramTool(panel).invoke(
-      { input: { source: flowchart.source, links: linkTexts(links) } } as never,
-      new vscode.CancellationTokenSource().token,
-    );
-    assert.match(toolText(result), /These links name nodes the diagram does not have/);
-    assert.match(toolText(result), /"Checker"\. Its node ids are "A", "B"\./);
+    const result = await invokeTool(new RenderDiagramTool(panel), {
+      source: flowchart.source,
+      links: linkTexts(links),
+    });
+    assert.match(result, /These links name nodes the diagram does not have/);
+    assert.match(result, /"Checker"\. Its node ids are "A", "B"\./);
   });
 
   test("annotation ids prefer exact names and only repair unambiguous padding", async () => {
@@ -1179,13 +1150,12 @@ suite("panel", function () {
       panel.describeForModel() ?? "",
       /Chart items that share a name \(mark them by these exact ids with diagram_annotate\): "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\./,
     );
-    const result = await new AnnotateDiagramTool(panel).invoke(
-      { input: { marks: [{ id: "Yes" }, { id: "Yes (q2)" }] } } as never,
-      new vscode.CancellationTokenSource().token,
-    );
-    assert.match(toolText(result), /^Marked 1 chart item: "Yes \(q2\)" \(current\)\./);
+    const result = await invokeTool(new AnnotateDiagramTool(panel), {
+      marks: [{ id: "Yes" }, { id: "Yes (q2)" }],
+    });
+    assert.match(result, /^Marked 1 chart item: "Yes \(q2\)" \(current\)\./);
     assert.match(
-      toolText(result),
+      result,
       /These names each name several items of the chart, so nothing was marked for them: "Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)\. Mark the items you mean by their ids\./,
     );
     const outcome = panel.annotate({ marks: [{ id: "Yes", kind: "info" }], dim: false });
@@ -1325,9 +1295,7 @@ suite("panel", function () {
     webview.answer = draw;
     assert.ok((await panel.render(flowchart, "tool")).ok);
     const exporting = panel.exportDiagram();
-    while (!webview.sent.some((message) => message.type === "export")) {
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+    assert.ok(await within(() => webview.sent.some((message) => message.type === "export")));
     timers.expire();
     await exporting;
     assert.deepStrictEqual(errors, [
@@ -1458,10 +1426,7 @@ suite("panel", function () {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
     const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
-    const table = parseTable(chart.data);
-    const source = JSON.stringify(buildChart(chart, table).option);
-    const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
-    assert.ok((await panel.render(diagram, "tool", table)).ok);
+    const source = await drawChart(panel, chart, chart.data, "Amounts");
     webview.answer = undefined;
     const timers = holdTimers(15_000);
     const updating = panel.updateChart({ limit: 2 }, new vscode.CancellationTokenSource().token);
@@ -1478,10 +1443,7 @@ suite("panel", function () {
   test("a chart update that the page answers after 15 seconds cannot replace the kept chart", async () => {
     const { panel, webview } = await newFakePanel();
     const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
-    const table = parseTable(chart.data);
-    const source = JSON.stringify(buildChart(chart, table).option);
-    const diagram = { language: "echarts", source, title: "Amounts", chart } as const;
-    assert.ok((await panel.render(diagram, "tool", table)).ok);
+    const source = await drawChart(panel, chart, chart.data, "Amounts");
     webview.answer = undefined;
     const timers = holdTimers(15_000);
     const token = new vscode.CancellationTokenSource().token;
