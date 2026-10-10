@@ -234,6 +234,25 @@ suite("markdownDiagrams", function () {
     }
   });
 
+  test("a stale CodeLens opens its block as it is now, edited in place or moved", async () => {
+    const { panel } = await newFakePanel();
+    openerFor(panel);
+    for (const [line, inserted, source, openingLine] of [
+      [4, "flowchart LR\n", "flowchart LR\nflowchart TD", 3],
+      [0, "# Notes\n\n", "flowchart TD", 5],
+    ] as const) {
+      const document = await untitled("```echarts\n{}\n```\n```mermaid\nflowchart TD\n```\n");
+      // The last lens, of the mermaid block, of the extension or of the test.
+      const { command, arguments: args = [] } = (await codeLenses(document)).at(-1)?.command ?? {};
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(document.uri, new vscode.Position(line, 0), inserted);
+      assert.ok(await vscode.workspace.applyEdit(edit));
+      await vscode.commands.executeCommand(`test.${command}`, ...args);
+      assert.strictEqual(panel.current?.source, source);
+      assert.strictEqual(panel.current?.document?.fence.openingLine, openingLine);
+    }
+  });
+
   test("a CodeLens of a file that no longer exists says why it cannot open it", async () => {
     const document = await untitled("```mermaid\nflowchart TD\n```\n");
     const command = await firstLens(document);
