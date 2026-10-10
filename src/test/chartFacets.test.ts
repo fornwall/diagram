@@ -398,7 +398,7 @@ suite("chartFacets", () => {
     assert.notStrictEqual(option.title[0].id, option.title[1].id);
   });
 
-  test("orders panels of numbers, dates and weekdays, with missing values last", () => {
+  test("orders panels of numbers, dates and weekdays, and puts missing values last", () => {
     const titles = (data: string) =>
       build(data, { facetColumn: "when" }).title.map((title: Option) => title.text);
     assert.deepStrictEqual(titles("when,operation,ms\n10,read,1\n,read,2\n9,read,3"), [
@@ -410,9 +410,10 @@ suite("chartFacets", () => {
       "when = Mon",
       "when = Tue",
     ]);
-    assert.deepStrictEqual(titles("when,operation,ms\nworker,read,1\napi,read,2"), [
+    assert.deepStrictEqual(titles("when,operation,ms\nworker,read,1\n,read,2\napi,read,3"), [
       "when = worker",
       "when = api",
+      "when = (missing)",
     ]);
   });
 

@@ -1,9 +1,9 @@
 // Small multiples: a chart per value of a facet column, as the panels of one ECharts option.
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
-import { labelOrder, timeOrder } from "./chartDates";
+import { timeOrder } from "./chartDates";
 import { facetBoxes } from "./chartFacetLayout";
-import { roundStep, stepsOf } from "./chartRows";
+import { inLabelOrder, roundStep, stepsOf } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
@@ -61,17 +61,14 @@ export function buildFacetedChart(
   const allFacets = facetTable(spec, table, index);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.
-  const facets = [...groups];
   // Panels of numbers, dates or weekdays follow their order rather than that of the rows, as the
   // categories of an axis do, and the panel of rows without a value comes last.
-  const order = labelOrder(facets.flatMap(([value]) => (value === null ? [] : [String(value)])));
-  if (order !== undefined) {
-    facets.sort(([a], [b]) =>
-      a === null || b === null
-        ? Number(a === null) - Number(b === null)
-        : order(String(a)) - order(String(b)),
-    );
-  }
+  const facets = inLabelOrder(
+    [...groups].filter(([value]) => value !== null),
+    ([value]) => String(value),
+  );
+  const missing = groups.get(null);
+  if (missing !== undefined) facets.push([null, missing]);
   const labels = facets.map(([value]) => (value === null ? "(missing)" : String(value)));
   const ambiguous = new Set(labels).size !== labels.length;
   const panels = facets.map(([value, indices], i): Panel => {
@@ -187,17 +184,11 @@ function shareAxes(
         return key;
       });
     });
-    let entries = [...domain];
-    const labels = entries.map(([, category]) => String(category));
     // Panels list numbers, dates and weekdays in the order of their own rows, and missing ones
     // come after the categories of earlier panels.
-    const order = ordered ? labelOrder(labels) : undefined;
-    if (order !== undefined) {
-      const keys = labels.map(order);
-      entries = [...entries.keys()]
-        .sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0))
-        .map((index) => entries[index] as [string, unknown]);
-    }
+    const entries = ordered
+      ? inLabelOrder([...domain], ([, category]) => String(category))
+      : [...domain];
     const keys = entries.map(([key]) => key);
     // ECharts reads the categories without changing them, so the panels share one array.
     const categories = entries.map(([, category]) => category);

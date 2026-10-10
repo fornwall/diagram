@@ -1,9 +1,10 @@
 // Charts drawn on a grid of an x and a y axis: bar, line, area, scatter, heatmap and box plot.
 
 import { columnName } from "./chartColumns";
-import { labelOrder, timeOrder, timeValue } from "./chartDates";
+import { timeOrder, timeValue } from "./chartDates";
 import {
   addValues,
+  inLabelOrder,
   label,
   noteRepeatedLabels,
   quantile,
@@ -255,11 +256,8 @@ function pivotAxis(
   at: 0 | 1,
   sorted: boolean,
 ): string[] {
-  const categories = [...indices.keys()];
-  const order = sorted ? undefined : labelOrder(categories);
-  if (order === undefined) return categories;
-  const keys = new Map(categories.map((category) => [category, order(category)]));
-  categories.sort((a, b) => (keys.get(a) ?? 0) - (keys.get(b) ?? 0));
+  if (sorted) return [...indices.keys()];
+  const categories = inLabelOrder([...indices.keys()], String);
   const position = new Map(categories.map((category, i) => [indices.get(category), i]));
   for (const cell of cells) cell[at] = position.get(cell[at]) ?? cell[at];
   return categories;
@@ -279,9 +277,7 @@ export function heatmapOption({
   const sorted = spec.sort !== undefined;
   // Without a second label column every row is a row of its own, even one labeled like another,
   // in the order of their labels where they have one, as a pivot's categories are.
-  const order = pivot || sorted ? undefined : labelOrder(given.map(label));
-  const keys = order && new Map(given.map((row) => [row, order(label(row))]));
-  const rows = keys ? given.toSorted((a, b) => (keys.get(a) ?? 0) - (keys.get(b) ?? 0)) : given;
+  const rows = pivot || sorted ? given : inLabelOrder(given, label);
   /** The index of each category of a pivot's axis, in the order they first appear. */
   const yIndices = new Map<string, number>();
   const xIndices = new Map<string, number>();

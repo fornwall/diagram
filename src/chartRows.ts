@@ -8,6 +8,7 @@ import {
   isTotalsLabel,
   readsLevels,
 } from "./chartColumns";
+import { labelOrder } from "./chartDates";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
 import { type Multiples, showInMultiples } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
@@ -40,6 +41,20 @@ export interface Reading {
 /** A row's first label: the category, slice, group or outermost node that it names. */
 export function label({ labels }: Row): string {
   return labels[0] ?? "";
+}
+
+/**
+ * Items in the order of their labels where those have one, as numbers, dates written alike and
+ * weekdays do, and otherwise in their own order.
+ */
+export function inLabelOrder<T>(items: readonly T[], labelOf: (item: T) => string): T[] {
+  const labels = items.map(labelOf);
+  const order = labelOrder(labels);
+  if (order === undefined) return [...items];
+  const keys = labels.map(order);
+  return [...items.keys()]
+    .sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0))
+    .map((index) => items[index] as T);
 }
 
 /**
