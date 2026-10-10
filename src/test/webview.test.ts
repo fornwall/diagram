@@ -610,6 +610,37 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("keeps the caret and the scroll position in the source when a diagram changes it", async () => {
+    const lines = Array.from({ length: 80 }, (_, i) => `  N${i} --> N${i + 1}`).join("\n");
+    await draw({ source: `flowchart LR\n${lines}` });
+    const caret = await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const input = document.getElementById("source");
+      const start = input.value.indexOf("N40 -->");
+      input.setSelectionRange(start, start + 3, "backward");
+      input.scrollTop = 300;
+      return start;
+    })()`);
+    try {
+      // A line inserted before the caret moves it along.
+      await draw({ source: `flowchart LR\n  X --> Y\n${lines}` });
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const input = document.getElementById("source");
+          return {selection: [input.selectionStart, input.selectionEnd, input.selectionDirection],
+            selected: input.value.slice(input.selectionStart, input.selectionEnd), top: input.scrollTop};
+        })()`),
+        {
+          selection: [Number(caret) + 10, Number(caret) + 13, "backward"],
+          selected: "N40",
+          top: 300,
+        },
+      );
+    } finally {
+      await evaluate('document.getElementById("view-visual").click()');
+    }
+  });
+
   test("keeps the focus in the source when Apply, pressed, disables itself", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate(`(() => {

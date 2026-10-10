@@ -163,7 +163,7 @@ export class SourceEditor {
   /** Shows the source of the diagram as rendered, as the starting point for edits. */
   private load(): void {
     this.editedFrom = this.formatted();
-    if (this.elements.input.value !== this.editedFrom) this.elements.input.value = this.editedFrom;
+    replaceText(this.elements.input, this.editedFrom);
     this.elements.staleNote.hidden = true;
     this.updateActions();
   }
@@ -197,4 +197,33 @@ export class SourceEditor {
     this.elements.staleNote.hidden = true;
     this.onApply(this.diagram.requestId, source);
   }
+}
+
+/**
+ * Replaces the text, keeping the caret, the selection and the scroll position where the text around
+ * them stays: a diagram that changes where the user is not reading leaves the place they were at.
+ */
+function replaceText(input: HTMLTextAreaElement, text: string): void {
+  const old = input.value;
+  if (old === text) return;
+  const shortest = Math.min(old.length, text.length);
+  let prefix = 0;
+  while (prefix < shortest && old.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix++;
+  let suffix = 0;
+  while (
+    suffix < shortest - prefix &&
+    old.charCodeAt(old.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)
+  ) {
+    suffix++;
+  }
+  // An offset after the change moves with the text after it, and one within it to its end at most.
+  const moved = (offset: number) =>
+    offset >= old.length - suffix
+      ? offset - old.length + text.length
+      : Math.min(offset, text.length - suffix);
+  const { selectionStart, selectionEnd, selectionDirection, scrollTop, scrollLeft } = input;
+  input.value = text;
+  input.setSelectionRange(moved(selectionStart), moved(selectionEnd), selectionDirection);
+  input.scrollTop = scrollTop;
+  input.scrollLeft = scrollLeft;
 }
