@@ -71,6 +71,13 @@ export function suiteTempDir(prefix: string): string {
   return dir;
 }
 
+/** This extension, which the tests run in. */
+export function diagramExtension(): vscode.Extension<unknown> {
+  const extension = vscode.extensions.getExtension("fornwall.diagram");
+  assert.ok(extension);
+  return extension;
+}
+
 /** The first workspace folder, which the tests open. */
 export function workspaceRoot(): vscode.WorkspaceFolder {
   const root = vscode.workspace.workspaceFolders?.[0];

@@ -5,7 +5,15 @@ import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
 import type { DiagramPanel } from "../panel";
-import { afterTest, fileSystem, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
+import {
+  afterTest,
+  diagramExtension,
+  fileSystem,
+  recordMessages,
+  replace,
+  setting,
+  suiteTempDir,
+} from "./afterTest";
 import { newFakePanel, newPanel, webviewTabs, within } from "./newPanel";
 
 suite("markdownDiagrams", function () {
@@ -14,11 +22,7 @@ suite("markdownDiagrams", function () {
 
   const dir = suiteTempDir("diagram-test-");
 
-  suiteSetup(async () => {
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
-    await extension.activate();
-  });
+  suiteSetup(() => diagramExtension().activate());
 
   suiteTeardown(async () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -176,10 +180,8 @@ suite("markdownDiagrams", function () {
     assert.ok(await within(() => holds === true));
     await show("plaintext", "```mermaid\nflowchart TD\n```\n");
     assert.ok(await within(() => holds === false));
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
     const menu: { command: string; when: string }[] =
-      extension.packageJSON.contributes.menus["editor/context"];
+      diagramExtension().packageJSON.contributes.menus["editor/context"];
     assert.strictEqual(
       menu.find(({ command }) => command === "diagram.openAtCursor")?.when,
       "editorLangId == markdown && diagram.editorHasDiagram",

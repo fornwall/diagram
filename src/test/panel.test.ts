@@ -10,6 +10,7 @@ import { WebviewChannel } from "../webviewChannel";
 import {
   afterTest,
   cancellationSource,
+  diagramExtension,
   interceptCommand,
   recordFilePaths,
   recordMessages,
@@ -169,11 +170,9 @@ suite("panel", function () {
       "diagram.hasDiagram": true,
       "diagram.chartOptionsAvailable": true,
     });
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
     // Nor in the panel's title bar and context menu while it is empty.
     const menus: Record<string, { command: string; when: string }[]> =
-      extension.packageJSON.contributes.menus;
+      diagramExtension().packageJSON.contributes.menus;
     const exports = Object.values(menus)
       .flat()
       .filter(({ command }) => command === "diagram.export");

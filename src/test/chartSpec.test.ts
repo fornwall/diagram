@@ -1,5 +1,4 @@
 import * as assert from "node:assert";
-import * as vscode from "vscode";
 import {
   AGGREGATIONS,
   CHART_TYPES,
@@ -7,6 +6,7 @@ import {
   dataOrigin,
   validateChartSpec,
 } from "../chartSpec";
+import { diagramExtension } from "./afterTest";
 
 suite("chartSpec", () => {
   const source = { type: "histogram", data: "service,latency\na,5\nb,12" };
@@ -73,11 +73,9 @@ suite("chartSpec", () => {
   test("the tool schemas list the chart types, data formats and aggregations", () => {
     type Schema = Record<string, unknown> & { anyOf?: Schema[] };
     const properties = (name: string): Record<string, Schema> =>
-      vscode.extensions
-        .getExtension("fornwall.diagram")
-        ?.packageJSON.contributes.languageModelTools.find(
-          (tool: { name: string }) => tool.name === name,
-        ).inputSchema.properties;
+      diagramExtension().packageJSON.contributes.languageModelTools.find(
+        (tool: { name: string }) => tool.name === name,
+      ).inputSchema.properties;
     const chart = properties("diagram_chart");
     assert.deepStrictEqual(chart.type?.enum, CHART_TYPES);
     assert.deepStrictEqual(chart.format?.enum, DATA_FORMATS);

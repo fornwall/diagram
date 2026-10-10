@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { guessTitle } from "../blocks";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { EChartsRenderer } from "../webview/echartsRenderer";
-import { afterTest } from "./afterTest";
+import { afterTest, diagramExtension } from "./afterTest";
 import {
   newPanel,
   openWebviewPanel,
@@ -1875,9 +1875,7 @@ suite("webview renderer loading", function () {
     const harness = instrumentWebview(panel);
     const { webview } = harness;
     // Point the import of the chunk at a file that does not exist.
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
-    const chunks = vscode.Uri.joinPath(extension.extensionUri, "dist", "chunks");
+    const chunks = vscode.Uri.joinPath(diagramExtension().extensionUri, "dist", "chunks");
     const chunk = (await vscode.workspace.fs.readDirectory(chunks)).find(([name]) =>
       chunkPattern.test(name),
     )?.[0];
@@ -1984,10 +1982,8 @@ suite("webview renderer loading", function () {
     afterTest(() => panel.dispose());
     const { webview, evaluate } = instrumentWebview(panel);
     // The page loads ECharts beside its first script, which this one, from nowhere, now is.
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
     const missing = webview.asWebviewUri(
-      vscode.Uri.joinPath(extension.extensionUri, "missing", "webview.js"),
+      vscode.Uri.joinPath(diagramExtension().extensionUri, "missing", "webview.js"),
     );
     const nonce = /nonce="([^"]+)"/.exec(webview.html)?.[1];
     webview.html = webview.html.replace(

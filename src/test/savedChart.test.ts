@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
-import * as vscode from "vscode";
 import { SAVED_CHART, type SavedChart } from "../protocol";
 import { savedChartHtml } from "../savedChart";
+import { diagramExtension } from "./afterTest";
 import { testColors } from "./themeColors";
 
 const pie = '{"series":[{"type":"pie","data":[{"name":"Dogs","value":386}]}]}';
@@ -11,9 +11,7 @@ function chart(overrides: Partial<SavedChart> = {}): SavedChart {
 }
 
 function build(overrides: Partial<SavedChart> = {}): Promise<string> {
-  const extension = vscode.extensions.getExtension("fornwall.diagram");
-  assert.ok(extension);
-  return savedChartHtml(chart(overrides), extension.extensionUri);
+  return savedChartHtml(chart(overrides), diagramExtension().extensionUri);
 }
 
 suite("savedChart", () => {

@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { diagramExtension } from "./afterTest";
 import { toolText } from "./toolText";
 
 async function invoke(name: string, input: object): Promise<string> {
@@ -9,11 +10,7 @@ async function invoke(name: string, input: object): Promise<string> {
 suite("extension", function () {
   // The first render loads the webview, which can take a while.
   this.timeout(10_000);
-  suiteSetup(async () => {
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
-    await extension.activate();
-  });
+  suiteSetup(() => diagramExtension().activate());
 
   suiteTeardown(async () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -25,9 +22,7 @@ suite("extension", function () {
       modelDescription: string;
       userDescription: string;
       inputSchema: Record<string, unknown>;
-    }[] =
-      vscode.extensions.getExtension("fornwall.diagram")?.packageJSON.contributes
-        .languageModelTools;
+    }[] = diagramExtension().packageJSON.contributes.languageModelTools;
     const registered = vscode.lm.tools.filter((tool) => tool.name.startsWith("diagram_"));
     assert.deepStrictEqual(
       registered.map((tool) => tool.name).sort(),
@@ -59,9 +54,7 @@ suite("extension", function () {
   });
 
   test("registers the contributed commands, which are the ones its menus name", async () => {
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
-    const { commands, menus } = extension.packageJSON.contributes as {
+    const { commands, menus } = diagramExtension().packageJSON.contributes as {
       commands: { command: string }[];
       menus: Record<string, { command: string }[]>;
     };
@@ -76,8 +69,7 @@ suite("extension", function () {
   });
 
   test("loads without formatting a number, which first loads locale data", () => {
-    const extension = vscode.extensions.getExtension("fornwall.diagram");
-    assert.ok(extension);
+    const extension = diagramExtension();
     // Activation waits on loading the bundle, which every Markdown file starts.
     const bundle = require.resolve(`${extension.extensionPath}/dist/extension.js`);
     const loaded = require.cache[bundle];

@@ -6,7 +6,7 @@ import { type DataTable, parseTable } from "../data";
 import { DiagramPanel, type Drawn, type RenderOutcome } from "../panel";
 import type { DiagramNode, FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
-import { afterTest, interceptCommand } from "./afterTest";
+import { afterTest, diagramExtension, interceptCommand } from "./afterTest";
 
 type Render = Extract<ToWebview, { type: "render" }>;
 
@@ -23,10 +23,8 @@ export function memento(values: Map<string, unknown>): vscode.Memento {
 export function newPanel(
   state: Map<string, unknown> | vscode.Memento = new Map<string, unknown>(),
 ): DiagramPanel {
-  const extension = vscode.extensions.getExtension("fornwall.diagram");
-  assert.ok(extension);
   const workspaceState = state instanceof Map ? memento(state) : state;
-  const context = { extensionUri: extension.extensionUri, workspaceState };
+  const context = { extensionUri: diagramExtension().extensionUri, workspaceState };
   return new DiagramPanel(context as unknown as vscode.ExtensionContext);
 }
 
