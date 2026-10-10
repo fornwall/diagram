@@ -1154,6 +1154,15 @@ suite("webview", function () {
           top: 300,
         },
       );
+      // Another diagram's source shows from its start, as its drawing does.
+      await draw({ title: "Another", source: `flowchart LR\n  Z --> W\n${lines}` });
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const input = document.getElementById("source");
+          return {selection: [input.selectionStart, input.selectionEnd], top: input.scrollTop};
+        })()`),
+        { selection: [0, 0], top: 0 },
+      );
     } finally {
       await evaluate('document.getElementById("view-visual").click()');
     }

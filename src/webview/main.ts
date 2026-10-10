@@ -271,9 +271,10 @@ async function render(message: RenderMessage): Promise<void> {
   current = { language, renderer, requestId };
   // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
   const identity = JSON.stringify([language, message.firstTitle ?? message.title, message.writeTo]);
-  if (identity !== renderedIdentity) renderer.fitToPanel?.();
+  const another = identity !== renderedIdentity;
+  if (another) renderer.fitToPanel?.();
   renderedIdentity = identity;
-  editor.diagramChanged(renderer, source, requestId);
+  editor.diagramChanged(renderer, source, requestId, another);
   emptyElement.hidden = true;
   closeLinkMenu();
   // The previous drawing's actions are now stale, and the drawing of another renderer goes: a large

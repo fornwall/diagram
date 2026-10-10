@@ -43,6 +43,8 @@ export class SourceEditor {
   private appliedSource: string | undefined;
   /** Edits of an older diagram that Revert discarded, which Undo brings back as such. */
   private reverted: { source: string; base: string } | undefined;
+  /** Whether the source to load is of another diagram, to show from its start. */
+  private another = false;
 
   constructor(
     private readonly elements: Elements,
@@ -103,9 +105,13 @@ export class SourceEditor {
     return this.view === "source" ? this.elements.input : drawing;
   }
 
-  /** Takes a diagram the extension sent, keeping edits, and warns before they replace newer source. */
-  diagramChanged(renderer: Renderer, source: string, requestId: number): void {
+  /**
+   * Takes a diagram the extension sent, keeping edits, and warns before they replace newer source.
+   * The source of another diagram, rather than of a revision, shows from its start once loaded.
+   */
+  diagramChanged(renderer: Renderer, source: string, requestId: number, another: boolean): void {
     this.diagram = { renderer, source, requestId };
+    if (another) this.another = true;
     const { input, staleNote, viewButtons } = this.elements;
     // The buttons show only icons, so their titles also name them.
     viewButtons.visual.title = `Show the ${renderer.noun}`;
@@ -119,6 +125,8 @@ export class SourceEditor {
       return;
     }
     if (source === this.appliedSource) {
+      // The source shown, where the user stays, is this one.
+      this.another = false;
       // Keep edits made while waiting for Apply to render.
       if (input.value === this.appliedSource) {
         this.load();
@@ -200,7 +208,8 @@ export class SourceEditor {
   /** Shows the source of the diagram as rendered, as the starting point for edits. */
   private load(undoable = false): void {
     this.editedFrom = this.formatted();
-    replaceText(this.elements.input, this.editedFrom, undoable);
+    replaceText(this.elements.input, this.editedFrom, undoable, !this.another);
+    this.another = false;
     this.elements.staleNote.hidden = true;
     this.updateActions();
   }
@@ -259,9 +268,15 @@ const UNDOABLE_CHANGE = 100_000;
 /**
  * Replaces the text, keeping the caret, the selection and the scroll position where the text around
  * them stays: a diagram that changes where the user is not reading leaves the place they were at.
- * An undoable replacement, of the focused editor, is an edit that Undo takes back.
+ * Else the text shows from its start. An undoable replacement, of the focused editor, is an edit
+ * that Undo takes back.
  */
-function replaceText(input: HTMLTextAreaElement, text: string, undoable: boolean): void {
+function replaceText(
+  input: HTMLTextAreaElement,
+  text: string,
+  undoable: boolean,
+  keepPlace: boolean,
+): void {
   const old = input.value;
   if (old === text) return;
   const shortest = Math.min(old.length, text.length);
@@ -289,9 +304,13 @@ function replaceText(input: HTMLTextAreaElement, text: string, undoable: boolean
     document.execCommand(inserted ? "insertText" : "delete", false, inserted);
   }
   if (input.value !== text) input.value = text;
-  input.setSelectionRange(moved(selectionStart), moved(selectionEnd), selectionDirection);
-  input.scrollTop = scrollTop;
-  input.scrollLeft = scrollLeft;
+  if (keepPlace) {
+    input.setSelectionRange(moved(selectionStart), moved(selectionEnd), selectionDirection);
+  } else {
+    input.setSelectionRange(0, 0);
+  }
+  input.scrollTop = keepPlace ? scrollTop : 0;
+  input.scrollLeft = keepPlace ? scrollLeft : 0;
 }
 
 /**
