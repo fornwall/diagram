@@ -166,6 +166,11 @@ suite("workspaceTools", function () {
       new RegExp(`^${found.length - 2} matches in 1 file .* Incomplete: .* size limit\\.`),
     );
     assert.strictEqual(found.at(-1), `  ${found.length - 2}: Needle line`);
+
+    // What plainly fits is not counted.
+    tokenizationOptions.tokenBudget = 100_000;
+    tokenizationOptions.countTokens = async () => assert.fail("counted");
+    assert.strictEqual((await fitted(reader, { file, endLine: 3 })).length, 5);
   });
 
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
