@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { guessTitle } from "../blocks";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
+import { EChartsRenderer } from "../webview/echartsRenderer";
 import { afterTest } from "./afterTest";
 import {
   newPanel,
@@ -12,6 +13,9 @@ import {
   withoutRevision,
 } from "./newPanel";
 import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
+
+/** A one-line chart option as the source view shows it. */
+const formatted = (source: string) => EChartsRenderer.prototype.formatForEditing(source);
 
 suite("webview", function () {
   // The first render loads the webview and the libraries, which can take a while.
@@ -1443,7 +1447,7 @@ suite("webview", function () {
         return {stale, source: document.getElementById("source").value,
           draft: window.readTestState().editor ?? null};
       })()`),
-      { stale: true, source: JSON.stringify(JSON.parse(incoming), null, 2), draft: null },
+      { stale: true, source: formatted(incoming), draft: null },
     );
     await evaluate('document.getElementById("view-visual").click()');
   });
@@ -1465,7 +1469,7 @@ suite("webview", function () {
         applyDisabled: document.getElementById("apply").disabled,
         draft: window.readTestState().editor ?? null
       })`),
-      { source: JSON.stringify(JSON.parse(source), null, 2), applyDisabled: true, draft: null },
+      { source: formatted(source), applyDisabled: true, draft: null },
     );
     await evaluate('document.getElementById("view-visual").click()');
   });

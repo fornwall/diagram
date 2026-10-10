@@ -45,6 +45,8 @@ export const SETTLE_DELAY = 150;
  * changing, as when dragging the splitter: about two frames.
  */
 const RESIZE_BUDGET = 30;
+/** How long a line of values grows in an option formatted for editing before they go on the next. */
+const LINE_LENGTH = 100;
 
 /** A zrender element, which can animate, and the group it is in. */
 interface Animated {
@@ -311,31 +313,62 @@ export class EChartsRenderer implements Renderer {
     // Indent the tokens as JSON.stringify would, rather than writing out the parsed values, which
     // would round integers beyond 2^53, such as IDs, in the source that the user edits and saves.
     const tokens = source.match(/"(?:[^"\\]|\\.)*"|[{}[\],:]|[^\s"{}[\],:]+/g) ?? [];
+    // Arrays of values alone, such as data of [x, y] points, go on as few lines as fit, by where
+    // they start and end: a line for every value would make a large chart's source hundreds of
+    // thousands of lines, which take seconds to lay out.
+    const valueArrays = new Map<number, number>();
+    const open: { start: number; values: boolean }[] = [];
+    tokens.forEach((token, index) => {
+      if (token === "[") open.push({ start: index, values: true });
+      else if (token === "{") for (const array of open) array.values = false;
+      else if (token === "]") {
+        const array = open.pop();
+        if (array?.values) valueArrays.set(array.start, index);
+      }
+    });
+    let text = "";
     let depth = 0;
-    const newLine = () => `\n${"  ".repeat(depth)}`;
-    return tokens
-      .map((token, index) => {
-        const opens = token === "{" || token === "[";
-        const closes = token === "}" || token === "]";
-        // Empty objects and arrays stay on one line.
-        if (
-          opens
-            ? /^[}\]]$/.test(tokens[index + 1] ?? "")
-            : closes && /^[{[]$/.test(tokens[index - 1] ?? "")
-        ) {
-          return token;
+    /** Where the last line starts in the text. */
+    let line = 0;
+    const newLine = (indent = depth) => {
+      line = text.length + 1;
+      text += `\n${"  ".repeat(indent)}`;
+    };
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index] ?? "";
+      const end = valueArrays.get(index);
+      if (end !== undefined) {
+        // On the next line, indented, once a line is long, but not inside an inner array.
+        let nesting = 0;
+        for (const each of tokens.slice(index, end + 1)) {
+          nesting += each === "[" ? 1 : each === "]" ? -1 : 0;
+          if (each !== ",") text += each;
+          else if (nesting > 1 || text.length - line < LINE_LENGTH) text += ", ";
+          else {
+            text += ",";
+            newLine(depth + 1);
+          }
         }
-        if (opens) {
-          depth++;
-          return token + newLine();
-        }
-        if (closes) {
-          depth--;
-          return newLine() + token;
-        }
-        return token === "," ? token + newLine() : token === ":" ? ": " : token;
-      })
-      .join("");
+        index = end;
+      } else if (token === "{" && tokens[index + 1] === "}") {
+        text += "{}";
+        index++;
+      } else if (token === "{" || token === "[") {
+        depth++;
+        text += token;
+        newLine();
+      } else if (token === "}" || token === "]") {
+        depth--;
+        newLine();
+        text += token;
+      } else if (token === ",") {
+        text += ",";
+        newLine();
+      } else {
+        text += token === ":" ? ": " : token;
+      }
+    }
+    return text;
   }
 
   private createChart(

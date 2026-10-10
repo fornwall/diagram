@@ -84,9 +84,18 @@ function relayout<T>(
 suite("echartsRenderer", () => {
   test("indents a one-line JSON option for editing without changing its values", () => {
     const format = (source: string) => EChartsRenderer.prototype.formatForEditing(source);
-    const values =
-      '{"a": [], "b" :{}, "c":[1, {"d": "x\\"y, [z]: {}", "e": [true, null]}], "f": -1.5}';
+    const values = '{"a": [], "b" :{}, "c":[1, {"d": "x\\"y, [z]: {}", "e": {}}], "f": -1.5}';
     assert.strictEqual(format(values), JSON.stringify(JSON.parse(values), null, 2));
+    // Arrays of values alone on as few lines as fit, as of the points of a large chart.
+    const points = Array.from({ length: 1000 }, (_, x) => [x, null, "a,]"]);
+    const formatted = format(JSON.stringify({ data: points, e: [true, [[]]] }));
+    assert.deepStrictEqual(JSON.parse(formatted), { data: points, e: [true, [[]]] });
+    const lines = formatted.split("\n");
+    assert.match(lines[1] ?? "", /^ {2}"data": \[\[0, null, "a,\]"\], \[1, null, .*\],$/);
+    assert.match(lines[2] ?? "", /^ {4}\[\d+, null, "a,\]"\], \[\d+, null, .*\],$/);
+    assert.ok(lines.length < 250, String(lines.length));
+    assert.ok(lines.every((line) => line.length < 130));
+    assert.strictEqual(lines.at(-2), '  "e": [true, [[]]]');
     // Parsing would round the integers beyond 2^53 and rewrite the numbers as JavaScript would.
     assert.strictEqual(
       format('{"id": 12345678901234567891, "ns": 1.50}'),
