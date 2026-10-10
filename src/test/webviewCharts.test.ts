@@ -1243,6 +1243,29 @@ suite("ECharts in the webview", function () {
     ]);
   });
 
+  test("moves the focus over lines of parallel coordinates, leaving the chart able to draw", async () => {
+    await renderChart({
+      parallelAxis: [{ dim: 0 }, { dim: 1 }],
+      series: [
+        {
+          type: "parallel",
+          data: [
+            [1, 2],
+            [3, 4],
+          ],
+        },
+      ],
+    });
+    const announced = await evaluate(`(() => {
+      ${PRESS}
+      chart.focus();
+      return [press("Home"), press("ArrowRight")];
+    })()`);
+    assert.deepStrictEqual(announced, ["(1, 2), 1 of 2", "(3, 4), 2 of 2"]);
+    // ECharts throws for the tooltip of a line shown by its index, which would leave it stuck.
+    await renderChart(SALES);
+  });
+
   test("drills into hierarchies with Enter, as a click does, and up with Backspace", async () => {
     const color = (color: string) => ({ itemStyle: { color } });
     const data = [

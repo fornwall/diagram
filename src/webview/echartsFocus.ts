@@ -587,9 +587,12 @@ export class ChartFocus {
     this.shown = true;
     this.place(navigation);
     const { seriesIndex, dataType, dataIndex } = ref;
-    // A tooltip shows a node of a graph for an edge's index.
+    // A tooltip shows a node of a graph for an edge's index. ECharts cannot find where a line of
+    // parallel coordinates is to show its tooltip, and throws, which leaves it unable to draw.
+    const tipless =
+      dataType === "edge" || modelOf(chart).getSeriesByIndex(seriesIndex)?.subType === "parallel";
     chart.dispatchAction(
-      dataType === "edge" ? { type: "hideTip" } : { type: "showTip", seriesIndex, dataIndex },
+      tipless ? { type: "hideTip" } : { type: "showTip", seriesIndex, dataIndex },
     );
     if (changed) {
       const series = items.seriesName(seriesIndex);
