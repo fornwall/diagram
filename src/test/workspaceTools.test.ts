@@ -653,10 +653,9 @@ suite("workspaceTools", function () {
       () => resolveWorkspaceFile(path.resolve("/two-else/b.ts"), roots),
       /outside the open workspace/,
     );
-    assert.throws(
-      () => resolveWorkspaceFile("file:///one/a.ts#L4", roots),
-      /without a query or fragment/,
-    );
+    for (const file of ["file:///one/a.ts#L4", "a.ts#L4", "/one/a.ts#L4-L8", "a.ts#L4-8"]) {
+      assert.throws(() => resolveWorkspaceFile(file, roots), /without a query or fragment/);
+    }
   });
 
   test("resolves absolute paths in virtual workspace roots", () => {
