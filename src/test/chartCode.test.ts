@@ -42,7 +42,7 @@ suite("chart code in the panel", function () {
     const { panel, webview } = await newFakePanel();
     const click = () =>
       webview.receive({
-        type: "clickToAsk",
+        type: "clickNode",
         requestId: webview.render.requestId,
         node: { id: "A", label: "Parser" },
       });

@@ -636,7 +636,7 @@ suite("panel", function () {
       const node = { id: "A", label: "Parser" };
       assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
       const shown = webview.render.requestId;
-      await webview.receive({ type: "clickToAsk", requestId: shown, node });
+      await webview.receive({ type: "clickNode", requestId: shown, node });
       assert.deepStrictEqual(clicks, ['chat: Explain "Parser"']);
       clicks.length = 0;
 
@@ -648,8 +648,7 @@ suite("panel", function () {
       // Clicks on the previous diagram, e.g. sent just before it was replaced, and clicks that name
       // the broken one, which has no nodes to click.
       for (const requestId of [shown, webview.render.requestId]) {
-        await webview.receive({ type: "clickToAsk", requestId, node });
-        await webview.receive({ type: "clickToOpen", requestId, node });
+        await webview.receive({ type: "clickNode", requestId, node });
         await webview.receive({ type: "openUrl", requestId, url: "https://example.com/" });
       }
       assert.deepStrictEqual(clicks, []);
@@ -660,7 +659,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     const clicks = recordClicks();
     const click = (id: string, requestId = webview.render.requestId) =>
-      webview.receive({ type: "clickToOpen", requestId, node: { id, label: id } });
+      webview.receive({ type: "clickNode", requestId, node: { id, label: id } });
     const links = { A: { file: "sizes.tsv", line: 2 } };
     assert.ok((await panel.render({ ...flowchart, links }, "tool")).ok);
     assert.match(panel.describeForModel() ?? "", /A → sizes\.tsv#L2/);
@@ -681,6 +680,22 @@ suite("panel", function () {
     assert.deepStrictEqual(clicks, ["open: sizes.tsv#L2"]);
     await click("A");
     assert.deepStrictEqual(clicks, ["open: sizes.tsv#L2", "open: sizes.tsv#L1"]);
+    // A node's link comes before the diagram's clickPrompt, which an edge of the node's id asks.
+    clicks.length = 0;
+    const clickPrompt = "Explain";
+    const prompting = panel.render({ ...flowchart, links, clickPrompt }, "tool");
+    await webview.finishRender();
+    assert.ok((await prompting).ok);
+    await click("A");
+    const relationship = { kind: "edge", source: "A", target: "B", direction: "forward" } as const;
+    const node = { id: "A", label: "A to B", relationship };
+    await webview.receive({ type: "clickNode", requestId: webview.render.requestId, node });
+    await click("B");
+    assert.deepStrictEqual(clicks, [
+      "open: sizes.tsv#L2",
+      'chat: Explain "A to B"',
+      'chat: Explain "B"',
+    ]);
   });
 
   test("a click on a replaced drawing that arrives after the next is drawn is dropped", async () => {
@@ -688,7 +703,7 @@ suite("panel", function () {
     const clicks = recordClicks();
     const node = { id: "A", label: "Parser" };
     const click = async (requestId: number) => {
-      await webview.receive({ type: "clickToAsk", requestId, node });
+      await webview.receive({ type: "clickNode", requestId, node });
       await webview.receive({ type: "openUrl", requestId, url: "https://example.com/" });
     };
     assert.ok((await panel.render({ ...flowchart, clickPrompt: "Explain" }, "tool")).ok);
@@ -710,7 +725,7 @@ suite("panel", function () {
     fs.writeFileSync(outside, "outside");
     const click = (id: string) =>
       webview.receive({
-        type: "clickToOpen",
+        type: "clickNode",
         requestId: webview.render.requestId,
         node: { id, label: id },
       });
@@ -778,7 +793,7 @@ suite("panel", function () {
     const link = { file: "sizes.tsv", line: 2, endLine: 3 };
     assert.ok((await panel.render({ ...flowchart, links: { A: link } }, "tool")).ok);
     const node = { id: "A", label: "Parser" };
-    await webview.receive({ type: "clickToOpen", requestId: webview.render.requestId, node });
+    await webview.receive({ type: "clickNode", requestId: webview.render.requestId, node });
     const shown = vscode.window.visibleTextEditors.find((editor) =>
       editor.document.uri.path.endsWith("/sizes.tsv"),
     );
@@ -1314,7 +1329,7 @@ suite("panel", function () {
     assert.match(panel.describeForModel() ?? "", /not showing it yet: The diagram panel did not/);
     const click = () =>
       webview.receive({
-        type: "clickToAsk",
+        type: "clickNode",
         requestId: webview.render.requestId,
         node: { id: "A", label: "Parser" },
       });

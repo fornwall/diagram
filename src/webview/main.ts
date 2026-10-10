@@ -608,7 +608,7 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
     // The drawing clicked, which the host may have replaced while the click was on its way.
     const { requestId } = current;
     if (!hit.node.relationship && links.has(hit.node.id)) {
-      post({ type: "clickToOpen", requestId, node: hit.node });
+      post({ type: "clickNode", requestId, node: hit.node });
       return;
     }
     if (hit.links) {
@@ -623,7 +623,7 @@ function itemClicked(hit: Hit | undefined, modifier: boolean): void {
       return;
     }
     if (clickPrompt) {
-      post({ type: "clickToAsk", requestId, node: hit.node });
+      post({ type: "clickNode", requestId, node: hit.node });
       return;
     }
   }

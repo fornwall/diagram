@@ -484,22 +484,21 @@ export class DiagramPanel implements vscode.Disposable {
           `${this.regarding(message.nodes)}${message.text}`,
           message.requestId !== this.sourceRequestId,
         );
-      case "clickToAsk":
-        if (this.state?.clickPrompt && message.requestId === this.drawn?.requestId) {
-          return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
-        }
-        break;
-      case "clickToOpen": {
+      case "clickNode": {
+        const { node } = message;
+        if (message.requestId !== this.drawn?.requestId) break;
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
-        const link =
-          message.requestId === this.drawn?.requestId ? this.linkOf(message.node) : undefined;
-        return (
-          link &&
-          openLink(link, message.node.label, this.webview.tab?.viewColumn, (ask) =>
+        const link = this.linkOf(node);
+        if (link) {
+          return openLink(link, node.label, this.webview.tab?.viewColumn, (ask) =>
             this.confirmForPage(ask),
-          )
-        );
+          );
+        }
+        if (this.state?.clickPrompt) {
+          return this.askInChat(clickToAskQuery(this.state.clickPrompt, node.label));
+        }
+        break;
       }
       case "openUrl":
         if (this.state && message.requestId === this.drawn?.requestId) {
@@ -1365,11 +1364,13 @@ export class DiagramPanel implements vscode.Disposable {
 
   // Clicks on nodes, and requests to chat.
 
-  /** Where a node of the diagram shown links to in the code, if anywhere. */
+  /** Where a node of the diagram shown links to in the code, if anywhere; an edge links nowhere. */
   private linkOf(node: DiagramNode): NodeLink | undefined {
     const links = this.state?.links;
     // Node ids are a model's words, so only the map's own entries count, not "constructor".
-    return links && Object.hasOwn(links, node.id) ? links[node.id] : undefined;
+    return links && !node.relationship && Object.hasOwn(links, node.id)
+      ? links[node.id]
+      : undefined;
   }
 
   /** E.g. `Regarding "Parser", "Checker" in the diagram: `. */

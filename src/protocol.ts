@@ -214,12 +214,12 @@ export type FromWebview =
    */
   | { type: "ask"; requestId?: number | undefined; text: string; nodes: DiagramNode[] }
   /**
-   * Clicks name the render whose drawing was clicked, as a click on a drawing sent just before the
-   * page drew its replacement is on a diagram that is gone.
+   * A plain click on a node that links to code or has the diagram's clickPrompt to ask, which the
+   * host resolves: the webview cannot choose a path. Clicks name the render whose drawing was
+   * clicked, as a click on a drawing sent just before the page drew its replacement is on a diagram
+   * that is gone.
    */
-  | { type: "clickToAsk"; requestId: number; node: DiagramNode }
-  /** The host resolves this node's link; the webview cannot choose a path. */
-  | { type: "clickToOpen"; requestId: number; node: DiagramNode }
+  | { type: "clickNode"; requestId: number; node: DiagramNode }
   /**
    * A link that the Mermaid source drew, or the HTML of a chart, such as its tooltip's, which the
    * host checks: a model may have written it.
@@ -305,8 +305,7 @@ const FROM_WEBVIEW_FIELDS: {
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },
   ask: { requestId: optional(isId), text: isString, nodes: isNodes },
-  clickToAsk: { requestId: isId, node: isNode },
-  clickToOpen: { requestId: isId, node: isNode },
+  clickNode: { requestId: isId, node: isNode },
   openUrl: { requestId: isId, url: isString },
   picked: { pickId: isId, nodes: isNodes },
   pickCancelled: { pickId: isId },
