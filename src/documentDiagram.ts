@@ -25,6 +25,25 @@ export function documentName({ uri }: DocumentBinding): string {
 }
 
 /**
+ * Opens the bound document. One that was never saved is found only while it is open, in a tab or
+ * not yet disposed, as opening it after it was closed or saved elsewhere would make an empty one.
+ */
+async function openBound(binding: DocumentBinding): Promise<vscode.TextDocument> {
+  const uri = vscode.Uri.parse(binding.uri);
+  const isBound = (other: vscode.Uri) => other.toString() === binding.uri;
+  if (
+    uri.scheme === "untitled" &&
+    !vscode.workspace.textDocuments.some((document) => isBound(document.uri)) &&
+    !vscode.window.tabGroups.all.some((group) =>
+      group.tabs.some(({ input }) => input instanceof vscode.TabInputText && isBound(input.uri)),
+    )
+  ) {
+    throw new Error(`${documentName(binding)} was closed or saved under another name.`);
+  }
+  return openDocument(uri);
+}
+
+/**
  * Whether VS Code keeps the document from being changed and saved, as far as an extension can tell:
  * on a read-only file system, such as a Git revision, by the files.readonlyInclude setting, or, with
  * files.readonlyFromPermissions, as the file may not be written. Not one made read-only for the
@@ -78,7 +97,7 @@ export async function writeFence(
   }
   let document: vscode.TextDocument;
   try {
-    document = await openDocument(vscode.Uri.parse(binding.uri));
+    document = await openBound(binding);
   } catch (error) {
     return { written: false, reason: `Could not write the ${noun}: ${errorMessage(error)}` };
   }
@@ -202,7 +221,7 @@ export async function reportWriteFailure(
       await vscode.env.clipboard.writeText(source);
       return;
     }
-    const document = await openDocument(vscode.Uri.parse(binding.uri));
+    const document = await openBound(binding);
     const line = new vscode.Position(binding.fence.openingLine, 0);
     await vscode.window.showTextDocument(document, { selection: new vscode.Range(line, line) });
   } catch (error) {

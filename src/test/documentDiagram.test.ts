@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { type DocumentBinding, writeFence } from "../documentDiagram";
+import { type DocumentBinding, documentName, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
 import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
@@ -284,6 +284,24 @@ suite("documentDiagram", function () {
     const outcome = await writeFence({ ...read, uri: missing }, "flowchart LR");
     assert.ok(!outcome.written);
     assert.match(outcome.reason, /^Could not write the diagram: \/\S+\/gone\.md does not exist\.$/);
+  });
+
+  test("does not write to an untitled document that was closed", async () => {
+    const document = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: "```mermaid\nflowchart TD\n```\n",
+    });
+    const read = binding(document);
+    await vscode.window.showTextDocument(document);
+    assert.ok((await writeFence(read, "flowchart LR")).written);
+    await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    const name = documentName(read);
+    // Opening it again would make an empty document of that name.
+    assert.deepStrictEqual(await writeFence(read, "flowchart RL"), {
+      written: false,
+      reason: `Could not write the diagram: ${name} was closed or saved under another name.`,
+    });
+    assert.ok(!vscode.workspace.textDocuments.some(({ uri }) => uri.toString() === read.uri));
   });
 
   test("does not write to a document that VS Code keeps read-only", async () => {
