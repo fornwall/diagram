@@ -242,6 +242,7 @@ function layOutAround(
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
   styleSeries(base, series, context.colors);
+  nameTreemapRoot(series);
   drawLargeSeries(option, series);
   showAxisLines(base);
   compactAxisLabels(base);
@@ -765,6 +766,24 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
 /** The type of an axis, which ECharts makes "category" for one with data. */
 const axisType = (axis: JsonObject | undefined) =>
   axis?.type ?? (axis?.data ? "category" : "value");
+
+/**
+ * Names the whole of an unnamed treemap "All" in its breadcrumb, whose first crumb, for going back
+ * up to it, would otherwise be blank: ECharts names it after the series. Only for a chart of the
+ * one series, whose name then neither shows in its tooltip nor names its items.
+ */
+function nameTreemapRoot(series: JsonObject[]): void {
+  const [treemap] = series;
+  const breadcrumb = isPlainObject(treemap?.breadcrumb) ? treemap.breadcrumb : {};
+  if (
+    series.length === 1 &&
+    treemap?.type === "treemap" &&
+    (treemap.name === undefined || treemap.name === "") &&
+    breadcrumb.show !== false
+  ) {
+    treemap.name = "All";
+  }
+}
 
 /** Styles bars, sankey nodes and areas to read clearly on the theme's background. */
 function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors): void {

@@ -452,6 +452,23 @@ suite("echartsLayout", () => {
     assert.strictEqual(reads, 1);
   });
 
+  test("names the whole of an unnamed treemap in its breadcrumb", () => {
+    const treemap = { type: "treemap", data: [{ name: "src", value: 1 }] };
+    const name = (option: Option) => layout(option).series.map((each: Option) => each.name);
+    const source = { series: [treemap] };
+    assert.deepStrictEqual(name(source), ["All"]);
+    assert.strictEqual(Object.hasOwn(treemap, "name"), false);
+    assert.deepStrictEqual(name({ series: [{ ...treemap, name: "" }] }), ["All"]);
+    // Not one named, nor one without a breadcrumb, nor one beside another series, whose items go
+    // by its name, nor a sunburst, whose tooltips show it.
+    assert.deepStrictEqual(name({ series: [{ ...treemap, name: "Files" }] }), ["Files"]);
+    assert.deepStrictEqual(name({ series: [{ ...treemap, breadcrumb: { show: false } }] }), [
+      undefined,
+    ]);
+    assert.deepStrictEqual(name({ series: [treemap, treemap] }), [undefined, undefined]);
+    assert.deepStrictEqual(name({ series: [{ ...treemap, type: "sunburst" }] }), [undefined]);
+  });
+
   test("keeps series laid out in a box clear of the title, with room for their labels", () => {
     const box = (type: string, extra: Option = {}) => {
       const { top, left, right, bottom } = layout({
