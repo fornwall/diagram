@@ -560,8 +560,8 @@ function hint(noun: string): string {
   // Without a drawing, as before the first or after an error, there is nothing to click.
   if (!active) return "";
   const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
-  if (links.size > 0 || active?.hasWebLinks) {
-    const open = active?.hasWebLinks ? "open its link" : "open its code";
+  if (links.size > 0 || active.hasWebLinks) {
+    const open = active.hasWebLinks ? "open its link" : "open its code";
     return clickPrompt
       ? `Click a linked ${noun} to ${open}, any other to ask about it in chat ${orSelect}.`
       : `Click a linked ${noun} to ${open} ${orSelect}.`;
@@ -569,7 +569,7 @@ function hint(noun: string): string {
   if (clickPrompt) {
     return `Click a ${noun} to ask about it in chat ${orSelect}.`;
   }
-  const parts = active?.drawnNodes?.().some((node) => node.relationship)
+  const parts = active.drawnNodes?.().some((node) => node.relationship)
     ? "nodes or relationships"
     : `${noun}s`;
   return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
