@@ -126,10 +126,17 @@ suite("links", () => {
         kept: { file: "sizes.tsv", line: 1 },
         missing: { file: "made-up.ts" },
         outside: { file: outside },
+        // A path with a "#" that names no file, but a file before it, gives no line.
+        heading: { file: "sizes.tsv#usage" },
+        missingHeading: { file: "made-up.ts#usage" },
       }),
       {
         links: { kept: { file: "sizes.tsv", line: 1 }, outside: { file: outside } },
-        problems: ['"missing": made-up.ts does not exist.'],
+        problems: [
+          '"missing": made-up.ts does not exist.',
+          '"heading": "sizes.tsv#usage" does not give its line as "#L42" or "#L42-L80".',
+          '"missingHeading": made-up.ts#usage does not exist.',
+        ],
       },
     );
   });

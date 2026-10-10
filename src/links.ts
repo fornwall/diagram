@@ -73,19 +73,28 @@ export async function withoutMissingFiles(
   links: NodeLinks,
 ): Promise<{ links?: NodeLinks; problems: string[] }> {
   const checks = new Map<string, Promise<string | undefined>>();
+  const exists = (uri: vscode.Uri) =>
+    Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+      () => true,
+      (error: unknown) =>
+        error instanceof vscode.FileSystemError && error.code === "FileNotFound"
+          ? error
+          : undefined,
+    );
   const missing = (file: string) => {
     let check = checks.get(file);
     if (!check) {
       const uri = resolveFile(file);
-      check = inWorkspace(uri)
-        ? Promise.resolve(vscode.workspace.fs.stat(uri)).then(
-            () => undefined,
-            (error: unknown) =>
-              error instanceof vscode.FileSystemError && error.code === "FileNotFound"
-                ? errorMessage(fileError(error, uri))
-                : undefined,
-          )
-        : Promise.resolve(undefined);
+      check = (async () => {
+        const found = inWorkspace(uri) && (await exists(uri));
+        if (!(found instanceof vscode.FileSystemError)) return undefined;
+        // The part before the last "#" exists, as for "README.md#usage", so the "#" was meant to
+        // start a line rather than be part of the path.
+        const hash = file.lastIndexOf("#");
+        return hash > 0 && (await exists(resolveFile(file.slice(0, hash)))) === true
+          ? misspeltLine(file)
+          : errorMessage(fileError(found, uri));
+      })();
       checks.set(file, check);
     }
     return check;
@@ -138,7 +147,7 @@ function parseLink(location: unknown): NodeLink | string {
   if (isLine) {
     const match = LINE_FRAGMENT.exec(fragment);
     if (!match) {
-      return `${quote(text)} does not give its line as "#L42" or "#L42-L80".`;
+      return misspeltLine(text);
     }
     line = Number(match[1]);
     endLine = match[2] === undefined ? undefined : Number(match[2]);
@@ -158,6 +167,10 @@ function parseLink(location: unknown): NodeLink | string {
     return { file };
   }
   return endLine === undefined ? { file, line } : { file, line, endLine };
+}
+
+function misspeltLine(text: string): string {
+  return `${quote(text)} does not give its line as "#L42" or "#L42-L80".`;
 }
 
 /** A link as it was written, e.g. "src/panel.ts#L120-L138", for the panel and the model. */
