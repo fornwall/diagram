@@ -52,9 +52,15 @@ export function readThemeColors(): ThemeColors {
 
   // charts.lines is the foreground at 50% opacity: far too loud for grid lines, so tone it down.
   const lines = variable("charts-lines") ?? { ...foreground, a: 0.5 };
-  const blue = color("charts-blue");
-  const green = color("charts-green");
-  const red = color("charts-red");
+  // The colors of series, as the theme sets them but opaque: Dark and Light Modern make
+  // charts.orange a translucent highlight, which over the background reads as brown or peach, and
+  // the high contrast themes leave it out, which would draw a series in the foreground color.
+  const hue = (name: string, fallback = foreground) => ({ ...(variable(name) ?? fallback), a: 1 });
+  const blue = hue("charts-blue");
+  const green = hue("charts-green");
+  const red = hue("charts-red");
+  // VS Code's own orange, and a darker one that keeps its contrast on a light background.
+  const orange = hue("charts-orange", fromHex(dark ? "#d18616" : "#b35900"));
   // VS Code has no aqua or magenta chart colors; these steps were validated against the others.
   const magenta = fromHex(dark ? "#d55181" : "#e87ba4");
   const aqua = fromHex(dark ? "#199e70" : "#1baf7a");
@@ -62,11 +68,11 @@ export function readThemeColors(): ThemeColors {
   // the default VS Code colors, in both light and dark themes, including the wrap-around).
   const hues = [
     blue,
-    color("charts-orange"),
-    color("charts-purple"),
+    orange,
+    hue("charts-purple"),
     green,
     magenta,
-    color("charts-yellow"),
+    hue("charts-yellow"),
     aqua,
     red,
   ];
@@ -83,7 +89,7 @@ export function readThemeColors(): ThemeColors {
     hoverBorder: color("editorHoverWidget-border"),
     hoverForeground: color("editorHoverWidget-foreground"),
     // Beyond eight series, repeat the hues in a shade that stays distinct from the first round.
-    palette: [...hues, ...hues.map((hue) => mix(hue, foreground, 0.4))],
+    palette: [...hues, ...hues.map((each) => mix(each, foreground, 0.4))],
     blue,
     green,
     red,

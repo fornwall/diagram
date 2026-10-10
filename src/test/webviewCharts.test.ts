@@ -667,6 +667,50 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("draws series in the theme's chart colors made opaque, and in an orange where it has none", async () => {
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        xAxis: { type: "category", data: ["Mon"] },
+        yAxis: {},
+        // Not lightened where the pointer rests.
+        series: [1, 2].map((value) => ({
+          type: "bar",
+          data: [value],
+          emphasis: { disabled: true },
+        })),
+      }),
+    });
+    const [translucent, missing] = (await evaluate(`(async () => {
+        ${UNTIL}
+        const second = () =>
+          document.querySelectorAll("#chart svg path:not([fill='none'])")[1]?.getAttribute("fill");
+        const root = document.documentElement.style;
+        // As Dark and Light Modern set it.
+        const original = root.getPropertyValue("--vscode-charts-orange");
+        const kind = document.body.dataset.vscodeThemeKind;
+        root.setProperty("--vscode-charts-orange", "rgba(234, 92, 0, 0.33)");
+        try {
+          // Not the brown that it makes over the background. Reading it back rounds it a little.
+          const translucent = await until(
+            () => /^#e[9ab]5[a-c]00$/.test(second()) && second(), "the opaque orange", nextFrame);
+          // As the high contrast themes leave it out.
+          root.setProperty("--vscode-charts-orange", "");
+          document.body.dataset.vscodeThemeKind = "vscode-high-contrast";
+          const missing = await until(() => second() !== translucent && second(), "another orange", nextFrame);
+          return [translucent, missing];
+        } finally {
+          document.body.dataset.vscodeThemeKind = kind;
+          root.setProperty("--vscode-charts-orange", original);
+          await until(() => second() !== "#d18616", "the theme's orange again", nextFrame);
+        }
+      })()`)) as string[];
+    assert.match(translucent ?? "", /^#e[9ab]5[a-c]00$/);
+    // VS Code's own orange.
+    assert.strictEqual(missing, "#d18616");
+  });
+
   test("keeps a selected chart item selected through a theme change", async () => {
     await draw({
       language: "echarts",
