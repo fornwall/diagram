@@ -67,14 +67,17 @@ function holdProgress(): () => void {
 }
 
 /**
- * Holds the timers of the delay until `expire()` runs those not cleared, which `pending` counts;
+ * Leaves what the page is sent unanswered, and holds the panel's timers of 15 seconds, after which
+ * it gives up on an answer, until `expire()` runs those not cleared, which `pending` counts;
  * `started` counts all.
  */
-function holdTimers(delay: number): {
+function hangPage(webview: FakeWebview): {
   expire(): void;
   readonly pending: number;
   readonly started: number;
 } {
+  webview.answer = undefined;
+  const delay = 15_000;
   const set = globalThis.setTimeout;
   const clear = globalThis.clearTimeout;
   const held = new Map<unknown, () => void>();
@@ -1287,8 +1290,7 @@ suite("panel", function () {
   test("a render or an export that the page never answers ends after 15 seconds", async () => {
     const { panel, webview } = await newFakePanel();
     const draw = webview.answer;
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     replace(vscode.window, "showQuickPick", (async () => ({
       label: "SVG image",
       format: "svg",
@@ -1319,8 +1321,7 @@ suite("panel", function () {
 
   test("a render that the page answers after 15 seconds counts once it does", async () => {
     const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     const clicks = recordClicks();
     const rendering = panel.render({ ...flowchart, clickPrompt: "Explain {label}" }, "tool");
     timers.expire();
@@ -1348,8 +1349,7 @@ suite("panel", function () {
   test("a new page does not draw a diagram that the page did not finish drawing", async () => {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     const rendering = panel.render(flowchart, "tool");
     timers.expire();
     assert.ok(!(await rendering).ok);
@@ -1380,8 +1380,7 @@ suite("panel", function () {
 
   test("a render that the page takes up after the one it was drawing gets the full 15 seconds", async () => {
     const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     void panel.render({ ...flowchart, source: "flowchart LR\n  A" }, "tool");
     const { requestId } = webview.render;
     const rendering = panel.render(flowchart, "tool");
@@ -1397,8 +1396,7 @@ suite("panel", function () {
 
   test("a render that ended before the page took it up is unfinished if it hangs the page then", async () => {
     const { panel, webview } = await newFakePanel();
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     void panel.render({ ...flowchart, source: "flowchart LR\n  A" }, "tool");
     const { requestId } = webview.render;
     const rendering = panel.render(flowchart, "tool");
@@ -1420,8 +1418,7 @@ suite("panel", function () {
     const restarted = newPanel(values);
     afterTest(() => restarted.dispose());
     const webview = new FakeWebview();
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     restarted.restore(webview.panel);
     assert.strictEqual(timers.pending, 1);
     timers.expire();
@@ -1441,8 +1438,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel(values);
     const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
     const source = await drawChart(panel, chart, chart.data, "Amounts");
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     const updating = panel.updateChart({ limit: 2 }, new vscode.CancellationTokenSource().token);
     await new Promise((resolve) => setImmediate(resolve));
     timers.expire();
@@ -1458,8 +1454,7 @@ suite("panel", function () {
     const { panel, webview } = await newFakePanel();
     const chart = { type: "bar", data: "name,amount\na,1\nb,2\nc,3" } as const;
     const source = await drawChart(panel, chart, chart.data, "Amounts");
-    webview.answer = undefined;
-    const timers = holdTimers(15_000);
+    const timers = hangPage(webview);
     const token = new vscode.CancellationTokenSource().token;
     const updating = panel.updateChart({ limit: 2 }, token);
     await new Promise((resolve) => setImmediate(resolve));
