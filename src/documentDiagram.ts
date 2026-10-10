@@ -51,7 +51,7 @@ export async function writeFence(
   }
   const changed = {
     written: false,
-    reason: `The ${binding.fence.language} block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
+    reason: `The ${binding.fence.language} block in ${name} has changed or cannot be identified safely, so it was not overwritten. Copy the ${noun} to paste it into the block, or reopen the block with Open in Diagram, which replaces the ${noun} in the panel.`,
   } as const;
   for (let attempt = 1; ; attempt++) {
     if (isCurrent && !isCurrent()) {
@@ -143,13 +143,26 @@ export async function confirmWrite(
   return write !== undefined;
 }
 
-/** Reports a failed write and offers to open the original block. */
-export async function reportWriteFailure(binding: DocumentBinding, reason: string): Promise<void> {
+/**
+ * Reports a failed write and offers to open the original block, or to copy the source that was not
+ * written, to paste it there, as reopening the block replaces it in the panel.
+ */
+export async function reportWriteFailure(
+  binding: DocumentBinding,
+  reason: string,
+  source: string,
+): Promise<void> {
   const name = documentName(binding);
-  if ((await vscode.window.showWarningMessage(reason, `Open ${name}`)) === undefined) {
+  const copy = binding.fence.language === "echarts" ? "Copy Chart" : "Copy Diagram";
+  const action = await vscode.window.showWarningMessage(reason, `Open ${name}`, copy);
+  if (action === undefined) {
     return;
   }
   try {
+    if (action === copy) {
+      await vscode.env.clipboard.writeText(source);
+      return;
+    }
     const document = await openDocument(vscode.Uri.parse(binding.uri));
     const line = new vscode.Position(binding.fence.openingLine, 0);
     await vscode.window.showTextDocument(document, { selection: new vscode.Range(line, line) });

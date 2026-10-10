@@ -295,7 +295,7 @@ suite("documentDiagram", function () {
     const before = document.getText();
     const outcome = await writeFence(read, "flowchart RL");
     assert.ok(!outcome.written);
-    assert.match(outcome.reason, /Reopen it with Open in Diagram/);
+    assert.match(outcome.reason, /reopen the block with Open in Diagram/);
     assert.strictEqual(document.getText(), before);
   });
 
@@ -411,11 +411,29 @@ suite("documentDiagram", function () {
     const [shown, options] = await opened.promise;
     const name = path.basename(document.uri.fsPath);
     assert.deepStrictEqual(warnings, [
-      `The mermaid block in ${name} has changed or cannot be identified safely, so it was not overwritten. Reopen it with Open in Diagram to continue.`,
+      `The mermaid block in ${name} has changed or cannot be identified safely, so it was not overwritten. Copy the diagram to paste it into the block, or reopen the block with Open in Diagram, which replaces the diagram in the panel.`,
     ]);
-    assert.deepStrictEqual(actions, [`Open ${name}`]);
+    assert.deepStrictEqual(actions, [`Open ${name}`, "Copy Diagram"]);
     assert.strictEqual(shown, document);
     assert.deepStrictEqual(options.selection, new vscode.Range(2, 0, 2, 0));
+  });
+
+  test("offers to copy the edit that it could not write to a document that changed", async () => {
+    const document = await markdown("```echarts\n{}\n```\n");
+    const { webview } = await restored(openedState(binding(document)));
+    await vscode.env.clipboard.writeText("");
+    const warnings = recordMessages("showWarningMessage", (_, ...actions) => actions[1]);
+    await edit(document, new vscode.Range(1, 0, 1, 2), '{"series": []}');
+    await webview.edit('{"title": {}}');
+    // The write does not wait for the warning to be answered.
+    let copied = "";
+    for (let tries = 0; tries < 100 && !copied; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      copied = await vscode.env.clipboard.readText();
+    }
+    assert.strictEqual(copied, '{"title": {}}');
+    assert.match(warnings[0] ?? "", /^The echarts block .* Copy the chart to paste it/);
+    assert.strictEqual(document.getText(), '```echarts\n{"series": []}\n```\n');
   });
 
   test("an Apply cannot write to a document opened while the edit renders", async () => {

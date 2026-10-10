@@ -50,7 +50,7 @@ Charts leave out the toolbox's chart type switch, box zoom and brush, as laying 
 
 Click **Open in Diagram** above a `mermaid` or `echarts` code block, in any case, or a `::: mermaid` container as in Azure DevOps wikis, including blocks in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or the editor context menu. As in VS Code's Markdown preview, a code block is Mermaid if its language contains a word of the `markdown-mermaid.languages` setting, such as `mermaid`. Set `diagram.codeLens.enabled` to `false` to hide **Open in Diagram**.
 
-**Apply** renders your edits and writes them to the block, keeping its fences, block quote markers, indentation and the surrounding text. The file is changed but not saved, and the change can be undone. A diagram that fails to render is not written; your edits stay in the panel. If the block changed or cannot be found safely, reopen it.
+**Apply** renders your edits and writes them to the block, keeping its fences, block quote markers, indentation and the surrounding text. The file is changed but not saved, and the change can be undone. A diagram that fails to render is not written; your edits stay in the panel. If the block changed or cannot be found safely, it is not written: copy your version from the warning to paste it into the block, or reopen the block, which replaces your version in the panel.
 
 **Write to** writes the diagram shown, such as one an agent drew in its place, asking first if an agent replaced it. Switching between Mermaid and ECharts detaches the diagram from its block.
 

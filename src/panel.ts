@@ -846,7 +846,7 @@ export class DiagramPanel implements vscode.Disposable {
       const outcome = await writeFence(current, source, isCurrent(current));
       if (!outcome.written) {
         // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
-        void reportWriteFailure(current, outcome.reason);
+        void reportWriteFailure(current, outcome.reason, source);
         return;
       }
       // Follow the written block, unless another diagram acquired its own binding while writing.
