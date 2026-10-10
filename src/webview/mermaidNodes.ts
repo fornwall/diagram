@@ -202,7 +202,7 @@ class Finder {
   readonly byElement = new Map<Element, DiagramNode>();
   /** The label of each node and relationship, by id. */
   private readonly labels = new Map<string, string>();
-  /** The ids that uniqueId gave out. */
+  /** The ids that uniqueId gave out, which may not have been added yet. */
   private readonly given = new Set<string>();
   /**
    * The next number to try for each name and relationship id, so that many equal names, or
@@ -252,11 +252,14 @@ class Finder {
     }
   }
 
-  /** An id for a node that goes by its name, numbering repeated names: "a", "a (2)", … */
+  /**
+   * An id for a node that goes by its name, or for a relationship, numbering names taken by others:
+   * "a", "a (2)", …
+   */
   uniqueId(name: string): string {
     let id = name;
     let n = this.next.get(name) ?? 2;
-    while (this.given.has(id)) id = `${name} (${n++})`;
+    while (this.given.has(id) || this.labels.has(id)) id = `${name} (${n++})`;
     this.next.set(name, n);
     this.given.add(id);
     return id;
@@ -282,14 +285,9 @@ class Finder {
     if (start && !end) [source, target] = [target, source];
     const direction = start && end ? "both" : !start && !end ? "undirected" : "forward";
     const arrow = direction === "both" ? "↔" : direction === "undirected" ? "—" : "→";
-    const base = `${kind}:${id}`;
-    let unique = base;
-    let n = this.next.get(base) ?? 2;
-    while (this.labels.has(unique)) unique = `${base} (${n++})`;
-    this.next.set(base, n);
     const name = (node: string) => this.labels.get(node) ?? node;
     return {
-      id: unique,
+      id: this.uniqueId(`${kind}:${id}`),
       label: `${name(source)} ${arrow} ${name(target)}${text ? `: ${text}` : ""}`,
       relationship: { kind, source, target, direction },
     };
