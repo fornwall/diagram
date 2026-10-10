@@ -856,7 +856,7 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   return errorAt(
     normalized,
     find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`),
-    `The value of the flow from "${flow.source}" to "${flow.target}" is not a number: write it without units or other text, as in "${flow.source},${flow.target},10".`,
+    `The value of the flow from "${flow.source}" to "${flow.target}" is not a number: write the number alone, such as 10, without units.`,
   );
 }
 

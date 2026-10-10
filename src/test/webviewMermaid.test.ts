@@ -1023,7 +1023,7 @@ suite("Mermaid in the webview", function () {
         "Error on line 3: Packet block 16 is invalid. Cannot have a zero bit field.",
         "Error on line 7: Packet block 8 - 15 is not contiguous. It should start from 16.",
         'Error on line 4: The score of "Rest" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".',
-        'Error on line 4: The value of the flow from "a" to "c" is not a number: write it without units or other text, as in "a,c,10".',
+        'Error on line 4: The value of the flow from "a" to "c" is not a number: write the number alone, such as 10, without units.',
         "Error on line 8: Cannot merge branch 'main' into itself.",
         'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
         'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',
