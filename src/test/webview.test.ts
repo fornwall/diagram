@@ -242,6 +242,25 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the drawing off the footer of a panel too short for it", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const footer = document.querySelector("footer");
+        document.body.style.height = "100px";
+        try {
+          const box = footer.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 3);
+          return {noRoom: document.getElementById("panes").getBoundingClientRect().height < 32,
+            footer: footer.contains(hit)};
+        } finally {
+          document.body.style.height = "";
+        }
+      })()`),
+      { noRoom: true, footer: true },
+    );
+  });
+
   test("shows the whole placeholder of the message, moving its button below in a narrow panel", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

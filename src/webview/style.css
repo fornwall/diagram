@@ -362,6 +362,9 @@ button.link:enabled:hover {
   display: flex;
   flex: 1;
   min-height: 0;
+  /* A panel too short for its bars leaves the panes no height, less than the padding of the
+     drawing's: what they hold stays off the footer below them. */
+  overflow: hidden;
 }
 
 #editor {
