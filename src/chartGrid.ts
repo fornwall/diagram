@@ -98,18 +98,15 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
- * The rows in the order of the dates of their first labels, and those dates as ECharts reads
- * them. ECharts draws a line through its points, samples them and stacks them in the order of its
- * data, which would otherwise run back and forth in time.
+ * The rows in the order of the dates of their first labels. ECharts draws a line through its
+ * points, samples them and stacks them in the order of its data, which would otherwise run back
+ * and forth in time.
  */
-function inTimeOrder(rows: Row[]): { rows: Row[]; times: (string | number)[] } {
-  const times = rows.map((row) => timeValue(label(row)));
-  const keys = times.map(timeOrder);
-  const order = [...rows.keys()].sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0));
-  return {
-    rows: order.map((index) => rows[index] as Row),
-    times: order.map((index) => times[index] ?? ""),
-  };
+function inTimeOrder(rows: Row[]): Row[] {
+  const keys = rows.map((row) => timeOrder(timeValue(label(row))));
+  return [...rows.keys()]
+    .sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0))
+    .map((index) => rows[index] as Row);
 }
 
 /**
@@ -117,8 +114,8 @@ function inTimeOrder(rows: Row[]): { rows: Row[]; times: (string | number)[] } {
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
 export function cartesianOption(type: CartesianType, read: Reading): Record<string, unknown> {
-  const sorted = read.columns.timeAxis ? inTimeOrder(read.rows) : undefined;
-  const reading = sorted ? { ...read, rows: sorted.rows } : read;
+  const { timeAxis } = read.columns;
+  const reading = timeAxis ? { ...read, rows: inTimeOrder(read.rows) } : read;
   const { table, columns, names, rows } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];
@@ -137,7 +134,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
           `${MOST_SERIES} that can be told apart. Choose fewer in "valueColumns".`,
       );
     }
-    if (!columns.timeAxis) {
+    if (!timeAxis) {
       noteRepeatedLabels(reading, "category", "categories");
     }
     points = rows.map(label);
@@ -149,7 +146,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   const line = type === "line" || type === "area" || type === "stackedArea";
   const horizontal = type === "horizontalBar";
   // Every series uses the same time coordinate; parse offsets and fractions once per point.
-  const times = sorted && (pivot ? points.map(timeValue) : sorted.times);
+  const times = timeAxis ? points.map(timeValue) : undefined;
   // On a time axis, a series per label has points at its own times, and a line through them
   // rather than a gap where another series has a point. A stack needs a point at every time.
   const ownTimes = times !== undefined && pivot && CARTESIAN_SERIES[type].stack === undefined;
