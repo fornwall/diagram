@@ -855,7 +855,7 @@ suite("ECharts in the webview", function () {
     assert.match(errors[0] ?? "", /^Cannot open "vscode:\/\/file\/etc\/passwd"/);
   });
 
-  test("leaves the chart under the toolbox's data view to itself, which Escape closes", async () => {
+  test("leaves the chart under the toolbox's data view to itself, which fits it and Escape closes", async () => {
     await renderChart({ ...SALES, toolbox: { feature: { dataView: {} } } });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -874,13 +874,26 @@ suite("ECharts in the webview", function () {
         icon.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}));
         clickChart(icon, {});
         await until(dataView, "the data view");
+        // Its data between its heading and its Close button, for the chart as it is now.
+        const canvas = document.getElementById("canvas");
+        const fits = async (height) => {
+          Object.assign(canvas.style, {height, flex: "none"});
+          await nextFrame();
+          const view = dataView().parentElement;
+          const data = view.children[1].getBoundingClientRect();
+          const close = view.lastElementChild.getBoundingClientRect();
+          return data.bottom <= close.top && close.top - data.bottom < 40;
+        };
+        const fitted = [await fits("250px"), await fits("600px")];
+        Object.assign(canvas.style, {height: "", flex: ""});
         const moved = [press("ArrowRight"), press("Enter"), ring()];
         const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
         chart.dispatchEvent(escape);
-        return {moved, selected: document.getElementById("selection-label").textContent,
+        return {fitted, moved, selected: document.getElementById("selection-label").textContent,
           closed: !dataView(), handled: escape.defaultPrevented, focused: document.activeElement === chart};
       })()`),
       {
+        fitted: [true, true],
         moved: ["", "", false],
         selected: "Click chart items to select them (Ctrl/Cmd/Shift+click for several).",
         closed: true,
