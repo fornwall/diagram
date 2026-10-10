@@ -683,6 +683,16 @@ async function fit(
   return text;
 }
 
+/** Says that a glob matches no files, and what the model may have meant instead. */
+function noFilesMatch(given: string): string {
+  const hint = !/[*?[{]/.test(given)
+    ? ` To list the files in a folder, use the glob "${given.replace(/\/$/, "")}/**".`
+    : given.includes("/")
+      ? ""
+      : ` A glob matches from the workspace folder: "**/${given}" matches at any depth.`;
+  return `No files match ${JSON.stringify(given)}.${hint}`;
+}
+
 /** A string input as the chat shows it, if the model gave one. */
 function shown(value: unknown, max: number): string | undefined {
   return typeof value === "string" && value.trim() ? quote(value, max) : undefined;
@@ -727,14 +737,7 @@ export class FindWorkspaceFilesTool extends WorkspaceTool {
     }
     const render = (listed: number) => {
       const shown = lines.slice(0, listed);
-      if (listed === 0 && !truncated && outsideFiles === 0) {
-        shown.push(
-          `No files match ${JSON.stringify(given)}.` +
-            (/[*?[{]/.test(given)
-              ? ""
-              : ` To list the files in a folder, use the glob "${given.replace(/\/$/, "")}/**".`),
-        );
-      }
+      if (listed === 0 && !truncated && outsideFiles === 0) shown.push(noFilesMatch(given));
       if (outsideFiles > 0) {
         shown.push(`Left out ${plural(outsideFiles, "file")} linked outside the workspace.`);
       }
@@ -771,7 +774,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     }
     const max = integer(input.maxResults, 50, "maxResults", 100);
     const roots = folders();
-    const { glob, roots: searched } = globInput(input.glob, roots);
+    const { given, glob, roots: searched } = globInput(input.glob, roots);
     const check = boundary(roots, token);
     const { files, truncated: tooManyFiles } = await candidates(
       searched,
@@ -876,6 +879,8 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     }
     const reasons = Object.entries(skipped).filter(([, count]) => count > 0);
     const skippedFiles = reasons.reduce((sum, [, count]) => sum + count, 0);
+    // A glob that matches no files likely means another.
+    const noFiles = files.length === 0 ? ` ${noFilesMatch(given)}` : "";
     const render = (matches: number) => {
       const files = fileStarts.filter((start) => start < matches).length;
       const end = matches < output.length ? "its output reached the size limit" : stopped;
@@ -891,6 +896,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
         end
           ? ` Incomplete: the search stopped because ${end}. Narrow the glob or use a more specific query.`
           : "",
+        noFiles,
       ].join("");
       return [summary, ...output.slice(0, matches)].join("\n");
     };

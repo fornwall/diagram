@@ -96,6 +96,11 @@ suite("workspaceTools", function () {
       await invoke(finder, { glob: `${relative}/` }),
       `No files match "${relative}/". To list the files in a folder, use the glob "${relative}/**".`,
     );
+    // As models write globs, that match only in the workspace folder itself.
+    assert.strictEqual(
+      await invoke(searcher, { query: "Needle", glob: relative }),
+      `No matches (searched 0 files). No files match "${relative}". To list the files in a folder, use the glob "${relative}/**".`,
+    );
   });
 
   test("reads inclusive line ranges from relative paths and absolute URIs", async () => {
@@ -228,7 +233,10 @@ suite("workspaceTools", function () {
       excludes.push(String(exclude).split(/[{},]/));
       return findFiles(include, exclude, ...rest);
     });
-    assert.strictEqual(await invoke(finder, { glob: "*.log" }), 'No files match "*.log".');
+    assert.strictEqual(
+      await invoke(finder, { glob: "*.log" }),
+      'No files match "*.log". A glob matches from the workspace folder: "**/*.log" matches at any depth.',
+    );
     const [found, searched] = excludes;
     // "out*/" is no exclude, as "!outlier" could include a folder it matches again.
     assert.ok(found?.includes("**/vendor/**") && !found.includes("**/out*/**"), String(found));
