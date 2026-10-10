@@ -1553,7 +1553,8 @@ suite("webview", function () {
     await evaluate(type("e"));
     await evaluate('document.getElementById("revert").click()');
     assert.deepStrictEqual(await saved(), { writes: 1, length: 0 });
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    // Nor later: the large state waits no more, to be saved as the page loses the focus.
+    await evaluate('window.dispatchEvent(new Event("blur"))');
     assert.deepStrictEqual(await saved(), { writes: 1, length: 0 });
     await evaluate('document.getElementById("view-visual").click()');
   });
