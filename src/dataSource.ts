@@ -114,7 +114,7 @@ export function toolUnasked({ file }: ChartSpec): Unasked | undefined {
  * How to be asked about a data file that was let through without asking but leads out of the
  * workspace: by `retry`, or by `unnamed` if given when the path that it leads to cannot be named.
  */
-export interface Unasked {
+interface Unasked {
   retry: string;
   unnamed?: string;
 }
@@ -124,12 +124,7 @@ export interface Unasked {
  * through a link, if known. On Windows, that may be a path inside the workspace, which Windows may
  * reach by the text of a link's target but the check does not take.
  */
-export function unaskedError(
-  name: string,
-  outside: string | undefined,
-  unasked: Unasked,
-  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
-): Error {
+export function unaskedError(name: string, outside: string | undefined, unasked: Unasked): Error {
   const notRead = "so it was not read without asking the user.";
   if (outside === undefined) {
     return new Error(
@@ -137,6 +132,7 @@ export function unaskedError(
         `named, such as one that is not UTF-8, ${notRead} ${unasked.unnamed ?? unasked.retry}`,
     );
   }
+  const roots = vscode.workspace.workspaceFolders ?? [];
   const inside = roots.some((root) => contains(root.uri, vscode.Uri.file(outside)));
   const leads = inside ? "leads, through a symbolic link," : "leads out of the workspace,";
   return new Error(`The file ${name} ${leads} to ${outside}, ${notRead} ${unasked.retry}`);

@@ -117,10 +117,8 @@ export function inWorkspace(
  * The path by which `uri`, inside a workspace folder by its path, leads out of the folders through
  * symbolic links, as {@link linksInside} tells, if it does and that path is known.
  */
-export function pathOutside(
-  uri: vscode.Uri,
-  roots: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
-): string | undefined {
+export function pathOutside(uri: vscode.Uri): string | undefined {
+  const roots = vscode.workspace.workspaceFolders ?? [];
   if (uri.scheme !== "file" || !roots.some((root) => nearRoot(root.uri, uri))) return undefined;
   try {
     const followed = followLinks(uri.fsPath, roots);

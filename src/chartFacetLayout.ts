@@ -1,7 +1,7 @@
 // Where the panels of a faceted chart go: in percent of the chart's size, as the option holds
 // them, which the webview recognizes to lay the panels out again in pixels for the panel's size.
 
-export interface FacetBox {
+interface FacetBox {
   grid: { left: string; top: string; width: string; height: string };
   title: { left: string; top: string };
 }
