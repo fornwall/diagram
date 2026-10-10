@@ -1163,6 +1163,9 @@ export class DiagramPanel implements vscode.Disposable {
       const confirmed = await ask();
       if (!confirmed && this.pageRanCode) this.pageRefused = true;
       return confirmed;
+    } catch {
+      // A question that VS Code does not show, as while the window closes, confirms nothing.
+      return false;
     } finally {
       this.confirming = false;
     }

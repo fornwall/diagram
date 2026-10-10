@@ -4,7 +4,7 @@ import { validateAnnotation } from "../annotations";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
-import { afterTest, recordMessages } from "./afterTest";
+import { afterTest, recordMessages, replace } from "./afterTest";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -945,6 +945,9 @@ suite("ECharts in the webview", function () {
     });
     afterTest(() => listener.dispose());
     const errors = recordMessages("showErrorMessage");
+    // Which the extension opens, rather than a browser.
+    recordMessages("showWarningMessage", () => "Open");
+    replace(vscode.env, "openExternal", async () => true);
     // A JSON option, which runs no code, writes the tooltip's HTML.
     await renderChart({
       ...SALES,

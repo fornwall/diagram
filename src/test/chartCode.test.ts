@@ -216,8 +216,11 @@ suite("chart code in the panel", function () {
     const details: string[] = [];
     const opened: string[] = [];
     let answer: string | undefined = "Open";
+    let refused = false;
     const questions = recordMessages("showWarningMessage", (_, options) => {
       details.push((options as vscode.MessageOptions).detail ?? "");
+      // As VS Code refuses to show a dialog while the window closes, or in tests.
+      if (refused) throw new Error("DialogService: refused to show dialog");
       return answer;
     });
     replace(vscode.env, "openExternal", async (uri) => {
@@ -230,6 +233,10 @@ suite("chart code in the panel", function () {
       webview.receive({ type: "openUrl", requestId: webview.render.requestId, url });
     // A link in the HTML of the chart's tooltip, and one that a diagram drew after it.
     assert.ok((await renderChart(panel, codeChart)).ok);
+    // A question that is not shown opens nothing, and the next one is asked.
+    refused = true;
+    await open();
+    refused = false;
     await open();
     assert.ok(
       (await panel.render({ language: "mermaid", source: flowchart, title: "Flow" }, "tool")).ok,
@@ -240,6 +247,7 @@ suite("chart code in the panel", function () {
     await open();
     assert.deepStrictEqual(opened, [url, url]);
     assert.deepStrictEqual(questions, [
+      "Open the link that you clicked in the chart?",
       "Open the link that you clicked in the chart?",
       "Open the link that you clicked in the diagram?",
       "Open the link that you clicked in the diagram?",
