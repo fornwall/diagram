@@ -1,6 +1,12 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { CHART_TYPES, DATA_FORMATS, dataOrigin, validateChartSpec } from "../chartSpec";
+import {
+  AGGREGATIONS,
+  CHART_TYPES,
+  DATA_FORMATS,
+  dataOrigin,
+  validateChartSpec,
+} from "../chartSpec";
 
 suite("chartSpec", () => {
   const source = { type: "histogram", data: "service,latency\na,5\nb,12" };
@@ -64,14 +70,26 @@ suite("chartSpec", () => {
     );
   });
 
-  test("the tool schema lists the chart types and data formats", () => {
-    const schema = vscode.extensions
-      .getExtension("fornwall.diagram")
-      ?.packageJSON.contributes.languageModelTools.find(
-        (tool: { name: string }) => tool.name === "diagram_chart",
-      ).inputSchema.properties;
-    assert.deepStrictEqual(schema.type.enum, CHART_TYPES);
-    assert.deepStrictEqual(schema.format.enum, DATA_FORMATS);
+  test("the tool schemas list the chart types, data formats and aggregations", () => {
+    type Schema = Record<string, unknown> & { anyOf?: Schema[] };
+    const properties = (name: string): Record<string, Schema> =>
+      vscode.extensions
+        .getExtension("fornwall.diagram")
+        ?.packageJSON.contributes.languageModelTools.find(
+          (tool: { name: string }) => tool.name === name,
+        ).inputSchema.properties;
+    const chart = properties("diagram_chart");
+    assert.deepStrictEqual(chart.type?.enum, CHART_TYPES);
+    assert.deepStrictEqual(chart.format?.enum, DATA_FORMATS);
+    assert.deepStrictEqual(chart.aggregate?.enum, AGGREGATIONS);
+    // diagram_updateChart takes the same settings, which null clears, except for the type and title.
+    const { revision, ...update } = properties("diagram_updateChart");
+    assert.ok(revision);
+    for (const [key, schema] of Object.entries(update)) {
+      const { description: _, ...given } = chart[key] ?? {};
+      const nullable = { anyOf: [...(given.anyOf ?? [given]), { type: "null" }] };
+      assert.deepStrictEqual(schema, key === "type" || key === "title" ? given : nullable, key);
+    }
   });
 
   test("says where a chart's data comes from", () => {
