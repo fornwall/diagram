@@ -1409,17 +1409,17 @@ suite("webview", function () {
           if (text === ${JSON.stringify(source)}) parses++;
           return parse.call(this, text, ...args);
         };
-        window.testStateWrites = 0;
+        window.testSavedStates = [];
         try {
           for (const view of ["source", "source", "visual", "split", "split"]) {
             document.getElementById("view-" + view).click();
           }
-          const viewWrites = window.testStateWrites;
+          const viewWrites = window.testSavedStates.length;
           const input = document.getElementById("source");
           input.value += " ";
           input.dispatchEvent(new Event("input"));
           input.dispatchEvent(new Event("input"));
-          return {parses, viewWrites, editWrites: window.testStateWrites - viewWrites,
+          return {parses, viewWrites, editWrites: window.testSavedStates.length - viewWrites,
             saved: window.readTestState().editor.source === input.value};
         } finally {
           JSON.parse = parse;
@@ -1508,13 +1508,13 @@ suite("webview", function () {
     const large = `${original}\n%% ${"x".repeat(200_000)}`;
     await draw({ source: original });
     const type = (text: string) => `(() => {
-      window.testStateWrites = 0;
+      window.testSavedStates = [];
       const input = document.getElementById("source");
       input.value += ${JSON.stringify(text)};
       input.dispatchEvent(new Event("input"));
     })()`;
     const saved = () =>
-      evaluate(`({writes: window.testStateWrites,
+      evaluate(`({writes: window.testSavedStates.length,
         length: window.readTestState().editor?.source.length ?? 0})`);
     await evaluate(`(() => {
       document.getElementById("view-split").click();
@@ -1535,7 +1535,7 @@ suite("webview", function () {
     assert.deepStrictEqual(await saved(), { writes: 0, length: large.length + 2 });
     await evaluate(`(async () => {
       ${UNTIL}
-      await until(() => window.testStateWrites === 1, "the paused edit to be saved");
+      await until(() => window.testSavedStates.length === 1, "the paused edit to be saved");
     })()`);
     assert.deepStrictEqual(await saved(), { writes: 1, length: large.length + 4 });
     // A small state is saved at once, replacing a large one still waiting.

@@ -24,7 +24,7 @@ export interface WebviewHarness {
 
 /**
  * Shows the panel and instruments its page, without adding test commands to the shipped webview:
- * `readTestState()`, `writeTestState(state)`, `testStateWrites`, `testRenderResults` (render request ids)
+ * `readTestState()`, `writeTestState(state)`, `testSavedStates`, `testRenderResults` (render request ids)
  * and `receive(data)`, which hands the page a message as if from the extension, become globals.
  */
 export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
@@ -53,8 +53,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         const api = acquire();
         window.readTestState = () => api.getState();
         window.writeTestState = (state) => api.setState(state);
-        window.testStateWrites = 0;
-        /** Each state that the page saved since it loaded. */
+        /** Each state that the page saved since it loaded, or since a test emptied the list. */
         window.testSavedStates = [];
         window.testRenderResults = [];
         window.receive = (data) => window.dispatchEvent(new MessageEvent("message", {data}));
@@ -77,7 +76,6 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         });
         api.postMessage({type: "testLoaded"});
         return {...api, postMessage, setState: (state) => {
-          window.testStateWrites++;
           window.testSavedStates.push(state);
           return api.setState(state);
         }};
