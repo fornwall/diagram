@@ -4,7 +4,7 @@ import { validateAnnotation } from "../annotations";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
-import { afterTest, recordMessages, replace } from "./afterTest";
+import { afterTest, cancellationSource, recordMessages, replace } from "./afterTest";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -1494,8 +1494,7 @@ suite("ECharts in the webview", function () {
 
   test("picks a chart item with the keyboard", async () => {
     await renderChart(SALES);
-    const tokens = new vscode.CancellationTokenSource();
-    const picking = page.panel.pickNodes("Pick a day", false, tokens.token);
+    const picking = page.panel.pickNodes("Pick a day", false, cancellationSource().token);
     await evaluate(`(async () => {
       ${PRESS}
       ${UNTIL}
@@ -1508,13 +1507,11 @@ suite("ECharts in the webview", function () {
       picked: true,
       nodes: [{ id: "A/Tue", label: "Tue" }],
     });
-    tokens.dispose();
   });
 
   test("gives the keys to the chart, not the canvas, on a pick and after it or Clear", async () => {
     await renderChart(SALES);
-    const tokens = new vscode.CancellationTokenSource();
-    const picking = page.panel.pickNodes("Pick days", true, tokens.token);
+    const picking = page.panel.pickNodes("Pick days", true, cancellationSource().token);
     const focus = await evaluate(`(async () => {
       ${PRESS}
       ${UNTIL}
@@ -1541,7 +1538,6 @@ suite("ECharts in the webview", function () {
         cleared: focus()};
     })()`);
     assert.deepStrictEqual(await picking, { picked: true, nodes: [{ id: "A/Mon", label: "Mon" }] });
-    tokens.dispose();
     assert.deepStrictEqual(focus, {
       canvas: [-1, "Chart preview"],
       picking: [true, "pick-prompt chart-drawing"],
