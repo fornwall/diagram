@@ -187,7 +187,10 @@ export class DiagramPanel implements vscode.Disposable {
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
   private refreshing = false;
-  /** Ends the data load of a refresh or reset, as the panel closes or another load starts. */
+  /**
+   * Ends the data load of a refresh or reset, as the panel closes, the diagram changes or another
+   * load starts.
+   */
   private reloading: vscode.CancellationTokenSource | undefined;
   private exporting = false;
   /** The last write to a document, which the next one waits for. */
@@ -506,7 +509,11 @@ export class DiagramPanel implements vscode.Disposable {
   private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<Drawn> {
     const state = this.state;
     const tab = this.webview.tab;
-    if (!redraw) this.shownRevision++;
+    if (!redraw) {
+      this.shownRevision++;
+      // A refresh's data would no longer be drawn: stop its command and its progress.
+      this.reloading?.cancel();
+    }
     if (!state || !tab) {
       return {
         ...notShown("There is no diagram panel to render in."),

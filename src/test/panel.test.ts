@@ -918,7 +918,7 @@ suite("panel", function () {
     });
   });
 
-  for (const action of ["cancel", "close the panel"]) {
+  for (const action of ["cancel", "close the panel", "draw another diagram"]) {
     test(`a refresh's command stops as the user may ${action}`, async () => {
       const { panel, webview } = await newFakePanel();
       const chart = { type: "pie", command: "sleep 60" } as const;
@@ -935,9 +935,10 @@ suite("panel", function () {
       const refreshing = webview.receive({ type: "refresh" });
       const source = await progress.promise;
       if (action === "cancel") source.cancel();
-      else webview.panel.dispose();
+      else if (action === "close the panel") webview.panel.dispose();
+      else assert.ok((await panel.render(flowchart, "tool")).ok);
       await refreshing;
-      assert.strictEqual(panel.current?.source, PIE);
+      assert.strictEqual(panel.current?.source, action.startsWith("draw") ? flowchart.source : PIE);
       assert.deepStrictEqual(errors, []);
     });
   }
