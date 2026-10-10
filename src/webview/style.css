@@ -472,9 +472,12 @@ select:focus {
   text-align: center;
 }
 
+/* Halos of the selection and of marks reach past the drawing's edge, into the canvas padding: an
+   SVG would cut them off there. */
 #diagram svg {
   display: inline-block;
   vertical-align: top;
+  overflow: visible;
 }
 
 /* Mermaid sizes an HTML label to its line boxes, which formulas draw beyond: show them whole. */

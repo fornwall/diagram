@@ -416,6 +416,22 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("shows the whole halo of a selected or marked node at the edge of the drawing", async () => {
+    await draw({ source: "flowchart LR\n  A --> B", title: "Halo" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const svg = document.querySelector("#diagram svg");
+        const node = svg.querySelector('[data-diagram-id="B"][tabindex]');
+        node.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        // Closer to the edge than the 5 pixels the halo is blurred over, and the canvas leaves room.
+        const room = svg.getBoundingClientRect().right - node.getBoundingClientRect().right;
+        const padding = parseFloat(getComputedStyle(document.getElementById("canvas")).paddingRight);
+        return {close: room < 10, padding: padding >= 10, overflow: getComputedStyle(svg).overflow};
+      })()`),
+      { close: true, padding: true, overflow: "visible" },
+    );
+  });
+
   test("annotation updates touch only changed Mermaid marks", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
     await draw({ source });
