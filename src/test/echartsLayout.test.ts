@@ -392,6 +392,11 @@ suite("echartsLayout", () => {
     // ECharts' precision of 0 with a format, and a precision within what it takes.
     const text = (visualMap: Option) => placed({ min: 0, max: 12_500, ...visualMap }).text;
     assert.deepStrictEqual(text({ formatter: "{value}–{value2}" }), ["12500–12500", "0–0"]);
+    assert.deepStrictEqual(text({ formatter: "{value} ({value})" }), [
+      "12500 ({value})",
+      "0 ({value})",
+    ]);
+    assert.deepStrictEqual(text({ precision: 1.5 }), ["12500.0", "0.0"]);
     assert.deepStrictEqual(text({ precision: -1 }), ["12500", "0"]);
     assert.deepStrictEqual(
       text({ precision: 150 }).map((each: string) => each.length),

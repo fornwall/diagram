@@ -593,15 +593,15 @@ function placeSliders(base: JsonObject, reserved: Insets, { width }: Size, squee
       isContinuous(visualMap)
     ) {
       // ECharts' default bounds, and the high one first, compactly, or as the handles would write
-      // them in the format or precision the option sets: to its precision, of 0 by default, of at
-      // most 20 digits.
-      const digits = Math.min(20, Math.max(0, Math.round(Number(precision ?? 0)) || 0));
+      // them in the format or precision the option sets: to its whole digits, of 0 by default, of at
+      // most 20, and in the first of each placeholder.
+      const digits = Math.min(20, Math.max(0, Math.trunc(Number(precision ?? 0)) || 0));
       visualMap.text = [visualMap.max ?? 200, visualMap.min ?? 0].map((bound) => {
         if (formatter === undefined && precision === undefined) return compactLabel(bound);
         const value = Number(bound).toFixed(digits);
         return formatter === undefined
           ? value
-          : formatter.replaceAll("{value}", value).replaceAll("{value2}", value);
+          : formatter.replace("{value}", value).replace("{value2}", value);
       });
     }
     if (!has(visualMap, [...BOX_KEYS, "orient"])) {
