@@ -224,11 +224,19 @@ export async function reportWriteFailure(
   }
 }
 
+/** The documents that {@link reportUnshownWrite} told of, until a write finds them saved. */
+const reportedUnsaved = new Set<string>();
+
 /**
  * Tells the user of a write to a document that no tab shows, as when its tab was closed, which
- * VS Code keeps unsaved with only the Explorer to mark it, and offers to show it.
+ * VS Code keeps unsaved with only the Explorer to mark it, and offers to show it: once until the
+ * document is saved, which `savedBefore` says it was before the write.
  */
-export async function reportUnshownWrite(binding: DocumentBinding): Promise<void> {
+export async function reportUnshownWrite(
+  binding: DocumentBinding,
+  savedBefore: boolean,
+): Promise<void> {
+  if (savedBefore) reportedUnsaved.delete(binding.uri);
   const { path } = vscode.Uri.parse(binding.uri);
   const document = vscode.workspace.textDocuments.find(({ uri }) => uri.toString() === binding.uri);
   // By path, as a notebook's tab shows the documents of its cells.
@@ -239,7 +247,8 @@ export async function reportUnshownWrite(binding: DocumentBinding): Promise<void
         input.uri.path === path,
     ),
   );
-  if (shown || !document?.isDirty) return;
+  if (shown || !document?.isDirty || reportedUnsaved.has(binding.uri)) return;
+  reportedUnsaved.add(binding.uri);
   const name = documentName(binding);
   const show = `Show ${name}`;
   const action = await vscode.window.showInformationMessage(

@@ -381,6 +381,18 @@ suite("documentDiagram", function () {
     assert.ok(await within(() => notices.length === 2));
   });
 
+  test("says that it wrote to a document that no editor shows that something else left unsaved", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
+    const { webview } = await restored(openedState(binding(document)));
+    const notices = recordMessages("showInformationMessage");
+    // As a Replace All in Search does.
+    await edit(document, new vscode.Range(0, 2, 0, 7), "Plans");
+    assert.ok(document.isDirty);
+    await webview.edit("flowchart LR");
+    assert.strictEqual(document.getText(), "# Plans\n\n```mermaid\nflowchart LR\n```\n");
+    assert.ok(await within(() => notices.length === 1));
+  });
+
   test("says nothing of a write to a document that a tab shows", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     await vscode.window.showTextDocument(document);
