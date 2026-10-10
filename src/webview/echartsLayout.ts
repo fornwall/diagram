@@ -739,9 +739,10 @@ const sameBox = (object: JsonObject, box: object, keys: string[]) =>
 
 /**
  * The panels of a faceted chart, each a grid and the title of the same id, where chartFacets
- * places them, or undefined if the option places its grids otherwise, as a user's options can.
+ * places them, in as many columns, or undefined if the option places its grids otherwise, as a
+ * user's options can.
  */
-function facetPanels(base: JsonObject): Facet[] | undefined {
+function facetPanels(base: JsonObject): { facets: Facet[]; columns: number } | undefined {
   const grids = asArray(base.grid);
   if (grids.length < 2) return undefined;
   const titles = asArray(base.title);
@@ -761,12 +762,8 @@ function facetPanels(base: JsonObject): Facet[] | undefined {
     }
     facets.push({ grid, title });
   }
-  return facets;
+  return { facets, columns };
 }
-
-/** The columns that chartFacets places facets in. */
-const facetColumns = (facets: Facet[]) =>
-  facets.filter(({ grid }) => grid.top === facets[0]?.grid.top).length;
 
 /** The rows of facets in a number of columns, and their width, in the width there is for them. */
 const facetGrid = (facets: Facet[], areaWidth: number) => ({
@@ -780,11 +777,12 @@ const facetGrid = (facets: Facet[], areaWidth: number) => ({
  */
 export function minimumHeight(option: JsonObject, width: number): number {
   const base = baseOption(option);
-  const facets = option.media === undefined ? facetPanels(base) : undefined;
-  if (!facets) return 0;
+  const panels = option.media === undefined ? facetPanels(base) : undefined;
+  if (!panels) return 0;
+  const { facets, columns } = panels;
   const { rows, panelWidth } = facetGrid(facets, width - 32);
-  let least = rows(facetColumns(facets));
-  for (let more = facetColumns(facets) + 1; more <= facets.length; more++) {
+  let least = rows(columns);
+  for (let more = columns + 1; more <= facets.length; more++) {
     if (panelWidth(more) >= MIN_SCROLLED_FACET_WIDTH) least = Math.min(least, rows(more));
   }
   // The legend of several measures below the facets.
@@ -799,7 +797,7 @@ export function minimumHeight(option: JsonObject, width: number): number {
  * size of a grid in pixels.
  */
 function layOutFacets(
-  facets: Facet[],
+  { facets, columns: placed }: { facets: Facet[]; columns: number },
   reserved: Insets,
   { width, height }: Size,
 ): { width: number; height: number } {
@@ -815,7 +813,7 @@ function layOutFacets(
       areaHeight / rows(columns) / MIN_FACET_HEIGHT,
       panelWidth(columns) / MIN_FACET_WIDTH,
     );
-  let columns = facetColumns(facets);
+  let columns = placed;
   for (let more = columns + 1; more <= facets.length; more++) {
     if (fit(more) > fit(columns)) columns = more;
   }
