@@ -1004,7 +1004,7 @@ suite("webview", function () {
     const source = "flowchart LR\n A --> B";
     await draw({ source });
     await evaluate(
-      'window.writeTestState({draft: 1, view: "both", editor: {source: "flowchart LR", base: 2}})',
+      'window.writeTestState({draft: 1, view: "both", editor: {source: "flowchart LR", base: 2}, sourceSize: "wide"})',
     );
     await nextRender(() => {
       page.webview.html += "\n<!-- Reload with a state of another shape. -->";
@@ -1014,10 +1014,45 @@ suite("webview", function () {
         draft: document.getElementById("ask-input").value,
         visual: document.getElementById("view-visual").getAttribute("aria-pressed"),
         source: document.getElementById("source").value,
+        size: document.getElementById("splitter").ariaValueNow,
         state: window.readTestState()
       })`),
-      { draft: "", visual: "true", source: "", state: { draft: "", view: "visual" } },
+      {
+        draft: "",
+        visual: "true",
+        source: "",
+        size: "40",
+        state: { draft: "", sourceSize: 0.4, view: "visual" },
+      },
     );
+  });
+
+  test("restores the size of the source pane after a webview reload", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    try {
+      await evaluate(`(() => {
+        document.getElementById("view-split").click();
+        const splitter = document.getElementById("splitter");
+        for (const key of ["End", "ArrowLeft"]) {
+          splitter.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
+        }
+      })()`);
+      await nextRender(() => {
+        page.webview.html += "\n<!-- Reload to verify the size of the source pane. -->";
+      });
+      assert.deepStrictEqual(
+        await evaluate(`({
+          size: document.getElementById("splitter").ariaValueNow,
+          basis: getComputedStyle(document.getElementById("editor")).flexBasis,
+        })`),
+        { size: "80", basis: "80%" },
+      );
+    } finally {
+      await evaluate(`(() => {
+        document.getElementById("splitter").dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        document.getElementById("view-visual").click();
+      })()`);
+    }
   });
 
   test("renders charts, and switches between charts and diagrams", async () => {

@@ -25,6 +25,8 @@ import { readThemeColors } from "./vscodeTheme";
 
 interface State extends EditorState {
   draft: string;
+  /** The source editor's share of the split view. */
+  sourceSize: number;
 }
 
 declare function acquireVsCodeApi(): {
@@ -90,7 +92,7 @@ const loadChartOptions = () =>
 
 // Register panning first so it can suppress clicks after a drag.
 enablePanning(canvas);
-enableSplitter(splitter, panes, element("editor"));
+const split = enableSplitter(splitter, panes, element("editor"), saveState);
 const forgetDragImage = enableDragOut(dragOutHandle, {
   imageMaker: () => {
     const toImage = active?.toImage?.bind(active);
@@ -811,12 +813,13 @@ let savedState: State | undefined;
 let unsavedState: State | undefined;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function saveState(): void {
-  const next: State = { draft: askInput.value, ...editor.state() };
+  const next: State = { draft: askInput.value, sourceSize: split.fraction, ...editor.state() };
   // setState serializes the whole draft and sends it to the host. View and render updates can
   // reach here several times with the same state, including multi-megabyte source edits.
   const last = unsavedState ?? savedState;
   if (
     last?.draft === next.draft &&
+    last.sourceSize === next.sourceSize &&
     last.view === next.view &&
     last.editor?.source === next.editor?.source &&
     last.editor?.base === next.editor?.base
@@ -855,6 +858,7 @@ const restored = vscode.getState();
 const saved = isPlainObject(restored) ? restored : {};
 askInput.value = typeof saved.draft === "string" ? saved.draft : "";
 editor.restore(saved);
+split.restore(saved.sourceSize);
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };
