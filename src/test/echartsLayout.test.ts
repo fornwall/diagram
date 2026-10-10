@@ -384,6 +384,13 @@ suite("echartsLayout", () => {
     });
     // ECharts' default bounds.
     assert.deepStrictEqual(placed({ calculable: false }).text, ["200", "0"]);
+    // In the format and precision of the visual map, as its handles would write them.
+    assert.deepStrictEqual(placed({ max: 50, formatter: "{value} %", precision: 1 }).text, [
+      "50.0 %",
+      "0.0 %",
+    ]);
+    // Not one with a formatter function, whose code the layout leaves to ECharts.
+    assert.strictEqual(placed({ formatter: () => "x" }).text, undefined);
     // Not one with handles or a text of its own, nor the pieces of another.
     assert.deepStrictEqual(placed({ calculable: true, padding: 10 }), {
       calculable: true,

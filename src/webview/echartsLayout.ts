@@ -585,9 +585,21 @@ function placeSliders(base: JsonObject, reserved: Insets, { width }: Size, squee
     }
     // A continuous bar shows the values of its ends only with the handles that make it
     // calculable, as diagram_chart's heatmaps have, or with a text, which it has by default.
-    if (visualMap.text === undefined && !visualMap.calculable && isContinuous(visualMap)) {
-      // ECharts' default bounds, and the high one first.
-      visualMap.text = [visualMap.max ?? 200, visualMap.min ?? 0].map(compactLabel);
+    const { formatter, precision } = visualMap;
+    if (
+      visualMap.text === undefined &&
+      !visualMap.calculable &&
+      (formatter === undefined || typeof formatter === "string") &&
+      isContinuous(visualMap)
+    ) {
+      // ECharts' default bounds, and the high one first, written as the handles would write them.
+      visualMap.text = [visualMap.max ?? 200, visualMap.min ?? 0].map((bound) => {
+        const value =
+          typeof precision === "number" && typeof bound === "number"
+            ? bound.toFixed(precision)
+            : compactLabel(bound);
+        return formatter === undefined ? value : formatter.replaceAll("{value}", value);
+      });
     }
     if (!has(visualMap, [...BOX_KEYS, "orient"])) {
       if (squeeze >= 1) {
