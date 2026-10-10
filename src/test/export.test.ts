@@ -141,8 +141,11 @@ suite("export", function () {
     });
   });
 
-  /** A fake page that draws everything, and exports the source it shows as an SVG image. */
-  async function exportingPanel() {
+  /**
+   * A fake page that draws everything, and exports the image given, by default the source it shows
+   * as an SVG image.
+   */
+  async function exportingPanel(image?: { format: "png" | "svg"; data: string }) {
     const fake = await newFakePanel();
     const draw = fake.webview.answer;
     fake.webview.answer = (message) =>
@@ -150,8 +153,7 @@ suite("export", function () {
         ? {
             type: "exportImage",
             requestId: message.requestId,
-            format: "svg",
-            data: `<svg>${fake.webview.render.source}</svg>`,
+            ...(image ?? { format: "svg", data: `<svg>${fake.webview.render.source}</svg>` }),
           }
         : draw?.(message);
     return fake;
@@ -338,17 +340,7 @@ suite("export", function () {
 
   // The wrong format is reported in "says whether it exports a diagram or a chart".
   test("reports an invalid PNG", async () => {
-    const { panel, webview } = await newFakePanel();
-    const draw = webview.answer;
-    webview.answer = (message) =>
-      message.type === "export"
-        ? {
-            type: "exportImage",
-            requestId: message.requestId,
-            format: "png",
-            data: "data:image/jpeg;base64,AAAA",
-          }
-        : draw?.(message);
+    const { panel } = await exportingPanel({ format: "png", data: "data:image/jpeg;base64,AAAA" });
     assert.ok((await panel.render(diagram, "tool")).ok);
     chosen = "png";
     await panel.exportDiagram();
