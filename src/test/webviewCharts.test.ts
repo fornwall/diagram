@@ -745,46 +745,29 @@ suite("ECharts in the webview", function () {
     );
   });
 
-  test("draws a chart once in the colors of a new theme", async () => {
+  test("draws a chart once in the colors of a new theme, in any CSS color syntax", async () => {
     await draw({ language: "echarts", source: COUNTED_CHART });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
-        const root = document.documentElement.style;
-        const before = window.chartDraws.length;
-        root.setProperty("--vscode-charts-blue", "#123456");
-        try {
-          await until(() => fill() === "#123456", "the theme's color", nextFrame);
-          // A layout that is not the theme's, still on its way from rendering, draws once too.
-          return [...new Set(window.chartDraws.slice(before))];
-        } finally {
-          root.removeProperty("--vscode-charts-blue");
-          await until(() => fill() !== "#123456", "the default color again", nextFrame);
-        }
-      })()`),
-      [1],
-    );
-  });
-
-  test("reads theme colors written in other CSS color syntaxes", async () => {
-    await draw({ language: "echarts", source: COUNTED_CHART });
-    assert.strictEqual(
-      await evaluate(`(async () => {
-        ${UNTIL}
-        const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
-        const root = document.documentElement.style;
-        root.setProperty("--vscode-charts-blue", "color(srgb 0.0706 0.2039 0.3373)");
-        try {
-          await until(() => fill() === "#123456", "the theme's color", nextFrame);
-          return fill();
-        } finally {
-          root.removeProperty("--vscode-charts-blue");
-          await until(() => fill() !== "#123456", "the default color again", nextFrame);
-        }
-      })()`),
-      "#123456",
-    );
+    for (const color of ["#123456", "color(srgb 0.0706 0.2039 0.3373)"]) {
+      assert.deepStrictEqual(
+        await evaluate(`(async () => {
+          ${UNTIL}
+          const fill = () => document.querySelector("#chart svg path")?.getAttribute("fill");
+          const root = document.documentElement.style;
+          const before = window.chartDraws.length;
+          root.setProperty("--vscode-charts-blue", ${JSON.stringify(color)});
+          try {
+            await until(() => fill() === "#123456", "the theme's color", nextFrame);
+            // A layout that is not the theme's, still on its way from rendering, draws once too.
+            return [...new Set(window.chartDraws.slice(before))];
+          } finally {
+            root.removeProperty("--vscode-charts-blue");
+            await until(() => fill() !== "#123456", "the default color again", nextFrame);
+          }
+        })()`),
+        [1],
+        color,
+      );
+    }
   });
 
   test("draws series in the theme's chart colors made opaque, and in an orange where it has none", async () => {
