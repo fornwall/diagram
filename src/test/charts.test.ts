@@ -1068,6 +1068,24 @@ suite("charts", () => {
       build(chart("bar", { aggregate: "median" }), "k,n\na,1\na,2\na,6\nb,5").series[0].data,
       [2, 5],
     );
+    // Without the leftovers of adding fractions, which tooltips would show, and whole numbers in full.
+    const fractions = "k,n\na,0.1\na,0.2\nb,0.1\nb,0.2\nb,0.4\nc,9007199254740991\nc,1";
+    for (const [how, values] of [
+      ["sum", [0.3, 0.7, 9007199254740992]],
+      ["mean", [0.15, 0.233333333333, 4503599627370496]],
+      ["median", [0.15, 0.2, 4503599627370496]],
+    ] as const) {
+      assert.deepStrictEqual(
+        build(chart("bar", { aggregate: how }), fractions).series[0].data,
+        values,
+        how,
+      );
+    }
+    const pie = build(chart("pie", { limit: 1 }), "k,n\na,5\nb,0.1\nc,0.2");
+    assert.deepStrictEqual(
+      pie.series[0].data.map(({ value }: { value: number }) => value),
+      [5, 0.3],
+    );
     assert.strictEqual(
       summary(chart("bar", { aggregate: "mean" }), AMOUNTS),
       'Charted "amount" by "region"; grouped 5 rows into 3 by "region", averaging their values.',
