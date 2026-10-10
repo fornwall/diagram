@@ -193,6 +193,17 @@ function hasMultiByteUtf8(bytes: Uint8Array): boolean {
 }
 
 /**
+ * `text` decoded from `bytes`, or else `bytes` in Windows-1252, in which Excel on Windows saves CSV
+ * files, if they are not UTF-8. They are taken to be in it only when no character is in UTF-8
+ * either, so that a stray byte in UTF-8 text does not garble the rest.
+ */
+function orWindows1252(text: string, bytes: Uint8Array): string {
+  return text.includes("\uFFFD") && !hasMultiByteUtf8(bytes)
+    ? new TextDecoder("windows-1252").decode(bytes)
+    : text;
+}
+
+/**
  * Reads a data file. One that the user was not asked about is read only while it is inside the
  * workspace, checked right before, else `retry` follows the error to tell how to be asked.
  */
@@ -229,13 +240,8 @@ export async function readDataFile(file: string, unasked?: Unasked): Promise<str
   }
   checkSize(bytes.byteLength);
   // A file that the editor finds binary is refused as one with null characters is.
-  let text = await decodeFile(bytes, uri).catch(() => "\0");
-  // Excel on Windows saves CSV files in Windows-1252, which the editor reads as UTF-8 unless
-  // files.encoding names it. Bytes that are not UTF-8 are taken to be in it only when no character
-  // is in UTF-8 either, so that a stray byte in UTF-8 text does not garble the rest.
-  if (text.includes("\uFFFD") && !hasMultiByteUtf8(bytes)) {
-    text = new TextDecoder("windows-1252").decode(bytes);
-  }
+  // The editor reads Windows-1252 as UTF-8 unless files.encoding names it.
+  const text = orWindows1252(await decodeFile(bytes, uri).catch(() => "\0"), bytes);
   if (text.includes("\0")) {
     throw new Error(
       `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +
@@ -342,8 +348,10 @@ export async function runCommand(
       if (settled) {
         return;
       }
-      // UTF-16 too, as cat prints Excel's "Unicode Text" files.
-      const output = decodeText(Buffer.concat(stdout), false);
+      // UTF-16 too, as cat prints Excel's "Unicode Text" files, and Windows-1252 as head prints
+      // its CSV files.
+      const bytes = Buffer.concat(stdout);
+      const output = orWindows1252(decodeText(bytes, false), bytes);
       const errors = tail(Buffer.concat(stderr).toString("utf8"));
       const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;
       const failure =

@@ -100,14 +100,18 @@ suite("dataSource", () => {
       assert.ok(Date.now() - start < 500);
     });
 
-    test("reads UTF-16 output with a byte order mark, and invalid UTF-8 leniently", async () => {
+    test("reads UTF-16 output with a byte order mark, and output that is not UTF-8 as Windows-1252", async () => {
       const file = path.join(dir, "unicode.txt");
       fs.writeFileSync(file, Buffer.from("﻿a\t1\r\nb\t2\r\n", "utf16le"));
       assert.deepStrictEqual(await runCommand(`cat '${file}'`, token), {
         output: "a\t1\r\nb\t2\r\n",
       });
       assert.deepStrictEqual(await runCommand("printf 'caf\\351 1\\n'", token), {
-        output: "caf� 1\n",
+        output: "café 1\n",
+      });
+      // A stray byte in UTF-8 text is left undecoded.
+      assert.deepStrictEqual(await runCommand("printf 'caf\\303\\251 \\351\\n'", token), {
+        output: "café \uFFFD\n",
       });
     });
 
