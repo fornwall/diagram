@@ -905,7 +905,7 @@
       "editor/context": [
         {
           "command": "diagram.openAtCursor",
-          "when": "editorLangId == markdown",
+          "when": "editorLangId == markdown && diagram.editorHasDiagram",
           "group": "navigation"
         }
       ],

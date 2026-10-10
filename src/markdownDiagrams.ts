@@ -20,11 +20,16 @@ const SETTINGS_SECTION = "diagram";
 const CODE_LENS_SETTING = "codeLens.enabled";
 /** The fence languages that VS Code's preview draws as Mermaid, from its Mermaid extension. */
 const MERMAID_LANGUAGES_SETTING = "markdown-mermaid.languages";
+/** Whether the active editor is a Markdown document with a diagram, as its context menu shows. */
+const EDITOR_HAS_DIAGRAM_CONTEXT = "diagram.editorHasDiagram";
+/** How long typing in the active editor goes on before it is looked through for diagrams again. */
+const TYPING_DELAY_MS = 250;
 
 export function registerMarkdownDiagrams(panel: DiagramPanel): vscode.Disposable[] {
   const lenses = new DiagramCodeLensProvider();
   return [
     lenses,
+    trackEditorDiagrams(lenses.onDidChangeCodeLenses),
     vscode.languages.registerCodeLensProvider({ language: "markdown" }, lenses),
     vscode.commands.registerCommand(OPEN_FENCE_COMMAND, async (uri: unknown, fence: unknown) => {
       // Other extensions can call this command with arbitrary arguments.
@@ -73,6 +78,42 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
     this.settingListener.dispose();
     this.changed.dispose();
   }
+}
+
+/**
+ * Keeps the context key that shows Open Diagram at Cursor in the context menu of the active editor
+ * only while it holds a diagram, also after typing or as settings, which settingsChanged tells,
+ * change what counts as one.
+ */
+function trackEditorDiagrams(settingsChanged: vscode.Event<void>): vscode.Disposable {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let holds: boolean | undefined;
+  const update = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    const document = vscode.window.activeTextEditor?.document;
+    const now =
+      document?.languageId === "markdown" && findDocumentDiagramFences(document).length > 0;
+    if (now !== holds) {
+      holds = now;
+      void vscode.commands.executeCommand("setContext", EDITOR_HAS_DIAGRAM_CONTEXT, now);
+    }
+  };
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(update, TYPING_DELAY_MS);
+  };
+  update();
+  return vscode.Disposable.from(
+    vscode.window.onDidChangeActiveTextEditor(update),
+    vscode.workspace.onDidChangeTextDocument(({ document }) => {
+      if (document === vscode.window.activeTextEditor?.document) later();
+    }),
+    // A change of language opens the document again.
+    vscode.workspace.onDidOpenTextDocument(later),
+    settingsChanged(later),
+    { dispose: () => clearTimeout(timer) },
+  );
 }
 
 /** Finds diagrams where VS Code's preview draws them, with its default for an invalid setting. */

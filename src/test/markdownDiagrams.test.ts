@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
 import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
-import { newPanel, webviewTabs } from "./newPanel";
+import { newPanel, webviewTabs, within } from "./newPanel";
 
 suite("markdownDiagrams", function () {
   // Opening a diagram loads the panel's webview, which can take a while.
@@ -141,6 +141,38 @@ suite("markdownDiagrams", function () {
     assert.ok(
       vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputWebview,
       "Opening a document diagram should focus its panel",
+    );
+  });
+
+  test("offers Open Diagram at Cursor in the context menu of an editor that holds a diagram", async () => {
+    const execute = vscode.commands.executeCommand;
+    let holds: unknown;
+    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
+      if (command === "setContext" && args[0] === "diagram.editorHasDiagram") holds = args[1];
+      return execute(command, ...args);
+    }) as typeof execute);
+    const show = async (language: string, content: string) => {
+      const document = await vscode.workspace.openTextDocument({ language, content });
+      await vscode.window.showTextDocument(document);
+      return document;
+    };
+    await show("markdown", "```mermaid\nflowchart TD\n```\n");
+    assert.ok(await within(() => holds === true));
+    const notes = await show("markdown", "# Notes\n");
+    assert.ok(await within(() => holds === false));
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(notes.uri, new vscode.Position(1, 0), "\n```echarts\n{}\n```\n");
+    assert.ok(await vscode.workspace.applyEdit(edit));
+    assert.ok(await within(() => holds === true));
+    await show("plaintext", "```mermaid\nflowchart TD\n```\n");
+    assert.ok(await within(() => holds === false));
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const menu: { command: string; when: string }[] =
+      extension.packageJSON.contributes.menus["editor/context"];
+    assert.strictEqual(
+      menu.find(({ command }) => command === "diagram.openAtCursor")?.when,
+      "editorLangId == markdown && diagram.editorHasDiagram",
     );
   });
 
