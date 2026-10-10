@@ -9,6 +9,7 @@ import {
   afterTest,
   diagramExtension,
   fileSystem,
+  interceptCommand,
   recordMessages,
   replace,
   setting,
@@ -159,12 +160,10 @@ suite("markdownDiagrams", function () {
   });
 
   test("offers Open Diagram at Cursor in the context menu of an editor that holds a diagram", async () => {
-    const execute = vscode.commands.executeCommand;
     let holds: unknown;
-    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
-      if (command === "setContext" && args[0] === "diagram.editorHasDiagram") holds = args[1];
-      return execute(command, ...args);
-    }) as typeof execute);
+    interceptCommand("setContext", (key, value) => {
+      if (key === "diagram.editorHasDiagram") holds = value;
+    });
     const show = async (language: string, content: string) => {
       const document = await vscode.workspace.openTextDocument({ language, content });
       await vscode.window.showTextDocument(document);
