@@ -4,12 +4,12 @@ import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable } from "./chartColumns";
 import type { ChartUpdateInput } from "./chartOptions";
-import { type ChartPresentation, rebuildChart } from "./chartPresentation";
+import { rebuildChart } from "./chartPresentation";
 import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import { chartTypeName } from "./describe";
-import type { DiagramPanel } from "./panel";
+import type { Diagram, DiagramPanel } from "./panel";
 import {
   CHART_TOOL,
   errorMessage,
@@ -41,23 +41,25 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     options: vscode.LanguageModelToolInvocationOptions<ChartInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    let spec: ChartSpec;
-    let chartTable: DataTable;
-    let source: string;
-    let chartPresentation: ChartPresentation;
-    let report: string;
     let description: string | undefined;
+    let chart: { spec: ChartSpec; table: DataTable; report: string; diagram: Diagram };
     try {
-      spec = validateChartSpec(options.input);
+      const spec = validateChartSpec(options.input);
       const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
-      chartTable = table;
       description = `The data was read as: ${describeTable(table)}`;
       // The styling baseline comes from the option itself, rather than from parsing the source
       // again, which takes long for a large chart.
       const { option, summary, presentation } = rebuildChart(spec, table);
-      source = JSON.stringify(option, null, 2);
-      chartPresentation = presentation;
-      report = [summary, warning, description].filter(Boolean).join("\n\n");
+      const diagram: Diagram = {
+        language: "echarts",
+        source: JSON.stringify(option, null, 2),
+        title: chartTitle(spec),
+        clickPrompt: nonBlank(options.input.clickPrompt),
+        chart: spec,
+        chartPresentation: presentation,
+      };
+      const report = [summary, warning, description].filter(Boolean).join("\n\n");
+      chart = { spec, table, report, diagram };
     } catch (error) {
       if (error instanceof vscode.CancellationError) {
         throw error;
@@ -67,22 +69,8 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       );
     }
 
-    const outcome = await unlessCancelled(
-      () =>
-        this.panel.render(
-          {
-            language: "echarts",
-            source,
-            title: chartTitle(spec),
-            clickPrompt: nonBlank(options.input.clickPrompt),
-            chart: spec,
-            chartPresentation,
-          },
-          "tool",
-          chartTable,
-        ),
-      token,
-    );
+    const { spec, table, report, diagram } = chart;
+    const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool", table), token);
     if (outcome.ok) {
       return drawnResult(
         `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
