@@ -373,22 +373,31 @@ suite("echartsLayout", () => {
 
   test("shows the values at the ends of a continuous visual map, within the room left for it", () => {
     const placed = (visualMap: Option) => {
-      const { calculable, padding } = layout(bars({ visualMap })).visualMap;
-      return { calculable, padding };
+      const { calculable, text, padding } = layout(bars({ visualMap })).visualMap;
+      return { calculable, text, padding };
     };
-    assert.deepStrictEqual(placed({ min: 0, max: 10 }), { calculable: true, padding: 5 });
-    // Not one that says otherwise, or has a text of its own, nor the pieces of another.
-    assert.deepStrictEqual(placed({ calculable: false, padding: 10 }), {
-      calculable: false,
-      padding: 10,
-    });
-    assert.deepStrictEqual(placed({ text: ["High", "Low"] }), {
+    // As text, rather than handles that would let the user filter the data.
+    assert.deepStrictEqual(placed({ min: 0, max: 12_500 }), {
       calculable: undefined,
+      text: ["12.5K", "0"],
       padding: 5,
     });
-    assert.deepStrictEqual(placed({ type: "piecewise" }), { calculable: undefined, padding: 5 });
+    // ECharts' default bounds.
+    assert.deepStrictEqual(placed({ calculable: false }).text, ["200", "0"]);
+    // Not one with handles or a text of its own, nor the pieces of another.
+    assert.deepStrictEqual(placed({ calculable: true, padding: 10 }), {
+      calculable: true,
+      text: undefined,
+      padding: 10,
+    });
+    assert.deepStrictEqual(placed({ text: ["High", "Low"] }).text, ["High", "Low"]);
+    assert.deepStrictEqual(placed({ type: "piecewise" }), {
+      calculable: undefined,
+      text: undefined,
+      padding: 5,
+    });
     // A visual map placed elsewhere keeps ECharts' padding.
-    assert.deepStrictEqual(placed({ right: 0 }), { calculable: true, padding: undefined });
+    assert.strictEqual(placed({ right: 0 }).padding, undefined);
   });
 
   test("gives up a zoom slider, a subtitle and a title in turn for a plot too short to read", () => {
