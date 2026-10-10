@@ -165,13 +165,22 @@ export function prepareDataInvocation(
   return prepared;
 }
 
+/** Whether `bytes` start with a byte order mark of UTF-16, as {@link decodeText} reads them. */
+function isUtf16(bytes: Uint8Array): boolean {
+  return (bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff);
+}
+
 /**
  * `text` decoded from `bytes`, or else `bytes` in Windows-1252, in which Excel on Windows saves CSV
- * files, if they are not UTF-8. They are taken to be in it only when no character is in UTF-8
- * either, so that a stray byte in UTF-8 text does not garble the rest.
+ * files, if they are neither UTF-16 nor UTF-8. They are taken to be in it only when no character is
+ * in UTF-8 either, so that a stray byte in UTF-8 text does not garble the rest.
  */
 function orWindows1252(text: string, bytes: Uint8Array): string {
-  if (!text.includes("\uFFFD") || /[^\0-\x7F\uFFFD]/.test(new TextDecoder().decode(bytes))) {
+  if (
+    !text.includes("\uFFFD") ||
+    isUtf16(bytes) ||
+    /[^\0-\x7F\uFFFD]/.test(new TextDecoder().decode(bytes))
+  ) {
     return text;
   }
   return new TextDecoder("windows-1252").decode(bytes);
@@ -324,7 +333,9 @@ export async function runCommand(
       }
       // UTF-16 too, as cat prints Excel's "Unicode Text" files, and Windows-1252 as head prints
       // its CSV files.
-      const bytes = Buffer.concat(stdout);
+      let bytes = Buffer.concat(stdout);
+      // head -n ends UTF-16LE at the first byte of a newline, leaving half a character.
+      if (isUtf16(bytes)) bytes = bytes.subarray(0, bytes.length - (bytes.length % 2));
       const output = orWindows1252(decodeText(bytes, false), bytes);
       const errors = tail(Buffer.concat(stderr).toString("utf8"));
       const errorOutput = errors === "" ? "" : ` Its error output:\n${errors}`;

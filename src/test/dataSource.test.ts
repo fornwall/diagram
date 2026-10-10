@@ -106,6 +106,10 @@ suite("dataSource", () => {
       assert.deepStrictEqual(await runCommand(`cat '${file}'`, token), {
         output: "a\t1\r\nb\t2\r\n",
       });
+      // head ends UTF-16LE after the first byte of a newline.
+      assert.deepStrictEqual(await runCommand(`head -n 1 '${file}'`, token), {
+        output: "a\t1\r",
+      });
       assert.deepStrictEqual(await runCommand("printf 'caf\\351 1\\n'", token), {
         output: "café 1\n",
       });
