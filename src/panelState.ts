@@ -83,6 +83,7 @@ function restoredState(saved: unknown): DiagramState | undefined {
   if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
   if (isNodeLinks(saved.links)) state.links = saved.links;
   if (isDocumentBinding(saved.document)) state.document = saved.document;
+  if (typeof saved.openedFrom === "string") state.openedFrom = saved.openedFrom;
   const chart = language === "echarts" ? chartSpec(saved.chart) : undefined;
   const presentation = isChartPresentation(saved.chartPresentation)
     ? saved.chartPresentation

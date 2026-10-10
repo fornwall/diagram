@@ -5,8 +5,15 @@ import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ToWebview } from "../protocol";
-import { recordMessages, replace, tempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, newPanel, showInFake, webviewTabs } from "./newPanel";
+import { afterTest, recordMessages, replace, tempDir } from "./afterTest";
+import {
+  type FakeWebview,
+  newFakePanel,
+  newPanel,
+  showInFake,
+  webviewTabs,
+  within,
+} from "./newPanel";
 
 const diagram: Diagram = {
   language: "mermaid",
@@ -200,6 +207,38 @@ suite("export", function () {
     assert.strictEqual(suggested(), path.join(directory, "other"));
     // A chart in its place, which is not from the document: the folder of the last export.
     assert.ok((await panel.render(chart, "tool")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), images);
+    // One of a read-only document, which the panel does not write to, but exports beside.
+    const readonly = vscode.Uri.file(path.join(directory, "read-only", "notes.md")).toString();
+    assert.ok((await panel.render({ ...diagram, openedFrom: readonly }, "document")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.join(directory, "read-only"));
+    // Not beside one on a file system that cannot be written, such as a Git revision.
+    const registration = vscode.workspace.registerFileSystemProvider(
+      "diagram-test-export",
+      {
+        onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+        watch: () => new vscode.Disposable(() => {}),
+        stat: () => {
+          throw vscode.FileSystemError.FileNotFound();
+        },
+        readDirectory: () => [],
+        createDirectory: () => {},
+        readFile: () => new Uint8Array(),
+        writeFile: () => {},
+        delete: () => {},
+        rename: () => {},
+      },
+      { isReadonly: true },
+    );
+    afterTest(() => registration.dispose());
+    // VS Code learns of it asynchronously.
+    assert.ok(
+      await within(() => vscode.workspace.fs.isWritableFileSystem("diagram-test-export") === false),
+    );
+    const revision = "diagram-test-export:/docs/notes.md";
+    assert.ok((await panel.render({ ...diagram, openedFrom: revision }, "document")).ok);
     await panel.exportDiagram();
     assert.strictEqual(suggested(), images);
     assert.deepStrictEqual(errors, []);

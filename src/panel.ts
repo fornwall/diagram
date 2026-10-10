@@ -96,6 +96,11 @@ export interface Diagram {
   chartPresentation?: ChartPresentation | undefined;
   /** Original Markdown block; Apply writes user edits back to it. */
   document?: DocumentBinding | undefined;
+  /**
+   * The read-only document that the diagram was opened from without a binding, as
+   * vscode.Uri.toString(), beside which it is exported as one with a binding is.
+   */
+  openedFrom?: string | undefined;
 }
 
 export interface DiagramState extends Omit<Diagram, "source"> {
@@ -1236,12 +1241,13 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     const revision = this.shownRevision;
+    const openedFrom = state.document?.uri ?? state.openedFrom;
     await exportDrawing(
       {
         language: state.language,
         title: state.title,
         source: state.source,
-        document: state.document && vscode.Uri.parse(state.document.uri),
+        document: openedFrom === undefined ? undefined : vscode.Uri.parse(openedFrom),
       },
       (format) => {
         const rendered = this.renderedRequestId;

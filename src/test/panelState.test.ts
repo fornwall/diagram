@@ -69,6 +69,9 @@ suite("panelState", () => {
     );
     const document = { uri: "file:///a.md", fence: { ...fence, prefix: "" } };
     assert.deepStrictEqual(load({ ...state, document }), { ...state, document });
+    const openedFrom = "file:///read-only.md";
+    assert.deepStrictEqual(load({ ...state, openedFrom }), { ...state, openedFrom });
+    assert.deepStrictEqual(load({ ...state, openedFrom: 1 }), state);
     // Charts were saved without the presentation that tells manual styling apart, which a
     // refresh would discard, so the option is kept without the chart it was generated from.
     const chartState = { ...state, language: "echarts", source: '{"series": []}' };

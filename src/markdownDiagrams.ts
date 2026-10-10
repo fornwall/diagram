@@ -199,7 +199,9 @@ async function openInPanel(
       language: fence.language,
       source: fence.source,
       title: guessTitle(fence),
-      document: readonly ? undefined : { uri: document.uri.toString(), fence },
+      ...(readonly
+        ? { openedFrom: document.uri.toString() }
+        : { document: { uri: document.uri.toString(), fence } }),
     },
     "document",
   );

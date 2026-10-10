@@ -311,6 +311,8 @@ suite("markdownDiagrams", function () {
     await open(await vscode.workspace.openTextDocument(vscode.Uri.file(included)));
     assert.strictEqual(panel.current?.language, "echarts");
     assert.strictEqual(panel.current?.document, undefined);
+    // Which it is exported beside.
+    assert.strictEqual(panel.current?.openedFrom, vscode.Uri.file(included).toString());
     assert.deepStrictEqual(messages, [
       "/git.md is read-only, so edits of the diagram in the panel are not written to it.",
       `${vscode.workspace.asRelativePath(included)} is read-only, so edits of the chart in the panel are not written to it.`,

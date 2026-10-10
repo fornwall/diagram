@@ -105,10 +105,17 @@ export async function exportDrawing(
 
 /**
  * The folder of the document a drawing was opened from, or of the last export, if that is in it, as
- * when images go in a folder of their own; without a saved document, that of the last export.
+ * when images go in a folder of their own; without a saved document in a folder that can be
+ * written, such as a Git revision, that of the last export.
  */
 function defaultFolder(document: vscode.Uri | undefined): vscode.Uri | undefined {
-  if (!document || document.scheme === "untitled") return lastFolder;
+  if (
+    !document ||
+    document.scheme === "untitled" ||
+    vscode.workspace.fs.isWritableFileSystem(document.scheme) === false
+  ) {
+    return lastFolder;
+  }
   const folder = vscode.Uri.joinPath(document, "..");
   const within =
     lastFolder?.scheme === folder.scheme &&
