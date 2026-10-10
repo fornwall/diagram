@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
-import { afterTest, fileSystem, recordMessages, replace, suiteTempDir } from "./afterTest";
+import { afterTest, fileSystem, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
 import { newFakePanel, newPanel, webviewTabs, within } from "./newPanel";
 
 suite("markdownDiagrams", function () {
@@ -106,13 +106,9 @@ suite("markdownDiagrams", function () {
   test("offers no lenses while the setting turns them off", async () => {
     const document = await untitled("```mermaid\nflowchart TD\n```\n");
     assert.strictEqual((await codeLenses(document)).length, 1);
-    const settings = vscode.workspace.getConfiguration("diagram");
-    await settings.update("codeLens.enabled", false, vscode.ConfigurationTarget.Global);
-    try {
-      assert.deepStrictEqual(await codeLenses(document), []);
-    } finally {
-      await settings.update("codeLens.enabled", undefined, vscode.ConfigurationTarget.Global);
-    }
+    await setting("diagram.codeLens.enabled", false);
+    assert.deepStrictEqual(await codeLenses(document), []);
+    await setting("diagram.codeLens.enabled", undefined);
     assert.strictEqual((await codeLenses(document)).length, 1);
   });
 
@@ -120,13 +116,9 @@ suite("markdownDiagrams", function () {
     const document = await untitled("```mermaid\nA\n```\n```mmd\nB\n```\n");
     const lines = async () => (await codeLenses(document)).map((lens) => lens.range.start.line);
     assert.deepStrictEqual(await lines(), [0]);
-    const settings = vscode.workspace.getConfiguration("markdown-mermaid");
-    await settings.update("languages", ["mmd"], vscode.ConfigurationTarget.Global);
-    try {
-      assert.deepStrictEqual(await lines(), [3]);
-    } finally {
-      await settings.update("languages", undefined, vscode.ConfigurationTarget.Global);
-    }
+    await setting("markdown-mermaid.languages", ["mmd"]);
+    assert.deepStrictEqual(await lines(), [3]);
+    await setting("markdown-mermaid.languages", undefined);
     assert.deepStrictEqual(await lines(), [0]);
   });
 
@@ -272,13 +264,7 @@ suite("markdownDiagrams", function () {
     );
     const included = path.join(dir, "included.md");
     fs.writeFileSync(included, "```echarts\n{}\n```\n");
-    const files = vscode.workspace.getConfiguration("files");
-    await files.update(
-      "readonlyInclude",
-      { "**/included.md": true },
-      vscode.ConfigurationTarget.Global,
-    );
-    afterTest(() => files.update("readonlyInclude", undefined, vscode.ConfigurationTarget.Global));
+    await setting("files.readonlyInclude", { "**/included.md": true });
     const { panel } = await newFakePanel();
     const register = vscode.commands.registerCommand;
     replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>

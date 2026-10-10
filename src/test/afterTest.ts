@@ -36,6 +36,13 @@ export function replace<T extends object, K extends keyof T>(object: T, key: K, 
   });
 }
 
+/** Sets a user setting, such as "files.encoding", until the current test ends. */
+export async function setting(key: string, value: unknown): Promise<void> {
+  const settings = vscode.workspace.getConfiguration();
+  afterTest(() => settings.update(key, undefined, vscode.ConfigurationTarget.Global));
+  await settings.update(key, value, vscode.ConfigurationTarget.Global);
+}
+
 /** A source of cancellation, disposed once the current test ends. */
 export function cancellationSource(): vscode.CancellationTokenSource {
   const source = new vscode.CancellationTokenSource();

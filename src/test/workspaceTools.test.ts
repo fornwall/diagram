@@ -17,6 +17,7 @@ import {
   fileSystem,
   recordFilePaths,
   replace,
+  setting,
   workspaceRoot,
 } from "./afterTest";
 import { invokeTool as invoke, toolText } from "./toolText";
@@ -169,8 +170,6 @@ suite("workspaceTools", function () {
   });
 
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
-    const files = vscode.workspace.getConfiguration("files");
-    afterTest(() => files.update("exclude", undefined, vscode.ConfigurationTarget.Global));
     for (const name of ["compiled.ts", "compiled.js", ".dot.ts", ".dot.js", "plain.js"]) {
       await writeFile(name, "Needle");
     }
@@ -181,7 +180,7 @@ suite("workspaceTools", function () {
       "**/{.dot,compiled}.js",
     ]) {
       const exclude = { [pattern]: { when: "$(basename).ts" } };
-      await files.update("exclude", exclude, vscode.ConfigurationTarget.Global);
+      await setting("files.exclude", exclude);
       assert.strictEqual(
         await invoke(finder, { glob: `${relative}/*.js` }),
         `${relative}/plain.js`,
@@ -215,9 +214,7 @@ suite("workspaceTools", function () {
       await invoke(searcher, { query: "out/", glob: "ignore/**" }),
       /^1 match in 1 file \(searched 5 files\)\.\nignore\/sub\/\.gitignore\n {2}1: out\/$/,
     );
-    const search = vscode.workspace.getConfiguration("search");
-    await search.update("useIgnoreFiles", false, vscode.ConfigurationTarget.Global);
-    afterTest(() => search.update("useIgnoreFiles", undefined, vscode.ConfigurationTarget.Global));
+    await setting("search.useIgnoreFiles", false);
     assert.strictEqual(
       await invoke(finder, { glob: "ignore/**" }),
       [...files, ...nested, "sub/.gitignore"]
@@ -503,9 +500,7 @@ suite("workspaceTools", function () {
   });
 
   test("reads and searches text that is not UTF-8 in the encoding of files.encoding", async () => {
-    const files = vscode.workspace.getConfiguration("files");
-    await files.update("encoding", "iso88591", vscode.ConfigurationTarget.Global);
-    afterTest(() => files.update("encoding", undefined, vscode.ConfigurationTarget.Global));
+    await setting("files.encoding", "iso88591");
     const file = await writeFile("latin1.txt", Buffer.from("café Needle", "latin1"));
     assert.strictEqual(
       await invoke(reader, { file }),

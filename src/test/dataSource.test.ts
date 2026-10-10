@@ -10,7 +10,7 @@ import {
   runCommand,
   unaskedError,
 } from "../dataSource";
-import { afterTest, cancellationSource, suiteTempDir, workspaceRoot } from "./afterTest";
+import { cancellationSource, setting, suiteTempDir, workspaceRoot } from "./afterTest";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -243,9 +243,7 @@ suite("dataSource", () => {
   });
 
   test("reads files that are not UTF-8 in the encoding of files.encoding", async () => {
-    const files = vscode.workspace.getConfiguration("files");
-    await files.update("encoding", "koi8r", vscode.ConfigurationTarget.Global);
-    afterTest(() => files.update("encoding", undefined, vscode.ConfigurationTarget.Global));
+    await setting("files.encoding", "koi8r");
     const file = path.join(dir, "koi8r.csv");
     fs.writeFileSync(file, Buffer.from([0xc4, 0xc1, 0x2c, 0x31])); // "да,1"
     assert.strictEqual(await readDataFile(file), "да,1");

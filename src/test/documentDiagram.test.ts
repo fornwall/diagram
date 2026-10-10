@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { type DocumentBinding, documentName, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
-import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
+import { recordMessages, replace, setting, suiteTempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 
 suite("documentDiagram", function () {
@@ -307,34 +307,20 @@ suite("documentDiagram", function () {
   test("does not write to a document that VS Code keeps read-only", async () => {
     const document = await markdown("```mermaid\nflowchart TD\n```\n");
     const name = path.basename(document.uri.fsPath);
-    const files = vscode.workspace.getConfiguration("files");
-    await files.update(
-      "readonlyInclude",
-      { [`**/${name}`]: true },
-      vscode.ConfigurationTarget.Global,
-    );
-    afterTest(() => files.update("readonlyInclude", undefined, vscode.ConfigurationTarget.Global));
+    await setting("files.readonlyInclude", { [`**/${name}`]: true });
     assert.deepStrictEqual(await writeFence(binding(document), "flowchart LR"), {
       written: false,
       reason: `${name} is read-only, so the diagram was not written to it.`,
     });
     assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
-    await files.update(
-      "readonlyExclude",
-      { [`**/${name}`]: true },
-      vscode.ConfigurationTarget.Global,
-    );
-    afterTest(() => files.update("readonlyExclude", undefined, vscode.ConfigurationTarget.Global));
+    await setting("files.readonlyExclude", { [`**/${name}`]: true });
     assert.ok((await writeFence(binding(document), "flowchart LR")).written);
     // Root may write to any file.
     if (process.getuid?.() === 0) return;
     const locked = await markdown("```mermaid\nflowchart TD\n```\n");
     fs.chmodSync(locked.uri.fsPath, 0o444);
     assert.ok((await writeFence(binding(locked), "flowchart LR")).written, "VS Code's default");
-    await files.update("readonlyFromPermissions", true, vscode.ConfigurationTarget.Global);
-    afterTest(() =>
-      files.update("readonlyFromPermissions", undefined, vscode.ConfigurationTarget.Global),
-    );
+    await setting("files.readonlyFromPermissions", true);
     const outcome = await writeFence(binding(locked), "flowchart RL");
     assert.ok(!outcome.written && / is read-only, /.test(outcome.reason), JSON.stringify(outcome));
   });
