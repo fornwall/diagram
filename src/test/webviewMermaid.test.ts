@@ -1476,6 +1476,52 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.deepStrictEqual(await redraw(render), { ...shown, redrawn: false });
   });
 
+  test("shows an actor's menu in the visible part of the canvas, scrolling nothing", async () => {
+    // Carol's menu at the right edge, and her footer box at the bottom of the canvas scrolled.
+    const messages = Array.from({ length: 30 }, (_, i) => `  Alice->>Carol: message ${i}`);
+    const long = actorLinks.replace(
+      '"Docs"',
+      '"The documentation of everything there is, and of all the rest"',
+    );
+    const source = `${long}\n${messages.join("\n")}`;
+    assert.ok((await page.panel.render({ language: "mermaid", source, title: "Seq" }, "tool")).ok);
+    const placed = await evaluate(`(async () => {
+      ${UNTIL}
+      const canvas = document.getElementById("canvas");
+      const carol = (tabStop) =>
+        document.querySelector('#diagram [data-diagram-id="Carol"]' + (tabStop ? "[tabindex]" : ":not([tabindex])"));
+      const place = async (actor) => {
+        const scrolled = [canvas.scrollLeft, canvas.scrollTop];
+        actor.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        const menu = document.querySelector("#canvas .link-menu");
+        await nextFrame();
+        const box = menu.getBoundingClientRect();
+        const room = canvas.getBoundingClientRect();
+        const by = actor.getBoundingClientRect();
+        const shown = {
+          inside: box.left >= room.left && box.top >= room.top &&
+            box.right <= room.left + canvas.clientWidth && box.bottom <= room.top + canvas.clientHeight,
+          scrolled: canvas.scrollLeft !== scrolled[0] || canvas.scrollTop !== scrolled[1],
+          below: box.top >= by.bottom,
+          above: box.bottom <= by.top,
+        };
+        menu.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+        return shown;
+      };
+      canvas.scrollTop = 0;
+      const top = await place(carol(true));
+      canvas.scrollTop = canvas.scrollHeight;
+      await nextFrame();
+      const footer = await place(carol(false));
+      return {top, footer, tall: canvas.scrollHeight > canvas.clientHeight};
+    })()`);
+    assert.deepStrictEqual(placed, {
+      top: { inside: true, scrolled: false, below: true, above: false },
+      footer: { inside: true, scrolled: false, below: false, above: true },
+      tall: true,
+    });
+  });
+
   test("opens the entries of actor menus that sequence.forceMenus shows", async () => {
     const source = `%%{init: {"sequence": {"forceMenus": true}}}%%\n${actorLinks}`;
     assert.ok((await page.panel.render({ language: "mermaid", source, title: "Seq" }, "tool")).ok);

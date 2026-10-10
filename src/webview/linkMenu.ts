@@ -14,7 +14,7 @@ export function closeLinkMenu(): void {
 }
 
 /**
- * Shows a menu of the links below the anchor, in the scrolling container so that it scrolls along,
+ * Shows a menu of the links by the anchor, in the scrolling container so that it scrolls along,
  * and focuses its first entry. Choosing one calls open. Arrow keys, Home and End move between the
  * entries; Escape closes the menu, as does moving the focus out of it, by a click elsewhere or Tab.
  */
@@ -74,12 +74,38 @@ export function showLinkMenu(
   menu.addEventListener("focusout", (event) => {
     if (!(event.relatedTarget instanceof Node && menu.contains(event.relatedTarget))) close(false);
   });
-  const box = anchor.getBoundingClientRect();
-  const outer = container.getBoundingClientRect();
-  menu.style.left = `${box.left - outer.left + container.scrollLeft}px`;
-  menu.style.top = `${box.bottom - outer.top + container.scrollTop + 2}px`;
   container.append(menu);
   closeShown = close;
+  placeMenu(menu, container, anchor);
   menu.scrollIntoView({ block: "nearest", inline: "nearest" });
   (menu.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
+}
+
+/** The room the menu keeps from the edges of the container, and from the anchor. */
+const MARGIN = 2;
+
+/**
+ * Places the menu below the anchor, or above it where there is no room below, and as far left as
+ * fits in the visible part of the container. A menu past its edges would widen what the container
+ * scrolls, scrolling the drawing away from under the pointer until it closes again.
+ */
+function placeMenu(menu: HTMLElement, container: HTMLElement, anchor: Element): void {
+  const box = anchor.getBoundingClientRect();
+  const outer = container.getBoundingClientRect();
+  // In the coordinates the menu is placed in: of the container's content, scrolled along.
+  const x = (clientX: number) => clientX - outer.left - container.clientLeft + container.scrollLeft;
+  const y = (clientY: number) => clientY - outer.top - container.clientTop + container.scrollTop;
+  // Measured at the start of the container, where nothing narrows the menu.
+  menu.style.left = "0";
+  menu.style.top = "0";
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  const right = container.scrollLeft + container.clientWidth - MARGIN;
+  const bottom = container.scrollTop + container.clientHeight - MARGIN;
+  const left = Math.max(container.scrollLeft + MARGIN, Math.min(x(box.left), right - width));
+  const below = y(box.bottom) + MARGIN;
+  const above = y(box.top) - MARGIN - height;
+  const top = below + height > bottom && above >= container.scrollTop + MARGIN ? above : below;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
 }
