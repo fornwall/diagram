@@ -351,6 +351,20 @@ export class MermaidRenderer implements Renderer {
   private relayoutTimer: ReturnType<typeof setTimeout> | undefined;
   /** The node that has the drawing's tab stop. */
   private tabStop: string | undefined;
+  private readonly resizeObserver = new ResizeObserver(() => {
+    if (this.displayedSource === undefined) return;
+    if (this.fitting) {
+      cancelAnimationFrame(this.fitFrame);
+      // The user may zoom by hand before the frame.
+      this.fitFrame = requestAnimationFrame(() => {
+        if (this.fitting && this.displayedSource !== undefined) this.fit();
+      });
+    }
+    if (this.diagramType === "gantt") {
+      clearTimeout(this.relayoutTimer);
+      this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
+    }
+  });
 
   constructor(
     itemClicked: ItemClickHandler,
@@ -454,20 +468,7 @@ export class MermaidRenderer implements Renderer {
       },
       { passive: false },
     );
-    new ResizeObserver(() => {
-      if (this.displayedSource === undefined) return;
-      if (this.fitting) {
-        cancelAnimationFrame(this.fitFrame);
-        // The user may zoom by hand before the frame.
-        this.fitFrame = requestAnimationFrame(() => {
-          if (this.fitting && this.displayedSource !== undefined) this.fit();
-        });
-      }
-      if (this.diagramType === "gantt") {
-        clearTimeout(this.relayoutTimer);
-        this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
-      }
-    }).observe(canvas);
+    this.resizeObserver.observe(canvas);
   }
 
   /** How Mermaid is configured for the current VS Code theme, to draw the source. */
@@ -833,13 +834,14 @@ export class MermaidRenderer implements Renderer {
   }
 
   /**
-   * Fits the diagram, or lays a Gantt chart out, for the tab shown again, which the resize observer
-   * may not report: it reports no size it reported before the tab was hidden.
+   * Fits the diagram, or lays a Gantt chart out, for the tab shown again. The resize observer
+   * reports no size it reported before the tab was hidden, and the page can hear that the tab is
+   * shown before it has the tab's size: observing anew reports the size in the next frame, and
+   * any change after it.
    */
   tabShown(): void {
-    if (this.displayedSource === undefined) return;
-    if (this.fitting) this.fit();
-    if (this.diagramType === "gantt") this.enqueue(() => this.relayout());
+    this.resizeObserver.unobserve(this.canvas);
+    this.resizeObserver.observe(this.canvas);
   }
 
   fitToPanel(): void {

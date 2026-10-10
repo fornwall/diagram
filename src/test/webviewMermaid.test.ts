@@ -172,7 +172,11 @@ suite("Mermaid in the webview", function () {
     const column = tab?.group.viewColumn;
     assert.ok(column);
     const steps = Array.from({ length: 12 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
-    for (const [index, source] of [`flowchart LR\n  ${steps}`, MERMAID.gantt].entries()) {
+    const sources = [`flowchart LR\n  ${steps}`, MERMAID.gantt];
+    // The page can hear that the tab is shown before it has the tab's size, as under load.
+    const cases = sources.flatMap((source) => [false, true].map((early) => ({ source, early })));
+    for (const [index, { source, early }] of cases.entries()) {
+      const gantt = source === MERMAID.gantt;
       await draw({ source: "flowchart LR\n  A --> B" });
       await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), column);
       try {
@@ -183,6 +187,7 @@ suite("Mermaid in the webview", function () {
           const requestId = ${1_000_000 + index};
           receive({type: "render", requestId, language: "mermaid", source: ${JSON.stringify(source)}, title: "Hidden"});
           await until(() => testRenderResults.includes(requestId), "the diagram drawn");
+          if (${early}) receive({type: "tabVisibility", hidden: false});
         })()`);
       } finally {
         page.panel.show(true);
@@ -202,13 +207,14 @@ suite("Mermaid in the webview", function () {
         // Fitted, or for a Gantt chart laid out, for the shown tab.
         await until(() => {
           const { laidOut, width, room } = drawn();
-          return ${index === 0} ? width === room : laidOut === room;
+          return ${gantt} ? laidOut === room : width === room;
         }, "the diagram fitted", nextFrame).catch(() => {});
         return drawn();
       })()`);
       const { laidOut, width, room } = shown as { laidOut: number; width: number; room: number };
-      if (index === 0) assert.strictEqual(width, room, JSON.stringify(shown));
-      else assert.strictEqual(laidOut, room, JSON.stringify(shown));
+      const message = JSON.stringify({ ...(shown as object), early });
+      if (gantt) assert.strictEqual(laidOut, room, message);
+      else assert.strictEqual(width, room, message);
     }
   });
 
