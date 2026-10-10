@@ -189,8 +189,9 @@ export async function readDataFile(file: string, unasked?: Unasked): Promise<str
     if (stat.type & vscode.FileType.Directory) {
       throw vscode.FileSystemError.FileIsADirectory(uri);
     }
-    // Reading one would not end, as of /dev/urandom, or would wait for a writer, as of a pipe.
-    if (!(stat.type & vscode.FileType.File)) {
+    // Reading a device would not end, as of /dev/urandom, and a pipe waits for a writer. Only on
+    // disk can they be told apart, as other file systems may not know the type of a file.
+    if (uri.scheme === "file" && !(await fs.promises.stat(uri.fsPath)).isFile()) {
       throw new Error(
         `${fileName(uri)} is a device or a pipe, not a regular file, so it was not read. ` +
           "Use a command that reads part of it, such as head.",
