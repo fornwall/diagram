@@ -1275,6 +1275,44 @@ suite("webview", function () {
     }
   });
 
+  test("reverts the deletion of many lines at once, which Undo does not take back", async () => {
+    const lines = (count: number) =>
+      Array.from({ length: count }, (_, i) => `  %% ${i}`).join("\n");
+    const results = [];
+    for (const count of [400, 2000]) {
+      const kept = "flowchart LR\n  A --> B";
+      const original = `${kept}\n${lines(count)}`;
+      await draw({ source: original });
+      try {
+        results.push(
+          await evaluate(`(() => {
+            document.getElementById("view-split").click();
+            const input = document.getElementById("source");
+            input.focus();
+            input.setSelectionRange(${kept.length}, input.value.length);
+            document.execCommand("delete");
+            const start = performance.now();
+            document.getElementById("revert").click();
+            // The editor inserts lines in time that grows with the square of their number.
+            const quick = performance.now() - start < 500;
+            const reverted = input.value === ${JSON.stringify(original)};
+            document.execCommand("undo");
+            return {quick, reverted, undone: input.value === ${JSON.stringify(kept)}};
+          })()`),
+        );
+      } finally {
+        await evaluate(`(() => {
+          document.getElementById("revert").click();
+          document.getElementById("view-visual").click();
+        })()`);
+      }
+    }
+    assert.deepStrictEqual(results, [
+      { quick: true, reverted: true, undone: true },
+      { quick: true, reverted: true, undone: false },
+    ]);
+  });
+
   test("warns again of the newer diagram when Undo brings back the edits of an older one", async () => {
     await draw({ source: "flowchart LR\n  A --> B" });
     const draft = "flowchart LR\n  A --> B\n  B --> Draft";
