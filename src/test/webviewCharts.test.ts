@@ -319,7 +319,8 @@ suite("ECharts in the webview", function () {
         const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
         // As a browser sends a double click: a click of each press, counting them.
         for (const detail of [1, 2]) clickChart(slice, {detail});
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Drawn in the next frame, or the one after.
+        for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
         return {selected: document.querySelectorAll('#chart svg path[fill="#ff0000"]').length,
           label: document.getElementById("selection-label").textContent};
       })()`),
@@ -344,7 +345,7 @@ suite("ECharts in the webview", function () {
           slice.dispatchEvent(new PointerEvent("pointerup", at(dx)));
           slice.dispatchEvent(new MouseEvent("mouseup", at(dx)));
           slice.dispatchEvent(new MouseEvent("click", at(dx)));
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(requestAnimationFrame);
           const label = document.getElementById("selection-label").textContent;
           document.getElementById("clear-selection").click();
           return label;
@@ -986,7 +987,7 @@ suite("ECharts in the webview", function () {
       const moves = [press("Home"), press("ArrowRight")];
       const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
       chart.dispatchEvent(escape);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(requestAnimationFrame);
       return {moves, ring: Boolean(ring()), handled: escape.defaultPrevented,
         dataView: Boolean(document.querySelector(".chart-data-view"))};
     })()`);
@@ -1349,13 +1350,14 @@ suite("ECharts in the webview", function () {
           chart.focus();
           press("Home");
           press("Enter");
-          // Drawn as the root, A shows its child, which the right arrow then leads to.
-          const end = performance.now() + 1000;
+          // Drawn as the root, A shows its child, which the right arrow then leads to, within a
+          // few frames, as the chart is drawn without animation.
           let to;
+          let frames = 0;
           do {
             await nextFrame();
             to = press("ArrowRight");
-          } while (to.startsWith("A") && performance.now() < end);
+          } while (to.startsWith("A") && ++frames < 10);
           chart.blur();
           return to;
         })()`),
