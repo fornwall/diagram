@@ -848,6 +848,10 @@ suite("charts", () => {
       { name: "files", max: 100 },
       { name: "lines", max: 100 },
     ]);
+    assert.match(
+      summary(chart("radar", { max: 100 })),
+      /; values of "lines" are beyond "max", the edge of the radar; raise it\.$/,
+    );
     assert.match(summary(chart("bar", { max: 100 })), / "max" is left out, as only gauge and/);
     // One shape needs no legend, and a negative value an axis that reaches below zero.
     const negative = build(chart("radar"), "k,x,y\na,-1,3");
@@ -937,6 +941,11 @@ suite("charts", () => {
     assert.strictEqual(
       build(chart("gauge", { max: 50 }), "metric,n\nlatency,12").series[0].max,
       50,
+    );
+    assert.doesNotMatch(summary(chart("gauge", { max: 50 }), "metric,n\nlatency,12"), /beyond/);
+    assert.match(
+      summary(chart("gauge", { max: 10 }), "metric,n\nlatency,12"),
+      /scaled it to 10, as given; the value is beyond the top of the scale, where the pointer stops; raise "max"\.$/,
     );
     // "max" is in seconds, whatever multiple the durations are shown in.
     const latency = chart("gauge", { max: 0.5 });

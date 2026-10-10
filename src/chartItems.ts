@@ -1,7 +1,7 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
 import { addValues, label, noteRepeatedLabels, type Reading } from "./chartRows";
-import { formatCount } from "./text";
+import { formatCount, quoteAll } from "./text";
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
   const { names, rows } = reading;
@@ -49,8 +49,9 @@ export function funnelOption(reading: Reading): Record<string, unknown> {
  * precedence over each column's range.
  */
 export function radarOption(reading: Reading): Record<string, unknown> {
-  const { maxima, names, rows } = reading;
+  const { maxima, names, rows, notes } = reading;
   noteRepeatedLabels(reading, "shape", "shapes");
+  const beyond: string[] = [];
   const indicator = names.map((name, column) => {
     let low = 0;
     let high = 0;
@@ -61,13 +62,18 @@ export function radarOption(reading: Reading): Record<string, unknown> {
         high = Math.max(high, value);
       }
     }
+    const max = maxima[column];
+    if (max !== undefined && high > max) beyond.push(name);
     return {
       name,
-      max: maxima[column] ?? (high > low ? high : high + 1),
+      max: max ?? (high > low ? high : high + 1),
       // ECharts draws an axis from zero unless told otherwise, hiding negative values.
       ...(low < 0 ? { min: low } : {}),
     };
   });
+  if (beyond.length > 0) {
+    notes.push(`values of ${quoteAll(beyond)} are beyond "max", the edge of the radar; raise it`);
+  }
   return {
     // A radar's legend names its shapes, which are data items rather than series.
     ...(rows.length > 1 ? { legend: { data: rows.map(label) } } : {}),
@@ -142,6 +148,10 @@ export function gaugeOption({
   const min = Math.min(0, value);
   const scale = top > min ? top : min + 1;
   notes.push(`scaled it ${min < 0 ? `from ${min} ` : ""}to ${scale}, ${reason}`);
+  if (value > scale) {
+    // ECharts stops the pointer at the top, which would read as the value.
+    notes.push(`the value is beyond the top of the scale, where the pointer stops; raise "max"`);
+  }
   return {
     series: [
       {
