@@ -361,6 +361,24 @@ suite("echartsLayout", () => {
     assert.strictEqual(itemHeight({ categories: ["A", "B"] }), undefined);
   });
 
+  test("hides a visual map below a chart too short for it and a plot to read", () => {
+    const visualMap = { min: 0, max: 10 };
+    const short = layout(bars({ title: { text: "T" }, visualMap }), { height: 220 });
+    assert.strictEqual(short.visualMap.show, false);
+    assert.deepStrictEqual(
+      short.grid,
+      layout(bars({ title: { text: "T" } }), { height: 220 }).grid,
+    );
+    assert.strictEqual(layout(bars({ visualMap }), { height: 220 }).visualMap.show, undefined);
+    // Not one placed by the option, nor one the panel has room for.
+    const placed = { ...visualMap, right: 0 };
+    assert.strictEqual(
+      layout(bars({ visualMap: placed }), { height: 150 }).visualMap.show,
+      undefined,
+    );
+    assert.strictEqual(layout(bars({ title: { text: "T" }, visualMap })).visualMap.show, undefined);
+  });
+
   test("rotates category labels that would overlap", () => {
     const labels = Array.from({ length: 20 }, (_, index) => `Category ${index}`);
     const option = layout(bars({ xAxis: { type: "category", data: labels } }));

@@ -365,7 +365,7 @@ function layOut(base: JsonObject, series: JsonObject[], cartesian: boolean, size
     reserved.bottom = 44;
   }
   placeLegend(base, series, cartesian, reserved, size);
-  placeSliders(base, reserved, size.width);
+  placeSliders(base, reserved, size);
   if (cartesian) {
     layOutGrid(base, reserved, size);
   }
@@ -471,8 +471,17 @@ function placeLegend(
   reserved[side] += Math.round(legendWidth) + 16;
 }
 
-/** Places data zoom sliders along the axis they control, and visual maps below the chart. */
-function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
+/** The height in pixels below which a plot, with the labels of its axes, can hardly be read. */
+const MIN_PLOT_HEIGHT = 140;
+/** The height that a visual map placed below the chart takes. */
+const VISUAL_MAP_HEIGHT = 52;
+
+/**
+ * Places data zoom sliders along the axis they control, and visual maps below the chart, unless
+ * the plot would be left too short to read: the visual map then only colors the items, whose
+ * values the tooltip gives.
+ */
+function placeSliders(base: JsonObject, reserved: Insets, { width, height }: Size): void {
   for (const zoom of asArray(base.dataZoom)) {
     if (
       zoom.show === false ||
@@ -500,6 +509,10 @@ function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
       continue;
     }
     if (!has(visualMap, [...BOX_KEYS, "orient"])) {
+      if (height - reserved.top - reserved.bottom - VISUAL_MAP_HEIGHT < MIN_PLOT_HEIGHT) {
+        visualMap.show = false;
+        continue;
+      }
       Object.assign(visualMap, {
         orient: "horizontal",
         left: "center",
@@ -507,9 +520,9 @@ function placeSliders(base: JsonObject, reserved: Insets, width: number): void {
         // The length of a continuous bar, but the size of each piece of a piecewise one.
         ...(isContinuous(visualMap) ? { itemHeight: Math.min(200, Math.round(width * 0.4)) } : {}),
       });
-      reserved.bottom += 52;
+      reserved.bottom += VISUAL_MAP_HEIGHT;
     } else if (visualMap.orient === "horizontal") {
-      reserved[visualMap.top === undefined ? "bottom" : "top"] += 52;
+      reserved[visualMap.top === undefined ? "bottom" : "top"] += VISUAL_MAP_HEIGHT;
     } else {
       reserved[visualMap.right === undefined ? "left" : "right"] += 80;
     }
