@@ -57,6 +57,21 @@ export function suiteTempDir(prefix: string): string {
   return dir;
 }
 
+/** The first workspace folder, which the tests open. */
+export function workspaceRoot(): vscode.WorkspaceFolder {
+  const root = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(root);
+  return root;
+}
+
+/** Makes a symbolic link in the first workspace folder, removed once the current test ends. */
+export function workspaceLink(name: string, target: string | Buffer): string {
+  const link = path.join(workspaceRoot().uri.fsPath, name);
+  fs.symlinkSync(target, link);
+  afterTest(() => fs.rmSync(link));
+  return link;
+}
+
 /**
  * Serves the scheme from the provider's members until the current test ends, refusing what it
  * leaves out.

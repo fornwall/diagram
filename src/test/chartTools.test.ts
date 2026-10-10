@@ -6,7 +6,7 @@ import type { ChartSpec } from "../chartSpec";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
-import { afterTest, cancellationSource, replace, tempDir } from "./afterTest";
+import { afterTest, cancellationSource, replace, tempDir, workspaceLink } from "./afterTest";
 import { drawChart, newFakePanel } from "./newPanel";
 import { invokeTool } from "./toolText";
 
@@ -118,11 +118,7 @@ suite("chartTools", function () {
     const { panel } = await harness();
     const tool = new InspectDataTool(panel);
     assert.ok(tool.prepareInvocation({ input: { file } }).confirmationMessages);
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
-    const link = path.join(root.uri.fsPath, "diagram-inspect-link.csv");
-    fs.symlinkSync(file, link);
-    afterTest(() => fs.rmSync(link));
+    const link = workspaceLink("diagram-inspect-link.csv", file);
     // A link in the workspace is read without asking only while it leads inside.
     const linked = { file: path.basename(link) };
     assert.ok(!tool.prepareInvocation({ input: linked }).confirmationMessages);
@@ -148,11 +144,7 @@ suite("chartTools", function () {
     fs.writeFileSync(file, data);
     const { panel, webview } = await harness();
     const tool = new InspectDataTool(panel);
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
-    const link = path.join(root.uri.fsPath, "diagram-inspect-swap.csv");
-    fs.symlinkSync("sizes.tsv", link);
-    afterTest(() => fs.rmSync(link));
+    const link = workspaceLink("diagram-inspect-swap.csv", "sizes.tsv");
     const input = { file: path.basename(link) };
     await draw(panel, { type: "pie", ...input });
     assert.ok(!tool.prepareInvocation({ input }).confirmationMessages);
@@ -169,11 +161,7 @@ suite("chartTools", function () {
   test("both data tools name where a file in a linked folder leads, which a new call asks about", async () => {
     const folder = tempDir("diagram-linked-");
     fs.writeFileSync(path.join(folder, "data.csv"), data);
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
-    const link = path.join(root.uri.fsPath, "diagram-linked-folder");
-    fs.symlinkSync(folder, link);
-    afterTest(() => fs.rmSync(link));
+    workspaceLink("diagram-linked-folder", folder);
     const { panel } = await harness();
     const target = path.join(folder, "data.csv");
     const file = "diagram-linked-folder/data.csv";
@@ -197,11 +185,10 @@ suite("chartTools", function () {
 
   test("asks the user for another way to a file whose link names no path", async function () {
     if (process.platform !== "linux") this.skip();
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
-    const link = path.join(root.uri.fsPath, "diagram-bytes-link.csv");
-    fs.symlinkSync(Buffer.from("/tmp/diagram-\xff.csv", "latin1"), link);
-    afterTest(() => fs.rmSync(link));
+    const link = workspaceLink(
+      "diagram-bytes-link.csv",
+      Buffer.from("/tmp/diagram-\xff.csv", "latin1"),
+    );
     const { panel } = await harness();
     assert.strictEqual(
       await invokeTool(new InspectDataTool(panel), { file: path.basename(link) }),

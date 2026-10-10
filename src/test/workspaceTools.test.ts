@@ -11,7 +11,14 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
-import { afterTest, cancellationSource, fileSystem, recordFilePaths, replace } from "./afterTest";
+import {
+  afterTest,
+  cancellationSource,
+  fileSystem,
+  recordFilePaths,
+  replace,
+  workspaceRoot,
+} from "./afterTest";
 import { invokeTool as invoke, toolText } from "./toolText";
 
 suite("workspaceTools", function () {
@@ -49,8 +56,7 @@ suite("workspaceTools", function () {
   }
 
   suiteSetup(async () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     dir = await fs.mkdtemp(path.join(root.uri.fsPath, "workspace-tools-"));
     relative = path.basename(dir);
     outside = await fs.mkdtemp(path.join(os.tmpdir(), "diagram-outside-"));
@@ -718,8 +724,7 @@ suite("workspaceTools", function () {
     fileSystem("diagram-b", {
       stat: () => ({ type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 }),
     });
-    const first = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(first);
+    const first = workspaceRoot();
     // "/src" would name a folder in either virtual workspace folder.
     replace(vscode.workspace, "workspaceFolders", [
       first,

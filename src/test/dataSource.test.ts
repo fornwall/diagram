@@ -10,7 +10,7 @@ import {
   runCommand,
   unaskedError,
 } from "../dataSource";
-import { afterTest, cancellationSource, suiteTempDir } from "./afterTest";
+import { afterTest, cancellationSource, suiteTempDir, workspaceRoot } from "./afterTest";
 
 suite("dataSource", () => {
   const token = new vscode.CancellationTokenSource().token;
@@ -25,8 +25,7 @@ suite("dataSource", () => {
   });
 
   test("says whether a file not read leads out of the workspace or, by a link's text, inside", () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     const unasked = { retry: "Retry.", unnamed: "Another way." };
     const message = (outside: string | undefined) =>
       unaskedError("data.csv", outside, unasked).message;

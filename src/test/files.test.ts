@@ -13,7 +13,14 @@ import {
   pathOutside,
   resolveFile,
 } from "../files";
-import { afterTest, fileSystem, recordFilePaths, suiteTempDir } from "./afterTest";
+import {
+  afterTest,
+  fileSystem,
+  recordFilePaths,
+  suiteTempDir,
+  workspaceLink,
+  workspaceRoot,
+} from "./afterTest";
 
 suite("files", () => {
   const dir = suiteTempDir("diagram-files-");
@@ -55,8 +62,7 @@ suite("files", () => {
   });
 
   test("resolves an absolute path that leads out of the workspace outside it", () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     // Links and data files outside the workspace are confirmed first.
     const uri = resolveFile([root.uri.fsPath, "..", "secret.txt"].join(path.sep));
     assert.strictEqual(uri.fsPath, path.join(path.dirname(root.uri.fsPath), "secret.txt"));
@@ -64,12 +70,8 @@ suite("files", () => {
   });
 
   test("finds files inside the workspace also once symbolic links are resolved", () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
     fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
-    const link = path.join(root.uri.fsPath, "diagram-files-link");
-    fs.symlinkSync(dir, link);
-    afterTest(() => fs.rmSync(link));
+    workspaceLink("diagram-files-link", dir);
     const inside = (file: string) => inWorkspace(resolveFile(file));
     assert.ok(inside("sizes.tsv"));
     // Nothing can be read through a path that does not resolve.
@@ -79,8 +81,7 @@ suite("files", () => {
   });
 
   test("follows links one name at a time, touching no target outside the workspace", () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     const far = path.join(dir, "far-away");
     fs.mkdirSync(far, { recursive: true });
     fs.writeFileSync(path.join(far, "data.csv"), "a\n1\n");
@@ -91,9 +92,7 @@ suite("files", () => {
       ["diagram-files-up", path.relative(root.uri.fsPath, far)],
       ["diagram-files-loop", "diagram-files-loop"],
     ] as const) {
-      const link = path.join(root.uri.fsPath, name);
-      fs.symlinkSync(target, link);
-      afterTest(() => fs.rmSync(link));
+      workspaceLink(name, target);
     }
     const paths = recordFilePaths();
     const inside = (file: string) => inWorkspace(vscode.Uri.joinPath(root.uri, file));
@@ -115,8 +114,7 @@ suite("files", () => {
 
   test('follows ".." in a link target from where the link before it leads', function () {
     if (process.platform === "win32") this.skip();
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     const inner = path.join(dir, "inner");
     fs.mkdirSync(inner, { recursive: true });
     fs.writeFileSync(path.join(dir, "diagram-files-key"), "secret");
@@ -138,9 +136,7 @@ suite("files", () => {
       ["diagram-files-climb", "diagram-files-dir/deep/../../../diagram-files-x"],
       ["diagram-files-abs", `${root.uri.fsPath}/diagram-files-b/../diagram-files-key`],
     ] as const) {
-      const link = path.join(root.uri.fsPath, name);
-      fs.symlinkSync(target, link);
-      afterTest(() => fs.rmSync(link));
+      workspaceLink(name, target);
     }
     const read = (name: string) => fs.readFileSync(path.join(root.uri.fsPath, name), "utf8");
     assert.strictEqual(read("diagram-files-a"), "secret");
@@ -209,17 +205,17 @@ suite("files", () => {
 
   test("refuses a link whose target is not UTF-8, which no string names", function () {
     if (process.platform !== "linux") this.skip();
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
     // Read as a string, "\xff" becomes "�", a name that the walk would take instead.
     const name = Buffer.from("diagram-files-\xff", "latin1");
     const away = Buffer.concat([Buffer.from(`${root.uri.fsPath}/`), name]);
     fs.symlinkSync(dir, away);
     afterTest(() => fs.rmSync(away));
-    const link = path.join(root.uri.fsPath, "diagram-files-bytes");
-    fs.symlinkSync(Buffer.concat([name, Buffer.from("/secret.csv")]), link);
-    afterTest(() => fs.rmSync(link));
+    const link = workspaceLink(
+      "diagram-files-bytes",
+      Buffer.concat([name, Buffer.from("/secret.csv")]),
+    );
     assert.strictEqual(fs.readFileSync(link, "utf8"), "a\n1\n");
     assert.ok(!inWorkspace(vscode.Uri.joinPath(root.uri, "diagram-files-bytes")));
     assert.strictEqual(
@@ -255,8 +251,7 @@ suite("files", () => {
 
   test("refuses a link that it cannot follow where the system can", function () {
     if (process.platform !== "linux") this.skip();
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     fs.writeFileSync(path.join(dir, "secret.csv"), "a\n1\n");
     // Short links to deep folders reach a real path longer than the system takes, 4096 bytes.
     const deep = Array(8).fill("d".repeat(200)).join("/");
@@ -285,8 +280,7 @@ suite("files", () => {
   });
 
   test("resolves no path outside the workspace, which could reach a network share", () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     const inward = path.join(dir, "inward.tsv");
     fs.symlinkSync(path.join(root.uri.fsPath, "sizes.tsv"), inward);
     const paths = recordFilePaths();
@@ -331,8 +325,7 @@ suite("files", () => {
   });
 
   test("names a file it cannot open once, relative to the workspace where possible", async () => {
-    const root = vscode.workspace.workspaceFolders?.[0];
-    assert.ok(root);
+    const root = workspaceRoot();
     await assert.rejects(openDocument(vscode.Uri.joinPath(root.uri, "docs/gone.md")), {
       message: "docs/gone.md does not exist.",
     });
