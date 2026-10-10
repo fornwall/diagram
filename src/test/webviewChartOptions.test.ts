@@ -414,6 +414,30 @@ suite("Chart Options in the webview", function () {
     await closeChartOptions();
   });
 
+  test("chart options scroll an error that the options give into view", async () => {
+    await showChartOptions({
+      type: "bar",
+      data: "name,amount\na,1",
+      filters: Array.from({ length: 10 }, () => ({ column: "name", op: "neq", value: "b" })),
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const container = document.getElementById("chart-options");
+        const error = container.querySelector(".chart-options-error");
+        const scrolls = container.scrollHeight > container.clientHeight;
+        container.scrollTop = 0;
+        receive({type: "chartOptionsError", message: "Could not apply the chart options."});
+        await until(() => !error.hidden, "the error");
+        const box = container.getBoundingClientRect();
+        const shown = error.getBoundingClientRect();
+        return {scrolls, inView: shown.top >= box.top && shown.bottom <= box.bottom};
+      })()`),
+      { scrolls: true, inView: true },
+    );
+    await closeChartOptions();
+  });
+
   test("chart options show Apply and Reset busy until a reset is done, which a second click does not repeat", async () => {
     await showChartOptions({ type: "bar", data: "name,amount\na,1" });
     const revision = page.panel.revision;

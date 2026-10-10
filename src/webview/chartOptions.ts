@@ -312,6 +312,8 @@ export class ChartOptionsForm {
   showError(message: string): void {
     this.error.textContent = message;
     this.error.hidden = false;
+    // Below the fields, which the form scrolls, as when Enter in the first applied the options.
+    this.error.scrollIntoView({ block: "nearest" });
     this.setApplying(false);
   }
 
