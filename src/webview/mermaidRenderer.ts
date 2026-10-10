@@ -529,9 +529,7 @@ export class MermaidRenderer implements Renderer {
     // large diagram to make again.
     const drawnFrom = JSON.stringify([source, drawWidth, config]);
     if (drawnFrom === this.drawnFrom && this.diagramType) {
-      this.setZoom(this.zoom);
-      if (this.fitting) this.fit();
-      this.scrollStart();
+      this.present();
       return this.diagramType;
     }
     container.style.width = drawWidth;
@@ -581,20 +579,22 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = source;
     this.diagramType = result.diagramType;
     this.prepareSvg(svg, id, db);
-    // Until fitting can measure the panel, e.g. while it is hidden, keep the zoom.
-    this.setZoom(this.zoom);
-    if (this.fitting) {
-      this.fit();
-    }
-    this.scrollStart();
+    this.present();
     return result.diagramType;
   }
 
-  /** Scrolls a drawing of another diagram than the one shown before to its top left. */
-  private scrollStart(): void {
-    if (!this.scrollToStart) return;
-    this.scrollToStart = false;
-    this.canvas.scrollTo(0, 0);
+  /**
+   * Sizes the drawing for the zoom, or to fit the panel, keeping the zoom until fitting can measure
+   * the panel, e.g. while it is hidden. Scrolls a drawing of another diagram than the one shown
+   * before to its top left.
+   */
+  private present(): void {
+    this.setZoom(this.zoom);
+    if (this.fitting) this.fit();
+    if (this.scrollToStart) {
+      this.scrollToStart = false;
+      this.canvas.scrollTo(0, 0);
+    }
   }
 
   /**
