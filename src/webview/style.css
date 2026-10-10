@@ -224,6 +224,11 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 }
 
+/* Its border is often in the focus color, as in Light Modern: the focus goes inside it. */
+.views button[aria-pressed="true"]:focus-visible {
+  outline-offset: -3px;
+}
+
 #render-status {
   flex-shrink: 0;
   padding: 6px 12px;

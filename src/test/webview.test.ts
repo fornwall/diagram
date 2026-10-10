@@ -284,6 +284,40 @@ suite("webview", function () {
     );
   });
 
+  test("shows the focus on the pressed view button apart from its border", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        // The page's rules, with :focus-visible as a class that the test can set.
+        const page = [...document.styleSheets].find(sheet => sheet.href?.endsWith("webview.css"));
+        const focused = new CSSStyleSheet();
+        focused.replaceSync([...page.cssRules].map(rule => rule.cssText.replaceAll(":focus-visible", ".test-focus")).join("\\n"));
+        page.disabled = true;
+        document.adoptedStyleSheets = [focused];
+        const buttons = ["view-visual", "view-split"].map(id => document.getElementById(id));
+        try {
+          // Light Modern draws the border of the pressed button in its focus color.
+          return buttons.map(button => {
+            button.classList.add("test-focus");
+            const style = getComputedStyle(button);
+            const ring = -parseFloat(style.outlineOffset);
+            return {pressed: button.ariaPressed, ring: style.outlineStyle,
+              clearOfBorder: ring > parseFloat(style.borderTopWidth) + parseFloat(style.outlineWidth)};
+          });
+        } finally {
+          for (const button of buttons) button.classList.remove("test-focus");
+          document.adoptedStyleSheets = [];
+          page.disabled = false;
+        }
+      })()`),
+      [
+        { pressed: "true", ring: "solid", clearOfBorder: true },
+        // Unpressed, the border is transparent, and the focus is drawn where it is, as in VS Code.
+        { pressed: "false", ring: "solid", clearOfBorder: false },
+      ],
+    );
+  });
+
   test("fits the title and the actions into two rows of a narrow panel, the zoom buttons together", async () => {
     await draw({ source: MERMAID["flowchart-v2"], title: "Request lifecycle of the auth service" });
     assert.deepStrictEqual(
