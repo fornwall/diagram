@@ -43,6 +43,9 @@ interface Animated {
   stopAnimation(scope: undefined, forwardToLast: boolean): unknown;
 }
 
+/** Whether the event is a click after the first of a double click. */
+const repeated = (event: unknown) => event instanceof MouseEvent && event.detail > 1;
+
 /** The type of component, such as "toolbox", that ECharts draws in the group, if any. */
 function componentOf(group: object): string | undefined {
   return (group as { __ecComponentInfo?: { mainType: string } | null }).__ecComponentInfo?.mainType;
@@ -312,15 +315,19 @@ export class EChartsRenderer implements Renderer {
       if (params.componentType !== "series") {
         return;
       }
-      const hit = this.hitFor(params);
-      if (hit) this.focus.clicked(hit.key);
-      if (hit || !this.navigates(params)) {
-        this.itemClicked(hit, withModifier(params.event?.event));
+      // The first click of a double click acted already: a second would undo its selection, or
+      // open the item's link once more. ECharts toggles its selection anyway, which this restores.
+      if (!repeated(params.event?.event)) {
+        const hit = this.hitFor(params);
+        if (hit) this.focus.clicked(hit.key);
+        if (hit || !this.navigates(params)) {
+          this.itemClicked(hit, withModifier(params.event?.event));
+        }
       }
       this.scheduleSelection();
     });
     chart.getZr().on("click", (event) => {
-      if (!event.target) {
+      if (!event.target && !repeated(event.event)) {
         this.itemClicked(undefined, withModifier(event.event));
       }
     });

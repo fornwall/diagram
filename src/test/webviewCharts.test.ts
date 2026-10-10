@@ -277,6 +277,38 @@ suite("ECharts in the webview", function () {
     }
   });
 
+  test("acts once on a double click on a chart item, keeping it selected", async () => {
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        series: [
+          {
+            type: "pie",
+            data: ["A", "B"].map((name) => ({ name, value: 1 })),
+            itemStyle: { color: "#0000ff" },
+            select: { itemStyle: { color: "#ff0000" } },
+            emphasis: { disabled: true },
+          },
+        ],
+      }),
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${CLICK_CHART}
+        ${UNTIL}
+        const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
+        // As a browser sends a double click: a click of each press, counting them.
+        for (const detail of [1, 2]) clickChart(slice, {detail});
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return {selected: document.querySelectorAll('#chart svg path[fill="#ff0000"]').length,
+          label: document.getElementById("selection-label").textContent};
+      })()`),
+      { selected: 1, label: "Selected: “A”" },
+    );
+    await evaluate(`document.getElementById("clear-selection").click()`);
+  });
+
   test("clears every selected chart item together", async () => {
     await draw({
       language: "echarts",
