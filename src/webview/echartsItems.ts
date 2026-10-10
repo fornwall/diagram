@@ -256,6 +256,11 @@ export class ChartItems {
         );
       }
     });
+    if (this.series.every((series) => series.empty)) {
+      this.warnings.push(
+        'The chart has no data to draw, as every series is empty: give a series its "data", or a "dataset" with a "source" for the series to read.',
+      );
+    }
   }
 
   /**
@@ -387,6 +392,10 @@ class SeriesItems {
   private datas: TypedData[];
   /** How many trees a tree series has in its data, of which ECharts lays out and draws the first. */
   readonly trees: number;
+  /** Whether the series has no items. */
+  get empty(): boolean {
+    return this.datas.every(({ first, end }) => end <= first);
+  }
   /** A graph's edges name their nodes by id or name, or by index. */
   private readonly nodeLabels = new Map<string, string>();
   private readonly nodeLabelsByIndex: string[] = [];

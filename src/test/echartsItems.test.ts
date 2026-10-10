@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { itemKey, modelOf } from "../webview/echartsItems";
-import { item, itemsOf, withChart } from "./echartsModel";
+import { bars, item, itemsOf, withChart } from "./echartsModel";
 
 suite("echartsItems", () => {
   test("reads the parts of ECharts' private model that it relies on", () => {
@@ -246,6 +246,33 @@ suite("echartsItems", () => {
       assert.deepStrictEqual(items.find("C/leaf"), [item(6)], type);
       assert.deepStrictEqual(items.warnings, [], type);
     }
+  });
+
+  test("tells a model of a chart without data, which draws only its axes", () => {
+    const warnings = (option: Record<string, unknown>) => itemsOf(option).warnings;
+    assert.match(
+      warnings(bars({ series: [{ type: "bar", data: [] }] })).join(),
+      /^The chart has no data/,
+    );
+    assert.match(
+      warnings({ series: [{ type: "pie" }, { type: "treemap", data: [] }] }).join(),
+      /no data/,
+    );
+    assert.deepStrictEqual(
+      warnings(
+        bars({
+          series: [
+            { type: "bar", data: [] },
+            { type: "bar", data: [1] },
+          ],
+        }),
+      ),
+      [],
+    );
+    assert.deepStrictEqual(
+      warnings({ dataset: { source: [["a", 1]] }, ...bars({ series: [{ type: "bar" }] }) }),
+      [],
+    );
   });
 
   test("labels unnamed items by value, and lists only the first ids of a repeated name", () => {
