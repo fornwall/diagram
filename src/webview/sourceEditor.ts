@@ -261,12 +261,15 @@ export class SourceEditor {
 
 /**
  * The most characters that an undoable replacement removes and inserts, and the most lines it
- * inserts, which take about a tenth of a second each: the editor inserts text line by line, in
- * time that grows with the square of the lines, as long as a second for 1,500. A larger one, such
- * as of a chart's data, is not undoable.
+ * inserts times the lines of the text, which take about a tenth of a second each: the editor
+ * inserts text line by line, each in time that grows with the lines of the text, as long as 7
+ * seconds for 400 lines in a text of 20,000. A larger one, such as of a chart's data, is not
+ * undoable.
  */
 const UNDOABLE_CHANGE = 100_000;
-const UNDOABLE_LINES = 500;
+const UNDOABLE_LINES = 200_000;
+
+const lineCount = (text: string) => (text.match(/\n/g)?.length ?? 0) + 1;
 
 /**
  * Replaces the text, keeping the caret, the selection and the scroll position where the text around
@@ -304,7 +307,7 @@ function replaceText(
     undoable &&
     document.activeElement === input &&
     changed <= UNDOABLE_CHANGE &&
-    (inserted.match(/\n/g)?.length ?? 0) <= UNDOABLE_LINES
+    lineCount(inserted) * lineCount(text) <= UNDOABLE_LINES
   ) {
     // An edit of the change alone, which the commands make to the selection. Assigning the value
     // would clear the history instead.

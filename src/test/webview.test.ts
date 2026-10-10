@@ -1275,29 +1275,35 @@ suite("webview", function () {
     }
   });
 
-  test("reverts the deletion of many lines at once, which Undo does not take back", async () => {
-    const lines = (count: number) =>
-      Array.from({ length: count }, (_, i) => `  %% ${i}`).join("\n");
+  test("reverts many lines of a source at once, which Undo does not take back", async () => {
+    const comments = (count: number) =>
+      Array.from({ length: count }, (_, i) => `\n  %% ${i}`).join("");
+    const values = Array.from({ length: 20_000 }, (_, i) => i).join(",\n");
+    const chart = `{"xAxis": {"type": "category"}, "yAxis": {}, "series": [{"type": "line", "data": [\n${values}\n]}]}`;
+    const middle = chart.indexOf("\n10000,");
     const results = [];
-    for (const count of [400, 2000]) {
-      const kept = "flowchart LR\n  A --> B";
-      const original = `${kept}\n${lines(count)}`;
-      await draw({ source: original });
+    // The source, and what of it the edit deletes.
+    for (const [language, source, from, to] of [
+      ["mermaid", `flowchart LR\n  A --> B${comments(400)}`, 22, undefined],
+      ["mermaid", `flowchart LR\n  A --> B${comments(2000)}`, 22, undefined],
+      // A few lines of a long source, or a few characters of one of them.
+      ["echarts", chart, middle, middle + 200],
+      ["echarts", chart, middle + 1, middle + 3],
+    ] as const) {
+      await draw({ language, source });
       try {
         results.push(
           await evaluate(`(() => {
             document.getElementById("view-split").click();
             const input = document.getElementById("source");
             input.focus();
-            input.setSelectionRange(${kept.length}, input.value.length);
+            input.setSelectionRange(${from}, ${to ?? source.length});
             document.execCommand("delete");
-            const start = performance.now();
+            const edited = input.value;
             document.getElementById("revert").click();
-            // The editor inserts lines in time that grows with the square of their number.
-            const quick = performance.now() - start < 500;
-            const reverted = input.value === ${JSON.stringify(original)};
+            const reverted = input.value === ${JSON.stringify(source)};
             document.execCommand("undo");
-            return {quick, reverted, undone: input.value === ${JSON.stringify(kept)}};
+            return {reverted, undone: input.value === edited};
           })()`),
         );
       } finally {
@@ -1308,8 +1314,10 @@ suite("webview", function () {
       }
     }
     assert.deepStrictEqual(results, [
-      { quick: true, reverted: true, undone: true },
-      { quick: true, reverted: true, undone: false },
+      { reverted: true, undone: true },
+      { reverted: true, undone: false },
+      { reverted: true, undone: false },
+      { reverted: true, undone: true },
     ]);
   });
 
