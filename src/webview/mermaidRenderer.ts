@@ -410,9 +410,7 @@ export class MermaidRenderer implements Renderer {
       const { key } = event;
       const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
       const modified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
-      if (event.target !== canvas || !moves || modified || this.displayedSource === undefined) {
-        return;
-      }
+      if (event.target !== canvas || !moves || modified) return;
       const next = key === "Home" || key === "End" ? this.endNode(key) : this.stopInSight();
       if (!next) return;
       event.preventDefault();
