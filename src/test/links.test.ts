@@ -25,6 +25,9 @@ suite("links", () => {
         absolute: `${path.join(path.sep, "tmp", "out.log")}#L0007`,
         // A path may contain a "#"; the line follows the last one.
         hash: "src/a#b.ts#L3",
+        // Without a line after it, a "#" is part of the path.
+        folder: "docs/C#/intro.md",
+        numbered: "notes#1.md",
         uri: `${vscode.Uri.file(path.join(path.sep, "tmp", "a b#c.ts")).toString()}#L5`,
       },
       "mermaid",
@@ -37,6 +40,8 @@ suite("links", () => {
       home: { file: "~/notes.md", line: 1 },
       absolute: { file: path.join(path.sep, "tmp", "out.log"), line: 7 },
       hash: { file: "src/a#b.ts", line: 3 },
+      folder: { file: "docs/C#/intro.md" },
+      numbered: { file: "notes#1.md" },
       uri: { file: path.join(path.sep, "tmp", "a b#c.ts"), line: 5 },
     });
   });
@@ -78,6 +83,7 @@ suite("links", () => {
         number: 42,
         object: { file: "src/parser.ts", line: 1 },
         lowercase: "src/parser.ts#l1",
+        bare: "src/parser.ts#42-80",
         columns: "src/parser.ts:12:3",
         huge: "src/parser.ts#L12345678",
         zero: "src/parser.ts#L0",
@@ -95,6 +101,7 @@ suite("links", () => {
       '"number": the location must be a non-empty string',
       '"object": the location must be a non-empty string',
       '"lowercase": "src/parser.ts#l1" does not give its line as "#L42" or "#L42-L80".',
+      '"bare": "src/parser.ts#42-80" does not give its line as "#L42" or "#L42-L80".',
       '"columns": "src/parser.ts:12:3" gives its line after a colon; write it as "#L42"',
       // Seven digits at most, so a longer number is not read as a line at all.
       '"huge": "src/parser.ts#L12345678" does not give its line',

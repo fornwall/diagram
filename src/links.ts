@@ -110,10 +110,12 @@ function parseLink(location: unknown): NodeLink | string {
     return "the location must be a non-empty string.";
   }
   const text = location.trim();
-  // The line follows the last "#", so that a path may contain one.
+  // The line follows the last "#", if what follows it starts like a line, as "#L42" or a misspelt
+  // "#42" does, so that a path may contain one, as "docs/C#/intro.md" does.
   const hash = text.lastIndexOf("#");
-  let file = (hash === -1 ? text : text.slice(0, hash)).trim();
   const fragment = hash === -1 ? undefined : text.slice(hash + 1).trim();
+  const isLine = fragment !== undefined && /^(?:L\d|\d+(?:-\d+)?$)/i.test(fragment);
+  let file = (isLine ? text.slice(0, hash) : text).trim();
   if (!file) {
     return `${quote(text)} has no file path before its line.`;
   }
@@ -133,7 +135,7 @@ function parseLink(location: unknown): NodeLink | string {
   }
   let line: number | undefined;
   let endLine: number | undefined;
-  if (fragment !== undefined) {
+  if (isLine) {
     const match = LINE_FRAGMENT.exec(fragment);
     if (!match) {
       return `${quote(text)} does not give its line as "#L42" or "#L42-L80".`;
