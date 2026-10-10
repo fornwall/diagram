@@ -972,6 +972,11 @@ suite("Mermaid in the webview", function () {
         "gitGraph\n  commit\n  branch dev\n  checkout main\n  switch feature\n  commit",
         'venn-beta\n  set A\n  set B\n  union A,B["C"]\n  union A,C',
         'venn-beta\n  set A\n  union A,"B",C',
+        // Packet fields out of order, backwards or of no bits.
+        'packet\n  0-15: "Port"\n  10-20: "Seq"',
+        'packet\n  0-15: "Port"\n  16: "Flag"\n  18: "Flag"',
+        'packet\n  0-15: "Port"\n  20-16: "Seq"',
+        'packet\n  +16: "Port"\n  +0: "None"',
         // Others depend on the statements before: the first part of the text that fails so.
         "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev\n  branch other\n  merge main",
         'gitGraph\n  commit id: "A"\n  branch dev\n  commit id: "B"\n  checkout main\n  cherry-pick id: "B"\n  cherry-pick id: "C"',
@@ -1003,6 +1008,10 @@ suite("Mermaid in the webview", function () {
         'Error on line 5: There is no branch "feature" to check out: create it first, with "branch feature".',
         'Error on line 5: "C" is not a set: declare it, as in "set C", before the union.',
         'Error on line 3: "B" and "C" are not sets: declare them, as in "set B", before the union.',
+        "Error on line 3: Packet block 10 - 20 is not contiguous. It should start from 16.",
+        "Error on line 4: Packet block 18 - 18 is not contiguous. It should start from 17.",
+        "Error on line 3: Packet block 20 - 16 is invalid. End must be greater than start.",
+        "Error on line 3: Packet block 16 is invalid. Cannot have a zero bit field.",
         "Error on line 8: Cannot merge branch 'main' into itself.",
         'Error on line 7: Incorrect usage of "cherryPick". Source commit id should exist and provided',
         'Error on line 5: Trying to create an existing branch. (Help: Either use a new name if you want create a new branch or try using "checkout dev")',

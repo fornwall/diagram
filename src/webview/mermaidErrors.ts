@@ -674,6 +674,17 @@ const UNPLACED: [
         : [at, 'The event has no time period: start the line with one, as in "2024 : Launch".'];
     },
   ],
+  // A packet field given by its bits, out of order or backwards, or as "+0": the first such.
+  [
+    /^Packet block (\d+)(?: - (\d+))? is (.*)$/,
+    ([, start, end = start, problem = ""], normalized) => {
+      const space = "[^\\S\\n]*";
+      const bits = problem.includes("zero bit")
+        ? `\\+${space}0+`
+        : `0*${start}(?:${space}-${space}0*${end})${end === start ? "?" : ""}`;
+      return [find(normalized, `^${space}${bits}${space}:`)];
+    },
+  ],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,
