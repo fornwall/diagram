@@ -90,6 +90,9 @@ function exchange(
 
 /** The fake model's token count: about one token per four characters. */
 const tokenCount = (text: string) => Math.ceil(text.length / 4);
+/** The fake model's count of a prompt of the messages, with the few tokens that each adds. */
+const promptTokens = (messages: string[]) =>
+  messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
 
 /** The panel the participant draws in, shown in a page that draws all but {@link renderErrors}. */
 let panel: DiagramPanel;
@@ -915,7 +918,7 @@ suite("participant", () => {
     });
     const messages = sent[1]?.messages.map(messageText) ?? [];
     assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first [\d,]+ of [\d,]+ characters\]$/);
-    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    const tokens = promptTokens(messages);
     assert.ok(tokens > (maxInputTokens * 3) / 4 && tokens <= (maxInputTokens * 7) / 8, `${tokens}`);
   });
 
@@ -1336,7 +1339,7 @@ suite("participant", () => {
     // The current chart may be another one.
     assert.doesNotMatch(reply, /diagram_inspectData/);
     assert.doesNotMatch(messages.join("\n"), /Private sample row/);
-    assert.ok(messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0) <= 3_000);
+    assert.ok(promptTokens(messages) <= 3_000);
   });
 
   test("leaves out the oldest turns, and older diagrams first, to fit the model's input", async () => {
@@ -1370,7 +1373,7 @@ suite("participant", () => {
     const messages = sent[0]?.messages.map(messageText) ?? [];
     assert.ok(messages.some((message) => message.includes("I drew a diagram, left out here")));
     assert.ok(!messages.includes("Earlier question"));
-    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    const tokens = promptTokens(messages);
     assert.ok(tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
   });
 
@@ -1422,7 +1425,7 @@ suite("participant", () => {
     const truncated =
       /^Attached by the user: text, truncated to the first [\d,]+ of its 20,000 characters\n\n```\na+\n```$/;
     assert.ok(messages.some((message) => truncated.test(message)));
-    const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
+    const tokens = promptTokens(messages);
     assert.ok(tokens > maxInputTokens / 2 && tokens <= (maxInputTokens * 3) / 4, `${tokens}`);
   });
 
