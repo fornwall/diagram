@@ -412,6 +412,26 @@ suite("echartsLayout", () => {
     assert.strictEqual(layout(bars()).xAxis.axisLabel, undefined);
   });
 
+  test("names an inverse axis where it starts, above a heatmap's first row", () => {
+    const spec = { type: "heatmap", labelColumn: ["day", "hour"], valueColumns: ["count"] };
+    const heatmap = layout(
+      builtOption(spec as ChartSpec, "day,hour,count\nMon,0:00,1\nMon,1:00,2\nTue,0:00,3"),
+    );
+    assert.deepStrictEqual([heatmap.yAxis.name, heatmap.yAxis.nameLocation], ["day", "start"]);
+    assert.strictEqual(heatmap.xAxis.nameLocation, undefined);
+    const svg = withChart(heatmap, (chart) => chart.renderToSVGString(), {
+      width: 800,
+      height: 500,
+    });
+    const top = (text: string) =>
+      Number(new RegExp(String.raw`translate\([\d.]+ ([\d.]+)\)[^>]*>${text}<`).exec(svg)?.[1]);
+    assert.ok(top("day") < top("Mon"), `${top("day")} < ${top("Mon")}`);
+    // Unless the axis says where.
+    const placed = { type: "category", data: ["A"], inverse: true, name: "N", nameLocation: "end" };
+    assert.strictEqual(layout(bars({ yAxis: placed })).yAxis.nameLocation, "end");
+    assert.strictEqual(layout(bars({ yAxis: { name: "N" } })).yAxis.nameLocation, undefined);
+  });
+
   test("measures labels of charts with very many categories", () => {
     const labels = Array.from({ length: 200_000 }, (_, index) => `Category ${index}`);
     const axis = { type: "category", data: labels };

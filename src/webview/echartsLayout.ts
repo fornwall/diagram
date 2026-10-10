@@ -691,6 +691,13 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }
   }
+  // ECharts names an axis at its end, which an inverse axis has at the bottom or left, below
+  // or beside its labels, as a heatmap's rows from the top: name it where the axis starts.
+  for (const axis of [...asArray(base.xAxis), ...asArray(base.yAxis)]) {
+    if (axis.inverse === true && axis.name && axis.nameLocation === undefined) {
+      axis.nameLocation = "start";
+    }
+  }
 }
 
 /** The height of a row of axis labels, with the gap to the axis. */
