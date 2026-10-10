@@ -186,52 +186,14 @@ function sortRows(
   rows: Row[],
   sort: NonNullable<ChartSpec["sort"]>,
   key: (row: Row) => number | null,
-  limit?: number,
 ): Row[] {
   const direction = sort === "ascending" ? 1 : -1;
-  const keyed = rows.map((row, index) => ({ row, index, key: key(row) }));
-  type Keyed = (typeof keyed)[number];
-  const order = (left: Keyed, right: Keyed): number => {
-    const { key: x } = left;
-    const { key: y } = right;
-    if (x === null || y === null) {
-      return x === y ? left.index - right.index : x === null ? 1 : -1;
-    }
-    return (x - y) * direction || left.index - right.index;
-  };
-  // Small limits need only the best rows. Keep the worst retained row at the heap root.
-  if (limit !== undefined && limit > 0 && limit < rows.length / 4) {
-    const heap: Keyed[] = [];
-    for (const candidate of keyed) {
-      if (heap.length < limit) {
-        let at = heap.length;
-        heap.push(candidate);
-        while (at > 0) {
-          const parent = Math.floor((at - 1) / 2);
-          const previous = heap[parent];
-          if (!previous || order(candidate, previous) <= 0) break;
-          heap[at] = previous;
-          at = parent;
-        }
-        heap[at] = candidate;
-      } else if (heap[0] && order(candidate, heap[0]) < 0) {
-        let at = 0;
-        while (at * 2 + 1 < heap.length) {
-          let child = at * 2 + 1;
-          const left = heap[child];
-          const right = heap[child + 1];
-          if (left && right && order(right, left) > 0) child++;
-          const next = heap[child];
-          if (!next || order(candidate, next) >= 0) break;
-          heap[at] = next;
-          at = child;
-        }
-        heap[at] = candidate;
-      }
-    }
-    return heap.sort(order).map(({ row }) => row);
-  }
-  return keyed.sort(order).map(({ row }) => row);
+  return rows
+    .map((row) => ({ row, key: key(row) }))
+    .sort(({ key: x }, { key: y }) =>
+      x === null || y === null ? (x === null ? 1 : 0) - (y === null ? 1 : 0) : (x - y) * direction,
+    )
+    .map(({ row }) => row);
 }
 
 /** The sum of a row's values, or null without any. */
@@ -480,7 +442,7 @@ export function readRows(
         : type === "stackedBar" || type === "stackedArea"
           ? rowTotal
           : (row: Row) => row.values[0] ?? null;
-    rows = sortRows(rows, spec.sort, key, combineOther ? undefined : spec.limit);
+    rows = sortRows(rows, spec.sort, key);
     if (columns.timeAxis) {
       notes.push('the time axis orders the rows by time, so "sort" only chose the rows to keep');
     }
