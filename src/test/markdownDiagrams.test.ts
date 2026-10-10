@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
 import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
-import { newPanel, webviewTabs, within } from "./newPanel";
+import { newFakePanel, newPanel, webviewTabs, within } from "./newPanel";
 
 suite("markdownDiagrams", function () {
   // Opening a diagram loads the panel's webview, which can take a while.
@@ -258,5 +258,62 @@ suite("markdownDiagrams", function () {
     const warnings = recordMessages("showWarningMessage");
     await vscode.commands.executeCommand(`test.${command.command}`, ...(command.arguments ?? []));
     assert.deepStrictEqual(warnings, [reason]);
+  });
+
+  test("opens a diagram of a read-only document to view, not to write to", async () => {
+    const content = new TextEncoder().encode("```mermaid\nflowchart TD\n```\n");
+    const provider: vscode.FileSystemProvider = {
+      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+      watch: () => new vscode.Disposable(() => {}),
+      stat: async () => ({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: content.length }),
+      readDirectory: async () => [],
+      createDirectory: () => {},
+      readFile: async () => content,
+      writeFile: () => {},
+      delete: () => {},
+      rename: () => {},
+    };
+    const registration = vscode.workspace.registerFileSystemProvider(
+      "diagram-test-readonly",
+      provider,
+      { isReadonly: true },
+    );
+    afterTest(() => registration.dispose());
+    const included = path.join(dir, "included.md");
+    fs.writeFileSync(included, "```echarts\n{}\n```\n");
+    const files = vscode.workspace.getConfiguration("files");
+    await files.update(
+      "readonlyInclude",
+      { "**/included.md": true },
+      vscode.ConfigurationTarget.Global,
+    );
+    afterTest(() => files.update("readonlyInclude", undefined, vscode.ConfigurationTarget.Global));
+    const { panel } = await newFakePanel();
+    const register = vscode.commands.registerCommand;
+    replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>
+      register(`test.${name}`, callback, thisArg),
+    );
+    const registrations = registerMarkdownDiagrams(panel);
+    afterTest(() => vscode.Disposable.from(...registrations).dispose());
+    const messages = recordMessages("showInformationMessage");
+    const open = async (document: vscode.TextDocument) => {
+      const { command, arguments: args = [] } = await firstLens(document);
+      await vscode.commands.executeCommand(`test.${command}`, ...args);
+    };
+    // A diagram of a writable document first, whose binding a read-only one must not take over.
+    await open(await untitled("```mermaid\nflowchart LR\n```\n"));
+    assert.ok(panel.current?.document);
+    await open(
+      await vscode.workspace.openTextDocument(vscode.Uri.parse("diagram-test-readonly:/git.md")),
+    );
+    assert.strictEqual(panel.current?.source, "flowchart TD");
+    assert.strictEqual(panel.current?.document, undefined);
+    await open(await vscode.workspace.openTextDocument(vscode.Uri.file(included)));
+    assert.strictEqual(panel.current?.language, "echarts");
+    assert.strictEqual(panel.current?.document, undefined);
+    assert.deepStrictEqual(messages, [
+      "/git.md is read-only, so edits of the diagram in the panel are not written to it.",
+      `${vscode.workspace.asRelativePath(included)} is read-only, so edits of the chart in the panel are not written to it.`,
+    ]);
   });
 });

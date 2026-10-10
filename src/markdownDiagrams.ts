@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { guessTitle } from "./blocks";
+import { isReadonly } from "./documentDiagram";
 import {
   type DiagramFence,
   emptyDiagramBlockAt,
@@ -178,18 +179,27 @@ async function openAtCursor(panel: DiagramPanel): Promise<void> {
   await openInPanel(panel, editor.document, fence);
 }
 
-/** Opens a document diagram and reports failures that the webview cannot display. */
+/**
+ * Opens a document diagram, bound to its block unless the document is read-only, and reports
+ * failures that the webview cannot display.
+ */
 async function openInPanel(
   panel: DiagramPanel,
   document: vscode.TextDocument,
   fence: DiagramFence,
 ): Promise<void> {
+  const readonly = isReadonly(document);
+  if (readonly) {
+    void vscode.window.showInformationMessage(
+      `${vscode.workspace.asRelativePath(document.uri)} is read-only, so edits of the ${diagramNoun(fence.language)} in the panel are not written to it.`,
+    );
+  }
   const outcome = await panel.render(
     {
       language: fence.language,
       source: fence.source,
       title: guessTitle(fence),
-      document: { uri: document.uri.toString(), fence },
+      document: readonly ? undefined : { uri: document.uri.toString(), fence },
     },
     "document",
   );

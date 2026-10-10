@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as vscode from "vscode";
 import {
   type DiagramFence,
@@ -21,6 +22,38 @@ export interface DocumentBinding {
 export function documentName({ uri }: DocumentBinding): string {
   const { path } = vscode.Uri.parse(uri);
   return path.split("/").pop() || path;
+}
+
+/**
+ * Whether VS Code keeps the document from being changed and saved, as far as an extension can tell:
+ * on a read-only file system, such as a Git revision, by the files.readonlyInclude setting, or, with
+ * files.readonlyFromPermissions, as the file may not be written. Not one made read-only for the
+ * session, which VS Code does not tell extensions.
+ */
+export function isReadonly(document: vscode.TextDocument): boolean {
+  const { uri } = document;
+  if (vscode.workspace.fs.isWritableFileSystem(uri.scheme) === false) return true;
+  if (document.isUntitled) return false;
+  const settings = vscode.workspace.getConfiguration("files", document);
+  // Globs as VS Code matches them: of the path, or of the path within a workspace folder.
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const matches = (setting: string) =>
+    Object.entries(settings.get<Record<string, unknown>>(setting) ?? {}).some(
+      ([glob, on]) =>
+        on === true &&
+        [glob, ...folders.map((folder) => new vscode.RelativePattern(folder, glob))].some(
+          (pattern) => vscode.languages.match({ pattern }, document) > 0,
+        ),
+    );
+  if (matches("readonlyInclude") && !matches("readonlyExclude")) return true;
+  if (uri.scheme === "file" && settings.get<boolean>("readonlyFromPermissions") === true) {
+    try {
+      fs.accessSync(uri.fsPath, fs.constants.W_OK);
+    } catch {
+      return true;
+    }
+  }
+  return false;
 }
 
 type WriteOutcome = { written: true; fence: DiagramFence } | { written: false; reason: string };
@@ -48,6 +81,12 @@ export async function writeFence(
     document = await openDocument(vscode.Uri.parse(binding.uri));
   } catch (error) {
     return { written: false, reason: `Could not write the ${noun}: ${errorMessage(error)}` };
+  }
+  if (isReadonly(document)) {
+    return {
+      written: false,
+      reason: `${name} is read-only, so the ${noun} was not written to it.`,
+    };
   }
   const changed = {
     written: false,
