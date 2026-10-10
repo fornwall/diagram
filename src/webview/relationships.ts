@@ -35,13 +35,10 @@ export function shortestPath(
     }
   }
   if (!visited.has(to)) return undefined;
+  // Back from the destination, along the steps that reached each node, to the start, which none did.
   const reversed: DiagramNode[] = [nodes.get(to) as DiagramNode];
-  let cursor = to;
-  while (cursor !== from) {
-    const step = visited.get(cursor);
-    if (!step) return undefined;
+  for (let step = visited.get(to); step; step = visited.get(step.source)) {
     reversed.push(step.edge, nodes.get(step.source) as DiagramNode);
-    cursor = step.source;
   }
   return reversed.reverse();
 }
