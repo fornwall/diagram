@@ -32,6 +32,13 @@ suite("Chart Options in the webview", function () {
       })()`),
     );
   };
+  /** Runs the page code, such as changing the form's fields, applies the form and awaits the render. */
+  const applyOptions = (code = "") =>
+    nextRender(() =>
+      evaluate(`(() => {${code}
+        document.querySelector("#chart-options .actions button").click();
+      })()`),
+    );
   const closeChartOptions = () =>
     evaluate(`document.querySelector("#chart-options .chart-options-heading button").click()`);
 
@@ -267,9 +274,7 @@ suite("Chart Options in the webview", function () {
         { column: "service", type: "string", value: "api" },
       ],
     );
-    await nextRender(() =>
-      evaluate(`document.querySelector('#chart-options .actions button').click()`),
-    );
+    await applyOptions();
     assert.deepStrictEqual(page.panel.current?.chart?.filters, chart.filters);
     assert.strictEqual(page.panel.current?.chart?.facetColumns, 2);
     assert.strictEqual(page.panel.current?.chart?.facetScales, "independent");
@@ -290,37 +295,28 @@ suite("Chart Options in the webview", function () {
     })()`),
       { valueType: "number", valid: false, applying: false },
     );
-    await nextRender(() =>
-      evaluate(`(() => {
+    await applyOptions(`
       const row = [...document.querySelectorAll('.chart-filter-row')].at(-1);
       const operator = row.querySelector('[aria-label="Filter operator"]');
       operator.value = 'gte';
       operator.dispatchEvent(new Event('change'));
       row.querySelector('[aria-label="Filter value"]').value = '1';
-      document.querySelector('#chart-options .actions button').click();
-    })()`),
-    );
+    `);
     assert.deepStrictEqual(page.panel.current?.chart?.filters?.at(-1), {
       column: "amount",
       op: "gte",
       value: 1,
     });
-    await nextRender(() =>
-      evaluate(`(() => {
+    await applyOptions(`
       [...document.querySelectorAll('[aria-label="Remove filter"]')].at(-1).click();
-      document.querySelector('#chart-options .actions button').click();
-    })()`),
-    );
-    await nextRender(() =>
-      evaluate(`(() => {
+    `);
+    await applyOptions(`
       const type = document.getElementById('chart-option-chart');
       type.value = 'histogram';
       type.dispatchEvent(new Event('change'));
       document.getElementById('chart-option-bins').value = '3';
       document.getElementById('chart-option-axis').value = '';
-      document.querySelector('#chart-options .actions button').click();
-    })()`),
-    );
+    `);
     assert.strictEqual(page.panel.current?.chart?.type, "histogram");
     assert.strictEqual(page.panel.current?.chart?.bins, 3);
     assert.strictEqual(page.panel.current?.chart?.facetColumn, "service");
@@ -329,15 +325,12 @@ suite("Chart Options in the webview", function () {
     for (const key of ["labelColumn", "aggregate", "sort", "limit"] as const) {
       assert.strictEqual(page.panel.current?.chart?.[key], undefined);
     }
-    await nextRender(() =>
-      evaluate(`(() => {
+    await applyOptions(`
       const type = document.getElementById('chart-option-chart');
       type.value = 'pie';
       type.dispatchEvent(new Event('change'));
       document.querySelectorAll('[aria-label="Remove filter"]').forEach(button => button.click());
-      document.querySelector('#chart-options .actions button').click();
-    })()`),
-    );
+    `);
     for (const key of ["bins", "facetColumn", "facetColumns", "facetScales", "filters"] as const) {
       assert.strictEqual(page.panel.current?.chart?.[key], undefined);
     }
@@ -522,9 +515,7 @@ suite("Chart Options in the webview", function () {
         "Filters (all must match)",
       ],
     );
-    await nextRender(() =>
-      evaluate(`document.querySelector('#chart-options .actions button').click()`),
-    );
+    await applyOptions();
     const { type, aggregate, limit } = page.panel.current?.chart ?? {};
     assert.deepStrictEqual(
       { type, aggregate, limit },
@@ -583,12 +574,9 @@ suite("Chart Options in the webview", function () {
       valueColumns: ["AMOUNT"],
     };
     await showChartOptions(chart, table);
-    await nextRender(() =>
-      evaluate(`(() => {
+    await applyOptions(`
       document.getElementById("chart-option-sort").value = "descending";
-      document.querySelector("#chart-options .actions button").click();
-    })()`),
-    );
+    `);
     assert.deepStrictEqual(page.panel.current?.chart?.labelColumn, [" NAME "]);
     assert.deepStrictEqual(page.panel.current?.chart?.valueColumns, ["AMOUNT"]);
     await closeChartOptions();
