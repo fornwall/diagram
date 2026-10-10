@@ -172,19 +172,14 @@ export class DiagramPanel implements vscode.Disposable {
   /** Whether the user declined what the page asked for while it held chart code. */
   private pageRefused = false;
   /**
-   * The request that drew the current diagram, which is what an export captures and what a click
-   * on the drawing names. One that fails to render has no drawing, and a click on the drawing of an
-   * earlier render, sent just before the page drew the next, was on the diagram it replaced.
+   * What the page drew of the current diagram, once it has. Its request is what an export captures
+   * and what a click on the drawing names. One that fails to render has no drawing, and a click on
+   * the drawing of an earlier render, sent just before the page drew the next, was on the diagram
+   * it replaced.
    */
-  private renderedRequestId: number | undefined;
+  private drawn: Extract<FromWebview, { type: "rendered" }> | undefined;
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
-  /** Rendered node ids, or undefined when unavailable. */
-  private nodeIds: string[] | undefined;
-  private relationships: DiagramNode[] = [];
-  /** Names that several items of the chart go by, which marks must not use. */
-  private repeatedNames: RepeatedName[] = [];
-  private renderWarnings: string[] = [];
   /** The title of the diagram before the user's edits of its source changed it, if they did. */
   private firstTitle: string | undefined;
 
@@ -236,12 +231,12 @@ export class DiagramPanel implements vscode.Disposable {
    * a node it named is not there. A chart reports none: its items are its data, not a list of ids.
    */
   get drawnIds(): readonly string[] | undefined {
-    return this.nodeIds;
+    return this.drawn?.nodeIds;
   }
 
   /** What a model should know about parts of the source that the panel did not draw. */
   get warnings(): readonly string[] {
-    return this.renderWarnings;
+    return this.drawn?.warnings ?? [];
   }
 
   /**
@@ -267,12 +262,12 @@ export class DiagramPanel implements vscode.Disposable {
     const description = describeDiagram(this.state, {
       selection: this.selection,
       annotation: this.annotation,
-      relationships: this.relationships,
-      repeatedNames: this.repeatedNames,
+      relationships: this.drawn?.relationships ?? [],
+      repeatedNames: this.drawn?.repeatedNames ?? [],
       // A page busy with a large drawing may still show it.
       warnings: this.unavailable
-        ? [...this.renderWarnings, `The panel is not showing it yet: ${this.unavailable}`]
-        : this.renderWarnings,
+        ? [...this.warnings, `The panel is not showing it yet: ${this.unavailable}`]
+        : this.warnings,
       chartTable,
       detail,
       callsTools,
@@ -421,10 +416,8 @@ export class DiagramPanel implements vscode.Disposable {
         // The ids of what was drawn, for telling a model that a node it names is not there. A late
         // answer to a replaced render says nothing about the diagram now shown.
         if (this.isCurrentRender(message.requestId)) {
-          this.nodeIds = message.nodeIds;
-          this.relationships = message.relationships?.filter((node) => node.relationship) ?? [];
-          this.repeatedNames = message.repeatedNames ?? [];
-          this.renderWarnings = message.warnings ?? [];
+          const relationships = message.relationships?.filter((node) => node.relationship);
+          this.drawn = { ...message, relationships };
         }
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
@@ -474,7 +467,7 @@ export class DiagramPanel implements vscode.Disposable {
           message.requestId !== this.sourceRequestId,
         );
       case "clickToAsk":
-        if (this.state?.clickPrompt && message.requestId === this.renderedRequestId) {
+        if (this.state?.clickPrompt && message.requestId === this.drawn?.requestId) {
           return this.askInChat(clickToAskQuery(this.state.clickPrompt, message.node.label));
         }
         break;
@@ -482,7 +475,7 @@ export class DiagramPanel implements vscode.Disposable {
         // The message names the node; its location comes from the links validated here, so that
         // the webview, which shows what a model wrote, cannot open a path of its own choosing.
         const link =
-          message.requestId === this.renderedRequestId ? this.linkOf(message.node) : undefined;
+          message.requestId === this.drawn?.requestId ? this.linkOf(message.node) : undefined;
         return (
           link &&
           openLink(link, message.node.label, this.webview.tab?.viewColumn, (ask) =>
@@ -491,7 +484,7 @@ export class DiagramPanel implements vscode.Disposable {
         );
       }
       case "openUrl":
-        if (this.state && message.requestId === this.renderedRequestId) {
+        if (this.state && message.requestId === this.drawn?.requestId) {
           return openUrl(message.url, diagramNoun(this.state.language), this.pageRanCode, (ask) =>
             this.confirmForPage(ask),
           );
@@ -530,16 +523,12 @@ export class DiagramPanel implements vscode.Disposable {
       };
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
-    this.renderedRequestId = undefined;
+    // What was drawn before says nothing about the rendering being drawn now.
+    this.drawn = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
     const revision = this.shownRevision;
     this.sendChartOptions();
-    // What was drawn before says nothing about the rendering being drawn now.
-    this.nodeIds = undefined;
-    this.relationships = [];
-    this.repeatedNames = [];
-    this.renderWarnings = [];
     const replaced = "The diagram was replaced before it finished rendering.";
     this.cancelRender(replaced);
     this.unavailable = undefined;
@@ -646,7 +635,6 @@ export class DiagramPanel implements vscode.Disposable {
     const pending = this.pendingRender;
     this.pendingRender = undefined;
     clearTimeout(this.renderTimer);
-    this.renderedRequestId = outcome.ok ? requestId : undefined;
     this.unavailable = !outcome.ok && outcome.kind === "unavailable" ? outcome.error : undefined;
     if (pending) pending.resolve(outcome);
     else void this.keepOutcome(outcome);
@@ -737,7 +725,11 @@ export class DiagramPanel implements vscode.Disposable {
       return { ok: false, reason: nothing };
     }
     // The ids of the diagram as it is drawn now: opening the panel below draws it again.
-    const ids = this.nodeIds && [...this.nodeIds, ...this.relationships.map((node) => node.id)];
+    const drawn = this.drawn;
+    const ids = drawn?.nodeIds && [
+      ...drawn.nodeIds,
+      ...(drawn.relationships ?? []).map((node) => node.id),
+    ];
     const known = ids && new Set(ids);
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
     const marks: Annotation["marks"] = [];
@@ -745,7 +737,7 @@ export class DiagramPanel implements vscode.Disposable {
     const repeated: RepeatedName[] = [];
     for (const mark of annotation.marks) {
       // A name that several items of a series go by does not say which of them to mark.
-      const named = this.repeatedNames.find(({ name }) => name === mark.id);
+      const named = drawn?.repeatedNames?.find(({ name }) => name === mark.id);
       if (named) {
         repeated.push(named);
         continue;
@@ -1250,7 +1242,7 @@ export class DiagramPanel implements vscode.Disposable {
       warning = "Press Refresh to draw the chart again, then export it.";
     } else if (state.error) {
       warning = `There is nothing to export, as the ${noun} fails to render: ${state.error}`;
-    } else if (this.unavailable || !this.webview.isReady || this.renderedRequestId === undefined) {
+    } else if (this.unavailable || !this.webview.isReady || !this.drawn) {
       warning = `${this.unavailable ?? `The diagram panel is not showing the ${noun}.`} Use Diagram: Show Panel and try again.`;
     }
     if (warning || state?.source === undefined) {
@@ -1267,7 +1259,7 @@ export class DiagramPanel implements vscode.Disposable {
         document: openedFrom === undefined ? undefined : vscode.Uri.parse(openedFrom),
       },
       (format) => {
-        const rendered = this.renderedRequestId;
+        const rendered = this.drawn?.requestId;
         if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {
           throw new Error("The diagram changed or closed while choosing a format. Try again.");
         }
@@ -1286,7 +1278,7 @@ export class DiagramPanel implements vscode.Disposable {
    */
   async captureImage(maxSide: number): Promise<Uint8Array | string> {
     const state = this.state;
-    const rendered = this.renderedRequestId;
+    const rendered = this.drawn?.requestId;
     if (!state) {
       return "No diagram is shown.";
     }
