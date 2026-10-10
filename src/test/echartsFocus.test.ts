@@ -180,5 +180,32 @@ suite("echartsFocus", () => {
         count: 3,
       });
     });
+    // Categories by name rather than index, also those ECharts gives a box plot's values.
+    const values = (series: Record<string, unknown>, yAxis: Record<string, unknown> = {}) =>
+      withChart(
+        {
+          xAxis: { type: "category", data: ["Mon", "Tue"] },
+          yAxis,
+          visualMap: { min: 0, max: 10, show: false },
+          series: [series],
+        },
+        (chart) => new ChartNavigation(chart).about({ seriesIndex: 0, dataIndex: 1 })?.value,
+      );
+    const heatmap = {
+      type: "heatmap",
+      data: [
+        [0, 0, 5],
+        [1, 1, 9],
+      ],
+    };
+    assert.strictEqual(values(heatmap, { type: "category", data: ["AM", "PM"] }), "(PM, 9)");
+    const boxplot = {
+      type: "boxplot",
+      data: [
+        [1, 2, 3, 4, 5],
+        [2, 3, 4, 5, 6],
+      ],
+    };
+    assert.strictEqual(values(boxplot), "(2, 3, 4, 5, 6)");
   });
 });

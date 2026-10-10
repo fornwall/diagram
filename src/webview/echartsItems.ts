@@ -47,6 +47,10 @@ export interface ItemData {
   getItemGraphicEl(index: number): Graphic | null | undefined;
   /** A layout of all items, such as "points": [x, y] of each, of a line or large scatter chart. */
   getLayout(key: string): unknown;
+  /** The dimensions of the values of an item, in their order in an array of them. */
+  dimensions: string[];
+  /** The categories of a dimension on a category axis, which an item's value gives by index. */
+  getDimensionInfo(dimension: string): { ordinalMeta?: { categories: unknown[] } } | undefined;
   /**
    * The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data as data
    * index 0, named after the series.
@@ -177,9 +181,17 @@ export function itemValue(data: ItemData, index: number): string | undefined {
   const label = itemLabel(data, index);
   const item = data.getRawDataItem(index);
   let value = isPlainObject(item) ? item.value : item;
-  // A row of a dataset has the item's name among its values.
   if (Array.isArray(value)) {
-    const parts = value.filter((part) => String(part) !== label);
+    // A value on a category axis is the index of its category, which ECharts also adds to the
+    // values of a box plot or candlestick. A row of a dataset has the item's name among its values.
+    const parts = value
+      .map((part, at) => {
+        const dimension = data.dimensions[at];
+        const meta = dimension === undefined ? undefined : data.getDimensionInfo(dimension);
+        const categories = meta?.ordinalMeta?.categories;
+        return typeof part === "number" && categories ? (categories[part] ?? part) : part;
+      })
+      .filter((part) => String(part) !== label);
     value = parts.length === 1 ? parts[0] : parts;
   }
   const text = valueText(value);

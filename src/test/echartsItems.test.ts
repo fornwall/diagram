@@ -48,7 +48,13 @@ suite("echartsItems", () => {
           );
           for (const data of [series.getRawData(), ...datas]) {
             const names = ["count", "getRawIndex", "getName", "getRawDataItem", "indexOfRawIndex"];
-            methods(data, "SeriesData", [...names, "getItemGraphicEl", "getLayout"]);
+            methods(data, "SeriesData", [
+              ...names,
+              "getItemGraphicEl",
+              "getLayout",
+              "getDimensionInfo",
+            ]);
+            assert.ok(Array.isArray(data.dimensions), "SeriesData.dimensions");
           }
           const graphic = datas[0]?.getItemGraphicEl(dataTypes[0] === "main" ? 1 : 0);
           methods(graphic, "Element", ["getBoundingRect", "getComputedTransform"]);
