@@ -12,7 +12,7 @@ import {
   validateLinks,
   withoutMissingFiles,
 } from "../links";
-import { replace, tempDir } from "./afterTest";
+import { folders, replace, tempDir } from "./afterTest";
 
 suite("links", () => {
   test("takes a file, a line or a range of lines as a node's link", () => {
@@ -48,11 +48,9 @@ suite("links", () => {
   });
 
   test("takes the files of virtual workspace folders by path", () => {
-    const roots = ["one", "two"].map((name, index) => ({
-      uri: vscode.Uri.parse(`vscode-vfs://github/owner/${name}`),
-      name,
-      index,
-    }));
+    const roots = folders(
+      ...["one", "two"].map((name) => vscode.Uri.parse(`vscode-vfs://github/owner/${name}`)),
+    );
     replace(vscode.workspace, "workspaceFolders", roots);
     const { links, problems } = validateLinks(
       {

@@ -71,6 +71,14 @@ export function workspaceRoot(): vscode.WorkspaceFolder {
   return root;
 }
 
+/** Workspace folders of the paths or URIs, each named as its last name. */
+export function folders(...roots: (string | vscode.Uri)[]): vscode.WorkspaceFolder[] {
+  return roots.map((root, index) => {
+    const uri = typeof root === "string" ? vscode.Uri.file(root) : root;
+    return { uri, name: path.posix.basename(uri.path), index };
+  });
+}
+
 /** Makes a symbolic link in the first workspace folder, removed once the current test ends. */
 export function workspaceLink(name: string, target: string | Buffer): string {
   const link = path.join(workspaceRoot().uri.fsPath, name);

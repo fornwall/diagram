@@ -15,6 +15,7 @@ import {
   afterTest,
   cancellationSource,
   fileSystem,
+  folders,
   recordFilePaths,
   replace,
   setting,
@@ -51,9 +52,7 @@ suite("workspaceTools", function () {
 
   /** Makes the test folder the one workspace folder until the test ends. */
   function onlyTestFolder(): void {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    replace(vscode.workspace, "workspaceFolders", folders(dir));
   }
 
   suiteSetup(async () => {
@@ -341,11 +340,7 @@ suite("workspaceTools", function () {
       vscode.Uri.file(path.join(dir, name)),
     );
     for (const name of ["nested/a.ts", "nested/b.ts", "c.ts"]) await writeFile(name, "text");
-    const roots = [nested, dir].map((file, index) => ({
-      uri: vscode.Uri.file(file),
-      name: path.basename(file),
-      index,
-    }));
+    const roots = folders(nested, dir);
     replace(vscode.workspace, "workspaceFolders", roots);
     replace(vscode.workspace, "findFiles", async (include, _exclude, maxResults) => {
       assert.ok(include instanceof vscode.RelativePattern);
@@ -370,15 +365,7 @@ suite("workspaceTools", function () {
     for (const name of ["first/a.ts", "second/a.ts", "second/sub/b.ts"]) {
       await writeFile(name, "Needle");
     }
-    replace(
-      vscode.workspace,
-      "workspaceFolders",
-      [first, second].map((file, index) => ({
-        uri: vscode.Uri.file(file),
-        name: path.basename(file),
-        index,
-      })),
-    );
+    replace(vscode.workspace, "workspaceFolders", folders(first, second));
     const secondFiles = [path.join(second, "a.ts"), path.join(second, "sub", "b.ts")];
     assert.strictEqual(
       await invoke(finder, { glob: "**/*.ts" }),
@@ -649,11 +636,7 @@ suite("workspaceTools", function () {
   });
 
   test("resolves multiple workspace roots and rejects URI decorations and sibling prefixes", () => {
-    const roots = ["/one", "/two"].map((file, index) => ({
-      uri: vscode.Uri.file(file),
-      name: file,
-      index,
-    }));
+    const roots = folders("/one", "/two");
     assert.strictEqual(
       resolveWorkspaceFile("src/a.ts", roots).fsPath,
       path.resolve("/one/src/a.ts"),
@@ -677,11 +660,9 @@ suite("workspaceTools", function () {
   });
 
   test("resolves absolute paths in virtual workspace roots", () => {
-    const roots = ["one", "two"].map((name, index) => ({
-      uri: vscode.Uri.parse(`vscode-vfs://github/owner/${name}`),
-      name,
-      index,
-    }));
+    const roots = folders(
+      ...["one", "two"].map((name) => vscode.Uri.parse(`vscode-vfs://github/owner/${name}`)),
+    );
     assert.strictEqual(
       resolveWorkspaceFile("/owner/two/src/b.ts", roots).toString(),
       "vscode-vfs://github/owner/two/src/b.ts",
@@ -703,7 +684,7 @@ suite("workspaceTools", function () {
       readFile: () => Buffer.from("text"),
     });
     const root = vscode.Uri.parse("diagram-dots:/owner/x/../one/./");
-    replace(vscode.workspace, "workspaceFolders", [{ uri: root, name: "one", index: 0 }]);
+    replace(vscode.workspace, "workspaceFolders", folders(root));
     replace(vscode.workspace, "findFiles", async () => [
       vscode.Uri.parse("diagram-dots:/owner/one/src/a.ts"),
     ]);
@@ -736,7 +717,7 @@ suite("workspaceTools", function () {
   });
 
   test("rejects traversal in virtual URIs, including encoded dot segments", () => {
-    const roots = [{ uri: vscode.Uri.parse("memory:/root/"), name: "virtual", index: 0 }];
+    const roots = folders(vscode.Uri.parse("memory:/root/"));
     assert.strictEqual(resolveWorkspaceFile("memory:/root/code.ts", roots).path, "/root/code.ts");
     for (const file of [
       "memory:/root/../outside",
@@ -747,7 +728,7 @@ suite("workspaceTools", function () {
     ]) {
       assert.throws(() => resolveWorkspaceFile(file, roots), /outside the open workspace/);
     }
-    const root = [{ uri: vscode.Uri.parse("memory:/"), name: "virtual", index: 0 }];
+    const root = folders(vscode.Uri.parse("memory:/"));
     assert.strictEqual(resolveWorkspaceFile("src/code.ts", root).path, "/src/code.ts");
   });
 
@@ -770,7 +751,7 @@ suite("workspaceTools", function () {
       },
     });
     const root = vscode.Uri.parse("diagram-links:/root");
-    const check = boundary([{ uri: root, name: "links", index: 0 }], source.token);
+    const check = boundary(folders(root), source.token);
     const at = (file: string) => check(vscode.Uri.joinPath(root, file));
     await at("plain.txt");
     await at("sub/plain.txt");

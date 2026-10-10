@@ -16,6 +16,7 @@ import {
 import {
   afterTest,
   fileSystem,
+  folders,
   recordFilePaths,
   suiteTempDir,
   workspaceLink,
@@ -26,15 +27,9 @@ suite("files", () => {
   const dir = suiteTempDir("diagram-files-");
 
   test("resolves an absolute path on the file system of the workspace folders that contain it", () => {
-    const folder = (uri: string, index: number) => ({
-      uri: vscode.Uri.parse(uri),
-      name: uri,
-      index,
-    });
-    const github = [
-      folder("vscode-vfs://github/owner/one", 0),
-      folder("vscode-vfs://github/owner/two", 1),
-    ];
+    const github = folders(
+      ...["one", "two"].map((name) => vscode.Uri.parse(`vscode-vfs://github/owner/${name}`)),
+    );
     for (const file of ["/owner/one/src/a.ts", "/owner/two/b.ts"]) {
       const uri = absoluteFile(file, github);
       assert.strictEqual(uri.toString(), `vscode-vfs://github${file}`);
@@ -43,7 +38,7 @@ suite("files", () => {
     // A path that no folder contains, or that folders on two file systems do, is on this computer.
     const local = path.join(path.sep, "owner", "three", "c.ts");
     assert.strictEqual(absoluteFile(local, github).scheme, "file");
-    const both = [...github, folder("memory:/owner/one", 2)];
+    const both = folders(...github.map(({ uri }) => uri), vscode.Uri.parse("memory:/owner/one"));
     assert.strictEqual(absoluteFile("/owner/one/src/a.ts", both).scheme, "file");
     assert.strictEqual(
       absolutePath(vscode.Uri.parse("vscode-vfs://github/owner/one/src/a.ts"), both),
@@ -169,11 +164,7 @@ suite("files", () => {
     ] as const) {
       fs.symlinkSync(target, path.join(one, name));
     }
-    const roots = [one, two].map((file, index) => ({
-      uri: vscode.Uri.file(file),
-      name: file,
-      index,
-    }));
+    const roots = folders(one, two);
     const paths = recordFilePaths();
     const inside = (name: string) => inWorkspace(vscode.Uri.file(path.join(one, name)), roots);
     assert.ok(inside("beside"));
@@ -197,7 +188,7 @@ suite("files", () => {
     const uri = vscode.Uri.file(path.join(dir, "dotted", "x"));
     const root = uri.with({ path: `${uri.path}/../one` });
     assert.match(root.fsPath, /\/x\/\.\.\/one$/);
-    const roots = [{ uri: root, name: "one", index: 0 }];
+    const roots = folders(root);
     fs.writeFileSync(path.join(one, "data.csv"), "a\n1\n");
     assert.ok(inWorkspace(vscode.Uri.file(path.join(one, "data.csv")), roots));
     assert.ok(!inWorkspace(vscode.Uri.file(path.join(one, "away", "secret.csv")), roots));
@@ -267,11 +258,7 @@ suite("files", () => {
     assert.strictEqual(fs.readFileSync(path.join(short, "x"), "utf8"), "a\n1\n");
     assert.ok(!inWorkspace(vscode.Uri.file(path.join(short, "x"))));
     // Nor from a workspace folder there, as ".." steps up from its real path, not from its path.
-    const roots = [short, root.uri.fsPath].map((file, index) => ({
-      uri: vscode.Uri.file(file),
-      name: file,
-      index,
-    }));
+    const roots = folders(short, root.uri.fsPath);
     fs.symlinkSync("../x", path.join(short, "up"));
     fs.symlinkSync(path.join(dir, "secret.csv"), path.join(short, "..", path.dirname(deep), "x"));
     fs.writeFileSync(path.join(path.dirname(short), "x"), "decoy");
@@ -308,7 +295,7 @@ suite("files", () => {
     // The folder's last name is a link, which a hard link can stand for in other case.
     const folder = path.join(dir, "Folder");
     fs.symlinkSync(real, folder);
-    const roots = [{ uri: vscode.Uri.file(folder), name: "Folder", index: 0 }];
+    const roots = folders(folder);
     const typed = vscode.Uri.file(path.join(dir, "folder", "data.csv"));
     if (!fs.existsSync(path.join(dir, "FOLDER"))) {
       // On a case-sensitive file system, as a macOS volume can be, "folder" is another folder.
