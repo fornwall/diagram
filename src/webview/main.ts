@@ -180,8 +180,8 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
 }
 /** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
-/** The language, title and document of the last diagram rendered, which a revision keeps. */
-let renderedIdentity: string | undefined;
+/** The last diagram rendered, which its revisions are too. */
+let renderedDiagram: number | undefined;
 
 /** Where an error is, which its message names as "(line 3, column 5)", or as "on line 3". */
 const placeOf = (text: string) =>
@@ -265,7 +265,7 @@ async function render(message: RenderMessage): Promise<void> {
     active?.hide();
     active = undefined;
     current = undefined;
-    renderedIdentity = undefined;
+    renderedDiagram = undefined;
     showActions({});
     editor.diagramGone();
     const text = errorMessage(error);
@@ -279,10 +279,9 @@ async function render(message: RenderMessage): Promise<void> {
   showActions(message);
   current = { language, renderer, requestId };
   // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
-  const identity = JSON.stringify([language, message.firstTitle ?? message.title, message.writeTo]);
-  const another = identity !== renderedIdentity;
+  const another = renderedDiagram === undefined || message.diagram !== renderedDiagram;
   if (another) renderer.fitToPanel?.();
-  renderedIdentity = identity;
+  renderedDiagram = message.diagram;
   editor.diagramChanged(renderer, source, requestId, another);
   emptyElement.hidden = true;
   closeLinkMenu();

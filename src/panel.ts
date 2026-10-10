@@ -183,8 +183,13 @@ export class DiagramPanel implements vscode.Disposable {
   private drawn: Extract<FromWebview, { type: "rendered" }> | undefined;
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
-  /** The title of the diagram before the user's edits of its source changed it, if they did. */
-  private firstTitle: string | undefined;
+  /**
+   * Counts the diagrams shown, as opposed to revisions of one, which edits and follow-ups make: one
+   * opened from a document, in another language or under another title, and the first of /new.
+   */
+  private diagrams = 0;
+  /** Whether the next diagram rendered is a new one, as during a request with /new. */
+  startsNew = false;
 
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -284,6 +289,17 @@ export class DiagramPanel implements vscode.Disposable {
     // diagram opened from a document without one, as it is read-only, is not written anywhere,
     // but is still exported beside it.
     const previous = origin === "document" ? undefined : this.state;
+    // A revision that an agent titled anew is fitted to the panel again too, rather than draw
+    // another diagram of an agent that never asks for /new at the zoom of this one.
+    if (
+      !previous ||
+      previous.language !== diagram.language ||
+      previous.title !== diagram.title ||
+      this.startsNew
+    ) {
+      this.diagrams++;
+    }
+    this.startsNew = false;
     const previousBinding = previous?.document;
     const document =
       diagram.document ??
@@ -305,7 +321,6 @@ export class DiagramPanel implements vscode.Disposable {
     this.chartTable = diagram.chart ? chartTable : undefined;
     this.chartOptionsVisible = false;
     this.updateContext();
-    this.firstTitle = undefined;
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
@@ -557,7 +572,7 @@ export class DiagramPanel implements vscode.Disposable {
       links: state.links && linkTexts(state.links),
       refreshFrom,
       writeTo: state.document && documentName(state.document),
-      firstTitle: this.firstTitle,
+      diagram: this.diagrams,
       notDrawn: newPage && state.error === UNFINISHED ? UNFINISHED : undefined,
     } as const;
     this.sourceRequestId = message.requestId;
@@ -796,7 +811,6 @@ export class DiagramPanel implements vscode.Disposable {
       state.title === guessTitle({ language: state.language, source: state.source })
         ? guessTitle({ language: state.language, source })
         : state.title;
-    if (title !== state.title) this.firstTitle ??= state.title;
     this.state = {
       ...state,
       source,

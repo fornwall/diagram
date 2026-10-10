@@ -839,6 +839,11 @@ suite("webview", function () {
     await draw({ source: `${source}\n  B --> C`, title: "Zoom" });
     assert.strictEqual(await zoom(), "125%", "A revision keeps the zoom.");
     await draw({ source, title: "Another" });
+    assert.strictEqual(await zoom(), "100%", "A diagram under another title fits the panel.");
+    await press("+");
+    // As /new starts one, also under the same title, as untitled diagrams of a type have.
+    page.panel.startsNew = true;
+    await draw({ source, title: "Another" });
     assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
   });
 

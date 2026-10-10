@@ -401,6 +401,21 @@ suite("participant", () => {
     assert.deepStrictEqual([messages[1], messages.at(-1)], ["/new Chart it", "/new Draw it"]);
   });
 
+  test("tells the page a follow-up's diagram for a revision, and that of /new for another", async () => {
+    const drawn = () =>
+      webview.sent.flatMap((message) => (message.type === "render" ? [message.diagram] : []));
+    await ask([[text(valid)]]);
+    await ask([[text(valid.replace("A --> B", "A --> B\n  B --> A"))]]);
+    // A /new that draws nothing leaves the next follow-up a revision.
+    await ask([[text("Nothing to draw.")]], { command: "new" });
+    await ask([[text(valid)]]);
+    // Under the same title, which untitled diagrams of a type have.
+    await ask([[text(valid)]], { command: "new" });
+    const [first, revision, later, another] = drawn();
+    assert.deepStrictEqual([revision, later], [first, first]);
+    assert.notStrictEqual(another, first);
+  });
+
   test("keeps a diagram the panel could not show, and says why", async () => {
     webview.deliver = (message) => message.type !== "render";
     const { result, shown, sent } = await ask([[text(`Here it is:\n${valid}`)]]);

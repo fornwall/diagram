@@ -93,6 +93,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
     const callsTools = capabilities?.supportsToolCalling !== false;
     const viewsImages = acceptsImages(request.model);
     const current = request.command === "new" ? undefined : panel.describeForModel({ callsTools });
+    // Until the request draws, or ends without drawing.
+    panel.startsNew = request.command === "new";
     if (explain && !current) {
       stream.markdown("There is no diagram to explain yet. Describe what you want me to draw.");
       return;
@@ -212,6 +214,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         return;
       }
       return { errorDetails: { message: errorMessage(error) } };
+    } finally {
+      panel.startsNew = false;
     }
   };
 }
