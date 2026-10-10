@@ -683,6 +683,36 @@ suite("webview", function () {
     }
   });
 
+  test("undoes Revert, as the edits it discards stay in the source's history", async () => {
+    const original = "flowchart LR\n  A --> B\n  B --> C";
+    await draw({ source: original });
+    try {
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          document.getElementById("view-split").click();
+          const input = document.getElementById("source");
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+          document.execCommand("insertText", false, "\\n  C --> Draft");
+          input.setSelectionRange(2, 2);
+          document.getElementById("revert").click();
+          const reverted = {source: input.value, caret: input.selectionStart,
+            disabled: document.getElementById("apply").disabled};
+          // As VS Code has the page undo, for Ctrl/Cmd+Z and Edit > Undo.
+          document.execCommand("undo");
+          return {reverted, undone: input.value, disabled: document.getElementById("apply").disabled};
+        })()`),
+        {
+          reverted: { source: original, caret: 2, disabled: true },
+          undone: `${original}\n  C --> Draft`,
+          disabled: false,
+        },
+      );
+    } finally {
+      await evaluate('document.getElementById("view-visual").click()');
+    }
+  });
+
   test("keeps the focus in the source when Apply, pressed, disables itself", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate(`(() => {

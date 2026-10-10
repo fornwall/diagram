@@ -64,8 +64,9 @@ export class SourceEditor {
     });
     apply.addEventListener("click", () => this.apply());
     revert.addEventListener("click", () => {
-      this.load();
+      // First, as the edits that Revert discards stay in the editor's history, to undo it with.
       input.focus();
+      this.load(true);
     });
   }
 
@@ -161,9 +162,9 @@ export class SourceEditor {
   }
 
   /** Shows the source of the diagram as rendered, as the starting point for edits. */
-  private load(): void {
+  private load(undoable = false): void {
     this.editedFrom = this.formatted();
-    replaceText(this.elements.input, this.editedFrom);
+    replaceText(this.elements.input, this.editedFrom, undoable);
     this.elements.staleNote.hidden = true;
     this.updateActions();
   }
@@ -200,10 +201,17 @@ export class SourceEditor {
 }
 
 /**
+ * The most characters that an undoable replacement removes and inserts, which takes about a tenth
+ * of a second, and as long to undo: a larger one, such as of a chart's data, is not undoable.
+ */
+const UNDOABLE_CHANGE = 100_000;
+
+/**
  * Replaces the text, keeping the caret, the selection and the scroll position where the text around
  * them stays: a diagram that changes where the user is not reading leaves the place they were at.
+ * An undoable replacement, of the focused editor, is an edit that Undo takes back.
  */
-function replaceText(input: HTMLTextAreaElement, text: string): void {
+function replaceText(input: HTMLTextAreaElement, text: string, undoable: boolean): void {
   const old = input.value;
   if (old === text) return;
   const shortest = Math.min(old.length, text.length);
@@ -222,7 +230,15 @@ function replaceText(input: HTMLTextAreaElement, text: string): void {
       ? offset - old.length + text.length
       : Math.min(offset, text.length - suffix);
   const { selectionStart, selectionEnd, selectionDirection, scrollTop, scrollLeft } = input;
-  input.value = text;
+  const inserted = text.slice(prefix, text.length - suffix);
+  const changed = old.length - suffix - prefix + inserted.length;
+  if (undoable && document.activeElement === input && changed <= UNDOABLE_CHANGE) {
+    // An edit of the change alone, which the commands make to the selection. Assigning the value
+    // would clear the history instead.
+    input.setSelectionRange(prefix, old.length - suffix);
+    document.execCommand(inserted ? "insertText" : "delete", false, inserted);
+  }
+  if (input.value !== text) input.value = text;
   input.setSelectionRange(moved(selectionStart), moved(selectionEnd), selectionDirection);
   input.scrollTop = scrollTop;
   input.scrollLeft = scrollLeft;

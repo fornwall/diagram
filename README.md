@@ -26,7 +26,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 | Highlight a path | Select two nodes of a flowchart, swimlane, agent flow or state diagram in order (start, then destination), then **Highlight Path**. Selects a shortest path, including its edges. |
 | Ask | **Send to chat** asks about your selection, addressed to the agent that drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
-| Edit | Show the source with the view buttons at the top right. **Apply** (Ctrl/Cmd+Enter) renders your edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. Errors show their line and column. |
+| Edit | Show the source with the view buttons at the top right. **Apply** (Ctrl/Cmd+Enter) renders your edits; **Revert** discards them, which Undo (Ctrl/Cmd+Z) takes back. Unapplied edits survive view changes and incoming diagrams. Errors show their line and column. |
 | Find | Ctrl/Cmd+F finds text in the drawing and the source. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
 | Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to change a chart made from data. Enter in a field applies the options. |
