@@ -1,7 +1,7 @@
 // Charts drawn on a grid of an x and a y axis: bar, line, area, scatter, heatmap and box plot.
 
 import { columnName } from "./chartColumns";
-import { timeOrder, timeValue } from "./chartDates";
+import { timeValue } from "./chartDates";
 import {
   inLabelOrder,
   label,
@@ -103,24 +103,14 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
- * The rows in the order of the dates of their first labels. ECharts draws a line through its
- * points, samples them and stacks them in the order of its data, which would otherwise run back
- * and forth in time.
- */
-function inTimeOrder(rows: Row[]): Row[] {
-  const keys = rows.map((row) => timeOrder(timeValue(label(row))));
-  return [...rows.keys()]
-    .sort((a, b) => (keys[a] ?? 0) - (keys[b] ?? 0))
-    .map((index) => rows[index] as Row);
-}
-
-/**
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
 export function cartesianOption(type: CartesianType, read: Reading): Record<string, unknown> {
   const { timeAxis } = read.columns;
-  const reading = timeAxis ? { ...read, rows: inTimeOrder(read.rows) } : read;
+  // ECharts draws a line through its points, samples them and stacks them in the order of its
+  // data, which would otherwise run back and forth in time.
+  const reading = timeAxis ? { ...read, rows: inLabelOrder(read.rows, label) } : read;
   const { table, columns, names, rows } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];
