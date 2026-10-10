@@ -208,16 +208,24 @@ suite("Chart Options in the webview", function () {
           const input = document.getElementById("ask-input").getBoundingClientRect();
           const send = document.getElementById("ask-submit").getBoundingClientRect();
           const fields = options.querySelector("fieldset");
+          // A filter goes on two lines, its remove button at the end of the first.
+          options.querySelector("#chart-option-filters > button").click();
+          options.style.width = "300px";
+          const row = options.querySelector(".chart-filter-row");
+          const [column, remove, value] = ["select", "button", "input"]
+            .map(selector => row.querySelector(selector).getBoundingClientRect());
           return {chatFits: form.scrollWidth <= form.clientWidth,
             sendWraps: send.top >= input.bottom,
-            fieldsFit: fields.scrollWidth <= fields.clientWidth};
+            fieldsFit: fields.scrollWidth <= fields.clientWidth,
+            filterLines: [remove.top === column.top && remove.width < 50, value.top > column.bottom]};
         } finally {
           form.style.width = "";
           options.style.width = "";
+          options.querySelector('[aria-label="Remove filter"]')?.click();
           options.querySelector(".chart-options-heading button").click();
         }
       })()`),
-      { chatFits: true, sendWraps: true, fieldsFit: true },
+      { chatFits: true, sendWraps: true, fieldsFit: true, filterLines: [true, true] },
     );
   });
 

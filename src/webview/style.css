@@ -604,6 +604,7 @@ select:focus {
 }
 
 #chart-options {
+  container-type: inline-size;
   padding: 8px 12px;
   border-bottom: 1px solid var(--vscode-panel-border);
   max-height: 45vh;
@@ -655,9 +656,15 @@ select:focus {
   margin-bottom: 4px;
 }
 
-@media (max-width: 450px) {
+/* Two lines in a narrow form, the remove button at the end of the first rather than a line of
+   its own as wide as a field. */
+@container (max-width: 450px) {
   .chart-filter-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  }
+
+  .chart-filter-row > button {
+    grid-area: 1 / 3;
   }
 }
 
