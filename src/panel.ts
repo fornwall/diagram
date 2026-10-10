@@ -1181,9 +1181,25 @@ export class DiagramPanel implements vscode.Disposable {
 
   // Export.
 
-  /** Exports a snapshot through VS Code's format picker and save dialog. */
+  /**
+   * Exports a snapshot through VS Code's format picker and save dialog, opening the panel to draw
+   * the diagram first if it is closed, as when the Command Palette runs the export.
+   */
   async exportDiagram(): Promise<void> {
     if (this.exporting) return;
+    this.exporting = true;
+    try {
+      if (this.state && !this.webview.tab) {
+        this.webview.reveal(true);
+        await this.renderCurrent({ redraw: true, newPage: true });
+      }
+      await this.exportShown();
+    } finally {
+      this.exporting = false;
+    }
+  }
+
+  private async exportShown(): Promise<void> {
     const state = this.state;
     let warning: string | undefined;
     if (!state) {
@@ -1202,25 +1218,20 @@ export class DiagramPanel implements vscode.Disposable {
       return;
     }
     const revision = this.shownRevision;
-    this.exporting = true;
-    try {
-      await exportDrawing(
-        { language: state.language, title: state.title, source: state.source },
-        (format) => {
-          const rendered = this.renderedRequestId;
-          if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {
-            throw new Error("The diagram changed or closed while choosing a format. Try again.");
-          }
-          return this.requestExport(
-            { format, renderRequestId: rendered, forModel: false },
-            `The diagram panel did not finish exporting within ${RENDER_TIMEOUT_MS / 1000} seconds. Try again or choose SVG.`,
-          );
-        },
-        this.context.extensionUri,
-      );
-    } finally {
-      this.exporting = false;
-    }
+    await exportDrawing(
+      { language: state.language, title: state.title, source: state.source },
+      (format) => {
+        const rendered = this.renderedRequestId;
+        if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {
+          throw new Error("The diagram changed or closed while choosing a format. Try again.");
+        }
+        return this.requestExport(
+          { format, renderRequestId: rendered, forModel: false },
+          `The diagram panel did not finish exporting within ${RENDER_TIMEOUT_MS / 1000} seconds. Try again or choose SVG.`,
+        );
+      },
+      this.context.extensionUri,
+    );
   }
 
   /**

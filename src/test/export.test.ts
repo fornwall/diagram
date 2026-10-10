@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ToWebview } from "../protocol";
 import { recordMessages, replace, tempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, newPanel, showInFake } from "./newPanel";
+import { type FakeWebview, newFakePanel, newPanel, showInFake, webviewTabs } from "./newPanel";
 
 const diagram: Diagram = {
   language: "mermaid",
@@ -118,6 +118,20 @@ suite("export", function () {
         });
       }
     }
+
+    test("opens the panel to export a diagram when it is closed", async () => {
+      const warnings = recordMessages("showWarningMessage");
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      await webviewTabs((labels) => labels.length === 0);
+      await panel.exportDiagram();
+      assert.deepStrictEqual([warnings, errors], [[], []]);
+      assert.match(
+        fs.readFileSync(path.join(directory, "export.svg"), "utf8"),
+        /Export[\s\S]*label/,
+      );
+      await webviewTabs((labels) => labels.includes(diagram.title));
+    });
   });
 
   /** A fake page that draws everything, and exports the source it shows as an SVG image. */
