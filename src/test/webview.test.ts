@@ -131,6 +131,36 @@ suite("webview", function () {
     );
   });
 
+  test("hints at clicking the drawing only while one is shown", async () => {
+    assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
+    const failed = await evaluate(`document.getElementById("selection-label").textContent`);
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const shown = (id) => getComputedStyle(document.getElementById(id)).visibility === "visible";
+        const footer = document.querySelector("footer");
+        const state = () => ({hint: shown("selection-label"), path: shown("highlight-path"),
+          height: footer.getBoundingClientRect().height});
+        const drawn = state();
+        document.getElementById("view-source").click();
+        const source = state();
+        document.getElementById("view-split").click();
+        const split = state();
+        document.getElementById("view-visual").click();
+        return {hinted: document.getElementById("selection-label").textContent.startsWith("Click"),
+          drawn: {hint: drawn.hint, path: drawn.path}, split: {hint: split.hint, path: split.path},
+          source: {hint: source.hint, path: source.path, sameHeight: source.height === drawn.height}};
+      })()`),
+      {
+        hinted: true,
+        drawn: { hint: true, path: true },
+        split: { hint: true, path: true },
+        source: { hint: false, path: false, sameHeight: true },
+      },
+    );
+    assert.strictEqual(failed, "");
+  });
+
   test("shows why an action is disabled on hover", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

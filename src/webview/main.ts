@@ -508,6 +508,8 @@ function updateSelectionUi(): void {
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
   selectionLabel.textContent =
     labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(itemNoun);
+  // The source view hides a hint about clicking the drawing, as it does not show the drawing.
+  selectionLabel.classList.toggle("hint", labels.length === 0);
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
   highlightPathButton.hidden = !active?.supportsPaths || pick !== undefined;
   const endpoints = Array.from(selection.values());
@@ -545,6 +547,8 @@ function hint(noun: string): string {
       ? `Click ${noun}s to pick them, then press Done.`
       : `Click a ${noun} to pick it.`;
   }
+  // Without a drawing, as before the first or after an error, there is nothing to click.
+  if (!active) return "";
   const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
   if (links.size > 0 || active?.hasWebLinks) {
     const open = active?.hasWebLinks ? "open its link" : "open its code";
@@ -922,6 +926,7 @@ function imageBackground(): string {
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 function transientHint(text: string): void {
   selectionLabel.textContent = text;
+  selectionLabel.classList.remove("hint");
   clearTimeout(hintTimer);
   hintTimer = setTimeout(updateSelectionUi, 4000);
 }

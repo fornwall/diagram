@@ -106,7 +106,7 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   </div>
   <footer>
     <div id="selection">
-      <span id="selection-label" role="status">Click nodes to select them (Ctrl/Cmd/Shift+click for several).</span>
+      <span id="selection-label" role="status"></span>
       <button id="highlight-path" class="link" hidden>Highlight Path</button>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>

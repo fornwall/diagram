@@ -633,6 +633,12 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
+/* The source view shows no drawing to click, which the hint is about, and so to select the ends of
+   a path in. Still taking their space, so that the footer keeps its height across views. */
+#panes.view-source ~ footer :is(#selection-label.hint, #selection-label.hint ~ #highlight-path) {
+  visibility: hidden;
+}
+
 /* The selection's actions keep to one line each. */
 #selection button {
   flex-shrink: 0;
