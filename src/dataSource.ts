@@ -169,38 +169,16 @@ export function prepareDataInvocation(
   return prepared;
 }
 
-/** Whether `bytes` have a character that UTF-8 encodes in more than one byte. */
-function hasMultiByteUtf8(bytes: Uint8Array): boolean {
-  const within = (i: number, low: number, high: number) => {
-    const byte = bytes[i] ?? 0;
-    return byte >= low && byte <= high;
-  };
-  for (let i = 0; i < bytes.length; i++) {
-    const lead = bytes[i] ?? 0;
-    if (lead < 0xc2 || lead > 0xf4) continue;
-    // As in TextDecoder, the second byte leaves out overlong forms, surrogates and code points
-    // beyond U+10FFFF.
-    const low = lead === 0xe0 ? 0xa0 : lead === 0xf0 ? 0x90 : 0x80;
-    const high = lead === 0xed ? 0x9f : lead === 0xf4 ? 0x8f : 0xbf;
-    if (
-      within(i + 1, low, high) &&
-      (lead < 0xe0 || (within(i + 2, 0x80, 0xbf) && (lead < 0xf0 || within(i + 3, 0x80, 0xbf))))
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * `text` decoded from `bytes`, or else `bytes` in Windows-1252, in which Excel on Windows saves CSV
  * files, if they are not UTF-8. They are taken to be in it only when no character is in UTF-8
  * either, so that a stray byte in UTF-8 text does not garble the rest.
  */
 function orWindows1252(text: string, bytes: Uint8Array): string {
-  return text.includes("\uFFFD") && !hasMultiByteUtf8(bytes)
-    ? new TextDecoder("windows-1252").decode(bytes)
-    : text;
+  if (!text.includes("\uFFFD") || /[^\0-\x7F\uFFFD]/.test(new TextDecoder().decode(bytes))) {
+    return text;
+  }
+  return new TextDecoder("windows-1252").decode(bytes);
 }
 
 /**
