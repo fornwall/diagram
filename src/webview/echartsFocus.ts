@@ -308,6 +308,15 @@ export class ChartFocus {
     this.status.setAttribute("role", "status");
     element.append(this.ring, this.status);
     element.addEventListener("keydown", (event) => {
+      // The data view covers the chart, which the keys would otherwise move about unseen.
+      const dataView = this.dataView();
+      if (dataView) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.closeDataView(dataView, element);
+        }
+        return;
+      }
       if (event.target !== element) return;
       const { key } = event;
       const activates = key === "Enter" || key === " ";
@@ -345,7 +354,7 @@ export class ChartFocus {
     });
     element.addEventListener("focus", () => {
       this.keyboard ||= element.matches(":focus-visible");
-      if (this.keyboard) this.showCurrent();
+      if (this.keyboard && !this.dataView()) this.showCurrent();
     });
     // Not for the focus going into the tooltip, whose links Tab leads to, and which would hide
     // with the focus on them, leaving it on the page's body.
@@ -453,6 +462,24 @@ export class ChartFocus {
     found.chart.dispatchAction({ type: "legendAllSelect" });
     this.announce("All shown");
     this.chartChanged();
+  }
+
+  /**
+   * The data view of the toolbox, if it is open: what ECharts adds over the chart, in the element
+   * it draws in, with a heading, the data and its buttons.
+   */
+  private dataView(): HTMLElement | undefined {
+    const drawing = this.chart()?.getDom();
+    const heading = drawing?.querySelector(":scope > div > h4");
+    return heading?.parentElement ?? undefined;
+  }
+
+  /** Closes the data view with its Close button, the last, which ECharts makes of a div. */
+  private closeDataView(dataView: HTMLElement, element: HTMLElement): void {
+    const close = dataView.lastElementChild?.lastElementChild;
+    if (close instanceof HTMLElement) close.click();
+    // From its text, which goes with it.
+    element.focus();
   }
 
   /** Says what a key did, while the focus is shown: else find would match the text kept. */

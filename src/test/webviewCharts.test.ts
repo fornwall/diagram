@@ -823,6 +823,41 @@ suite("ECharts in the webview", function () {
     assert.match(errors[0] ?? "", /^Cannot open "vscode:\/\/file\/etc\/passwd"/);
   });
 
+  test("leaves the chart under the toolbox's data view to itself, which Escape closes", async () => {
+    await renderChart({ ...SALES, toolbox: { feature: { dataView: {} } } });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        ${PRESS}
+        ${CLICK_CHART}
+        const dataView = () => document.querySelector("#chart-drawing > div > h4");
+        // The toolbox's one icon, at the top right.
+        const box = chart.getBoundingClientRect();
+        const icon = [...chart.querySelectorAll("svg path")].find(path => {
+          const { top, right } = path.getBoundingClientRect();
+          return top < box.top + 40 && right > box.right - 40;
+        });
+        chart.focus();
+        // As a click presses the pointer first.
+        icon.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}));
+        clickChart(icon, {});
+        await until(dataView, "the data view");
+        const moved = [press("ArrowRight"), press("Enter"), ring()];
+        const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
+        chart.dispatchEvent(escape);
+        return {moved, selected: document.getElementById("selection-label").textContent,
+          closed: !dataView(), handled: escape.defaultPrevented, focused: document.activeElement === chart};
+      })()`),
+      {
+        moved: ["", "", false],
+        selected: "Click chart items to select them (Ctrl/Cmd/Shift+click for several).",
+        closed: true,
+        handled: true,
+        focused: true,
+      },
+    );
+  });
+
   test("keeps the tooltip shown while the focus is on its links, and hides it after", async () => {
     await renderChart({
       ...SALES,
