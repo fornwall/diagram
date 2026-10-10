@@ -57,6 +57,36 @@ export function suiteTempDir(prefix: string): string {
   return dir;
 }
 
+/**
+ * Serves the scheme from the provider's members until the current test ends, refusing what it
+ * leaves out.
+ */
+export function fileSystem(
+  scheme: string,
+  provider: Pick<vscode.FileSystemProvider, "stat"> & Partial<vscode.FileSystemProvider>,
+  options?: { isReadonly?: boolean },
+): void {
+  const refuse = () => {
+    throw vscode.FileSystemError.NoPermissions();
+  };
+  const registration = vscode.workspace.registerFileSystemProvider(
+    scheme,
+    {
+      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+      watch: () => new vscode.Disposable(() => {}),
+      readDirectory: refuse,
+      createDirectory: refuse,
+      readFile: refuse,
+      writeFile: refuse,
+      delete: refuse,
+      rename: refuse,
+      ...provider,
+    },
+    options,
+  );
+  afterTest(() => registration.dispose());
+}
+
 /** The paths that Node.js file system functions are called with until the current test ends. */
 export function recordFilePaths(): string[] {
   const paths: string[] = [];

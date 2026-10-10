@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
-import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
+import { afterTest, fileSystem, recordMessages, replace, suiteTempDir } from "./afterTest";
 import { newFakePanel, newPanel, webviewTabs, within } from "./newPanel";
 
 suite("markdownDiagrams", function () {
@@ -262,23 +262,14 @@ suite("markdownDiagrams", function () {
 
   test("opens a diagram of a read-only document to view, not to write to", async () => {
     const content = new TextEncoder().encode("```mermaid\nflowchart TD\n```\n");
-    const provider: vscode.FileSystemProvider = {
-      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
-      watch: () => new vscode.Disposable(() => {}),
-      stat: async () => ({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: content.length }),
-      readDirectory: async () => [],
-      createDirectory: () => {},
-      readFile: async () => content,
-      writeFile: () => {},
-      delete: () => {},
-      rename: () => {},
-    };
-    const registration = vscode.workspace.registerFileSystemProvider(
+    fileSystem(
       "diagram-test-readonly",
-      provider,
+      {
+        stat: () => ({ type: vscode.FileType.File, ctime: 0, mtime: 0, size: content.length }),
+        readFile: () => content,
+      },
       { isReadonly: true },
     );
-    afterTest(() => registration.dispose());
     const included = path.join(dir, "included.md");
     fs.writeFileSync(included, "```echarts\n{}\n```\n");
     const files = vscode.workspace.getConfiguration("files");

@@ -13,7 +13,7 @@ import {
   pathOutside,
   resolveFile,
 } from "../files";
-import { afterTest, recordFilePaths, suiteTempDir } from "./afterTest";
+import { afterTest, fileSystem, recordFilePaths, suiteTempDir } from "./afterTest";
 
 suite("files", () => {
   const dir = suiteTempDir("diagram-files-");
@@ -362,37 +362,24 @@ suite("files", () => {
   });
 
   test("explains file system errors that a provider throws", async () => {
-    const provider = vscode.workspace.registerFileSystemProvider("diagram-files", {
-      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+    fileSystem("diagram-files", {
       stat: (uri) => {
         if (uri.path === "/denied.md") throw vscode.FileSystemError.NoPermissions(uri);
-        if (uri.path === "/offline.md") throw vscode.FileSystemError.Unavailable(uri);
-        return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: 1 };
+        throw vscode.FileSystemError.Unavailable(uri);
       },
-      watch: () => new vscode.Disposable(() => {}),
-      readDirectory: () => [],
-      createDirectory: () => {},
-      readFile: () => new Uint8Array(),
-      writeFile: () => {},
-      delete: () => {},
-      rename: () => {},
     });
-    try {
-      for (const [file, message] of [
-        ["denied.md", "You do not have permission to read diagram-files:/denied.md."],
-        ["offline.md", "diagram-files:/offline.md cannot be reached right now."],
-      ] as const) {
-        await assert.rejects(openDocument(vscode.Uri.parse(`diagram-files:/${file}`)), { message });
-      }
-      const uri = vscode.Uri.parse("diagram-files:/offline.md");
-      const error = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch((e) => e);
-      assert.strictEqual(
-        (fileError(error, uri, { Unavailable: "Try again later." }) as Error).message,
-        "diagram-files:/offline.md cannot be reached right now. Try again later.",
-      );
-    } finally {
-      provider.dispose();
+    for (const [file, message] of [
+      ["denied.md", "You do not have permission to read diagram-files:/denied.md."],
+      ["offline.md", "diagram-files:/offline.md cannot be reached right now."],
+    ] as const) {
+      await assert.rejects(openDocument(vscode.Uri.parse(`diagram-files:/${file}`)), { message });
     }
+    const uri = vscode.Uri.parse("diagram-files:/offline.md");
+    const error = await Promise.resolve(vscode.workspace.fs.stat(uri)).catch((e) => e);
+    assert.strictEqual(
+      (fileError(error, uri, { Unavailable: "Try again later." }) as Error).message,
+      "diagram-files:/offline.md cannot be reached right now. Try again later.",
+    );
   });
 
   test("explains Node.js file errors, and passes other errors on as they are", async () => {

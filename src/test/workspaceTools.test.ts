@@ -11,8 +11,8 @@ import {
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
 } from "../workspaceTools";
-import { afterTest, cancellationSource, recordFilePaths, replace } from "./afterTest";
-import { invokeTool as invoke } from "./toolText";
+import { afterTest, cancellationSource, fileSystem, recordFilePaths, replace } from "./afterTest";
+import { invokeTool as invoke, toolText } from "./toolText";
 
 suite("workspaceTools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
@@ -39,6 +39,13 @@ suite("workspaceTools", function () {
     await (linkTo === undefined ? fs.mkdir(file) : fs.symlink(linkTo, file));
     afterTest(() => fs.rm(file, { recursive: true, force: true }));
     return file;
+  }
+
+  /** Makes the test folder the one workspace folder until the test ends. */
+  function onlyTestFolder(): void {
+    replace(vscode.workspace, "workspaceFolders", [
+      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
+    ]);
   }
 
   suiteSetup(async () => {
@@ -137,9 +144,8 @@ suite("workspaceTools", function () {
         { input: input as never, toolInvocationToken: undefined, tokenizationOptions },
         source.token,
       );
-      const text = (result?.content ?? [])
-        .map((part) => (part instanceof vscode.LanguageModelTextPart ? part.value : ""))
-        .join("");
+      assert.ok(result);
+      const text = toolText(result);
       assert.ok(text.length <= 400, text);
       return text.split("\n");
     };
@@ -179,9 +185,7 @@ suite("workspaceTools", function () {
   });
 
   test("leaves out what .gitignore files ignore, unless search.useIgnoreFiles is off", async () => {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await writeFile(
       ".gitignore",
       "# output\n*.log\n/ignore/out/\ncache\n!keep.log\n\\#odd\n/ignore/build/\n!/ignore/build/keep.ts\n",
@@ -218,9 +222,7 @@ suite("workspaceTools", function () {
   });
 
   test("looks for no ignore files in what the top-level one ignores, nor reads them", async () => {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await writeFile(".gitignore", "vendor/\nout*/\n!outlier\n*.log\n");
     for (const folder of ["vendor", "vendor/lib", "out1"]) await make(folder);
     // Read, either would let "!" include again what "*.log" ignores.
@@ -244,9 +246,7 @@ suite("workspaceTools", function () {
   });
 
   test("finds files where the ignore files ignore more than a search can exclude", async () => {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     // Excluded in full, these would make arguments of ripgrep too long to start it with.
     const names = Array.from({ length: 3000 }, (_, index) => `generated-${index}`);
     await writeFile(
@@ -262,9 +262,7 @@ suite("workspaceTools", function () {
   });
 
   test("reads as many nested ignore files when those in ignored folders are found too", async () => {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await writeFile(".gitignore", "vendor/\n");
     await make("real");
     await writeFile("real/.gitignore", "*.tmp\n");
@@ -286,9 +284,7 @@ suite("workspaceTools", function () {
   });
 
   test("reads nested ignore files that the top-level one ignores, as git does", async () => {
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await writeFile(".gitignore", ".*\n");
     await make("dotted");
     await make("dotted/.hidden");
@@ -302,9 +298,7 @@ suite("workspaceTools", function () {
     this.timeout(30_000);
     const caching = cacheIgnoreFiles();
     afterTest(() => caching.dispose());
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await make("cached");
     await writeFile("cached/a.log", "");
     await writeFile("cached/b.ts", "");
@@ -698,26 +692,15 @@ suite("workspaceTools", function () {
   });
 
   test("names files relative to a virtual workspace folder whose path has '.' and '..'", async () => {
-    const unsupported = () => {
-      throw vscode.FileSystemError.NoPermissions();
-    };
-    const provider = vscode.workspace.registerFileSystemProvider("diagram-dots", {
-      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+    fileSystem("diagram-dots", {
       stat: (uri) => ({
         type: uri.path.endsWith(".ts") ? vscode.FileType.File : vscode.FileType.Directory,
         ctime: 0,
         mtime: 0,
         size: 4,
       }),
-      watch: () => new vscode.Disposable(() => {}),
-      readDirectory: unsupported,
-      createDirectory: unsupported,
       readFile: () => Buffer.from("text"),
-      writeFile: unsupported,
-      delete: unsupported,
-      rename: unsupported,
     });
-    afterTest(() => provider.dispose());
     const root = vscode.Uri.parse("diagram-dots:/owner/x/../one/./");
     replace(vscode.workspace, "workspaceFolders", [{ uri: root, name: "one", index: 0 }]);
     replace(vscode.workspace, "findFiles", async () => [
@@ -732,21 +715,9 @@ suite("workspaceTools", function () {
   });
 
   test("says how to list a folder that no absolute path names", async () => {
-    const unsupported = () => {
-      throw vscode.FileSystemError.NoPermissions();
-    };
-    const provider = vscode.workspace.registerFileSystemProvider("diagram-b", {
-      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+    fileSystem("diagram-b", {
       stat: () => ({ type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 }),
-      watch: () => new vscode.Disposable(() => {}),
-      readDirectory: unsupported,
-      createDirectory: unsupported,
-      readFile: unsupported,
-      writeFile: unsupported,
-      delete: unsupported,
-      rename: unsupported,
     });
-    afterTest(() => provider.dispose());
     const first = vscode.workspace.workspaceFolders?.[0];
     assert.ok(first);
     // "/src" would name a folder in either virtual workspace folder.
@@ -790,46 +761,31 @@ suite("workspaceTools", function () {
       ["/root/linked/plain.txt", vscode.FileType.File],
     ]);
     const stats: string[] = [];
-    const unsupported = () => {
-      throw vscode.FileSystemError.NoPermissions();
-    };
-    const provider = vscode.workspace.registerFileSystemProvider("diagram-links", {
-      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+    fileSystem("diagram-links", {
       stat: (uri) => {
         stats.push(uri.path);
         const type = types.get(uri.path);
         if (type === undefined) throw vscode.FileSystemError.FileNotFound(uri);
         return { type, ctime: 0, mtime: 0, size: 0 };
       },
-      watch: () => new vscode.Disposable(() => {}),
-      readDirectory: unsupported,
-      createDirectory: unsupported,
-      readFile: unsupported,
-      writeFile: unsupported,
-      delete: unsupported,
-      rename: unsupported,
     });
-    try {
-      const root = vscode.Uri.parse("diagram-links:/root");
-      const check = boundary([{ uri: root, name: "links", index: 0 }], source.token);
-      const at = (file: string) => check(vscode.Uri.joinPath(root, file));
-      await at("plain.txt");
-      await at("sub/plain.txt");
-      // Each directory is checked once per call.
-      assert.deepStrictEqual(stats, ["/root/plain.txt", "/root/sub/plain.txt", "/root/sub"]);
-      await at("sub/plain.txt");
-      assert.strictEqual(stats.length, 3);
-      for (const file of ["link.txt", "linked/plain.txt"]) {
-        await assert.rejects(at(file), /^Error: Symbolic links cannot be read safely/, file);
-      }
-      await assert.rejects(at("missing.txt"), vscode.FileSystemError);
-      await assert.rejects(
-        check(vscode.Uri.parse("diagram-links:/elsewhere/plain.txt")),
-        /outside the workspace folders/,
-      );
-    } finally {
-      provider.dispose();
+    const root = vscode.Uri.parse("diagram-links:/root");
+    const check = boundary([{ uri: root, name: "links", index: 0 }], source.token);
+    const at = (file: string) => check(vscode.Uri.joinPath(root, file));
+    await at("plain.txt");
+    await at("sub/plain.txt");
+    // Each directory is checked once per call.
+    assert.deepStrictEqual(stats, ["/root/plain.txt", "/root/sub/plain.txt", "/root/sub"]);
+    await at("sub/plain.txt");
+    assert.strictEqual(stats.length, 3);
+    for (const file of ["link.txt", "linked/plain.txt"]) {
+      await assert.rejects(at(file), /^Error: Symbolic links cannot be read safely/, file);
     }
+    await assert.rejects(at("missing.txt"), vscode.FileSystemError);
+    await assert.rejects(
+      check(vscode.Uri.parse("diagram-links:/elsewhere/plain.txt")),
+      /outside the workspace folders/,
+    );
   });
 
   test("rejects malformed input, and line ranges outside the file", async () => {
@@ -934,9 +890,7 @@ suite("workspaceTools", function () {
 
   test("finds the ignore files for later calls also when the call that started it is cancelled", async function () {
     this.timeout(30_000);
-    replace(vscode.workspace, "workspaceFolders", [
-      { uri: vscode.Uri.file(dir), name: relative, index: 0 },
-    ]);
+    onlyTestFolder();
     await make("halted");
     await writeFile("halted/b.ts", "");
     let searches = 0;

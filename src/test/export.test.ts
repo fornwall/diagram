@@ -5,7 +5,7 @@ import * as zlib from "node:zlib";
 import * as vscode from "vscode";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ToWebview } from "../protocol";
-import { afterTest, recordMessages, replace, tempDir } from "./afterTest";
+import { fileSystem, recordMessages, replace, tempDir } from "./afterTest";
 import {
   type FakeWebview,
   newFakePanel,
@@ -220,24 +220,15 @@ suite("export", function () {
     await panel.exportDiagram();
     assert.strictEqual(suggested(), path.join(directory, "read-only"));
     // Not beside one on a file system that cannot be written, such as a Git revision.
-    const registration = vscode.workspace.registerFileSystemProvider(
+    fileSystem(
       "diagram-test-export",
       {
-        onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
-        watch: () => new vscode.Disposable(() => {}),
         stat: () => {
           throw vscode.FileSystemError.FileNotFound();
         },
-        readDirectory: () => [],
-        createDirectory: () => {},
-        readFile: () => new Uint8Array(),
-        writeFile: () => {},
-        delete: () => {},
-        rename: () => {},
       },
       { isReadonly: true },
     );
-    afterTest(() => registration.dispose());
     // VS Code learns of it asynchronously.
     assert.ok(
       await within(() => vscode.workspace.fs.isWritableFileSystem("diagram-test-export") === false),
