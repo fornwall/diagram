@@ -1080,6 +1080,20 @@ suite("charts", () => {
       pie.series[0].data.map(({ value }: { value: number }) => value),
       [5, 0.3],
     );
+    // Only the finished sums, as rounding each partial one would add up its errors.
+    const many = ["k,n", "a,10000000000", ...Array.from({ length: 1000 }, () => "a,0.04")];
+    const sums = (data: string) => build(chart("bar", { aggregate: "sum" }), data).series[0].data;
+    assert.deepStrictEqual(sums(many.join("\n")), [10000000040]);
+    const [difference] = sums("k,n\na,10000000000.37\na,-10000000000");
+    assert.ok(Math.abs(difference - 0.37) < 1e-5, String(difference));
+    const tree = build(chart("treemap"), "path,n\nr/a,0.1\nr/b,0.2\nr/b,0.4");
+    assert.deepStrictEqual(
+      tree.series[0].data.map(({ value }: { value: number }) => value),
+      [0.1, 0.6],
+    );
+    // A gauge's total that is its value is no scale above it.
+    const gauge = build(chart("gauge"), "k,n\nA,0.6666666666666666\nB,0").series[0];
+    assert.strictEqual(gauge.max, 1);
     assert.strictEqual(
       summary(chart("bar", { aggregate: "mean" }), AMOUNTS),
       'Charted "amount" by "region"; grouped 5 rows into 3 by "region", averaging their values.',

@@ -1,7 +1,7 @@
 // Charts of rows read as paths of levels: treemap and sunburst nest them, sankey flows along them.
 
 import { chained, columnName } from "./chartColumns";
-import { addValues, label, type Reading, type Row } from "./chartRows";
+import { addValues, label, type Reading, type Row, withoutNoise } from "./chartRows";
 import { formatCount, plural, quoteAll } from "./text";
 
 /** A node of a hierarchy, before the values of the rows under it are summed up into it. */
@@ -39,19 +39,20 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
     }
   }
   let depth = 0;
-  const total = (level: Level, deep: number): Node => {
+  // A node, and its value as summed up, which its parent sums up in turn.
+  const total = (level: Level, deep: number): [Node, number] => {
     depth = Math.max(depth, deep);
     if (level.children.size === 0) {
-      return { name: level.name, value: level.own };
+      return [{ name: level.name, value: withoutNoise(level.own) }, level.own];
     }
     const children = [...level.children.values()].map((child) => total(child, deep + 1));
-    return {
-      name: level.name,
-      value: children.reduce((sum, child) => addValues(sum, child.value), 0),
-      children,
-    };
+    const sum = children.reduce((sum, [, value]) => addValues(sum, value), 0);
+    return [
+      { name: level.name, value: withoutNoise(sum), children: children.map(([node]) => node) },
+      sum,
+    ];
   };
-  return { nodes: [...roots.values()].map((root) => total(root, 1)), depth };
+  return { nodes: [...roots.values()].map((root) => total(root, 1)[0]), depth };
 }
 
 /** Omit shared root levels so children receive distinct colors in a treemap or sunburst. */
@@ -342,7 +343,7 @@ function nodesAndLinks({ nodes, flows }: Graph): {
   const links = [...flows.values()].map(({ source, target, value }) => ({
     source: ids.get(source),
     target: ids.get(target),
-    value,
+    value: withoutNoise(value),
   }));
   return { data, links };
 }

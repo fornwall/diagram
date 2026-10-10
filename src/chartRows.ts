@@ -85,15 +85,16 @@ export function addValues(left: number, right: number): number {
       "The chart's total exceeds the numeric range. Rescale the values before charting them.",
     );
   }
-  return withoutNoise(sum);
+  return sum;
 }
 
 /**
  * A number worked out of fractions without the leftovers of floating point, which a chart would
  * show, as 0.3 for 0.1 + 0.2 rather than 0.30000000000000004: to 12 significant digits. A whole
- * number stays as it is, however large.
+ * number stays as it is, however large. Only for a finished sum, as rounding each partial one
+ * would add up its errors.
  */
-const withoutNoise = (value: number) =>
+export const withoutNoise = (value: number) =>
   Number.isInteger(value) ? value : Number(value.toPrecision(12));
 
 /** The quantile of sorted numbers, interpolating between them, as R's default quantile does. */
@@ -342,7 +343,8 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
                 ),
               );
             }
-            return how === "mean" ? withoutNoise((value ?? 0) / count / (scale ?? 1)) : value;
+            if (how === "mean") return withoutNoise((value ?? 0) / count / (scale ?? 1));
+            return how === "sum" ? withoutNoise(value ?? 0) : value;
           }),
   }));
 }
@@ -507,7 +509,7 @@ export function readRows(
           summed++;
         }
       }
-      rows = [...kept, { labels: ["Other"], values: [other] }];
+      rows = [...kept, { labels: ["Other"], values: [withoutNoise(other)] }];
       notes.push(
         `kept the first ${plural(spec.limit, "row")} and summed up the other ${formatCount(summed)} as "Other"`,
       );

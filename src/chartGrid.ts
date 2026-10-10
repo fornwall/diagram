@@ -10,6 +10,7 @@ import {
   quantile,
   type Reading,
   type Row,
+  withoutNoise,
 } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
 import { formatCount, plural, quoteAll } from "./text";
@@ -70,6 +71,8 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
     ]),
   );
   let added = 0;
+  // The sums of the points of rows of the same labels, as they are before they are shown.
+  const sums = new Map<string, number>();
   for (const row of rows) {
     const value = row.values[0] ?? null;
     const values = series.get(row.labels[1] ?? "")?.values;
@@ -79,7 +82,10 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
     if (previous === null) {
       values[point] = value;
     } else {
-      values[point] = addValues(previous, value);
+      const key = JSON.stringify([row.labels[1] ?? "", point]);
+      const sum = addValues(sums.get(key) ?? previous, value);
+      sums.set(key, sum);
+      values[point] = withoutNoise(sum);
       added++;
     }
   }
@@ -287,6 +293,8 @@ export function heatmapOption({
     return index;
   };
   const cells = new Map<string, [number, number, number]>();
+  // The sums of the cells of rows of the same labels, as they are before they are shown.
+  const sums = new Map<string, number>();
   const data: [number, number, number][] = [];
   let empty = 0;
   let summed = 0;
@@ -306,7 +314,9 @@ export function heatmapOption({
         cells.set(key, cell);
         data.push(cell);
       } else {
-        cell[2] = addValues(cell[2], value);
+        const sum = addValues(sums.get(key) ?? cell[2], value);
+        sums.set(key, sum);
+        cell[2] = withoutNoise(sum);
         summed++;
       }
       continue;
