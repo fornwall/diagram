@@ -96,14 +96,10 @@ const loadChartOptions = () =>
 enablePanning(canvas);
 const split = enableSplitter(splitter, panes, element("editor"), saveState);
 const forgetDragImage = enableDragOut(dragOutHandle, {
-  imageMaker: () => {
-    const drawing = active;
-    return drawing && (() => drawing.toImage(imageBackground()));
-  },
-  changesInPlace: () => active?.changesInPlace === true,
+  drawing: () => active,
+  background: imageBackground,
   enqueue,
   title: () => titleElement.textContent?.trim() ?? "",
-  noun: () => active?.noun ?? "diagram",
   hint: transientHint,
 });
 

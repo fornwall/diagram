@@ -2,6 +2,7 @@
 
 import { errorMessage, safeFileName } from "../protocol";
 import { type DiagramImage, pngDataUrl, svgDataUrl } from "./images";
+import type { Renderer } from "./renderer";
 
 /** Chromium does not load a URL longer than this, which the file to drop is downloaded from. */
 const MAX_URL_LENGTH = 2 * 1024 * 1024;
@@ -16,16 +17,14 @@ interface Prepared {
 }
 
 interface DragOutOptions {
-  /** How to make an image of the drawing as shown, if it can be one. */
-  imageMaker(): (() => Promise<DiagramImage>) | undefined;
-  /** Whether the drawing can change without the panel saying so, which a prepared image misses. */
-  changesInPlace(): boolean;
+  /** What draws the drawing shown, if any. */
+  drawing(): Renderer | undefined;
+  /** The background to draw the image on. */
+  background(): string;
   /** Runs a task in the render queue: Mermaid rendering and images both configure Mermaid. */
   enqueue(task: () => Promise<void>): void;
   /** The title, which names the file. */
   title(): string;
-  /** What the drawing is, such as a chart, which names the file when it has no title. */
-  noun(): string;
   hint(text: string): void;
 }
 
@@ -57,14 +56,14 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
 
   /** Prepares an image, unless one is ready or on its way. */
   const prepare = () => {
-    const make = options.imageMaker();
-    if (!make || (prepared && prepared.error === undefined)) return;
+    const drawing = options.drawing();
+    if (!drawing || (prepared && prepared.error === undefined)) return;
     const entry: Prepared = {};
     prepared = entry;
     options.enqueue(async () => {
       if (prepared !== entry) return;
       try {
-        entry.image = await make();
+        entry.image = await drawing.toImage(options.background());
         // Rasterizing needs neither Mermaid nor to hold up rendering. SVG is usable meanwhile.
         void rasterize(entry, entry.image);
       } catch (error) {
@@ -76,7 +75,7 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
   handle.addEventListener("pointerenter", () => {
     // Take a chart again, which its interactions and resizing change in place. Keep any other
     // image until the drawing or theme changes: a large Mermaid diagram takes a while to draw.
-    if (options.changesInPlace()) forget();
+    if (options.drawing()?.changesInPlace) forget();
     prepare();
   });
   handle.addEventListener("pointerdown", (event) => {
@@ -95,7 +94,8 @@ export function enableDragOut(handle: HTMLElement, options: DragOutOptions): () 
     }
     const { image, png, pngError, preview } = ready;
     const title = options.title();
-    const name = safeFileName(title, options.noun());
+    // What the drawing is, such as a chart, names the file when it has no title.
+    const name = safeFileName(title, options.drawing()?.noun ?? "diagram");
     const svg = svgDataUrl(image.svg);
     // A file the drop target downloads from the data URL. This is what an application that takes
     // dropped files, such as a chat window, reads; the type it asks for decides the rest.
