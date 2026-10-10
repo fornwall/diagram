@@ -159,7 +159,10 @@ export class DiagramPanel implements vscode.Disposable {
    */
   private drawing: RenderMessage | undefined;
   private lastSent: RenderMessage | undefined;
-  /** Why the last render did not finish, if the panel closed or stopped responding. */
+  /**
+   * Why the last render did not finish, if the panel closed or stopped responding, which leaves
+   * nothing {@link drawn}.
+   */
   private unavailable: string | undefined;
   /**
    * Whether the page was sent a chart option with JavaScript code, which can post any message as
@@ -1243,7 +1246,7 @@ export class DiagramPanel implements vscode.Disposable {
       warning = "Press Refresh to draw the chart again, then export it.";
     } else if (state.error) {
       warning = `There is nothing to export, as the ${noun} fails to render: ${state.error}`;
-    } else if (this.unavailable || !this.webview.isReady || !this.drawn) {
+    } else if (!this.webview.isReady || !this.drawn) {
       warning = `${this.unavailable ?? `The diagram panel is not showing the ${noun}.`} Use Diagram: Show Panel and try again.`;
     }
     if (warning || state?.source === undefined) {
@@ -1296,7 +1299,7 @@ export class DiagramPanel implements vscode.Disposable {
     if (!this.webview.tab) {
       return "The diagram panel is closed. The user can open it again with Diagram: Show Panel.";
     }
-    if (this.unavailable || !this.webview.isReady || rendered === undefined) {
+    if (!this.webview.isReady || rendered === undefined) {
       return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
     }
     const result = await this.requestExport(
