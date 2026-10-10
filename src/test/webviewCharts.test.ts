@@ -56,6 +56,9 @@ suite("ECharts in the webview", function () {
 
   const page = suitePage();
   const { evaluate, render, draw } = page;
+  /** Draws the chart of the option, without animation. */
+  const renderChart = (option: Record<string, unknown>) =>
+    draw({ language: "echarts", source: JSON.stringify({ animation: false, ...option }) });
   /** Which half of the chart its one item drawn in red is in, once ECharts draws it so. */
   const redHalf = () =>
     evaluate(`(async () => {
@@ -83,7 +86,7 @@ suite("ECharts in the webview", function () {
       { series: [{ type: "pie", data }] },
     ];
     for (const chart of charts) {
-      await draw({ language: "echarts", source: JSON.stringify({ animation: false, ...chart }) });
+      await renderChart(chart);
       page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: true });
       const dimmed = await evaluate(`(async () => {
         ${UNTIL}
@@ -119,19 +122,15 @@ suite("ECharts in the webview", function () {
 
   test("dims the chart around marks in several series, not around the last series' alone", async () => {
     const colors = ["#0000ff", "#00ff00", "#ff0000"];
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        xAxis: { type: "category", data: ["A", "B"] },
-        yAxis: {},
-        series: colors.map((color, index) => ({
-          name: `S${index}`,
-          type: "bar",
-          itemStyle: { color },
-          data: [10, 10],
-        })),
-      }),
+    await renderChart({
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: colors.map((color, index) => ({
+        name: `S${index}`,
+        type: "bar",
+        itemStyle: { color },
+        data: [10, 10],
+      })),
     });
     page.panel.annotate({
       marks: [
@@ -219,22 +218,18 @@ suite("ECharts in the webview", function () {
   });
 
   test("selects and marks chart names with surrounding spaces without conflating them", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        series: [
-          {
-            type: "pie",
-            data: [
-              { name: "A", value: 1 },
-              { name: " A ", value: 1 },
-            ],
-            itemStyle: { color: "#0000ff" },
-            emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
-          },
-        ],
-      }),
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          data: [
+            { name: "A", value: 1 },
+            { name: " A ", value: 1 },
+          ],
+          itemStyle: { color: "#0000ff" },
+          emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+        },
+      ],
     });
     assert.strictEqual(
       await evaluate(`(() => {
@@ -249,21 +244,17 @@ suite("ECharts in the webview", function () {
   });
 
   test("tells apart chart items of the same name when selecting and marking them", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        xAxis: { type: "category", data: ["A", "B", "A"] },
-        yAxis: {},
-        series: [
-          {
-            type: "bar",
-            data: [1, 1, 1],
-            itemStyle: { color: "#0000ff" },
-            emphasis: { itemStyle: { color: "#ff0000" } },
-          },
-        ],
-      }),
+    await renderChart({
+      xAxis: { type: "category", data: ["A", "B", "A"] },
+      yAxis: {},
+      series: [
+        {
+          type: "bar",
+          data: [1, 1, 1],
+          itemStyle: { color: "#0000ff" },
+          emphasis: { itemStyle: { color: "#ff0000" } },
+        },
+      ],
     });
     assert.strictEqual(
       await evaluate(`(() => {
@@ -291,20 +282,16 @@ suite("ECharts in the webview", function () {
       [undefined, undefined],
       ["Sales", "Sales/EU"],
     ]) {
-      await draw({
-        language: "echarts",
-        source: JSON.stringify({
-          animation: false,
-          series: names.map((name, index) => ({
-            name,
-            type: "pie",
-            center: [index === 0 ? "25%" : "75%", "50%"],
-            radius: 30,
-            data: [{ name: "A", value: 1 }],
-            itemStyle: { color: "#0000ff" },
-            emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
-          })),
-        }),
+      await renderChart({
+        series: names.map((name, index) => ({
+          name,
+          type: "pie",
+          center: [index === 0 ? "25%" : "75%", "50%"],
+          radius: 30,
+          data: [{ name: "A", value: 1 }],
+          itemStyle: { color: "#0000ff" },
+          emphasis: { scale: false, itemStyle: { color: "#ff0000" } },
+        })),
       });
       page.panel.annotate({
         marks: [{ id: `${names[1] ?? "Series 2"}/A`, kind: "info" }],
@@ -315,20 +302,16 @@ suite("ECharts in the webview", function () {
   });
 
   test("acts once on a double click on a chart item, keeping it selected", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        series: [
-          {
-            type: "pie",
-            data: ["A", "B"].map((name) => ({ name, value: 1 })),
-            itemStyle: { color: "#0000ff" },
-            select: { itemStyle: { color: "#ff0000" } },
-            emphasis: { disabled: true },
-          },
-        ],
-      }),
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          data: ["A", "B"].map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
     });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -347,19 +330,15 @@ suite("ECharts in the webview", function () {
   });
 
   test("selects a chart item with a click that the hand shakes a little", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        series: [
-          {
-            type: "pie",
-            data: ["A", "B"].map((name) => ({ name, value: 1 })),
-            itemStyle: { color: "#0000ff" },
-            emphasis: { disabled: true },
-          },
-        ],
-      }),
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          data: ["A", "B"].map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          emphasis: { disabled: true },
+        },
+      ],
     });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -392,20 +371,16 @@ suite("ECharts in the webview", function () {
   });
 
   test("clears every selected chart item together", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        series: [
-          {
-            type: "pie",
-            data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
-            itemStyle: { color: "#0000ff" },
-            select: { itemStyle: { color: "#ff0000" } },
-            emphasis: { disabled: true },
-          },
-        ],
-      }),
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
     });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -565,15 +540,11 @@ suite("ECharts in the webview", function () {
       // VS Code, giving the page the focus again, has the page give it back to the chart that an
       // earlier test focused last.
       await evaluate('document.getElementById("ask-input").focus()');
-      await draw({
-        language: "echarts",
-        source: JSON.stringify({
-          animation: false,
-          xAxis: { type: "category", data: ["A", "B"] },
-          yAxis: {},
-          series: [{ type: "bar", data: [1, 2] }],
-          ...extra,
-        }),
+      await renderChart({
+        xAxis: { type: "category", data: ["A", "B"] },
+        yAxis: {},
+        series: [{ type: "bar", data: [1, 2] }],
+        ...extra,
       });
       return evaluate('document.querySelectorAll("#chart svg path").length');
     };
@@ -834,19 +805,15 @@ suite("ECharts in the webview", function () {
   });
 
   test("draws series in the theme's chart colors made opaque, and in an orange where it has none", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        xAxis: { type: "category", data: ["Mon"] },
-        yAxis: {},
-        // Not lightened where the pointer rests.
-        series: [1, 2].map((value) => ({
-          type: "bar",
-          data: [value],
-          emphasis: { disabled: true },
-        })),
-      }),
+    await renderChart({
+      xAxis: { type: "category", data: ["Mon"] },
+      yAxis: {},
+      // Not lightened where the pointer rests.
+      series: [1, 2].map((value) => ({
+        type: "bar",
+        data: [value],
+        emphasis: { disabled: true },
+      })),
     });
     const [translucent, missing] = (await evaluate(`(async () => {
         ${UNTIL}
@@ -878,19 +845,15 @@ suite("ECharts in the webview", function () {
   });
 
   test("keeps a selected chart item selected through a theme change", async () => {
-    await draw({
-      language: "echarts",
-      source: JSON.stringify({
-        animation: false,
-        series: [
-          {
-            type: "pie",
-            data: ["A", "B"].map((name) => ({ name, value: 1 })),
-            select: { itemStyle: { color: "#ff0000" } },
-            emphasis: { disabled: true },
-          },
-        ],
-      }),
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          data: ["A", "B"].map((name) => ({ name, value: 1 })),
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
     });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -915,8 +878,6 @@ suite("ECharts in the webview", function () {
   });
 
   /** Renders a chart of the option, without animation. */
-  const renderChart = (option: Record<string, unknown>) =>
-    draw({ language: "echarts", source: JSON.stringify({ animation: false, ...option }) });
   const SALES = {
     xAxis: { type: "category", data: ["Mon", "Tue", "Wed"] },
     yAxis: {},
