@@ -6,7 +6,7 @@ import { type DocumentBinding, documentName, writeFence } from "../documentDiagr
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
 import { afterTest, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel } from "./newPanel";
+import { type FakeWebview, newFakePanel, within } from "./newPanel";
 
 suite("documentDiagram", function () {
   // A panel that an agent renders in loads the webview, which can take a while.
@@ -355,9 +355,9 @@ suite("documentDiagram", function () {
     const name = path.basename(document.uri.fsPath);
     const { webview } = await restored(openedState(binding(document)));
     const notice = Promise.withResolvers<string>();
-    recordMessages("showInformationMessage", (message, ...actions) => {
+    const notices = recordMessages("showInformationMessage", (message, ...actions) => {
       notice.resolve(message);
-      return actions[0];
+      return notices.length === 1 ? actions[0] : undefined;
     });
     const shown = Promise.withResolvers<[vscode.TextDocument, vscode.TextDocumentShowOptions]>();
     replace(vscode.window, "showTextDocument", (async (
@@ -372,6 +372,13 @@ suite("documentDiagram", function () {
     const [opened, options] = await shown.promise;
     assert.strictEqual(opened, document);
     assert.deepStrictEqual(options.selection, new vscode.Range(2, 0, 2, 0));
+    // Not again while the document stays unsaved, but once a write leaves it unsaved again.
+    await webview.edit("flowchart RL");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.strictEqual(notices.length, 1);
+    assert.ok(await document.save());
+    await webview.edit("flowchart TD");
+    assert.ok(await within(() => notices.length === 2));
   });
 
   test("says nothing of a write to a document that a tab shows", async () => {

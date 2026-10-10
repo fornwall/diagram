@@ -891,6 +891,10 @@ export class DiagramPanel implements vscode.Disposable {
     const writing = (async () => {
       await previous;
       const current = this.movedBinding(binding);
+      // A document that an earlier write left unsaved was reported then.
+      const unsaved = vscode.workspace.textDocuments.some(
+        (document) => document.uri.toString() === current.uri && document.isDirty,
+      );
       const outcome = await writeFence(current, source, isCurrent(current));
       if (!outcome.written) {
         // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
@@ -900,7 +904,7 @@ export class DiagramPanel implements vscode.Disposable {
       // Follow the written block, unless another diagram acquired its own binding while writing.
       const moved = { uri: current.uri, fence: outcome.fence };
       this.movedBindings.set(current, moved);
-      void reportUnshownWrite(moved);
+      if (!unsaved) void reportUnshownWrite(moved);
       const state = this.state;
       if (state?.document === current) {
         this.state = { ...state, document: moved };
