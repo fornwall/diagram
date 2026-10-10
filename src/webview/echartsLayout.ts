@@ -573,6 +573,9 @@ function placeSliders(base: JsonObject, reserved: Insets, { width }: Size, squee
     if (visualMap.show === false) {
       continue;
     }
+    // A continuous bar shows the values of its ends only with the handles that make it
+    // calculable, as diagram_chart's heatmaps have, or with a text of its own.
+    if (visualMap.text === undefined && isContinuous(visualMap)) visualMap.calculable ??= true;
     if (!has(visualMap, [...BOX_KEYS, "orient"])) {
       if (squeeze >= 1) {
         visualMap.show = false;
@@ -582,9 +585,11 @@ function placeSliders(base: JsonObject, reserved: Insets, { width }: Size, squee
         orient: "horizontal",
         left: "center",
         bottom: reserved.bottom + 4,
-        // The length of a continuous bar, but the size of each piece of a piecewise one.
-        ...(isContinuous(visualMap) ? { itemHeight: Math.min(200, Math.round(width * 0.4)) } : {}),
       });
+      // Within the room reserved for it, which ECharts 6's padding of 15 pixels would overflow.
+      visualMap.padding ??= 5;
+      // The length of a continuous bar, but the size of each piece of a piecewise one.
+      if (isContinuous(visualMap)) visualMap.itemHeight ??= Math.min(200, Math.round(width * 0.4));
       reserved.bottom += VISUAL_MAP_HEIGHT;
     } else if (visualMap.orient === "horizontal") {
       reserved[visualMap.top === undefined ? "bottom" : "top"] += VISUAL_MAP_HEIGHT;

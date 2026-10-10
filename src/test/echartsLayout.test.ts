@@ -368,6 +368,27 @@ suite("echartsLayout", () => {
     assert.strictEqual(itemHeight({ min: 0, max: 10, splitNumber: 4 }), undefined);
     assert.strictEqual(itemHeight({ pieces: [{ max: 5 }, { min: 5 }] }), undefined);
     assert.strictEqual(itemHeight({ categories: ["A", "B"] }), undefined);
+    assert.strictEqual(itemHeight({ min: 0, max: 10, itemHeight: 120 }), 120);
+  });
+
+  test("shows the values at the ends of a continuous visual map, within the room left for it", () => {
+    const placed = (visualMap: Option) => {
+      const { calculable, padding } = layout(bars({ visualMap })).visualMap;
+      return { calculable, padding };
+    };
+    assert.deepStrictEqual(placed({ min: 0, max: 10 }), { calculable: true, padding: 5 });
+    // Not one that says otherwise, or has a text of its own, nor the pieces of another.
+    assert.deepStrictEqual(placed({ calculable: false, padding: 10 }), {
+      calculable: false,
+      padding: 10,
+    });
+    assert.deepStrictEqual(placed({ text: ["High", "Low"] }), {
+      calculable: undefined,
+      padding: 5,
+    });
+    assert.deepStrictEqual(placed({ type: "piecewise" }), { calculable: undefined, padding: 5 });
+    // A visual map placed elsewhere keeps ECharts' padding.
+    assert.deepStrictEqual(placed({ right: 0 }), { calculable: true, padding: undefined });
   });
 
   test("gives up a zoom slider, a subtitle and a title in turn for a plot too short to read", () => {
