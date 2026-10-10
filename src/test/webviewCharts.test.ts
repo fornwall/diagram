@@ -115,9 +115,7 @@ suite("ECharts in the webview", function () {
         const move = (element, x, y) => element.dispatchEvent(new MouseEvent("mousemove",
           {bubbles: true, clientX: x, clientY: y}));
         // ECharts handles the pointer at once, and draws what changed in the next frame.
-        const settle = async () => {
-          for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame);
-        };
+        const settle = () => nextFrame(2);
         const marked = await until(faded, "the chart dimmed around its marks");
         // Over the unmarked item C, then off it, into the empty corner of the chart.
         const box = item("#ff0000").getBoundingClientRect();
@@ -590,7 +588,7 @@ suite("ECharts in the webview", function () {
     // Past the layout once the size settled since the chart was drawn, which the resize
     // observer schedules in the frame after the one in which it sees the new drawing.
     const settled = async () => {
-      for (let frame = 0; frame < 3; frame++) await nextFrame();
+      await nextFrame(3);
       await new Promise((resolve) => setTimeout(resolve, ${SETTLE_DELAY + 50}));
     };
     const rotatesAtOnce = async () => {
@@ -677,7 +675,7 @@ suite("ECharts in the webview", function () {
           try {
             for (let step = 0; step < 6; step++) {
               Object.assign(canvas.style, {width: (500 - step * 20) + "px", flex: "none"});
-              for (let frame = 0; frame < 3; frame++) await nextFrame();
+              await nextFrame(3);
               widths.add(width());
             }
           } finally {
@@ -1098,7 +1096,7 @@ suite("ECharts in the webview", function () {
     await renderChart(SALES);
     const state = `(async () => {
       ${PRESS}
-      for (let frame = 0; frame < 2; frame++) await nextFrame();
+      await nextFrame(2);
       return {ring: Boolean(ring()), status: document.getElementById("chart-status").textContent};
     })()`;
     const UNSHOWN = { ring: false, status: "" };
@@ -1295,7 +1293,7 @@ suite("ECharts in the webview", function () {
           steps.push(await until(() => status() !== steps[2] && status(), "the next item", nextFrame));
           steps.push(press("H", {code: "KeyH", shiftKey: true}));
           // The focused item stays, and the hidden series is there again to go to.
-          for (let frame = 0; frame < 2; frame++) await nextFrame();
+          await nextFrame(2);
           steps.push(press("ArrowUp"));
           chart.blur();
           return steps;
@@ -1400,9 +1398,9 @@ suite("ECharts in the webview", function () {
         steps.push(press("р", {code: "KeyH"}));
         // With no slice shown, as a click on the legend can leave it.
         clickLegend("Y");
-        for (let frame = 0; frame < 2; frame++) await nextFrame();
+        await nextFrame(2);
         steps.push(press("Home"), press("H", {code: "KeyH", shiftKey: true}));
-        for (let frame = 0; frame < 2; frame++) await nextFrame();
+        await nextFrame(2);
         steps.push(press("Home"));
         chart.blur();
         return steps;

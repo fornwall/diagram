@@ -223,10 +223,13 @@ export const MERMAID = {
  * Webview code defining `until(done, awaited, step)`, which waits for `done()` and returns it,
  * checking it every 20 ms, or after each `step()` such as `nextFrame`, for up to four seconds, as
  * a throttled page runs its timers and frames once a second, and only while the expression it is
- * in may still answer; else it fails, saying that it timed out waiting for `awaited`.
+ * in may still answer; else it fails, saying that it timed out waiting for `awaited`. It also
+ * defines `nextFrame(count)`, which waits for that many animation frames, by default one.
  */
 export const UNTIL = `
-  const nextFrame = () => new Promise(requestAnimationFrame);
+  const nextFrame = async (count = 1) => {
+    for (let frame = 0; frame < count; frame++) await new Promise(requestAnimationFrame);
+  };
   const until = async (done, awaited, step = () => new Promise(resolve => setTimeout(resolve, 20))) => {
     for (const end = Math.min(performance.now() + 4000, testDeadline); ; await step()) {
       const result = done();
