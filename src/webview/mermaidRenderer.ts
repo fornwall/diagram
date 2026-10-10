@@ -472,9 +472,9 @@ export class MermaidRenderer implements Renderer {
   }
 
   /** How Mermaid is configured for the current VS Code theme, to draw the source. */
-  private config(source: string | undefined): Parameters<Mermaid["initialize"]>[0] {
+  private config(source: string): Parameters<Mermaid["initialize"]>[0] {
     const colors = readThemeColors();
-    const { settings, typeLine } = diagramHeader(source ?? "");
+    const { settings, typeLine } = diagramHeader(source);
     return {
       startOnLoad: false,
       securityLevel: "strict",
