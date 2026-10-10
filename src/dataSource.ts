@@ -31,33 +31,16 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const EXIT_GRACE_MS = 200;
 const STDERR_TAIL = 2000;
 
-/** The locale categories that LC_ALL sets, other than LC_NUMERIC. */
-const LOCALE_CATEGORIES = [
-  "LC_CTYPE",
-  "LC_COLLATE",
-  "LC_TIME",
-  "LC_MONETARY",
-  "LC_MESSAGES",
-  "LC_PAPER",
-  "LC_NAME",
-  "LC_ADDRESS",
-  "LC_TELEPHONE",
-  "LC_MEASUREMENT",
-  "LC_IDENTIFICATION",
-];
-
 /**
  * The environment for commands: this process's, but with LC_NUMERIC=C so that numbers are printed
  * with decimal points (du -h prints "1,5M" in some locales). LC_ALL would override LC_NUMERIC, so
- * it is replaced by setting the other categories to its value.
+ * it is replaced by giving its value to LANG and to the categories that are set, which it overrode.
  */
 export function commandEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const result: NodeJS.ProcessEnv = { ...env };
-  const all = result.LC_ALL;
-  delete result.LC_ALL;
+  const { LC_ALL: all, ...result } = env;
   if (all !== undefined && all !== "") {
-    for (const category of LOCALE_CATEGORIES) {
-      result[category] = all;
+    for (const name of ["LANG", ...Object.keys(result).filter((key) => key.startsWith("LC_"))]) {
+      result[name] = all;
     }
   }
   result.LC_NUMERIC = "C";

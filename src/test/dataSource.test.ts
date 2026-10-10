@@ -19,11 +19,23 @@ suite("dataSource", () => {
   const dir = suiteTempDir("diagram-test-");
 
   test("commands print numbers with decimal points", () => {
-    const env = commandEnvironment({ LC_ALL: "de_DE.UTF-8", HOME: "/home/x" });
-    assert.strictEqual(env.LC_ALL, undefined);
-    assert.strictEqual(env.LC_NUMERIC, "C");
-    assert.strictEqual(env.LC_TIME, "de_DE.UTF-8");
-    assert.strictEqual(env.HOME, "/home/x");
+    const env = commandEnvironment({
+      LC_ALL: "de_DE.UTF-8",
+      LANG: "en_US.UTF-8",
+      LC_TIME: "en_GB.UTF-8",
+      LC_NUMERIC: "fr_FR.UTF-8",
+      HOME: "/home/x",
+    });
+    assert.deepStrictEqual(env, {
+      LANG: "de_DE.UTF-8",
+      LC_TIME: "de_DE.UTF-8",
+      LC_NUMERIC: "C",
+      HOME: "/home/x",
+    });
+    assert.deepStrictEqual(commandEnvironment({ LANG: "de_DE.UTF-8" }), {
+      LANG: "de_DE.UTF-8",
+      LC_NUMERIC: "C",
+    });
   });
 
   test("says whether a file not read leads out of the workspace or, by a link's text, inside", () => {
