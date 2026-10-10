@@ -1,6 +1,5 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -19,6 +18,7 @@ import {
   recordFilePaths,
   replace,
   setting,
+  suiteTempDir,
   workspaceRoot,
 } from "./afterTest";
 import { within } from "./newPanel";
@@ -28,7 +28,7 @@ suite("workspaceTools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
   this.timeout(10_000);
   let dir: string;
-  let outside: string;
+  const outside = suiteTempDir("diagram-outside-");
   let relative: string;
   const source = new vscode.CancellationTokenSource();
   const reader = new ReadWorkspaceFileTool();
@@ -60,7 +60,6 @@ suite("workspaceTools", function () {
     const root = workspaceRoot();
     dir = await fs.mkdtemp(path.join(root.uri.fsPath, "workspace-tools-"));
     relative = path.basename(dir);
-    outside = await fs.mkdtemp(path.join(os.tmpdir(), "diagram-outside-"));
     await fs.writeFile(
       path.join(dir, "code.ts"),
       "first\nconst value = 'Needle';\nneedle needle\nlast\n",
@@ -85,7 +84,6 @@ suite("workspaceTools", function () {
   suiteTeardown(async () => {
     source.dispose();
     await fs.rm(dir, { recursive: true, force: true });
-    await fs.rm(outside, { recursive: true, force: true });
   });
 
   test("finds bounded workspace paths and respects default exclusions", async () => {

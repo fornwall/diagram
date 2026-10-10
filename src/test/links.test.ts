@@ -12,7 +12,7 @@ import {
   validateLinks,
   withoutMissingFiles,
 } from "../links";
-import { folders, replace, tempDir } from "./afterTest";
+import { folders, replace, tempDir, workspaceRoot } from "./afterTest";
 
 suite("links", () => {
   test("takes a file, a line or a range of lines as a node's link", () => {
@@ -141,8 +141,7 @@ suite("links", () => {
   });
 
   test('does not tell whether a file outside the workspace exists by a link with a "#"', async () => {
-    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    assert.ok(workspace);
+    const workspace = workspaceRoot().uri.fsPath;
     const outside = tempDir("diagram-outside-");
     const secret = path.join(outside, "secret");
     fs.writeFileSync(secret, "");
