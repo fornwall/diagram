@@ -722,9 +722,14 @@ export class MermaidRenderer implements Renderer {
   /** Zooms, keeping the point at the given client coordinates (the middle by default) in place. */
   zoomBy(factor: number, x?: number, y?: number): void {
     this.fitting = false;
+    this.zoomAt(this.zoom * factor, x, y);
+  }
+
+  /** Sets the zoom, keeping the point at the given client coordinates (the middle by default). */
+  private zoomAt(value: number, x?: number, y?: number): void {
     const svg = this.diagram.querySelector("svg");
     const before = svg?.getBoundingClientRect();
-    this.setZoom(this.zoom * factor);
+    this.setZoom(value);
     if (!svg || !before?.width || !before.height) return;
     const view = this.canvas.getBoundingClientRect();
     const anchorX = x ?? view.left + view.width / 2;
@@ -751,14 +756,18 @@ export class MermaidRenderer implements Renderer {
     this.fitting = true;
   }
 
-  /** Toggles between fitting the panel and the actual size. */
+  /**
+   * Toggles between fitting the panel and the actual size, keeping the middle of what is shown in
+   * place, as the zoom buttons do: else the actual size would show the top left of the drawing.
+   */
   zoomReset(): void {
     if (this.fitting && this.zoom !== 1) {
       this.fitting = false;
-      this.setZoom(1);
+      this.zoomAt(1);
     } else {
       this.fitting = true;
-      this.fit();
+      const zoom = this.fitZoom(this.diagram.querySelector("svg")?.viewBox.baseVal);
+      if (zoom !== undefined) this.zoomAt(zoom);
     }
   }
 

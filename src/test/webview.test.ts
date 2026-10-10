@@ -496,6 +496,29 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the middle of the drawing in place when toggling between fit and actual size", async () => {
+    const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
+    await draw({ source: `flowchart LR\n  ${chain}`, title: "Fit and actual size" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const reset = document.getElementById("zoom-reset");
+        /** Where the middle of the canvas is in the drawing, as a fraction of its width. */
+        const middle = () => {
+          const view = canvas.getBoundingClientRect();
+          const box = document.querySelector("#diagram svg").getBoundingClientRect();
+          return Math.round(((view.left + view.width / 2 - box.left) / box.width) * 100) / 100;
+        };
+        const fitted = [reset.textContent, middle()];
+        reset.click();
+        const actual = [reset.textContent, middle()];
+        reset.click();
+        return {fitted, actual, refitted: [reset.textContent, middle()]};
+      })()`),
+      { fitted: ["10%", 0.5], actual: ["100%", 0.5], refitted: ["10%", 0.5] },
+    );
+  });
+
   test("keeps a zoom made while fitting the diagram to a resized panel is pending", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
     await draw({ source: `flowchart LR\n  ${chain}` });
