@@ -559,6 +559,21 @@ suite("Chart Options in the webview", function () {
     );
   });
 
+  test("chart options apply with Enter in a list box, as in a text field", async () => {
+    const data = "name,amount\na,1\nb,2";
+    await showChartOptions({ type: "bar", data }, parseTable(data));
+    await nextRender(() =>
+      evaluate(`(() => {
+        const sort = document.getElementById("chart-option-sort");
+        sort.value = "descending";
+        sort.focus();
+        sort.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}));
+      })()`),
+    );
+    assert.strictEqual(page.panel.current?.chart?.sort, "descending");
+    await closeChartOptions();
+  });
+
   test("chart options preserve column spelling when applying unrelated changes", async () => {
     const table = parseTable("name,amount\na,1\nb,2");
     const chart: ChartSpec = {

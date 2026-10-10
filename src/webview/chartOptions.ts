@@ -231,6 +231,15 @@ export class ChartOptionsForm {
         replaceSource: this.replace.checked,
       });
     });
+    // Enter submits from text fields alone, but the other fields are fields as well.
+    form.addEventListener("keydown", (event) => {
+      const field =
+        event.target instanceof Element && event.target.matches("select, [type=checkbox]");
+      if (field && event.key === "Enter" && !this.apply.disabled) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
     container.append(header, this.status, form);
     container.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
