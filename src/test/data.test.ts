@@ -2474,6 +2474,14 @@ suite("data", () => {
   test("throws helpful errors for empty or invalid data", () => {
     assert.throws(() => parseTable("  \n"), /^Error: The data is empty\. Give JSON, CSV/);
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);
+    // Arrays that head cut short are JSON, not CSV of brackets and numbers.
+    for (const json of ['[\n  {"a": 1},\n  {"a": 2},', "[[1, 2],\n [3, 4],", '[ "a", "b"']) {
+      assert.throws(() => parseTable(json), /^Error: The data is not valid JSON: /, json);
+    }
+    assert.deepStrictEqual(parse("[INFO] started 1\n[INFO] done 2").rows, [
+      ["[INFO]", "started", 1],
+      ["[INFO]", "done", 2],
+    ]);
     // Lines and columns are counted in the whole text, not from the start of the value.
     assert.throws(
       () => parseTable('[\n  {"a": 1,}\n]'),
