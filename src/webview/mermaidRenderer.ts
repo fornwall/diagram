@@ -257,6 +257,12 @@ async function databaseOf(mermaid: Mermaid, text: string): Promise<DiagramDb | u
   }
 }
 
+/** The middle of an element, in client coordinates. */
+function center(element: Element): Point {
+  const box = element.getBoundingClientRect();
+  return [box.left + box.width / 2, box.top + box.height / 2];
+}
+
 /** What a drawing shows of the state of its nodes, by node id. */
 interface Shown {
   selected: ReadonlyMap<string, boolean>;
@@ -349,6 +355,22 @@ export class MermaidRenderer implements Renderer {
     });
     diagram.addEventListener("focusin", ({ target }) => {
       if (target instanceof SVGElement && target.hasAttribute("tabindex")) this.setTabStop(target);
+    });
+    // The canvas, which a pick or Highlight Path focuses, passes the keys that move between nodes
+    // on to them, as a chart does to its items: an arrow key leads to the drawing's tab stop, or
+    // the node nearest the middle if that is out of sight, and Home and End to the first and the
+    // last. They scroll the canvas only for a drawing without nodes.
+    canvas.addEventListener("keydown", (event) => {
+      const { key } = event;
+      const moves = key === "Home" || key === "End" || arrowDirection(key) !== undefined;
+      const modified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+      if (event.target !== canvas || !moves || modified || this.displayedSource === undefined) {
+        return;
+      }
+      const next = key === "Home" || key === "End" ? this.endNode(key) : this.stopInSight();
+      if (!next) return;
+      event.preventDefault();
+      next.focus();
     });
     // Ctrl/Cmd+scroll zooms at the pointer, in proportion to the scrolling, and a trackpad pinch,
     // which Chromium reports as Ctrl+scrolling, as much as the fingers spread. Both send many
@@ -793,23 +815,48 @@ export class MermaidRenderer implements Renderer {
    * Home and End. Undefined if the key does not move the focus.
    */
   private neighbor(from: SVGElement, key: string): SVGElement | null | undefined {
-    if (key === "Home" || key === "End") {
-      const nodes = this.drawn.nodes.filter((node) => !node.relationship);
-      const node = key === "Home" ? nodes[0] : nodes.at(-1);
-      return (
-        this.drawn.elements
-          .get(node?.id ?? "")
-          ?.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null
-      );
-    }
+    if (key === "Home" || key === "End") return this.endNode(key);
     const direction = arrowDirection(key);
     if (!direction) return undefined;
-    const center = (element: Element): Point => {
-      const box = element.getBoundingClientRect();
-      return [box.left + box.width / 2, box.top + box.height / 2];
-    };
     const stops = this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
     return nearestInDirection(from, direction, stops, center) ?? null;
+  }
+
+  /** The first or the last node, in the order of the source. */
+  private endNode(key: "Home" | "End"): SVGElement | null {
+    const nodes = this.drawn.nodes.filter((node) => !node.relationship);
+    const node = key === "Home" ? nodes[0] : nodes.at(-1);
+    return (
+      this.drawn.elements
+        .get(node?.id ?? "")
+        ?.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null
+    );
+  }
+
+  /**
+   * The drawing's tab stop if it is in sight in the canvas, else the node or relationship nearest
+   * the middle of what the canvas shows, rather than one that the focus would scroll far to.
+   */
+  private stopInSight(): SVGElement | null {
+    const view = this.canvas.getBoundingClientRect();
+    const left = view.left + this.canvas.clientLeft;
+    const top = view.top + this.canvas.clientTop;
+    const right = left + this.canvas.clientWidth;
+    const bottom = top + this.canvas.clientHeight;
+    const tabStop = this.diagram.querySelector<SVGElement>('.diagram-node[tabindex="0"]');
+    const box = tabStop?.getBoundingClientRect();
+    if (box && box.right > left && box.left < right && box.bottom > top && box.top < bottom) {
+      return tabStop;
+    }
+    const [x, y] = [(left + right) / 2, (top + bottom) / 2];
+    let nearest: SVGElement | null = null;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const stop of this.diagram.querySelectorAll<SVGElement>(".diagram-node[tabindex]")) {
+      const [cx, cy] = center(stop);
+      const d = Math.hypot(cx - x, cy - y);
+      if (d < distance) [nearest, distance] = [stop, d];
+    }
+    return nearest;
   }
 
   /** Makes the element the drawing's tab stop. */
@@ -831,10 +878,12 @@ export class MermaidRenderer implements Renderer {
       // A drawing unlike what findNodes expects is still worth showing, if without its nodes.
       console.error(error);
     }
-    // Keep the tab stop on the same node in a new version of the drawing.
+    // Keep the tab stop on the same node in a new version of the drawing. Else it starts on the
+    // first node, rather than on what comes first in the drawing, such as an edge of a flowchart.
     const stops = svg.querySelectorAll<SVGElement>(".diagram-node[tabindex]");
     const stop =
       Array.from(stops).find((element) => this.drawn.byElement.get(element)?.id === this.tabStop) ??
+      this.endNode("Home") ??
       stops[0];
     stop?.setAttribute("tabindex", "0");
     this.showSelection(this.selectedKeys);

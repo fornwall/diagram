@@ -456,6 +456,62 @@ suite("webview", function () {
     );
   });
 
+  test("moves the focus from the canvas of a pick to the nodes with the first arrow key", async () => {
+    const chain = Array.from({ length: 20 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
+    await draw({ source: `flowchart TD\n  ${chain}`, title: "Pick by keys" });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const canvas = document.getElementById("canvas");
+        const banner = document.getElementById("pick");
+        const press = key => {
+          const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true});
+          document.activeElement.dispatchEvent(event);
+          return [document.activeElement.getAttribute("data-diagram-id") ?? document.activeElement.id,
+            event.defaultPrevented];
+        };
+        const inSight = () => {
+          const view = canvas.getBoundingClientRect();
+          const box = document.activeElement.getBoundingClientRect();
+          return box.bottom > view.top && box.top < view.bottom;
+        };
+        receive({type: "startPick", pickId: 90009, prompt: "Pick a node", multiple: false});
+        await until(() => !banner.hidden, "the pick");
+        const picking = {focused: document.activeElement.id,
+          described: canvas.getAttribute("aria-describedby").split(" ").includes("pick-prompt")};
+        const down = press("ArrowDown");
+        canvas.focus();
+        const end = press("End");
+        canvas.focus();
+        const home = press("Home");
+        // With the tab stop, n0, scrolled out of sight, the node in the middle of the canvas.
+        canvas.scrollTop = canvas.scrollHeight / 2;
+        canvas.focus();
+        const away = press("ArrowUp");
+        const shown = {picking, down, end, home, away: away[0] !== "n0" && away[1], inSight: inSight()};
+        receive({type: "endPick", pickId: 90009});
+        await until(() => banner.hidden, "the end of the pick");
+        // A modified key, such as for zooming or selecting, is not for the nodes.
+        canvas.focus();
+        shown.shifted = (() => {
+          const event = new KeyboardEvent("keydown", {key: "ArrowDown", shiftKey: true, bubbles: true, cancelable: true});
+          canvas.dispatchEvent(event);
+          return [document.activeElement.id, event.defaultPrevented];
+        })();
+        return shown;
+      })()`),
+      {
+        picking: { focused: "canvas", described: true },
+        down: ["n0", true],
+        end: ["n20", true],
+        home: ["n0", true],
+        away: true,
+        inSight: true,
+        shifted: ["canvas", false],
+      },
+    );
+  });
+
   test("cancels a pick on Escape, unless a field or another control takes it", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
