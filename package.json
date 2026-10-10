@@ -896,6 +896,10 @@
         {
           "command": "diagram.openAtCursor",
           "when": "editorLangId == markdown"
+        },
+        {
+          "command": "diagram.export",
+          "when": "diagram.hasDiagram"
         }
       ],
       "editor/context": [

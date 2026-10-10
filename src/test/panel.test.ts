@@ -149,6 +149,42 @@ suite("panel", function () {
     );
   });
 
+  test("offers Export and Chart Options in the Command Palette once there is something to act on", async () => {
+    const execute = vscode.commands.executeCommand;
+    const contexts: Record<string, unknown> = {};
+    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
+      if (command !== "setContext") return execute(command, ...args);
+      const [key, value] = args as [string, unknown];
+      contexts[key] = value;
+      return undefined;
+    }) as typeof execute);
+    const { panel } = await newFakePanel();
+    assert.deepStrictEqual(contexts, {
+      "diagram.hasDiagram": false,
+      "diagram.chartOptionsAvailable": false,
+    });
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    assert.deepStrictEqual(contexts, {
+      "diagram.hasDiagram": true,
+      "diagram.chartOptionsAvailable": false,
+    });
+    const restored = await newFakePanel(new Map([["diagram.state", withoutSource]]));
+    assert.ok(restored.panel.current?.chart);
+    assert.deepStrictEqual(contexts, {
+      "diagram.hasDiagram": true,
+      "diagram.chartOptionsAvailable": true,
+    });
+    const extension = vscode.extensions.getExtension("fornwall.diagram");
+    assert.ok(extension);
+    const { commandPalette } = extension.packageJSON.contributes.menus as {
+      commandPalette: { command: string; when: string }[];
+    };
+    assert.deepStrictEqual(
+      commandPalette.find(({ command }) => command === "diagram.export")?.when,
+      "diagram.hasDiagram",
+    );
+  });
+
   test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;

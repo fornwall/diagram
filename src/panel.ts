@@ -195,7 +195,7 @@ export class DiagramPanel implements vscode.Disposable {
       () => this.closed(),
     );
     this.state = this.store.load();
-    this.updateChartOptionsContext();
+    this.updateContext();
   }
 
   /** The diagram currently shown, if any. */
@@ -285,7 +285,7 @@ export class DiagramPanel implements vscode.Disposable {
     };
     this.chartTable = diagram.chart ? chartTable : undefined;
     this.chartOptionsVisible = false;
-    this.updateChartOptionsContext();
+    this.updateContext();
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
@@ -937,12 +937,12 @@ export class DiagramPanel implements vscode.Disposable {
     this.sendChartOptions();
   }
 
-  private updateChartOptionsContext(): void {
-    void vscode.commands.executeCommand(
-      "setContext",
-      "diagram.chartOptionsAvailable",
-      this.state?.chart !== undefined,
-    );
+  /** Shows the commands of the Command Palette that can act on the diagram now. */
+  private updateContext(): void {
+    const setContext = (key: string, value: boolean) =>
+      void vscode.commands.executeCommand("setContext", key, value);
+    setContext("diagram.hasDiagram", this.state !== undefined);
+    setContext("diagram.chartOptionsAvailable", this.state?.chart !== undefined);
   }
 
   private sendChartOptions(): void {
