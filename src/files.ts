@@ -346,6 +346,12 @@ export function resolveFile(file: string): vscode.Uri {
   return vscode.Uri.joinPath(folder.uri, file);
 }
 
+/** The UTF-16 encoding whose byte order mark `bytes` start with, if any. */
+export function utf16(bytes: Uint8Array): "utf-16le" | "utf-16be" | undefined {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return "utf-16le";
+  return bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be" : undefined;
+}
+
 /**
  * Decodes UTF-16 when the bytes start with its byte order mark, as files that PowerShell writes
  * with > do, and UTF-8 otherwise.
@@ -354,13 +360,7 @@ export function resolveFile(file: string): vscode.Uri {
  * @throws TypeError when `fatal` and the bytes are not valid in that encoding.
  */
 export function decodeText(bytes: Uint8Array, fatal = true): string {
-  const encoding =
-    bytes[0] === 0xff && bytes[1] === 0xfe
-      ? "utf-16le"
-      : bytes[0] === 0xfe && bytes[1] === 0xff
-        ? "utf-16be"
-        : "utf-8";
-  return new TextDecoder(encoding, { fatal }).decode(bytes);
+  return new TextDecoder(utf16(bytes) ?? "utf-8", { fatal }).decode(bytes);
 }
 
 /**
