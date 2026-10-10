@@ -295,7 +295,12 @@ suite("markdownDiagrams", function () {
     fs.writeFileSync(included, "```echarts\n{}\n```\n");
     await setting("files.readonlyInclude", { "**/included.md": true });
     const { panel } = await newFakePanel();
-    const open = openerFor(panel);
+    const openFirst = openerFor(panel);
+    const tooltips: (string | undefined)[] = [];
+    const open = async (document: vscode.TextDocument) => {
+      tooltips.push((await firstLens(document)).tooltip);
+      await openFirst(document);
+    };
     const messages = recordMessages("showInformationMessage");
     // A diagram of a writable document first, whose binding a read-only one must not take over.
     await open(await untitled("```mermaid\nflowchart LR\n```\n"));
@@ -313,6 +318,12 @@ suite("markdownDiagrams", function () {
     assert.deepStrictEqual(messages, [
       "/git.md is read-only, so edits of the diagram in the panel are not written to it.",
       `${vscode.workspace.asRelativePath(included)} is read-only, so edits of the chart in the panel are not written to it.`,
+    ]);
+    // Their lenses say so too.
+    assert.deepStrictEqual(tooltips, [
+      "Show this diagram in the diagram panel, where you can edit it and write it back",
+      "Show this diagram in the diagram panel. The file is read-only, so edits there are not written to it",
+      "Show this chart in the diagram panel. The file is read-only, so edits there are not written to it",
     ]);
   });
 });

@@ -64,11 +64,17 @@ class DiagramCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposa
     if (!settings.get<boolean>(CODE_LENS_SETTING, true)) {
       return [];
     }
-    return findDocumentDiagramFences(document).map((fence) => {
+    const fences = findDocumentDiagramFences(document);
+    // Such as the old side of a Git diff, whose diagrams the panel shows without writing to it.
+    const readonly = fences.length > 0 && isReadonly(document);
+    return fences.map((fence) => {
       const line = new vscode.Position(fence.openingLine, 0);
+      const noun = diagramNoun(fence.language);
       return new vscode.CodeLens(new vscode.Range(line, line), {
         title: "Open in Diagram",
-        tooltip: `Show this ${diagramNoun(fence.language)} in the diagram panel, where you can edit it and write it back`,
+        tooltip: readonly
+          ? `Show this ${noun} in the diagram panel. The file is read-only, so edits there are not written to it`
+          : `Show this ${noun} in the diagram panel, where you can edit it and write it back`,
         command: OPEN_FENCE_COMMAND,
         arguments: [document.uri, fence],
       });
