@@ -1008,6 +1008,7 @@ export class DiagramPanel implements vscode.Disposable {
         controls: chartControls(chart),
         columns: table?.columns ?? [],
         rowCount: table?.rows.length ?? 0,
+        refreshable: Boolean(chart.file || chart.command),
         // Edits that the chart cannot keep when rebuilt from its data.
         edited: Boolean(state.chartPresentation?.blocked),
         unavailable:

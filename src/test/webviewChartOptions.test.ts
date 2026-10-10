@@ -400,18 +400,27 @@ suite("Chart Options in the webview", function () {
     );
   });
 
-  test("chart options count the rows and columns of the data", async () => {
+  test("chart options count the rows and columns of the data, and say what refreshes it", async () => {
+    const status = () =>
+      evaluate(`document.querySelector("#chart-options .chart-options-heading + p").textContent`);
     for (const [data, counted] of [
       ["name,amount\na,1", "1 row · 2 columns."],
       ["name,amount,other\na,1,3\nb,4,7", "2 rows · 3 columns."],
     ] as const) {
       await showChartOptions({ type: "bar", data });
-      const status = await evaluate(
-        `document.querySelector("#chart-options .chart-options-heading + p").textContent`,
-      );
-      assert.ok(String(status).startsWith(`${counted} Columns are inferred`), String(status));
+      // Inline data, which has no Refresh to load it again.
+      assert.strictEqual(await status(), `${counted} Columns are inferred unless selected.`);
       await closeChartOptions();
     }
+    await showChartOptions(
+      { type: "bar", command: "this-command-must-never-run" },
+      parseTable("name,amount\na,1"),
+    );
+    assert.strictEqual(
+      await status(),
+      "1 row · 2 columns. Columns are inferred unless selected. Refresh reloads the data.",
+    );
+    await closeChartOptions();
   });
 
   test("chart options show disabled fields of every kind alike", async () => {

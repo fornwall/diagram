@@ -26,6 +26,8 @@ export interface ChartOptionsState {
   controls: ChartControls;
   columns: Column[];
   rowCount: number;
+  /** Whether Refresh reads the data again, from a file or a command. */
+  refreshable?: boolean;
   edited: boolean;
   unavailable?: string | undefined;
 }

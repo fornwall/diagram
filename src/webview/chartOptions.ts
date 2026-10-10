@@ -281,7 +281,7 @@ export class ChartOptionsForm {
     this.reset.textContent = state.unavailable ? "Reset styling and reload data" : "Reset styling";
     this.status.textContent =
       state.unavailable ??
-      `${plural(state.rowCount, "row")} · ${plural(state.columns.length, "column")}. Columns are inferred unless selected. Refresh reloads the data.`;
+      `${plural(state.rowCount, "row")} · ${plural(state.columns.length, "column")}. Columns are inferred unless selected.${state.refreshable ? " Refresh reloads the data." : ""}`;
     this.replace.checked = false;
     this.replaceLabel.hidden = !state.edited;
     this.error.hidden = true;
