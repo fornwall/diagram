@@ -54,6 +54,8 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         window.readTestState = () => api.getState();
         window.writeTestState = (state) => api.setState(state);
         window.testStateWrites = 0;
+        /** Each state that the page saved since it loaded. */
+        window.testSavedStates = [];
         window.testRenderResults = [];
         window.receive = (data) => window.dispatchEvent(new MessageEvent("message", {data}));
         const postMessage = (message) => {
@@ -76,6 +78,7 @@ export function instrumentWebview(panel: DiagramPanel): WebviewHarness {
         api.postMessage({type: "testLoaded"});
         return {...api, postMessage, setState: (state) => {
           window.testStateWrites++;
+          window.testSavedStates.push(state);
           return api.setState(state);
         }};
       };

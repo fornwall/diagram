@@ -1510,6 +1510,10 @@ suite("webview", function () {
         for (const key of ["End", "ArrowLeft"]) {
           splitter.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
         }
+        // With unapplied edits, which the page restores first.
+        const input = document.getElementById("source");
+        input.value += "\\n B --> C";
+        input.dispatchEvent(new Event("input"));
       })()`);
       await nextRender(() => {
         page.webview.html += "\n<!-- Reload to verify the size of the source pane. -->";
@@ -1518,11 +1522,13 @@ suite("webview", function () {
         await evaluate(`({
           size: document.getElementById("splitter").ariaValueNow,
           basis: getComputedStyle(document.getElementById("editor")).flexBasis,
+          saved: window.testSavedStates.map(state => Math.round(state.sourceSize * 100)),
         })`),
-        { size: "80", basis: "80%" },
+        { size: "80", basis: "80%", saved: [80] },
       );
     } finally {
       await evaluate(`(() => {
+        document.getElementById("revert").click();
         document.getElementById("splitter").dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
         document.getElementById("view-visual").click();
       })()`);

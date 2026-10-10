@@ -861,8 +861,9 @@ window.addEventListener(
 const restored = vscode.getState();
 const saved = isPlainObject(restored) ? restored : {};
 askInput.value = typeof saved.draft === "string" ? saved.draft : "";
-editor.restore(saved);
+// Before the editor, which saves the state as it restores its edits.
 split.restore(saved.sourceSize);
+editor.restore(saved);
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };
