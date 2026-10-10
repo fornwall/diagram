@@ -33,39 +33,29 @@ suite("blocks", () => {
   });
 
   test("titles a diagram by its front matter", () => {
-    assert.strictEqual(
-      mermaidTitle('---\ntitle: "Login flow"\n---\nsequenceDiagram'),
-      "Login flow",
-    );
-    assert.strictEqual(
-      mermaidTitle("---\ntitle: 'Login flow'\n---\nsequenceDiagram"),
-      "Login flow",
-    );
-    assert.strictEqual(
-      mermaidTitle("---\ntitle: Users' requests\n---\nflowchart LR"),
-      "Users' requests",
-    );
-    assert.strictEqual(mermaidTitle("---\ntitle: James'\n---\nflowchart LR"), "James'");
+    for (const [source, title] of [
+      ['---\ntitle: "Login flow"\n---\nsequenceDiagram', "Login flow"],
+      ["---\ntitle: 'Login flow'\n---\nsequenceDiagram", "Login flow"],
+      ["---\ntitle: Users' requests\n---\nflowchart LR", "Users' requests"],
+      ["---\ntitle: James'\n---\nflowchart LR", "James'"],
+    ] as const) {
+      assert.strictEqual(mermaidTitle(source), title, source);
+    }
   });
 
   test("titles a diagram by its title statement", () => {
-    assert.strictEqual(mermaidTitle('pie title Pets\n  "Dogs" : 386'), "Pets");
-    assert.strictEqual(mermaidTitle("pie showData title Key elements"), "Key elements");
-    assert.strictEqual(
-      mermaidTitle("gantt\n  dateFormat YYYY-MM-DD\n  title A Gantt Diagram %% comment"),
-      "A Gantt Diagram",
-    );
-    assert.strictEqual(mermaidTitle('xychart-beta\n  title "Sales Revenue"'), "Sales Revenue");
-    assert.strictEqual(mermaidTitle("sequenceDiagram\n  title: Login\n  A->>B: hi"), "Login");
-    assert.strictEqual(
-      mermaidTitle("eventmodeling\n  title Checkout\n  tf 01 evt Start"),
-      "Checkout",
-    );
-    assert.strictEqual(mermaidTitle("railroad-abnf-beta\n  title Syntax\n  a = b"), "Syntax");
-    assert.strictEqual(
-      mermaidTitle('---\ntitle: "Front"\n---\njourney\n  title Statement'),
-      "Front",
-    );
+    for (const [source, title] of [
+      ['pie title Pets\n  "Dogs" : 386', "Pets"],
+      ["pie showData title Key elements", "Key elements"],
+      ["gantt\n  dateFormat YYYY-MM-DD\n  title A Gantt Diagram %% comment", "A Gantt Diagram"],
+      ['xychart-beta\n  title "Sales Revenue"', "Sales Revenue"],
+      ["sequenceDiagram\n  title: Login\n  A->>B: hi", "Login"],
+      ["eventmodeling\n  title Checkout\n  tf 01 evt Start", "Checkout"],
+      ["railroad-abnf-beta\n  title Syntax\n  a = b", "Syntax"],
+      ['---\ntitle: "Front"\n---\njourney\n  title Statement', "Front"],
+    ] as const) {
+      assert.strictEqual(mermaidTitle(source), title, source);
+    }
   });
 
   test("ignores title lines in diagrams that have no title statement", () => {
