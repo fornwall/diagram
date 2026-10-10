@@ -167,7 +167,7 @@ suite("Chart Options in the webview", function () {
       assert.deepStrictEqual(await evaluate(focus), { id: label, applying: null });
     }
     // Not when the user went elsewhere in VS Code meanwhile, which the focus would leave, as when
-    // other columns make the rows anew.
+    // the row goes.
     assert.strictEqual(
       await evaluate(`(async () => {
         ${UNTIL}
@@ -176,10 +176,8 @@ suite("Chart Options in the webview", function () {
         document.hasFocus = () => false;
         try {
           receive({type: "chartOptions", visible: true, state: {revision: 0, rowCount: 2,
-            controls: {type: "bar", filters: [{column: "name", op: "neq", value: "c"}]},
-            columns: [{name: "name", numeric: false}, {name: "renamed", numeric: true}],
-            edited: false}});
-          await until(() => !value.isConnected, "the row made anew");
+            controls: {type: "bar"}, columns: [{name: "name", numeric: false}], edited: false}});
+          await until(() => !value.isConnected, "the row gone");
           return document.activeElement.tagName;
         } finally {
           delete document.hasFocus;
@@ -337,7 +335,7 @@ suite("Chart Options in the webview", function () {
     await closeChartOptions();
   });
 
-  test("chart options keep the column lists of unchanged columns as the options apply", async () => {
+  test("chart options keep their rows as the options apply, and the column lists of unchanged columns", async () => {
     await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -367,7 +365,7 @@ suite("Chart Options in the webview", function () {
         const second = shown();
         show(["a", "b", "d"], {labelColumn: "d"});
         await until(() => document.querySelectorAll(".chart-filter-row").length === 0, "no filter");
-        const third = {...shown(), madeAnew: !before.includes(selects()[1])};
+        const third = {...shown(), kept: selects().every((select) => before.includes(select))};
         receive({type: "chartOptions", visible: false});
         return {first, kept, second, third};
       })()`),
@@ -388,7 +386,7 @@ suite("Chart Options in the webview", function () {
           facet: "",
           filters: [["a", "contains", "string", "text"]],
         },
-        third: { label: "d", values: "3/0", facet: "", filters: [], madeAnew: true },
+        third: { label: "d", values: "3/0", facet: "", filters: [], kept: true },
       },
     );
   });

@@ -29,8 +29,8 @@ function words(name: string): string {
 }
 
 /** Whether the selects list the same columns for both, as they show only names and numeric. */
-const sameColumns = (a: readonly Column[] | undefined, b: readonly Column[]): boolean =>
-  a?.length === b.length &&
+const sameColumns = (a: readonly Column[], b: readonly Column[]): boolean =>
+  a.length === b.length &&
   a.every((column, index) => column.name === b[index]?.name && column.numeric === b[index].numeric);
 
 /** Whether the element can take the focus: shown, and enabled if a control. */
@@ -84,12 +84,11 @@ export class ChartOptionsForm {
     HTMLElement,
     { set: (filter: ChartFilter) => void; read: () => ChartFilter }
   >();
-  /** Counts changes of the columns, to tell which selects list the current ones. */
-  private columnsVersion = 0;
-  private listedColumns: readonly Column[] | undefined;
+  /** The columns of the data, kept while others the same come, to tell which selects list them. */
+  private columns: readonly Column[] = [];
   private columnNames = new Set<string>();
-  /** The version of the columns that each select lists. */
-  private readonly filled = new WeakMap<HTMLSelectElement, number>();
+  /** The columns that each select lists. */
+  private readonly filled = new WeakMap<HTMLSelectElement, readonly Column[]>();
   private readonly fillLabels = this.columnList(this.labels);
   private readonly fillValues = this.columnList(this.values);
   private readonly fillFilters = this.filterList(this.filters);
@@ -264,9 +263,8 @@ export class ChartOptionsForm {
     if (!state) return;
     const { controls } = state;
     this.type.value = controls.type;
-    if (!sameColumns(this.listedColumns, state.columns)) {
-      this.listedColumns = state.columns;
-      this.columnsVersion++;
+    if (!sameColumns(this.columns, state.columns)) {
+      this.columns = state.columns;
       this.columnNames = new Set(state.columns.map((column) => column.name));
     }
     this.fillLabels(
@@ -368,9 +366,9 @@ export class ChartOptionsForm {
    * select keeps its options while the columns stay the same, as making thousands anew is slow.
    */
   private fillColumnSelect(select: HTMLSelectElement, selected?: string, empty?: string): void {
-    const columns = this.state?.columns ?? [];
+    const { columns } = this;
     const listed = columns.length + (empty === undefined ? 0 : 1);
-    if (this.filled.get(select) === this.columnsVersion) {
+    if (this.filled.get(select) === columns) {
       // All but a missing column that was selected before.
       while (select.length > listed) select.remove(listed);
     } else {
@@ -379,7 +377,7 @@ export class ChartOptionsForm {
       for (const column of columns) {
         select.add(new Option(`${column.name}${column.numeric ? " (numeric)" : ""}`, column.name));
       }
-      this.filled.set(select, this.columnsVersion);
+      this.filled.set(select, columns);
     }
     if (selected === undefined) {
       select.selectedIndex = 0;
@@ -391,13 +389,9 @@ export class ChartOptionsForm {
     }
   }
 
-  /**
-   * Makes the container a list of filter rows, returning what fills it. Rows are kept, with their
-   * columns, while the columns stay the same; others are filled before they are in the page.
-   */
+  /** Makes the container a list of filter rows, returning what fills it, keeping the rows there. */
   private filterList(container: HTMLElement): (filters: ChartFilter[]) => void {
     const add = button("Add filter");
-    let version = this.columnsVersion;
     const append = (filter?: ChartFilter): HTMLSelectElement => {
       const row = document.createElement("div");
       row.className = "chart-filter-row";
@@ -420,9 +414,7 @@ export class ChartOptionsForm {
       ]);
       valueType.setAttribute("aria-label", "Filter value type");
       const columnValueType = (): string =>
-        this.state?.columns.find((entry) => entry.name === column.value)?.numeric
-          ? "number"
-          : "string";
+        this.columns.find((entry) => entry.name === column.value)?.numeric ? "number" : "string";
       const value = document.createElement("input");
       value.setAttribute("aria-label", "Filter value");
       const updateValue = (): void => {
@@ -489,14 +481,12 @@ export class ChartOptionsForm {
     container.append(add);
     return (filters) => {
       const rows = Array.from(this.filterRows);
-      const kept = version === this.columnsVersion ? filters.length : 0;
-      version = this.columnsVersion;
-      for (const [row] of rows.slice(kept)) {
+      for (const [row] of rows.slice(filters.length)) {
         row.remove();
         this.filterRows.delete(row);
       }
       filters.forEach((filter, index) => {
-        const row = index < kept ? rows[index] : undefined;
+        const row = rows[index];
         if (row) row[1].set(filter);
         else append(filter);
       });
@@ -505,13 +495,11 @@ export class ChartOptionsForm {
   }
 
   /**
-   * Makes the container a list of column rows, returning what fills it with the columns selected.
-   * Rows are kept, with their columns, while the columns stay the same; others are filled before
-   * they are in the page.
+   * Makes the container a list of column rows, returning what fills it with the columns selected,
+   * keeping the rows there.
    */
   private columnList(container: HTMLElement): (selected: string[]) => void {
     const add = button("");
-    let version = this.columnsVersion;
     const rows = () => container.querySelectorAll(".chart-column-row");
     const update = (): void => {
       for (const [index, row] of rows().entries()) {
@@ -543,11 +531,9 @@ export class ChartOptionsForm {
     container.append(add);
     return (selected) => {
       const shown = Array.from(rows());
-      const kept = version === this.columnsVersion ? selected.length : 0;
-      version = this.columnsVersion;
-      for (const row of shown.slice(kept)) row.remove();
+      for (const row of shown.slice(selected.length)) row.remove();
       selected.forEach((name, index) => {
-        const select = index < kept ? shown[index]?.querySelector("select") : undefined;
+        const select = shown[index]?.querySelector("select");
         if (select) this.fillColumnSelect(select, name);
         else append(name);
       });
