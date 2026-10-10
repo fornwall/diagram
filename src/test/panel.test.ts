@@ -667,8 +667,8 @@ suite("panel", function () {
     await click("B");
     await click("constructor");
     assert.deepStrictEqual(clicks, ["open: sizes.tsv#L2"]);
-    // A click on the drawing before the page draws the next diagram is on the drawing it shows,
-    // also when it arrives after the page drew the next one, which links the node elsewhere.
+    // A click on the drawing shown is dropped once the next diagram is sent, which links the node
+    // elsewhere, also when it arrives before the page drew that one.
     const shown = webview.render.requestId;
     webview.answer = undefined;
     const rendering = panel.render({ ...flowchart, links: { A: { file: "sizes.tsv" } } }, "tool");
