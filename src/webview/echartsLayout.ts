@@ -3,6 +3,7 @@
 
 import { facetBoxes } from "../chartFacetLayout";
 import { asArray, isPlainObject } from "../protocol";
+import { escapeHtml } from "../text";
 import { type ThemeColors, toCss } from "./colors";
 import {
   allSeries,
@@ -1328,13 +1329,6 @@ const TEMPLATE_PARAMS: Record<string, string> = {
   d: "percent",
 };
 const groupedNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 20 });
-const HTML_ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
 /** By template and whether it is HTML, so that a layout of the same option has the same ones. */
 const templateFormatters = new Map<string, (params: unknown) => string>();
 
@@ -1362,7 +1356,7 @@ function templateFormatter(template: unknown, html: boolean) {
           typeof value === "number" && Number.isFinite(value)
             ? groupedNumber.format(Number(value.toPrecision(12)))
             : String(value ?? "-");
-        return html ? text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char) : text;
+        return html ? escapeHtml(text) : text;
       });
     };
     templateFormatters.set(key, formatter);

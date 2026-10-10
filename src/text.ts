@@ -39,6 +39,19 @@ export function brief(value: unknown): string {
   return json.length <= 40 ? json : Array.isArray(value) ? "an array" : "an object";
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/** Text as it reads in HTML, in an element or in an attribute's value in either quotes. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
+}
+
 /** The line and column of `offset` in `text`, counted from 1, as an editor counts them. */
 export function lineAndColumn(text: string, offset: number): { line: number; column: number } {
   const before = text.slice(0, offset);

@@ -2,16 +2,8 @@
 
 import * as vscode from "vscode";
 import { SAVED_CHART, type SavedChart } from "./protocol";
+import { escapeHtml } from "./text";
 import { type ThemeColors, toCss } from "./webview/colors";
-
-const HTML_ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-};
-
-const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (char) => HTML_ESCAPES[char] ?? char);
 
 /**
  * JSON to embed in a script element: an escaped "<" can neither end the element early nor start a
