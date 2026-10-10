@@ -1138,7 +1138,7 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
     if (each.type === "bar") {
       // The theme keeps bars narrow, but not short of a width that the series sets, nor apart
       // when it sets no gap between them, as the bins of a histogram.
-      const touching = each.barCategoryGap === "0%" || each.barCategoryGap === 0;
+      const touching = Number.parseFloat(String(each.barCategoryGap)) === 0;
       if (each.barWidth !== undefined || touching) each.barMaxWidth ??= "100%";
       const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
       if (each.stack !== undefined || touching) {

@@ -779,7 +779,9 @@ suite("echartsLayout", () => {
       itemStyle({ type: "bar", stack: "s" }),
     );
     assert.strictEqual(maxWidth({ barWidth: 60 }), "100%");
-    assert.strictEqual(maxWidth({ barCategoryGap: 0 }), "100%");
+    for (const gap of [0, "0", "0px", "0%"]) {
+      assert.strictEqual(maxWidth({ barCategoryGap: gap }), "100%", String(gap));
+    }
     // Not for bars only further apart than usual.
     assert.strictEqual(maxWidth({ barCategoryGap: "40%" }), undefined);
     assert.strictEqual(maxWidth({ barWidth: 60, barMaxWidth: 40 }), 40);
