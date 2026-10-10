@@ -1,6 +1,6 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
-import { joinWords, quote } from "../text";
+import { joinWords, lineAndColumn, quote } from "../text";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
@@ -402,13 +402,6 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
   ];
 }
 
-/** The line and column of an offset in the text, from 1. */
-function position(text: string, offset: number): { line: number; column: number } {
-  const starts = lineStarts(text);
-  const line = starts.findLastIndex((start) => start <= offset);
-  return { line: line + 1, column: offset - (starts[line] as number) + 1 };
-}
-
 /** Describes a problem with a span of the source. */
 function describe(source: string, start: number, end: number, expected?: string[]): string {
   const span = source.slice(start, end).split("\n", 1)[0] as string;
@@ -447,7 +440,7 @@ function yamlError(
     return new Error(`Invalid YAML: ${reason}.`);
   }
   const where = start < frontMatterEnd(normalized) ? "the front matter" : "the node's metadata";
-  const { line, column } = position(
+  const { line, column } = lineAndColumn(
     normalized,
     start + Math.max(0, Math.min(at - (inline ? 2 : 0), yaml.length)),
   );
@@ -500,7 +493,7 @@ export function describeError(error: unknown, source: string, type: () => string
     const space = /^\s*/.exec(normalized.slice(start, end))?.[0].length ?? 0;
     if (start + space < end) start += space;
     if (!normalized.slice(start).trim()) start = normalized.trimEnd().length;
-    const { line, column } = position(normalized, start);
+    const { line, column } = lineAndColumn(normalized, start);
     const message = problem.message
       ? `Error on line ${line}, column ${column}: ${problem.message}`
       : `Parse error on line ${line}, column ${column}: ${describe(normalized, start, end, problem.expected)}`;
@@ -532,7 +525,7 @@ function find(normalized: string, pattern: string): number | undefined {
 /** The error, on the line of the offset in the source if there is one. */
 const errorAt = (normalized: string, at: number | undefined, message: string) =>
   new Error(
-    at === undefined ? message : `Error on line ${position(normalized, at).line}: ${message}`,
+    at === undefined ? message : `Error on line ${lineAndColumn(normalized, at).line}: ${message}`,
   );
 
 /**
