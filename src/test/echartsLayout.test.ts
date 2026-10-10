@@ -246,11 +246,11 @@ suite("echartsLayout", () => {
     const width = (title: Option, toolbox: Option) =>
       layout(bars({ title: { text: "T", ...title }, toolbox }), { width: 300 }).title.textStyle
         .width;
-    // Three icons of 15 pixels, 8 apart, and the padding around them, and a gap to the title.
+    // Three icons of 15 pixels, 10 apart, and the padding right of them, and a gap to the title.
     const feature = { saveAsImage: {}, dataView: {}, restore: {}, magicType: { type: ["line"] } };
-    assert.strictEqual(width({}, { feature }), 284 - 71 - 8);
-    assert.strictEqual(width({ left: "center" }, { feature }), 284 - 2 * (71 + 8));
-    assert.strictEqual(width({}, { feature, itemSize: 20, itemGap: 4 }), 284 - 78 - 8);
+    assert.strictEqual(width({}, { feature }), 284 - 80 - 8);
+    assert.strictEqual(width({ left: "center" }, { feature }), 284 - 2 * (80 + 8));
+    assert.strictEqual(width({}, { feature, itemSize: 20, itemGap: 4, padding: 5 }), 284 - 73 - 8);
     // Not beside a toolbox placed elsewhere, nor one without icons, nor below it.
     for (const [title, toolbox] of [
       [{}, { feature, top: "bottom" }],
@@ -261,6 +261,22 @@ suite("echartsLayout", () => {
     ] as const) {
       assert.strictEqual(width(title, toolbox), 284, JSON.stringify([title, toolbox]));
     }
+  });
+
+  test("keeps the plot and a legend below a toolbox at the top", () => {
+    const feature = { saveAsImage: {}, dataView: {} };
+    const tops = (extra: Option) => {
+      const { grid, legend } = layout(bars({ toolbox: { feature }, ...extra }));
+      return [grid.top, legend?.top];
+    };
+    // The icons of 15 pixels and the padding above them.
+    assert.deepStrictEqual(tops({}), [30 + 14, undefined]);
+    assert.deepStrictEqual(tops({ legend: {} }), [30 + 30 + 14, 30]);
+    assert.deepStrictEqual(tops({ toolbox: { feature, itemSize: 20 } }), [35 + 14, undefined]);
+    // Beside a title, as high as it is.
+    assert.deepStrictEqual(tops({ title: { text: "T" } }), [32 + 14, undefined]);
+    // Not a toolbox placed elsewhere.
+    assert.deepStrictEqual(tops({ toolbox: { feature, top: "bottom" } }), [14, undefined]);
   });
 
   test("adds a legend for several named series, beside non-grid charts when there is room", () => {
