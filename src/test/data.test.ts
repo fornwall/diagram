@@ -2493,6 +2493,11 @@ suite("data", () => {
       () => parseTable("| a | b |\n|---|---|"),
       /^Error: The data has a header \("a", "b"\) but no rows below it\.$/,
     );
+    // As psql --csv and docker ps print when they find nothing.
+    for (const text of ["id,name\n", "NAME   STATUS   AGE"]) {
+      assert.throws(() => parseTable(text), /^Error: The data has a header \(.*\) but no rows/);
+    }
+    assert.deepStrictEqual(parseTable("a,1").rows, [["a", 1]]);
     assert.throws(
       () => parseTable(`${"|a".repeat(10)}|\n${"|-".repeat(10)}|`),
       /\("a", "a \(2\)", "a \(3\)", "a \(4\)", "a \(5\)", 5 more\) but no rows/,
