@@ -78,35 +78,53 @@ suite("webview", function () {
     );
   });
 
-  test("keeps the source's actions clear of the drawing in a short stacked split view", async () => {
+  test("keeps the drawing and the source's actions in a short stacked split view", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(
       await evaluate(`(() => {
-        // A short panel, narrow enough to stack the panes.
-        document.body.style.height = "400px";
-        const panes = document.getElementById("panes");
-        panes.style.flexDirection = "column";
+        // The page's rules for a narrow panel, which stacks the panes, in a wide one.
+        const page = [...document.styleSheets].find(sheet => sheet.href?.endsWith("webview.css"));
+        const narrow = new CSSStyleSheet();
+        narrow.replaceSync([...page.cssRules].map(rule => rule.cssText.replace("(max-width: 640px)", "(min-width: 0px)")).join("\\n"));
+        page.disabled = true;
+        document.adoptedStyleSheets = [narrow];
         document.getElementById("view-split").click();
         const splitter = document.getElementById("splitter");
+        const editor = document.getElementById("editor");
+        const height = (element) => element.getBoundingClientRect().height;
         const key = (key) => splitter.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true}));
-        const height = () => document.getElementById("editor").getBoundingClientRect().height;
+        /** Whether Apply, scrolled into view, can be clicked, rather than lies under the drawing. */
+        const reachable = () => {
+          const apply = document.getElementById("apply");
+          apply.scrollIntoView({block: "nearest"});
+          const box = apply.getBoundingClientRect();
+          return document.elementFromPoint(box.left + 5, box.top + 5) === apply;
+        };
         try {
-          key("Home");
-          const apply = document.getElementById("apply").getBoundingClientRect();
-          const clickable = document.elementFromPoint(apply.left + 5, apply.top + 5)?.id;
-          const clear = apply.bottom <= splitter.getBoundingClientRect().top;
-          const smallest = height();
-          key("ArrowDown");
-          // From where the editor is, not from the limit below it that it keeps to.
-          return {clickable, clear, grows: height() > smallest};
+          return [400, 300, 200].map(panel => {
+            document.body.style.height = panel + "px";
+            const panes = height(document.getElementById("panes"));
+            key("End");
+            const drawing = height(document.getElementById("canvas"));
+            const fromEnd = height(editor);
+            const atEnd = reachable();
+            key("ArrowUp");
+            // From where the editor is, not from the limit above it that the drawing keeps it to.
+            const shrinks = height(editor) < fromEnd;
+            key("Home");
+            const atHome = reachable();
+            // Beside the handle, the rest of the 120 pixels, or of half the panes, that the drawing keeps.
+            return {drawing: drawing + height(splitter) >= Math.min(120, panes / 2), shrinks, atEnd, atHome};
+          });
         } finally {
           key("Enter");
           document.getElementById("view-visual").click();
-          panes.style.flexDirection = "";
           document.body.style.height = "";
+          document.adoptedStyleSheets = [];
+          page.disabled = false;
         }
       })()`),
-      { clickable: "apply", clear: true, grows: true },
+      Array(3).fill({ drawing: true, shrinks: true, atEnd: true, atHome: true }),
     );
   });
 

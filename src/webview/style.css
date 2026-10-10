@@ -386,8 +386,8 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   box-sizing: border-box;
   /* Fills the panel in the source view, and the handle's share of it in the split view. */
   flex: 0 0 var(--source-size);
-  /* Not narrower than the panel allows, but, stacked in a short panel, not lower than its content:
-     the actions would spill out of it onto the drawing, which covers them. */
+  /* Not narrower than the panel allows. Stacked, it is not lower than its content either, unless
+     it scrolls: the actions would spill out of it onto the drawing, which covers them. */
   min-width: 0;
   padding: 6px 12px;
 }
@@ -426,6 +426,18 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
     border-left: none;
     border-top: 1px solid var(--vscode-panel-border);
     cursor: row-resize;
+  }
+
+  /* The drawing keeps a height to read, or half of a short view, below an editor that scrolls
+     where it is lower than its content. */
+  #panes.view-split #editor {
+    max-height: calc(100% - min(120px, 50%));
+    overflow-y: auto;
+  }
+
+  /* Chart Options take less of a panel that also shows the source above the drawing. */
+  body:has(#panes.view-split) #chart-options {
+    max-height: 30vh;
   }
 }
 
