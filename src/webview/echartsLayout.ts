@@ -175,13 +175,16 @@ export function sameLayout(a: unknown, b: unknown): boolean {
  * step or the default media option defines, as copies, for the layout to place, style and keep
  * them as any other: what the step or query sets is still merged in over them. Series that only
  * later steps add stay there, so as not to be shown from the start, as do series with an "id",
- * which the series of other steps, with ids of their own, would no longer merge into.
+ * which the series of other steps, with ids of their own, would no longer merge into. Likewise
+ * the titles they set, as a step's year often is, for the layout to make room for.
  */
-function adoptStartingSeries(option: JsonObject, base: JsonObject): void {
+function adoptStartingStep(option: JsonObject, base: JsonObject): void {
   const steps: unknown[] = Array.isArray(option.options) ? option.options : [];
   const step = steps[Number(asArray(base.timeline)[0]?.currentIndex ?? 0)];
   const media = asArray(option.media).find((each) => each.query === undefined)?.option;
   const series = [...seriesOf(base)];
+  const titles = asArray(base.title);
+  let titled = false;
   for (const patch of [step, media]) {
     if (!isPlainObject(patch)) continue;
     const own = seriesOf(patch);
@@ -191,8 +194,13 @@ function adoptStartingSeries(option: JsonObject, base: JsonObject): void {
         series.push({ ...each });
       }
     });
+    asArray(patch.title).forEach((title, index) => {
+      titles[index] = { ...titles[index], ...title };
+      titled = true;
+    });
   }
   if (series.length > seriesOf(base).length) base.series = series;
+  if (titled) base.title = titles;
 }
 
 /**
@@ -222,7 +230,7 @@ function layOutAround(
 ): JsonObject | undefined {
   const option = cloneOption(source);
   const base = baseOption(option);
-  adoptStartingSeries(option, base);
+  adoptStartingStep(option, base);
   const series = asArray(base.series);
   const cartesian = series.some(isCartesian);
   if (context.reducedMotion) {

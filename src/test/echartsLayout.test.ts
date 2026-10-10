@@ -866,6 +866,17 @@ suite("echartsLayout", () => {
     assert.strictEqual(media.tooltip.trigger, "item");
   });
 
+  test("makes room for the title that the timeline's current step sets", () => {
+    const top = (base: Option, step: Option) =>
+      layout({
+        baseOption: bars({ timeline: { data: ["2025"] }, ...base }),
+        options: [{ title: step }],
+      }).baseOption.grid.top;
+    assert.strictEqual(top({}, { text: "2025" }), 32 + 14);
+    assert.strictEqual(top({ title: { text: "Sales" } }, { subtext: "2025" }), 50 + 14);
+    assert.strictEqual(top({ title: { text: "Sales" } }, {}), 32 + 14);
+  });
+
   test("keeps the chart and legend clear of a timeline", () => {
     const named = [
       { type: "bar", name: "One", data: [1, 2] },
