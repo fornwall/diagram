@@ -12,6 +12,11 @@ type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
 type Reply = Part[] | (() => Promise<Part[]>);
 
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
+/** An image pasted into chat, which chat gives with a ChatReferenceBinaryData. */
+const pasted = (mimeType: string, data: Uint8Array) => ({
+  id: "pasted",
+  value: { mimeType, data: async () => data },
+});
 const valid = "```mermaid\nflowchart TD\n  A --> B\n```";
 const flowchart = {
   language: "mermaid",
@@ -865,12 +870,7 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.origin, "tool");
     const revision = panel.revision;
     // The page fails the updated chart, and then draws the kept one again.
-    const draw = webview.answer;
-    webview.answer = (message) => {
-      if (message.type !== "render") return draw?.(message);
-      webview.answer = draw;
-      return { type: "renderError", requestId: message.requestId, message: "Bad option" };
-    };
+    webview.failNextRender("Bad option");
     const update = new vscode.LanguageModelToolCallPart("1", "diagram_updateChart", {
       type: "line",
     });
@@ -1080,29 +1080,26 @@ suite("participant", () => {
     const root = workspaceRoot().uri;
     const folder = vscode.Uri.joinPath(root, "attached-folder");
     await vscode.workspace.fs.createDirectory(folder);
-    try {
-      const { sent, shown } = await ask([[text("Exploring.")]], {
-        references: [{ id: "folder", value: folder }],
-      });
-      assert.strictEqual(shown, "Exploring.");
-      const attached = attachments(sent[0]?.messages)[0];
-      assert.match(
-        attached ?? "",
-        /attached-folder, which could not be read: it is a folder; list its files with diagram_findFiles and the glob "attached-folder\/\*\*"$/,
-      );
-      // A model that calls no tools cannot list them, so the user is told it was left out.
-      const toolless = await ask([[text(valid)]], {
-        references: [{ id: "folder", value: folder }],
-        capabilities: { supportsToolCalling: false },
-      });
-      assert.match(
-        toolless.shown,
-        /^Left out attached-folder: it is a folder, whose files are not attached\.\n\n/,
-      );
-      assert.doesNotMatch(toolless.sent[0]?.messages.map(messageText).join("\n") ?? "", /diagram_/);
-    } finally {
-      await vscode.workspace.fs.delete(folder, { recursive: true });
-    }
+    afterTest(() => vscode.workspace.fs.delete(folder, { recursive: true }));
+    const { sent, shown } = await ask([[text("Exploring.")]], {
+      references: [{ id: "folder", value: folder }],
+    });
+    assert.strictEqual(shown, "Exploring.");
+    const attached = attachments(sent[0]?.messages)[0];
+    assert.match(
+      attached ?? "",
+      /attached-folder, which could not be read: it is a folder; list its files with diagram_findFiles and the glob "attached-folder\/\*\*"$/,
+    );
+    // A model that calls no tools cannot list them, so the user is told it was left out.
+    const toolless = await ask([[text(valid)]], {
+      references: [{ id: "folder", value: folder }],
+      capabilities: { supportsToolCalling: false },
+    });
+    assert.match(
+      toolless.shown,
+      /^Left out attached-folder: it is a folder, whose files are not attached\.\n\n/,
+    );
+    assert.doesNotMatch(toolless.sent[0]?.messages.map(messageText).join("\n") ?? "", /diagram_/);
   });
 
   test("reports attachment read failures without losing the rest of the request", async () => {
@@ -1133,67 +1130,59 @@ suite("participant", () => {
     const file = vscode.Uri.joinPath(root, "whiteboard.PNG");
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     await vscode.workspace.fs.writeFile(file, png);
-    // As chat gives pasted images, with a ChatReferenceBinaryData.
-    const pasted = (mimeType: string, data: Uint8Array) => ({
-      id: "pasted",
-      value: { mimeType, data: async () => data },
-    });
-    try {
-      const references = [
-        { id: "file", value: file },
-        pasted("image/jpeg", new Uint8Array([1, 2, 3])),
-        pasted("image/png", new Uint8Array(3 * 1024 * 1024 + 1)),
-        pasted("application/pdf", new Uint8Array([1])),
-        pasted("image/bmp", new Uint8Array([1])),
-        pasted("image/jpg", new Uint8Array([4])),
-        { id: "problems", value: { diagnostics: [] } },
-        { id: "file", value: file },
-        pasted("image/jpeg", new Uint8Array([1, 2, 3])),
-        { id: "symbol", value: 42 },
-        { id: "file", value: vscode.Uri.joinPath(root, "gone.png") },
-      ].reverse();
-      const { sent, shown } = await ask([[text("Drawing.")]], { references });
-      const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
-      assert.deepStrictEqual(messages?.map(messageText), [
-        "Attached by the user: whiteboard.PNG[image/png]",
-        "Attached by the user: image[image/jpeg]",
-        "Attached by the user: image, which could not be read: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image.",
-        "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
-        "Attached by the user: image, which could not be read: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image.",
-        "Attached by the user: image[image/jpeg]",
-        "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
-        "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
-        "Attached by the user, but not read: gone.png does not exist.",
-      ]);
-      assert.strictEqual(
-        shown,
-        "Left out image: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image. " +
-          "Left out image: @diagram does not support application/pdf attachments. " +
-          "Left out image: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image. " +
-          "Left out problems, symbol: @diagram does not support this kind of attachment. " +
-          "Left out: gone.png does not exist.\n\nDrawing.",
-      );
-      const images = messages?.map((m) =>
-        m.content.find((part) => part instanceof vscode.LanguageModelDataPart),
-      );
-      assert.deepStrictEqual(
-        images?.slice(0, 2).map((part) => [part?.mimeType, [...(part?.data ?? [])]]),
-        [
-          ["image/png", [...png]],
-          ["image/jpeg", [1, 2, 3]],
-        ],
-      );
-      // An image/jpg as models accept it.
-      assert.deepStrictEqual(images?.[5]?.mimeType, "image/jpeg");
-      assert.ok(
-        images
-          ?.toSpliced(5, 1)
-          .slice(2)
-          .every((part) => part === undefined),
-      );
-    } finally {
-      await vscode.workspace.fs.delete(file);
-    }
+    afterTest(() => vscode.workspace.fs.delete(file));
+    const references = [
+      { id: "file", value: file },
+      pasted("image/jpeg", new Uint8Array([1, 2, 3])),
+      pasted("image/png", new Uint8Array(3 * 1024 * 1024 + 1)),
+      pasted("application/pdf", new Uint8Array([1])),
+      pasted("image/bmp", new Uint8Array([1])),
+      pasted("image/jpg", new Uint8Array([4])),
+      { id: "problems", value: { diagnostics: [] } },
+      { id: "file", value: file },
+      pasted("image/jpeg", new Uint8Array([1, 2, 3])),
+      { id: "symbol", value: 42 },
+      { id: "file", value: vscode.Uri.joinPath(root, "gone.png") },
+    ].reverse();
+    const { sent, shown } = await ask([[text("Drawing.")]], { references });
+    const messages = sent[0]?.messages.filter((m) => messageText(m).startsWith("Attached"));
+    assert.deepStrictEqual(messages?.map(messageText), [
+      "Attached by the user: whiteboard.PNG[image/png]",
+      "Attached by the user: image[image/jpeg]",
+      "Attached by the user: image, which could not be read: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image.",
+      "Attached by the user: image, which could not be read: @diagram does not support application/pdf attachments",
+      "Attached by the user: image, which could not be read: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image.",
+      "Attached by the user: image[image/jpeg]",
+      "Attached by the user: problems, which could not be read: @diagram does not support this kind of attachment",
+      "Attached by the user: symbol, which could not be read: @diagram does not support this kind of attachment",
+      "Attached by the user, but not read: gone.png does not exist.",
+    ]);
+    assert.strictEqual(
+      shown,
+      "Left out image: the image takes 3.0 MiB, more than the 3 MiB limit. Attach a smaller or more compressed image. " +
+        "Left out image: @diagram does not support application/pdf attachments. " +
+        "Left out image: the image is image/bmp, which models do not accept. Attach a PNG, JPEG, GIF or WebP image. " +
+        "Left out problems, symbol: @diagram does not support this kind of attachment. " +
+        "Left out: gone.png does not exist.\n\nDrawing.",
+    );
+    const images = messages?.map((m) =>
+      m.content.find((part) => part instanceof vscode.LanguageModelDataPart),
+    );
+    assert.deepStrictEqual(
+      images?.slice(0, 2).map((part) => [part?.mimeType, [...(part?.data ?? [])]]),
+      [
+        ["image/png", [...png]],
+        ["image/jpeg", [1, 2, 3]],
+      ],
+    );
+    // An image/jpg as models accept it.
+    assert.deepStrictEqual(images?.[5]?.mimeType, "image/jpeg");
+    assert.ok(
+      images
+        ?.toSpliced(5, 1)
+        .slice(2)
+        .every((part) => part === undefined),
+    );
   });
 
   test("leaves out images for models without image input and from earlier requests", async () => {
@@ -1235,33 +1224,30 @@ suite("participant", () => {
     const root = workspaceRoot().uri;
     const file = vscode.Uri.joinPath(root, "again.png");
     await vscode.workspace.fs.writeFile(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
-    const pasted = (bytes: number[]) => ({
-      id: "pasted",
-      value: { mimeType: "image/png", data: async () => new Uint8Array(bytes) },
+    afterTest(() => vscode.workspace.fs.delete(file));
+    const history = [
+      new RequestTurn(
+        "Draw these",
+        undefined,
+        [
+          { id: "file", value: file },
+          pasted("image/png", new Uint8Array([1, 2])),
+          pasted("image/png", new Uint8Array([3])),
+        ],
+        "diagram.participant",
+        [],
+      ),
+    ];
+    const { sent } = await ask([[text("Drawn.")]], {
+      history,
+      references: [pasted("image/png", new Uint8Array([1, 2])), { id: "file", value: file }],
     });
-    try {
-      const history = [
-        new RequestTurn(
-          "Draw these",
-          undefined,
-          [{ id: "file", value: file }, pasted([1, 2]), pasted([3])],
-          "diagram.participant",
-          [],
-        ),
-      ];
-      const { sent } = await ask([[text("Drawn.")]], {
-        history,
-        references: [pasted([1, 2]), { id: "file", value: file }],
-      });
-      const attached = attachments(sent[0]?.messages);
-      assert.deepStrictEqual(attached, [
-        "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
-        "Attached by the user: again.png[image/png]",
-        "Attached by the user: image[image/png]",
-      ]);
-    } finally {
-      await vscode.workspace.fs.delete(file);
-    }
+    const attached = attachments(sent[0]?.messages);
+    assert.deepStrictEqual(attached, [
+      "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
+      "Attached by the user: again.png[image/png]",
+      "Attached by the user: image[image/png]",
+    ]);
   });
 
   test("gives the model earlier turns, with their diagrams and attachments", async () => {
