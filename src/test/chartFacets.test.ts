@@ -237,6 +237,18 @@ suite("chartFacets", () => {
       ],
     );
     assert.match(chart.summary, /"worker": .*left out 2 rows without both an x and a y value/);
+    assert.ok(!("empty" in chart));
+    // Without a point in any facet, the chart fails as one without facets does.
+    const none = "service,x,y\napi,10,\napi,,200\nworker,30,\nworker,,40";
+    for (const spec of [{ facetColumn: "service" }, {}]) {
+      assert.throws(
+        () => buildChart({ type: "scatter", data: none, ...spec }, parseTable(none)),
+        new Error(
+          'A scatter chart needs rows with numbers in both "x", "y", but none has. Choose ' +
+            '"valueColumns" that are filled in the same rows.',
+        ),
+      );
+    }
   });
 
   test("facets that alone would read their labels differently share one axis type", () => {

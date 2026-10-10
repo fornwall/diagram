@@ -18,6 +18,8 @@ export interface Chart {
   option: Record<string, unknown>;
   /** Which columns and rows were charted, e.g. `Charted "size" by "dir".`, for a model. */
   summary: string;
+  /** Why a facet has nothing to draw, which fails a chart whose every facet has nothing. */
+  empty?: string;
 }
 
 /** Build a chart, apply option overrides, and summarize how the data was interpreted. */
@@ -89,18 +91,14 @@ function buildSingleChart(
   const { columns } = plan;
   // Each panel adds its own omissions and aggregation notes.
   const notes = [...plan.notes];
-  const reading: Reading = {
-    spec,
-    table,
-    columns,
-    notes,
-    ...readRows(spec, table, columns, notes, plan.multiples),
-  };
+  const { empty, ...rows } = readRows(spec, table, columns, notes, plan.multiples);
+  const reading: Reading = { spec, table, columns, notes, ...rows };
   const option = drawChart(type, reading);
   checkItems(type, spec, option);
   return {
     option,
     summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
+    ...(empty === undefined ? {} : { empty }),
   };
 }
 

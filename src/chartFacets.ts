@@ -30,11 +30,9 @@ function facetTable(spec: ChartSpec, table: DataTable, index: number): DataTable
   };
 }
 
-interface Panel {
+interface Panel extends Chart {
   key: string;
   name: string;
-  option: Option;
-  summary: string;
 }
 
 /** Child charts are unmerged; the caller applies manual options once to this combined chart. */
@@ -88,6 +86,11 @@ export function buildFacetedChart(
     }
     return { key: JSON.stringify(value), name, ...chart };
   });
+  // A facet with nothing to draw is an empty panel beside others, but alone they chart nothing.
+  const [{ empty } = {}] = panels;
+  if (empty !== undefined && panels.every((panel) => panel.empty !== undefined)) {
+    throw new Error(empty);
+  }
   if (spec.facetScales !== "independent") {
     // Categories in an order of their own keep it, unless "sort" orders the rows by value.
     const ordered = spec.sort === undefined;

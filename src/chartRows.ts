@@ -367,7 +367,8 @@ function rowLabels(
 /**
  * Remove totals and parent rows, aggregate, then discard unusable rows, sort and limit.
  * Group before limiting so "the 10 largest" selects groups. Scale sizes, durations and axis names
- * together, by the `shared` multiples of their units when facets must agree on them.
+ * together, by the `shared` multiples of their units when facets must agree on them. A facet
+ * without a row to draw says why in `empty` rather than failing, as other facets may have rows.
  */
 export function readRows(
   spec: ChartSpec,
@@ -375,7 +376,7 @@ export function readRows(
   columns: Columns,
   notes: string[],
   shared?: Multiples,
-): Pick<Reading, "rows" | "names" | "maxima"> {
+): Pick<Reading, "rows" | "names" | "maxima"> & { empty?: string } {
   const { type } = spec;
   const valueIndices = columns.values;
   const name = (index: number) => columnName(table, index);
@@ -436,6 +437,7 @@ export function readRows(
 
   // A share of a total has no size without a positive value, and a point needs both an x and a y.
   // A flow with one node per value column leaves out single flows instead of whole rows.
+  let empty: string | undefined;
   const positive =
     ["pie", "doughnut", "funnel", "treemap", "sunburst"].includes(type) ||
     (type === "sankey" && chained(columns));
@@ -444,22 +446,20 @@ export function readRows(
       positive ? (values[0] ?? 0) > 0 : !values.includes(null),
     );
     const left = rows.length - charted.length;
-    // A facet without points is an empty panel, as one without bars is, rather than no chart.
-    if (charted.length === 0 && shared === undefined) {
+    if (charted.length === 0) {
       const quoted = quoteAll(valueIndices.map(name));
       const values = rows.map(({ values }) => values[0]);
-      throw new Error(
-        positive
-          ? `A ${type} chart needs positive numbers, as it sizes each item by its value, but ` +
-              `${quoted} has none` +
-              (values.some((value) => (value ?? 0) < 0)
-                ? ". Chart negative values as a bar chart instead."
-                : values.includes(0)
-                  ? ', only zeros. Choose a column with positive numbers in "valueColumns".'
-                  : ".")
-          : `A scatter chart needs rows with numbers in both ${quoted}, but none has. Choose ` +
-              '"valueColumns" that are filled in the same rows.',
-      );
+      empty = positive
+        ? `A ${type} chart needs positive numbers, as it sizes each item by its value, but ` +
+          `${quoted} has none` +
+          (values.some((value) => (value ?? 0) < 0)
+            ? ". Chart negative values as a bar chart instead."
+            : values.includes(0)
+              ? ', only zeros. Choose a column with positive numbers in "valueColumns".'
+              : ".")
+        : `A scatter chart needs rows with numbers in both ${quoted}, but none has. Choose ` +
+          '"valueColumns" that are filled in the same rows.';
+      if (shared === undefined) throw new Error(empty);
     }
     if (left > 0) {
       const without = positive ? "a positive value" : "both an x and a y value";
@@ -515,5 +515,5 @@ export function readRows(
       : showInMultiples(table, valueIndices, rows, notes, shared);
   const max = spec.max;
   const maxima = max === undefined ? [] : sizes.map((size) => scale(max, 1 / size));
-  return { rows, names, maxima };
+  return { rows, names, maxima, ...(empty === undefined ? {} : { empty }) };
 }
