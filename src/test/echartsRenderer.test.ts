@@ -96,6 +96,14 @@ suite("echartsRenderer", () => {
     assert.ok(lines.length < 250, String(lines.length));
     assert.ok(lines.every((line) => line.length < 130));
     assert.strictEqual(lines.at(-2), '  "e": [true, [[]]]');
+    // Also the values of an array inside one, as of a dataset's row, once the line is long.
+    const rows = [[Array.from({ length: 1000 }, (_, x) => [x, x])]];
+    const nested = format(JSON.stringify({ rows })).split("\n");
+    assert.deepStrictEqual(JSON.parse(nested.join("\n")), { rows });
+    assert.ok(
+      nested.length > 20 && nested.every((line) => line.length < 330),
+      String(nested.length),
+    );
     // Parsing would round the integers beyond 2^53 and rewrite the numbers as JavaScript would.
     assert.strictEqual(
       format('{"id": 12345678901234567891, "ns": 1.50}'),

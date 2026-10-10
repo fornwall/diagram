@@ -338,12 +338,13 @@ export class EChartsRenderer implements Renderer {
       const token = tokens[index] ?? "";
       const end = valueArrays.get(index);
       if (end !== undefined) {
-        // On the next line, indented, once a line is long, but not inside an inner array.
+        // On the next line, indented, once a line is long, and inside an inner array only once it
+        // is as many times as long, so as not to split the arrays of a long one, such as points.
         let nesting = 0;
         for (const each of tokens.slice(index, end + 1)) {
           nesting += each === "[" ? 1 : each === "]" ? -1 : 0;
           if (each !== ",") text += each;
-          else if (nesting > 1 || text.length - line < LINE_LENGTH) text += ", ";
+          else if (text.length - line < LINE_LENGTH * nesting) text += ", ";
           else {
             text += ",";
             newLine(depth + 1);
