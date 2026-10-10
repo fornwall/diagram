@@ -12,6 +12,13 @@ suite("describe", () => {
     editedByUser: false,
     chart: { type: "pie", file: "sales.csv" },
   };
+  const flowchart = (source: string): DiagramState => ({
+    language: "mermaid",
+    source,
+    title: "Flow",
+    origin: "tool",
+    editedByUser: false,
+  });
 
   test("keeps chart data and parameters available without repeating its origin", () => {
     const description = describeDiagram(chart);
@@ -22,17 +29,11 @@ suite("describe", () => {
       description,
       /Its data is not loaded, .* ask the user to press Refresh in the diagram panel first\./,
     );
-    const chartTable = parseTable("name,value\nSales,42");
-    assert.match(
-      describeDiagram(chart, { chartTable }),
-      /use diagram_updateChart with the loaded data/,
-    );
-  });
-
-  test("points to diagram_inspectData for loaded chart data", () => {
-    assert.doesNotMatch(describeDiagram(chart), /diagram_inspectData/);
-    const chartTable = parseTable("name,value\nSales,42");
-    assert.match(describeDiagram(chart, { chartTable }), /diagram_inspectData shows its columns/);
+    assert.doesNotMatch(description, /diagram_inspectData/);
+    // Loaded, the data is updated and inspected with the chart tools.
+    const loaded = describeDiagram(chart, { chartTable: parseTable("name,value\nSales,42") });
+    assert.match(loaded, /use diagram_updateChart with the loaded data/);
+    assert.match(loaded, /diagram_inspectData shows its columns/);
   });
 
   test("tells the units that sizes and durations were converted to", () => {
@@ -71,13 +72,7 @@ suite("describe", () => {
 
   test("a long Mermaid source is left out of requests, but given in full when asked for", () => {
     const source = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
-    const state: DiagramState = {
-      language: "mermaid",
-      source,
-      title: "Flow",
-      origin: "tool",
-      editedByUser: false,
-    };
+    const state = flowchart(source);
     const summary = describeDiagram(state);
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(summary, /too long to repeat in every request; diagram_getState gives it in full/);
@@ -94,13 +89,7 @@ suite("describe", () => {
       label: "A → B",
       relationship: { kind: "edge", source: "A", target: "B", direction: "forward" } as const,
     }));
-    const state: DiagramState = {
-      language: "mermaid",
-      source: "flowchart LR\n  A --> B",
-      title: "Flow",
-      origin: "tool",
-      editedByUser: false,
-    };
+    const state = flowchart("flowchart LR\n  A --> B");
     const summary = describeDiagram(state, { relationships });
     assert.doesNotMatch(summary, /L_A_B_/);
     assert.match(
