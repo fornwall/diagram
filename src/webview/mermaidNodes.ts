@@ -200,8 +200,10 @@ const arrowheads = (line: Element) =>
 /** The nodes found in a drawing so far, and how each diagram type's finder adds more. */
 class Finder {
   readonly byElement = new Map<Element, DiagramNode>();
-  /** The label of each node and relationship, by id. */
-  private readonly labels = new Map<string, string>();
+  /** Each node and relationship by id, in the order they were first added. */
+  readonly nodes = new Map<string, DiagramNode>();
+  /** The elements that show each node, by id. */
+  readonly elements = new Map<string, Element[]>();
   /** The ids that uniqueId gave out, which may not have been added yet. */
   private readonly given = new Set<string>();
   /**
@@ -221,7 +223,7 @@ class Finder {
   }
 
   has(id: string): boolean {
-    return this.labels.has(id);
+    return this.nodes.has(id);
   }
 
   withoutPrefix(id: string): string {
@@ -235,9 +237,12 @@ class Finder {
     element.setAttribute("aria-pressed", "false");
     if (node.relationship) element.classList.add("diagram-relationship");
     this.byElement.set(element, node);
-    const first = !this.labels.has(node.id);
-    this.labels.set(node.id, node.label);
-    if (first) {
+    this.nodes.set(node.id, node);
+    const shown = this.elements.get(node.id);
+    if (shown) {
+      shown.push(element);
+    } else {
+      this.elements.set(node.id, [element]);
       element.setAttribute("tabindex", "-1");
       element.setAttribute("role", "button");
       element.setAttribute("aria-label", node.label);
@@ -259,7 +264,7 @@ class Finder {
   uniqueId(name: string): string {
     let id = name;
     let n = this.next.get(name) ?? 2;
-    while (this.given.has(id) || this.labels.has(id)) id = `${name} (${n++})`;
+    while (this.given.has(id) || this.nodes.has(id)) id = `${name} (${n++})`;
     this.next.set(name, n);
     this.given.add(id);
     return id;
@@ -285,7 +290,7 @@ class Finder {
     if (start && !end) [source, target] = [target, source];
     const direction = start && end ? "both" : !start && !end ? "undirected" : "forward";
     const arrow = direction === "both" ? "↔" : direction === "undirected" ? "—" : "→";
-    const name = (node: string) => this.labels.get(node) ?? node;
+    const name = (node: string) => this.nodes.get(node)?.label ?? node;
     return {
       id: this.uniqueId(`${kind}:${id}`),
       label: `${name(source)} ${arrow} ${name(target)}${text ? `: ${text}` : ""}`,
@@ -927,16 +932,8 @@ export function findNodes(
   ]) {
     find(f);
   }
-
-  const elements = new Map<string, Element[]>();
-  const nodes = new Map<string, DiagramNode>();
-  for (const [element, node] of f.byElement) {
-    nodes.set(node.id, node);
-    const shown = elements.get(node.id);
-    if (shown) shown.push(element);
-    else elements.set(node.id, [element]);
-  }
-  return { byElement: f.byElement, elements, nodes: [...nodes.values()], links: linksOf(f) };
+  const { byElement, elements, nodes } = f;
+  return { byElement, elements, nodes: [...nodes.values()], links: linksOf(f) };
 }
 
 /**
