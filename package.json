@@ -958,14 +958,14 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.19.1",
+    "@types/node": "^24.19.2",
     "@types/vscode": "~1.140.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "echarts": "^6.1.0",
     "esbuild": "^0.28.2",
-    "katex": "0.18.9",
+    "katex": "0.19.0",
     "mermaid": "^12.1.0",
     "typescript": "^7.0.2"
   },
