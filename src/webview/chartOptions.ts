@@ -123,7 +123,8 @@ export class ChartOptionsForm {
       step: "1",
       placeholder: "Automatic",
     });
-    this.facetColumns.title = "More when the panels would take over 4 rows";
+    this.facetColumns.title =
+      "More when the panels would take over 4 rows, or be too short to read";
     this.fields.className = "chart-options-fields";
     for (const [name, control] of [
       ["Chart type", this.type],

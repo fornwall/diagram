@@ -428,12 +428,18 @@ suite("chartFacets", () => {
     }
   });
 
-  test("rotates a panel's labels to fit its width, keeping the grids where the facets placed them", () => {
+  test("rotates a panel's labels to fit its width, in the grids laid out for the panel", () => {
     const option = build(
       "service,operation,ms\napi,Read configuration,2\napi,Write configuration,3\nworker,Read configuration,30\nworker,Write configuration,40",
     );
     const laidOut = layout(option, { width: 600, title: "My chart" });
-    assert.deepStrictEqual(laidOut.grid, option.grid);
+    assert.deepStrictEqual(
+      laidOut.grid.map(({ left, top, width, height }: Option) => [left, top, width, height]),
+      [
+        [16, 34, 272, 450],
+        [312, 34, 272, 450],
+      ],
+    );
     assert.ok(laidOut.xAxis.every((axis: Option) => axis.axisLabel.rotate > 0));
   });
 
@@ -443,8 +449,100 @@ suite("chartFacets", () => {
       layout(build(data, { facetColumns }), { width: 1000 }).title.map((title: Option) =>
         Math.round(title.textStyle.width),
       );
-    assert.deepStrictEqual(widths(1), [904, 904]);
-    assert.deepStrictEqual(widths(2), [424, 424]);
+    assert.deepStrictEqual(widths(1), [952, 952]);
+    assert.deepStrictEqual(widths(2), [456, 456]);
+  });
+
+  const regions = (count: number) =>
+    `service,month,ms\n${Array.from({ length: count }, (_, panel) =>
+      ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+        .map((month, i) => `s${panel},${month},${50 + ((panel * 13 + i * 17) % 40)}`)
+        .join("\n"),
+    ).join("\n")}`;
+
+  test("lays the panels out in pixels, each title above its grid and clear of the row above", () => {
+    const option = build(regions(5));
+    const laidOut = layout(option, { width: 1100, height: 540 });
+    const boxes = laidOut.grid.map(({ left, top, width, height }: Option) => ({
+      left,
+      top,
+      width,
+      height,
+    }));
+    assert.deepStrictEqual(new Set(boxes.map(({ left }: Option) => left)).size, 2);
+    assert.deepStrictEqual(new Set(boxes.map(({ top }: Option) => top)).size, 3);
+    laidOut.title.forEach((title: Option, i: number) => {
+      assert.deepStrictEqual([title.left, title.top + 26], [boxes[i].left, boxes[i].top]);
+    });
+    assert.ok(boxes[0].top + boxes[0].height < laidOut.title[2].top, JSON.stringify(boxes));
+    // Plots of over 80 pixels, rather than the 40 that percentages of the chart left them.
+    withChart(
+      laidOut,
+      (chart) => {
+        const y = (value: number) => Number(chart.convertToPixel({ yAxisIndex: 4 }, value));
+        assert.ok(y(0) - y(100) > 80, String(y(0) - y(100)));
+        assert.ok(y(100) > laidOut.title[4].top + 40, "below the title and the axis name");
+      },
+      { width: 1100, height: 540 },
+    );
+    // The panels of a user's own boxes stay where the user places them.
+    const placed = build(regions(5), { options: { grid: [{ top: "10%" }] } });
+    assert.deepStrictEqual(layout(placed, { width: 1100, height: 540 }).grid, placed.grid);
+  });
+
+  test("takes more columns when rows of panels would be too short, while they are wide enough", () => {
+    const columns = (width: number, height: number, count = 5) =>
+      new Set(layout(build(regions(count)), { width, height }).grid.map(({ left }: Option) => left))
+        .size;
+    assert.strictEqual(columns(1100, 540), 2);
+    assert.strictEqual(columns(800, 340), 3);
+    assert.strictEqual(columns(600, 150), 5);
+    // Too narrow for more.
+    assert.strictEqual(columns(200, 150), 2);
+    assert.strictEqual(columns(800, 340, 9), 5);
+  });
+
+  test("gives short panels fewer value labels, alike in every panel, and drops the axis name", () => {
+    const option = build(regions(5));
+    assert.deepStrictEqual(
+      [option.yAxis[0].min, option.yAxis[0].max, option.yAxis[0].interval],
+      [0, 100, 20],
+    );
+    const axes = (width: number, height: number) =>
+      layout(option, { width, height }).yAxis.map(({ min, max, interval, name }: Option) => ({
+        min,
+        max,
+        interval,
+        name,
+      }));
+    const tall = axes(1100, 900);
+    assert.deepStrictEqual(tall[0], { min: 0, max: 100, interval: 20, name: "ms" });
+    const usual = axes(1100, 540);
+    assert.deepStrictEqual(usual[0], { min: 0, max: 100, interval: 25, name: "ms" });
+    const short = axes(500, 200);
+    assert.deepStrictEqual(short[0], { min: 0, max: 100, interval: 50, name: "" });
+    for (const each of [tall, usual, short]) {
+      assert.ok(each.every((axis: Option) => JSON.stringify(axis) === JSON.stringify(each[0])));
+    }
+    // A count stays whole, and independent scales take fewer ticks of ECharts' own.
+    const values = Array.from({ length: 5 }, (_, panel) =>
+      Array.from({ length: 12 }, (_, i) => `s${panel},${i < 10 ? 1 : 9}`).join("\n"),
+    );
+    const counts = build(`service,value\n${values.join("\n")}`, { type: "histogram", bins: 2 });
+    assert.deepStrictEqual([counts.yAxis[0].interval, counts.yAxis[0].minInterval], [2, 1]);
+    const fractions = {
+      ...counts,
+      yAxis: counts.yAxis.map(({ minInterval: _, ...axis }: Option) => axis),
+    };
+    const interval = (option: Option) =>
+      layout(option, { width: 1100, height: 540 }).yAxis[0].interval;
+    assert.deepStrictEqual([interval(counts), interval(fractions)], [5, 2.5]);
+    const independent = build(regions(5), { facetScales: "independent" });
+    assert.strictEqual(layout(independent, { width: 500, height: 200 }).yAxis[0].splitNumber, 2);
+    assert.strictEqual(
+      layout(independent, { width: 1100, height: 900 }).yAxis[0].splitNumber,
+      undefined,
+    );
   });
 
   test("takes more panels per row than 4 rows of panels would need, and says so", () => {

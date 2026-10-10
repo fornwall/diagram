@@ -2,6 +2,7 @@
 
 import { columnName, findColumn, findColumns } from "./chartColumns";
 import { labelOrder, timeOrder } from "./chartDates";
+import { facetBoxes } from "./chartFacetLayout";
 import { roundStep, stepsOf } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
@@ -87,10 +88,7 @@ export function buildFacetedChart(
   }
   const wanted = spec.facetColumns ?? Math.min(2, Math.ceil(Math.sqrt(panels.length)));
   const columns = Math.min(panels.length, Math.max(wanted, Math.ceil(panels.length / MAX_ROWS)));
-  const rows = Math.ceil(panels.length / columns);
-  // The heights, in percent of the chart's, of a row of panels and of a panel's title.
-  const rowHeight = 87 / rows;
-  const titleHeight = Math.min(7, 20 / rows);
+  const boxes = facetBoxes(panels.length, columns);
   const grids: Option[] = [];
   const titles: Option[] = [];
   const xAxes: Option[] = [];
@@ -99,22 +97,13 @@ export function buildFacetedChart(
   const seriesIds = new Set<string>();
   panels.forEach((panel, i) => {
     const id = `facet:${panel.key}`;
-    const left = 2 + ((i % columns) * 96) / columns;
-    const top = 3 + Math.floor(i / columns) * rowHeight;
-    const width = 96 / columns - 4;
-    grids.push({
-      id,
-      left: `${left}%`,
-      top: `${top + titleHeight}%`,
-      width: `${width}%`,
-      height: `${rowHeight - titleHeight - 4}%`,
-      outerBoundsMode: "same",
-    });
+    const box = boxes[i];
+    // The webview lays these boxes out again in pixels, for the size of its panel.
+    grids.push({ id, ...box?.grid, outerBoundsMode: "same" });
     titles.push({
       id,
       text: `${facetName} = ${panel.name}`,
-      left: `${left}%`,
-      top: `${top}%`,
+      ...box?.title,
       // The webview truncates the title to the width of the panel's grid, of the same id.
       textStyle: { fontSize: 13 },
     });

@@ -1,6 +1,7 @@
 // Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
+import { facetBoxes } from "../chartFacetLayout";
 import { isPlainObject } from "../protocol";
 import { type ThemeColors, toCss } from "./colors";
 import {
@@ -368,7 +369,9 @@ function layOut(
     if (title.show === false || !(title.text || title.subtext)) {
       continue;
     }
-    if (squeeze >= 4) {
+    // A facet's title tells its panel from the others.
+    const grid = gridOf(base, title);
+    if (squeeze >= 4 && grid === undefined) {
       title.show = false;
       continue;
     }
@@ -384,19 +387,12 @@ function layOut(
       const height = 10 + (title.text ? 22 : 0) + (title.subtext ? 18 : 0);
       reserved[side] = Math.max(reserved[side], height);
     }
-    // A title wider than the panel, or than the grid it names, such as a facet's, is cut short
-    // rather than cut off, or than the room the toolbox leaves beside it at the top.
-    const grid = asArray(base.grid).find((grid) => title.id !== undefined && grid.id === title.id);
-    const besideTools =
-      grid === undefined && side === "top" && tools > 0
-        ? (tools + 8) * (centered(title) ? 2 : 1)
-        : 0;
-    const titleWidth = (pixels(grid?.width, size.width) ?? size.width) - 16 - besideTools;
-    for (const key of ["textStyle", "subtextStyle"]) {
-      const style = isPlainObject(title[key]) ? title[key] : {};
-      style.width ??= titleWidth;
-      style.overflow ??= "truncate";
-      title[key] = style;
+    // A title wider than the panel is cut short rather than cut off, or than the room the
+    // toolbox leaves beside it at the top; one that names a grid, such as a facet's, once the
+    // grid is laid out.
+    if (grid === undefined) {
+      const besideTools = side === "top" && tools > 0 ? (tools + 8) * (centered(title) ? 2 : 1) : 0;
+      truncateTitle(title, size.width - 16 - besideTools);
     }
   }
   // A timeline takes the bottom of the chart, where ECharts places it unless told otherwise.
@@ -409,10 +405,28 @@ function layOut(
   if (cartesian) {
     layOutGrid(base, reserved, size);
   }
+  for (const title of asArray(base.title)) {
+    const grid = gridOf(base, title);
+    if (grid) truncateTitle(title, (pixels(grid.width, size.width) ?? size.width) - 16);
+  }
   layOutPie(base, series, reserved, size);
   layOutBoxSeries(series, reserved, size);
   layOutRadar(base, reserved, size);
   return size.height - reserved.top - reserved.bottom;
+}
+
+/** The grid that a title names by having its id, such as a facet's. */
+const gridOf = (base: JsonObject, title: JsonObject): JsonObject | undefined =>
+  title.id === undefined ? undefined : asArray(base.grid).find((grid) => grid.id === title.id);
+
+/** Cuts a title and its subtitle short at a width, unless the title sets one. */
+function truncateTitle(title: JsonObject, width: number): void {
+  for (const key of ["textStyle", "subtextStyle"]) {
+    const style = isPlainObject(title[key]) ? title[key] : {};
+    style.width ??= width;
+    style.overflow ??= "truncate";
+    title[key] = style;
+  }
 }
 
 /** Whether a title is centered, which keeps it clear of a toolbox on the right on both sides. */
@@ -582,7 +596,7 @@ function isContinuous(visualMap: JsonObject): boolean {
   return !visualMap.categories && (!pieces || Boolean(visualMap.calculable));
 }
 
-/** Fits a single grid into the space left, and keeps the axis labels apart and short. */
+/** Fits a single grid, or the panels of facets, into the space left, and keeps axis labels apart. */
 function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   const { width, height, compact, charWidth } = size;
   const grids = asArray(base.grid);
@@ -605,8 +619,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       base.grid = grid;
     }
   }
+  const facets = facetPanels(base);
+  const facetGrid = facets && layOutFacets(facets, reserved, size);
 
   // Rotate category labels when they would overlap, and truncate very long ones.
+  const labelHeights = new Map<JsonObject, number>();
   const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
   // Multi-grid charts need label decisions based on their own panel, not the entire canvas.
   const panelWidth = (axis: JsonObject): number => {
@@ -624,7 +641,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       continue;
     }
     const slot = panelWidth(axis) / count;
-    const maxWidth = Math.max(60, Math.round(height * 0.22));
+    // Slanted labels take the height of the plot, of a facet's own in a faceted chart.
+    const maxWidth =
+      facetGrid === undefined
+        ? Math.max(60, Math.round(height * 0.22))
+        : Math.max(40, Math.round(facetGrid.height * 0.35));
     const labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
     if (labelWidth > slot - 8) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
@@ -634,6 +655,28 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
         ...(labelWidth > maxWidth ? { width: maxWidth, overflow: "truncate" } : {}),
         ...label,
       };
+      const slanted = Math.min(labelWidth, maxWidth) * Math.sin((rotate * Math.PI) / 180);
+      labelHeights.set(axis, LABEL_HEIGHT + Math.round(slanted));
+    }
+  }
+  if (facetGrid !== undefined) {
+    const xAxes = asArray(base.xAxis);
+    for (const axis of xAxes) {
+      // Value labels as wide as the longest bound's, beside each other.
+      const digits = [axis.min, axis.max].map((bound) =>
+        typeof bound === "number" ? compactLabel(bound).length : 4,
+      );
+      fewerTicks(axis, facetGrid.width - 50, (Math.max(...digits) + 1) * charWidth + 16);
+    }
+    for (const axis of asArray(base.yAxis)) {
+      const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
+      let plot = facetGrid.height - (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0);
+      // The name above the plot, unless the plot would be too short for it.
+      if (typeof axis.name === "string" && axis.name && axis.nameLocation === undefined) {
+        if (plot - AXIS_NAME_HEIGHT < MIN_NAMED_FACET) axis.name = "";
+        else plot -= AXIS_NAME_HEIGHT;
+      }
+      fewerTicks(axis, plot, MIN_TICK_GAP);
     }
   }
   for (const axis of asArray(base.yAxis)) {
@@ -648,6 +691,143 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }
   }
+}
+
+/** The height of a row of axis labels, with the gap to the axis. */
+const LABEL_HEIGHT = 22;
+/** The height that the name of a vertical axis takes above the plot. */
+const AXIS_NAME_HEIGHT = 24;
+/** The height of a facet's plot below which its axis's name would leave it too short. */
+const MIN_NAMED_FACET = 60;
+/** The least distance in pixels between the value labels of a vertical axis. */
+const MIN_TICK_GAP = 20;
+/** The least readable size of a row of facets, and of a facet, which more columns trade off. */
+const MIN_FACET_HEIGHT = 150;
+const MIN_FACET_WIDTH = 140;
+/** The height of a facet's title above its grid, and the gaps between facets. */
+const FACET_TITLE_HEIGHT = 26;
+const FACET_ROW_GAP = 12;
+const FACET_COLUMN_GAP = 24;
+
+interface Facet {
+  grid: JsonObject;
+  title: JsonObject;
+}
+
+const sameBox = (object: JsonObject, box: object, keys: string[]) =>
+  keys.every((key) => object[key] === (box as JsonObject)[key]);
+
+/**
+ * The panels of a faceted chart, each a grid and the title of the same id, where chartFacets
+ * places them, or undefined if the option places its grids otherwise, as a user's options can.
+ */
+function facetPanels(base: JsonObject): Facet[] | undefined {
+  const grids = asArray(base.grid);
+  if (grids.length < 2) return undefined;
+  const titles = asArray(base.title);
+  const columns = grids.filter((grid) => grid.top === grids[0]?.top).length;
+  const boxes = facetBoxes(grids.length, columns);
+  const facets: Facet[] = [];
+  for (const [index, grid] of grids.entries()) {
+    const title = grid.id === undefined ? undefined : titles.find(({ id }) => id === grid.id);
+    const box = boxes[index];
+    if (
+      !title ||
+      !box ||
+      !sameBox(grid, box.grid, BOX_KEYS) ||
+      !sameBox(title, box.title, ["left", "right", "top", "bottom"])
+    ) {
+      return undefined;
+    }
+    facets.push({ grid, title });
+  }
+  return facets;
+}
+
+/**
+ * Lays out the panels of a faceted chart in pixels, in the space left: the percentages of the
+ * option would leave a short panel's plot hardly any of its height. Rows too short to read go in
+ * more columns, unless that makes the panels too narrow instead. Returns the size of a grid.
+ */
+function layOutFacets(
+  facets: Facet[],
+  reserved: Insets,
+  { width, height }: Size,
+): { width: number; height: number } {
+  const top = reserved.top + 8;
+  const left = reserved.left + 16;
+  const areaWidth = width - left - reserved.right - 16;
+  const areaHeight = height - top - reserved.bottom - 4;
+  const count = facets.length;
+  const rows = (columns: number) => Math.ceil(count / columns);
+  const panelWidth = (columns: number) => (areaWidth - (columns - 1) * FACET_COLUMN_GAP) / columns;
+  // How near a number of columns comes to panels of the least readable size, at most 1.
+  const fit = (columns: number) =>
+    Math.min(
+      1,
+      areaHeight / rows(columns) / MIN_FACET_HEIGHT,
+      panelWidth(columns) / MIN_FACET_WIDTH,
+    );
+  let columns = facets.filter(({ grid }) => grid.top === facets[0]?.grid.top).length;
+  for (let more = columns + 1; more <= count; more++) {
+    if (fit(more) > fit(columns)) columns = more;
+  }
+  const rowHeight = areaHeight / rows(columns);
+  const gridWidth = Math.round(panelWidth(columns));
+  const gridHeight = Math.max(20, Math.round(rowHeight - FACET_TITLE_HEIGHT - FACET_ROW_GAP));
+  facets.forEach(({ grid, title }, index) => {
+    const x = Math.round(left + (index % columns) * (panelWidth(columns) + FACET_COLUMN_GAP));
+    const y = Math.round(top + Math.floor(index / columns) * rowHeight);
+    Object.assign(title, { left: x, top: y });
+    Object.assign(grid, {
+      left: x,
+      top: y + FACET_TITLE_HEIGHT,
+      width: gridWidth,
+      height: gridHeight,
+    });
+  });
+  return { width: gridWidth, height: gridHeight };
+}
+
+/**
+ * Gives a value axis of a facet fewer labels than the facets' shared ones when they would pile
+ * on each other along its length, at least `gap` apart.
+ */
+function fewerTicks(axis: JsonObject, length: number, gap: number): void {
+  if (axisType(axis) !== "value") return;
+  const parts = Math.max(2, Math.floor(length / gap));
+  const { min, max, interval } = axis;
+  if (typeof min !== "number" || typeof max !== "number" || typeof interval !== "number") {
+    if (axis.interval === undefined && axis.splitNumber === undefined && parts < 5) {
+      axis.splitNumber = parts;
+    }
+    return;
+  }
+  if (!(interval > 0) || (max - min) / interval <= parts + 1e-9) return;
+  // The same bounds and interval give every facet, of the same size, the same ticks. A step of
+  // counts stays a whole number of them.
+  const whole = typeof axis.minInterval === "number" ? axis.minInterval : 0;
+  for (let step = niceAbove(interval); Number.isFinite(step); step = niceAbove(step)) {
+    if (whole > 0 && !Number.isInteger(round(step / whole))) continue;
+    const low = round(Math.floor(min / step + 1e-9) * step);
+    const high = round(Math.ceil(max / step - 1e-9) * step);
+    if ((high - low) / step <= parts + 1e-9) {
+      Object.assign(axis, { min: low, max: high, interval: step });
+      return;
+    }
+  }
+}
+
+const round = (value: number) => Number(value.toPrecision(12));
+
+/** The smallest of 1, 2, 2.5 and 5 times a power of 10 above a step. */
+function niceAbove(step: number): number {
+  const magnitude = 10 ** Math.floor(Math.log10(step));
+  for (const multiple of [1, 2, 2.5, 5]) {
+    const nice = round(multiple * magnitude);
+    if (nice > step * (1 + 1e-9)) return nice;
+  }
+  return round(10 * magnitude);
 }
 
 /** Fits a single pie into the space left, with labels around it when they fit. */
