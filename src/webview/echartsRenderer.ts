@@ -14,6 +14,7 @@ import {
   parseItemKey,
 } from "./echartsItems";
 import {
+  cloneOption,
   disableAnimation,
   focusHighlighted,
   layoutOption,
@@ -437,8 +438,8 @@ export class EChartsRenderer implements Renderer {
       return;
     }
     this.layout = layout;
-    // Another copy to set, which the changes below make for this chart alone.
-    const option = layoutOption(this.option ?? {}, context);
+    // A copy to set, which the changes below make for this chart alone.
+    const option = cloneOption(layout);
     if (relayout) {
       disableAnimation(option);
     }

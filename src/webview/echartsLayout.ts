@@ -110,7 +110,7 @@ const DATA_KEYS = new Set(["data", "nodes", "links", "edges", "source"]);
  * resize allocate the whole dataset again. Other arrays are copied only when they hold objects or
  * arrays; none is written in place.
  */
-function cloneOption(option: JsonObject): JsonObject {
+export function cloneOption(option: JsonObject): JsonObject {
   const copy: JsonObject = {};
   // for...in rather than Object.entries, to copy what the option inherits as well: a series
   // written with a prototype of its own keeps its type and its styles that way.
