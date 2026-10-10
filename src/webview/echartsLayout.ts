@@ -1118,9 +1118,15 @@ function styleSeries(base: JsonObject, series: JsonObject[], colors: ThemeColors
   const datasets = asArray(base.dataset);
   for (const each of series) {
     if (each.type === "bar") {
+      // The theme keeps bars narrow, but not short of a width or gap that the series sets, as a
+      // histogram's bins of no gap.
+      if (each.barWidth !== undefined || each.barCategoryGap !== undefined) {
+        each.barMaxWidth ??= "100%";
+      }
       const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
-      if (each.stack !== undefined) {
-        // A thin gap in the background color separates stacked segments.
+      if (each.stack !== undefined || each.barCategoryGap === "0%") {
+        // A thin gap in the background color separates stacked segments, and bars that touch,
+        // as the bins of a histogram.
         if (itemStyle.borderColor === undefined && itemStyle.borderWidth === undefined) {
           Object.assign(itemStyle, { borderColor: background, borderWidth: 1 });
         }

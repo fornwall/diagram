@@ -744,6 +744,22 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(option.aria, { enabled: true });
   });
 
+  test("lets bars be as wide as their series sets, or a histogram's fill its bins", () => {
+    const maxWidth = (series: Option) =>
+      layout(bars({ series: [{ type: "bar", data: [1, 2], ...series }] })).series[0].barMaxWidth;
+    assert.strictEqual(maxWidth({ barCategoryGap: "0%" }), "100%");
+    // Separated as the segments of a stack are, rather than rounded.
+    const itemStyle = (series: Option) => layout(bars({ series: [series] })).series[0].itemStyle;
+    assert.deepStrictEqual(
+      itemStyle({ type: "bar", barCategoryGap: "0%" }),
+      itemStyle({ type: "bar", stack: "s" }),
+    );
+    assert.strictEqual(maxWidth({ barWidth: 60 }), "100%");
+    assert.strictEqual(maxWidth({ barWidth: 60, barMaxWidth: 40 }), 40);
+    // The theme's, for bars of the usual gaps.
+    assert.strictEqual(maxWidth({}), undefined);
+  });
+
   test("rounds the data ends of bars, unless a bar may point the other way", () => {
     const radius = (option: Option) => layout(option).series[0].itemStyle.borderRadius;
     assert.deepStrictEqual(radius(bars()), [4, 4, 0, 0]);
