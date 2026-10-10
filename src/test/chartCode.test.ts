@@ -9,7 +9,7 @@ import type { ChartSpec } from "../chartSpec";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel } from "../panel";
 import { runsCode } from "../webview/optionSource";
-import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
+import { recordMessages, replace, suiteTempDir } from "./afterTest";
 import { drawChart, type FakeWebview, newFakePanel, recordChat } from "./newPanel";
 
 const flowchart = "flowchart LR\n  A[Parser] --> B[Checker]";
@@ -86,17 +86,14 @@ suite("chart code in the panel", function () {
   });
 
   test("knows that the page ran chart code that was trusted while it waited to render", async () => {
-    const trust = Object.getOwnPropertyDescriptor(vscode.workspace, "isTrusted");
-    assert.ok(trust);
     const chat = recordChat();
     const { panel, webview } = await newFakePanel();
-    Object.defineProperty(vscode.workspace, "isTrusted", { get: () => false, configurable: true });
-    afterTest(() => Object.defineProperty(vscode.workspace, "isTrusted", trust));
+    replace(vscode.workspace, "isTrusted", false);
     const answer = webview.answer;
     webview.answer = undefined;
     const rendering = renderChart(panel, codeChart);
     // Granting trust reloads the page, which then renders the chart with its code.
-    Object.defineProperty(vscode.workspace, "isTrusted", trust);
+    replace(vscode.workspace, "isTrusted", true);
     webview.answer = answer;
     await webview.receive({ type: "ready" });
     assert.ok((await rendering).ok);
