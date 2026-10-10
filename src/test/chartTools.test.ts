@@ -3,13 +3,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
-import { buildChart } from "../charts";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { afterTest, cancellationSource, replace, tempDir } from "./afterTest";
-import { newFakePanel } from "./newPanel";
-import { invokeTool, toolText } from "./toolText";
+import { drawChart, newFakePanel } from "./newPanel";
+import { invokeTool } from "./toolText";
 
 const data = "name,amount\na,1\nb,2\nc,3";
 const token = new vscode.CancellationTokenSource().token;
@@ -19,19 +18,8 @@ async function harness() {
   return { ...(await newFakePanel(values)), values };
 }
 
-async function draw(panel: DiagramPanel, spec: ChartSpec = { type: "bar", data }) {
-  const table = parseTable(data);
-  const source = JSON.stringify(buildChart(spec, table).option);
-  assert.ok(
-    (
-      await panel.render(
-        { language: "echarts", title: "Chart", source, chart: spec },
-        "tool",
-        table,
-      )
-    ).ok,
-  );
-  return source;
+function draw(panel: DiagramPanel, chart: ChartSpec = { type: "bar", data }) {
+  return drawChart(panel, chart, data);
 }
 
 suite("chartTools", function () {
@@ -42,20 +30,7 @@ suite("chartTools", function () {
     const samples = "service,latency\na,1\na,2\nb,10\nb,20";
     const table = parseTable(samples);
     const chart: ChartSpec = { type: "bar", command: "must-not-run", valueColumns: ["latency"] };
-    assert.ok(
-      (
-        await panel.render(
-          {
-            language: "echarts",
-            title: "Samples",
-            chart,
-            source: JSON.stringify(buildChart(chart, table).option),
-          },
-          "tool",
-          table,
-        )
-      ).ok,
-    );
+    await drawChart(panel, chart, table, "Samples");
     assert.ok(
       (
         await panel.updateChart(
@@ -243,14 +218,8 @@ suite("chartTools", function () {
     const styled = JSON.parse(source);
     styled.backgroundColor = "#123456";
     await webview.edit(JSON.stringify(styled));
-    const result = await new UpdateChartTool(panel).invoke(
-      {
-        input: { type: "horizontalBar", sort: "descending", limit: 2, revision: panel.revision },
-        toolInvocationToken: undefined,
-      },
-      token,
-    );
-    assert.match(toolText(result), /Updated/);
+    const input = { type: "horizontalBar", sort: "descending", limit: 2, revision: panel.revision };
+    assert.match(await invokeTool(new UpdateChartTool(panel), input), /Updated/);
     assert.strictEqual(panel.current?.chart?.type, "horizontalBar");
     assert.strictEqual(panel.current?.chart?.limit, 2);
     assert.strictEqual(panel.loadedChartData?.rows.length, 3);
@@ -262,15 +231,8 @@ suite("chartTools", function () {
   test("a refused update says how to clear the setting that it keeps", async () => {
     const { panel } = await harness();
     const scores = "name,team,score\na,x,1\nb,y,2\nc,x,3";
-    const table = parseTable(scores);
-    const chart: ChartSpec = { type: "bar", data: scores, limit: 2 };
-    const source = JSON.stringify(buildChart(chart, table).option);
-    const diagram = { language: "echarts", title: "Scores", source, chart } as const;
-    assert.ok((await panel.render(diagram, "tool", table)).ok);
-    const update = async (input: object) =>
-      toolText(
-        await new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token),
-      );
+    await drawChart(panel, { type: "bar", data: scores, limit: 2 }, scores, "Scores");
+    const update = (input: object) => invokeTool(new UpdateChartTool(panel), input);
     assert.match(
       await update({ labelColumn: ["name", "team"] }),
       /Leave "limit" out \(set it to null with diagram_updateChart\)/,
@@ -304,14 +266,13 @@ suite("chartTools", function () {
     const styled = JSON.parse(await draw(panel));
     styled.series[0].itemStyle = { color: "red" };
     await webview.edit(JSON.stringify(styled));
-    const update = (input: object) =>
-      new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token);
-    assert.match(toolText(await update({ type: "pie" })), /^Updated/);
+    const update = (input: object) => invokeTool(new UpdateChartTool(panel), input);
+    assert.match(await update({ type: "pie" }), /^Updated/);
     assert.match(
       panel.describeForModel() ?? "",
       /Manual styling that this pie chart cannot show comes back with a chart that can; replacing the chart with diagram_chart or diagram_render drops it\./,
     );
-    assert.match(toolText(await update({ type: "bar" })), /^Updated/);
+    assert.match(await update({ type: "bar" }), /^Updated/);
     assert.strictEqual(JSON.parse(panel.current?.source ?? "").series[0].itemStyle.color, "red");
     assert.doesNotMatch(panel.describeForModel() ?? "", /comes back with a chart that can/);
   });
@@ -321,13 +282,12 @@ suite("chartTools", function () {
     const styled = JSON.parse(await draw(panel));
     styled.yAxis.scale = true;
     await webview.edit(JSON.stringify(styled));
-    const update = (input: object) =>
-      new UpdateChartTool(panel).invoke({ input, toolInvocationToken: undefined }, token);
+    const update = (input: object) => invokeTool(new UpdateChartTool(panel), input);
     // A line chart's axis has the scale too, which stays for a bar chart again.
-    assert.match(toolText(await update({ type: "line" })), /^Updated/);
+    assert.match(await update({ type: "line" }), /^Updated/);
     assert.ok(panel.current?.chartPresentation?.kept?.length);
     assert.doesNotMatch(panel.describeForModel() ?? "", /comes back with a chart that can/);
-    assert.match(toolText(await update({ type: "bar" })), /^Updated/);
+    assert.match(await update({ type: "bar" }), /^Updated/);
     assert.strictEqual(JSON.parse(panel.current?.source ?? "").yAxis.scale, true);
   });
 

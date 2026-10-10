@@ -6,13 +6,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
-import { buildChart } from "../charts";
-import { parseTable } from "../data";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel } from "../panel";
 import { runsCode } from "../webview/optionSource";
 import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, recordChat } from "./newPanel";
+import { drawChart, type FakeWebview, newFakePanel, recordChat } from "./newPanel";
 
 const flowchart = "flowchart LR\n  A[Parser] --> B[Checker]";
 const codeChart = '{series: [{type: "pie", data: [1]}], tooltip: {formatter: (item) => item.name}}';
@@ -165,8 +163,6 @@ suite("chart code in the panel", function () {
       type: "bar",
       command: `echo >> ${JSON.stringify(marker)}; printf 'name,amount\\na,1\\n'`,
     };
-    const table = parseTable("name,amount\na,1");
-    const source = JSON.stringify(buildChart(chart, table).option);
     const { panel, webview } = await newFakePanel();
     const refresh = async (webview: FakeWebview) => {
       await webview.receive({ type: "refresh" });
@@ -175,12 +171,7 @@ suite("chart code in the panel", function () {
     let answer: string | undefined = "Run";
     const warnings = recordMessages("showWarningMessage", () => answer);
     assert.ok((await renderChart(panel, codeChart)).ok);
-    const drawn = await panel.render(
-      { language: "echarts", source, title: "Sizes", chart },
-      "tool",
-      table,
-    );
-    assert.ok(drawn.ok);
+    await drawChart(panel, chart, "name,amount\na,1");
     assert.ok(await refresh(webview), "the confirmed command did not run");
     assert.deepStrictEqual(warnings, ["Run the chart's command again to reload its data?"]);
 
@@ -196,12 +187,9 @@ suite("chart code in the panel", function () {
       type: "bar",
       command: `echo >> ${JSON.stringify(marker)}; printf 'name,amount\\na,1\\n'`,
     };
-    const table = parseTable("name,amount\na,1");
-    const source = JSON.stringify(buildChart(chart, table).option);
     const { panel, webview } = await newFakePanel();
     assert.ok((await renderChart(panel, codeChart)).ok);
-    const diagram = { language: "echarts", source, title: "Sizes", chart } as const;
-    assert.ok((await panel.render(diagram, "tool", table)).ok);
+    await drawChart(panel, chart, "name,amount\na,1");
     const asked = recordMessages("showWarningMessage", () => {
       webview.panel.dispose();
       return "Run";

@@ -7,23 +7,9 @@ import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState } from "../panel";
 import { afterTest, recordMessages, suiteTempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
+import { drawChart, type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2";
-
-async function draw(panel: DiagramPanel, spec: ChartSpec, table = parseTable(data)) {
-  const source = JSON.stringify(buildChart(spec, table).option);
-  assert.ok(
-    (
-      await panel.render(
-        { language: "echarts", title: "Lifecycle", source, chart: spec },
-        "tool",
-        table,
-      )
-    ).ok,
-  );
-  return source;
-}
 
 /** Agrees to read a data file outside the workspace again, returning the questions asked. */
 function agreeToRead(): string[] {
@@ -76,7 +62,7 @@ suite("chart options lifecycle", function () {
       const options = webview.sent.findLast((message) => message.type === "chartOptions");
       return options?.visible;
     };
-    await draw(panel, { type: "bar", data });
+    await drawChart(panel, { type: "bar", data }, data);
     panel.toggleChartOptions();
     assert.strictEqual(visible(), true);
     panel.toggleChartOptions();
@@ -93,7 +79,7 @@ suite("chart options lifecycle", function () {
       webview.sent.flatMap((message) =>
         message.type === "chartOptionsError" ? [message.message] : [],
       );
-    const source = await draw(panel, { type: "bar", data });
+    const source = await drawChart(panel, { type: "bar", data }, data);
     const shown = panel.current;
     await webview.receive({
       type: "applyChartOptions",
@@ -116,7 +102,7 @@ suite("chart options lifecycle", function () {
   test("retained presentation edits remain manual after changing chart options", async () => {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
-    const source = await draw(panel, { type: "bar", data });
+    const source = await drawChart(panel, { type: "bar", data }, data);
     const styled = JSON.parse(source);
     styled.backgroundColor = "#123456";
     await webview.edit(JSON.stringify(styled));
@@ -139,7 +125,7 @@ suite("chart options lifecycle", function () {
     fs.writeFileSync(file, "name,amount\na,900\nb,800");
     const values = new Map<string, unknown>();
     const first = await newFakePanel(values);
-    const source = await draw(first.panel, { type: "bar", file });
+    const source = await drawChart(first.panel, { type: "bar", file }, data);
     first.panel.dispose();
     // A restored chart of a file: Reset must load a new transient table before rendering.
     const { panel, webview } = await newFakePanel(values);
@@ -160,7 +146,7 @@ suite("chart options lifecycle", function () {
     const chart: ChartSpec = { type: "bar", data: inline };
     const values = new Map<string, unknown>();
     const first = await newFakePanel(values);
-    const source = await draw(first.panel, chart, parseTable(inline));
+    const source = await drawChart(first.panel, chart, inline);
     assert.ok(source.length > 1_000_000);
     assert.strictEqual((values.get("diagram.state") as DiagramState).source, source);
     first.panel.dispose();
@@ -188,7 +174,7 @@ suite("chart options lifecycle", function () {
     const values = new Map<string, unknown>();
     const { panel, webview } = await newFakePanel(values);
     const table = parseTable(data);
-    const source = await draw(panel, { type: "bar", file }, table);
+    const source = await drawChart(panel, { type: "bar", file }, table);
     const previous = panel.current;
     const asked = agreeToRead();
     webview.nextRender(() => panel.dispose());

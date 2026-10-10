@@ -1,5 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import type { ChartSpec } from "../chartSpec";
+import { buildChart } from "../charts";
+import { type DataTable, parseTable } from "../data";
 import { DiagramPanel, type Drawn, type RenderOutcome } from "../panel";
 import type { DiagramNode, FromWebview, ToWebview } from "../protocol";
 import { WebviewChannel } from "../webviewChannel";
@@ -187,6 +190,23 @@ export async function newFakePanel(
   const panel = newPanel(state);
   afterTest(() => panel.dispose());
   return { panel, webview: await showInFake(panel) };
+}
+
+/**
+ * Draws the chart of the table in the panel, as diagram_chart does, failing the test if it is not
+ * drawn, and gives its source.
+ */
+export async function drawChart(
+  panel: DiagramPanel,
+  chart: ChartSpec,
+  data: DataTable | string,
+  title = "Chart",
+): Promise<string> {
+  const table = typeof data === "string" ? parseTable(data) : data;
+  const source = JSON.stringify(buildChart(chart, table).option);
+  const outcome = await panel.render({ language: "echarts", title, source, chart }, "tool", table);
+  assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
+  return source;
 }
 
 /** Waits for `done()` to hold, checking it every 10 ms for up to five seconds; says whether it does. */
