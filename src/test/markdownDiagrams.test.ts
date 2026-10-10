@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { isDiagramFence } from "../fences";
 import { registerMarkdownDiagrams } from "../markdownDiagrams";
+import type { DiagramPanel } from "../panel";
 import { afterTest, fileSystem, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
 import { newFakePanel, newPanel, webviewTabs, within } from "./newPanel";
 
@@ -39,6 +40,23 @@ suite("markdownDiagrams", function () {
     const command = (await codeLenses(document))[0]?.command;
     assert.ok(command);
     return command;
+  }
+
+  /**
+   * Registers the commands for a panel of the test, under other names than the extension's own,
+   * returning what opens the first diagram of a document in it as its lens does.
+   */
+  function openerFor(panel: DiagramPanel): (document: vscode.TextDocument) => Promise<void> {
+    const register = vscode.commands.registerCommand;
+    replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>
+      register(`test.${name}`, callback, thisArg),
+    );
+    const registrations = registerMarkdownDiagrams(panel);
+    afterTest(() => vscode.Disposable.from(...registrations).dispose());
+    return async (document) => {
+      const { command, arguments: args = [] } = await firstLens(document);
+      await vscode.commands.executeCommand(`test.${command}`, ...args);
+    };
   }
 
   test("offers a lens for every diagram in a Markdown document", async () => {
@@ -234,21 +252,13 @@ suite("markdownDiagrams", function () {
   });
 
   test("opening a diagram reports when the panel cannot display it", async () => {
-    const document = await untitled("```mermaid\nflowchart TD\n```\n");
-    const command = await firstLens(document);
     const panel = newPanel();
     afterTest(() => panel.dispose());
     const reason = "The diagram panel did not respond within 15 seconds.";
     panel.render = async () => ({ ok: false, kind: "unavailable", error: reason, revision: 1 });
-    // Registered under other names than the extension's own.
-    const register = vscode.commands.registerCommand;
-    replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>
-      register(`test.${name}`, callback, thisArg),
-    );
-    const registrations = registerMarkdownDiagrams(panel);
-    afterTest(() => vscode.Disposable.from(...registrations).dispose());
+    const open = openerFor(panel);
     const warnings = recordMessages("showWarningMessage");
-    await vscode.commands.executeCommand(`test.${command.command}`, ...(command.arguments ?? []));
+    await open(await untitled("```mermaid\nflowchart TD\n```\n"));
     assert.deepStrictEqual(warnings, [reason]);
   });
 
@@ -266,17 +276,8 @@ suite("markdownDiagrams", function () {
     fs.writeFileSync(included, "```echarts\n{}\n```\n");
     await setting("files.readonlyInclude", { "**/included.md": true });
     const { panel } = await newFakePanel();
-    const register = vscode.commands.registerCommand;
-    replace(vscode.commands, "registerCommand", (name, callback, thisArg) =>
-      register(`test.${name}`, callback, thisArg),
-    );
-    const registrations = registerMarkdownDiagrams(panel);
-    afterTest(() => vscode.Disposable.from(...registrations).dispose());
+    const open = openerFor(panel);
     const messages = recordMessages("showInformationMessage");
-    const open = async (document: vscode.TextDocument) => {
-      const { command, arguments: args = [] } = await firstLens(document);
-      await vscode.commands.executeCommand(`test.${command}`, ...args);
-    };
     // A diagram of a writable document first, whose binding a read-only one must not take over.
     await open(await untitled("```mermaid\nflowchart LR\n```\n"));
     assert.ok(panel.current?.document);
