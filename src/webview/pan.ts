@@ -2,6 +2,11 @@
 
 /** How far the pointer moves before a drag pans instead of clicking a node. */
 const PAN_THRESHOLD = 3;
+/**
+ * How far the pointer can move between pressing and releasing for a click that the hand shook to
+ * still be a click, unless it selected text: as far as ECharts lets it move on a chart.
+ */
+const CLICK_TOLERANCE = 4;
 
 /** The drag in progress, from the pointer that went down on a canvas that can be panned. */
 interface Drag {
@@ -130,18 +135,20 @@ export function enablePanning(canvas: HTMLElement): void {
   canvas.addEventListener("lostpointercapture", stopDrag);
   window.addEventListener("blur", () => stopDrag());
 
-  // The click that ends a pan or a drag that selected text reaches the canvas and its nodes:
-  // swallow it before they see it. Not one that moved but selected nothing, a click that the hand
-  // shook, as on a chart, whose text cannot be selected, or on a button. Listeners on the canvas
-  // itself only lose it to this one if they are added later, hence enablePanning before them.
+  // The click that ends a pan or a drag reaches the canvas and its nodes: swallow it before they
+  // see it. Not one that the hand only shook a little and that selected no text, as on a chart,
+  // whose text cannot be selected, or on a button. Listeners on the canvas itself only lose it to
+  // this one if they are added later, hence enablePanning before them.
   canvas.addEventListener(
     "click",
     (event) => {
+      const moved =
+        pressed === undefined
+          ? 0
+          : Math.max(Math.abs(event.clientX - pressed.x), Math.abs(event.clientY - pressed.y));
       const dragged =
-        pressed !== undefined &&
-        (Math.abs(event.clientX - pressed.x) >= PAN_THRESHOLD ||
-          Math.abs(event.clientY - pressed.y) >= PAN_THRESHOLD) &&
-        document.getSelection()?.isCollapsed === false;
+        moved > CLICK_TOLERANCE ||
+        (moved >= PAN_THRESHOLD && document.getSelection()?.isCollapsed === false);
       pressed = undefined;
       if ((panned || dragged) && event.detail !== 0) {
         panned = false;

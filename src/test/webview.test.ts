@@ -1075,10 +1075,12 @@ suite("webview", function () {
         const [ax, ay] = at("A");
         drag([ax, ay], [ax + 1, ay + 1], "A");
         const clicked = selected();
-        // As does one that moves further but selects no text, as on a button.
+        // As does one that moves 4 pixels but selects no text, as on a button, but not one that
+        // moves further, a drag across nothing to select.
         drag([ax, ay], [ax + 4, ay], "A", false);
         const moved = selected();
         drag([ax, ay], [ax + 1, ay + 1], "A");
+        drag([ax, ay], [ax + 40, ay + 40], "A", false);
         // Across the labels of A and C, ending on the drawing; within B's label.
         drag([ax, ay], at("C"), "svg");
         const [bx, by] = at("B");

@@ -324,25 +324,33 @@ suite("ECharts in the webview", function () {
         ],
       }),
     });
-    assert.strictEqual(
+    assert.deepStrictEqual(
       await evaluate(`(async () => {
         const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
         const box = slice.getBoundingClientRect();
         const [x, y] = [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2)];
         const at = dx => ({bubbles: true, cancelable: true, clientX: x + dx, clientY: y, detail: 1,
           pointerType: "mouse", button: 0, isPrimary: true});
-        // Pressed in one place and released 3 pixels further, which ECharts takes for a click.
-        slice.dispatchEvent(new PointerEvent("pointerdown", at(0)));
-        slice.dispatchEvent(new MouseEvent("mousedown", at(0)));
-        slice.dispatchEvent(new PointerEvent("pointerup", at(3)));
-        slice.dispatchEvent(new MouseEvent("mouseup", at(3)));
-        slice.dispatchEvent(new MouseEvent("click", at(3)));
-        await new Promise(resolve => setTimeout(resolve, 50));
-        const label = document.getElementById("selection-label").textContent;
-        document.getElementById("clear-selection").click();
-        return label;
+        // Pressed in one place and released some pixels further.
+        const click = async (dx) => {
+          slice.dispatchEvent(new PointerEvent("pointerdown", at(0)));
+          slice.dispatchEvent(new MouseEvent("mousedown", at(0)));
+          slice.dispatchEvent(new PointerEvent("pointerup", at(dx)));
+          slice.dispatchEvent(new MouseEvent("mouseup", at(dx)));
+          slice.dispatchEvent(new MouseEvent("click", at(dx)));
+          await new Promise(resolve => setTimeout(resolve, 50));
+          const label = document.getElementById("selection-label").textContent;
+          document.getElementById("clear-selection").click();
+          return label;
+        };
+        // As far as ECharts takes for a click, and further, which it does not.
+        return [await click(3), await click(4), await click(10)];
       })()`),
-      "Selected: “A”",
+      [
+        "Selected: “A”",
+        "Selected: “A”",
+        "Click chart items to select them (Ctrl/Cmd/Shift+click for several).",
+      ],
     );
   });
 
