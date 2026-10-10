@@ -78,16 +78,6 @@ export function noteRepeatedLabels(
   }
 }
 
-function addValues(left: number, right: number): number {
-  const sum = left + right;
-  if (!Number.isFinite(sum)) {
-    throw new Error(
-      "The chart's total exceeds the numeric range. Rescale the values before charting them.",
-    );
-  }
-  return sum;
-}
-
 /** The decimals of a number as written out in full: 2 for 0.25, 7 for 1e-7, 0 for 1e21. */
 function decimalsOf(value: number): number {
   const [digits = "", exponent = "0"] = String(value).split("e");
@@ -106,7 +96,12 @@ export class Sum {
   add(value: number | Sum): this {
     const [exact, decimals] =
       value instanceof Sum ? [value.exact, value.decimals] : [value, decimalsOf(value)];
-    this.exact = addValues(this.exact, exact);
+    this.exact += exact;
+    if (!Number.isFinite(this.exact)) {
+      throw new Error(
+        "The chart's total exceeds the numeric range. Rescale the values before charting them.",
+      );
+    }
     this.decimals = Math.max(this.decimals, decimals);
     return this;
   }
@@ -300,89 +295,47 @@ const AGGREGATED: Record<Aggregation, string> = {
   median: "taking the median of their values",
 };
 
-interface GroupColumn {
-  value: number | null;
-  /** The sum of a column summed or averaged, unless the mean's sum would overflow. */
-  sum?: Sum;
-  count: number;
-  /** A power-of-two scale used only when a mean's running sum would overflow. */
-  scale?: number;
-  /** Only a median needs to retain all observations. */
-  samples?: number[] | undefined;
-}
+/** How the numbers of a column of a group combine into one; "count" counts the group's rows. */
+const COMBINE: Record<Exclude<Aggregation, "count">, (values: number[]) => number> = {
+  sum: (values) => values.reduce((sum, value) => sum.add(value), new Sum()).value,
+  mean: (values) => {
+    const { length } = values;
+    // Dividing first keeps a mean of numbers whose sum overflows finite.
+    return withoutNoise(
+      Number.isFinite(values.reduce((sum, value) => sum + value, 0))
+        ? COMBINE.sum(values) / length
+        : values.reduce((mean, value) => mean + value / length, 0),
+    );
+  },
+  min: (values) => values.reduce((min, value) => Math.min(min, value)),
+  max: (values) => values.reduce((max, value) => Math.max(max, value)),
+  median: (values) => {
+    values.sort((x, y) => x - y);
+    return withoutNoise(quantile(values, 0.5));
+  },
+};
 
 /** Aggregate rows by their labels, preserving the order of each group's first appearance. */
 function groupRows(rows: Row[], how: Aggregation): Row[] {
-  const groups = new Map<string, { labels: string[]; columns: GroupColumn[]; rows: number }>();
+  const groups = new Map<string, { labels: string[]; rows: number; columns: number[][] }>();
   for (const { labels, values } of rows) {
     const key = JSON.stringify(labels);
     let group = groups.get(key);
     if (group === undefined) {
-      group = {
-        labels,
-        columns: values.map(() => ({
-          value: null,
-          count: 0,
-          samples: how === "median" ? [] : undefined,
-        })),
-        rows: 0,
-      };
+      group = { labels, rows: 0, columns: values.map(() => []) };
       groups.set(key, group);
     }
     group.rows++;
     values.forEach((value, index) => {
-      const column = group.columns[index];
-      if (value === null || column === undefined) {
-        return;
-      }
-      column.count++;
-      if (column.samples !== undefined) {
-        column.samples.push(value);
-        return;
-      }
-      if (how === "mean") {
-        value *= column.scale ?? 1;
-        if (!Number.isFinite((column.value ?? 0) + value)) {
-          column.scale = (column.scale ?? 1) / 2;
-          column.value = (column.value ?? 0) / 2;
-          value /= 2;
-        }
-      }
-      if (how === "sum" || (how === "mean" && column.scale === undefined)) {
-        column.sum = (column.sum ?? new Sum()).add(value);
-      }
-      column.value =
-        how === "min"
-          ? Math.min(column.value ?? value, value)
-          : how === "max"
-            ? Math.max(column.value ?? value, value)
-            : addValues(column.value ?? 0, value);
+      if (value !== null) group.columns[index]?.push(value);
     });
   }
-  return [...groups.values()].map(({ labels, columns, rows: count }) => ({
+  return [...groups.values()].map(({ labels, rows, columns }) => ({
     labels,
     values:
       how === "count"
-        ? [count]
-        : columns.map(({ value, sum, count, scale, samples }) => {
-            if (count === 0) {
-              return null;
-            }
-            if (samples !== undefined) {
-              return withoutNoise(
-                quantile(
-                  samples.sort((x, y) => x - y),
-                  0.5,
-                ),
-              );
-            }
-            if (how === "mean") {
-              return withoutNoise(
-                scale === undefined ? (sum?.value ?? 0) / count : (value ?? 0) / count / scale,
-              );
-            }
-            return how === "sum" ? (sum?.value ?? 0) : value;
-          }),
+        ? [rows]
+        : columns.map((values) => (values.length === 0 ? null : COMBINE[how](values))),
   }));
 }
 
