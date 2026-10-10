@@ -239,6 +239,13 @@ suite("export", function () {
     assert.ok((await panel.render({ ...diagram, openedFrom: revision }, "document")).ok);
     await panel.exportDiagram();
     assert.strictEqual(suggested(), images);
+    // Nor beside one on no file system, such as an untitled document or a notebook's cell.
+    for (const openedFrom of ["untitled:Untitled-1", "vscode-notebook-cell:/docs/notes.ipynb#W1"]) {
+      assert.ok((await panel.render({ ...diagram, openedFrom }, "document")).ok);
+      await panel.exportDiagram();
+      assert.strictEqual(dialogs.at(-1)?.defaultUri?.scheme, "file");
+      assert.strictEqual(suggested(), images);
+    }
     assert.deepStrictEqual(errors, []);
   });
 
