@@ -1691,15 +1691,28 @@ suite("webview", function () {
   });
 
   test("links each place of a render error on several lines, as the first", async () => {
+    const shown = `(() => {
+      const error = document.getElementById("error");
+      const links = [...error.querySelectorAll("button.link")];
+      return {links: links.map((link) => link.textContent),
+        // Each on a line with the punctuation around it, such as its parentheses.
+        glued: links.map((link) => link.parentElement.textContent + " " + getComputedStyle(link.parentElement).whiteSpace),
+        lines: error.querySelectorAll("br").length, details: error.querySelector("pre") !== null};
+    })()`;
     assert.ok(!(await render({ source: 'pie\n  "A" : abc\n  "B" : 3\n  "C" : def' })).ok);
-    assert.deepStrictEqual(
-      await evaluate(`(() => {
-        const error = document.getElementById("error");
-        return {links: [...error.querySelectorAll("button.link")].map((link) => link.textContent),
-          lines: error.querySelectorAll("br").length, details: error.querySelector("pre") !== null};
-      })()`),
-      { links: ["line 2, column 9", "line 4, column 9"], lines: 1, details: false },
-    );
+    assert.deepStrictEqual(await evaluate(shown), {
+      links: ["line 2, column 9", "line 4, column 9"],
+      glued: ["line 2, column 9: nowrap", "line 4, column 9: nowrap"],
+      lines: 1,
+      details: false,
+    });
+    assert.ok(!(await render({ language: "echarts", source: '{"a": 1 "b": 2}' })).ok);
+    assert.deepStrictEqual(await evaluate(shown), {
+      links: ["line 1, column 9"],
+      glued: ["(line 1, column 9). nowrap"],
+      lines: 0,
+      details: true,
+    });
   });
 
   test("shows a diagram that it is not to draw as failing, with its source to edit", async () => {

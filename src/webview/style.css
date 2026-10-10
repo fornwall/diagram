@@ -349,9 +349,14 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   overflow-wrap: anywhere;
 }
 
-/* The place of the error in the source, a link within the text. */
+/* The place of the error in the source, a link within the text, kept on a line with the
+   punctuation around it. */
 #error button.link {
   padding: 0;
+}
+
+#error .place {
+  white-space: nowrap;
 }
 
 #error pre {

@@ -213,11 +213,14 @@ function showError(renderer: Renderer, message: string): void {
     link.addEventListener("click", () =>
       editor.reveal(Number(line), column === undefined ? undefined : Number(column)),
     );
-    errorElement.append(
-      problem.slice(0, place.index),
-      link,
-      problem.slice(place.index + text.length),
-    );
+    // With the punctuation around it, such as its parentheses, which a line would break off.
+    const end = place.index + text.length;
+    const start = problem.slice(0, place.index).search(/\S*$/);
+    const stop = end + problem.slice(end).search(/\s|$/);
+    const glued = document.createElement("span");
+    glued.className = "place";
+    glued.append(problem.slice(start, place.index), link, problem.slice(end, stop));
+    errorElement.append(problem.slice(0, start), glued, problem.slice(stop));
   }
   if (details.length > 0) {
     const pre = document.createElement("pre");
