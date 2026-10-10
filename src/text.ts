@@ -2,6 +2,11 @@
 
 import { isPlainObject } from "./protocol";
 
+/** A name in camel case in words, e.g. "horizontal bar" for "horizontalBar". */
+export function inWords(name: string): string {
+  return name.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
+}
+
 /** E.g. `"a", "b"`. */
 export function quoteAll(values: readonly string[]): string {
   return values.map((value) => JSON.stringify(value)).join(", ");

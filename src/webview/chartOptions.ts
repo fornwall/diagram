@@ -2,7 +2,7 @@ import { type ChartOptionsState, unusableSettings } from "../chartOptions";
 import { AGGREGATIONS, CHART_TYPES, type ChartFilter, type ChartType } from "../chartSpec";
 import type { Column } from "../data";
 import type { FromWebview } from "../protocol";
-import { plural } from "../text";
+import { inWords, plural } from "../text";
 
 function button(text: string, className = "secondary"): HTMLButtonElement {
   const element = document.createElement("button");
@@ -24,7 +24,7 @@ function select(choices: readonly (string | readonly [string, string])[]): HTMLS
 
 /** A name in camel case, such as "horizontalBar", in words as the other choices read: "Horizontal bar". */
 function words(name: string): string {
-  const spaced = name.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  const spaced = inWords(name);
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 

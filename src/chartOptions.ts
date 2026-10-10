@@ -53,7 +53,7 @@ export function withChartControls(spec: ChartSpec, input: unknown): ChartSpec {
 }
 
 /** What diagram_updateChart changes: the chart controls, title and maximum, never the source. */
-const UPDATE_KEYS = [...CONTROL_KEYS, "title", "max"] as const;
+export const UPDATE_KEYS = [...CONTROL_KEYS, "title", "max"] as const;
 
 type UpdateKey = (typeof UPDATE_KEYS)[number];
 

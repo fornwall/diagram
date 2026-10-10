@@ -3,12 +3,11 @@
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable, LISTED_COLUMNS } from "./chartColumns";
-import type { ChartUpdateInput } from "./chartOptions";
+import { type ChartUpdateInput, UPDATE_KEYS } from "./chartOptions";
 import { rebuildChart } from "./chartPresentation";
 import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
-import { chartTypeName } from "./describe";
 import type { Diagram, DiagramPanel } from "./panel";
 import {
   CHART_TOOL,
@@ -17,7 +16,7 @@ import {
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { plural, quote, toolInput } from "./text";
+import { inWords, plural, quote, toolInput } from "./text";
 import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
@@ -73,7 +72,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool", table), token);
     if (outcome.ok) {
       return drawnResult(
-        `Rendered the ${chartTypeName(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
+        `Rendered the ${inWords(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
         outcome.revision,
       );
     }
@@ -89,7 +88,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
 
 /** The chart's title, by default e.g. "Horizontal bar chart of sales.csv". */
 function chartTitle({ type, title, file, command }: ChartSpec): string {
-  const words = chartTypeName(type);
+  const words = inWords(type);
   const name = `${words.charAt(0).toUpperCase()}${words.slice(1)} chart`;
   const of = file ? file.split(/[/\\]/).at(-1) : command;
   return nonBlank(title) ?? (of ? `${name} of ${of}` : name);
@@ -197,28 +196,17 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
   }
 }
 
-/** The names of diagram_updateChart's settings in its progress message, in the schema's order. */
-const UPDATE_NAMES: Record<string, string> = {
-  labelColumn: "label column",
-  valueColumns: "value columns",
-  max: "maximum",
-  aggregate: "aggregate",
-  sort: "sort",
-  limit: "limit",
-  bins: "bins",
-  facetColumn: "facet column",
-  facetColumns: "facet columns",
-  facetScales: "facet scales",
-  filters: "filters",
-};
-
 /** E.g. `Updating the chart: line chart, sort "descending", filters cleared`. */
 function updateMessage(input: unknown): string {
   const changes: string[] = [];
   for (const [key, value] of Object.entries(isPlainObject(input) ? input : {})) {
-    const name = UPDATE_NAMES[key];
+    const name = !(UPDATE_KEYS as readonly string[]).includes(key)
+      ? undefined
+      : key === "max"
+        ? "maximum"
+        : inWords(key);
     if (key === "type" && typeof value === "string") {
-      changes.push(`${chartTypeName(value)} chart`);
+      changes.push(`${inWords(value)} chart`);
     } else if (key === "title" && typeof value === "string") {
       changes.push(`title ${quote(value, 60)}`);
     } else if (name !== undefined && value === null) {
