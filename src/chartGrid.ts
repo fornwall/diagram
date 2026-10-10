@@ -11,7 +11,7 @@ import {
   type Row,
 } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
-import { plural, quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
   bar: { type: "bar" },
@@ -58,7 +58,7 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
   if (names.size > MOST_SERIES) {
     throw new Error(
       `A series per label of ${JSON.stringify(columnName(table, columns.labels[1]))} would ` +
-        `be ${names.size} series, more than the ${MOST_SERIES} that can be told apart. Select ` +
+        `be ${formatCount(names.size)} series, more than the ${MOST_SERIES} that can be told apart. Select ` +
         'fewer with "filters", or give "labelColumn" as a single column.',
     );
   }

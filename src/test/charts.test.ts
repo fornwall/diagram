@@ -87,6 +87,8 @@ suite("charts", () => {
     }
     assert.match(summary(chart("radar"), "name,x,y\na,1,2\na,3,4"), /; 1 shape repeats the label/);
     assert.match(summary(chart("bar"), data), /; 2 categories repeat the label/);
+    const repeated = `name,n\n${"a,1\n".repeat(1001)}`;
+    assert.match(summary(chart("bar"), repeated), /; 1,000 categories repeat the label/);
     // Times on a time axis may repeat: they are the same instant, not a duplicate category.
     assert.doesNotMatch(summary(chart("line"), "t,n\n2026-01-01,1\n2026-01-01,2"), /repeat/);
   });

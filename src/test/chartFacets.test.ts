@@ -314,6 +314,12 @@ suite("chartFacets", () => {
     }
   });
 
+  test("counts a single panel as one", () => {
+    const data = "service,operation,ms\napi,read,2\napi,write,5";
+    const { summary } = buildChart({ type: "bar", data, facetColumn: "service" }, parseTable(data));
+    assert.match(summary, /^Faceted by "service" into 1 panel with shared scales\./);
+  });
+
   test("says what the filters kept before the panels rather than within the last one", () => {
     const data = "service,operation,ms\napi,read,2\napi,write,5\nworker,read,30";
     const { summary } = buildChart(

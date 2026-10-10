@@ -57,7 +57,7 @@ export function noteRepeatedLabels(
   const repeats = rows.length - new Set(rows.map(label)).size;
   if (repeats > 0) {
     notes.push(
-      `${repeats} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
+      `${formatCount(repeats)} ${repeats === 1 ? `${item} repeats` : `${items} repeat`} the label of an ` +
         'earlier one; "aggregate" combines the rows of each label',
     );
   }

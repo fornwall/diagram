@@ -90,7 +90,7 @@ suite("chartTransforms", () => {
           { column: "name", op: "neq", value: "a" },
           { column: "value", op: "eq", value: "2" },
         ]),
-      /"value" eq "2" matches none of the remaining 1 rows; the column holds numbers, so compare with 2 rather than "2"\./,
+      /"value" eq "2" matches none of the remaining 1 row; the column holds numbers, so compare with 2 rather than "2"\./,
     );
     assert.throws(
       () => filterTable(table, [{ column: "name", op: "eq", value: 1 }]),
@@ -102,7 +102,7 @@ suite("chartTransforms", () => {
           { column: "name", op: "eq", value: "a" },
           { column: "name", op: "eq", value: "b" },
         ]),
-      /"name" eq "b" matches none of the remaining 1 rows\./,
+      /"name" eq "b" matches none of the remaining 1 row\./,
     );
     // A value in the unit that the name states, rather than the one the column was converted to.
     assert.throws(

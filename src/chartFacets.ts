@@ -8,7 +8,7 @@ import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";
 import { errorMessage, isPlainObject } from "./protocol";
-import { quoteAll } from "./text";
+import { formatCount, plural, quoteAll } from "./text";
 
 type Option = Record<string, unknown>;
 const MAX_FACETS = 12;
@@ -53,7 +53,7 @@ export function buildFacetedChart(
   const groups = Map.groupBy(table.rows.keys(), (row): Cell => table.rows[row]?.[index] ?? null);
   if (groups.size > MAX_FACETS) {
     throw new Error(
-      `The facet column ${JSON.stringify(facetName)} has ${groups.size} values, more than the ` +
+      `The facet column ${JSON.stringify(facetName)} has ${formatCount(groups.size)} values, more than the ` +
         `${MAX_FACETS} panels a chart can have. Keep fewer of them with "filters", or choose a ` +
         "column with fewer values.",
     );
@@ -147,7 +147,7 @@ export function buildFacetedChart(
       // Panels of one type have the same tooltip, such as a histogram's; the webview adds others.
       ...(panels[0]?.option.tooltip === undefined ? {} : { tooltip: panels[0].option.tooltip }),
     },
-    summary: `Faceted by ${JSON.stringify(facetName)} into ${panels.length} panels${layout} with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
+    summary: `Faceted by ${JSON.stringify(facetName)} into ${plural(panels.length, "panel")}${layout} with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
   };
 }
 

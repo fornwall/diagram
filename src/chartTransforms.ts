@@ -63,7 +63,7 @@ function emptyingFilter(
     if (rows.length > 0) continue;
     const kept = `${JSON.stringify(column)} ${op} ${JSON.stringify(value)} matches none of ${
       before === table.rows.length ? "the" : "the remaining"
-    } ${before} rows`;
+    } ${plural(before, "row")}`;
     const numeric = table.columns[index]?.numeric === true;
     if (numeric && typeof value === "string") {
       const number = Number(value);
