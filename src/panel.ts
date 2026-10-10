@@ -283,16 +283,21 @@ export class DiagramPanel implements vscode.Disposable {
   /** Opens and renders a diagram. */
   async render(diagram: Diagram, origin: DiagramOrigin, chartTable?: DataTable): Promise<Drawn> {
     // Keep document bindings across agent replacements; a later Apply requires confirmation. A
-    // diagram opened from a document without one, as it is read-only, is not written anywhere.
-    const previousBinding = this.state?.document;
+    // diagram opened from a document without one, as it is read-only, is not written anywhere,
+    // but is still exported beside it.
+    const previous = origin === "document" ? undefined : this.state;
+    const previousBinding = previous?.document;
     const document =
       diagram.document ??
-      (origin !== "document" && previousBinding?.fence.language === diagram.language
+      (previousBinding?.fence.language === diagram.language
         ? { ...previousBinding, replaced: true }
         : undefined);
     this.state = {
       ...diagram,
       document,
+      openedFrom:
+        diagram.openedFrom ??
+        (previous?.language === diagram.language ? previous.openedFrom : undefined),
       origin,
       editedByUser: false,
       chartPresentation: diagram.chart
