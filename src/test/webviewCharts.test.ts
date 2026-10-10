@@ -59,6 +59,19 @@ suite("ECharts in the webview", function () {
   /** Draws the chart of the option, without animation. */
   const renderChart = (option: Record<string, unknown>) =>
     draw({ language: "echarts", source: JSON.stringify({ animation: false, ...option }) });
+  /** Draws a pie chart of slices of the names, blue, and red once selected. */
+  const renderPie = (...names: string[]) =>
+    renderChart({
+      series: [
+        {
+          type: "pie",
+          data: names.map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
+    });
   /** Which half of the chart its one item drawn in red is in, once ECharts draws it so. */
   const redHalf = () =>
     evaluate(`(async () => {
@@ -302,17 +315,7 @@ suite("ECharts in the webview", function () {
   });
 
   test("acts once on a double click on a chart item, keeping it selected", async () => {
-    await renderChart({
-      series: [
-        {
-          type: "pie",
-          data: ["A", "B"].map((name) => ({ name, value: 1 })),
-          itemStyle: { color: "#0000ff" },
-          select: { itemStyle: { color: "#ff0000" } },
-          emphasis: { disabled: true },
-        },
-      ],
-    });
+    await renderPie("A", "B");
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CLICK_CHART}
@@ -329,16 +332,7 @@ suite("ECharts in the webview", function () {
   });
 
   test("selects a chart item with a click that the hand shakes a little", async () => {
-    await renderChart({
-      series: [
-        {
-          type: "pie",
-          data: ["A", "B"].map((name) => ({ name, value: 1 })),
-          itemStyle: { color: "#0000ff" },
-          emphasis: { disabled: true },
-        },
-      ],
-    });
+    await renderPie("A", "B");
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
@@ -370,17 +364,7 @@ suite("ECharts in the webview", function () {
   });
 
   test("clears every selected chart item together", async () => {
-    await renderChart({
-      series: [
-        {
-          type: "pie",
-          data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
-          itemStyle: { color: "#0000ff" },
-          select: { itemStyle: { color: "#ff0000" } },
-          emphasis: { disabled: true },
-        },
-      ],
-    });
+    await renderPie("A", "B", "C");
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CLICK_CHART}
