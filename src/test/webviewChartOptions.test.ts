@@ -179,7 +179,7 @@ suite("Chart Options in the webview", function () {
         value.focus();
         document.hasFocus = () => false;
         try {
-          receive({type: "chartOptions", visible: true, state: {revision: 0, rowCount: 2,
+          receive({type: "chartOptions", state: {revision: 0, rowCount: 2,
             controls: {type: "bar"}, columns: [{name: "name", numeric: false}], edited: false}});
           await until(() => !value.isConnected, "the row gone");
           return document.activeElement.tagName;
@@ -194,7 +194,7 @@ suite("Chart Options in the webview", function () {
       await evaluate(`(async () => {
         ${FOCUSED}
         document.getElementById("chart-option-chart").focus();
-        receive({type: "chartOptions", visible: true, state: {revision: 0, controls: {type: "bar"},
+        receive({type: "chartOptions", state: {revision: 0, controls: {type: "bar"},
           columns: [], rowCount: 0, edited: false, unavailable: "Press Refresh."}});
         await until(() => document.querySelector("#chart-options fieldset").disabled, "the fields disabled");
         return ${focus};
@@ -344,7 +344,7 @@ suite("Chart Options in the webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${UNTIL}
-        const show = (names, controls) => receive({type: "chartOptions", visible: true,
+        const show = (names, controls) => receive({type: "chartOptions",
           state: {revision: 0, controls: {type: "bar", ...controls}, rowCount: 2, edited: false,
             columns: names.map((name) => ({name, numeric: name === "b"}))}});
         const selects = () => [...document.querySelectorAll("#chart-options select")];
@@ -370,7 +370,7 @@ suite("Chart Options in the webview", function () {
         show(["a", "b", "d"], {labelColumn: "d"});
         await until(() => document.querySelectorAll(".chart-filter-row").length === 0, "no filter");
         const third = {...shown(), kept: selects().every((select) => before.includes(select))};
-        receive({type: "chartOptions", visible: false});
+        receive({type: "chartOptions"});
         return {first, kept, second, third};
       })()`),
       {

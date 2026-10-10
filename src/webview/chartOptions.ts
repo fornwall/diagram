@@ -248,19 +248,18 @@ export class ChartOptionsForm {
     });
   }
 
-  update(state: ChartOptionsState | undefined, visible: boolean): void {
-    const opening = this.container.hidden && visible;
+  update(state: ChartOptionsState | undefined): void {
+    const opening = this.container.hidden && state !== undefined;
     const focused = document.activeElement;
     const hadFocus = focused !== null && this.container.contains(focused);
     // Where the focus is in the form, which rows made anew below for other columns no longer say.
     const focusPath = hadFocus ? pathTo(this.container, focused) : [];
     this.state = state;
-    this.container.hidden = !visible || state === undefined;
-    if (this.container.hidden) {
+    this.container.hidden = state === undefined;
+    if (!state) {
       if (hadFocus) this.closeFocus();
       return;
     }
-    if (!state) return;
     const { controls } = state;
     this.type.value = controls.type;
     if (!sameColumns(this.columns, state.columns)) {

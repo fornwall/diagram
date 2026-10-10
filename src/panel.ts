@@ -1003,7 +1003,7 @@ export class DiagramPanel implements vscode.Disposable {
     // Hidden controls need neither a parsed table nor a column list sent to the webview.
     // In particular, reopening an inline chart can render its saved source immediately.
     if (!chart || !this.chartOptionsVisible) {
-      this.post({ type: "chartOptions", visible: false });
+      this.post({ type: "chartOptions" });
       return;
     }
     let unavailable: string | undefined;
@@ -1015,7 +1015,6 @@ export class DiagramPanel implements vscode.Disposable {
     }
     this.post({
       type: "chartOptions",
-      visible: true,
       state: {
         revision: this.shownRevision,
         controls: chartControls(chart),

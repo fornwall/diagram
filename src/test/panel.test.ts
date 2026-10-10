@@ -289,7 +289,7 @@ suite("panel", function () {
     webview.sent.length = 0;
     await webview.receive({ type: "ready" });
     assert.strictEqual(webview.sent.length, 2);
-    assert.deepStrictEqual(webview.sent[0], { type: "chartOptions", visible: false });
+    assert.deepStrictEqual(webview.sent[0], { type: "chartOptions" });
     assert.strictEqual(webview.render.title, "Replacement");
     await webview.finishRender();
     assert.ok((await second).ok);
@@ -1190,7 +1190,7 @@ suite("panel", function () {
       sent.map((message) => message.type),
       ["chartOptions", "render", "annotate"],
     );
-    assert.deepStrictEqual(sent[0], { type: "chartOptions", visible: false });
+    assert.deepStrictEqual(sent[0], { type: "chartOptions" });
     const annotate = sent[2];
     assert.ok(annotate?.type === "annotate");
     assert.deepStrictEqual(annotate.marks, [{ id: "B", kind: "current" }]);

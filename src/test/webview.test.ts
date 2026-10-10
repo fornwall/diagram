@@ -1953,7 +1953,8 @@ suite("webview renderer loading", function () {
         const label = document.getElementById("selection-label");
         const shown = async () => {
           label.textContent = "";
-          receive({type: "chartOptions", visible: true});
+          receive({type: "chartOptions", state: {revision: 0, controls: {type: "bar"}, columns: [],
+            rowCount: 0, edited: false}});
           return until(() => /^Could not load Chart Options: /.test(label.textContent) && label.textContent,
             "the error");
         };

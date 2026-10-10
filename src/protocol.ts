@@ -154,7 +154,8 @@ export type ToWebview =
     }
   /** Whether the tab is hidden behind another, where the page has no size of its own. */
   | { type: "tabVisibility"; hidden: boolean }
-  | { type: "chartOptions"; state?: ChartOptionsState; visible: boolean }
+  /** Shows the Chart Options form with the state, or without one hides it. */
+  | { type: "chartOptions"; state?: ChartOptionsState }
   | { type: "chartOptionsError"; message: string }
   | {
       type: "render";

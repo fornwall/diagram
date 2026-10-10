@@ -54,7 +54,6 @@ suite("chart options lifecycle", function () {
     await webview.receive({ type: "ready" });
     const options = sent[0];
     assert.ok(options?.type === "chartOptions");
-    assert.strictEqual(options.visible, true);
     assert.strictEqual(options.state?.controls.type, "bar");
     assert.strictEqual(options.state?.revision, panel.revision);
     assert.strictEqual(sent[1]?.type, "render");
@@ -66,7 +65,7 @@ suite("chart options lifecycle", function () {
     const { panel, webview } = await newFakePanel();
     const visible = () => {
       const options = webview.sent.findLast((message) => message.type === "chartOptions");
-      return options?.visible;
+      return options?.type === "chartOptions" && options.state !== undefined;
     };
     await drawChart(panel, { type: "bar", data }, data);
     panel.toggleChartOptions();
@@ -169,7 +168,7 @@ suite("chart options lifecycle", function () {
     );
     second.panel.toggleChartOptions();
     const options = sent.at(-1);
-    assert.ok(options?.type === "chartOptions" && options.visible);
+    assert.ok(options?.type === "chartOptions" && options.state);
     assert.strictEqual(options.state?.rowCount, 1);
   });
 
