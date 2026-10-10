@@ -445,6 +445,11 @@ select {
   font: inherit;
 }
 
+/* As disabled buttons, rather than as the browser dims a disabled select alone. */
+:is(textarea, input, select):disabled {
+  opacity: 0.4;
+}
+
 select {
   border-color: var(--vscode-dropdown-border, transparent);
   background: var(--vscode-dropdown-background);

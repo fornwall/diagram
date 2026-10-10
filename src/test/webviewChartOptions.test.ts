@@ -414,6 +414,29 @@ suite("Chart Options in the webview", function () {
     }
   });
 
+  test("chart options show disabled fields of every kind alike", async () => {
+    await showChartOptions({ type: "bar", data: "name,amount\na,1" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        // As without the data, which disables the fields.
+        const fields = document.querySelector("#chart-options fieldset");
+        const look = () => ["chart-option-chart", "chart-option-row"]
+          .map(id => document.getElementById(id))
+          .concat(fields.querySelector("button"))
+          .map(control => getComputedStyle(control).opacity);
+        const enabled = look();
+        fields.disabled = true;
+        try {
+          return {enabled, disabled: look()};
+        } finally {
+          fields.disabled = false;
+        }
+      })()`),
+      { enabled: ["1", "1", "1"], disabled: ["0.4", "0.4", "0.4"] },
+    );
+    await closeChartOptions();
+  });
+
   test("chart options name the chart types and aggregations in words, as the other choices", async () => {
     await showChartOptions({ type: "horizontalBar", data: "name,amount\na,1" });
     const texts = (id: string) =>
