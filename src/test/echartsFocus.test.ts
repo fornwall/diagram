@@ -207,5 +207,36 @@ suite("echartsFocus", () => {
       ],
     };
     assert.strictEqual(values(boxplot), "(2, 3, 4, 5, 6)");
+    // Numbers that are categories themselves, on an axis that lists none.
+    const about = (option: Record<string, unknown>) =>
+      withChart(option, (chart) => {
+        const navigation = new ChartNavigation(chart);
+        return [0, 1].map((dataIndex) => navigation.about({ seriesIndex: 0, dataIndex })?.value);
+      });
+    const category = { type: "category" };
+    const dataset = {
+      source: [
+        ["q", "v"],
+        [1, 10],
+        [2, 20],
+      ],
+    };
+    const points = [
+      [1, 10],
+      [2, 20],
+    ];
+    assert.deepStrictEqual(
+      [
+        about({ dataset, xAxis: category, yAxis: {}, series: [{ type: "bar" }] }),
+        about({ xAxis: category, yAxis: {}, series: [{ type: "line", data: points }] }),
+        about({ xAxis: {}, yAxis: category, series: [{ type: "scatter", data: points }] }),
+      ],
+      [
+        ["10", "20"],
+        ["10", "20"],
+        // Named by the category, "10" and "20".
+        ["1", "2"],
+      ],
+    );
   });
 });

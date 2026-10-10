@@ -49,8 +49,10 @@ export interface ItemData {
   getLayout(key: string): unknown;
   /** The dimensions of the values of an item, in their order in an array of them. */
   dimensions: string[];
-  /** The categories of a dimension on a category axis, which an item's value gives by index. */
+  /** The categories of a dimension on a category axis, by the index that ECharts holds. */
   getDimensionInfo(dimension: string): { ordinalMeta?: { categories: unknown[] } } | undefined;
+  /** The value of an item in a dimension as ECharts holds it: the index of its category. */
+  get(dimension: string, index: number): unknown;
   /**
    * The nodes of a tree, treemap or sunburst, under a root ECharts adds above the data as data
    * index 0, named after the series.
@@ -182,14 +184,15 @@ export function itemValue(data: ItemData, index: number): string | undefined {
   const item = data.getRawDataItem(index);
   let value = isPlainObject(item) ? item.value : item;
   if (Array.isArray(value)) {
-    // A value on a category axis is the index of its category, which ECharts also adds to the
-    // values of a box plot or candlestick. A row of a dataset has the item's name among its values.
+    // A value on a category axis can be the index of its category, as of the categories that the
+    // axis lists, or that ECharts adds to the values of a box plot or candlestick: its category,
+    // which ECharts holds by index. A row of a dataset has the item's name among its values.
     const parts = value
       .map((part, at) => {
         const dimension = data.dimensions[at];
-        const meta = dimension === undefined ? undefined : data.getDimensionInfo(dimension);
-        const categories = meta?.ordinalMeta?.categories;
-        return typeof part === "number" && categories ? (categories[part] ?? part) : part;
+        if (dimension === undefined) return part;
+        const categories = data.getDimensionInfo(dimension)?.ordinalMeta?.categories;
+        return categories ? (categories[Number(data.get(dimension, index))] ?? part) : part;
       })
       .filter((part) => String(part) !== label);
     value = parts.length === 1 ? parts[0] : parts;

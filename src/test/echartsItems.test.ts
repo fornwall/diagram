@@ -53,6 +53,7 @@ suite("echartsItems", () => {
               "getItemGraphicEl",
               "getLayout",
               "getDimensionInfo",
+              "get",
             ]);
             assert.ok(Array.isArray(data.dimensions), "SeriesData.dimensions");
           }
