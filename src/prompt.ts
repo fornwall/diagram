@@ -130,13 +130,7 @@ export async function promptMessages(
   throwIfCancelled(token);
   const images = attachments.filter((attachment) => "image" in attachment);
   const imageKeys = new Set(images.flatMap((image) => image.keys));
-  const exchanges = await pastExchanges(
-    context.history,
-    documents,
-    callsTools,
-    imageKeys,
-    shown?.source,
-  );
+  const exchanges = await pastExchanges(context.history, documents, callsTools, imageKeys, shown);
 
   const budget = Math.floor(model.maxInputTokens * (1 - RESERVED_SHARE));
   const everything = [
@@ -490,15 +484,15 @@ function sum(numbers: number[]): number {
 }
 
 /**
- * A reply that drew the current diagram, whose `currentSource` the request describes, or says is too
- * long to repeat, need not repeat it.
+ * A reply that drew the `shown` diagram need not repeat it, if the request's description of it gives
+ * its source, or the model can read it with diagram_getState, as one that calls tools can.
  */
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
   callsTools: boolean,
   imageKeys: ReadonlySet<string>,
-  currentSource: string | undefined,
+  shown: { description: string; source: string | undefined } | undefined,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
@@ -532,10 +526,11 @@ async function pastExchanges(
     const language: unknown = turn.result.metadata?.language;
     const chart: unknown = turn.result.metadata?.chart;
     if (typeof source === "string" && isDiagramLanguage(language)) {
+      const fenced = codeFence(source, language);
       exchange.diagram =
-        source === currentSource
+        source === shown?.source && (callsTools || shown.description.includes(fenced))
           ? `\n\n(I drew the current ${diagramNoun(language)}, described below.)`
-          : `\n\n${codeFence(source, language)}`;
+          : `\n\n${fenced}`;
     } else if (chart) {
       exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${describeChartParameters(chart)})`;
     }

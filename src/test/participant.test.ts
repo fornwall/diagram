@@ -1283,6 +1283,15 @@ suite("participant", () => {
     const laterMessages = later.sent[0]?.messages.map(messageText) ?? [];
     assert.ok(laterMessages.includes("Drawn.\n\n(I drew the current diagram, described below.)"));
     assert.ok(!laterMessages.some((message) => message.includes("x".repeat(40_000))));
+    // Unless the model cannot read it with diagram_getState.
+    const noTools = await ask([[text("Hm.")]], {
+      history: turn(long),
+      capabilities: { supportsToolCalling: false },
+    });
+    const noToolsMessages = noTools.sent[0]?.messages.map(messageText) ?? [];
+    assert.ok(
+      noToolsMessages.some((message) => message.startsWith(`Drawn.\n\n\`\`\`mermaid\n${long}`)),
+    );
   });
 
   test("leaves /show out of the history, and gives a command without a message by its name", async () => {
