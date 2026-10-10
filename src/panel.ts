@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import {
   type ChartUpdateInput,
@@ -175,6 +176,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Names that several items of the chart go by, which marks must not use. */
   private repeatedNames: RepeatedName[] = [];
   private renderWarnings: string[] = [];
+  /** The title of the diagram before the user's edits of its source changed it, if they did. */
+  private firstTitle: string | undefined;
 
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -287,6 +290,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.chartTable = diagram.chart ? chartTable : undefined;
     this.chartOptionsVisible = false;
     this.updateContext();
+    this.firstTitle = undefined;
     this.selection = [];
     this.annotation = undefined;
     this.cancelPick("The diagram was replaced before the user picked.");
@@ -540,6 +544,7 @@ export class DiagramPanel implements vscode.Disposable {
       links: state.links && linkTexts(state.links),
       refreshFrom,
       writeTo: state.document && documentName(state.document),
+      firstTitle: this.firstTitle,
       notDrawn: newPage && state.error === UNFINISHED ? UNFINISHED : undefined,
     } as const;
     this.sourceRequestId = message.requestId;
@@ -767,9 +772,19 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state) {
       return;
     }
+    // A title taken from the source, rather than given by a model or the chart's settings, follows
+    // it, as when the user writes a title into it. The page still takes it for the same diagram.
+    const title =
+      !state.chart &&
+      state.source !== undefined &&
+      state.title === guessTitle({ language: state.language, source: state.source })
+        ? guessTitle({ language: state.language, source })
+        : state.title;
+    if (title !== state.title) this.firstTitle ??= state.title;
     this.state = {
       ...state,
       source,
+      title,
       editedByUser: true,
       chartPresentation: state.chart
         ? captureChartPresentation(source, state.chartPresentation)

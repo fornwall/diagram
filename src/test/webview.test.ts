@@ -1,8 +1,16 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { guessTitle } from "../blocks";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { afterTest } from "./afterTest";
-import { newPanel, openWebviewPanel, recordChat, within, withoutRevision } from "./newPanel";
+import {
+  newPanel,
+  openWebviewPanel,
+  recordChat,
+  webviewTabs,
+  within,
+  withoutRevision,
+} from "./newPanel";
 import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 suite("webview", function () {
@@ -555,6 +563,43 @@ suite("webview", function () {
     assert.strictEqual(await zoom(), "125%", "A revision keeps the zoom.");
     await draw({ source, title: "Another" });
     assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
+  });
+
+  test("titles a diagram by a title written into its source, keeping its zoom", async () => {
+    const state = () =>
+      evaluate(`({
+        zoom: document.getElementById("zoom-reset").textContent,
+        title: document.getElementById("title").textContent,
+      })`);
+    const apply = (source: string) =>
+      nextRender(() =>
+        evaluate(`(() => {
+          document.getElementById("view-split").click();
+          const source = document.getElementById("source");
+          source.value = ${JSON.stringify(source)};
+          source.dispatchEvent(new Event("input"));
+          document.getElementById("apply").click();
+        })()`),
+      );
+    const source = MERMAID["flowchart-v2"];
+    const guessed = guessTitle({ language: "mermaid", source });
+    await draw({ source, title: guessed });
+    await evaluate(`document.getElementById("zoom-in").click()`);
+    assert.deepStrictEqual(await state(), { zoom: "125%", title: guessed });
+    try {
+      await apply(`---\ntitle: Login\n---\n${source}`);
+      assert.deepStrictEqual(await state(), { zoom: "125%", title: "Login" });
+      assert.strictEqual(page.panel.current?.title, "Login");
+      await webviewTabs((labels) => labels.includes("Login"));
+      await apply(`---\ntitle: Sign in\n---\n${source}`);
+      assert.deepStrictEqual(await state(), { zoom: "125%", title: "Sign in" });
+      // A title that a model gave stays.
+      await draw({ source, title: "Overview" });
+      await apply(`---\ntitle: Login\n---\n${source}`);
+      assert.deepStrictEqual(await state(), { zoom: "100%", title: "Overview" });
+    } finally {
+      await evaluate('document.getElementById("view-visual").click()');
+    }
   });
 
   test("zooms at the pointer in proportion to Ctrl+scrolling, and as much as a pinch", async () => {

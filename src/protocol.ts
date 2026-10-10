@@ -162,6 +162,11 @@ export type ToWebview =
       refreshFrom?: string | undefined;
       /** Bound document's display name, shown on the write-back action. */
       writeTo?: string | undefined;
+      /**
+       * The title before the user's edits of the source changed it, which tells the page that it
+       * is still the same diagram.
+       */
+      firstTitle?: string | undefined;
       /** Why the page shows this error rather than draw the source, which may hang it. */
       notDrawn?: string | undefined;
     }
