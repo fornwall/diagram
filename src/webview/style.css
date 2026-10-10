@@ -215,6 +215,7 @@ button.link:enabled:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 6px 12px;
   background: var(--vscode-inputValidation-infoBackground);
@@ -222,7 +223,15 @@ button.link:enabled:hover {
 }
 
 #pick-prompt {
+  /* Wraps beside the buttons, until too narrow for them, which then go below it rather than
+     stack. */
+  flex: 1 1 12em;
   font-weight: 600;
+}
+
+#pick .actions {
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 /* The caption and notes an agent sent with its marks, above the drawing they are about. */

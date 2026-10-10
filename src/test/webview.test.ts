@@ -414,6 +414,37 @@ suite("webview", function () {
     );
   });
 
+  test("keeps a pick's buttons side by side in a narrow panel", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const banner = document.getElementById("pick");
+        receive({type: "startPick", pickId: 90010, multiple: true,
+          prompt: "Pick the nodes where the request may fail, then press Done"});
+        await until(() => !banner.hidden, "the pick");
+        const box = (id) => document.getElementById(id).getBoundingClientRect();
+        const layout = (width) => {
+          banner.style.width = width;
+          const done = box("pick-done");
+          const cancel = box("pick-cancel");
+          return {sideBySide: done.top === cancel.top, besidePrompt: done.top < box("pick-prompt").bottom};
+        };
+        try {
+          return [layout("340px"), layout("200px")];
+        } finally {
+          banner.style.width = "";
+          receive({type: "endPick", pickId: 90010});
+          await until(() => banner.hidden, "the end of the pick");
+        }
+      })()`),
+      [
+        { sideBySide: true, besidePrompt: true },
+        { sideBySide: true, besidePrompt: false },
+      ],
+    );
+  });
+
   test("starts and ends a pick sent with a diagram on the diagram drawn", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     const option = { xAxis: { data: ["A"] }, yAxis: {}, series: [{ type: "bar", data: [1] }] };
