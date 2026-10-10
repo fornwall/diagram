@@ -316,7 +316,6 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(
       await evaluate(`(async () => {
         ${CLICK_CHART}
-        ${UNTIL}
         const slice = document.querySelector('#chart svg path[fill="#0000ff"]');
         // As a browser sends a double click: a click of each press, counting them.
         for (const detail of [1, 2]) clickChart(slice, {detail});
