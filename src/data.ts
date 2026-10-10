@@ -97,8 +97,9 @@ function namesCategories(rows: Cell[][]): boolean {
 /**
  * Whether the first row names the columns: it has text or years in order, and no other numbers
  * (as in "region,2024,2025", or ",2024,2025" as pandas writes a pivot table), and some column
- * below it holds numbers. CSV of text only has a header if it {@link namesCategories}. A single
- * row of text only is a header, as a query or command prints when it finds nothing.
+ * below it holds numbers, or no values at all, as a column of numbers not yet known. CSV of text
+ * only has a header if it {@link namesCategories}. A single row of text only is a header, as a
+ * query or command prints when it finds nothing.
  */
 function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolean {
   const first = rows[0];
@@ -140,7 +141,16 @@ function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolea
       return false;
     }
   }
-  return counts.some(isNumeric) || (csv && numbers.length === 0 && namesCategories(rows));
+  const named = (cell: Cell, column: number) =>
+    typeof cell === "string" &&
+    !MISSING.test(cell) &&
+    counts[column]?.numbers === 0 &&
+    counts[column]?.others === 0;
+  return (
+    counts.some(isNumeric) ||
+    first.some(named) ||
+    (csv && numbers.length === 0 && namesCategories(rows))
+  );
 }
 
 /** Makes column names unique and non-empty, generating "Column N" for missing ones. */

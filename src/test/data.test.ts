@@ -2323,6 +2323,12 @@ suite("data", () => {
     ]);
   });
 
+  test("treats a first row above a column of no values as a header", () => {
+    for (const text of ["name,value\na,\nb,", "name\tvalue\na\tN/A\nb\t-"]) {
+      assert.deepStrictEqual(parse(text).columns, ["name", "value"], text);
+    }
+  });
+
   test("detects a CSV header above columns of categories", () => {
     assert.deepStrictEqual(parse("name;city\nAlice;Paris\nBob;Rome\nCarl;Paris"), {
       columns: ["name", "city"],
