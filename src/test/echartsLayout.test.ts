@@ -888,7 +888,10 @@ suite("echartsLayout", () => {
     );
     assert.strictEqual(option.baseOption.legend.bottom, 50);
     assert.strictEqual(option.baseOption.grid.bottom, 84);
+    // Padded less than ECharts 6 does, to fit the room left for it.
+    assert.strictEqual(option.baseOption.timeline.padding, 5);
     const placed = layout(bars({ timeline: { top: 0 } }));
     assert.strictEqual(placed.grid.bottom, 8);
+    assert.strictEqual(placed.timeline.padding, undefined);
   });
 });

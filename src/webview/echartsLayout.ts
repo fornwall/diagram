@@ -411,6 +411,8 @@ function layOut(
   // A timeline takes the bottom of the chart, where ECharts places it unless told otherwise.
   const timeline = asArray(base.timeline).find((t) => t.show !== false);
   if (timeline && !has(timeline, [...BOX_KEYS, "orient"])) {
+    // Within the room reserved for it, which ECharts 6's padding of 15 pixels would overflow.
+    timeline.padding ??= 5;
     reserved.bottom = 44;
   }
   placeLegend(base, series, cartesian, reserved, size);
