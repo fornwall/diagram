@@ -561,6 +561,9 @@ suite("fences", () => {
     const chart = "```echarts\n{}\n```\n";
     assert.strictEqual(relocateFence(findDiagramFences(chart + block), read)?.openingLine, 3);
     assert.strictEqual(relocateFence(findDiagramFences(chart + block + block), read), undefined);
+    // Not when the block itself is now written in the other language, as for a copy of it.
+    const copy = findDiagramFences(`${block.replace("mermaid", "echarts")}${block}`);
+    assert.strictEqual(relocateFence(copy, read), undefined);
   });
 
   test("accepts only diagram blocks as a command's argument", () => {
