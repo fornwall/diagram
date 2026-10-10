@@ -4,7 +4,7 @@
 
 import { isPlainObject } from "../protocol";
 import { joinWords } from "../text";
-import { evaluateSource, isFunctionAt } from "./optionSource";
+import { evaluateSource, isFunction } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -453,7 +453,7 @@ function findJavaScript(
         checkCallbacks &&
         typeof item === "string" &&
         CALLBACK_KEYS.has(key) &&
-        isFunctionAt(item)
+        isFunction(item)
       ) {
         throw new Error(
           `${pathOf(keys)} is JavaScript code in a string, which ECharts draws as that text. ` +

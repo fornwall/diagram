@@ -439,9 +439,8 @@ function matchAt(pattern: RegExp, text: string, index: number): string | undefin
   return pattern.exec(text)?.[0];
 }
 
-/** Whether the text starts a JavaScript function at the index, as models write formatters. */
-export const isFunctionAt = (text: string, index = 0) =>
-  matchAt(FUNCTION, text, index) !== undefined;
+/** Whether the text starts with a JavaScript function, as models write formatters. */
+export const isFunction = (text: string) => matchAt(FUNCTION, text, 0) !== undefined;
 
 /** A character as quoted in a message, with its code point if it may be invisible. */
 function quote(char: string): string {
