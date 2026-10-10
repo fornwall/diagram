@@ -925,8 +925,10 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const uri = resolveWorkspaceFile(input.file, roots);
     const content = await readText(uri, boundary(roots, token), token, MAX_READ_BYTES).catch(
       (error: unknown) => {
+        // No glob names a folder that no absolute path names, as in some virtual workspaces.
+        const glob = filesGlob(uri, roots);
         throw fileError(error, uri, {
-          FileIsADirectory: `List its files with ${FIND_FILES_TOOL} and the glob "${filesGlob(uri, roots)}".`,
+          FileIsADirectory: `List its files with ${FIND_FILES_TOOL}${glob === undefined ? "" : ` and the glob "${glob}"`}.`,
         });
       },
     );

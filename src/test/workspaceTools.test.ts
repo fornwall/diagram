@@ -731,6 +731,39 @@ suite("workspaceTools", function () {
     assert.match(await invoke(reader, { file: "src" }), /the glob "src\/\*\*"\.$/);
   });
 
+  test("says how to list a folder that no absolute path names", async () => {
+    const unsupported = () => {
+      throw vscode.FileSystemError.NoPermissions();
+    };
+    const provider = vscode.workspace.registerFileSystemProvider("diagram-b", {
+      onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
+      stat: () => ({ type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 }),
+      watch: () => new vscode.Disposable(() => {}),
+      readDirectory: unsupported,
+      createDirectory: unsupported,
+      readFile: unsupported,
+      writeFile: unsupported,
+      delete: unsupported,
+      rename: unsupported,
+    });
+    afterTest(() => provider.dispose());
+    const first = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(first);
+    // "/src" would name a folder in either virtual workspace folder.
+    replace(vscode.workspace, "workspaceFolders", [
+      first,
+      ...["diagram-a", "diagram-b"].map((scheme, index) => ({
+        uri: vscode.Uri.parse(`${scheme}:/`),
+        name: scheme,
+        index: index + 1,
+      })),
+    ]);
+    assert.strictEqual(
+      await invoke(reader, { file: "diagram-b:/src" }),
+      "Error: diagram-b:/src is a folder, not a file. List its files with diagram_findFiles.",
+    );
+  });
+
   test("rejects traversal in virtual URIs, including encoded dot segments", () => {
     const roots = [{ uri: vscode.Uri.parse("memory:/root/"), name: "virtual", index: 0 }];
     assert.strictEqual(resolveWorkspaceFile("memory:/root/code.ts", roots).path, "/root/code.ts");
