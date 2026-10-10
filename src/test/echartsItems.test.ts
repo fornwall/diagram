@@ -54,6 +54,7 @@ suite("echartsItems", () => {
               "getLayout",
               "getDimensionInfo",
               "get",
+              "getDimensionIndex",
             ]);
             assert.ok(Array.isArray(data.dimensions), "SeriesData.dimensions");
           }

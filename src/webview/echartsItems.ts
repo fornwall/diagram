@@ -47,8 +47,10 @@ export interface ItemData {
   getItemGraphicEl(index: number): Graphic | null | undefined;
   /** A layout of all items, such as "points": [x, y] of each, of a line or large scatter chart. */
   getLayout(key: string): unknown;
-  /** The dimensions of the values of an item, in their order in an array of them. */
+  /** The dimensions of the values of an item that the series uses. */
   dimensions: string[];
+  /** The place of a dimension's value in an array of the values of an item. */
+  getDimensionIndex(dimension: string): number;
   /** The categories of a dimension on a category axis, by the index that ECharts holds. */
   getDimensionInfo(dimension: string): { ordinalMeta?: { categories: unknown[] } } | undefined;
   /** The value of an item in a dimension as ECharts holds it: the index of its category. */
@@ -187,9 +189,11 @@ export function itemValue(data: ItemData, index: number): string | undefined {
     // A value on a category axis can be the index of its category, as of the categories that the
     // axis lists, or that ECharts adds to the values of a box plot or candlestick: its category,
     // which ECharts holds by index. A row of a dataset has the item's name among its values.
+    // ECharts leaves out the dimensions that a series does not use, of a wide dataset.
+    const dimensions = new Map(data.dimensions.map((each) => [data.getDimensionIndex(each), each]));
     const parts = value
       .map((part, at) => {
-        const dimension = data.dimensions[at];
+        const dimension = dimensions.get(at);
         if (dimension === undefined) return part;
         const categories = data.getDimensionInfo(dimension)?.ordinalMeta?.categories;
         return categories ? (categories[Number(data.get(dimension, index))] ?? part) : part;

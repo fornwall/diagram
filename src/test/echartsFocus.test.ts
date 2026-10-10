@@ -238,5 +238,15 @@ suite("echartsFocus", () => {
         ["1", "2"],
       ],
     );
+    // Of a wide dataset, whose columns the series does not use ECharts leaves out.
+    const header = Array.from({ length: 40 }, (_, column) => `c${column}`);
+    const row = (at: number) => header.map((_, column) => (column === 39 ? at : at * 100 + column));
+    const [, wide] = about({
+      dataset: { source: [header, row(0), row(1)] },
+      xAxis: { type: "category", data: ["Mon", "Tue"] },
+      yAxis: {},
+      series: [{ type: "bar", encode: { x: "c39", y: "c5" } }],
+    });
+    assert.strictEqual(wide, `(${row(1).slice(0, 39).join(", ")})`);
   });
 });
