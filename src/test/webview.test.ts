@@ -518,7 +518,7 @@ suite("webview", function () {
           const unrelated = canvas.classList.contains("panning");
           send(canvas, "lostpointercapture", 2);
           const lostCapture = !canvas.classList.contains("panning");
-          const click = new MouseEvent("click", {bubbles: true, cancelable: true});
+          const click = new MouseEvent("click", {bubbles: true, cancelable: true, clientX: 100, clientY: 100});
           canvas.dispatchEvent(click);
           send(canvas, "pointerdown", 4);
           send(canvas, "pointermove", 4, 90);
@@ -536,7 +536,8 @@ suite("webview", function () {
           Object.defineProperty(canvas, "scrollHeight", {value: canvas.clientHeight, configurable: true});
           send(canvas, "pointerdown", 6);
           send(canvas, "pointerup", 6);
-          const nextClick = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1});
+          const nextClick = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1,
+            clientX: 100, clientY: 100});
           canvas.dispatchEvent(nextClick);
           return {released, restarted, unrelated, lostCapture, clickAllowed: !click.defaultPrevented,
             keyboardAllowed: !keyboardClick.defaultPrevented, panSuppressed: panClick.defaultPrevented,
@@ -561,6 +562,47 @@ suite("webview", function () {
         panSuppressed: true,
         nextAllowed: true,
       },
+    );
+  });
+
+  test("selects nothing by dragging across the text of a drawing that fits the panel", async () => {
+    await draw({
+      source: "flowchart LR\n  A[Parser] --> B[Checker] --> C[Printer]",
+      title: "Text",
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+        const at = id => {
+          const box = node(id).getBoundingClientRect();
+          return [box.left + box.width / 2, box.top + box.height / 2];
+        };
+        // As Chromium ends a drag: in a click on what the press and the release have in common.
+        const drag = (from, [x, y], target) => {
+          const [fromX, fromY] = from;
+          const init = {clientX: fromX, clientY: fromY, pointerType: "mouse", button: 0,
+            isPrimary: true, bubbles: true, cancelable: true};
+          node(target === "svg" ? "A" : target).dispatchEvent(new PointerEvent("pointerdown", init));
+          const ends = target === "svg" ? document.querySelector("#diagram svg") : node(target);
+          ends.dispatchEvent(new PointerEvent("pointerup", {...init, clientX: x, clientY: y}));
+          ends.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, detail: 1,
+            clientX: x, clientY: y}));
+        };
+        const selected = () => [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
+          .map(element => element.getAttribute("data-diagram-id"));
+        const pannable = canvas.scrollWidth > canvas.clientWidth || canvas.scrollHeight > canvas.clientHeight;
+        // A click that the hand shakes a little still selects.
+        const [ax, ay] = at("A");
+        drag([ax, ay], [ax + 1, ay + 1], "A");
+        const clicked = selected();
+        // Across the labels of A and C, ending on the drawing; within B's label.
+        drag([ax, ay], at("C"), "svg");
+        const [bx, by] = at("B");
+        drag([bx - 10, by], [bx + 10, by], "B");
+        return {pannable, clicked, dragged: selected()};
+      })()`),
+      { pannable: false, clicked: ["A"], dragged: ["A"] },
     );
   });
 

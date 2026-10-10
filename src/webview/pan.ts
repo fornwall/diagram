@@ -21,6 +21,11 @@ export function enablePanning(canvas: HTMLElement): void {
   let drag: Drag | undefined;
   /** Whether the drag panned, in which case the click that ends it must not change the selection. */
   let panned = false;
+  /**
+   * Where the mouse button went down. A drag from there that selects text rather than pans, while
+   * the rendering fits, ends in a click too, on what the text it passed over has in common.
+   */
+  let pressed: { x: number; y: number } | undefined;
   let cursorFrame = 0;
 
   const canPan = () =>
@@ -56,6 +61,10 @@ export function enablePanning(canvas: HTMLElement): void {
     if (!drag) {
       // A new gesture must not inherit a pan whose click landed outside the canvas.
       panned = false;
+      pressed =
+        event.pointerType === "mouse" && event.button === 0 && event.isPrimary
+          ? { x: event.clientX, y: event.clientY }
+          : undefined;
     }
     // Touch and pen contacts scroll the canvas by themselves, and only a primary button drags.
     if (
@@ -111,13 +120,18 @@ export function enablePanning(canvas: HTMLElement): void {
   canvas.addEventListener("lostpointercapture", stopDrag);
   window.addEventListener("blur", () => stopDrag());
 
-  // The click that ends a pan reaches the canvas and its nodes: swallow it before they see it.
-  // Listeners on the canvas itself only lose it to this one if they are added later, hence
-  // enablePanning before them.
+  // The click that ends a pan or a drag across text reaches the canvas and its nodes: swallow it
+  // before they see it. Listeners on the canvas itself only lose it to this one if they are added
+  // later, hence enablePanning before them.
   canvas.addEventListener(
     "click",
     (event) => {
-      if (panned && event.detail !== 0) {
+      const dragged =
+        pressed !== undefined &&
+        (Math.abs(event.clientX - pressed.x) >= PAN_THRESHOLD ||
+          Math.abs(event.clientY - pressed.y) >= PAN_THRESHOLD);
+      pressed = undefined;
+      if ((panned || dragged) && event.detail !== 0) {
         panned = false;
         event.stopImmediatePropagation();
         event.preventDefault();
