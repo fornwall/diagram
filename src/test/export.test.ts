@@ -172,6 +172,39 @@ suite("export", function () {
     assert.strictEqual(dialogs[1]?.defaultUri?.fsPath, path.join(directory, "Export test.svg"));
   });
 
+  test("suggests the folder of the document a diagram was opened from, or one in it", async () => {
+    const { panel } = await exportingPanel();
+    const fence = { ...diagram, openingLine: 0, lastLine: 2, prefix: "" };
+    const opened = (file: string) => ({
+      ...diagram,
+      document: { uri: vscode.Uri.file(path.join(directory, file)).toString(), fence },
+    });
+    const suggested = () => path.dirname(dialogs.at(-1)?.defaultUri?.fsPath ?? "");
+    assert.ok((await panel.render(opened("docs/notes.md"), "document")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.join(directory, "docs"));
+    // The last export went to the workspace's folder, beside docs.
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.join(directory, "docs"));
+    const images = path.join(directory, "docs", "images");
+    replace(vscode.window, "showSaveDialog", async (options) => {
+      dialogs.push(options ?? {});
+      return vscode.Uri.file(path.join(images, "export.svg"));
+    });
+    fs.mkdirSync(images, { recursive: true });
+    await panel.exportDiagram();
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), images);
+    assert.ok((await panel.render(opened("other/notes.md"), "document")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.join(directory, "other"));
+    // A chart in its place, which is not from the document: the folder of the last export.
+    assert.ok((await panel.render(chart, "tool")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), images);
+    assert.deepStrictEqual(errors, []);
+  });
+
   test("says whether it exports a diagram or a chart, and names an untitled one so", async () => {
     const { panel } = await exportingPanel();
     for (const drawing of [diagram, chart]) {

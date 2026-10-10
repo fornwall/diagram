@@ -27,10 +27,16 @@ let lastFolder: vscode.Uri | undefined;
 
 /**
  * Asks for a format, captures the drawing in it and saves it where the user chooses. capture asks
- * the webview for the drawing, and throws if it changed while the user was choosing.
+ * the webview for the drawing, and throws if it changed while the user was choosing. A drawing
+ * opened from a document is saved beside it by default, where the document can show the image.
  */
 export async function exportDrawing(
-  drawing: { language: DiagramLanguage; title: string; source: string },
+  drawing: {
+    language: DiagramLanguage;
+    title: string;
+    source: string;
+    document?: vscode.Uri | undefined;
+  },
   capture: (format: ExportFormat) => Promise<ExportResult>,
   extensionUri: vscode.Uri,
 ): Promise<void> {
@@ -75,7 +81,9 @@ export async function exportDrawing(
       throw new Error("The panel returned the wrong export format. Try again.");
     }
     const folder =
-      lastFolder ?? vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
+      defaultFolder(drawing.document) ??
+      vscode.workspace.workspaceFolders?.[0]?.uri ??
+      vscode.Uri.file(os.homedir());
     const target = await vscode.window.showSaveDialog({
       title: `Export ${choice.label}`,
       saveLabel: "Export",
@@ -93,6 +101,20 @@ export async function exportDrawing(
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not export the ${noun}: ${errorMessage(error)}`);
   }
+}
+
+/**
+ * The folder of the document a drawing was opened from, or of the last export, if that is in it, as
+ * when images go in a folder of their own; without a saved document, that of the last export.
+ */
+function defaultFolder(document: vscode.Uri | undefined): vscode.Uri | undefined {
+  if (!document || document.scheme === "untitled") return lastFolder;
+  const folder = vscode.Uri.joinPath(document, "..");
+  const within =
+    lastFolder?.scheme === folder.scheme &&
+    lastFolder.authority === folder.authority &&
+    `${lastFolder.path}/`.startsWith(folder.path.endsWith("/") ? folder.path : `${folder.path}/`);
+  return within ? lastFolder : folder;
 }
 
 /** Says why the file could not be saved, without the "Error: " that VS Code puts before it. */

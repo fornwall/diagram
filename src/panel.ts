@@ -1219,7 +1219,12 @@ export class DiagramPanel implements vscode.Disposable {
     }
     const revision = this.shownRevision;
     await exportDrawing(
-      { language: state.language, title: state.title, source: state.source },
+      {
+        language: state.language,
+        title: state.title,
+        source: state.source,
+        document: state.document && vscode.Uri.parse(state.document.uri),
+      },
       (format) => {
         const rendered = this.renderedRequestId;
         if (revision !== this.shownRevision || !this.webview.isReady || rendered === undefined) {

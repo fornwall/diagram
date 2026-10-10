@@ -31,7 +31,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
 | Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to change a chart made from data. Enter in a field applies the options. |
 | Refresh | Reload file or command data, keeping styling made in the JSON source. Manual changes to the data, structure or JavaScript of the source must be reverted or reset first. |
-| Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. |
+| Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. A diagram opened from a Markdown file is saved beside it, or in the folder within its folder where you last saved one. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
 | Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive, label link or sequence diagram actor `link`. An actor with several `links` offers a menu. VS Code asks before opening an untrusted website. |
 | Zoom and pan | Mermaid: the zoom buttons (**100%** toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll, pinching on a trackpad and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
