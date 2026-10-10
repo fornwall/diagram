@@ -745,9 +745,10 @@ export function fenceAt(fences: readonly DiagramFence[], line: number): DiagramF
 }
 
 /**
- * Finds an unchanged block at its original line, or a unique matching block that moved.
- * An edited block or ambiguous copies must be reopened before writing to avoid replacing another
- * diagram that happens to have the same source.
+ * Finds an unchanged block at its original line or, if no block of its language is there, a unique
+ * matching block that moved. A block of its language at that line is taken to be it, edited, which
+ * must be reopened before writing, as must ambiguous copies, to avoid replacing another diagram
+ * that happens to have the same source.
  */
 export function relocateFence(
   fences: readonly DiagramFence[],
@@ -755,7 +756,9 @@ export function relocateFence(
 ): DiagramFence | undefined {
   const matches = (fence: DiagramFence) =>
     fence.language === read.language && fence.source === read.source;
-  const original = fences.find((fence) => fence.openingLine === read.openingLine);
+  const original = fences.find(
+    (fence) => fence.openingLine === read.openingLine && fence.language === read.language,
+  );
   if (original) {
     return matches(original) ? original : undefined;
   }

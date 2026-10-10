@@ -554,6 +554,15 @@ suite("fences", () => {
     assert.strictEqual(relocateFence(edited, read), undefined);
   });
 
+  test("finds a block that moved when a block of the other language took its line", () => {
+    const block = "```mermaid\nA\n```\n";
+    const read = findDiagramFences(block)[0];
+    assert.ok(read);
+    const chart = "```echarts\n{}\n```\n";
+    assert.strictEqual(relocateFence(findDiagramFences(chart + block), read)?.openingLine, 3);
+    assert.strictEqual(relocateFence(findDiagramFences(chart + block + block), read), undefined);
+  });
+
   test("accepts only diagram blocks as a command's argument", () => {
     const fence: DiagramFence = {
       language: "mermaid",
