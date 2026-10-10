@@ -47,21 +47,16 @@ function ignoreRule(line: string): IgnoreRule | undefined {
   if (!text) return undefined;
   const segments = text.split("/");
   let source = anchored ? "" : "(?:.*/)?";
-  let separated = true;
   let last = { source: ".*", literal: undefined as string | undefined };
   for (const [index, segment] of segments.entries()) {
-    // "**" as a whole name matches any number of folders: "a/**" what is in a.
+    // "**" as a whole name matches any number of folders, "/" included: "a/**" what is in a.
+    if (index > 0 && segments[index - 1] !== "**") source += "/";
     if (segment === "**") {
-      source +=
-        index < segments.length - 1
-          ? `${separated ? "" : "/"}(?:.*/)?`
-          : `${separated ? "" : "/"}.*`;
+      source += index < segments.length - 1 ? "(?:.*/)?" : ".*";
       last = { source: ".*", literal: undefined };
-      separated = true;
     } else {
       last = segmentSource(segment);
-      source += `${separated ? "" : "/"}${last.source}`;
-      separated = false;
+      source += last.source;
     }
   }
   const body = /[\\{},]/.test(text) || /[^/]\*\*|\*\*[^/]/.test(text) ? undefined : text;
