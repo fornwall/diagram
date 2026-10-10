@@ -535,6 +535,18 @@ suite("webview", function () {
     );
   });
 
+  test("shows a new diagram from its top, where a revision stays scrolled", async () => {
+    const chain = (name: string) =>
+      Array.from({ length: 20 }, (_, i) => `${name}${i} --> ${name}${i + 1}`).join("\n  ");
+    const scrolled = () => evaluate(`document.getElementById("canvas").scrollTop`);
+    await draw({ source: `flowchart TD\n  ${chain("a")}`, title: "Tall" });
+    await evaluate(`document.getElementById("canvas").scrollTop = 200`);
+    await draw({ source: `flowchart TD\n  ${chain("a")}\n  a20 --> a21`, title: "Tall" });
+    assert.strictEqual(await scrolled(), 200, "A revision stays where it was scrolled to.");
+    await draw({ source: `flowchart TD\n  ${chain("b")}`, title: "Another" });
+    assert.strictEqual(await scrolled(), 0, "A new diagram shows from its top.");
+  });
+
   test("keeps the middle of the drawing in place when toggling between fit and actual size", async () => {
     const chain = Array.from({ length: 30 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
     await draw({ source: `flowchart LR\n  ${chain}`, title: "Fit and actual size" });

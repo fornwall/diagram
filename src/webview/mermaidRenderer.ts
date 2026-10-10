@@ -281,6 +281,8 @@ export class MermaidRenderer implements Renderer {
   private zoom = 1;
   /** Whether the zoom follows the panel size, until the user zooms by hand. */
   private fitting = true;
+  /** Whether the next drawing is of another diagram, which starts scrolled to its top left. */
+  private scrollToStart = false;
   private displayedSource: string | undefined;
   /**
    * What the shown drawing was drawn from: its source, the width it was laid out at and Mermaid's
@@ -452,6 +454,7 @@ export class MermaidRenderer implements Renderer {
     if (drawnFrom === this.drawnFrom && this.displayedSource !== undefined && this.diagramType) {
       this.setZoom(this.zoom);
       if (this.fitting) this.fit();
+      this.scrollStart();
       return this.diagramType;
     }
     container.style.width = drawWidth;
@@ -506,7 +509,15 @@ export class MermaidRenderer implements Renderer {
     if (this.fitting) {
       this.fit();
     }
+    this.scrollStart();
     return result.diagramType;
+  }
+
+  /** Scrolls a drawing of another diagram than the one shown before to its top left. */
+  private scrollStart(): void {
+    if (!this.scrollToStart) return;
+    this.scrollToStart = false;
+    this.canvas.scrollTo(0, 0);
   }
 
   /**
@@ -754,6 +765,7 @@ export class MermaidRenderer implements Renderer {
 
   fitToPanel(): void {
     this.fitting = true;
+    this.scrollToStart = true;
   }
 
   /**
