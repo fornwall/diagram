@@ -41,6 +41,8 @@ export class SourceEditor {
   private editedFrom = "";
   /** A pending edit, recognized when the extension sends it back to render. */
   private appliedSource: string | undefined;
+  /** Edits of an older diagram that Revert discarded, which Undo brings back as such. */
+  private reverted: { source: string; base: string } | undefined;
 
   constructor(
     private readonly elements: Elements,
@@ -55,7 +57,7 @@ export class SourceEditor {
         if (this.sourceShown) input.focus();
       });
     }
-    input.addEventListener("input", () => this.updateActions());
+    input.addEventListener("input", () => this.edited());
     input.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
@@ -64,6 +66,10 @@ export class SourceEditor {
     });
     apply.addEventListener("click", () => this.apply());
     revert.addEventListener("click", () => {
+      // Edits of an older diagram, which Undo brings back, are still of that one, for the note.
+      if (this.editedFrom !== this.formatted()) {
+        this.reverted = { source: input.value, base: this.editedFrom };
+      }
       // First, as the edits that Revert discards stay in the editor's history, to undo it with.
       input.focus();
       this.load(true);
@@ -196,6 +202,20 @@ export class SourceEditor {
     this.editedFrom = this.formatted();
     replaceText(this.elements.input, this.editedFrom, undoable);
     this.elements.staleNote.hidden = true;
+    this.updateActions();
+  }
+
+  /** Tells edits of an older diagram, such as those that Undo brought back, from others. */
+  private edited(): void {
+    const { input, staleNote } = this.elements;
+    if (this.diagram && input.value === this.formatted()) {
+      // Back to the diagram's source, as Redo reverts again.
+      this.editedFrom = input.value;
+      staleNote.hidden = true;
+    } else if (input.value === this.reverted?.source) {
+      this.editedFrom = this.reverted.base;
+      staleNote.hidden = this.formatted() === this.editedFrom;
+    }
     this.updateActions();
   }
 

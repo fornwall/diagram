@@ -1185,6 +1185,46 @@ suite("webview", function () {
         },
       );
     } finally {
+      await evaluate(`(() => {
+        document.getElementById("revert").click();
+        document.getElementById("view-visual").click();
+      })()`);
+    }
+  });
+
+  test("warns again of the newer diagram when Undo brings back the edits of an older one", async () => {
+    await draw({ source: "flowchart LR\n  A --> B" });
+    const draft = "flowchart LR\n  A --> B\n  B --> Draft";
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const input = document.getElementById("source");
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      document.execCommand("insertText", false, "\\n  B --> Draft");
+    })()`);
+    // A revision that an agent sends meanwhile.
+    await draw({ source: "flowchart LR\n  A --> Newer" });
+    const shown = () => `({source: document.getElementById("source").value,
+      stale: !document.getElementById("stale-note").hidden,
+      disabled: document.getElementById("apply").disabled})`;
+    try {
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          document.getElementById("revert").click();
+          const reverted = ${shown()};
+          document.execCommand("undo");
+          const undone = ${shown()};
+          document.execCommand("redo");
+          return {reverted, undone, redone: ${shown()}};
+        })()`),
+        {
+          reverted: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
+          // Apply would replace the newer diagram with the edits, which the note says.
+          undone: { source: draft, stale: true, disabled: false },
+          redone: { source: "flowchart LR\n  A --> Newer", stale: false, disabled: true },
+        },
+      );
+    } finally {
       await evaluate('document.getElementById("view-visual").click()');
     }
   });
