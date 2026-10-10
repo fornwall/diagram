@@ -208,7 +208,7 @@ suite("webview", function () {
     );
   });
 
-  test("fits the title and the actions into two rows of a narrow panel", async () => {
+  test("fits the title and the actions into two rows of a narrow panel, the zoom buttons together", async () => {
     await draw({ source: MERMAID["flowchart-v2"], title: "Request lifecycle of the auth service" });
     assert.deepStrictEqual(
       await evaluate(`(() => {
@@ -227,15 +227,18 @@ suite("webview", function () {
           };
           const rows = new Set([...header.querySelectorAll("h1, button, .drag-out")]
             .filter(element => element.getClientRects().length > 0).map(middle));
-          return {rows: rows.size,
-            titleBesideZoom: middle(document.getElementById("title")) === middle(document.getElementById("zoom-out"))};
+          const titleBesideZoom = middle(document.getElementById("title")) === middle(document.getElementById("zoom-out"));
+          // Narrower still, the zoom buttons wrap together.
+          header.style.width = "250px";
+          const zoom = ["zoom-out", "zoom-reset", "zoom-in"].map(id => middle(document.getElementById(id)));
+          return {rows: rows.size, titleBesideZoom, zoomTogether: new Set(zoom).size === 1};
         } finally {
           header.style.width = "";
           writeTo.textContent = text;
           writeTo.hidden = shown;
         }
       })()`),
-      { rows: 2, titleBesideZoom: true },
+      { rows: 2, titleBesideZoom: true, zoomTogether: true },
     );
   });
 

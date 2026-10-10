@@ -61,6 +61,7 @@ const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
 const askSubmit = element<HTMLButtonElement>("ask-submit");
+const zoomGroup = element("zoom");
 const zoomOutButton = element("zoom-out");
 const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
@@ -383,9 +384,7 @@ function drawingFocus(): HTMLElement {
 }
 
 function updateToolbar(): void {
-  for (const button of [zoomOutButton, zoomResetButton, zoomInButton]) {
-    button.hidden = !active?.zoomBy;
-  }
+  zoomGroup.hidden = !active?.zoomBy;
   dragOutHandle.hidden = active?.toImage === undefined;
   viewsGroup.hidden = current === undefined;
 }

@@ -187,6 +187,12 @@ button.link:enabled:hover {
   text-decoration: underline;
 }
 
+/* The zoom buttons, which wrap together. */
+.zoom {
+  display: flex;
+  gap: 4px;
+}
+
 /* The view buttons: the rendering, both, or the source alone, with the current one pressed. */
 .views {
   display: flex;
