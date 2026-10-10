@@ -288,9 +288,9 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Opens and renders a diagram. */
   async render(diagram: Diagram, origin: DiagramOrigin, chartTable?: DataTable): Promise<Drawn> {
-    // Keep document bindings across agent replacements; a later Apply requires confirmation. A
-    // diagram opened from a document without one, as it is read-only, is not written anywhere,
-    // but is still exported beside it.
+    // Keep document bindings across agent replacements in the same language; a later Apply
+    // requires confirmation. A diagram opened from a document without one, as it is read-only, is
+    // not written anywhere, but is still exported beside it.
     const previous = origin === "document" ? undefined : this.state;
     // A revision that an agent titled anew is fitted to the panel again too, rather than draw
     // another diagram of an agent that never asks for /new at the zoom of this one.
@@ -303,18 +303,11 @@ export class DiagramPanel implements vscode.Disposable {
       this.diagrams++;
     }
     this.startsNew = false;
-    const previousBinding = previous?.document;
-    const document =
-      diagram.document ??
-      (previousBinding?.fence.language === diagram.language
-        ? { ...previousBinding, replaced: true }
-        : undefined);
+    const kept = previous?.language === diagram.language ? previous : undefined;
     this.state = {
       ...diagram,
-      document,
-      openedFrom:
-        diagram.openedFrom ??
-        (previous?.language === diagram.language ? previous.openedFrom : undefined),
+      document: diagram.document ?? (kept?.document && { ...kept.document, replaced: true }),
+      openedFrom: diagram.openedFrom ?? kept?.openedFrom,
       origin,
       editedByUser: false,
       chartPresentation: diagram.chart
