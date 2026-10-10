@@ -387,14 +387,18 @@ suite("participant", () => {
     );
   });
 
-  test("/new leaves the current diagram out of the request", async () => {
+  test("/new leaves the current diagram out of the request, and asks for a new one", async () => {
     assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
-    const prompt = (command?: string) =>
-      ask([[text("Hm.")]], { command }).then(({ sent }) =>
-        (sent[0]?.messages ?? []).map(messageText).join("\n"),
+    const prompt = (command?: string, history: vscode.ChatContext["history"] = []) =>
+      ask([[text("Hm.")]], { command, history }).then(({ sent }) =>
+        (sent[0]?.messages ?? []).map(messageText),
       );
-    assert.ok((await prompt()).includes(flowchart.source));
-    assert.ok(!(await prompt("new")).includes(flowchart.source));
+    assert.ok((await prompt()).join("\n").includes(flowchart.source));
+    // The earlier diagram is in the history, which the model is not to change.
+    const history = exchange("Chart it", "Here.", { metadata: flowchart }, { command: "new" });
+    const messages = await prompt("new", history);
+    assert.ok(!messages.slice(3).join("\n").includes(flowchart.source));
+    assert.deepStrictEqual([messages[1], messages.at(-1)], ["/new Chart it", "/new Draw it"]);
   });
 
   test("keeps a diagram the panel could not show, and says why", async () => {
