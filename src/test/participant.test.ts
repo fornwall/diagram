@@ -367,9 +367,9 @@ suite("participant", () => {
     assert.deepStrictEqual(sent, []);
   });
 
-  test("/show and /explain need a diagram, and say so without asking the model", async () => {
-    let shown = 0;
-    panel.show = () => void shown++;
+  test("/show and /explain need a diagram, and say so without asking the model; /show keeps the focus in chat", async () => {
+    const shown: boolean[] = [];
+    panel.show = (preserveFocus = false) => void shown.push(preserveFocus);
     for (const [command, reply] of [
       ["show", "There is no diagram yet. Describe what you want me to draw."],
       ["explain", "There is no diagram to explain yet. Describe what you want me to draw."],
@@ -377,10 +377,14 @@ suite("participant", () => {
       const asked = await ask([[text("Unexpected")]], { command });
       assert.deepStrictEqual([asked.shown, asked.sent, asked.result], [reply, [], undefined]);
     }
-    assert.strictEqual(shown, 0);
+    assert.deepStrictEqual(shown, []);
     assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
     const asked = await ask([[text("Unexpected")]], { command: "show" });
-    assert.deepStrictEqual([asked.shown, asked.sent, shown], ["Opened the diagram panel.", [], 1]);
+    // Leaving the focus in chat.
+    assert.deepStrictEqual(
+      [asked.shown, asked.sent, shown],
+      ["Opened the diagram panel.", [], [true]],
+    );
   });
 
   test("/new leaves the current diagram out of the request", async () => {

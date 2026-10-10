@@ -78,7 +78,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         stream.markdown("There is no diagram yet. Describe what you want me to draw.");
         return;
       }
-      panel.show();
+      // Beside chat, which keeps the focus for the next request.
+      panel.show(true);
       stream.markdown("Opened the diagram panel.");
       return;
     }
