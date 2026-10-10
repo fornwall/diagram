@@ -73,20 +73,23 @@ export async function withoutMissingFiles(
   links: NodeLinks,
 ): Promise<{ links?: NodeLinks; problems: string[] }> {
   const checks = new Map<string, Promise<string | undefined>>();
-  const exists = (uri: vscode.Uri) =>
-    Promise.resolve(vscode.workspace.fs.stat(uri)).then(
+  /** Whether a workspace file exists, the error if not, and undefined if that is not known. */
+  const exists = async (uri: vscode.Uri) => {
+    if (!inWorkspace(uri)) return undefined;
+    return Promise.resolve(vscode.workspace.fs.stat(uri)).then(
       () => true,
       (error: unknown) =>
         error instanceof vscode.FileSystemError && error.code === "FileNotFound"
           ? error
           : undefined,
     );
+  };
   const missing = (file: string) => {
     let check = checks.get(file);
     if (!check) {
       const uri = resolveFile(file);
       check = (async () => {
-        const found = inWorkspace(uri) && (await exists(uri));
+        const found = await exists(uri);
         if (!(found instanceof vscode.FileSystemError)) return undefined;
         // The part before the last "#" exists, as for "README.md#usage", so the "#" was meant to
         // start a line rather than be part of the path.

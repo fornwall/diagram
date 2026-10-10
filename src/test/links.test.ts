@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -11,7 +12,7 @@ import {
   validateLinks,
   withoutMissingFiles,
 } from "../links";
-import { replace } from "./afterTest";
+import { replace, tempDir } from "./afterTest";
 
 suite("links", () => {
   test("takes a file, a line or a range of lines as a node's link", () => {
@@ -139,6 +140,19 @@ suite("links", () => {
         ],
       },
     );
+  });
+
+  test('does not tell whether a file outside the workspace exists by a link with a "#"', async () => {
+    const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(workspace);
+    const outside = tempDir("diagram-outside-");
+    const secret = path.join(outside, "secret");
+    fs.writeFileSync(secret, "");
+    // Leads into the workspace, where it is missing, though the part before the "#" is outside.
+    const file = `${path.relative(workspace, secret)}#/../${path.relative(outside, workspace)}/a.md`;
+    assert.deepStrictEqual(await withoutMissingFiles({ probe: { file } }), {
+      problems: ['"probe": a.md does not exist.'],
+    });
   });
 
   test("keeps node ids that name object properties", () => {
