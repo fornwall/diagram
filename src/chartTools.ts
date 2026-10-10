@@ -200,11 +200,13 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
 function updateMessage(input: unknown): string {
   const changes: string[] = [];
   for (const [key, value] of Object.entries(isPlainObject(input) ? input : {})) {
-    const name = !(UPDATE_KEYS as readonly string[]).includes(key)
-      ? undefined
-      : key === "max"
-        ? "maximum"
-        : inWords(key);
+    // A type or title is named only by its own value, as neither can be cleared.
+    const name =
+      !(UPDATE_KEYS as readonly string[]).includes(key) || key === "type" || key === "title"
+        ? undefined
+        : key === "max"
+          ? "maximum"
+          : inWords(key);
     if (key === "type" && typeof value === "string") {
       changes.push(`${inWords(value)} chart`);
     } else if (key === "title" && typeof value === "string") {

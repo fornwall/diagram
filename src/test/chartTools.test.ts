@@ -245,6 +245,8 @@ suite("chartTools", function () {
       'Updating the chart: 1 filter, facet column "region"',
     );
     assert.strictEqual(message({ revision: 2 }), "Updating the chart");
+    // Neither can be cleared or be other than text, which the update refuses.
+    assert.strictEqual(message({ type: null, title: 5, limit: 3 }), "Updating the chart: limit 3");
     assert.strictEqual(message("line"), "Updating the chart");
   });
 
