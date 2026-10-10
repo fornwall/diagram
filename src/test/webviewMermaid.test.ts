@@ -371,6 +371,39 @@ suite("Mermaid in the webview", function () {
     }
   });
 
+  test("draws the labels of mind map sections, and of its root, legibly", async () => {
+    const sections = ["Goals", "Team", "Risks", "Budget", "Hiring", "Docs", "Tests", "Ops"];
+    await draw({
+      source: `mindmap\n  root((Project))\n${sections.map((s) => `    ${s}`).join("\n")}`,
+    });
+    const ratios = (await evaluate(`(() => {
+      const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
+      const rgb = (css) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = css;
+        context.fillRect(0, 0, 1, 1);
+        return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+      };
+      const luminance = (color) => color.map((value) => {
+        const c = value / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+      return [...document.querySelectorAll("#diagram svg g.mindmap-node")].map((node) => {
+        const label = [...node.querySelectorAll("foreignObject *, text")].find((e) => e.childElementCount === 0 && e.textContent.trim());
+        const shape = node.querySelector("rect, circle, path, polygon");
+        const [a, b] = [luminance(rgb(getComputedStyle(label).color)), luminance(rgb(getComputedStyle(shape).fill))]
+          .sort((x, y) => y - x);
+        return [label.textContent.trim(), Math.round(((a + 0.05) / (b + 0.05)) * 10) / 10];
+      });
+    })()`)) as [string, number][];
+    assert.deepStrictEqual(
+      ratios.filter(([, ratio]) => ratio < 4.5),
+      [],
+      `Contrast of the labels: ${JSON.stringify(ratios)}`,
+    );
+    assert.strictEqual(ratios.length, sections.length + 1);
+  });
+
   test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {
     await draw({ source: 'flowchart LR\n  A --> B\n  click A callback "A tooltip"' });
     const colors = await evaluate(`(async () => {

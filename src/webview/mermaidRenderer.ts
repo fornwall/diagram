@@ -3,7 +3,7 @@
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";
-import { mix, type ThemeColors, toCss } from "./colors";
+import { contrast, lighten, mix, type Rgba, type ThemeColors, toCss } from "./colors";
 import type { DiagramImage } from "./images";
 import { closeLinkMenu } from "./linkMenu";
 import {
@@ -54,18 +54,58 @@ const FORMULA = /\$\$(.*?)\$\$/;
 /** How Mermaid has KaTeX draw a formula. */
 const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
 
+/** The contrast that labels need with the color they are drawn on, as WCAG asks of small text. */
+const LABEL_CONTRAST = 4.5;
+
+const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
 /**
- * Mermaid's dark theme colors mind maps, timelines, pies and kanban columns almost black. Use
- * VS Code's chart colors instead, toned down to carry the theme's light text.
+ * The colors of the sections of mind maps, timelines, kanban boards and pies, and of their labels:
+ * VS Code's chart colors, mixed into the background as far as leaves the theme's text legible on
+ * them. Mermaid's dark theme colors them almost black, and both of its themes draw some labels
+ * illegibly, such as white on pastel or light grey on light colors. Kanban columns are drawn 10
+ * points lighter, which their labels must be legible on too.
  */
-function darkScale({ palette, background }: ThemeColors): Record<string, string> {
-  const scale = palette.slice(0, 12).map((hue) => toCss(mix(background, hue, 0.45)));
-  return Object.fromEntries(
-    scale.flatMap((color, i) => [
-      [`cScale${i}`, color],
-      [`pie${i + 1}`, color],
-    ]),
-  );
+function sectionColors({
+  dark,
+  palette,
+  background,
+  foreground,
+}: ThemeColors): Record<string, string> {
+  const legible = (color: Rgba) =>
+    contrast(color, foreground) >= LABEL_CONTRAST &&
+    contrast(lighten(color, 10), foreground) >= LABEL_CONTRAST;
+  const scale = palette.slice(0, 12).map((hue) => {
+    let amount = dark ? 0.45 : 0.5;
+    while (amount > 0.15 && !legible(mix(background, hue, amount))) amount -= 0.05;
+    return mix(background, hue, amount);
+  });
+  const label = toCss(foreground);
+  const variables: Record<string, string> = { pieSectionTextColor: label };
+  scale.forEach((color, i) => {
+    variables[`cScale${i}`] = toCss(color);
+    variables[`cScaleLabel${i}`] = label;
+    variables[`pie${i + 1}`] = toCss(color);
+  });
+  if (dark) {
+    // Mermaid's dark theme derives the colors of branches, and of a mind map's root, which it draws
+    // in the first, from its own colors and the pie colors, ignoring any given, as theme-dark.js
+    // does: label them in what is legible on them.
+    const branches = [
+      lighten(lighten({ r: 0x1f, g: 0x20, b: 0x20, a: 1 }, 16), 20),
+      ...scale.slice(1, 8).map((color, i) => lighten(color, i === 4 || i === 5 ? 10 : 20)),
+    ];
+    branches.forEach((color, i) => {
+      const themed = [foreground, background].find(
+        (text) => contrast(color, text) >= LABEL_CONTRAST,
+      );
+      variables[`gitBranchLabel${i}`] = toCss(
+        themed ?? (contrast(color, BLACK) > contrast(color, WHITE) ? BLACK : WHITE),
+      );
+    });
+  }
+  return variables;
 }
 
 /** What a node's links in the source are called in its tooltip: "Open …". */
@@ -436,7 +476,7 @@ export class MermaidRenderer implements Renderer {
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
       theme: colors.dark ? "dark" : "default",
-      themeVariables: colors.dark ? darkScale(colors) : {},
+      themeVariables: sectionColors(colors),
       fontFamily: colors.fontFamily,
     };
   }

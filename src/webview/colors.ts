@@ -25,6 +25,50 @@ export function mix(base: Rgba, top: Rgba, amount: number): Rgba {
   };
 }
 
+/** The WCAG contrast ratio of two opaque colors, from 1 to 21. */
+export function contrast(a: Rgba, b: Rgba): number {
+  const luminance = ({ r, g, b }: Rgba) => {
+    const linear = (value: number) => {
+      const c = value / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  };
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/** Raises the HSL lightness of a color by `points` percentage points, as Mermaid's lighten does. */
+export function lighten({ r, g, b }: Rgba, points: number): Rgba {
+  const [red, green, blue] = [r / 255, g / 255, b / 255] as [number, number, number];
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+  const d = max - min;
+  const saturation = d === 0 ? 0 : d / (1 - Math.abs(2 * lightness - 1));
+  const hue =
+    d === 0
+      ? 0
+      : max === red
+        ? ((green - blue) / d + 6) % 6
+        : max === green
+          ? (blue - red) / d + 2
+          : (red - green) / d + 4;
+  const l = Math.min(1, lightness + points / 100);
+  const chroma = (1 - Math.abs(2 * l - 1)) * saturation;
+  const x = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [r1, g1, b1] = [
+    [chroma, x, 0],
+    [x, chroma, 0],
+    [0, chroma, x],
+    [0, x, chroma],
+    [x, 0, chroma],
+    [chroma, 0, x],
+  ][Math.floor(hue) % 6] as [number, number, number];
+  const m = l - chroma / 2;
+  return { r: (r1 + m) * 255, g: (g1 + m) * 255, b: (b1 + m) * 255, a: 1 };
+}
+
 /** The colors of the VS Code theme that charts use, all opaque. */
 export interface ThemeColors {
   dark: boolean;
