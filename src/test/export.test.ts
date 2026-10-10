@@ -205,6 +205,26 @@ suite("export", function () {
     assert.deepStrictEqual(errors, []);
   });
 
+  test("says where it saved an image, and opens it in VS Code if asked", async () => {
+    const { panel } = await exportingPanel();
+    const execute = vscode.commands.executeCommand;
+    const opened = Promise.withResolvers<unknown>();
+    replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
+      if (command !== "vscode.open") return execute(command, ...args);
+      opened.resolve(args[0]);
+      return undefined;
+    }) as typeof execute);
+    const saved = recordMessages("showInformationMessage", (_, action) => action);
+    assert.ok((await panel.render(diagram, "tool")).ok);
+    await panel.exportDiagram();
+    assert.deepStrictEqual(saved, ["Saved the diagram to export.svg."]);
+    assert.strictEqual(
+      String(await opened.promise),
+      vscode.Uri.file(path.join(directory, "export.svg")).toString(),
+    );
+    assert.deepStrictEqual(errors, []);
+  });
+
   test("says whether it exports a diagram or a chart, and names an untitled one so", async () => {
     const { panel } = await exportingPanel();
     for (const drawing of [diagram, chart]) {

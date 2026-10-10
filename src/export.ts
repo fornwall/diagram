@@ -97,7 +97,7 @@ export async function exportDrawing(
       throw saveError(error, target);
     }
     lastFolder = vscode.Uri.joinPath(target, "..");
-    if (format === "html") void offerToOpen(target);
+    void offerToOpen(target, noun, format);
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not export the ${noun}: ${errorMessage(error)}`);
   }
@@ -126,17 +126,27 @@ function saveError(error: unknown, target: vscode.Uri): Error {
   );
 }
 
-/** Says where a chart was saved, and opens it in the user's browser if they ask. */
-async function offerToOpen(target: vscode.Uri): Promise<void> {
+/**
+ * Says where the export was saved, and opens it if the user asks: an image in VS Code, and a page in
+ * the user's browser, where its chart is interactive.
+ */
+async function offerToOpen(target: vscode.Uri, noun: string, format: ExportFormat): Promise<void> {
   try {
     const name = target.path.split("/").pop() || target.path;
-    const open = await vscode.window.showInformationMessage(`Saved the chart to ${name}.`, "Open");
-    if (open && !(await vscode.env.openExternal(target))) {
+    const open = await vscode.window.showInformationMessage(
+      `Saved the ${noun} to ${name}.`,
+      "Open",
+    );
+    if (!open) return;
+    if (format !== "html") {
+      await vscode.commands.executeCommand("vscode.open", target);
+    } else if (!(await vscode.env.openExternal(target))) {
       throw new Error("No application accepted the file");
     }
   } catch (error) {
+    const where = format === "html" ? " in your browser" : "";
     void vscode.window.showErrorMessage(
-      `Could not open the saved chart: ${errorClause(error)}. Open ${target.fsPath} in your browser.`,
+      `Could not open the saved ${noun}: ${errorClause(error)}. Open ${target.fsPath}${where}.`,
     );
   }
 }
