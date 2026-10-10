@@ -398,6 +398,24 @@ suite("chartFacets", () => {
     assert.notStrictEqual(option.title[0].id, option.title[1].id);
   });
 
+  test("orders panels of numbers, dates and weekdays, with missing values last", () => {
+    const titles = (data: string) =>
+      build(data, { facetColumn: "when" }).title.map((title: Option) => title.text);
+    assert.deepStrictEqual(titles("when,operation,ms\n10,read,1\n,read,2\n9,read,3"), [
+      "when = 9",
+      "when = 10",
+      "when = (missing)",
+    ]);
+    assert.deepStrictEqual(titles("when,operation,ms\nTue,read,1\nMon,read,2\nTue,write,3"), [
+      "when = Mon",
+      "when = Tue",
+    ]);
+    assert.deepStrictEqual(titles("when,operation,ms\nworker,read,1\napi,read,2"), [
+      "when = worker",
+      "when = api",
+    ]);
+  });
+
   test("selection names stay unique for ambiguous missing labels and delimiter collisions", () => {
     const missing = build(
       '[{"service":null,"operation":"read","ms":2},{"service":"(missing)","operation":"read","ms":3},{"service":"(missing value)","operation":"read","ms":4}]',

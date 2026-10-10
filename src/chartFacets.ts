@@ -61,9 +61,20 @@ export function buildFacetedChart(
   const allFacets = facetTable(spec, table, index);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.
-  const labels = [...groups.keys()].map((value) => (value === null ? "(missing)" : String(value)));
+  const facets = [...groups];
+  // Panels of numbers, dates or weekdays follow their order rather than that of the rows, as the
+  // categories of an axis do, and the panel of rows without a value comes last.
+  const order = labelOrder(facets.flatMap(([value]) => (value === null ? [] : [String(value)])));
+  if (order !== undefined) {
+    facets.sort(([a], [b]) =>
+      a === null || b === null
+        ? Number(a === null) - Number(b === null)
+        : order(String(a)) - order(String(b)),
+    );
+  }
+  const labels = facets.map(([value]) => (value === null ? "(missing)" : String(value)));
   const ambiguous = new Set(labels).size !== labels.length;
-  const panels = [...groups].map(([value, indices], i): Panel => {
+  const panels = facets.map(([value, indices], i): Panel => {
     const label = labels[i] ?? "";
     // Quoting every string when labels collide is injective even for literal "(missing)" and
     // "(missing value)" strings alongside null, or string "1" alongside numeric 1.
