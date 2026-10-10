@@ -12,6 +12,8 @@ type Part = vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart;
 type Reply = Part[] | (() => Promise<Part[]>);
 
 const text = (value: string) => new vscode.LanguageModelTextPart(value);
+/** A call of diagram_getState, which a fake model makes. */
+const getState = (id = "1") => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
 /** An image pasted into chat, which chat gives with a ChatReferenceBinaryData. */
 const pasted = (mimeType: string, data: Uint8Array) => ({
   id: "pasted",
@@ -228,10 +230,7 @@ suite("participant", () => {
       [
         async () => {
           cancellation.cancel();
-          return [
-            text(`Here it is:\n${valid}`),
-            new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
-          ];
+          return [text(`Here it is:\n${valid}`), getState()];
         },
       ],
       { token: cancellation.token },
@@ -323,10 +322,10 @@ suite("participant", () => {
       started.resolve();
       return resume.promise;
     });
-    const response = ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
-      { toolReferences: [{ name: "diagram_getState" }], token: cancellation.token },
-    );
+    const response = ask([[getState()], [text(valid)]], {
+      toolReferences: [{ name: "diagram_getState" }],
+      token: cancellation.token,
+    });
     await started.promise;
     cancellation.cancel();
     const { result, sent } = await response;
@@ -441,10 +440,7 @@ suite("participant", () => {
 
   test("renders a diagram written next to a tool call, without showing its source", async () => {
     const { result, shown, sent } = await ask([
-      [
-        text(`Here it is:\n${valid}\n`),
-        new vscode.LanguageModelToolCallPart("1", "diagram_getState", {}),
-      ],
+      [text(`Here it is:\n${valid}\n`), getState()],
       [text("It has two nodes.")],
     ]);
     assert.deepStrictEqual(result?.metadata, {
@@ -628,10 +624,9 @@ suite("participant", () => {
       get: () => available.map((tool) => ({ ...tool })),
     });
     afterTest(() => Object.defineProperty(vscode.lm, "tools", descriptor));
-    const { sent } = await ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text(valid)]],
-      { toolReferences: [{ name: "diagram_getState" }] },
-    );
+    const { sent } = await ask([[getState()], [text(valid)]], {
+      toolReferences: [{ name: "diagram_getState" }],
+    });
     const toolNames = sent.map(({ options }) => options.tools?.map((tool) => tool.name).sort());
     assert.deepStrictEqual(toolNames, [["diagram_getState"], availableDefaults()]);
     assert.deepStrictEqual(
@@ -760,9 +755,7 @@ suite("participant", () => {
 
   test("stops calling tools after twelve rounds, and says so", async () => {
     const calls = countToolCalls();
-    const replies = Array.from({ length: 20 }, (_, i) => [
-      new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-    ]);
+    const replies = Array.from({ length: 20 }, (_, i) => [getState(String(i))]);
     const { sent, shown } = await ask(replies);
     assert.strictEqual(calls.count, 12);
     assert.strictEqual(sent.length, 14);
@@ -772,10 +765,7 @@ suite("participant", () => {
 
   test("runs at most 32 tool calls, then lets the model answer", async () => {
     const calls = countToolCalls();
-    const batch = Array.from(
-      { length: 40 },
-      (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-    );
+    const batch = Array.from({ length: 40 }, (_, i) => getState(String(i)));
     const { sent, shown } = await ask([batch, [text("Exploration stopped.")]]);
     assert.strictEqual(calls.count, 32);
     assert.strictEqual(sent.length, 2);
@@ -790,10 +780,9 @@ suite("participant", () => {
         error.name = name;
         throw error;
       });
-      const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
       const { sent, shown } = await ask([
-        [call("1"), call("2")],
-        [call("3")],
+        [getState("1"), getState("2")],
+        [getState("3")],
         [text("Unreachable")],
       ]);
       assert.strictEqual(calls.count, 1);
@@ -805,14 +794,11 @@ suite("participant", () => {
 
   test("shares the tool budget with rendering repairs", async () => {
     const calls = countToolCalls();
-    const batch = Array.from(
-      { length: 32 },
-      (_, i) => new vscode.LanguageModelToolCallPart(String(i), "diagram_getState", {}),
-    );
+    const batch = Array.from({ length: 32 }, (_, i) => getState(String(i)));
     const { result, sent } = await ask([
       batch,
       [text(invalid)],
-      [new vscode.LanguageModelToolCallPart("repair", "diagram_getState", {})],
+      [getState("repair")],
       [text(valid)],
     ]);
     assert.strictEqual(calls.count, 32);
@@ -826,8 +812,7 @@ suite("participant", () => {
       if (call === 1) throw new Error("Invalid input");
       return new vscode.LanguageModelToolResult([text("Read")]);
     });
-    const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-    const { result, sent } = await ask([[call("1")], [call("2")], [text("Done.")]]);
+    const { result, sent } = await ask([[getState("1")], [getState("2")], [text("Done.")]]);
     assert.strictEqual(calls.count, 2);
     assert.match(messageText(sent[1]?.messages.at(-1)), /tool call failed: Invalid input/);
     assert.strictEqual(result?.errorDetails, undefined);
@@ -915,10 +900,10 @@ suite("participant", () => {
     const source = `flowchart TD\n  A --> B\n%% ${"y".repeat(20_000)}`;
     countToolCalls(() => new vscode.LanguageModelToolResult([text(source)]));
     const maxInputTokens = 4_000;
-    const { sent } = await ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
-      { toolReferences: [{ name: "diagram_getState" }], maxInputTokens },
-    );
+    const { sent } = await ask([[getState()], [text("Hm.")]], {
+      toolReferences: [{ name: "diagram_getState" }],
+      maxInputTokens,
+    });
     const messages = sent[1]?.messages.map(messageText) ?? [];
     assert.match(messages.at(-1) ?? "", /y\n\n\[truncated: first [\d,]+ of [\d,]+ characters\]$/);
     const tokens = messages.reduce((sum, message) => sum + tokenCount(message) + 4, 0);
@@ -932,8 +917,9 @@ suite("participant", () => {
       assert.strictEqual(await tokenizationOptions?.countTokens("12345678"), 2);
       return new vscode.LanguageModelToolResult([text("Read")]);
     });
-    const call = (id: string) => new vscode.LanguageModelToolCallPart(id, "diagram_getState", {});
-    await ask([[call("1")], [call("2"), call("3")], [text("Done.")]], { maxInputTokens: 10_000 });
+    await ask([[getState("1")], [getState("2"), getState("3")], [text("Done.")]], {
+      maxInputTokens: 10_000,
+    });
     const [first = 0, second = 0, third] = budgets;
     // Up to 7/8 of the input, less the request so far.
     assert.ok(first > 5_000 && first < 8_750, `${first}`);
@@ -953,10 +939,10 @@ suite("participant", () => {
           vscode.LanguageModelDataPart.image(new Uint8Array(4 * 1024 * 1024), "image/png"),
         ]),
     );
-    const { sent } = await ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
-      { toolReferences: [{ name: "diagram_getState" }], maxInputTokens: 4_000 },
-    );
+    const { sent } = await ask([[getState()], [text("Hm.")]], {
+      toolReferences: [{ name: "diagram_getState" }],
+      maxInputTokens: 4_000,
+    });
     const [result] = (sent[1]?.messages.at(-1)?.content ??
       []) as vscode.LanguageModelToolResultPart[];
     const [kept, leftOut, shortened, ok, image] = result?.content ?? [];
@@ -982,10 +968,9 @@ suite("participant", () => {
   test("leaves out the images of tool results for a model that does not accept images", async () => {
     const image = vscode.LanguageModelDataPart.image(new Uint8Array(8), "image/png");
     countToolCalls(() => new vscode.LanguageModelToolResult([image]));
-    const { sent } = await ask(
-      [[new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})], [text("Hm.")]],
-      { capabilities: { supportsImageToText: false } },
-    );
+    const { sent } = await ask([[getState()], [text("Hm.")]], {
+      capabilities: { supportsImageToText: false },
+    });
     assert.strictEqual(
       messageText(sent[1]?.messages.at(-1)),
       "[left out: an image, as Fake does not accept images]",
@@ -1385,7 +1370,7 @@ suite("participant", () => {
     const history = exchange("Draw it", "Here it is.", {
       metadata: { language: "mermaid", source: "x".repeat(5_000) },
     });
-    const call = () => [new vscode.LanguageModelToolCallPart("1", "diagram_getState", {})];
+    const call = () => [getState()];
     const options = {
       history,
       maxInputTokens: 4_000,
