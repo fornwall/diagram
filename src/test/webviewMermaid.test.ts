@@ -23,6 +23,63 @@ const RETHEME = `
   };`;
 
 /**
+ * Webview code defining `contrast(element, labels, shapes)`: the text of the first label in the
+ * element, and its contrast with the first shape, as WCAG reckons it.
+ */
+const CONTRAST = `
+  const contrast = (() => {
+    const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
+    const rgb = (css) => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = css;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    };
+    const luminance = (color) => color.map((value) => {
+      const c = value / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+    return (element, labels, shapes) => {
+      const label = [...element.querySelectorAll(labels)]
+        .find((e) => e.childElementCount === 0 && e.textContent.trim());
+      const [a, b] = [luminance(rgb(getComputedStyle(label).color)),
+        luminance(rgb(getComputedStyle(element.querySelector(shapes)).fill))].sort((x, y) => y - x);
+      return [label.textContent.trim(), Math.round(((a + 0.05) / (b + 0.05)) * 10) / 10];
+    };
+  })();`;
+
+/**
+ * Webview code defining `inTheme(kind, variables, measure)`, which draws the diagram again in a
+ * theme of that kind with those color variables, measures it, and draws it in the theme it had
+ * again; with what `UNTIL` defines.
+ */
+const IN_THEME = `
+  ${UNTIL}
+  const inTheme = async (kind, variables, measure) => {
+    const root = document.documentElement;
+    const { dataset } = document.body;
+    const style = root.getAttribute("style");
+    const previous = dataset.vscodeThemeKind;
+    const redraw = async (change) => {
+      const drawn = document.querySelector("#diagram svg");
+      change();
+      await until(() => !drawn.isConnected && document.querySelector("#diagram svg"), "the diagram drawn again");
+    };
+    await redraw(() => {
+      dataset.vscodeThemeKind = kind;
+      root.setAttribute("style", style + ";" + variables);
+    });
+    try {
+      return measure();
+    } finally {
+      await redraw(() => {
+        root.setAttribute("style", style);
+        dataset.vscodeThemeKind = previous;
+      });
+    }
+  };`;
+
+/**
  * Webview code that takes the limit off the canvas width, and waits for a Gantt chart shown to be
  * laid out again at the canvas width, as it is a while later: else in the tests that follow.
  */
@@ -377,24 +434,9 @@ suite("Mermaid in the webview", function () {
       source: `mindmap\n  root((Project))\n${sections.map((s) => `    ${s}`).join("\n")}`,
     });
     const ratios = (await evaluate(`(() => {
-      const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
-      const rgb = (css) => {
-        context.clearRect(0, 0, 1, 1);
-        context.fillStyle = css;
-        context.fillRect(0, 0, 1, 1);
-        return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
-      };
-      const luminance = (color) => color.map((value) => {
-        const c = value / 255;
-        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-      }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
-      return [...document.querySelectorAll("#diagram svg g.mindmap-node")].map((node) => {
-        const label = [...node.querySelectorAll("foreignObject *, text")].find((e) => e.childElementCount === 0 && e.textContent.trim());
-        const shape = node.querySelector("rect, circle, path, polygon");
-        const [a, b] = [luminance(rgb(getComputedStyle(label).color)), luminance(rgb(getComputedStyle(shape).fill))]
-          .sort((x, y) => y - x);
-        return [label.textContent.trim(), Math.round(((a + 0.05) / (b + 0.05)) * 10) / 10];
-      });
+      ${CONTRAST}
+      return [...document.querySelectorAll("#diagram svg g.mindmap-node")].map((node) =>
+        contrast(node, "foreignObject *, text", "rect, circle, path, polygon"));
     })()`)) as [string, number][];
     assert.deepStrictEqual(
       ratios.filter(([, ratio]) => ratio < 4.5),
@@ -409,45 +451,12 @@ suite("Mermaid in the webview", function () {
       source: "kanban\n  Todo\n    [Write docs]\n  Doing\n    [Fix bug]\n  Done\n    [Ship]",
     });
     const ratios = (await evaluate(`(async () => {
-      ${UNTIL}
-      const root = document.documentElement;
-      const { dataset } = document.body;
-      const style = root.getAttribute("style");
-      const kind = dataset.vscodeThemeKind;
-      const redraw = async (change) => {
-        const drawn = document.querySelector("#diagram svg");
-        change();
-        await until(() => !drawn.isConnected && document.querySelector("#diagram svg"), "the diagram drawn again");
-      };
+      ${CONTRAST}
+      ${IN_THEME}
       // The colors of the Dark High Contrast theme that the headings and columns take.
-      await redraw(() => {
-        dataset.vscodeThemeKind = "vscode-high-contrast";
-        root.setAttribute("style", style + ";--vscode-foreground: #ffffff; --vscode-editor-background: #000000");
-      });
-      try {
-        const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
-        const rgb = (css) => {
-          context.clearRect(0, 0, 1, 1);
-          context.fillStyle = css;
-          context.fillRect(0, 0, 1, 1);
-          return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
-        };
-        const luminance = (color) => color.map((value) => {
-          const c = value / 255;
-          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-        }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
-        return [...document.querySelectorAll("#diagram svg g.cluster")].map((column) => {
-          const heading = [...column.querySelectorAll(".cluster-label *")].find((e) => e.childElementCount === 0 && e.textContent.trim());
-          const [a, b] = [luminance(rgb(getComputedStyle(heading).color)), luminance(rgb(getComputedStyle(column.querySelector("rect")).fill))]
-            .sort((x, y) => y - x);
-          return [heading.textContent.trim(), Math.round(((a + 0.05) / (b + 0.05)) * 10) / 10];
-        });
-      } finally {
-        await redraw(() => {
-          root.setAttribute("style", style);
-          dataset.vscodeThemeKind = kind;
-        });
-      }
+      return inTheme("vscode-high-contrast", "--vscode-foreground: #ffffff; --vscode-editor-background: #000000",
+        () => [...document.querySelectorAll("#diagram svg g.cluster")].map((column) =>
+          contrast(column, ".cluster-label *", "rect")));
     })()`)) as [string, number][];
     assert.deepStrictEqual(
       ratios.filter(([, ratio]) => ratio < 4.5),
@@ -455,6 +464,29 @@ suite("Mermaid in the webview", function () {
       `Contrast of the headings: ${JSON.stringify(ratios)}`,
     );
     assert.strictEqual(ratios.length, 3);
+  });
+
+  test("draws a diagram that chooses its own theme in that theme's colors alone", async () => {
+    for (const source of [
+      '%%{init: {"theme": "default"}}%%\nflowchart LR\n  A[Start] --> B[End]',
+      "---\nconfig:\n  theme: forest\n---\nflowchart LR\n  A[Start] --> B[End]",
+    ]) {
+      await draw({ source });
+      const ratios = (await evaluate(`(async () => {
+        ${CONTRAST}
+        ${IN_THEME}
+        // The colors of the Dark Modern theme, whose text would be light grey.
+        return inTheme("vscode-dark", "--vscode-foreground: #cccccc; --vscode-editor-background: #1f1f1f",
+          () => [...document.querySelectorAll("#diagram svg g.node")].map((node) =>
+            contrast(node, "foreignObject *, text", "rect, circle, path, polygon")));
+      })()`)) as [string, number][];
+      assert.deepStrictEqual(
+        ratios.filter(([, ratio]) => ratio < 4.5),
+        [],
+        `Contrast of the labels of ${source}: ${JSON.stringify(ratios)}`,
+      );
+      assert.strictEqual(ratios.length, 2);
+    }
   });
 
   test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {

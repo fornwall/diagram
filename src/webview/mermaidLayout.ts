@@ -14,10 +14,10 @@ const DEFAULT_LAYOUT_DIAGRAMS =
 const LAYOUT_SETTING = /\blayout["']?\s*:\s*["']?([\w.-]+)/;
 
 /**
- * Whether Mermaid will likely lay out the diagram with elk: a guess from the type of the diagram,
- * after its front matter, directives and comments, and the layout that those may set.
+ * The settings that a diagram's front matter and directives may make, and the line after them that
+ * names its type, if any.
  */
-export function laidOutWithElk(source: string): boolean {
+export function diagramHeader(source: string): { settings: string; typeLine: string | undefined } {
   const lines = source.split(/\r\n?|\n/, 1000);
   let settings = "";
   let i = 0;
@@ -34,11 +34,21 @@ export function laidOutWithElk(source: string): boolean {
     if (line.startsWith("%%")) {
       settings += `\n${line}`;
     } else if (line !== "") {
-      const layout = LAYOUT_SETTING.exec(settings)?.[1];
-      return layout ? layout.startsWith("elk") : DEFAULT_LAYOUT_DIAGRAMS.test(line);
+      return { settings, typeLine: line };
     }
   }
-  return false;
+  return { settings, typeLine: undefined };
+}
+
+/**
+ * Whether Mermaid will likely lay out the diagram with elk: a guess from the type of the diagram,
+ * after its front matter, directives and comments, and the layout that those may set.
+ */
+export function laidOutWithElk(source: string): boolean {
+  const { settings, typeLine } = diagramHeader(source);
+  if (typeLine === undefined) return false;
+  const layout = LAYOUT_SETTING.exec(settings)?.[1];
+  return layout ? layout.startsWith("elk") : DEFAULT_LAYOUT_DIAGRAMS.test(typeLine);
 }
 
 /**

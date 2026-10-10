@@ -14,6 +14,7 @@ import {
   statementError,
   undefinedEndError,
 } from "./mermaidErrors";
+import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
@@ -57,6 +58,9 @@ const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as c
 /** The contrast that labels need with the color they are drawn on, as WCAG asks of small text. */
 const LABEL_CONTRAST = 4.5;
 
+/** A theme that front matter or an init directive chooses, unlike its themeVariables. */
+const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:/m;
+
 const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
 
@@ -67,12 +71,10 @@ const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
  * illegibly, such as white on pastel or light grey on light colors. Kanban columns are drawn 10
  * points lighter, which their labels and headings must be legible on too.
  */
-function sectionColors({
-  dark,
-  palette,
-  background,
-  foreground,
-}: ThemeColors): Record<string, string> {
+function sectionColors(
+  { dark, palette, background, foreground }: ThemeColors,
+  kanban: boolean,
+): Record<string, string> {
   const legible = (color: Rgba) =>
     contrast(color, foreground) >= LABEL_CONTRAST &&
     contrast(lighten(color, 10), foreground) >= LABEL_CONTRAST;
@@ -82,9 +84,11 @@ function sectionColors({
     return mix(background, hue, amount);
   });
   const label = toCss(foreground);
-  // Kanban column headings, like other text outside nodes, read in the text color, which in
-  // Mermaid's dark theme is a fixed light grey that the high contrast themes' white outshines.
-  const variables: Record<string, string> = { pieSectionTextColor: label, textColor: label };
+  const variables: Record<string, string> = { pieSectionTextColor: label };
+  // Kanban column headings read in the text color, which in Mermaid's dark theme is a fixed light
+  // grey that the high contrast themes' white outshines. Only for kanban boards, as the text of
+  // other diagrams is drawn on Mermaid's colors rather than these.
+  if (kanban) variables.textColor = label;
   scale.forEach((color, i) => {
     variables[`cScale${i}`] = toCss(color);
     variables[`cScaleLabel${i}`] = label;
@@ -468,9 +472,10 @@ export class MermaidRenderer implements Renderer {
     }).observe(canvas);
   }
 
-  /** How Mermaid is configured for the current VS Code theme. */
-  private config(): Parameters<Mermaid["initialize"]>[0] {
+  /** How Mermaid is configured for the current VS Code theme, to draw the source. */
+  private config(source: string | undefined): Parameters<Mermaid["initialize"]>[0] {
     const colors = readThemeColors();
+    const { settings, typeLine } = diagramHeader(source ?? "");
     return {
       startOnLoad: false,
       securityLevel: "strict",
@@ -478,7 +483,11 @@ export class MermaidRenderer implements Renderer {
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
       theme: colors.dark ? "dark" : "default",
-      themeVariables: sectionColors(colors),
+      // A diagram that chooses a theme of its own takes it whole: Mermaid would color it with
+      // these too, and the text of its nodes in the color meant for VS Code's theme.
+      themeVariables: OWN_THEME.test(settings)
+        ? {}
+        : sectionColors(colors, /^kanban\b/.test(typeLine ?? "")),
       fontFamily: colors.fontFamily,
     };
   }
@@ -490,7 +499,7 @@ export class MermaidRenderer implements Renderer {
       );
     }
     const mermaid = await loadMermaid();
-    const config = this.config();
+    const config = this.config(source);
     mermaid.initialize(config);
     const id = `diagram-svg-${++this.renderCounter}`;
     const container = layoutContainer();
@@ -606,7 +615,7 @@ export class MermaidRenderer implements Renderer {
     if (source === undefined) {
       throw new Error("There is no diagram to make an image of.");
     }
-    const config = this.config();
+    const config = this.config(source);
     // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
     // The image takes the color of the text around the drawing for labels that leave it to CSS.
     const color = getComputedStyle(document.body).color;
@@ -651,7 +660,7 @@ export class MermaidRenderer implements Renderer {
     } finally {
       // Leave Mermaid configured for the panel: a theme change or a resize may render before the
       // next diagram arrives, and would otherwise draw the labels as plain text.
-      mermaid.initialize(this.config());
+      mermaid.initialize(this.config(source));
     }
   }
 
