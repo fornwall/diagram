@@ -1659,6 +1659,40 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     );
   });
 
+  test("closes an actor's menu when the canvas is resized, which moves the actor", async () => {
+    // Short enough to draw at its actual size, which a resize keeps.
+    const source =
+      'sequenceDiagram\n  participant Bob\n  links Bob: {"Wiki": "https://example.com/wiki", "Repo": "https://example.com/repo"}';
+    assert.ok(
+      (await page.panel.render({ language: "mermaid", source, title: "Resize" }, "tool")).ok,
+    );
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const canvas = document.getElementById("canvas");
+        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        const menu = () => document.querySelector("#canvas .link-menu");
+        bob.focus();
+        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        const opened = menu()?.contains(document.activeElement);
+        // A frame for the resize observer, which must not close the menu for its first report.
+        await nextFrame();
+        await nextFrame();
+        const kept = menu() !== null;
+        const zoom = document.getElementById("zoom-reset").textContent;
+        canvas.style.maxWidth = canvas.offsetWidth - 100 + "px";
+        try {
+          await until(() => menu() === null, "the menu closed");
+        } finally {
+          canvas.style.maxWidth = "";
+        }
+        return {opened, kept, focused: document.activeElement === bob,
+          zoomKept: document.getElementById("zoom-reset").textContent === zoom};
+      })()`),
+      { opened: true, kept: true, focused: true, zoomKept: true },
+    );
+  });
+
   test("shows an actor's menu in the visible part of the canvas, scrolling nothing", async () => {
     // Carol's menu at the right edge, and her footer box at the bottom of the canvas scrolled.
     const messages = Array.from({ length: 30 }, (_, i) => `  Alice->>Carol: message ${i}`);

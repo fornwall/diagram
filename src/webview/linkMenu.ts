@@ -16,7 +16,8 @@ export function closeLinkMenu(): void {
 /**
  * Shows a menu of the links by the anchor, in the scrolling container so that it scrolls along,
  * and focuses its first entry. Choosing one calls open. Arrow keys, Home and End move between the
- * entries; Escape closes the menu, as does moving the focus out of it, by a click elsewhere or Tab.
+ * entries; Escape closes the menu, as does moving the focus out of it, by a click elsewhere or Tab,
+ * and resizing the container.
  */
 export function showLinkMenu(
   container: HTMLElement,
@@ -31,9 +32,18 @@ export function showLinkMenu(
   menu.className = "link-menu";
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", label);
+  // A resize of the container moves the anchor, as the drawing is centered in it, and would leave
+  // the menu behind. Not scrollbars coming or going, which leave its border box as it is.
+  const { offsetWidth, offsetHeight } = container;
+  const resized = new ResizeObserver(() => {
+    if (container.offsetWidth !== offsetWidth || container.offsetHeight !== offsetHeight) {
+      close(true);
+    }
+  });
   const close = (refocus: boolean) => {
     if (closeShown !== close) return;
     closeShown = undefined;
+    resized.disconnect();
     // Before removing the menu: removing its focused entry first leaves the focus on the body.
     if (refocus && (returnFocus instanceof HTMLElement || returnFocus instanceof SVGElement)) {
       returnFocus.focus({ preventScroll: true });
@@ -76,6 +86,7 @@ export function showLinkMenu(
   });
   container.append(menu);
   closeShown = close;
+  resized.observe(container, { box: "border-box" });
   placeMenu(menu, container, anchor);
   menu.scrollIntoView({ block: "nearest", inline: "nearest" });
   (menu.firstElementChild as HTMLElement | null)?.focus({ preventScroll: true });
