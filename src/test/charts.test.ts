@@ -4,7 +4,7 @@ import { type Aggregation, CHART_TYPES, type ChartSpec, type ChartType } from ".
 import { buildChart, deepMerge } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { afterTest } from "./afterTest";
-import { builtOption, type Option, withChart } from "./echartsModel";
+import { builtOption, type Option, seriesData, withChart } from "./echartsModel";
 import { newPanel, withoutRevision } from "./newPanel";
 
 const LANGUAGES = parseTable(
@@ -1184,10 +1184,7 @@ suite("charts", () => {
     for (const aggregate of ["sum", "mean", "min", "max", "median", "count"] as const) {
       const option = build(chart("bar", { aggregate, valueColumns: ["x", "y"] }), data);
       assert.deepStrictEqual(option.xAxis.data, ["a", "b", "c"]);
-      assert.deepStrictEqual(
-        option.series.map((series: Option) => series.data),
-        expected[aggregate],
-      );
+      assert.deepStrictEqual(seriesData(option), expected[aggregate]);
     }
   });
 
@@ -1308,7 +1305,7 @@ suite("charts", () => {
         ],
       ];
       assert.deepStrictEqual(
-        option.series.map((series: Option) => series.data),
+        seriesData(option),
         type === "horizontalBar"
           ? expected.map((series) => series.map(([time, value]) => [value, time]))
           : expected,
@@ -1321,19 +1318,16 @@ suite("charts", () => {
     );
     const first = Date.parse("2026-01-01T10:00:00.12+05:30");
     const third = Date.parse("2026-01-03T10:00:00Z");
-    assert.deepStrictEqual(
-      stacked.series.map((series: Option) => series.data),
+    assert.deepStrictEqual(seriesData(stacked), [
       [
-        [
-          [first, 3],
-          [third, 1],
-        ],
-        [
-          [first, 30],
-          [third, 10],
-        ],
+        [first, 3],
+        [third, 1],
       ],
-    );
+      [
+        [first, 30],
+        [third, 10],
+      ],
+    ]);
   });
 
   test("a label column of dates becomes a time axis", () => {
@@ -1563,19 +1557,16 @@ suite("charts", () => {
       chart("stackedArea", { labelColumn: ["date", "k"] }),
       "date,k,n\n2026-01-02,a,1\n2026-01-01,b,3\n2026-01-01,a,5",
     );
-    assert.deepStrictEqual(
-      stacked.series.map((series: Option) => series.data),
+    assert.deepStrictEqual(seriesData(stacked), [
       [
-        [
-          ["2026-01-01", 3],
-          ["2026-01-02", 0],
-        ],
-        [
-          ["2026-01-01", 5],
-          ["2026-01-02", 1],
-        ],
+        ["2026-01-01", 3],
+        ["2026-01-02", 0],
       ],
-    );
+      [
+        ["2026-01-01", 5],
+        ["2026-01-02", 1],
+      ],
+    ]);
     assert.match(
       summary(chart("line"), "date,n\n2026-01-02,3\n,5"),
       /left out 1 row without a date/,

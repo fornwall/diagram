@@ -4,10 +4,13 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
 import { minimumHeight } from "../webview/echartsLayout";
-import { builtOption, itemsOf, layout, type Option, withChart } from "./echartsModel";
+import { builtOption, itemsOf, layout, type Option, seriesData, withChart } from "./echartsModel";
 
 const build = (data: string, spec: Partial<ChartSpec> = {}) =>
   builtOption({ type: "bar", data, facetColumn: "service", ...spec } as ChartSpec, data);
+
+/** The bounds of each axis. */
+const bounds = (axes: Option[]) => axes.map((axis) => [axis.min, axis.max]);
 
 /** A box laid out in percent of a size, in whole pixels. */
 const inPixels = (box: Option, width: number, height: number): Option =>
@@ -32,20 +35,11 @@ suite("chartFacets", () => {
         ["read", "write", "delete"],
       ],
     );
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [2, 5, null],
-        [null, 30, 8],
-      ],
-    );
-    assert.deepStrictEqual(
-      option.yAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [0, 30],
-        [0, 30],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [2, 5, null],
+      [null, 30, 8],
+    ]);
+    assert.deepStrictEqual(bounds(option.yAxis), Array(2).fill([0, 30]));
     assert.deepStrictEqual(
       option.series.map((series: Option) => [series.id, series.name]),
       [
@@ -63,13 +57,10 @@ suite("chartFacets", () => {
     const data = "service,date,ms\napi,2026-01-01,1\napi,2026-03-01,3\nworker,2026-02-01,2";
     const option = build(data, { options: { xAxis: { type: "category" } } });
     assert.deepStrictEqual(option.xAxis[0].data, ["2026-01-01", "2026-02-01", "2026-03-01"]);
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [1, null, 3],
-        [null, 2, null],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [1, null, 3],
+      [null, 2, null],
+    ]);
     // Numbers too, as years, of which a panel may lack the first.
     const years = build("service,year,ms\napi,2021,1\napi,2022,2\nworker,2020,3", {
       labelColumn: "year",
@@ -85,13 +76,10 @@ suite("chartFacets", () => {
   test("preserves repeated category observations without implicit aggregation", () => {
     const option = build("service,operation,ms\napi,read,2\napi,read,5\nworker,read,30");
     assert.deepStrictEqual(option.xAxis[0].data, ["read", "read"]);
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [2, 5],
-        [30, null],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [2, 5],
+      [30, null],
+    ]);
   });
 
   test("shares positive and negative stacked totals separately", () => {
@@ -100,13 +88,7 @@ suite("chartFacets", () => {
       type: "stackedBar",
       valueColumns: ["a", "b", "c"],
     });
-    assert.deepStrictEqual(
-      option.yAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [-30, 30],
-        [-30, 30],
-      ],
-    );
+    assert.deepStrictEqual(bounds(option.yAxis), Array(2).fill([-30, 30]));
     assert.notStrictEqual(option.series[0].stack, option.series[3].stack);
   });
 
@@ -115,13 +97,7 @@ suite("chartFacets", () => {
       type: "horizontalBar",
     });
     assert.deepStrictEqual(option.yAxis[0].data, ["read", "write"]);
-    assert.deepStrictEqual(
-      option.xAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [-4, 2],
-        [-4, 2],
-      ],
-    );
+    assert.deepStrictEqual(bounds(option.xAxis), Array(2).fill([-4, 2]));
     // The category axis stays at the edge of the shared range, also in the panel without -4.
     assert.deepStrictEqual(
       option.yAxis.map((axis: Option) => axis.axisLine),
@@ -135,22 +111,13 @@ suite("chartFacets", () => {
       valueColumns: ["a", "b"],
     });
     assert.deepStrictEqual(option.xAxis[0].data, ["empty", "read", "write"]);
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [null, 10, null],
-        [null, 5, null],
-        [null, null, -3],
-        [null, null, -5],
-      ],
-    );
-    assert.deepStrictEqual(
-      option.yAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [-10, 15],
-        [-10, 15],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [null, 10, null],
+      [null, 5, null],
+      [null, null, -3],
+      [null, null, -5],
+    ]);
+    assert.deepStrictEqual(bounds(option.yAxis), Array(2).fill([-10, 15]));
   });
 
   test("shared stacked bounds keep repeated timestamps as separate observations", () => {
@@ -159,14 +126,7 @@ suite("chartFacets", () => {
         "service,date,a,b\napi,2026-01-01,10,20\napi,2026-01-01,40,50\nworker,2026-01-02,3,4",
         { type, valueColumns: ["a", "b"] },
       );
-      assert.deepStrictEqual(
-        option.yAxis.map((axis: Option) => [axis.min, axis.max]),
-        [
-          [0, 100],
-          [0, 100],
-        ],
-        type,
-      );
+      assert.deepStrictEqual(bounds(option.yAxis), Array(2).fill([0, 100]), type);
       assert.strictEqual(option.series[0].data.length, 2);
     }
   });
@@ -206,20 +166,8 @@ suite("chartFacets", () => {
       Array(2).fill(["time", "2026-01-01", "2026-02-01"]),
     );
     const scatter = build("service,x,y\napi,10,100\nworker,30,200", { type: "scatter" });
-    assert.deepStrictEqual(
-      scatter.xAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [10, 30],
-        [10, 30],
-      ],
-    );
-    assert.deepStrictEqual(
-      scatter.yAxis.map((axis: Option) => [axis.min, axis.max]),
-      [
-        [100, 200],
-        [100, 200],
-      ],
-    );
+    assert.deepStrictEqual(bounds(scatter.xAxis), Array(2).fill([10, 30]));
+    assert.deepStrictEqual(bounds(scatter.yAxis), Array(2).fill([100, 200]));
   });
 
   test("a scatter facet without a complete point is an empty panel, as a bar facet is", () => {
@@ -297,7 +245,7 @@ suite("chartFacets", () => {
     const later = "2026-01-01T00:00:00Z";
     const option = build(`service,date,ms\napi,${earlier},2\nworker,${later},30`, { type: "line" });
     assert.deepStrictEqual(
-      option.xAxis.map((axis: Option) => [axis.min, axis.max]),
+      bounds(option.xAxis),
       Array(2).fill([Date.parse(earlier), Date.parse(later)]),
     );
   });
@@ -308,10 +256,7 @@ suite("chartFacets", () => {
       option.series.map((series: Option) => series.id),
       ["api · size (MiB)", "worker · size (MiB)"],
     );
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [[1 / 1024], [4]],
-    );
+    assert.deepStrictEqual(seriesData(option), [[1 / 1024], [4]]);
   });
 
   test("keeps shared inference notes separate from each facet's row notes", () => {
@@ -361,13 +306,10 @@ suite("chartFacets", () => {
       option.series.map((series: Option) => series.id),
       ["api · size (KiB)", "worker · size (KiB)"],
     );
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [1, null],
-        [null, 2],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [1, null],
+      [null, 2],
+    ]);
   });
 
   test("excludes numeric facet fields from inferred measurements", () => {
@@ -389,13 +331,10 @@ suite("chartFacets", () => {
       },
     );
     assert.deepStrictEqual(option.xAxis[0].data, ["read", "write"]);
-    assert.deepStrictEqual(
-      option.series.map((series: Option) => series.data),
-      [
-        [7, null],
-        [null, 8],
-      ],
-    );
+    assert.deepStrictEqual(seriesData(option), [
+      [7, null],
+      [null, 8],
+    ]);
   });
 
   test("component identities follow groups across row reorder and missing labels remain distinct", () => {
@@ -483,14 +422,11 @@ suite("chartFacets", () => {
         option.xAxis.map((axis: Option) => axis.data),
         Array(3).fill(["[0, 5)", "[5, 10]"]),
       );
-      assert.deepStrictEqual(
-        option.series.map((series: Option) => series.data),
-        [
-          [2, 0],
-          [0, 2],
-          [0, 0],
-        ],
-      );
+      assert.deepStrictEqual(seriesData(option), [
+        [2, 0],
+        [0, 2],
+        [0, 0],
+      ]);
     }
   });
 

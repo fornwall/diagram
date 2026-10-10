@@ -19,6 +19,10 @@ export function builtOption(spec: ChartSpec, table: DataTable | string): Option 
   return option;
 }
 
+/** The data of each series of the option. */
+export const seriesData = (option: Option): unknown[] =>
+  option.series.map((series: Option) => series.data);
+
 /** Reads a chart of the option as ECharts lays it out, without a browser. */
 export function withChart<T>(
   option: Record<string, unknown>,
