@@ -618,6 +618,24 @@ suite("images in the webview", function () {
     assert.notStrictEqual(ids[0]?.id, ids[1]?.id);
   });
 
+  /** Drags the image out of the panel, saying how many images of the drawing it took for it. */
+  const drag = () =>
+    evaluate(`(async () => {
+      const original = XMLSerializer.prototype.serializeToString;
+      let drawn = 0;
+      XMLSerializer.prototype.serializeToString = function (node) {
+        if (node.localName === "svg") drawn++;
+        return original.call(this, node);
+      };
+      try {
+        ${DRAG_IMAGE}
+        const svg = (await dragImage()).getData("image/svg+xml");
+        return {drawn, svg};
+      } finally {
+        XMLSerializer.prototype.serializeToString = original;
+      }
+    })()`) as Promise<{ drawn: number; svg: string }>;
+
   test("keeps a prepared Mermaid image across hovers, but takes a chart's again", async () => {
     const images = [];
     for (const diagram of [
@@ -625,24 +643,7 @@ suite("images in the webview", function () {
       { language: "echarts" as const, source: '{"series": [{"type": "pie", "data": [1, 2]}]}' },
     ]) {
       await draw(diagram);
-      images.push(
-        await evaluate(`(async () => {
-          const original = XMLSerializer.prototype.serializeToString;
-          let images = 0;
-          XMLSerializer.prototype.serializeToString = function (node) {
-            if (node.localName === "svg") images++;
-            return original.call(this, node);
-          };
-          try {
-            ${DRAG_IMAGE}
-            await dragImage();
-            await dragImage();
-            return images;
-          } finally {
-            XMLSerializer.prototype.serializeToString = original;
-          }
-        })()`),
-      );
+      images.push((await drag()).drawn + (await drag()).drawn);
     }
     assert.deepStrictEqual(images, [1, 2]);
   });
@@ -650,22 +651,6 @@ suite("images in the webview", function () {
   test("takes the image of a Mermaid diagram again while the diagram and theme stay", async () => {
     // A large diagram takes seconds to draw, and the panel draws an image of it anew.
     const source = "flowchart LR\n A[Again] --> B";
-    const drag = () =>
-      evaluate(`(async () => {
-        const original = XMLSerializer.prototype.serializeToString;
-        let drawn = 0;
-        XMLSerializer.prototype.serializeToString = function (node) {
-          if (node.localName === "svg") drawn++;
-          return original.call(this, node);
-        };
-        try {
-          ${DRAG_IMAGE}
-          const svg = (await dragImage()).getData("image/svg+xml");
-          return {drawn, svg};
-        } finally {
-          XMLSerializer.prototype.serializeToString = original;
-        }
-      })()`) as Promise<{ drawn: number; svg: string }>;
     await draw({ source });
     const first = await drag();
     // Rendering the diagram again forgets the image prepared for a drag.
