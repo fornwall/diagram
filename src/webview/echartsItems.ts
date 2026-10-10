@@ -114,6 +114,29 @@ interface GlobalModel {
   eachSeries(callback: (series: SeriesModel) => void): void;
   /** The first legend, with its options, such as selectedMode, and its entries. */
   getComponent(mainType: "legend"): LegendModel | undefined;
+  /** The components of a type, such as every toolbox. */
+  eachComponent(mainType: string, callback: (component: object) => void): void;
+}
+
+/** The view that draws a toolbox, with its features, such as the data view, by name. */
+interface ToolboxView {
+  _features?: { get(name: string): { _dom?: unknown } | undefined };
+}
+
+/**
+ * The toolbox's data view, if it is open: what ECharts adds over the chart, in the element it
+ * draws in, which the feature that opened it keeps until it is closed.
+ */
+export function openDataView(chart: ECharts.ECharts): HTMLElement | undefined {
+  const views = chart as unknown as {
+    getViewOfComponentModel(component: object): ToolboxView | undefined;
+  };
+  let open: HTMLElement | undefined;
+  modelOf(chart).eachComponent("toolbox", (toolbox) => {
+    const view = views.getViewOfComponentModel(toolbox)?._features?.get("dataView")?._dom;
+    if (view instanceof HTMLElement && view.isConnected) open ??= view;
+  });
+  return open;
 }
 
 export interface LegendModel {

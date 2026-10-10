@@ -899,7 +899,7 @@ suite("ECharts in the webview", function () {
         ${UNTIL}
         ${PRESS}
         ${CLICK_CHART}
-        const dataView = () => document.querySelector("#chart-drawing > div > h4");
+        const dataView = () => document.querySelector("#chart-drawing > .chart-data-view");
         // The toolbox's one icon, at the top right.
         const box = chart.getBoundingClientRect();
         const icon = [...chart.querySelectorAll("svg path")].find(path => {
@@ -916,7 +916,7 @@ suite("ECharts in the webview", function () {
         const fits = async (height) => {
           Object.assign(canvas.style, {height, flex: "none"});
           await nextFrame();
-          const view = dataView().parentElement;
+          const view = dataView();
           const data = view.children[1].getBoundingClientRect();
           const close = view.lastElementChild.getBoundingClientRect();
           return data.bottom <= close.top && close.top - data.bottom < 40;
@@ -936,6 +936,46 @@ suite("ECharts in the webview", function () {
         closed: true,
         handled: true,
         focused: true,
+      },
+    );
+  });
+
+  test("tells the data view apart from a tooltip written like it", async () => {
+    const opened: string[] = [];
+    const listener = page.webview.onDidReceiveMessage((message) => {
+      if (message.type === "openUrl") opened.push(message.url);
+    });
+    afterTest(() => listener.dispose());
+    // A heading, a part and a last part that ends in a link, as the data view ends in its button.
+    await renderChart({
+      ...SALES,
+      toolbox: { feature: { dataView: {} } },
+      tooltip: {
+        trigger: "item",
+        formatter:
+          '<h4>Day</h4><div>Sales</div><div><a href="https://example.com/more">More</a></div>',
+      },
+    });
+    const keys = await evaluate(`(async () => {
+      ${PRESS}
+      chart.focus();
+      const moves = [press("Home"), press("ArrowRight")];
+      const escape = new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
+      chart.dispatchEvent(escape);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return {moves, ring: Boolean(ring()), handled: escape.defaultPrevented,
+        dataView: Boolean(document.querySelector(".chart-data-view"))};
+    })()`);
+    assert.deepStrictEqual(
+      { keys, opened },
+      {
+        keys: {
+          moves: ["Mon: 1, series A, 1 of 3", "Tue: 2, series A, 2 of 3"],
+          ring: true,
+          handled: false,
+          dataView: false,
+        },
+        opened: [],
       },
     );
   });

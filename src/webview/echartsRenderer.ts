@@ -5,7 +5,14 @@ import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { ChartFocus } from "./echartsFocus";
-import { ChartItems, type ItemRef, itemKey, modelOf, parseItemKey } from "./echartsItems";
+import {
+  ChartItems,
+  type ItemRef,
+  itemKey,
+  modelOf,
+  openDataView,
+  parseItemKey,
+} from "./echartsItems";
 import {
   disableAnimation,
   focusHighlighted,
@@ -128,6 +135,11 @@ export class EChartsRenderer implements Renderer {
       },
     );
     this.resizeObserver.observe(this.container);
+    // ECharts adds the toolbox's data view to the element it draws in: mark it, for chart.css to
+    // fit it to the chart.
+    new MutationObserver(() => {
+      if (this.chart) openDataView(this.chart)?.classList.add("chart-data-view");
+    }).observe(this.drawing, { childList: true });
     this.reducedMotion.addEventListener("change", () => this.relayout());
   }
 

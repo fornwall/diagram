@@ -70,6 +70,24 @@ suite("echartsItems", () => {
     }
   });
 
+  test("reads the data view of the toolbox where ECharts keeps it", () => {
+    // If this fails, an update of ECharts changed its toolbox: adapt openDataView in echartsItems.ts.
+    const option = { toolbox: { feature: { dataView: {} } }, series: [{ type: "pie", data: [1] }] };
+    withChart(option, (chart) => {
+      const toolboxes: object[] = [];
+      modelOf(chart).eachComponent("toolbox", (toolbox) => toolboxes.push(toolbox));
+      assert.strictEqual(toolboxes.length, 1, "GlobalModel.eachComponent");
+      const views = chart as unknown as { getViewOfComponentModel(model: object): unknown };
+      const view = views.getViewOfComponentModel(toolboxes[0] ?? {}) as {
+        _features?: { get(name: string): Record<string, unknown> | undefined };
+      };
+      const feature = view?._features?.get("dataView");
+      assert.strictEqual(typeof feature?.onclick, "function", "ToolboxView._features");
+      // Closed, which it says by keeping no element.
+      assert.ok(feature && !feature._dom, "DataView._dom");
+    });
+  });
+
   test("names sankey nodes by their ids and labels them by name", () => {
     const items = itemsOf({
       series: [

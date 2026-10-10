@@ -19,6 +19,7 @@ import {
   itemValue,
   type LegendModel,
   modelOf,
+  openDataView,
   parseItemKey,
   type SeriesModel,
   type TreeNode,
@@ -464,20 +465,16 @@ export class ChartFocus {
     this.chartChanged();
   }
 
-  /**
-   * The data view of the toolbox, if it is open: what ECharts adds over the chart, in the element
-   * it draws in, with a heading, the data and its buttons.
-   */
+  /** The data view of the toolbox, if it is open. */
   private dataView(): HTMLElement | undefined {
-    const drawing = this.chart()?.getDom();
-    const heading = drawing?.querySelector(":scope > div > h4");
-    return heading?.parentElement ?? undefined;
+    const chart = this.chart();
+    return chart && openDataView(chart);
   }
 
-  /** Closes the data view with its Close button, the last, which ECharts makes of a div. */
+  /** Closes the data view with its Close button, which ECharts makes of a div, last of its buttons. */
   private closeDataView(dataView: HTMLElement, element: HTMLElement): void {
     const close = dataView.lastElementChild?.lastElementChild;
-    if (close instanceof HTMLElement) close.click();
+    if (close instanceof HTMLDivElement) close.click();
     // From its text, which goes with it.
     element.focus();
   }
