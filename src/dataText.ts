@@ -147,7 +147,9 @@ function splitDelimited(text: string, delimiter: string, quoting = true): Record
     if (quoted) {
       // Up to the next quote at once, as a string built a character at a time is slow to read.
       const close = text.indexOf('"', i);
-      field += text.slice(i, close < 0 ? text.length : close);
+      const part = text.slice(i, close < 0 ? text.length : close);
+      // Newlines in it as "\n", as Windows line endings would leave a "\r" in labels.
+      field += part.includes("\r") ? part.replace(/\r\n?/g, "\n") : part;
       if (close < 0) break;
       i = close;
       if (text[i + 1] === '"') {

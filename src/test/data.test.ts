@@ -82,6 +82,8 @@ suite("data", () => {
           ],
         });
       }
+      // A newline in a quoted field is "\n", whatever the line endings.
+      assert.deepStrictEqual(parse(["name,value", '"a', 'b",1'].join(newline)).rows, [["a\nb", 1]]);
     }
   });
 
