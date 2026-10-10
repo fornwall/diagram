@@ -912,7 +912,7 @@
       "editor/title": [
         {
           "command": "diagram.export",
-          "when": "activeWebviewPanelId == diagram.panel",
+          "when": "activeWebviewPanelId == diagram.panel && diagram.hasDiagram",
           "group": "navigation"
         },
         {
@@ -924,7 +924,7 @@
       "webview/context": [
         {
           "command": "diagram.export",
-          "when": "webviewId == diagram.panel && webviewSection == drawing",
+          "when": "webviewId == diagram.panel && webviewSection == drawing && diagram.hasDiagram",
           "group": "1_export"
         }
       ]

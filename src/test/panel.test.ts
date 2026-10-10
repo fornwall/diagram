@@ -149,7 +149,7 @@ suite("panel", function () {
     );
   });
 
-  test("offers Export and Chart Options in the Command Palette once there is something to act on", async () => {
+  test("offers Export and Chart Options once there is something to act on", async () => {
     const execute = vscode.commands.executeCommand;
     const contexts: Record<string, unknown> = {};
     replace(vscode.commands, "executeCommand", (async (command: string, ...args: unknown[]) => {
@@ -176,13 +176,14 @@ suite("panel", function () {
     });
     const extension = vscode.extensions.getExtension("fornwall.diagram");
     assert.ok(extension);
-    const { commandPalette } = extension.packageJSON.contributes.menus as {
-      commandPalette: { command: string; when: string }[];
-    };
-    assert.deepStrictEqual(
-      commandPalette.find(({ command }) => command === "diagram.export")?.when,
-      "diagram.hasDiagram",
-    );
+    // Nor in the panel's title bar and context menu while it is empty.
+    const menus: Record<string, { command: string; when: string }[]> =
+      extension.packageJSON.contributes.menus;
+    const exports = Object.values(menus)
+      .flat()
+      .filter(({ command }) => command === "diagram.export");
+    assert.strictEqual(exports.length, 3);
+    for (const { when } of exports) assert.match(when, /(^| && )diagram\.hasDiagram$/);
   });
 
   test("queued edits, writes and selections cannot act on a replacement diagram", async () => {
