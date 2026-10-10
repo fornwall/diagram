@@ -62,6 +62,19 @@ suite("chartColumns", () => {
     assert.match(description, /"n" \(numbers, 1 text cell: "x{40}…"\)/);
   });
 
+  test("lists the first 60 columns of a wide table, and how many more there are", () => {
+    const names = Array.from({ length: 3000 }, (_, i) => `column ${i}`);
+    const table = parseTable(`${names.join(",")}\n${names.map((_, i) => i).join(",")}`);
+    const description = describeTable(table);
+    assert.ok(description.length < 3_000, `${description.length} characters`);
+    assert.match(description, /"column 59" \(numbers\), and 2,940 more\nRows, in their first 60 /);
+    assert.match(description, /\n\[0,1,2,.*,59\]$/);
+    assert.throws(
+      () => findColumn(table, "missing", "label"),
+      (error: Error) => /"column 59", and 2,940 more\.$/.test(error.message),
+    );
+  });
+
   test("points out the text cells of numeric columns when describing a table", () => {
     assert.match(
       describeTable(parseTable("size,file\n1,a\n1;5X,b\n3,c")),

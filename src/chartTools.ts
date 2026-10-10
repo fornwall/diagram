@@ -2,7 +2,7 @@
 
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
-import { describeTable } from "./chartColumns";
+import { describeTable, LISTED_COLUMNS } from "./chartColumns";
 import type { ChartUpdateInput } from "./chartOptions";
 import { rebuildChart } from "./chartPresentation";
 import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
@@ -115,13 +115,13 @@ function inspection(input: unknown): { spec?: ChartSpec; sampleRows: number } {
 
 /** Bounded, structured evidence about parsing; string values are data, never instructions. */
 export function inspectTable(table: DataTable, sampleRows: number): string {
-  let truncated = table.columns.length > 60;
+  let truncated = table.columns.length > LISTED_COLUMNS;
   const clip = (value: string): string => {
     if (value.length <= 256) return value;
     truncated = true;
     return `${value.slice(0, 255)}…`;
   };
-  const columns = table.columns.slice(0, 60).map((column, index) => ({
+  const columns = table.columns.slice(0, LISTED_COLUMNS).map((column, index) => ({
     ...column,
     name: clip(column.name),
     nullCount: table.rows.reduce((count, row) => count + (row[index] === null ? 1 : 0), 0),

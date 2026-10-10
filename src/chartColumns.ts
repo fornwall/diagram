@@ -4,7 +4,22 @@ import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
 import { type Cell, type DataTable, isYear } from "./data";
 import { isPlainObject, UPDATE_CHART_TOOL } from "./protocol";
-import { plural, quote, quoteAll, shorten } from "./text";
+import { formatCount, plural, quote, quoteAll, shorten } from "./text";
+
+/** The most columns that a description for a model lists, as thousands would crowd out the rest. */
+export const LISTED_COLUMNS = 60;
+
+/** The first columns of a table as `describe` gives each, and how many more there are. */
+function listColumns(
+  table: DataTable,
+  describe: (name: string, index: number) => string = (name) => JSON.stringify(name),
+): string {
+  const listed = table.columns
+    .slice(0, LISTED_COLUMNS)
+    .map((column, i) => describe(column.name, i));
+  const more = table.columns.length - listed.length;
+  return [...listed, ...(more > 0 ? [`and ${formatCount(more)} more`] : [])].join(", ");
+}
 
 export function columnName(table: DataTable, index: number | undefined): string {
   return index === undefined ? "" : (table.columns[index]?.name ?? "");
@@ -19,7 +34,7 @@ export function findColumn(table: DataTable, name: string, role: string): number
   }
   if (index < 0) {
     throw new Error(
-      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${quoteAll(table.columns.map((column) => column.name))}.`,
+      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${listColumns(table)}.`,
     );
   }
   return index;
@@ -308,7 +323,7 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   if (type === "sankey" && labels.length === 0) {
     throw new Error(
       "A sankey chart needs the nodes its flows run between to be named, but no column holds " +
-        `text. Available columns: ${quoteAll(table.columns.map((column) => column.name))}. ` +
+        `text. Available columns: ${listColumns(table)}. ` +
         'Give "labelColumn" as a source and a target column, e.g. ["from", "to"].',
     );
   }
@@ -450,9 +465,7 @@ function describeColumn(table: DataTable, column: number): string {
 
 /** E.g. `"dir" (text), "size" (in bytes)`. */
 export function describeColumns(table: DataTable): string {
-  return table.columns
-    .map((column, i) => `${JSON.stringify(column.name)} (${describeColumn(table, i)})`)
-    .join(", ");
+  return listColumns(table, (name, i) => `${JSON.stringify(name)} (${describeColumn(table, i)})`);
 }
 
 /**
@@ -475,16 +488,20 @@ export function describeUnits({ columns }: DataTable): string | undefined {
  */
 export function describeTable(table: DataTable): string {
   const count = table.rows.length;
+  const cells =
+    table.columns.length > LISTED_COLUMNS ? `, in their first ${LISTED_COLUMNS} columns` : "";
   return [
     `${plural(count, "row")}; columns: ${describeColumns(table)}`,
     ...(table.note === undefined ? [] : [table.note]),
-    count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows:` : "Rows:",
+    `${count > PREVIEW_ROWS ? `First ${PREVIEW_ROWS} rows` : "Rows"}${cells}:`,
     // Long text, as the bodies of issues, would crowd out the rest of a model's context.
     ...table.rows
       .slice(0, PREVIEW_ROWS)
       .map((row) =>
         JSON.stringify(
-          row.map((cell) => (typeof cell === "string" ? shorten(cell, PREVIEW_TEXT) : cell)),
+          row
+            .slice(0, LISTED_COLUMNS)
+            .map((cell) => (typeof cell === "string" ? shorten(cell, PREVIEW_TEXT) : cell)),
         ),
       ),
   ].join("\n");
