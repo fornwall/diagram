@@ -429,7 +429,8 @@ export function readRows(
       positive ? (values[0] ?? 0) > 0 : !values.includes(null),
     );
     const left = rows.length - charted.length;
-    if (charted.length === 0) {
+    // A facet without points is an empty panel, as one without bars is, rather than no chart.
+    if (charted.length === 0 && shared === undefined) {
       const quoted = quoteAll(valueIndices.map(name));
       const values = rows.map(({ values }) => values[0]);
       throw new Error(

@@ -222,6 +222,23 @@ suite("chartFacets", () => {
     );
   });
 
+  test("a scatter facet without a complete point is an empty panel, as a bar facet is", () => {
+    const data = "service,x,y\napi,10,100\napi,20,200\nworker,30,\nworker,,40";
+    const chart = buildChart({ type: "scatter", data, facetColumn: "service" }, parseTable(data));
+    const series = chart.option.series as Option[];
+    assert.deepStrictEqual(
+      series.map((each) => each.data),
+      [
+        [
+          [10, 100],
+          [20, 200],
+        ],
+        [],
+      ],
+    );
+    assert.match(chart.summary, /"worker": .*left out 2 rows without both an x and a y value/);
+  });
+
   test("facets that alone would read their labels differently share one axis type", () => {
     // Alone, "api" reads as dates and "worker" as categories.
     const data = "service,when,ms\napi,2026-01-01,2\napi,2026-01-02,3\nworker,soon,30";
