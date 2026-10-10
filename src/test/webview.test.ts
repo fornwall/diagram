@@ -183,6 +183,30 @@ suite("webview", function () {
     );
   });
 
+  test("draws each kind of mark in a hue of its own", async () => {
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const context = document.createElement("canvas").getContext("2d", {willReadFrequently: true});
+        const hue = (kind) => {
+          const probe = document.body.appendChild(document.createElement("span"));
+          probe.className = "diagram-mark-" + kind;
+          probe.style.color = "var(--mark-color)";
+          context.fillStyle = getComputedStyle(probe).color;
+          probe.remove();
+          context.fillRect(0, 0, 1, 1);
+          const [r, g, b] = [...context.getImageData(0, 0, 1, 1).data].map(value => value / 255);
+          const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+          const h = max === r ? (g - b) / d : max === g ? 2 + (b - r) / d : 4 + (r - g) / d;
+          return (h * 60 + 360) % 360;
+        };
+        const hues = ["current", "problem", "good", "info"].map(hue);
+        const apart = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+        return hues.every((a, i) => hues.every((b, j) => i === j || apart(a, b) >= 30));
+      })()`),
+      true,
+    );
+  });
+
   test("shows why an action is disabled on hover", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual(

@@ -304,7 +304,8 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
 }
 
 /* The colors marks read in, from the theme: the step being walked through, something wrong,
-   something that works, and a plain pointer. */
+   something that works, and a plain pointer. The pointer is purple, as the charts' blue is the
+   focus color's hue in most themes, which the step being walked through has. */
 .diagram-mark-current {
   --mark-color: var(--vscode-focusBorder);
 }
@@ -318,7 +319,7 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
 }
 
 .diagram-mark-info {
-  --mark-color: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+  --mark-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
 }
 
 .mark-dot {

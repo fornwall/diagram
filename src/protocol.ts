@@ -73,7 +73,7 @@ export interface RepeatedName {
   count: number;
 }
 
-/** Mark colors: focus, red, green and blue, respectively. */
+/** Mark colors: focus, red, green and purple, respectively. */
 export const MARK_KINDS = ["current", "problem", "good", "info"] as const;
 
 type MarkKind = (typeof MARK_KINDS)[number];
