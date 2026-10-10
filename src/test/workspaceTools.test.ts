@@ -22,7 +22,7 @@ import {
   workspaceRoot,
 } from "./afterTest";
 import { within } from "./newPanel";
-import { invokeTool as invoke, toolText } from "./toolText";
+import { invokeTool as invoke } from "./toolText";
 
 suite("workspaceTools", function () {
   // Each file search starts ripgrep processes, which can take seconds on a busy machine.
@@ -147,12 +147,7 @@ suite("workspaceTools", function () {
       countTokens: async (text: string) => Math.ceil(text.length / 4),
     };
     const fitted = async (tool: vscode.LanguageModelTool<never>, input: object) => {
-      const result = await tool.invoke(
-        { input: input as never, toolInvocationToken: undefined, tokenizationOptions },
-        source.token,
-      );
-      assert.ok(result);
-      const text = toolText(result);
+      const text = await invoke(tool, input, source.token, tokenizationOptions);
       assert.ok(text.length <= 400, text);
       return text.split("\n");
     };

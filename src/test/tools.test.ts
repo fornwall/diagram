@@ -38,27 +38,20 @@ suite("tools", () => {
     panel = newPanel(values);
     let counted = 0;
     const state = (tokenBudget: number) =>
-      new GetDiagramStateTool(panel).invoke(
-        {
-          input: {},
-          toolInvocationToken: undefined,
-          tokenizationOptions: {
-            tokenBudget,
-            countTokens: async (text) => {
-              counted++;
-              return text.length / 4;
-            },
-          },
+      invokeTool(new GetDiagramStateTool(panel), {}, undefined, {
+        tokenBudget,
+        countTokens: async (text) => {
+          counted++;
+          return text.length / 4;
         },
-        new vscode.CancellationTokenSource().token,
-      );
-    assert.ok(toolText(await state(20_000)).includes(source));
+      });
+    assert.ok((await state(20_000)).includes(source));
     // Whether the source fits is plain from its length alone, without counting its tokens.
-    assert.ok(toolText(await state(200_000)).includes(source));
+    assert.ok((await state(200_000)).includes(source));
     assert.strictEqual(counted, 1);
-    assert.doesNotMatch(toolText(await state(1_000)), /A --> B/);
+    assert.doesNotMatch(await state(1_000), /A --> B/);
     assert.strictEqual(counted, 1);
-    const summary = toolText(await state(10_000));
+    const summary = await state(10_000);
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(
       summary,

@@ -16,9 +16,14 @@ export async function invokeTool(
   tool: vscode.LanguageModelTool<never>,
   input: unknown,
   token = new vscode.CancellationTokenSource().token,
+  tokenizationOptions?: vscode.LanguageModelToolTokenizationOptions,
 ): Promise<string> {
   const result = await tool.invoke(
-    { input: input as never, toolInvocationToken: undefined },
+    {
+      input: input as never,
+      toolInvocationToken: undefined,
+      ...(tokenizationOptions && { tokenizationOptions }),
+    },
     token,
   );
   assert.ok(result);
