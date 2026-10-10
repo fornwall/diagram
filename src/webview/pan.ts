@@ -31,6 +31,15 @@ export function enablePanning(canvas: HTMLElement): void {
   const canPan = () =>
     canvas.scrollWidth > canvas.clientWidth || canvas.scrollHeight > canvas.clientHeight;
 
+  /** Whether the point is on one of the canvas's scrollbars, which drag the other way. */
+  const onScrollbar = (x: number, y: number) => {
+    const box = canvas.getBoundingClientRect();
+    return (
+      x - box.left - canvas.clientLeft >= canvas.clientWidth ||
+      y - box.top - canvas.clientTop >= canvas.clientHeight
+    );
+  };
+
   /** Shows whether dragging would pan, measuring the canvas at most once per frame. */
   const showCursor = () => {
     if (cursorFrame) {
@@ -73,7 +82,8 @@ export function enablePanning(canvas: HTMLElement): void {
       event.pointerType === "pen" ||
       event.button !== 0 ||
       !event.isPrimary ||
-      !canPan()
+      !canPan() ||
+      onScrollbar(event.clientX, event.clientY)
     ) {
       return;
     }

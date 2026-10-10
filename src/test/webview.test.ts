@@ -744,6 +744,41 @@ suite("webview", function () {
     );
   });
 
+  test("leaves a drag on the canvas's scrollbar to the scrollbar", async () => {
+    const chain = Array.from({ length: 20 }, (_, i) => `n${i} --> n${i + 1}`).join("\n  ");
+    await draw({ source: `flowchart TD\n  ${chain}`, title: "Scrollbar" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        canvas.scrollTop = 100;
+        const box = canvas.getBoundingClientRect();
+        const drag = (clientX, id) => {
+          const init = {pointerId: id, clientX, clientY: box.top + 100, pointerType: "mouse",
+            button: 0, isPrimary: true, bubbles: true, cancelable: true};
+          canvas.dispatchEvent(new PointerEvent("pointerdown", init));
+          canvas.dispatchEvent(new PointerEvent("pointermove", {...init, clientY: box.top + 150}));
+          const shown = {panning: canvas.classList.contains("panning"), scrollTop: canvas.scrollTop};
+          canvas.dispatchEvent(new PointerEvent("pointerup", {...init, clientY: box.top + 150}));
+          return shown;
+        };
+        // Pointer capture, which a pan takes, needs a pointer that is actually down.
+        canvas.setPointerCapture = () => {};
+        try {
+          const scrollbar = drag(box.left + canvas.clientLeft + canvas.clientWidth + 2, 21);
+          const content = drag(box.left + canvas.clientWidth / 2, 22);
+          return {tall: canvas.scrollHeight > canvas.clientHeight + 100, scrollbar, content};
+        } finally {
+          delete canvas.setPointerCapture;
+        }
+      })()`),
+      {
+        tall: true,
+        scrollbar: { panning: false, scrollTop: 100 },
+        content: { panning: true, scrollTop: 50 },
+      },
+    );
+  });
+
   test("selects nothing by dragging across the text of a drawing that fits the panel", async () => {
     await draw({
       source: "flowchart LR\n  A[Parser] --> B[Checker] --> C[Printer]",
