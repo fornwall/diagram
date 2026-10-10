@@ -599,8 +599,10 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
-#clear-selection {
+/* The selection's actions keep to one line, beside a hint that wraps in a narrow panel. */
+#selection button {
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 #ask-form {

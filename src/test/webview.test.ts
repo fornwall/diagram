@@ -200,6 +200,25 @@ suite("webview", function () {
     );
   });
 
+  test("keeps the selection's actions on one line in a narrow panel", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const footer = document.querySelector("footer");
+        const button = document.getElementById("highlight-path");
+        const height = () => button.getBoundingClientRect().height;
+        const wide = height();
+        footer.style.width = "320px";
+        try {
+          return {shown: !button.hidden, wraps: height() > wide};
+        } finally {
+          footer.style.width = "";
+        }
+      })()`),
+      { shown: true, wraps: false },
+    );
+  });
+
   test("only enables sending to chat when the message contains text", async () => {
     assert.deepStrictEqual(
       await evaluate(`(() => {
