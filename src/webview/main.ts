@@ -526,7 +526,7 @@ function updateSelectionUi(): void {
   highlightPathButton.disabled =
     endpoints.length !== 2 || endpoints.some((node) => node.relationship);
   highlightPathButton.title = highlightPathButton.disabled
-    ? "Select two flowchart nodes, first the start and then the destination"
+    ? "Select two nodes, first the start and then the destination"
     : `Highlight the shortest path from ${endpoints[0]?.label} to ${endpoints[1]?.label}`;
   pickDoneButton.disabled = labels.length === 0;
   askInput.placeholder =

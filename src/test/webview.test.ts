@@ -225,19 +225,27 @@ suite("webview", function () {
     );
   });
 
-  test("shows why an action is disabled on hover", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(() => {
-        const button = document.getElementById("highlight-path");
-        return {disabled: button.disabled, title: button.title, hoverable: getComputedStyle(button).pointerEvents !== "none"};
-      })()`),
-      {
-        disabled: true,
-        title: "Select two flowchart nodes, first the start and then the destination",
-        hoverable: true,
-      },
-    );
+  test("shows why an action is disabled on hover, for each kind of diagram that has it", async () => {
+    for (const source of [
+      MERMAID["flowchart-v2"],
+      "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Busy",
+    ]) {
+      await draw({ source });
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const button = document.getElementById("highlight-path");
+          return {shown: !button.hidden, disabled: button.disabled, title: button.title,
+            hoverable: getComputedStyle(button).pointerEvents !== "none"};
+        })()`),
+        {
+          shown: true,
+          disabled: true,
+          title: "Select two nodes, first the start and then the destination",
+          hoverable: true,
+        },
+        source,
+      );
+    }
   });
 
   test("highlights hovered toolbar buttons as toolbars do, not as primary buttons", async () => {
