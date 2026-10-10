@@ -389,6 +389,14 @@ suite("echartsLayout", () => {
       "50.0 %",
       "0.0 %",
     ]);
+    // ECharts' precision of 0 with a format, and a precision within what it takes.
+    const text = (visualMap: Option) => placed({ min: 0, max: 12_500, ...visualMap }).text;
+    assert.deepStrictEqual(text({ formatter: "{value}–{value2}" }), ["12500–12500", "0–0"]);
+    assert.deepStrictEqual(text({ precision: -1 }), ["12500", "0"]);
+    assert.deepStrictEqual(
+      text({ precision: 150 }).map((each: string) => each.length),
+      [26, 22],
+    );
     // Not one with a formatter function, whose code the layout leaves to ECharts.
     assert.strictEqual(placed({ formatter: () => "x" }).text, undefined);
     // Not one with handles or a text of its own, nor the pieces of another.
