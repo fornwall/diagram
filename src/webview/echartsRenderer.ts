@@ -36,7 +36,6 @@ import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage } from "./images";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
 import { standaloneSvg } from "./svgImage";
-import { readThemeColors } from "./vscodeTheme";
 
 /** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
 export const SETTLE_DELAY = 150;
@@ -121,7 +120,7 @@ export class EChartsRenderer implements Renderer {
     private readonly itemClicked: ItemClickHandler,
     private readonly canvas: HTMLElement,
     /** The colors to draw in: the VS Code theme in the panel, the saved ones in a saved chart. */
-    private readonly readColors: () => ThemeColors = readThemeColors,
+    private readonly readColors: () => ThemeColors,
     /**
      * Whether the tab is hidden behind another. Its page then has the size of an empty frame, 300
      * by 150 pixels, which a chart is not laid out for.
