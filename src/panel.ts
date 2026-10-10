@@ -21,6 +21,7 @@ import {
   confirmWrite,
   type DocumentBinding,
   documentName,
+  forgetReportsOnSave,
   reportUnshownWrite,
   reportWriteFailure,
   writeFence,
@@ -136,6 +137,7 @@ export class DiagramPanel implements vscode.Disposable {
   private annotation: Annotation | undefined;
 
   private readonly webview: WebviewChannel;
+  private readonly saves = forgetReportsOnSave();
   private nextRequestId = 1;
   /** Counts renders, to detect intervening ones. */
   private renderVersion = 0;
@@ -361,6 +363,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   dispose(): void {
     this.webview.dispose();
+    this.saves.dispose();
   }
 
   // The webview, and the requests waiting for its answers.

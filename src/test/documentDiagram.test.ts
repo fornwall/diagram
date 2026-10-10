@@ -391,6 +391,11 @@ suite("documentDiagram", function () {
     await webview.edit("flowchart LR");
     assert.strictEqual(document.getText(), "# Plans\n\n```mermaid\nflowchart LR\n```\n");
     assert.ok(await within(() => notices.length === 1));
+    // Also once the user saved it, and something else left it unsaved again.
+    assert.ok(await document.save());
+    await edit(document, new vscode.Range(0, 2, 0, 7), "Notes");
+    await webview.edit("flowchart RL");
+    assert.ok(await within(() => notices.length === 2));
   });
 
   test("says nothing of a write to a document that a tab shows", async () => {

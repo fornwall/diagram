@@ -224,8 +224,18 @@ export async function reportWriteFailure(
   }
 }
 
-/** The documents that {@link reportUnshownWrite} told of, until a write finds them saved. */
+/**
+ * The documents that {@link reportUnshownWrite} told of, until they are saved or a write finds them
+ * saved, as after a revert.
+ */
 const reportedUnsaved = new Set<string>();
+
+/** Forgets the report of a document once it is saved, for a later write to be reported again. */
+export function forgetReportsOnSave(): vscode.Disposable {
+  return vscode.workspace.onDidSaveTextDocument(({ uri }) =>
+    reportedUnsaved.delete(uri.toString()),
+  );
+}
 
 /**
  * Tells the user of a write to a document that no tab shows, as when its tab was closed, which
