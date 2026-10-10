@@ -34,10 +34,34 @@ export function findColumn(table: DataTable, name: string, role: string): number
   }
   if (index < 0) {
     throw new Error(
-      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${listColumns(table)}.`,
+      `Unknown ${role} column ${JSON.stringify(name)}. Available columns: ${listColumns(table)}.` +
+        namedLike(table, name),
     );
   }
   return index;
+}
+
+/**
+ * The columns past those listed whose names share the most words with `name`, which a model may
+ * know the names of from elsewhere, as the header of a wide command's output.
+ */
+function namedLike(table: DataTable, name: string): string {
+  const words = name
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+  const like = table.columns
+    .slice(LISTED_COLUMNS)
+    .map((column) => {
+      const lower = column.name.toLowerCase();
+      return { name: column.name, shared: words.filter((word) => lower.includes(word)).length };
+    })
+    .filter(({ shared }) => shared > 0)
+    .sort((a, b) => b.shared - a.shared)
+    .slice(0, 10);
+  return like.length === 0
+    ? ""
+    : ` Of the others, these are named most like it: ${quoteAll(like.map((column) => column.name))}.`;
 }
 
 /** Finds the columns that a property names, each of which it may name once. */

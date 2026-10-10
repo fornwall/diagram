@@ -73,6 +73,14 @@ suite("chartColumns", () => {
       () => findColumn(table, "missing", "label"),
       (error: Error) => /"column 59", and 2,940 more\.$/.test(error.message),
     );
+    // A name past the listed ones comes up among those most like the one asked for.
+    assert.throws(
+      () => findColumn(table, "Column_2999", "label"),
+      (error: Error) =>
+        /and 2,940 more\. Of the others, these are named most like it: "column 2999", "column 60", /.test(
+          error.message,
+        ),
+    );
   });
 
   test("points out the text cells of numeric columns when describing a table", () => {
