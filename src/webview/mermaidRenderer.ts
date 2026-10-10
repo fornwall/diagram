@@ -311,6 +311,9 @@ export class MermaidRenderer implements Renderer {
     private readonly tabHidden: () => boolean,
   ) {
     const activate = (event: MouseEvent | KeyboardEvent) => {
+      // The first click of a double click acted already: a second would undo its selection, or
+      // open the node's link once more.
+      if (event instanceof MouseEvent && event.detail > 1) return;
       const target = event.target instanceof Element ? event.target : undefined;
       const element = target?.closest(".diagram-node");
       const node = element && this.drawn.byElement.get(element);

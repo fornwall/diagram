@@ -1356,6 +1356,33 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     ]);
   });
 
+  test("acts once on a double click, opening a link once and keeping the node selected", async () => {
+    const source = `flowchart LR\n  A[Docs] --> B\n  click A href "https://example.com/docs" _blank`;
+    assert.ok(
+      (await page.panel.render({ language: "mermaid", source, title: "Double" }, "tool")).ok,
+    );
+    let selected: unknown;
+    const opened = await opening(async () => {
+      selected = await evaluate(`(() => {
+        const node = id => document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+        // As a browser sends a double click: a click of each press, counting them.
+        const twice = element => {
+          for (const detail of [1, 2]) {
+            element.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, detail}));
+          }
+        };
+        twice(node("A"));
+        twice(node("B"));
+        return [...document.querySelectorAll("#diagram .diagram-selected[tabindex]")]
+          .map(element => element.getAttribute("data-diagram-id"));
+      })()`);
+    });
+    assert.deepStrictEqual(
+      { opened, selected },
+      { opened: ["https://example.com/docs"], selected: ["B"] },
+    );
+  });
+
   test("opens a Gantt task's link through the extension, keeping the panel", async () => {
     const source =
       'gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d\n  click a1 href "https://example.com/plan"';
