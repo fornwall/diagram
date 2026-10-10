@@ -1269,12 +1269,19 @@ suite("webview renderer loading", function () {
         document.getElementById("view-split").click();
         await render(900010, "echarts", '{"series": [{"type": "pie", "data": [2]}]}');
         const chart = shown();
+        const apply = document.getElementById("apply").title;
         await render(900011, "mermaid", "flowchart LR\\n A --> B");
         const failed = shown();
         document.getElementById("view-visual").click();
-        return {chart, failed};
+        return {chart, apply, failed, applyAfter: document.getElementById("apply").title};
       })()`),
-      { chart: ["views", "refresh", "write-to", "editor", "click-to-ask"], failed: [] },
+      {
+        chart: ["views", "refresh", "write-to", "editor", "click-to-ask"],
+        // Apply says that it writes to the document as well.
+        apply: "Render your version and write it into the code block in notes.md (Ctrl/Cmd+Enter)",
+        failed: [],
+        applyAfter: "Render your version (Ctrl/Cmd+Enter)",
+      },
     );
     const again = await panel.render(flowchart, "tool");
     assert.ok(!again.ok && again.kind === "unavailable");

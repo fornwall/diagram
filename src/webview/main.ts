@@ -64,6 +64,7 @@ const zoomResetButton = element("zoom-reset");
 const zoomInButton = element("zoom-in");
 const refreshButton = element<HTMLButtonElement>("refresh");
 const writeToButton = element<HTMLButtonElement>("write-to");
+const applyButton = element<HTMLButtonElement>("apply");
 const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
 const annotationCaption = element("annotation-caption");
@@ -106,7 +107,7 @@ const editor = new SourceEditor(
   {
     panes,
     input: element("source"),
-    apply: element("apply"),
+    apply: applyButton,
     revert: element("revert"),
     staleNote: element("stale-note"),
     viewButtons: {
@@ -232,6 +233,11 @@ function showActions({
     writeToButton.textContent = `Write to ${writeTo}`;
     writeToButton.title = `Write the diagram as shown into the code block in ${writeTo}`;
   }
+  // Apply writes the edits into the block too, which changes a file: say so before it does.
+  applyButton.title =
+    writeTo === undefined
+      ? "Render your version (Ctrl/Cmd+Enter)"
+      : `Render your version and write it into the code block in ${writeTo} (Ctrl/Cmd+Enter)`;
 }
 
 async function render(message: RenderMessage): Promise<void> {
