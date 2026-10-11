@@ -62,8 +62,20 @@ interface ShapeEdge {
 }
 
 export interface DiagramDb {
-  /** The nodes and edges of a diagram that Mermaid lays out as a flowchart. */
-  getData?(): { nodes: { id: string; parentId?: string; isGroup?: boolean }[]; edges: ShapeEdge[] };
+  /**
+   * The nodes and edges of a diagram that Mermaid lays out as a flowchart, with the styles that the
+   * source gives a node and its classes.
+   */
+  getData?(): {
+    nodes: {
+      id: string;
+      parentId?: string;
+      isGroup?: boolean;
+      cssStyles?: string[];
+      cssCompiledStyles?: string[];
+    }[];
+    edges: ShapeEdge[];
+  };
   getMessages?(): { id: string; from?: string; to?: string; message?: string }[];
   getSections?(): Map<string, number>;
   getCommitsArray?(): { id: string; message: string; seq: number; tags: string[] }[];

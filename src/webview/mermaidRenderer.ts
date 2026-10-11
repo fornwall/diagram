@@ -3,7 +3,16 @@
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";
-import { contrast, lighten, mix, type Rgba, type ThemeColors, toCss } from "./colors";
+import {
+  contrast,
+  LABEL_CONTRAST,
+  labelColorOn,
+  lighten,
+  mix,
+  type Rgba,
+  type ThemeColors,
+  toCss,
+} from "./colors";
 import type { DiagramImage } from "./images";
 import { closeLinkMenu } from "./linkMenu";
 import {
@@ -33,7 +42,7 @@ import {
   standaloneSvg,
   XLINK_NAMESPACE,
 } from "./svgImage";
-import { readThemeColors } from "./vscodeTheme";
+import { parseColor, readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
 const loadMermaid = () => (loading ??= import("mermaid").then((module) => module.default));
@@ -62,14 +71,8 @@ const FORMULA = /\$\$(.*?)\$\$/;
 /** How Mermaid has KaTeX draw a formula. */
 const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
 
-/** The contrast that labels need with the color they are drawn on, as WCAG asks of small text. */
-const LABEL_CONTRAST = 4.5;
-
 /** A theme that front matter or an init directive chooses, unlike its themeVariables. */
 const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:/m;
-
-const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
-const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
 
 /**
  * The colors of the sections of mind maps, timelines, kanban boards and pies, and of their labels:
@@ -110,12 +113,7 @@ function sectionColors(
       ...scale.slice(1, 8).map((color, i) => lighten(color, i === 4 || i === 5 ? 10 : 20)),
     ];
     branches.forEach((color, i) => {
-      const themed = [foreground, background].find(
-        (text) => contrast(color, text) >= LABEL_CONTRAST,
-      );
-      variables[`gitBranchLabel${i}`] = toCss(
-        themed ?? (contrast(color, BLACK) > contrast(color, WHITE) ? BLACK : WHITE),
-      );
+      variables[`gitBranchLabel${i}`] = toCss(labelColorOn(color, { foreground, background }));
     });
   }
   return variables;
@@ -222,6 +220,169 @@ function centerTextLabels(svg: SVGSVGElement): void {
 }
 
 /**
+ * The nodes and groups whose fill the source can set, with `style`, `classDef` and `class`. The
+ * nodes of the hand-drawn look are `g.rough-node` instead, which this leaves out: that look hatches
+ * fills, so their labels lie on the background.
+ */
+const FILLABLE = "g.node, g.cluster";
+/** What a node or group may draw its fill with. */
+const SHAPE = "rect, path, polygon, circle, ellipse";
+/** What holds the text of a label, as HTML or as SVG text. */
+const LABEL = "foreignObject, text";
+/** A label and what Mermaid draws behind its text alone, rather than a shape it lies on. */
+const IN_LABEL = "g.label, .cluster-label, foreignObject, text";
+/** The notes of class diagrams, which Mermaid fills in the theme's note colors inline. */
+const NOTE = /-note\d+$/;
+/** A style that sets a fill, as a database holds the styles of the source. */
+const FILL_STYLE = /(?:^|;)\s*fill\s*:/;
+
+/** A shape that a label may lie on, as read before any label is colored. */
+interface FillShape {
+  shape: SVGGeometryElement;
+  box: DOMRect;
+  fill: string;
+  /** Its fill opacity, its opacity and those of the groups it is in within its node. */
+  opacity: number;
+  /** From client coordinates to the shape's own, if it is drawn. */
+  toShape: DOMMatrix | undefined;
+}
+
+/**
+ * The entities of an ER diagram that the source fills. Mermaid draws the fill of one with
+ * attributes as an attribute, as it does the theme's, writing it inline only on every other row.
+ */
+function filledEntities(svg: SVGSVGElement, db: DiagramDb | undefined): Element[] {
+  return (db?.getData?.().nodes ?? [])
+    .filter((node) =>
+      [...(node.cssStyles ?? []), ...(node.cssCompiledStyles ?? [])].some((style) =>
+        FILL_STYLE.test(style),
+      ),
+    )
+    .flatMap((node) => svg.querySelector(`#${CSS.escape(`${svg.id}-${node.id}`)}`) ?? []);
+}
+
+/**
+ * Draws the labels of the nodes and groups that the source fills in a color legible on the fill.
+ * The theme's text color suits the theme's fills, and may all but vanish on others, such as light
+ * grey on the light blue of a decision in a dark theme.
+ *
+ * Mermaid writes the styles of the source inline: a fill on the shape, and a text color on the
+ * label, its HTML or its SVG text. The theme fills through the drawing's style sheet alone, or
+ * with an attribute on the shapes that Rough.js draws, so an inline fill comes from the source;
+ * `filled` are those that the source fills otherwise. Nodes whose labels the source colors keep
+ * that color. Each label takes the color legible on the shape that fills the point under its
+ * middle, as some are drawn on the theme's fill still, such as every other row of an entity's
+ * attributes, and some shapes are open strokes, such as braces. A translucent fill shows the
+ * groups that the source fills under it, else the theme's background. A link keeps the theme's
+ * link color where that is legible. The drawing must be in the document, where the browser
+ * resolves fills.
+ */
+function colorLabelsOnFills(
+  svg: SVGSVGElement,
+  colors: ThemeColors,
+  filled: Iterable<Element> = [],
+): void {
+  const owners = new Set<Element>(filled);
+  const colored = new Set<Element>();
+  for (const element of svg.querySelectorAll<SVGElement | HTMLElement>("[style]")) {
+    const owner = element.closest(FILLABLE);
+    if (!owner || NOTE.test(owner.id)) continue;
+    const { color, fill } = element.style;
+    const text = element.matches("text, tspan");
+    if (color || (text && fill)) colored.add(owner);
+    // Class diagrams also fill the spans of their HTML labels, where it does nothing.
+    else if (fill && !text && !element.closest("foreignObject")) owners.add(owner);
+  }
+  if (owners.size === 0) return;
+  // A node's own elements, rather than those of the nodes in a group.
+  const own = (owner: Element, selector: string) =>
+    Array.from(owner.querySelectorAll(selector)).filter((e) => e.closest(FILLABLE) === owner);
+  // Read the fills and where they are before changing any color, which would have each read
+  // compute the styles again.
+  const opacityOf = (element: Element) => Number(getComputedStyle(element).opacity);
+  const drawn = Array.from(owners, (owner) => {
+    const shapes = own(owner, SHAPE)
+      .filter((shape) => !shape.closest(IN_LABEL))
+      .map((shape): FillShape => {
+        const style = getComputedStyle(shape);
+        let opacity = Number(style.fillOpacity) * Number(style.opacity);
+        for (
+          let group = shape.parentElement;
+          group && group !== owner;
+          group = group.parentElement
+        ) {
+          opacity *= opacityOf(group);
+        }
+        return {
+          shape: shape as SVGGeometryElement,
+          box: shape.getBoundingClientRect(),
+          fill: style.fill,
+          opacity,
+          toShape: (shape as SVGGeometryElement).getScreenCTM()?.inverse(),
+        };
+      });
+    return {
+      owner,
+      shapes,
+      area: Math.max(0, ...shapes.map(({ box }) => box.width * box.height)),
+      labels: colored.has(owner)
+        ? []
+        : own(owner, LABEL).map((label) => ({ label, box: label.getBoundingClientRect() })),
+    };
+  });
+  const link = svg.querySelector(`:is(${FILLABLE}) foreignObject a`)
+    ? parseColor(getComputedStyle(document.body).getPropertyValue("--vscode-textLink-foreground"))
+    : undefined;
+
+  const parsed = new Map<string, Rgba | undefined>();
+  /** What the topmost of the shapes that fills the point paints there over the color below. */
+  const paintAt = (shapes: FillShape[], x: number, y: number, below: Rgba) => {
+    for (const { shape, box, fill, opacity, toShape } of shapes.toReversed()) {
+      if (x < box.left || x > box.right || y < box.top || y > box.bottom || !toShape) continue;
+      if (!shape.isPointInFill(new DOMPoint(x, y).matrixTransform(toShape))) continue;
+      if (!parsed.has(fill)) parsed.set(fill, parseColor(fill));
+      const paint = parsed.get(fill);
+      const alpha = (paint?.a ?? 0) * (Number.isFinite(opacity) ? opacity : 1);
+      if (paint && alpha > 0) return mix(below, paint, alpha);
+    }
+    return undefined;
+  };
+  // The groups, the outermost first, to lay the fills of those around a point over each other.
+  const groups = drawn
+    .filter(({ owner }) => owner.matches("g.cluster"))
+    .sort((a, b) => b.area - a.area);
+  const labeled: { label: Element; color: string; links: boolean }[] = [];
+  for (const { owner, shapes, area, labels } of drawn) {
+    const inside = owner.matches("g.cluster") ? area : 0;
+    for (const { label, box } of labels) {
+      const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+      let backdrop = colors.background;
+      for (const group of groups) {
+        if (group.owner === owner || group.area <= inside) continue;
+        backdrop = paintAt(group.shapes, x, y, backdrop) ?? backdrop;
+      }
+      const under = paintAt(shapes, x, y, backdrop);
+      if (!under) continue;
+      labeled.push({
+        label,
+        color: toCss(labelColorOn(under, colors)),
+        links: link !== undefined && contrast(under, mix(under, link, link.a)) >= LABEL_CONTRAST,
+      });
+    }
+  }
+  // Mermaid's theme colors the HTML and the SVG text of labels without `!important`.
+  for (const { label, color, links } of labeled) {
+    if (label instanceof SVGTextElement) {
+      for (const text of [label, ...label.querySelectorAll("tspan")]) text.style.fill = color;
+    } else {
+      for (const html of label.querySelectorAll<HTMLElement>("*")) {
+        if (!(links && html.closest("a"))) html.style.color = color;
+      }
+    }
+  }
+}
+
+/**
  * Draws the formulas that name sequence diagram participants in boxes. Mermaid draws them without
  * waiting for KaTeX, so the drawing it returns has their labels empty, or not even there. (It
  * draws participants of other shapes likewise, and there is no telling where their labels go.)
@@ -266,12 +427,14 @@ async function drawParticipantFormulas(svg: SVGSVGElement, db: DiagramDb | undef
 
 /**
  * Places a drawing that Mermaid made in the layout container, where it can be measured while the
- * canvas is hidden, and completes it there. The caller takes it out of the container again.
+ * canvas is hidden, and completes it there, in the theme's colors. The caller takes it out of the
+ * container again.
  */
 async function layOut(
   markup: string,
   diagramType: string,
   text: string,
+  colors: ThemeColors,
   db: () => Promise<DiagramDb | undefined>,
 ): Promise<SVGSVGElement> {
   // Read as HTML: an XML parser rejects the <br> or &nbsp; of an HTML label, or a control
@@ -285,6 +448,7 @@ async function layOut(
   layoutContainer().append(svg);
   try {
     centerTextLabels(svg);
+    colorLabelsOnFills(svg, colors, diagramType === "er" ? filledEntities(svg, await db()) : []);
     if (diagramType === "sequence" && FORMULA.test(text)) {
       await drawParticipantFormulas(svg, await db());
     }
@@ -477,9 +641,8 @@ export class MermaidRenderer implements Renderer {
     this.resizeObserver.observe(canvas);
   }
 
-  /** How Mermaid is configured for the current VS Code theme, to draw the source. */
-  private config(source: string): Parameters<Mermaid["initialize"]>[0] {
-    const colors = readThemeColors();
+  /** How Mermaid is configured for the VS Code theme of these colors, to draw the source. */
+  private config(source: string, colors = readThemeColors()): Parameters<Mermaid["initialize"]>[0] {
     const { settings, typeLine } = diagramHeader(source);
     return {
       startOnLoad: false,
@@ -504,7 +667,8 @@ export class MermaidRenderer implements Renderer {
       );
     }
     const mermaid = await loadMermaid();
-    const config = this.config(source);
+    const colors = readThemeColors();
+    const config = this.config(source, colors);
     mermaid.initialize(config);
     const id = `diagram-svg-${++this.renderCounter}`;
     const container = layoutContainer();
@@ -556,7 +720,7 @@ export class MermaidRenderer implements Renderer {
       return {
         result,
         db,
-        svg: await layOut(result.svg, result.diagramType, text, async () => db),
+        svg: await layOut(result.svg, result.diagramType, text, colors, async () => db),
       };
     };
     const { result, db, svg } = await drawing().catch((error: unknown) => {
@@ -618,7 +782,8 @@ export class MermaidRenderer implements Renderer {
     if (source === undefined) {
       throw new Error("There is no diagram to make an image of.");
     }
-    const config = this.config(source);
+    const colors = readThemeColors();
+    const config = this.config(source, colors);
     // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
     // The image takes the color of the text around the drawing for labels that leave it to CSS.
     const color = getComputedStyle(document.body).color;
@@ -651,7 +816,7 @@ export class MermaidRenderer implements Renderer {
         text,
         layoutContainer(),
       );
-      const drawing = await layOut(svg, diagramType, text, () => databaseOf(mermaid, text));
+      const drawing = await layOut(svg, diagramType, text, colors, () => databaseOf(mermaid, text));
       try {
         inlineStyleSheets(drawing);
         const image = standaloneSvg(drawing, background);

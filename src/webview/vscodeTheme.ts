@@ -12,7 +12,7 @@ const fromHex = (hex: string): Rgba => ({
 let context: CanvasRenderingContext2D | null | undefined;
 
 /** Parses any CSS color, in any color space, by painting a pixel in it. */
-function parseColor(css: string): Rgba | undefined {
+export function parseColor(css: string): Rgba | undefined {
   context ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
   const value = css.trim();
   if (!value || !context) {

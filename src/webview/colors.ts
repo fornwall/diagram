@@ -38,6 +38,26 @@ export function contrast(a: Rgba, b: Rgba): number {
   return (light + 0.05) / (dark + 0.05);
 }
 
+/** The contrast that labels need with the color they are drawn on, as WCAG asks of small text. */
+export const LABEL_CONTRAST = 4.5;
+
+const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+
+/**
+ * The color to draw a label in on an opaque color: the theme's text color if it is legible there,
+ * else the theme's background if that is, else black or white, whichever contrasts more.
+ */
+export function labelColorOn(
+  color: Rgba,
+  { foreground, background }: Pick<ThemeColors, "foreground" | "background">,
+): Rgba {
+  return (
+    [foreground, background].find((text) => contrast(color, text) >= LABEL_CONTRAST) ??
+    (contrast(color, BLACK) > contrast(color, WHITE) ? BLACK : WHITE)
+  );
+}
+
 /** Raises the HSL lightness of a color by `points` percentage points, as Mermaid's lighten does. */
 export function lighten({ r, g, b }: Rgba, points: number): Rgba {
   const [red, green, blue] = [r / 255, g / 255, b / 255] as [number, number, number];

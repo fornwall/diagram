@@ -51,8 +51,8 @@ const CONTRAST = `
 
 /**
  * Webview code defining `inTheme(kind, variables, measure)`, which draws the diagram again in a
- * theme of that kind with those color variables, measures it, and draws it in the theme it had
- * again; with what `UNTIL` defines.
+ * theme of that kind with those color variables, measures it, waiting for a measure that is a
+ * promise, and draws it in the theme it had again; with what `UNTIL` defines.
  */
 const IN_THEME = `
   ${UNTIL}
@@ -71,7 +71,7 @@ const IN_THEME = `
       root.setAttribute("style", style + ";" + variables);
     });
     try {
-      return measure();
+      return await measure();
     } finally {
       await redraw(() => {
         root.setAttribute("style", style);
@@ -79,6 +79,33 @@ const IN_THEME = `
       });
     }
   };`;
+
+/**
+ * Webview code defining `labelColors()`: the colors of the labels of the drawing by their text, on
+ * screen and in its image, where Mermaid draws them as SVG text, as the browser resolves them.
+ */
+const LABEL_COLORS = `
+  ${DRAG_IMAGE}
+  const labelColors = async () => {
+    const colors = (root, selector, property) => Object.fromEntries([...root.querySelectorAll(selector)]
+      .filter((label) => label.textContent.trim())
+      .map((label) => [label.textContent.trim(), getComputedStyle(label)[property]]));
+    const host = document.createElement("div");
+    host.innerHTML = await dragImage();
+    document.body.append(host);
+    try {
+      return {screen: colors(document.querySelector("#diagram svg"), ".nodeLabel", "color"),
+        image: colors(host, "text", "fill")};
+    } finally {
+      host.remove();
+    }
+  };`;
+
+/** The colors of the Dark Modern and the Light Modern theme that a diagram's labels take. */
+const DARK_MODERN =
+  "--vscode-foreground: #cccccc; --vscode-editor-background: #1f1f1f; --vscode-textLink-foreground: #4daafc";
+const LIGHT_MODERN =
+  "--vscode-foreground: #3b3b3b; --vscode-editor-background: #ffffff; --vscode-textLink-foreground: #005fb8";
 
 /**
  * Webview code that takes the limit off the canvas width, and waits for a Gantt chart shown to be
@@ -491,6 +518,196 @@ suite("Mermaid in the webview", function () {
       );
       assert.strictEqual(ratios.length, 2);
     }
+  });
+
+  test("labels the nodes and groups that the source fills legibly on the fill, also in images", async () => {
+    await draw({
+      source: [
+        "flowchart LR",
+        "  classDef question fill:#cfe8ff",
+        "  A[Styled] --> Q{Part 1?}:::question --> C[Plain]",
+        "  D[Red text]",
+        "  style A fill:#7f7",
+        "  style D fill:#7f7,color:#f00",
+        "  subgraph S [Backend]",
+        "    F[Inside]",
+        "  end",
+        "  style S fill:lightgreen",
+      ].join("\n"),
+    });
+    page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: false });
+    const [dark, light] = (await evaluate(`(async () => {
+      ${IN_THEME}
+      ${LABEL_COLORS}
+      const marked = () => document.querySelector('#diagram .diagram-marked[data-diagram-id="A"]');
+      await until(marked, "the mark");
+      const measure = async () => ({
+        ...(await labelColors()),
+        untouched: [...document.querySelectorAll('#diagram [data-diagram-id="C"] *')]
+          .every((element) => !element.style.color && !element.style.fill),
+        halo: getComputedStyle(marked()).filter !== "none",
+      });
+      // Drawn again in each theme, as a theme change draws it.
+      return [await inTheme("vscode-dark", "${DARK_MODERN}", measure),
+        await inTheme("vscode-light", "${LIGHT_MODERN}", measure)];
+    })()`)) as {
+      screen: Record<string, string>;
+      image: Record<string, string>;
+      untouched: boolean;
+      halo: boolean;
+    }[];
+    for (const [theme, measured, text] of [
+      // The theme's background in the dark theme, and its text color in the light theme.
+      ["dark", dark, "rgb(31, 31, 31)"],
+      ["light", light, "rgb(59, 59, 59)"],
+    ] as const) {
+      assert.ok(measured, theme);
+      const { screen, image, ...rest } = measured;
+      assert.deepStrictEqual(rest, { untouched: true, halo: true }, theme);
+      for (const labels of [screen, image]) {
+        // Mermaid's own colors on the theme's fills, the same in a group as out of one.
+        const { Plain, Inside, ...filled } = labels;
+        assert.deepStrictEqual(
+          filled,
+          { Styled: text, "Part 1?": text, "Red text": "rgb(255, 0, 0)", Backend: text },
+          theme,
+        );
+        assert.strictEqual(Inside, Plain, theme);
+      }
+    }
+    // Mermaid's dark theme labels its own fills in light text.
+    assert.notStrictEqual(dark?.screen.Plain, "rgb(31, 31, 31)");
+  });
+
+  test("labels the attributes of an entity that the source fills on the row they are on", async () => {
+    // Mermaid fills every other row in the theme's color still.
+    await draw({
+      source: [
+        "erDiagram",
+        "  CUSTOMER {",
+        "    text name",
+        "    date born",
+        "    int age",
+        "  }",
+        "  style CUSTOMER fill:#7f7",
+        // Filled with a class, and with a single row, which Mermaid draws in the theme's fill.
+        "  ORDER {",
+        "    float total",
+        "  }",
+        "  classDef paid fill:#ff7",
+        "  class ORDER paid",
+      ].join("\n"),
+    });
+    const { screen, image } = (await evaluate(`(async () => {
+      ${IN_THEME}
+      ${LABEL_COLORS}
+      return inTheme("vscode-dark", "${DARK_MODERN}", labelColors);
+    })()`)) as { screen: Record<string, string>; image: Record<string, string> };
+    const [onFill, onTheme] = ["rgb(31, 31, 31)", "rgb(204, 204, 204)"];
+    const expected = {
+      CUSTOMER: onFill,
+      text: onTheme,
+      name: onTheme,
+      date: onFill,
+      born: onFill,
+      int: onTheme,
+      age: onTheme,
+      ORDER: onFill,
+      float: onTheme,
+      total: onTheme,
+    };
+    assert.deepStrictEqual(screen, expected);
+    assert.deepStrictEqual(image, expected);
+  });
+
+  test("labels shapes that the source fills by what fills the point under them", async () => {
+    await draw({
+      source: [
+        "flowchart LR",
+        "  classDef green fill:#7f7",
+        "  classDef faint fill:#fff,opacity:0.2",
+        // Mermaid draws braces as open strokes, which fill next to nothing around their labels.
+        '  a@{ shape: brace, label: "Brace" }',
+        '  b@{ shape: braces, label: "Braces" }',
+        '  c@{ shape: brace-r, label: "Right brace" }',
+        '  d@{ shape: cyl, label: "Cylinder" }',
+        "  class a,b,c,d green",
+        "  P[Plain]",
+        // A translucent fill shows what is under it: the background, or the group around it.
+        "  F[Faint]:::faint",
+        "  subgraph W [White]",
+        "    G[Faint in white]:::faint",
+        "  end",
+        "  style W fill:#fff",
+      ].join("\n"),
+    });
+    const { screen, image } = (await evaluate(`(async () => {
+      ${IN_THEME}
+      ${LABEL_COLORS}
+      return inTheme("vscode-dark", "${DARK_MODERN}", labelColors);
+    })()`)) as { screen: Record<string, string>; image: Record<string, string> };
+    for (const labels of [screen, image]) {
+      const { Plain, ...others } = labels;
+      assert.deepStrictEqual(others, {
+        Brace: Plain,
+        Braces: Plain,
+        "Right brace": Plain,
+        Cylinder: "rgb(31, 31, 31)",
+        // A fifth of white over the background, a dark grey.
+        Faint: "rgb(204, 204, 204)",
+        White: "rgb(31, 31, 31)",
+        "Faint in white": "rgb(31, 31, 31)",
+      });
+    }
+  });
+
+  test("leaves the notes of class diagrams in the theme's colors", async () => {
+    await draw({
+      source: [
+        "classDiagram",
+        "  class Animal",
+        '  note for Animal "Kept as it is"',
+        "  style Animal fill:#7f7",
+      ].join("\n"),
+    });
+    const drawn = (await evaluate(`(async () => {
+      ${IN_THEME}
+      ${LABEL_COLORS}
+      return inTheme("vscode-dark", "${DARK_MODERN}", async () => ({
+        ...(await labelColors()),
+        note: [...document.querySelectorAll('#diagram g.node[id$="-note0"] *')]
+          .filter((element) => element.style.color || element.style.fill && element.matches("text, tspan")).length,
+      }));
+    })()`)) as { screen: Record<string, string>; image: Record<string, string>; note: number };
+    assert.strictEqual(drawn.screen.Animal, "rgb(31, 31, 31)");
+    assert.strictEqual(drawn.image.Animal, "rgb(31, 31, 31)");
+    assert.strictEqual(drawn.note, 0);
+    assert.ok(drawn.screen["Kept as it is"]);
+  });
+
+  test("keeps the link color of links in labels where it is legible on the fill", async () => {
+    await draw({
+      source: [
+        "flowchart LR",
+        "  A[\"Light <a href='https://example.com/a'>docs</a>\"]",
+        "  B[\"Dark <a href='https://example.com/b'>docs</a>\"]",
+        "  style A fill:#7f7",
+        "  style B fill:#036",
+      ].join("\n"),
+    });
+    const colors = await evaluate(`(async () => {
+      ${IN_THEME}
+      return inTheme("vscode-dark", "${DARK_MODERN}", () => Object.fromEntries(["A", "B"].map((id) => {
+        const node = document.querySelector('#diagram [data-diagram-id="' + id + '"]');
+        return [id, {text: getComputedStyle(node.querySelector(".nodeLabel")).color,
+          link: getComputedStyle(node.querySelector("a")).color}];
+      })));
+    })()`);
+    assert.deepStrictEqual(colors, {
+      // The link color does not read on the light green, but does on the dark blue.
+      A: { text: "rgb(31, 31, 31)", link: "rgb(31, 31, 31)" },
+      B: { text: "rgb(204, 204, 204)", link: "rgb(77, 170, 252)" },
+    });
   });
 
   test("shows Mermaid tooltips in the colors of the theme's hovers", async () => {
