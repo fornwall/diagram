@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors, backgrounds and fonts unless the user asks for them: the panel applies the theme and sizing."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors and fonts unless the user asks for them: the panel applies the theme and sizing, and its background follows the VS Code theme. To color items of the current Mermaid diagram, use diagram_style."
             },
             "language": {
               "type": "string",
@@ -862,6 +862,90 @@
               ]
             }
           },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "diagram_style",
+        "displayName": "Color Diagram Items",
+        "toolReferenceName": "diagramStyle",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "userDescription": "Set the fill, border and text colors of nodes, subgraphs, classes, states or ER entities in the Mermaid diagram",
+        "modelDescription": "Color items of the current Mermaid diagram by editing only its style lines: flowchart nodes and subgraphs, classes, states and ER entities. Use only when the user asks for colors. Sets fill, stroke (border) and text colors, keeping other style properties and items; the text color defaults to black or white, whichever reads best on an opaque fill. Call diagram_getState first for exact ids, and for the selection when the user says \"this\". The panel background follows the VS Code theme and cannot be changed. Returns what was styled, unknown ids and the revision.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "styles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Exact Mermaid id of a node, subgraph, class, state or entity, as in the source."
+                  },
+                  "fill": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Background as a CSS color: a name, #rgb, #rrggbb, #rrggbbaa, rgb() or hsl(). null removes it; omit to keep it."
+                  },
+                  "stroke": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Border as a CSS color. null removes it; omit to keep it."
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Label color as a CSS color, or \"auto\" for black or white, whichever contrasts more with the fill; a translucent fill leaves it to the panel. Defaults to \"auto\" with a fill. null removes it; removing the fill removes it too unless given."
+                  },
+                  "clear": {
+                    "type": "boolean",
+                    "description": "true removes the item's whole style line. Give no colors with it."
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Items to color, e.g. [{\"id\": \"pay\", \"fill\": \"green\"}]."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState or the result of the tool call that drew the diagram; the change is refused if the diagram has changed since."
+            }
+          },
+          "required": [
+            "styles"
+          ],
           "additionalProperties": false
         }
       }

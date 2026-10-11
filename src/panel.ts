@@ -42,6 +42,7 @@ import {
   GET_STATE_TOOL,
   RENDER_TOOL,
   type RepeatedName,
+  STYLE_TOOL,
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
@@ -245,6 +246,11 @@ export class DiagramPanel implements vscode.Disposable {
     return this.drawn?.nodeIds;
   }
 
+  /** Whether the panel waits for the page to draw the diagram, whose ids it does not know yet. */
+  get rendering(): boolean {
+    return this.pendingRender !== undefined;
+  }
+
   /** What a model should know about parts of the source that the panel did not draw. */
   get warnings(): readonly string[] {
     return this.drawn?.warnings ?? [];
@@ -254,7 +260,7 @@ export class DiagramPanel implements vscode.Disposable {
    * Describes the current diagram and the user's interactions with it, for a language model.
    * `detail` says how much of a long source and relationship list to give. The model is told to
    * call only the `tools` it has, if not all, and is not told the revision without
-   * diagram_updateChart, which alone takes it.
+   * diagram_updateChart or diagram_style, which alone take it.
    */
   describeForModel({
     detail = "brief",
@@ -283,7 +289,7 @@ export class DiagramPanel implements vscode.Disposable {
       detail,
       tools,
     });
-    return !tools || tools.has(UPDATE_CHART_TOOL)
+    return !tools || tools.has(UPDATE_CHART_TOOL) || tools.has(STYLE_TOOL)
       ? `Revision: ${this.shownRevision}.\n\n${description}`
       : description;
   }
@@ -521,9 +527,14 @@ export class DiagramPanel implements vscode.Disposable {
   /**
    * Shows the current diagram in the webview, and keeps its render error, if any, for later
    * requests. A redraw shows the diagram shown before, in the same revision; to a new page, it
-   * shows a diagram that the page did not finish drawing as failing instead.
+   * shows a diagram that the page did not finish drawing as failing instead. A revision that keeps
+   * the items, such as their colors, keeps their selection too.
    */
-  private async renderCurrent({ redraw = false, newPage = false } = {}): Promise<Drawn> {
+  private async renderCurrent({
+    redraw = false,
+    newPage = false,
+    keepSelection = false,
+  } = {}): Promise<Drawn> {
     const state = this.state;
     const tab = this.webview.tab;
     if (!redraw) {
@@ -571,6 +582,10 @@ export class DiagramPanel implements vscode.Disposable {
       writeTo: state.document && documentName(state.document),
       diagram: this.diagrams,
       notDrawn: newPage && state.error === UNFINISHED ? UNFINISHED : undefined,
+      selection:
+        keepSelection && this.selection.length > 0
+          ? this.selection.map((node) => node.id)
+          : undefined,
     } as const;
     this.sourceRequestId = message.requestId;
     // Preserve new source even if VS Code reloads before the webview answers.
@@ -916,6 +931,60 @@ export class DiagramPanel implements vscode.Disposable {
     return moved ? this.movedBinding(moved) : binding;
   }
 
+  /**
+   * The ids of the nodes the panel has drawn, drawing the diagram again first if the panel does not
+   * know them, as when it was closed. The revision stays the same.
+   */
+  async itemIds(): Promise<readonly string[] | undefined> {
+    const state = this.state;
+    if (state && !this.drawn && !this.pendingRender && !state.error) {
+      const opened = this.webview.reveal(true);
+      await this.renderCurrent({ redraw: true, newPage: opened });
+    }
+    return this.drawnIds;
+  }
+
+  /**
+   * Replaces the Mermaid source of the current revision with an agent's edit that keeps its items,
+   * such as one that colors them, keeping their selection and marks, and the previous source if the
+   * edit fails to render or the token is cancelled. As after an agent's replacement, Apply and Write
+   * to ask before writing it to the document the diagram was opened from; the user's edits stay
+   * theirs.
+   */
+  async editSource(
+    source: string,
+    revision: number,
+    token: vscode.CancellationToken,
+  ): Promise<Drawn> {
+    throwIfCancelled(token);
+    const state = this.state;
+    if (state?.language !== "mermaid" || revision !== this.shownRevision) {
+      throw new Error(
+        `The diagram changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
+      );
+    }
+    if (this.pendingRender) {
+      throw new Error("The diagram is still being drawn. Wait for the current render and retry.");
+    }
+    this.webview.reveal(true);
+    const outcome = await this.showOrKeep(
+      {
+        ...state,
+        source,
+        document: state.document && { ...state.document, replaced: true },
+        origin: "tool",
+      },
+      {
+        table: undefined,
+        keepMarks: true,
+        pickReason: "The diagram changed before the user picked.",
+        token,
+      },
+    );
+    throwIfCancelled(token);
+    return outcome;
+  }
+
   // Charts generated from data.
 
   /** The chart's table, from its inline data if need be; never reads a file or runs a command. */
@@ -960,11 +1029,9 @@ export class DiagramPanel implements vscode.Disposable {
     }
     const { state: next, summary } = withRebuiltChart(state, chart, table, state.chartPresentation);
     this.webview.reveal(true);
-    const outcome = await this.showChart(
+    const outcome = await this.showOrKeep(
       { ...next, title: chart.title ?? state.title, origin: "tool" },
-      table,
-      "The chart changed before the user picked.",
-      token,
+      { table, pickReason: "The chart changed before the user picked.", token },
     );
     throwIfCancelled(token);
     if (!outcome.ok) return outcome;
@@ -1054,11 +1121,10 @@ export class DiagramPanel implements vscode.Disposable {
       const chart = reset ? state.chart : withChartControls(state.chart, controls);
       const kept = reset || message.replaceSource ? undefined : state.chartPresentation;
       this.userChanges++;
-      const outcome = await this.showChart(
-        withRebuiltChart(state, chart, table, kept).state,
+      const outcome = await this.showOrKeep(withRebuiltChart(state, chart, table, kept).state, {
         table,
-        "Chart options changed before the user picked.",
-      );
+        pickReason: "Chart options changed before the user picked.",
+      });
       // Unless the chart was replaced or closed meanwhile, which says nothing about the options.
       if (!outcome.ok && this.state === state && this.webview.tab === tab) {
         throw new Error(`Could not apply the chart options: ${outcome.error}`);
@@ -1090,10 +1156,9 @@ export class DiagramPanel implements vscode.Disposable {
       }
       if (warning) void vscode.window.showWarningMessage(warning);
       this.userChanges++;
-      const outcome = await this.showChart(
+      const outcome = await this.showOrKeep(
         withRebuiltChart(state, chart, table, presentation).state,
-        table,
-        "The chart data was refreshed before the user picked.",
+        { table, pickReason: "The chart data was refreshed before the user picked." },
       );
       if (!outcome.ok && this.state === state && this.webview.tab === tab) {
         void vscode.window.showErrorMessage(`Could not refresh the chart: ${outcome.error}`);
@@ -1187,29 +1252,41 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Shows a chart rebuilt from the table, keeping the current chart if it fails to render or the
-   * token is cancelled, in which case the outcome's error says so.
+   * Shows a revision of the current diagram, such as a chart rebuilt from the table, keeping the
+   * current one if it fails to render or the token is cancelled, in which case the outcome's error
+   * says so. A revision that keeps the items, such as their colors, keeps their marks too.
    */
-  private async showChart(
+  private async showOrKeep(
     next: DiagramState,
-    table: DataTable,
-    pickReason: string,
-    token?: vscode.CancellationToken,
+    {
+      table,
+      keepMarks = false,
+      pickReason,
+      token,
+    }: {
+      table: DataTable | undefined;
+      keepMarks?: boolean;
+      pickReason: string;
+      token?: vscode.CancellationToken | undefined;
+    },
   ): Promise<Drawn> {
-    const { state, chartTable, annotation } = this;
+    const { state, chartTable, annotation, selection } = this;
     const tab = this.webview.tab;
+    const noun = diagramNoun(next.language);
     this.state = next;
     this.chartTable = table;
-    this.selection = [];
-    this.annotation = undefined;
+    if (!keepMarks) {
+      this.selection = [];
+      this.annotation = undefined;
+    }
     this.cancelPick(pickReason);
     const version = this.renderVersion + 1;
     const cancellation = token?.onCancellationRequested(() => {
-      if (this.renderVersion === version) this.cancelRender("The chart update was cancelled.");
+      if (this.renderVersion === version) this.cancelRender(`The ${noun} update was cancelled.`);
     });
     let outcome: Drawn;
     try {
-      outcome = await this.renderCurrent();
+      outcome = await this.renderCurrent({ keepSelection: keepMarks });
     } finally {
       cancellation?.dispose();
     }
@@ -1218,18 +1295,19 @@ export class DiagramPanel implements vscode.Disposable {
     this.state = state;
     this.chartTable = chartTable;
     this.annotation = annotation;
+    if (keepMarks) this.selection = selection;
     await this.store.save(state);
     if (this.renderVersion === version && tab && this.webview.tab === tab) {
       // Draw the kept chart again, also after a page that stopped responding, which may still draw
       // the abandoned chart. Only a chart that failed to render waits for the kept one.
-      const restoring = this.renderCurrent();
+      const restoring = this.renderCurrent({ keepSelection: keepMarks });
       if (!cancelled && !outcome.ok && outcome.kind === "invalid") {
         await (token ? unlessCancelled(() => restoring, token) : restoring);
       }
     }
     return outcome.ok
       ? outcome
-      : { ...outcome, error: `${outcome.error} The previous chart is kept.` };
+      : { ...outcome, error: `${outcome.error} The previous ${noun} is kept.` };
   }
 
   // Export.

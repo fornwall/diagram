@@ -69,12 +69,15 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_readFile` | `#diagramRead` | Read a range of numbered lines from a workspace file, including unsaved edits. |
 | `diagram_inspectData` | `#diagramData` | Show a table's columns, inferred types and up to 20 sample rows without charting it. |
 | `diagram_updateChart` | `#diagramUpdate` | Change the current chart's settings using its loaded data, keeping supported styling. |
+| `diagram_style` | `#diagramStyle` | Set the fill, border and text colors of the nodes, subgraphs, classes, states and ER entities of a Mermaid diagram by editing their `style` lines. |
 
 Workspace tools stay inside the open workspace folders. Finding and searching leave out `.git`, `node_modules`, the files that `files.exclude` and `search.exclude` exclude and, as `search.useIgnoreFiles` sets, those that `.gitignore` files ignore.
 
 `diagram_updateChart` keeps omitted settings, except those that a new `type` cannot use; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update.
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
+
+`diagram_style` colors the nodes and subgraphs of flowcharts, classes, states other than composite ones and ER entities, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, with CSS names, hex, `rgb()` or `hsl()` colors. A fill gets black or white text, whichever contrasts more, unless `text` is given or the fill is translucent, which leaves the text color to the theme. Omitted colors are kept, `null` removes one and `"clear": true` the item's style. The change is part of the source, as the source view and exports show, and like an agent's diagram, Apply and Write to ask before writing it to a Markdown block. The panel background follows your VS Code theme.
 
 `diagram_getImage` gives a PNG of at most 1024 pixels a side: a chart as laid out for the panel, a Mermaid diagram in full. `@diagram` leaves it out for a model that says it does not accept images.
 

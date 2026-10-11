@@ -14,8 +14,10 @@ import {
   READ_FILE_TOOL,
   RENDER_TOOL,
   SEARCH_TEXT_TOOL,
+  STYLE_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { StyleDiagramTool } from "./styleTool";
 import {
   AnnotateDiagramTool,
   GetDiagramImageTool,
@@ -55,6 +57,7 @@ export function activate(context: vscode.ExtensionContext): void {
     cacheIgnoreFiles(),
     vscode.lm.registerTool(INSPECT_DATA_TOOL, new InspectDataTool(panel)),
     vscode.lm.registerTool(UPDATE_CHART_TOOL, new UpdateChartTool(panel)),
+    vscode.lm.registerTool(STYLE_TOOL, new StyleDiagramTool(panel)),
     vscode.commands.registerCommand("diagram.show", () => panel.show()),
     vscode.commands.registerCommand("diagram.export", () => panel.exportDiagram()),
     vscode.commands.registerCommand("diagram.chartOptions", () => panel.toggleChartOptions()),

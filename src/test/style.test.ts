@@ -1,0 +1,625 @@
+import * as assert from "node:assert";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { hexColor, parseColor, readableTextColor, sourceColor } from "../cssColors";
+import { findDiagramFences } from "../fences";
+import {
+  applyStyles,
+  compositeStateIds,
+  diagramKind,
+  isStyleableId,
+  sourceIds,
+  subgraphIds,
+} from "../mermaidStyle";
+import { type StyleInput, validateStyleInput } from "../styleInput";
+import { StyleDiagramTool } from "../styleTool";
+import { afterTest, cancellationSource, tempDir } from "./afterTest";
+import { newFakePanel, newPanel, within } from "./newPanel";
+import { invokeTool } from "./toolText";
+import { suitePage, UNTIL } from "./webviewHarness";
+
+/** Why the input is invalid, which it must be. */
+function problems(input: unknown): string {
+  try {
+    validateStyleInput(input);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return assert.fail(`${JSON.stringify(input)} was accepted`);
+}
+
+suite("CSS colors", () => {
+  test("reads names, hex and functions, and writes them without commas", () => {
+    assert.deepStrictEqual(parseColor("Green"), { r: 0, g: 128, b: 0, a: 1 });
+    assert.deepStrictEqual(parseColor("#0f08"), { r: 0, g: 255, b: 0, a: 136 / 255 });
+    assert.deepStrictEqual(parseColor("rgb(255, 0, 0)"), { r: 255, g: 0, b: 0, a: 1 });
+    assert.deepStrictEqual(parseColor("rgba(0 0 255 / 50%)"), { r: 0, g: 0, b: 255, a: 0.5 });
+    assert.deepStrictEqual(parseColor("rgb(100%, 0%, 0%)"), { r: 255, g: 0, b: 0, a: 1 });
+    assert.strictEqual(sourceColor(" RebeccaPurple "), "rebeccapurple");
+    assert.strictEqual(sourceColor("transparent"), "transparent");
+    assert.strictEqual(sourceColor("#ABC"), "#aabbcc");
+    assert.strictEqual(sourceColor("hsl(120deg 100% 25%)"), "#008000");
+    assert.strictEqual(sourceColor("hsla(0, 100%, 50%, 0.5)"), "#ff000080");
+    assert.strictEqual(sourceColor("hsl(0.5turn 100% 50%)"), "#00ffff");
+    assert.strictEqual(sourceColor("rgb(46 125 50)"), "#2e7d32");
+    assert.strictEqual(hexColor({ r: 1, g: 2, b: 3, a: 1 }), "#010203");
+    for (const invalid of [
+      "",
+      "greenish",
+      "#12",
+      "#12345",
+      "#12345g",
+      "rgb(1, 2)",
+      "rgb(1 2 3 4)",
+      "rgb(1px 2 3)",
+      "hsl(1%, 2%, 3%)",
+      "var(--x)",
+      "url(#x)",
+      "currentColor",
+      "red;fill:blue",
+      "red,stroke:blue",
+      "red\nstyle A fill:blue",
+      "constructor",
+    ]) {
+      assert.strictEqual(parseColor(invalid), undefined, invalid);
+      assert.strictEqual(sourceColor(invalid), undefined, invalid);
+    }
+  });
+
+  test("chooses black or white text, whichever has the better WCAG contrast", () => {
+    const text = (fill: string) => readableTextColor(parseColor(fill) ?? assert.fail(fill));
+    assert.strictEqual(text("green"), "white");
+    assert.strictEqual(text("navy"), "white");
+    assert.strictEqual(text("lime"), "black");
+    assert.strictEqual(text("yellow"), "black");
+    assert.strictEqual(text("#777"), "black");
+    assert.strictEqual(text("#666"), "white");
+  });
+});
+
+suite("diagram_style input", () => {
+  test("gives colors as written to the source, with text chosen for a fill", () => {
+    assert.deepStrictEqual(
+      validateStyleInput({
+        styles: [
+          { id: " pay ", fill: "Green", stroke: "rgb(0, 102, 0)" },
+          { id: "grp", stroke: "#060" },
+          { id: "old", fill: null },
+          { id: "label", text: "AUTO" },
+          { id: "gone", clear: true, fill: null },
+          { id: "own", fill: "red", text: "blue" },
+        ],
+        revision: 7,
+      }),
+      {
+        styles: [
+          { id: "pay", fill: "green", stroke: "#006600", text: "auto" },
+          { id: "grp", stroke: "#006600" },
+          { id: "old", fill: null, text: null },
+          { id: "label", text: "auto" },
+          { id: "gone", clear: true },
+          { id: "own", fill: "red", text: "blue" },
+        ],
+        revision: 7,
+      },
+    );
+    // Some models send null for what they leave out.
+    assert.deepStrictEqual(
+      validateStyleInput({ styles: [{ id: "a", clear: true }], revision: null }),
+      {
+        styles: [{ id: "a", clear: true }],
+      },
+    );
+  });
+
+  test("refuses malformed input, and colors that would write Mermaid syntax", () => {
+    assert.match(problems(undefined), /must be given as an object/);
+    assert.match(problems({ styles: [] }), /non-empty array/);
+    assert.match(problems({ styles: "pay" }), /non-empty array/);
+    const many = Array.from({ length: 51 }, (_, i) => ({ id: `n${i}`, fill: "red" }));
+    assert.match(problems({ styles: many }), /51 items, more than 50/);
+    assert.match(problems({ styles: [{ id: "a", fill: "red" }], colour: 1 }), /"colour"/);
+    assert.match(problems({ styles: [{ id: "a" }] }), /Give "fill", "stroke" or "text"/);
+    assert.match(problems({ styles: [{ id: " ", fill: "red" }] }), /"id" must be/);
+    assert.match(problems({ styles: [{ id: "a", fill: "red", revision: 1 }] }), /"revision"/);
+    assert.match(
+      problems({
+        styles: [
+          { id: "a", fill: "red" },
+          { id: "a", stroke: "red" },
+        ],
+      }),
+      /styled twice/,
+    );
+    assert.match(problems({ styles: [{ id: "a", fill: "red", clear: true }] }), /leave out "fill"/);
+    assert.match(problems({ styles: [{ id: "a", clear: "yes" }] }), /"clear" must be/);
+    assert.match(problems({ styles: [{ id: "a", stroke: "auto" }] }), /"stroke" must be a CSS/);
+    assert.match(problems({ styles: [{ id: "a", fill: 255 }] }), /"fill" must be a CSS color/);
+    assert.match(problems({ styles: [{ id: "a", fill: "red" }], revision: -1 }), /"revision"/);
+    for (const injection of [
+      "red;fill:blue",
+      "red,stroke:blue",
+      "red\n  style B fill:blue",
+      "rgb(1,2,3);x",
+      "red %% comment",
+      `#${"f".repeat(80)}`,
+    ]) {
+      assert.match(problems({ styles: [{ id: "a", fill: injection }] }), /must be a CSS color/);
+      assert.match(problems({ styles: [{ id: "a", text: injection }] }), /must be a CSS color/);
+    }
+  });
+});
+
+suite("Mermaid style lines", () => {
+  const style = (source: string, styles: unknown) =>
+    applyStyles(source, validateStyleInput({ styles }).styles);
+
+  test("finds the diagram type after front matter, comments and directives", () => {
+    assert.deepStrictEqual(diagramKind("---\ntitle: x\n---\n%% hi\ngraph TD\n A"), {
+      keyword: "graph",
+      kind: "flowchart",
+    });
+    assert.strictEqual(
+      diagramKind('%%{\n  init: {"theme": "dark"}\n}%%\nclassDiagram').kind,
+      "class",
+    );
+    assert.strictEqual(diagramKind("stateDiagram-v2\n [*] --> A").kind, "state");
+    assert.strictEqual(diagramKind("erDiagram\n A ||--o{ B : has").kind, "er");
+    assert.deepStrictEqual(diagramKind("sequenceDiagram\n A->>B: hi"), {
+      keyword: "sequenceDiagram",
+      kind: undefined,
+    });
+    assert.strictEqual(diagramKind("constructor\n A").kind, undefined);
+    assert.deepStrictEqual(
+      subgraphIds("flowchart LR\n subgraph pay [Payment]\n A\n end\n subgraph Plain Title\n end"),
+      ["pay"],
+    );
+    assert.deepStrictEqual(
+      compositeStateIds('stateDiagram-v2\n state Comp {\n A\n }\n state "Long" as L {\n }'),
+      ["Comp", "L"],
+    );
+  });
+
+  test("tells ids from the labels that the panel names notes and interfaces by", () => {
+    const states = sourceIds(
+      'stateDiagram-v2\n  %%{init: {"themeVariables": {"x": "Ghost"}}}%%\n  A --> B : Go\n  note right of A : Important\n  note left of B\n    Multi\n  end note\n  %% Comment',
+      "state",
+    );
+    for (const id of ["A", "B"]) assert.ok(states.has(id), id);
+    for (const label of ["Go", "Important", "Multi", "Ghost", "Comment"]) {
+      assert.ok(!states.has(label), label);
+    }
+    const classes = sourceIds(
+      'classDiagram\n  Bird --() Flyable\n  Singing ()-- Bird\n  class Bird {\n    +fly() Wing\n  }\n  note for Bird "Tweets"',
+      "class",
+    );
+    assert.ok(classes.has("Bird"));
+    for (const label of ["Flyable", "Singing", "fly", "Wing", "Tweets"]) {
+      assert.ok(!classes.has(label), label);
+    }
+    assert.ok(isStyleableId("CUSTOMER-ACCOUNT", "er"));
+    assert.ok(!isStyleableId("a.b", "er"));
+    assert.ok(isStyleableId("a.b", "flowchart"));
+    // Mermaid's class parser takes no other ids in a style line, though it declares them.
+    for (const id of ["A-B", "a.b", "Ä"]) assert.ok(!isStyleableId(id, "class"), id);
+    assert.ok(isStyleableId("Parser_2", "class"));
+    // Classes declared in a namespace, and the statements of a one-line flowchart.
+    const spaced = sourceIds(
+      "classDiagram\n  namespace Shapes {\n    class Square {\n      +side int\n    }\n    class Circle\n  }",
+      "class",
+    );
+    for (const id of ["Square", "Circle"]) assert.ok(spaced.has(id), id);
+    assert.ok(!spaced.has("side"));
+    assert.deepStrictEqual([...sourceIds("graph TD;A-->B;", "flowchart")], ["A", "B"]);
+    assert.ok(!isStyleableId("Payment Flow", "flowchart"));
+    assert.ok(!isStyleableId("B (2)", "state"));
+  });
+
+  test("appends a line for a node and a subgraph at the indentation of the diagram's body", () => {
+    const source =
+      "flowchart LR\n  subgraph grp [Group]\n    pay[Pay]\n    style pay stroke:red\n  end\n  pay --> done\n\n";
+    const { source: edited, applied } = style(source, [
+      { id: "done", fill: "green" },
+      { id: "grp", stroke: "#060" },
+    ]);
+    assert.strictEqual(
+      edited,
+      "flowchart LR\n  subgraph grp [Group]\n    pay[Pay]\n    style pay stroke:red\n  end\n  pay --> done\n  style done fill:green,color:white\n  style grp stroke:#006600\n\n",
+    );
+    assert.deepStrictEqual(applied, [
+      { id: "done", fill: "green", stroke: undefined, text: "white", autoText: "contrast" },
+      { id: "grp", fill: undefined, stroke: "#006600", text: undefined },
+    ]);
+  });
+
+  test("replaces a node's lines in place, keeping its other properties and the line breaks", () => {
+    const source =
+      "flowchart LR\r\n  A --> B\r\n  style A fill:#f9f,stroke:#333,stroke-width:4px;\r\n  style A color:red\r\n  style A,B stroke-dasharray:5\r\n";
+    assert.strictEqual(
+      style(source, [{ id: "A", fill: "blue" }]).source,
+      "flowchart LR\r\n  A --> B\r\n  style A fill:blue,stroke:#333,color:white,stroke-width:4px\r\n  style A,B stroke-dasharray:5\r\n",
+    );
+    assert.strictEqual(
+      style(source, [{ id: "A", fill: null }]).source,
+      "flowchart LR\r\n  A --> B\r\n  style A stroke:#333,stroke-width:4px\r\n  style A,B stroke-dasharray:5\r\n",
+    );
+    const cleared = style(source, [{ id: "A", clear: true }]);
+    assert.strictEqual(
+      cleared.source,
+      "flowchart LR\r\n  A --> B\r\n  style A,B stroke-dasharray:5\r\n",
+    );
+    assert.deepStrictEqual(cleared.applied, [{ id: "A", removed: true }]);
+    assert.deepStrictEqual(style(source, [{ id: "B", clear: true }]).applied, [
+      { id: "B", unstyled: true },
+    ]);
+  });
+
+  test("leaves the text color of a translucent fill to the panel", () => {
+    const source = "flowchart LR\n  A\n  style A fill:white,color:black";
+    const { source: edited, applied } = style(source, [{ id: "A", fill: "#ff000080" }]);
+    assert.strictEqual(edited, "flowchart LR\n  A\n  style A fill:#ff000080");
+    assert.strictEqual(applied[0]?.autoText, "theme");
+    assert.strictEqual(
+      style(source, [{ id: "A", fill: "transparent" }]).source,
+      "flowchart LR\n  A\n  style A fill:transparent",
+    );
+  });
+
+  test("appends rather than replace a style statement that others follow on its line", () => {
+    const edge = "flowchart TD\n  style A fill:red; A-->C";
+    assert.strictEqual(
+      style(edge, [{ id: "A", fill: "green" }]).source,
+      `${edge}\n  style A fill:green,color:white`,
+    );
+    const both = "flowchart TD\n  A-->B\n  style A fill:red; style B fill:blue";
+    assert.strictEqual(
+      style(both, [{ id: "A", stroke: "green" }]).source,
+      `${both}\n  style A stroke:green`,
+    );
+    assert.strictEqual(
+      style("graph TD;A-->B;", [{ id: "B", fill: "navy" }]).source,
+      "graph TD;A-->B;\n  style B fill:navy,color:white",
+    );
+    // Such a style cannot be removed by a line after it.
+    const removed = style(both, [{ id: "B", clear: true }]);
+    assert.strictEqual(removed.source, both);
+    assert.match(removed.applied[0]?.problem ?? "", /in a line with other statements/);
+  });
+
+  test("keeps commas in parentheses, and the lines of a label that goes on for several", () => {
+    assert.strictEqual(
+      style("flowchart TD\n  A-->B\n  style A fill:rgb(255,0,0),stroke-width:2px", [
+        { id: "A", stroke: "blue" },
+      ]).source,
+      "flowchart TD\n  A-->B\n  style A fill:rgb(255,0,0),stroke:blue,stroke-width:2px",
+    );
+    const markdown = 'flowchart TD\n  A["`line1\nstyle A fill:red\n`"]-->B';
+    assert.strictEqual(
+      style(markdown, [{ id: "B", fill: "navy" }]).source,
+      `${markdown}\n  style B fill:navy,color:white`,
+    );
+    assert.strictEqual(
+      style(markdown, [{ id: "A", fill: "navy" }]).source,
+      `${markdown}\n  style A fill:navy,color:white`,
+    );
+    assert.deepStrictEqual([...sourceIds(markdown, "flowchart")], ["A", "B"]);
+  });
+
+  test("chooses text for the fill a node has, and says when it has none", () => {
+    const source = "flowchart LR\n  A --> B\n  style A fill:navy";
+    const { source: edited, applied } = style(source, [
+      { id: "A", text: "auto" },
+      { id: "B", text: "auto" },
+    ]);
+    assert.strictEqual(edited, "flowchart LR\n  A --> B\n  style A fill:navy,color:white");
+    assert.match(applied[1]?.problem ?? "", /no fill to choose a text color for/);
+  });
+
+  test("styles classes, states and entities, after front matter and multi-line directives", () => {
+    assert.strictEqual(
+      style("classDiagram\n  class Parser\n  Parser <|-- Json", [{ id: "Parser", fill: "lime" }])
+        .source,
+      "classDiagram\n  class Parser\n  Parser <|-- Json\n  style Parser fill:lime,color:black",
+    );
+    assert.strictEqual(
+      style("---\ntitle: States\n---\nstateDiagram-v2\n[*] --> A\n", [{ id: "A", stroke: "red" }])
+        .source,
+      "---\ntitle: States\n---\nstateDiagram-v2\n[*] --> A\nstyle A stroke:red\n",
+    );
+    const directive =
+      '%%{\n  init: {"theme": "base"}\n}%%\nerDiagram\n    CUSTOMER ||--o{ ORDER : places';
+    assert.strictEqual(
+      style(directive, [{ id: "CUSTOMER", fill: "#123" }]).source,
+      `${directive}\n    style CUSTOMER fill:#112233,color:white`,
+    );
+  });
+});
+
+suite("diagram_style", () => {
+  test("says what it colors, and that there is nothing to color without a diagram", async () => {
+    const panel = newPanel();
+    afterTest(() => panel.dispose());
+    const tool = new StyleDiagramTool(panel);
+    const message = (input: unknown) =>
+      tool.prepareInvocation({ input: input as StyleInput }).invocationMessage;
+    assert.strictEqual(
+      message({ styles: [{ id: "pay", fill: "green" }] }),
+      'Coloring "pay" in the diagram',
+    );
+    assert.strictEqual(
+      message({
+        styles: [
+          { id: "a", clear: true },
+          { id: "b", fill: null, stroke: null, text: null },
+        ],
+      }),
+      'Removing the colors of "a", "b" in the diagram',
+    );
+    const many = ["a", "b", "c", "d"].map((id) => ({ id, fill: "red" }));
+    assert.strictEqual(message({ styles: many }), "Coloring 4 items in the diagram");
+    assert.strictEqual(message({ styles: [] }), "Coloring the diagram");
+    assert.strictEqual(
+      await invokeTool(tool, { styles: [{ id: "pay", fill: "green" }] }),
+      "Nothing was styled: There is no diagram to color. Render one with diagram_render first. Revision: 0.",
+    );
+    assert.match(
+      await invokeTool(tool, { styles: [{ id: "pay", fill: "red;stroke:blue" }] }),
+      /^Nothing was styled, as the input is invalid\. Fix it and call diagram_style again\. Revision: 0\.\n\nInvalid styles:\n- Style 1: "fill" must be a CSS color/,
+    );
+  });
+});
+
+suite("diagram_style in the panel", () => {
+  test("keeps the selection, the marks and the user's edits of the diagram it colors", async () => {
+    const source = "flowchart TD\n  A --> B";
+    const { panel, webview } = await newFakePanel(
+      new Map<string, unknown>([
+        [
+          "diagram.state",
+          { language: "mermaid", source, title: "Flow", origin: "document", editedByUser: true },
+        ],
+      ]),
+    );
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: ["A", "B"],
+          }
+        : undefined;
+    await webview.receive({ type: "ready" });
+    await within(() => panel.drawnIds !== undefined);
+    await webview.select([{ id: "A", label: "A" }]);
+    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info", note: "watch" }], dim: false }).ok);
+    const result = await invokeTool(new StyleDiagramTool(panel), {
+      styles: [{ id: "A", fill: "red" }],
+    });
+    assert.match(result, /^Styled "A"/);
+    assert.deepStrictEqual(webview.render.selection, ["A"]);
+    assert.strictEqual(panel.current?.editedByUser, true);
+    assert.match(
+      panel.describeForModel() ?? "",
+      /The user has selected these nodes in the panel: "A"/,
+    );
+    assert.match(panel.describeForModel() ?? "", /watch/);
+  });
+});
+
+suite("diagram_style in the webview", function () {
+  // The first render loads the webview and the libraries, which can take a while.
+  this.timeout(20_000);
+
+  const page = suitePage();
+  const { evaluate, draw } = page;
+  const style = (input: unknown) => invokeTool(new StyleDiagramTool(page.panel), input);
+  const source = () => page.panel.current?.source ?? "";
+  /** Whether a shape of the item is drawn filled in the color, as CSS computes it. */
+  const filled = (id: string, color: string) =>
+    evaluate(`[...document.querySelectorAll('#diagram [data-diagram-id=${JSON.stringify(id)}] :is(rect, path, polygon, circle)')]
+      .some((shape) => getComputedStyle(shape).fill === ${JSON.stringify(color)})`);
+  const flowchart =
+    "flowchart LR\n  subgraph grp [Group]\n    A[Parser] --> B[Checker]\n  end\n  B --> C[Done]";
+
+  test("colors flowchart nodes and subgraphs, and clears their styles again", async () => {
+    await draw({ source: flowchart });
+    const revision = page.panel.revision;
+    const styled = await style({
+      styles: [
+        { id: "A", fill: "green" },
+        { id: "grp", stroke: "rgb(0, 102, 0)" },
+      ],
+      revision,
+    });
+    assert.strictEqual(
+      styled,
+      `Styled "A" (fill green, text white for contrast), "grp" (stroke #006600).\n\nRevision: ${page.panel.revision}.`,
+    );
+    assert.ok(page.panel.revision > revision);
+    assert.strictEqual(
+      source(),
+      `${flowchart}\n  style A fill:green,color:white\n  style grp stroke:#006600`,
+    );
+    assert.strictEqual(await filled("A", "rgb(0, 128, 0)"), true);
+
+    const cleared = await style({
+      styles: [
+        { id: "A", clear: true },
+        { id: "C", clear: true },
+      ],
+    });
+    assert.match(
+      cleared,
+      /^Removed the style of "A"\. "C" had no style to remove\.\n\nRevision: \d+\.$/,
+    );
+    assert.strictEqual(source(), `${flowchart}\n  style grp stroke:#006600`);
+    assert.strictEqual(await filled("A", "rgb(0, 128, 0)"), false);
+  });
+
+  test("names the ids it does not know, refuses note labels, and styles the others", async () => {
+    await draw({
+      source: "stateDiagram-v2\n  [*] --> A\n  A --> B\n  note right of A : Important",
+    });
+    assert.ok(page.panel.drawnIds?.includes("Important"));
+    const result = await style({
+      styles: [
+        { id: "Important", fill: "red" },
+        { id: "Nope", fill: "red" },
+        { id: "A\nstyle B fill:red", fill: "red" },
+        { id: "B", fill: "yellow" },
+      ],
+    });
+    const [styled, unknown, label, revision] = result.split("\n\n");
+    assert.strictEqual(styled, 'Styled "B" (fill yellow, text black for contrast).');
+    assert.strictEqual(
+      unknown,
+      'These ids are not states of the diagram, so they were not styled: "Nope", "A\\nstyle B fill:red". Its ids are "A", "B".',
+    );
+    assert.match(
+      label ?? "",
+      /^"Important" is a label, not an id in the source.*Notes cannot be colored\.$/,
+    );
+    assert.strictEqual(revision, `Revision: ${page.panel.revision}.`);
+    assert.doesNotMatch(source(), /style (?:Important|Nope|A)\b/);
+    assert.match(source(), /\n {2}style B fill:yellow,color:black$/);
+  });
+
+  test("refuses a stale revision, all items and composite states, saying the revision", async () => {
+    await draw({ source: "stateDiagram-v2\n  state S {\n    A --> B\n  }\n  [*] --> S" });
+    const before = source();
+    const revision = page.panel.revision;
+    assert.strictEqual(
+      await style({ styles: [{ id: "A", fill: "red" }], revision: revision - 1 }),
+      `Nothing was styled: The diagram changed since revision ${revision - 1}. Read diagram_getState and retry with its current revision. Revision: ${revision}.`,
+    );
+    const refused = await style({
+      styles: [
+        { id: "S", fill: "red" },
+        { id: "all", fill: "red" },
+      ],
+    });
+    assert.match(refused, new RegExp(`^Nothing was styled\\. Revision: ${revision}\\.\\n\\n`));
+    assert.match(refused, /"S" is a composite state, which Mermaid draws without colors/);
+    assert.match(refused, /"all" is not an item: give the ids of the states to color/);
+    assert.strictEqual(source(), before);
+    assert.strictEqual(page.panel.revision, revision);
+  });
+
+  test("says that the background follows the theme, still styling the items given", async () => {
+    await draw({ source: flowchart });
+    const result = await style({
+      styles: [
+        { id: "background", fill: "black" },
+        { id: "B", fill: "#ff000080" },
+        { id: "C", fill: "transparent" },
+      ],
+    });
+    assert.match(
+      result,
+      /^Styled "B" \(fill #ff000080, text from the theme\), "C" \(fill transparent, text from the theme\)\.\n\n"background" was not styled: The panel background follows the VS Code theme and can't be changed\. Color the diagram's nodes or subgraphs instead\.\n\nThe fill of "B", "C" is translucent, so no text color was written: the panel picks one that reads on the theme\.\n\nRevision: \d+\.$/,
+    );
+    assert.strictEqual(
+      source(),
+      `${flowchart}\n  style B fill:#ff000080\n  style C fill:transparent`,
+    );
+  });
+
+  test("colors classes and entities, and refuses other diagrams and charts", async () => {
+    await draw({ source: "classDiagram\n  class Parser\n  Parser <|-- Json" });
+    assert.match(await style({ styles: [{ id: "Parser", fill: "navy" }] }), /^Styled "Parser"/);
+    assert.strictEqual(page.panel.current?.error, undefined);
+    assert.strictEqual(await filled("Parser", "rgb(0, 0, 128)"), true);
+
+    await draw({ source: "erDiagram\n  CUSTOMER ||--o{ ORDER : places" });
+    assert.match(await style({ styles: [{ id: "ORDER", fill: "gold" }] }), /^Styled "ORDER"/);
+    assert.strictEqual(page.panel.current?.error, undefined);
+    assert.strictEqual(await filled("ORDER", "rgb(255, 215, 0)"), true);
+
+    const sequence = "sequenceDiagram\n  Alice->>Bob: Hello";
+    await draw({ source: sequence });
+    assert.strictEqual(
+      await style({ styles: [{ id: "Alice", fill: "red" }] }),
+      `Nothing was styled: Coloring isn't supported for sequenceDiagram diagrams. diagram_style colors flowchart nodes and subgraphs, classes, states and ER entities. Revision: ${page.panel.revision}.`,
+    );
+    assert.strictEqual(source(), sequence);
+
+    await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
+    const chart = await style({ styles: [{ id: "background", fill: "red" }] });
+    assert.match(chart, /^Nothing was styled: Coloring isn't supported for charts\./);
+    assert.match(chart, /background follows the VS Code theme/);
+    assert.doesNotMatch(chart, /nodes/);
+  });
+
+  test("keeps the items selected in the page, also of a one-line flowchart", async () => {
+    await draw({ source: "graph TD;A-->B;" });
+    await evaluate(`document.querySelector('#diagram [data-diagram-id="A"][tabindex]')
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+    const selected = () =>
+      /selected these nodes in the panel: "A"/.test(page.panel.describeForModel() ?? "");
+    assert.ok(await within(selected), "A is selected");
+    assert.match(await style({ styles: [{ id: "B", fill: "navy" }] }), /^Styled "B"/);
+    assert.strictEqual(source(), "graph TD;A-->B;\n  style B fill:navy,color:white");
+    // The page clears the selection of the new drawing, and then selects A again.
+    await evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => document.querySelector('#diagram [data-diagram-id="A"].diagram-selected'),
+        "A selected again");
+    })()`);
+    assert.ok(await within(selected), "A stays selected");
+  });
+
+  test("keeps the diagram and its marks when the edit fails to render", async () => {
+    await draw({ source: flowchart });
+    const marked = page.panel.annotate({
+      marks: [{ id: "A", kind: "problem", note: "slow" }],
+      dim: false,
+    });
+    assert.ok(marked.ok);
+    const outcome = await page.panel.editSource(
+      `${flowchart}\n  A --> -->`,
+      page.panel.revision,
+      cancellationSource().token,
+    );
+    assert.ok(!outcome.ok && outcome.kind === "invalid", JSON.stringify(outcome));
+    assert.match(outcome.error, /The previous diagram is kept\.$/);
+    assert.strictEqual(source(), flowchart);
+    assert.strictEqual(page.panel.current?.error, undefined);
+    assert.match(page.panel.describeForModel() ?? "", /slow/);
+    // The kept diagram is drawn again, and still takes styles.
+    assert.match(await style({ styles: [{ id: "A", fill: "red" }] }), /^Styled "A"/);
+    assert.match(page.panel.describeForModel() ?? "", /slow/);
+  });
+
+  test("leaves a diagram opened from Markdown to Apply or Write to, as other agents' changes", async () => {
+    const file = path.join(tempDir("diagram-style-"), "notes.md");
+    const markdown = `# Notes\n\n\`\`\`mermaid\n${flowchart}\n\`\`\`\n`;
+    fs.writeFileSync(file, markdown);
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+    const [fence] = findDiagramFences(document.getText());
+    assert.ok(fence);
+    const opened = await page.panel.render(
+      {
+        language: "mermaid",
+        source: fence.source,
+        title: "Notes",
+        document: { uri: document.uri.toString(), fence },
+      },
+      "document",
+    );
+    assert.ok(opened.ok);
+    try {
+      const result = await style({ styles: [{ id: "C", fill: "green" }] });
+      assert.match(
+        result,
+        /^Styled "C".*\n\nThe diagram was opened from a code block in notes\.md\. The change is in the panel only, until the user writes it to that file with Apply or Write to\.\n\nRevision: \d+\.$/,
+      );
+      assert.strictEqual(document.getText(), markdown);
+      assert.strictEqual(page.panel.current?.document?.replaced, true);
+    } finally {
+      // The next Mermaid diagram of the suites would keep the binding.
+      await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
+    }
+  });
+});

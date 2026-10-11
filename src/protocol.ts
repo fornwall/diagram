@@ -14,6 +14,7 @@ export const SEARCH_TEXT_TOOL = "diagram_searchText";
 export const READ_FILE_TOOL = "diagram_readFile";
 export const INSPECT_DATA_TOOL = "diagram_inspectData";
 export const UPDATE_CHART_TOOL = "diagram_updateChart";
+export const STYLE_TOOL = "diagram_style";
 
 /** Mermaid source or an ECharts option written as JSON or JavaScript. */
 export const DIAGRAM_LANGUAGES = ["mermaid", "echarts"] as const;
@@ -175,6 +176,8 @@ export type ToWebview =
       diagram: number;
       /** Why the page shows this error rather than draw the source, which may hang it. */
       notDrawn?: string | undefined;
+      /** The ids of the items to select again once drawn, by a revision that keeps its items. */
+      selection?: string[] | undefined;
     }
   /** The saved chart omitted its large source; ask the user to refresh its data. */
   | { type: "needsRefresh"; title: string; refreshFrom?: string | undefined }

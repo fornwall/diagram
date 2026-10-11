@@ -23,6 +23,7 @@ import {
   READ_FILE_TOOL,
   RENDER_TOOL,
   SEARCH_TEXT_TOOL,
+  STYLE_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { joinWords } from "./text";
@@ -53,8 +54,9 @@ const DEFAULT_TOOLS = new Set([
   ANNOTATE_TOOL,
   INSPECT_DATA_TOOL,
   UPDATE_CHART_TOOL,
+  STYLE_TOOL,
 ]);
-const DRAWING_TOOLS = new Set([RENDER_TOOL, CHART_TOOL, UPDATE_CHART_TOOL]);
+const DRAWING_TOOLS = new Set([RENDER_TOOL, CHART_TOOL, UPDATE_CHART_TOOL, STYLE_TOOL]);
 
 /** What the tool calls of a request used and did, across its rounds and repairs. */
 interface ToolUse {

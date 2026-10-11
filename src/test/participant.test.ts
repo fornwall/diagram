@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { ChartTool, UpdateChartTool } from "../chartTools";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
+import { StyleDiagramTool } from "../styleTool";
 import { drawnResult } from "../tools";
 import { afterTest, cancellationSource, replace, workspaceRoot } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
@@ -35,6 +36,7 @@ const defaultTools = [
   "diagram_readFile",
   "diagram_render",
   "diagram_searchText",
+  "diagram_style",
   "diagram_updateChart",
 ];
 const readOnlyTools = [
@@ -877,6 +879,43 @@ suite("participant", () => {
     assert.strictEqual(result, undefined);
     assert.strictEqual(panel.current?.origin, "tool");
     assert.strictEqual(panel.current?.chart?.type, "bar");
+  });
+
+  test("adopts the diagram that diagram_style colored, and not one that it left alone", async () => {
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: ["A", "B"],
+          }
+        : undefined;
+    const tool = new StyleDiagramTool(panel);
+    replace(vscode.lm, "invokeTool", async (name, options, token) => {
+      assert.strictEqual(name, "diagram_style");
+      return tool.invoke(
+        options as vscode.LanguageModelToolInvocationOptions<never>,
+        token ?? new vscode.CancellationTokenSource().token,
+      );
+    });
+    const source = "flowchart TD\n  A --> B";
+    await panel.render({ language: "mermaid", source, title: "Flow" }, "tool");
+    const style = (id: string) =>
+      new vscode.LanguageModelToolCallPart("1", "diagram_style", {
+        styles: [{ id, fill: "red" }],
+      });
+    const unknown = await ask([[style("C")], [text("There is no C.")]]);
+    assert.match(messageText(unknown.sent[1]?.messages.at(-1)), /^Nothing was styled\. Revision/);
+    assert.strictEqual(unknown.result, undefined);
+    assert.strictEqual(panel.current?.origin, "tool");
+
+    const { result } = await ask([[style("A")], [text("Colored A.")]]);
+    assert.strictEqual(panel.current?.origin, "participant");
+    assert.deepStrictEqual(result?.metadata, {
+      language: "mermaid",
+      source: `${source}\n  style A fill:red,color:black`,
+    });
   });
 
   test("lists the workspace files that its tool calls read as references, once each", async () => {

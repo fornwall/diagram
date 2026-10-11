@@ -398,7 +398,7 @@ function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | un
 
 const MAX_LISTED_IDS = 40;
 
-function idList(ids: readonly string[]): string {
+export function idList(ids: readonly string[]): string {
   const listed = quoteAll(ids.slice(0, MAX_LISTED_IDS));
   const left = ids.length - MAX_LISTED_IDS;
   return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
@@ -436,8 +436,9 @@ export function textResult(text: string): vscode.LanguageModelToolResult {
 
 /**
  * The result of a tool call that drew in the panel, also if the drawing failed, ending with the
- * revision drawn: the model can pass it to diagram_updateChart, and @diagram tells by it the
- * drawings of its own tool calls from those of other chat requests meanwhile.
+ * revision drawn: the model can pass it to the tools that take one, such as diagram_updateChart,
+ * and @diagram tells by it the drawings of its own tool calls from those of other chat requests
+ * meanwhile.
  */
 export function drawnResult(text: string, revision: number): vscode.LanguageModelToolResult {
   return textResult(`${text}\n\nRevision: ${revision}.`);
