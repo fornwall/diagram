@@ -123,9 +123,17 @@ function isNodeLinks(value: unknown): value is NodeLinks {
       (link) =>
         isPlainObject(link) &&
         typeof link.file === "string" &&
-        (link.line === undefined || Number.isSafeInteger(link.line)) &&
-        (link.endLine === undefined || Number.isSafeInteger(link.endLine)),
+        link.file.trim().length > 0 &&
+        (link.line === undefined || validLine(link.line)) &&
+        (link.endLine === undefined ||
+          (validLine(link.line) && validLine(link.endLine) && link.endLine >= link.line)),
     )
+  );
+}
+
+function validLine(value: unknown): value is number {
+  return (
+    typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value < 10_000_000
   );
 }
 

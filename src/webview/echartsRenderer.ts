@@ -673,6 +673,10 @@ export class EChartsRenderer implements Renderer {
       height > 0 &&
       (this.chart.getWidth() !== width || this.chart.getHeight() !== height)
     ) {
+      // A media query can replace the data during resize even when our layout is unchanged.
+      if (Array.isArray(this.option?.media) && this.option.media.length > 0) {
+        this.chartItems = undefined;
+      }
       this.chart.resize({ width, height });
     }
   }

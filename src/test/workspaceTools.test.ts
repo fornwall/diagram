@@ -246,6 +246,55 @@ suite("workspaceTools", function () {
     assert.ok(searched?.includes("**/*.log"), String(searched));
   });
 
+  test("reads no ignore file through a link outside the workspace", async function () {
+    if (process.platform === "win32") this.skip();
+    onlyTestFolder();
+    await fs.writeFile(path.join(outside, ".gitignore"), "*.ts\n");
+    await make(".gitignore", path.join(outside, ".gitignore"));
+    await make("external", outside);
+    const findFiles = vscode.workspace.findFiles;
+    replace(vscode.workspace, "findFiles", (include, ...rest) =>
+      include instanceof vscode.RelativePattern && include.pattern === "**/.gitignore"
+        ? Promise.resolve([vscode.Uri.file(path.join(dir, "external", ".gitignore"))])
+        : findFiles(include, ...rest),
+    );
+    const readFile = vscode.workspace.fs.readFile;
+    const reads: string[] = [];
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: (uri) => {
+        reads.push(uri.fsPath);
+        return readFile(uri);
+      },
+    });
+    assert.strictEqual(await invoke(finder, { glob: "*.ts" }), "code.ts");
+    assert.deepStrictEqual(reads, []);
+  });
+
+  test("reads ignore files linked within the workspace", async function () {
+    if (process.platform === "win32") this.skip();
+    onlyTestFolder();
+    const file = await writeFile("rules.ignore", "*.ts\n");
+    await make(".gitignore", file);
+    assert.match(await invoke(finder, { glob: "*.ts" }), /^No files match/);
+  });
+
+  test("skips oversized ignore files before reading them", async () => {
+    onlyTestFolder();
+    const file = await writeFile(".gitignore", `*.ts\n${"#".repeat(1024 * 1024)}`);
+    const readFile = vscode.workspace.fs.readFile;
+    const reads: string[] = [];
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: (uri) => {
+        reads.push(uri.fsPath);
+        return readFile(uri);
+      },
+    });
+    assert.strictEqual(await invoke(finder, { glob: "*.ts" }), "code.ts");
+    assert.ok(!reads.includes(file), "must check the size before reading");
+  });
+
   test("finds files where the ignore files ignore more than a search can exclude", async () => {
     onlyTestFolder();
     // Excluded in full, these would make arguments of ripgrep too long to start it with.

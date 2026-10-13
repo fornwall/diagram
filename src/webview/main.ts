@@ -352,8 +352,9 @@ async function render(message: RenderMessage): Promise<void> {
   // A revision that keeps its items, such as one that colors them, keeps their selection.
   const kept = message.selection && active?.drawnNodes?.();
   if (kept) {
+    const ids = new Set(message.selection);
     for (const node of kept) {
-      if (message.selection?.includes(node.id)) selection.set(node.id, node);
+      if (ids.has(node.id)) selection.set(node.id, node);
     }
     if (selection.size > 0) selectionChanged();
   }

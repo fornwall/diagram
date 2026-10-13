@@ -124,6 +124,21 @@ suite("panelState", () => {
     }
   });
 
+  test("discards saved links with invalid line ranges or empty paths", () => {
+    for (const link of [
+      { file: " " },
+      { file: "a.ts", line: 0 },
+      { file: "a.ts", line: -1 },
+      { file: "a.ts", line: 10_000_000 },
+      { file: "a.ts", line: 2, endLine: 1 },
+      { file: "a.ts", endLine: 1 },
+    ]) {
+      assert.deepStrictEqual(load({ ...state, links: { A: link } }), state);
+    }
+    const links = { A: { file: "a.ts", line: 1, endLine: 9_999_999 } };
+    assert.deepStrictEqual(load({ ...state, links }), { ...state, links });
+  });
+
   test("a large chart of a file is saved without its option, unless edited by hand", async () => {
     const saved: unknown[] = [];
     const store = new StateStore(memento(async (value) => void saved.push(value)));

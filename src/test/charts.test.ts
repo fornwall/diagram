@@ -1091,6 +1091,10 @@ suite("charts", () => {
     assert.deepStrictEqual(sums("k,n\na,0.1\na,0.2\na,-0.3\nb,0\nb,0\nb,0", "mean"), [0, 0]);
     assert.deepStrictEqual(sums("k,n\na,0.1\na,0.2\na,-0.3"), [0]);
     assert.deepStrictEqual(sums("k,n\na,10000000000\na,0.37\na,-10000000000"), [0.37]);
+    assert.deepStrictEqual(sums("k,n\na,1e16\na,1\na,-1e16"), [1]);
+    assert.deepStrictEqual(sums("k,n\na,1e16\na,1\na,-1e16", "mean"), [0.333333333333]);
+    const small = ["k,n", "a,1e16", ...Array.from({ length: 1000 }, () => "a,1"), "a,-1e16"];
+    assert.deepStrictEqual(sums(small.join("\n")), [1000]);
     const many = ["k,n", "a,10000000000", ...Array.from({ length: 1000 }, () => "a,0.04")];
     assert.deepStrictEqual(sums(many.join("\n")), [10000000040]);
     const cells = build(chart("heatmap"), "row,column,value\na,x,0.1\na,x,0.2\na,x,-0.3");
@@ -1153,8 +1157,16 @@ suite("charts", () => {
       ).series[0].data;
     for (const aggregate of ["mean", "median"] as const) {
       assert.deepStrictEqual(grouped([maximum, maximum], aggregate), [maximum]);
+      assert.deepStrictEqual(grouped([maximum, maximum, maximum], aggregate), [maximum]);
       assert.deepStrictEqual(grouped([-maximum, maximum], aggregate), [0]);
       assert.deepStrictEqual(grouped([maximum, maximum, -maximum, -maximum], aggregate), [0]);
+      assert.deepStrictEqual(grouped([Number.MIN_VALUE, Number.MIN_VALUE], aggregate), [
+        Number.MIN_VALUE,
+      ]);
+    }
+    assert.deepStrictEqual(grouped([maximum, 1, -maximum], "mean"), [0.333333333333]);
+    for (const tiny of [2 * Number.MIN_VALUE, 3 * Number.MIN_VALUE]) {
+      assert.deepStrictEqual(grouped([maximum, tiny, -maximum], "mean"), [Number.MIN_VALUE]);
     }
     const boxplot = build(chart("boxplot"), "group,value\na,-1e308\na,1e308");
     assert.deepStrictEqual(boxplot.series[0].data, [[-1e308, -5e307, 0, 5e307, 1e308]]);

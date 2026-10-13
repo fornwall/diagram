@@ -177,12 +177,14 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
         ? { large: true }
         : {}),
       ...(series.length > 1 ? { emphasis: { focus: "series" } } : {}),
-      data: values.flatMap((value, index) => {
-        if (times === undefined) return [value];
-        if (value === null && ownTimes) return [];
-        const time = times[index];
-        return [horizontal ? [value, time] : [time, value]];
-      }),
+      data:
+        times === undefined
+          ? values
+          : values.flatMap((value, index) => {
+              if (value === null && ownTimes) return [];
+              const time = times[index];
+              return [horizontal ? [value, time] : [time, value]];
+            }),
     })),
   };
 }

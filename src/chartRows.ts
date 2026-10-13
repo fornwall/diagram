@@ -86,31 +86,47 @@ function decimalsOf(value: number): number {
 
 /**
  * A sum of numbers that shows no more decimals than they have, as 0.3 for 0.1 + 0.2 rather than
- * 0.30000000000000004, and 0 for 0.1 + 0.2 - 0.3: added up exactly, and rounded once finished. A
- * sum of one number is that number.
+ * 0.30000000000000004, and 0 for 0.1 + 0.2 - 0.3. Compensation retains small values lost when
+ * adding numbers of different magnitudes; decimal rounding happens only once finished.
  */
 export class Sum {
   private exact = 0;
+  private correction = 0;
   private decimals = 0;
 
   add(value: number | Sum): this {
-    const [exact, decimals] =
-      value instanceof Sum ? [value.exact, value.decimals] : [value, decimalsOf(value)];
-    this.exact += exact;
-    if (!Number.isFinite(this.exact)) {
+    if (value instanceof Sum) {
+      const { exact, correction, decimals } = value;
+      this.accumulate(exact);
+      this.accumulate(correction);
+      this.decimals = Math.max(this.decimals, decimals);
+    } else {
+      this.accumulate(value);
+      this.decimals = Math.max(this.decimals, decimalsOf(value));
+    }
+    return this;
+  }
+
+  private accumulate(value: number): void {
+    const next = this.exact + value;
+    this.correction +=
+      Math.abs(this.exact) >= Math.abs(value)
+        ? this.exact - next + value
+        : value - next + this.exact;
+    if (!Number.isFinite(next + this.correction)) {
       throw new Error(
         "The chart's total exceeds the numeric range. Rescale the values before charting them.",
       );
     }
-    this.decimals = Math.max(this.decimals, decimals);
-    return this;
+    this.exact = next;
   }
 
   get value(): number {
+    const total = this.exact + this.correction;
     // Beyond what toFixed writes out, a number has no leftovers to round off.
-    return this.decimals > 20 || Math.abs(this.exact) >= 1e21
-      ? this.exact
-      : Number(this.exact.toFixed(this.decimals));
+    return this.decimals > 20 || Math.abs(total) >= 1e21
+      ? total
+      : Number(total.toFixed(this.decimals));
   }
 }
 
@@ -262,12 +278,15 @@ const COMBINE: Record<Exclude<Aggregation, "count">, (values: number[]) => numbe
   sum: (values) => values.reduce((sum, value) => sum.add(value), new Sum()).value,
   mean: (values) => {
     const { length } = values;
-    // Dividing first keeps a mean of numbers whose sum overflows finite.
-    return withoutNoise(
-      Number.isFinite(values.reduce((sum, value) => sum + value, 0))
-        ? COMBINE.sum(values) / length
-        : values.reduce((mean, value) => mean + value / length, 0),
-    );
+    try {
+      return withoutNoise(COMBINE.sum(values) / length);
+    } catch {
+      // The mean can be finite even when its sum overflows. Scale only then, to preserve
+      // tiny values when large observations cancel, and use a power of two to avoid noise.
+    }
+    const divisor = 2 ** Math.ceil(Math.log2(length));
+    const sum = values.reduce((sum, value) => sum.add(value / divisor), new Sum()).value;
+    return withoutNoise(sum / (length / divisor));
   },
   min: (values) => values.reduce((min, value) => Math.min(min, value)),
   max: (values) => values.reduce((max, value) => Math.max(max, value)),

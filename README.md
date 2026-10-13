@@ -21,36 +21,38 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 
 | Action | How |
 | --- | --- |
-| Select | Click an item, such as a node, edge, sequence message or chart item; Ctrl/Cmd+click or Shift+click adds it to the selection or removes it. If the item has a link, or the agent set a click prompt, a plain click opens the link or asks in chat instead. Clicking a treemap or sunburst item also zooms into it. |
-| Keyboard | Tab to the drawing, move with the arrow keys (Home/End: first/last) and press Enter or Space to click; with Ctrl/Cmd or Shift, to add to or remove from the selection. Escape closes a menu of links, Chart Options and a chart's data view. In charts, the arrow keys along the category axis follow a series and the others change series; pie slices go round, trees go to parent/child (←/→) and siblings (↑/↓), and scatter, graph and sankey items to the nearest one. Enter also expands or collapses a tree node and zooms in on or drills down into a treemap or sunburst node, as a click does; Backspace goes back up. H hides the focused series or pie slice, as a click on its legend entry does; Shift+H shows them all again. |
-| Highlight a path | Select two nodes of a flowchart, swimlane, agent flow or state diagram in order (start, then destination), then **Highlight Path** to select a shortest path and its edges. It follows arrows, takes plain lines and double arrows both ways, skips invisible links, and breaks ties in source order. |
-| Ask | Type a question or change in the message box and press **Send to chat**, regarding your selection, if any. It goes to `@diagram`, or, when another agent drew the diagram, to chat without a mention. |
+| Select | Click a node, edge, sequence message or chart item. Ctrl/Cmd+click or Shift+click toggles it in the selection. A plain click follows an item's link or click prompt, if set, and zooms into treemap and sunburst items. |
+| Keyboard | Tab to the drawing; use arrows to move, Home/End for first/last, and Enter/Space to click. Add Ctrl/Cmd or Shift to toggle selection. Backspace goes up a treemap or sunburst; H hides the focused series or pie slice, and Shift+H restores all. Escape closes menus, Chart Options and the data view. |
+| Highlight a path | Select a start and destination in a flowchart, swimlane, agent flow or state diagram, then **Highlight Path**. It selects a shortest path following arrows, traversing plain lines and double arrows both ways, and skipping invisible links. Ties follow source order. |
+| Ask | Type a question or change and press **Send to chat**. The request includes your selection and goes to `@diagram`, or to chat without a mention if another agent drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
-| Edit | Show the source with the view buttons at the top right. **Apply** (Ctrl/Cmd+Enter) renders your edits; **Revert** discards them, which Undo (Ctrl/Cmd+Z) takes back, unless Revert puts back too much to undo quickly, such as many lines of a large source. Unapplied edits survive view changes and incoming diagrams. Errors show their line and column, a link to that place in the source. A title taken from the source, rather than given by an agent, follows edits of it, such as of a front matter `title`. |
+| Edit | Use the view buttons to show source. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. Render errors link to their source location. Titles inferred from source follow your edits. |
 | Find | Ctrl/Cmd+F finds text in the drawing and the source. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
-| Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to change a chart made from data. Enter in any of its fields, also a list box or the checkbox, applies the options. |
+| Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to configure a chart made from data. Enter applies the options. |
 | Refresh | Reload file or command data, keeping styling made in the JSON source. Manual changes to the data, structure or JavaScript of the source must be reverted or reset first. |
-| Export | Use the editor title bar, the drawing's context menu or **Diagram: Export…** to save PNG, SVG or, for charts, an interactive offline HTML page. A diagram opened from a Markdown file, also a read-only one, is saved beside it, or in the folder within its folder where you last saved one, unless its folder cannot be written to, as for a Git revision. |
+| Export | Use the editor title bar, drawing's context menu or **Diagram: Export…** to save PNG, SVG or an offline interactive HTML chart. Exports default to the Markdown file's folder when writable, or the subfolder you last exported to. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
-| Open links | Click an underlined node to open the file it links to, or the http, https or mailto URL of its Mermaid `click` directive, label link or sequence diagram actor `link`. An actor with several `links` offers a menu. VS Code asks before opening an untrusted website. |
-| Zoom and pan | Mermaid: the zoom buttons (the percentage between them toggles between fit and actual size), Ctrl/Cmd with +, - and 0, Ctrl/Cmd+scroll, pinching on a trackpad and dragging. A new diagram fits the panel; a revision keeps the zoom. Charts fit the panel. |
+| Open links | Click an underlined node to open its linked file or http, https or mailto URL. Sequence actors with several links offer a menu. VS Code asks before opening an untrusted website. |
+| Zoom and pan | For Mermaid, use the zoom buttons, Ctrl/Cmd with +, - or 0, Ctrl/Cmd+scroll, trackpad pinching or dragging. The percentage toggles fit/actual size. New diagrams fit the panel; revisions keep your zoom. Charts resize to fit. |
 
-Images keep the theme and drop links; Mermaid images also drop the selection and marks. A PNG has up to twice the drawing's resolution and records it, so documents show it at the drawing's size. Mermaid SVGs put their styles on each element, as apps such as Figma and Office need.
+Images keep the theme and omit links. Mermaid images also omit selection and marks. PNGs use up to twice the drawing's resolution, with size metadata for documents. Mermaid SVGs use inline styles for apps such as Figma and Office.
 
-Chart Options uses the loaded data without rerunning commands. After VS Code restarts, press **Refresh** to load file or command data again; charts of inline data stay configurable. **Reset styling** removes manual presentation changes, reloading data if needed. To discard source edits that Chart Options cannot keep, check **Replace manual source edits with the generated chart** first.
+Chart Options reuses loaded data without rerunning commands. After a VS Code restart, **Refresh** reloads file or command data; inline data stays available. **Reset styling** removes manual presentation changes and reloads data if needed. To discard incompatible source edits, check **Replace manual source edits with the generated chart**.
+
+In charts, arrows follow categories and series. Trees use ←/→ for parent/child and ↑/↓ for siblings; scatter, graph and sankey charts move to the nearest item. Enter expands tree nodes or zooms into treemaps and sunbursts.
 
 Diagrams follow your VS Code theme. Agents can mark items with notes, for example to walk you through a diagram.
 
-Charts leave out the toolbox's chart type switch, box zoom and brush, as laying the chart out again on a resize would undo them, and show its data view read-only. In a panel too short to read the plot, a chart gives up, in turn, its visual map below it, its zoom slider (zoom with the wheel and drag in the plot instead), its subtitle and its title.
+Charts provide a read-only data view. Toolbox chart-type switching, box zoom and brush are disabled because resizing would undo them. In short panels, charts progressively hide the visual map, zoom slider, subtitle and title to preserve room for the plot; wheel zoom and dragging remain available.
 
 ## Edit Markdown diagrams
 
-Click **Open in Diagram** above a `mermaid` or `echarts` code block, in any case, or a `::: mermaid` container as in Azure DevOps wikis, including blocks in block quotes and list items, or use **Diagram: Open Diagram at Cursor** from the Command Palette or the context menu of an editor with a diagram. As in VS Code's Markdown preview, a code block is Mermaid if its language contains a word of the `markdown-mermaid.languages` setting, such as `mermaid`. Set `diagram.codeLens.enabled` to `false` to hide **Open in Diagram**.
+Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. Language names are case-insensitive; Azure DevOps `::: mermaid` containers, block quotes and list items are supported. Mermaid language aliases follow `markdown-mermaid.languages`. Set `diagram.codeLens.enabled` to `false` to hide the links above blocks.
 
-**Apply** renders your edits and writes them to the block, keeping its fences, block quote markers, indentation and the surrounding text. The file is changed but not saved, and the change can be undone. A diagram that fails to render is not written; your edits stay in the panel. If the block changed or cannot be found safely, it is not written: copy your version from the warning to paste it into the block, or reopen the block, which replaces your version in the panel.
+**Apply** renders your edits and updates the block, preserving fences, indentation, quote markers and surrounding text. Changes are undoable and are not saved automatically. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block to continue.
 
-**Write to** writes the diagram shown, such as one an agent drew in its place in the same language, which Apply and Write to ask before writing. A diagram in the other language, Mermaid or ECharts, detaches the panel from the block. A diagram of a read-only file, such as a Git revision or one that `files.readonlyInclude` matches, opens to view and edit in the panel only, without writing to the file.
+**Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before **Apply** or **Write to** writes them. Switching between Mermaid and ECharts detaches the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
 
 ## Tools for agents
 
@@ -71,27 +73,27 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_updateChart` | `#diagramUpdate` | Change the current chart's settings using its loaded data, keeping supported styling. |
 | `diagram_style` | `#diagramStyle` | Set the fill, border and text colors of the nodes, subgraphs, classes, states and ER entities of a Mermaid diagram by editing their `style` lines. |
 
-Workspace tools stay inside the open workspace folders. Finding and searching leave out `.git`, `node_modules`, the files that `files.exclude` and `search.exclude` exclude and, as `search.useIgnoreFiles` sets, those that `.gitignore` files ignore.
+Workspace tools stay within open workspace folders. Find and search respect `files.exclude`, `search.exclude` and `search.useIgnoreFiles`, and always exclude `.git` and `node_modules`.
 
-`diagram_updateChart` keeps omitted settings, except those that a new `type` cannot use; `null` clears one. With the revision that `diagram_getState` or the drawing tools report, it refuses to change a chart changed since; the panel reloading is no change. Manual source edits that it cannot keep block the update.
+`diagram_updateChart` keeps omitted settings unless the new chart type cannot use them; `null` clears a setting. Pass the revision from `diagram_getState` to reject stale updates. Incompatible manual source edits block the update.
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
 
-`diagram_style` colors the nodes and subgraphs of flowcharts, classes, states other than composite ones and ER entities, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, with CSS names, hex, `rgb()` or `hsl()` colors. A fill gets black or white text, whichever contrasts more, unless `text` is given or the fill is translucent, which leaves the text color to the theme. Omitted colors are kept, `null` removes one and `"clear": true` the item's style. The change is part of the source, as the source view and exports show, and like an agent's diagram, Apply and Write to ask before writing it to a Markdown block. The panel background follows your VS Code theme.
+`diagram_style` accepts CSS colors, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, for flowchart nodes and subgraphs, classes, noncomposite states and ER entities. Opaque fills get contrasting black or white text unless you specify `text`; translucent fills use theme text. Omitted colors stay, `null` removes one, and `"clear": true` removes the item's style. Changes appear in source and exports; writing them to Markdown requires confirmation. The panel background follows the VS Code theme.
 
 `diagram_getImage` gives a PNG of at most 1024 pixels a side: a chart as laid out for the panel, a Mermaid diagram in full. `@diagram` leaves it out for a model that says it does not accept images.
 
-Relationships are marked by the `edge:` or `message:` ids that `diagram_getState` lists. They tell parallel edges and repeated messages apart, and stay the same when the diagram is redrawn, but may change when its source does. Chart items that share a name, such as "Yes" in several stages of a sankey, are marked by the ids it lists for them.
+Use the `edge:` and `message:` ids from `diagram_getState` to distinguish parallel edges and repeated messages. These ids survive redraws but may change with the source. The tool also supplies ids for chart items with duplicate names.
 
-Both rendering tools take a `clickPrompt`, such as `"Explain {label} in more detail"`, which a click on an item sends to chat. For Mermaid, `diagram_render` also takes code links, such as `{"parse": "src/parser.ts#L42", "check": "src/checker.ts#L10-L30"}`, and leaves out links to missing workspace files. A link takes priority over the click prompt.
+Both rendering tools accept a `clickPrompt`, e.g. `"Explain {label} in more detail"`. Mermaid also accepts code links such as `{"parse": "src/parser.ts#L42"}`; missing workspace files are omitted. Links take priority over click prompts.
 
 ## Data access and security
 
-VS Code asks before a tool runs a command, reading a data file outside the workspace (also each time **Refresh** reads it again), or opening a linked file outside it. In an untrusted workspace, it also asks before the workspace tools and data-file reads, and before opening any linked file.
+VS Code asks before running a command, reading a data file outside the workspace (including on **Refresh**), or opening an external file link. In an untrusted workspace, workspace reads and all file links also require confirmation.
 
 Commands need a trusted, nonvirtual workspace. They run with `/bin/sh` (`cmd.exe` on Windows) in the first workspace folder, or in your home directory if no folder is open. Relative paths resolve from the first workspace folder.
 
-ECharts options with JavaScript code, such as callbacks or custom series, render only in a trusted workspace; plain object literals render anywhere. As such code could act as you in the panel, from when the panel runs it until it is closed, **Send to chat** and click prompts only fill in the chat input, and writing to a Markdown block, rerunning a chart's command and opening a web link ask first. After you decline once, the panel refuses such requests until it is closed.
+ECharts callbacks and other JavaScript require a trusted workspace; plain object literals work anywhere. Once a panel runs JavaScript, **Send to chat** and click prompts fill the chat input without submitting it. Writing to Markdown, rerunning a command and opening a web link require confirmation. Declining blocks such requests until the panel closes.
 
 The panel loads images only from `data:` URLs, so a Mermaid image shape must embed its image.
 
@@ -120,13 +122,13 @@ It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked ar
 | `facetColumns`, `facetScales` | Set 1–4 panels per row, more when the panels would take over 4 rows or be too short to read at the height of the view, and `"shared"` (default) or `"independent"` axis scales. A view too short for the panels scrolls them. |
 | `bins` | Histogram bins of equal width, 1–200. By default, about √n bins, at most 50, of a round width: 1, 2 or 5 × 10ⁿ, and at least 1 for whole numbers. |
 
-A sankey with two label columns joins nodes of the same name, as in a list of graph edges, unless that would make flows run in a circle. With more, each stage has nodes of its own. A stage with more than 30 nodes keeps the 29 largest and sums the rest as "Other".
+With two label columns, a sankey joins same-named nodes unless that creates a cycle. With more columns, each stage has separate nodes. Stages with over 30 nodes combine all but the largest 29 as "Other".
 
-The axes of a heatmap, and the categories that facets share, list numbers, dates and weekdays in order, unless `sort` orders the rows. Other labels keep the order they first appear in. Panels of numbers, dates or weekdays come in their order too, and a panel of rows without a value always comes last.
+Heatmap axes and shared facet categories sort numbers, dates and weekdays naturally, unless `sort` orders rows by value. Other labels keep their input order. Facet panels follow the same ordering, with missing values last.
 
 A final row labeled `Total` or `Sum` that matches the sum of the rows above it is left out, as are parent rows of a treemap, sunburst or sankey, such as the directory totals of `du -a`.
 
-Filters compare parsed cells: cells that look like numbers are numbers. `eq` and `neq` compare value and type, and `null` matches empty cells. `lt`, `lte`, `gt` and `gte` take a number; `contains` matches text, case-sensitively. Compare sizes in bytes and durations in seconds. Use at most 50 filters; `[]` clears them.
+Filters compare parsed cells: numeric-looking cells become numbers. `eq`/`neq` compare value and type; `null` matches missing cells. Numeric comparisons take numbers; `contains` is case-sensitive. Use bytes for sizes and seconds for durations. At most 50 filters are allowed; `[]` clears them.
 
 Histograms count one numeric value column; omit `labelColumn`, `aggregate`, `sort` and `limit`. A bin includes its lower bound, and only the last bin its upper bound. Faceted histograms share bin boundaries, even with independent scales.
 

@@ -440,4 +440,27 @@ suite("echartsRenderer", () => {
     assert.deepStrictEqual(shown.find("Kiwis"), [item(0)]);
     assert.deepStrictEqual(shown.find("Apples"), []);
   });
+
+  test("updates items when resizing crosses a media query without changing the layout", () => {
+    const slices = (...names: string[]) => [{ data: names.map((name) => ({ name, value: 1 })) }];
+    const { container, internals } = drawnRenderer({
+      baseOption: { series: [{ type: "pie" }] },
+      media: [
+        { query: { maxWidth: 380 }, option: { series: slices("Kiwis", "Plums") } },
+        { option: { series: slices("Apples", "Pears") } },
+      ],
+    });
+    const find = (name: string) => internals.items()?.find(name);
+    assert.deepStrictEqual(find("Apples"), [item(0)]);
+    for (const [width, shown, hidden] of [
+      [360, "Kiwis", "Apples"],
+      [400, "Apples", "Kiwis"],
+    ] as const) {
+      container.clientWidth = width;
+      internals.apply(true);
+      assert.strictEqual(internals.chart.getWidth(), width);
+      assert.deepStrictEqual(find(shown), [item(0)]);
+      assert.deepStrictEqual(find(hidden), []);
+    }
+  });
 });

@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { parseNumber } from "../dataNumber";
+import { parseNumber, scale } from "../dataNumber";
 
 suite("dataNumber", () => {
   test("reads plain, grouped, percent, exponent and size numbers", () => {
@@ -78,6 +78,21 @@ suite("dataNumber", () => {
     for (const value of ["1e309", "1e308K", "-1e308MB", "1e300EiB", "9".repeat(400)]) {
       assert.strictEqual(parseNumber(value), undefined, value);
     }
+  });
+
+  test("rejects durations and millicores that exceed the numeric range", () => {
+    const huge = "9".repeat(400);
+    for (const suffix of ["ms", "s", "h", "d", ":00"]) {
+      assert.strictEqual(parseNumber(`${huge}${suffix}`, { durations: true }), undefined);
+    }
+    assert.strictEqual(parseNumber(`${huge}m`, { millicores: true }), undefined);
+    assert.strictEqual(parseNumber(`${"9".repeat(305)}d`, { durations: true }), undefined);
+  });
+
+  test("unit scaling rejects overflow and does not introduce it by rounding", () => {
+    assert.throws(() => scale(1e308, 1000), /converted value exceeds the numeric range/);
+    assert.strictEqual(scale(Number.MAX_VALUE / 10, 10), Number.MAX_VALUE);
+    assert.strictEqual(scale(700, 0.001), 0.7);
   });
 
   test("reads dots between thousands in a column of decimal commas", () => {

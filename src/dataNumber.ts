@@ -174,11 +174,12 @@ export function parseNumber(
   }
   let trimmed = replaceMatch(replaceMatch(text.trim(), SINCE, "$1"), CURRENCY_SIGN, "$2$1");
   if (format.millicores && /^\d+m$/.test(trimmed)) {
-    return { value: Number(trimmed.slice(0, -1)) / 1000 };
+    const value = Number(trimmed.slice(0, -1)) / 1000;
+    return Number.isFinite(value) ? { value } : undefined;
   }
   const seconds = parseDuration(trimmed, format.durations);
   if (seconds !== undefined) {
-    return { value: seconds, unit: "seconds" };
+    return Number.isFinite(seconds) ? { value: seconds, unit: "seconds" } : undefined;
   }
   let sign = 1;
   const accounting = format.accounting ? ACCOUNTING.exec(trimmed) : null;
@@ -238,7 +239,13 @@ export function parseNumber(
  */
 export function scale(value: number, factor: number): number {
   const scaled = value * factor;
-  return Number.isInteger(Math.log2(factor)) ? scaled : Number(scaled.toPrecision(15));
+  if (!Number.isFinite(scaled)) {
+    throw new Error(
+      "The converted value exceeds the numeric range. Rescale the data or its units.",
+    );
+  }
+  const rounded = Number.isInteger(Math.log2(factor)) ? scaled : Number(scaled.toPrecision(15));
+  return Number.isFinite(rounded) ? rounded : scaled;
 }
 
 /**

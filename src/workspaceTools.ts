@@ -415,9 +415,10 @@ async function findIgnoreFiles(
   token: vscode.CancellationToken,
 ): Promise<IgnoreFiles> {
   const files = new Map<string, readonly IgnoreRule[]>();
+  const check = boundary([root], token);
   // The top-level one is read even where files.exclude hides it.
   const top = await unlessCancelled(
-    () => readIgnoreFile(vscode.Uri.joinPath(root.uri, IGNORE_FILE)),
+    () => readIgnoreFile(vscode.Uri.joinPath(root.uri, IGNORE_FILE), check),
     token,
   );
   if (top.length > 0) files.set("", top);
@@ -456,7 +457,7 @@ async function findIgnoreFiles(
       .slice(0, MAX_IGNORE_FILES - read);
     read += kept.length;
     const rules = await unlessCancelled(
-      () => Promise.all(kept.map(({ uri }) => readIgnoreFile(uri))),
+      () => Promise.all(kept.map(({ uri }) => readIgnoreFile(uri, check))),
       token,
     );
     for (const [index, { folder }] of kept.entries()) {
@@ -484,11 +485,20 @@ function fittingGlobs(globs: readonly string[]): string[] {
 }
 
 /** The patterns of an ignore file, or none if it cannot be read or is too large to be one. */
-async function readIgnoreFile(uri: vscode.Uri): Promise<IgnoreRule[]> {
-  const bytes = await Promise.resolve(vscode.workspace.fs.readFile(uri)).catch(
-    () => new Uint8Array(),
-  );
-  return bytes.byteLength > MAX_SEARCHED_BYTES ? [] : ignoreRules(decodeText(bytes, false));
+async function readIgnoreFile(
+  uri: vscode.Uri,
+  check: (uri: vscode.Uri) => Promise<void>,
+): Promise<IgnoreRule[]> {
+  try {
+    await check(uri);
+    const stat = await vscode.workspace.fs.stat(uri);
+    if (stat.size > MAX_SEARCHED_BYTES || !(stat.type & vscode.FileType.File)) return [];
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    return bytes.byteLength > MAX_SEARCHED_BYTES ? [] : ignoreRules(decodeText(bytes, false));
+  } catch (error) {
+    if (error instanceof vscode.CancellationError) throw error;
+    return [];
+  }
 }
 
 async function candidates(
