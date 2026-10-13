@@ -167,6 +167,25 @@ suite("workspaceTools", function () {
     assert.strictEqual((await fitted(reader, { file, endLine: 3 })).length, 5);
   });
 
+  test("cancels while waiting for token counts, including when fitting a smaller page", async () => {
+    for (const stalledCall of [1, 2]) {
+      const cancelled = cancellationSource();
+      let calls = 0;
+      const counting = Promise.withResolvers<void>();
+      const pending = invoke(reader, { file: `${relative}/code.ts` }, cancelled.token, {
+        tokenBudget: 1,
+        countTokens: async () => {
+          if (++calls < stalledCall) return 2;
+          counting.resolve();
+          return new Promise<number>(() => {});
+        },
+      });
+      await counting.promise;
+      cancelled.cancel();
+      await assert.rejects(pending, vscode.CancellationError);
+    }
+  });
+
   test("leaves out the files that a conditional exclude hides, as their sibling exists", async () => {
     for (const name of ["compiled.ts", "compiled.js", ".dot.ts", ".dot.js", "plain.js"]) {
       await writeFile(name, "Needle");

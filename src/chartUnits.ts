@@ -41,6 +41,7 @@ const SCALES = new Map<Unit, { what: string; multiples: [string, number][] }>([
 
 /** The largest magnitude of the numbers at `indices` of the rows. */
 function largest(rows: readonly (readonly unknown[])[], indices: number[]): number {
+  if (indices.length === 0) return 0;
   let most = 0;
   for (const row of rows) {
     for (const i of indices) {

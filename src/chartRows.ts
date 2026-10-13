@@ -183,12 +183,17 @@ function hasTotalsRow(table: DataTable, labelColumn: number, valueColumns: numbe
   for (const column of valueColumns) {
     const total = last[column];
     if (typeof total === "number") {
-      let sum = 0;
-      for (let i = 0; i < table.rows.length - 1; i++) {
-        const value = table.rows[i]?.[column];
-        if (typeof value === "number") sum += value;
+      const sum = new Sum();
+      try {
+        for (let i = 0; i < table.rows.length - 1; i++) {
+          const value = table.rows[i]?.[column];
+          if (typeof value === "number") sum.add(value);
+        }
+      } catch {
+        // An overflowing sum cannot establish that this finite value is a total.
+        return false;
       }
-      if (Math.abs(total - sum) > Math.abs(total) * 0.01) {
+      if (Math.abs(total - sum.value) > Math.abs(total) * 0.01) {
         return false;
       }
       checked++;

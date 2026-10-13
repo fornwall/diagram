@@ -16,7 +16,7 @@ import {
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { inWords, plural, quote, toolInput } from "./text";
+import { inWords, plural, quote, shorten, toolInput } from "./text";
 import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
@@ -118,7 +118,7 @@ export function inspectTable(table: DataTable, sampleRows: number): string {
   const clip = (value: string): string => {
     if (value.length <= 256) return value;
     truncated = true;
-    return `${value.slice(0, 255)}…`;
+    return shorten(value, 255);
   };
   const columns = table.columns.slice(0, LISTED_COLUMNS).map((column, index) => ({
     ...column,

@@ -126,6 +126,15 @@ suite("chartTransforms", () => {
     assert.deepStrictEqual(option.series[0].data, [30]);
   });
 
+  test("totals detection retains small values and rounds decimal sums", () => {
+    const rounded = build("label,value\na,0.1\nb,0.2\nc,-0.3\ntotal,0", { type: "bar" });
+    assert.deepStrictEqual(rounded.xAxis.data, ["a", "b", "c"]);
+    const cancelled = build("label,value\na,1e16\nb,1\nc,-1e16\ntotal,0", { type: "bar" });
+    assert.deepStrictEqual(cancelled.xAxis.data, ["a", "b", "c", "total"]);
+    const overflowing = build("label,value\na,1e308\nb,1e308\ntotal,1e308", { type: "bar" });
+    assert.deepStrictEqual(overflowing.xAxis.data, ["a", "b", "total"]);
+  });
+
   test("histogram bins raw observations including total rows, negatives and the upper boundary", () => {
     const option = build("label,value\na,-2\nb,-1\nc,0\nd,1\ntotal,2", { bins: 2 });
     assert.deepStrictEqual(option.xAxis.data, ["[-2, 0)", "[0, 2]"]);

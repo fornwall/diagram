@@ -184,6 +184,13 @@ function tableFromRecords(
     numberFormat(records, column, header, { sizes: si || units?.[column] === "bytes", si }),
   );
   const cellUnits = Array.from({ length: width }, () => new Set<Unit>());
+  const statedUnits = formats.map((format, column) => {
+    const stated =
+      header !== false && units?.[column] === undefined
+        ? statedUnit(String(records[0]?.[column] ?? "").trim(), format)
+        : undefined;
+    return stated === undefined ? undefined : { ...stated, explicit: new Set<number>() };
+  });
   // The cells below the first row, which is counted once it is known not to be the header.
   const counts: ColumnCounts[] = Array.from({ length: width }, () => ({
     numbers: 0,
@@ -198,7 +205,10 @@ function tableFromRecords(
       let cell = field;
       if (typeof field === "string" && !(header && row === 0)) {
         const number = parseNumber(field, formats[column]);
-        if (number?.unit !== undefined) cellUnits[column]?.add(number.unit);
+        if (number?.unit !== undefined) {
+          cellUnits[column]?.add(number.unit);
+          statedUnits[column]?.explicit.add(row);
+        }
         cell = number?.value ?? (field.trim() || null);
       }
       record[column] = cell;
@@ -220,19 +230,19 @@ function tableFromRecords(
         }
       }
     }
-    const found = [...(cellUnits[column] ?? [])];
     // Plain numbers under a name that states their unit, as "Latency (ms)", are converted as if
-    // each had it, so that they are shown in the multiple that suits them.
-    const stated =
-      numeric && found.length === 0 && units?.[column] === undefined
-        ? statedUnit(name, formats[column] ?? {})
-        : undefined;
+    // each had it. Cells with their own units have already been converted.
+    const stated = numeric && named ? statedUnits[column] : undefined;
     if (stated !== undefined) {
-      for (const row of rows) {
+      for (const [index, row] of rows.entries()) {
         const cell = row[column];
-        if (typeof cell === "number") row[column] = scale(cell, stated.size);
+        if (typeof cell === "number" && !stated.explicit.has(index + 1)) {
+          row[column] = scale(cell, stated.size);
+          cellUnits[column]?.add(stated.unit);
+        }
       }
     }
+    const found = [...(cellUnits[column] ?? [])];
     const unit =
       found.length === 0
         ? (units?.[column] ?? stated?.unit ?? (name.includes("%") ? "%" : undefined))

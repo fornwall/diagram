@@ -44,6 +44,35 @@ suite("echartsFocus", () => {
     assert.strictEqual(walk(bars(true), "Up Up Right Down"), "0::1 0::2 1::2 1::1");
   });
 
+  test("keeps the category when zoom filters different rows from each series", () => {
+    const option = {
+      xAxis: { type: "category", data: ["a", "b", "c", "d"] },
+      yAxis: {},
+      dataZoom: { yAxisIndex: 0, startValue: 0, endValue: 5, filterMode: "filter" },
+      series: [
+        { type: "bar", data: [1, 9, 2, 3] },
+        { type: "bar", data: [1, 2, 3, 4] },
+        { type: "bar", data: [1, 9, 2, 3] },
+      ],
+    };
+    assert.strictEqual(walk(option, "Right Down Down Up Up"), "0::2 1::2 2::2 1::2 0::2");
+    // The adjacent series has no visible item at b, so keep the focus on the current item.
+    assert.strictEqual(walk(option, "Down Right Down Up"), "1::0 1::1 1::1 1::1");
+  });
+
+  test("moves to the last item of a shorter series and skips empty series", () => {
+    const option = {
+      xAxis: { type: "category", data: ["a", "b", "c"] },
+      yAxis: {},
+      series: [
+        { type: "bar", data: [1, 2, 3] },
+        { type: "bar", data: [] },
+        { type: "bar", data: [4, 5] },
+      ],
+    };
+    assert.strictEqual(walk(option, "Right Right Down Up"), "0::1 0::2 2::1 0::1");
+  });
+
   test("moves round a polar chart with the right arrow key, clockwise or not", () => {
     for (const clockwise of [true, false]) {
       const option = {

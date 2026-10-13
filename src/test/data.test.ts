@@ -787,6 +787,17 @@ suite("data", () => {
     assert.deepStrictEqual(read("name,Age [h]\na,2"), ["seconds", [7200]]);
     // Values with their own unit keep it.
     assert.deepStrictEqual(read("name,Latency (ms)\na,1.2s"), ["seconds", [1.2]]);
+    assert.deepStrictEqual(read("name,Latency (ms)\na,100\nb,200ms\nc,1s"), [
+      "seconds",
+      [0.1, 0.2, 1],
+    ]);
+    assert.deepStrictEqual(read("name,Size (KB)\na,2\nb,1MiB"), ["bytes", [2000, 1024 ** 2]]);
+    assert.deepStrictEqual(
+      read('[{"name":"a","Latency (ms)":100},{"name":"b","Latency (ms)":"200ms"}]'),
+      ["seconds", [0.1, 0.2]],
+    );
+    // Incompatible units do not make the entire column a size or duration.
+    assert.deepStrictEqual(read("name,Latency (ms)\na,100\nb,1KiB"), [undefined, [0.1, 1024]]);
     // Not billions, a plural, meters, minima or units that only a column of durations has.
     for (const name of [
       "Revenue (B)",

@@ -12,7 +12,7 @@ import {
   validateLinks,
   withoutMissingFiles,
 } from "../links";
-import { folders, replace, tempDir, workspaceRoot } from "./afterTest";
+import { folders, recordMessages, replace, tempDir, workspaceRoot } from "./afterTest";
 
 suite("links", () => {
   test("takes a file, a line or a range of lines as a node's link", () => {
@@ -222,5 +222,14 @@ suite("links", () => {
     const url = "https://example.com/a%2Fb?q=C%2B%2B%26x%3Dy#a%20b";
     await openUrl(url, "diagram", false, async () => false);
     assert.deepStrictEqual(opened, [url]);
+  });
+
+  test("reports when no application opens a URL", async () => {
+    const errors = recordMessages("showErrorMessage");
+    replace(vscode.env, "openExternal", async () => false);
+    await openUrl("https://example.com/docs", "diagram", false, async () => false);
+    assert.deepStrictEqual(errors, [
+      "Could not open https://example.com/docs: No application accepted the link.",
+    ]);
   });
 });

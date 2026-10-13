@@ -265,10 +265,14 @@ export class ChartNavigation {
     if (steps !== 0) return this.at(track, index + steps);
     // Right and down lead to the next series, left and up to the previous one.
     const delta = dx + dy;
+    const rawIndex = track.data.getRawIndex(index);
     for (let t = this.tracks.indexOf(track) + delta; t >= 0 && t < this.tracks.length; t += delta) {
       const other = this.tracks[t];
       if (!other || other.seriesIndex === track.seriesIndex) continue;
-      const to = this.at(other, Math.min(index, other.data.count() - 1));
+      // Zoom can filter different rows from each series. Match the original row, not its
+      // position in the filtered data; a shorter series still leads to its last item.
+      const last = other.data.getRawIndex(other.data.count() - 1);
+      const to = this.at(other, other.data.indexOfRawIndex(Math.min(rawIndex, last)));
       if (to) return to;
     }
     return undefined;

@@ -678,12 +678,12 @@ async function fit(
   const { tokenBudget, countTokens } = options;
   // Text plainly within the budget, as a token takes at least a byte of UTF-8, which takes at most
   // 3 for each UTF-16 code unit, is not counted, which may take a request to the model's provider.
-  let size = text.length * 3 <= tokenBudget ? 0 : await countTokens(text, token);
-  while (size > tokenBudget && shown > 1) {
+  while (text.length * 3 > tokenBudget) {
+    const size = await unlessCancelled(async () => countTokens(text, token), token);
+    if (size <= tokenBudget || shown <= 1) break;
     // Tokens are not spread evenly over the entries, so this may take a few tries.
     shown = Math.max(1, Math.floor(shown * Math.min(tokenBudget / size, 0.9)));
     text = render(shown);
-    size = await countTokens(text, token);
   }
   throwIfCancelled(token);
   return text;

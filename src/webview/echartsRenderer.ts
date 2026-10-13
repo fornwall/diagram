@@ -340,7 +340,8 @@ export class EChartsRenderer implements Renderer {
         // On the next line, indented, once a line is long, and inside an inner array only once it
         // is as many times as long, so as not to split the arrays of a long one, such as points.
         let nesting = 0;
-        for (const each of tokens.slice(index, end + 1)) {
+        for (let at = index; at <= end; at++) {
+          const each = tokens[at] as string;
           nesting += each === "[" ? 1 : each === "]" ? -1 : 0;
           if (each !== ",") text += each;
           else if (text.length - line < LINE_LENGTH * nesting) text += ", ";

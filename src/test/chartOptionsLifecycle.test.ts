@@ -1,12 +1,13 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as vscode from "vscode";
 import { captureChartPresentation } from "../chartPresentation";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState } from "../panel";
-import { afterTest, recordMessages, suiteTempDir } from "./afterTest";
+import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
 import { drawChart, type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
 const data = "name,amount\na,1\nb,2";
@@ -215,6 +216,38 @@ suite("chart options lifecycle", function () {
       ["chartOptions"],
     );
   });
+
+  for (const action of ["refresh", "reset"] as const) {
+    test(`${action} does not load data approved after the diagram changes`, async () => {
+      const file = path.join(dir, "superseded.csv");
+      const chart: ChartSpec = { type: "bar", file };
+      const source = JSON.stringify(buildChart(chart, parseTable(data)).option);
+      const initial: DiagramState = {
+        language: "echarts",
+        title: "Restored chart",
+        chart,
+        source,
+        chartPresentation: captureChartPresentation(source),
+        origin: "tool",
+        editedByUser: false,
+      };
+      const { panel, webview } = await newFakePanel(new Map([["diagram.state", initial]]));
+      let loads = 0;
+      replace(vscode.window, "withProgress", () => {
+        loads++;
+        assert.fail("An obsolete data load must not start.");
+      });
+      const asked = recordMessages("showWarningMessage", async () => {
+        await drawChart(panel, { type: "line", data }, data);
+        return "Read";
+      });
+      if (action === "refresh") await webview.receive({ type: "refresh" });
+      else await applyOptions(panel, webview, {});
+      assert.deepStrictEqual(asked, ["Read the chart's data file again?"]);
+      assert.strictEqual(loads, 0);
+      assert.strictEqual(panel.current?.chart?.type, "line");
+    });
+  }
 
   test("a restored blocked external chart can explicitly reset and reload its data", async () => {
     const file = path.join(dir, "recovery.csv");

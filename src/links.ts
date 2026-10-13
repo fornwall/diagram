@@ -294,7 +294,9 @@ export async function openUrl(
   try {
     // VS Code opens a string as written, though the type says Uri. A Uri would be decoded and
     // encoded again, turning "?q=C%2B%2B" into "?q=C++", a search for "C  ".
-    await vscode.env.openExternal(target as unknown as vscode.Uri);
+    if (!(await vscode.env.openExternal(target as unknown as vscode.Uri))) {
+      throw new Error("No application accepted the link.");
+    }
   } catch (error) {
     void vscode.window.showErrorMessage(`Could not open ${target}: ${errorMessage(error)}`);
   }

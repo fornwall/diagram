@@ -89,6 +89,15 @@ suite("chartTools", function () {
     const bounded = inspectTable(wide, 20);
     assert.ok(bounded.length <= 24_000);
     assert.ok(JSON.parse(bounded).truncated);
+    const unicode = `${"x".repeat(254)}😀end`;
+    const clipped = JSON.parse(
+      inspectTable(
+        { columns: [{ name: unicode, numeric: false }], rows: [[unicode]], header: true },
+        1,
+      ),
+    );
+    assert.strictEqual(clipped.columns[0].name, `${"x".repeat(254)}…`);
+    assert.strictEqual(clipped.sample[0][0], clipped.columns[0].name);
   });
 
   test("inspection reads inline and loaded data without replacing the current chart", async () => {
