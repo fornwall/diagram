@@ -2,6 +2,7 @@
 
 import { DIRECTIVE, frontMatterEnd } from "../mermaidSyntax";
 import { joinWords, lineAndColumn, quote } from "../text";
+import { syntaxHint } from "./mermaidHints";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
@@ -72,6 +73,15 @@ function distance(a: string, b: string): number {
   return previous[b.length] as number;
 }
 
+/** The first statements of diagrams without a type, and the type line that they need. */
+const STATEMENTS: [RegExp, string][] = [
+  [/^\s*\[\*\]\s*-->/, "stateDiagram-v2"],
+  [/<?<?-?->>|-[x)]\s*\w/, "sequenceDiagram"],
+  [/[|}][|o]--|--[|o][|{]|[|}][|o]\.\.|\.\.[|o][|{]/, "erDiagram"],
+  [/<\|--|--\|>|\*--|--\*|\bo--|--o\b|\.\.>|\.\.\|>/, "classDiagram"],
+  [/-->|---|==>|-\.->|^\s*[\w-]+\s*(?:\[|\(|\{)/, "flowchart TD"],
+];
+
 /** Replaces Mermaid's error for an unknown diagram type, which quotes the whole source. */
 function unknownTypeError(message: string): Error {
   // Mermaid quotes the source without front matter, directives and comments.
@@ -92,10 +102,17 @@ function unknownTypeError(message: string): Error {
       `Remove the "mermaid" line: the source must start with the diagram type, such as ${COMMON_TYPES}.`,
     );
   }
+  // The source starts with a statement, as a model that leaves out the type writes it.
+  const statement = text.split("\n", 1)[0] ?? "";
+  const missing = STATEMENTS.find(([pattern]) => pattern.test(statement))?.[1];
+  if (missing) {
+    return new Error(`The diagram has no type: start it with a line "${missing}".`);
+  }
   const lower = type.toLowerCase();
   const matches = DIAGRAM_TYPES.filter(
     (known) =>
-      known.toLowerCase().startsWith(lower) ||
+      // A letter starts too many types to tell.
+      (lower.length > 1 && known.toLowerCase().startsWith(lower)) ||
       distance(type, known) <= Math.max(1, Math.floor(type.length / 4)),
   ).slice(0, 3);
   return new Error(
@@ -437,9 +454,11 @@ export function describeError(error: unknown, source: string, type: () => string
       `The diagram has more than ${edgeLimit[1]} edges, more than Mermaid draws: split it into smaller diagrams.`,
     );
   }
+  let diagramType: string;
   let parsed: ParsedText;
   try {
-    parsed = parsedText(normalized, type());
+    diagramType = type();
+    parsed = parsedText(normalized, diagramType);
   } catch {
     return error;
   }
@@ -453,9 +472,15 @@ export function describeError(error: unknown, source: string, type: () => string
     if (start + space < end) start += space;
     if (!normalized.slice(start).trim()) start = normalized.trimEnd().length;
     const { line, column } = lineAndColumn(normalized, start);
+    const { expected } = problem;
+    const hint =
+      problem.message === undefined
+        ? syntaxHint({ type: diagramType, normalized, start, end, expected })
+        : undefined;
+    // A hint says what to write better than the names of the tokens that the parser expected.
     const message = problem.message
       ? `Error on line ${line}, column ${column}: ${problem.message}`
-      : `Parse error on line ${line}, column ${column}: ${describe(normalized, start, end, problem.expected)}`;
+      : `Parse error on line ${line}, column ${column}: ${describe(normalized, start, end, hint ? undefined : expected)}${hint ? ` ${hint}` : ""}`;
     return { line, column, message };
   });
   // The first problem on each line: the others are usually its consequences.
