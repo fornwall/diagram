@@ -902,7 +902,10 @@ const sharedStartFormatters = new Map<string, (value: unknown) => string>();
  */
 function dropSharedStart(axis: JsonObject, label: JsonObject, visible: number): number | undefined {
   const texts = categoryTexts(axis.data);
-  if (!texts || texts.length < 2 || label.formatter !== undefined) return undefined;
+  // Not of labels that the option hides, which the name would tell nothing of.
+  if (!texts || texts.length < 2 || label.formatter !== undefined || label.show === false) {
+    return undefined;
+  }
   const cut = (text: string) => text.slice(0, Math.max(1, Math.floor(visible) - 1));
   if (new Set(texts.map(cut)).size === new Set(texts).size) return undefined;
   let shared = texts[0] ?? "";

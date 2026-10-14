@@ -649,6 +649,22 @@ suite("echartsLayout", () => {
     assert.strictEqual(sites({ name: "Site" }).name, "Site: Northern Regional Center …");
     const formatted = sites({ axisLabel: { formatter: "{value}" } });
     assert.deepStrictEqual([formatted.name, formatted.axisLabel.formatter], [undefined, "{value}"]);
+    // Labels that the option hides name nothing, across or down the chart.
+    const centers = Array.from({ length: 12 }, (_, index) => `Northern Regional Center ${index}`);
+    const hidden = layout(
+      {
+        xAxis: { type: "category", data: centers, axisLabel: { show: false } },
+        yAxis: { type: "value" },
+        series: [{ type: "bar", data: Array(12).fill(1) }],
+      },
+      { width: 400, height: 700 },
+    );
+    assert.deepStrictEqual(
+      [hidden.xAxis.name, hidden.xAxis.nameLocation, hidden.xAxis.axisLabel.formatter],
+      [undefined, undefined, undefined],
+    );
+    const down = sites({ axisLabel: { show: false } });
+    assert.deepStrictEqual([down.name, down.axisLabel.formatter], [undefined, undefined]);
   });
 
   test("names an inverse axis where it starts, above a heatmap's first row", () => {
