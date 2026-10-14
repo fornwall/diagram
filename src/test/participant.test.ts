@@ -33,6 +33,7 @@ const defaultTools = [
   "diagram_findFiles",
   "diagram_getImage",
   "diagram_getState",
+  "diagram_guide",
   "diagram_inspectData",
   "diagram_pickNodes",
   "diagram_readFile",
@@ -45,6 +46,7 @@ const readOnlyTools = [
   "diagram_findFiles",
   "diagram_getImage",
   "diagram_getState",
+  "diagram_guide",
   "diagram_readFile",
   "diagram_searchText",
 ];

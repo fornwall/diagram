@@ -58,7 +58,7 @@ Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram
 
 ## Tools for agents
 
-Any chat agent can use these tools; `@diagram` includes them by default, unless its model cannot call tools. Attach a `#` reference to have `@diagram` call that tool first. `/explain` allows only the tools that read the diagram's state and image and the workspace, and says which attached tools it leaves out.
+Any chat agent can use these tools; `@diagram` includes them by default, unless its model cannot call tools. Attach a `#` reference to have `@diagram` call that tool first. `/explain` allows only the tools that read the diagram's state and image, the workspace and the guide, and says which attached tools it leaves out.
 
 | Tool | Reference | Purpose |
 | --- | --- | --- |
@@ -67,6 +67,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
 | `diagram_getImage` | `#diagramImage` | Look at the drawing as an image, to check its layout, for a model that accepts images. |
+| `diagram_guide` | `#diagramGuide` | Look up a Mermaid diagram type or ECharts chart kind: an example that renders, the syntax rules models get wrong and layout tips. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
 | `diagram_annotate` | `#diagramAnnotate` | Mark items with notes, a caption and fading, without redrawing. Omit marks to clear them. |
 | `diagram_findFiles` | `#diagramFiles` | Find workspace files by glob, in all open folders. |

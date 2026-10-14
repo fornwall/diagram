@@ -101,7 +101,7 @@
           "properties": {
             "source": {
               "type": "string",
-              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors and fonts unless the user asks for them: the panel applies the theme and sizing, and its background follows the VS Code theme. To color items of the current Mermaid diagram, use diagram_style."
+              "description": "Complete Mermaid source, or an ECharts option as JSON or a JavaScript object literal with callbacks (formatter, renderItem, symbolSize, etc.); prefer templates such as \"{b}: {c}\" for plain formatters. Omit click directives and HTML, and colors and fonts unless the user asks for them: the panel applies the theme and sizing, and its background follows the VS Code theme. To color items of the current Mermaid diagram, use diagram_style. For a diagram type or chart kind you are unsure of, read its diagram_guide topic first."
             },
             "language": {
               "type": "string",
@@ -452,6 +452,32 @@
         "inputSchema": {
           "type": "object",
           "properties": {},
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "diagram_guide",
+        "displayName": "Diagram Guide",
+        "toolReferenceName": "diagramGuide",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "userDescription": "Look up how to draw a kind of Mermaid diagram or ECharts chart well",
+        "modelDescription": "Return a guide to a Mermaid 12 diagram type or ECharts 6 chart kind: an example that renders in the panel, the syntax rules models get wrong, layout tips and what the panel does already. Without a topic, lists the topics. Use before drawing a type you are unsure of, or after a render error you can't fix.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "echarts",
+          "chart",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "topic": {
+              "type": "string",
+              "description": "A diagram type such as \"flowchart\", \"sequence\", \"architecture\" or \"gantt\", or an ECharts topic such as \"echarts\", \"echarts-bar\" or \"echarts-time\"; omit for the list."
+            }
+          },
           "additionalProperties": false
         }
       },

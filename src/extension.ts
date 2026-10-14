@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ChartTool, InspectDataTool, UpdateChartTool } from "./chartTools";
 import { EditDiagramTool } from "./editTool";
+import { DiagramGuideTool } from "./guide";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
 import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
@@ -11,6 +12,7 @@ import {
   FIND_FILES_TOOL,
   GET_IMAGE_TOOL,
   GET_STATE_TOOL,
+  GUIDE_TOOL,
   INSPECT_DATA_TOOL,
   PICK_NODES_TOOL,
   READ_FILE_TOOL,
@@ -61,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(INSPECT_DATA_TOOL, new InspectDataTool(panel)),
     vscode.lm.registerTool(UPDATE_CHART_TOOL, new UpdateChartTool(panel)),
     vscode.lm.registerTool(STYLE_TOOL, new StyleDiagramTool(panel)),
+    vscode.lm.registerTool(GUIDE_TOOL, new DiagramGuideTool()),
     vscode.commands.registerCommand("diagram.show", () => panel.show()),
     vscode.commands.registerCommand("diagram.export", () => panel.exportDiagram()),
     vscode.commands.registerCommand("diagram.chartOptions", () => panel.toggleChartOptions()),
