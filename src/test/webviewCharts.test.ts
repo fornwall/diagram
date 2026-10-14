@@ -734,6 +734,82 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("keeps a graph's node where the user dragged it through a new layout for another size", async () => {
+    // A ring of A to D, which the panel places at rest, and E linked to two of them.
+    const node = (name: string, index: number) => ({
+      name,
+      symbolSize: 20,
+      itemStyle: { color: `#0000a${index}` },
+    });
+    const links = ["AB", "BC", "CD", "DA", "EA", "EC"].map(([source, target]) => ({
+      source,
+      target,
+    }));
+    const source = JSON.stringify({
+      animation: false,
+      series: [
+        {
+          type: "graph",
+          layout: "force",
+          draggable: true,
+          data: [..."ABCDE"].map(node),
+          links,
+        },
+      ],
+    });
+    await draw({ language: "echarts", source });
+    const shown = await evaluate(`(async () => {
+      ${CHART_FITTED}
+      ${ROTATED}
+      const svg = () => document.querySelector("#chart svg");
+      const center = (index) => {
+        const box = svg().querySelector('[fill="#0000a' + index + '"]').getBoundingClientRect();
+        return [box.x + box.width / 2, box.y + box.height / 2];
+      };
+      // Where E is across and down the bounds of A to D.
+      const across = () => {
+        const corners = [0, 1, 2, 3].map(center);
+        const xs = corners.map(([x]) => x);
+        const ys = corners.map(([, y]) => y);
+        const [x, y] = center(4);
+        const [left, top] = [Math.min(...xs), Math.min(...ys)];
+        return [(x - left) / (Math.max(...xs) - left), (y - top) / (Math.max(...ys) - top)];
+      };
+      const canvas = document.getElementById("canvas");
+      await chartFitted();
+      await settled();
+      const placed = across();
+      const [x, y] = center(4);
+      const mouse = (type, dx, dy) => svg().dispatchEvent(new MouseEvent(type, {
+        bubbles: true, clientX: x + dx, clientY: y + dy, buttons: type === "mouseup" ? 0 : 1,
+      }));
+      mouse("mousemove", 0, 0);
+      mouse("mousedown", 0, 0);
+      for (let step = 1; step <= 8; step++) mouse("mousemove", step * 8, step * 6);
+      mouse("mouseup", 64, 48);
+      await nextFrame(2);
+      const dragged = across();
+      Object.assign(canvas.style, {width: "300px", flex: "none"});
+      try {
+        await chartFitted();
+        await settled();
+        return {placed, dragged, resized: across()};
+      } finally {
+        Object.assign(canvas.style, {width: "", flex: ""});
+        await chartFitted();
+      }
+    })()`);
+    const { placed, dragged, resized } = shown as Record<
+      "placed" | "dragged" | "resized",
+      number[]
+    >;
+    const apart = (a: number[], b: number[]) =>
+      Math.max(...a.map((value, index) => Math.abs(value - (b[index] ?? 0))));
+    // Dragged away from where it was placed, and still there of the ring laid out anew.
+    assert.ok(apart(placed, dragged) > 0.2, JSON.stringify(shown));
+    assert.ok(apart(dragged, resized) < 0.05, JSON.stringify(shown));
+  });
+
   test("resizes a chart with each frame of a drag only while that is quick", async () => {
     // Drawing it takes 40 ms of `window.chartTime` while `window.slowChart` is set, as a chart of
     // many items would, and 5 ms otherwise.
