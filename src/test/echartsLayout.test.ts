@@ -688,6 +688,73 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("chord"), [44, 12, 12, 12]);
   });
 
+  test("lays out a theme river as a grid, with the names of its layers beside it", () => {
+    const river = (names: string[], extra: Option = {}): Option => ({
+      title: { text: "T" },
+      legend: {},
+      singleAxis: { type: "time" },
+      series: [
+        {
+          type: "themeRiver",
+          data: names.flatMap((name, index) => [
+            ["2026-01-01", 3 + index, name],
+            ["2026-01-02", 5, name],
+          ]),
+        },
+      ],
+      ...extra,
+    });
+    const option = layout(river(["Docs", "Frontend"]));
+    // The legend above the river, below the title, as above a grid, rather than over it.
+    assert.deepStrictEqual([option.legend.top, option.legend.orient], [32, undefined]);
+    const nameWidth = Math.round(8 * 11 * 0.6 + 12);
+    const { left, right, top, bottom } = option.singleAxis;
+    assert.deepStrictEqual([left, right, top, bottom], [nameWidth, 24, 76, 30]);
+    assert.strictEqual(option.series[0].label.align, "right");
+    // Drawn by ECharts, each name ends left of the river, where its layer starts.
+    const [rect, names] = withChart(
+      option,
+      (chart) => {
+        const axis = (modelOf(chart) as unknown as Option).getComponent("singleAxis");
+        const texts = new Set<Option>();
+        for (const line of chart.getZr().storage.getDisplayList(true) as Option[]) {
+          // The labels of the layers, not the entries of the legend.
+          if (line.type === "tspan" && line.parent?.__hostTarget?.type === "ec-polygon") {
+            texts.add(line.parent);
+          }
+        }
+        const boxes = [...texts].map((text) => {
+          const box = text.getBoundingRect().clone();
+          box.applyTransform(text.getComputedTransform());
+          return box;
+        });
+        return [axis.coordinateSystem.getRect(), boxes];
+      },
+      { width: 800, height: 500 },
+    );
+    assert.strictEqual(names.length, 2);
+    for (const name of names) {
+      assert.ok(name.x >= 0 && name.x + name.width <= rect.x, `${name.x} ${name.width} ${rect.x}`);
+    }
+    // In a narrow chart, the legend goes below, and a long name is cut short.
+    const narrow = layout(river(["A name of a layer that goes on and on"]), { width: 400 });
+    assert.deepStrictEqual([narrow.legend.bottom, narrow.singleAxis.bottom], [6, 62]);
+    assert.deepStrictEqual(narrow.series[0].label, {
+      align: "right",
+      width: 100 - 12,
+      overflow: "truncate",
+    });
+    assert.strictEqual(narrow.singleAxis.left, 100);
+    // Names placed otherwise, or none, take no room; an axis placed by the option stays.
+    for (const label of [{ show: false }, { align: "left" }]) {
+      const placed = river(["Frontend"]);
+      placed.series[0].label = label;
+      assert.strictEqual(layout(placed).singleAxis.left, 24, JSON.stringify(label));
+    }
+    const own = layout(river(["Frontend"], { singleAxis: { type: "time", top: 10 } }));
+    assert.deepStrictEqual([own.singleAxis.top, own.singleAxis.left], [10, undefined]);
+  });
+
   test("labels large values on value axes compactly, unless the axis formats them", () => {
     const option = layout(
       bars({

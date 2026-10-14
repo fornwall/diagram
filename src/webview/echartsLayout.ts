@@ -418,11 +418,13 @@ function layOut(
     timeline.padding ??= 5;
     reserved.bottom = 44;
   }
-  placeLegend(base, series, cartesian, reserved, size);
+  // A chart along a single axis, as a theme river, has its legend where a grid's would be.
+  placeLegend(base, series, cartesian || series.some(onSingleAxis), reserved, size);
   placeSliders(base, reserved, size, squeeze);
   if (cartesian) {
     layOutGrid(base, reserved, size);
   }
+  layOutSingleAxis(base, series, reserved, size);
   for (const title of asArray(base.title)) {
     const grid = gridOf(base, title);
     if (grid) truncateTitle(title, (pixels(grid.width, size.width) ?? size.width) - 16);
@@ -476,11 +478,14 @@ function toolboxSize(base: JsonObject): { width: number; height: number } {
   return { width, height };
 }
 
-/** Adds a legend where the chart needs one, and places it beside the plot. */
+/**
+ * Adds a legend where the chart needs one, and places it beside the plot: above or below one
+ * along axes, and beside one of another kind when there is room.
+ */
 function placeLegend(
   base: JsonObject,
   series: JsonObject[],
-  cartesian: boolean,
+  alongAxes: boolean,
   reserved: Insets,
   { width, height, compact, charWidth }: Size,
 ): void {
@@ -505,7 +510,7 @@ function placeLegend(
   const placed = has(legend, BOX_KEYS);
   if (
     legend.orient === "vertical" ||
-    (legend.orient === undefined && !placed && !cartesian && width >= 560)
+    (legend.orient === undefined && !placed && !alongAxes && width >= 560)
   ) {
     // Beside a pie or other non-grid chart when there is room, as it then uses the height, and
     // beside any chart when it goes down, on the right unless told the side, where ECharts would
@@ -514,7 +519,7 @@ function placeLegend(
     else if (!has(legend, ["left", "right"])) legend.right = 8;
     side = legend.right === undefined ? "left" : "right";
   } else if (!placed) {
-    side = cartesian && !compact ? "top" : "bottom";
+    side = alongAxes && !compact ? "top" : "bottom";
     Object.assign(
       legend,
       side === "top"
@@ -1258,6 +1263,61 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
   // Leave room beside the radar for the names of its indicators, of up to a fourth of the width.
   const nameWidth = Math.min(longestText(radar.indicator) * size.charWidth, boxWidth / 4);
   radar.radius = Math.max(40, Math.min(boxWidth - 2 * nameWidth - 40, boxHeight - 56) / 2);
+}
+
+/** Whether a series is drawn along a single axis, as a theme river is unless told otherwise. */
+const onSingleAxis = (series: JsonObject) =>
+  (series.coordinateSystem ?? (series.type === "themeRiver" ? "singleAxis" : undefined)) ===
+  "singleAxis";
+
+/** The width of a theme river's layer names beside it, at most, as a share of the chart's width. */
+const MAX_LAYER_NAMES = 0.25;
+
+/**
+ * Fits a single axis into the space left, as a grid is, with room for its labels. ECharts places
+ * it 5% in from each side, under a legend or title, and starts the name of each layer of a theme
+ * river where the layer starts, on top of it: the panel ends the names there instead, in room
+ * that it keeps beside the river for them.
+ */
+function layOutSingleAxis(
+  base: JsonObject,
+  series: JsonObject[],
+  reserved: Insets,
+  { width }: Size,
+): void {
+  const axes = asArray(base.singleAxis);
+  const axis = axes.length === 1 ? axes[0] : undefined;
+  if (!axis || has(axis, BOX_KEYS) || axis.orient === "vertical") return;
+  let left = 24;
+  for (const river of series) {
+    const label = isPlainObject(river.label) ? river.label : {};
+    if (river.type !== "themeRiver" || label.show === false) continue;
+    label.align ??= "right";
+    river.label = label;
+    if (label.align !== "right") continue;
+    // ECharts' default size and margin of the names, which name the layers in the data's third
+    // field, as in ["2026-01-05", 12, "Docs"].
+    const charWidth = (typeof label.fontSize === "number" ? label.fontSize : 11) * 0.6;
+    const margin = (typeof label.margin === "number" ? label.margin : 4) + 8;
+    const most = Math.round(width * MAX_LAYER_NAMES);
+    const names = Array.isArray(river.data)
+      ? river.data.map((item: unknown) => (Array.isArray(item) ? item[2] : undefined))
+      : [];
+    const text = longestText(names, most / charWidth) * charWidth;
+    if (text + margin > most && label.width === undefined) {
+      Object.assign(label, { width: most - margin, overflow: label.overflow ?? "truncate" });
+    }
+    left = Math.max(left, Math.round(Math.min(text + margin, most)));
+  }
+  // The labels of the axis, below it unless placed above.
+  const labels = isPlainObject(axis.axisLabel) && axis.axisLabel.show === false ? 0 : LABEL_HEIGHT;
+  const above = axis.position === "top";
+  Object.assign(axis, {
+    left: reserved.left + left,
+    right: reserved.right + 24,
+    top: reserved.top + 14 + (above ? labels : 0),
+    bottom: reserved.bottom + 8 + (above ? 0 : labels),
+  });
 }
 
 /** The type of an axis, which ECharts makes "category" for one with data. */
