@@ -200,6 +200,15 @@ suite("Mermaid readability in the webview", function () {
     );
   });
 
+  test("measures a drawing drawn in the Source view at the width that it is laid out at", async () => {
+    const source = chain("flowchart LR", 7);
+    const [shown] = await warnings(source, 350);
+    assert.match(shown ?? "", /^Too wide: the panel's 3\d\d px show /);
+    afterTest(() => evaluate('document.getElementById("view-visual").click()'));
+    await evaluate('document.getElementById("view-source").click()');
+    assert.deepStrictEqual(await warnings(`${source}\n  %% edited`, 350), [shown]);
+  });
+
   test("says how wide a panel shows a drawing that is a little too wide for it", async () => {
     const [narrow] = await warnings(TIMELINE, 350);
     const wider =
