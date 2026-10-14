@@ -824,7 +824,7 @@ suite("echartsLayout", () => {
     const option = layout(
       bars({
         series: [{ type: "bar", data: [2e12, 3.5e12] }],
-        singleAxis: [{ type: "time" }, { axisLabel: { formatter: "{value} ms" } }],
+        singleAxis: [{ type: "category" }, { axisLabel: { formatter: "{value} ms" } }],
         parallel: { parallelAxisDefault: { type: "category" } },
         parallelAxis: [{ dim: 0 }, { dim: 1, type: "log" }],
       }),
@@ -842,6 +842,69 @@ suite("echartsLayout", () => {
     const svg = svgOf(option);
     assert.match(svg, />3T</);
     assert.doesNotMatch(svg, /000,000/);
+  });
+
+  test("labels the days of a time axis with their month, fewer of them in a narrow plot", () => {
+    const days = (start: string, count: number) =>
+      Array.from({ length: count }, (_, index) => [
+        new Date(Date.parse(start) + index * 86_400_000).toISOString().slice(0, 10),
+        index % 5,
+      ]);
+    const line = (data: unknown[][], axis: Option = {}): Option => ({
+      xAxis: { type: "time", ...axis },
+      yAxis: { show: false },
+      series: [{ type: "line", data }],
+    });
+    const labels = (option: Option, width: number) =>
+      [
+        ...svgOf(layout(option, { width }), { width, height: 500 }).matchAll(/>([^<>]+)<\/text>/g),
+      ].map(([, text]) => text);
+    // ECharts labels days by their number alone, as "3", among the numbers of other axes.
+    assert.deepStrictEqual(labels(line(days("2026-02-02", 20)), 800), [
+      "Feb 3",
+      "Feb 5",
+      "Feb 7",
+      "Feb 9",
+      "Feb 11",
+      "Feb 13",
+      "Feb 15",
+      "Feb 17",
+      "Feb 19",
+      "Feb 21",
+    ]);
+    // The first of a month or year still names it, in bold.
+    const jan = labels(line(days("2025-12-27", 14)), 800);
+    assert.ok(
+      ["Dec 31", "2026", "Jan 3"].every((text) => jan.includes(text)),
+      String(jan),
+    );
+    assert.match(svgOf(layout(line(days("2025-12-27", 14)))), /font-weight:bold[^>]*>2026</);
+    // Fewer across a narrow plot, where ECharts would run them into each other.
+    const narrow = layout(line(days("2026-02-02", 20)), { width: 400 });
+    assert.strictEqual(narrow.xAxis.splitNumber, 3);
+    assert.deepStrictEqual(labels(line(days("2026-02-02", 20)), 400), [
+      "Feb 5",
+      "Feb 9",
+      "Feb 13",
+      "Feb 17",
+      "Feb 21",
+    ]);
+    // Of a single axis too, unless the axis says how many, or formats them itself.
+    const river = layout(
+      { singleAxis: { type: "time" }, series: [{ type: "themeRiver", data: [] }] },
+      { width: 400 },
+    );
+    assert.strictEqual(river.singleAxis.splitNumber, 3);
+    assert.deepStrictEqual(river.singleAxis.axisLabel.formatter.day, [
+      "{MMM} {d}",
+      "{primary|{MMM} {d}}",
+    ]);
+    assert.strictEqual(layout(line([], { splitNumber: 8 }), { width: 400 }).xAxis.splitNumber, 8);
+    const formatted = layout(line([], { axisLabel: { formatter: "{d}" } }), { width: 400 }).xAxis;
+    assert.deepStrictEqual(
+      [formatted.splitNumber, formatted.axisLabel],
+      [undefined, { formatter: "{d}" }],
+    );
   });
 
   test("groups and rounds the values that labels and item tooltips fill into templates", () => {

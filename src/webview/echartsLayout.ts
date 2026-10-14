@@ -786,6 +786,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
         typeof bound === "number" ? compactLabel(bound).length : 4,
       );
       fewerTicks(axis, panel.width - 50, (Math.max(...digits) + 1) * charWidth + 16, faceted);
+      fewerTimeTicks(axis, panel.width - 50, charWidth);
     }
     for (const axis of asArray(base.yAxis)) {
       const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
@@ -1085,6 +1086,29 @@ function facetValue(id: unknown): { value: unknown } | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Gives a time axis across the chart fewer labels when they would run into each other along its
+ * length, as they would in a narrow plot: ECharts steps its ticks by the split number alone, and
+ * draws every label. Only of an axis whose labels the panel formats (see {@link TIME_LABELS}),
+ * as wide as "Feb 13" or "12:30".
+ */
+function fewerTimeTicks(axis: JsonObject, length: number, charWidth: number): void {
+  const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+  if (
+    axisType(axis) !== "time" ||
+    label.formatter !== undefined ||
+    axis.splitNumber !== undefined ||
+    axis.interval !== undefined ||
+    axis.minInterval !== undefined
+  ) {
+    return;
+  }
+  // ECharts rounds the step down to a whole one, which can make half as many ticks again as the
+  // split number asks for, as with value axes; it asks for 6 itself.
+  const asked = Math.max(2, Math.floor(length / (6 * charWidth + 16) / 1.5));
+  if (asked < 6) axis.splitNumber = asked;
 }
 
 /**
@@ -1393,7 +1417,7 @@ function layOutSingleAxis(
   base: JsonObject,
   series: JsonObject[],
   reserved: Insets,
-  { width }: Size,
+  { width, charWidth }: Size,
 ): void {
   const axes = asArray(base.singleAxis);
   const axis = axes.length === 1 ? axes[0] : undefined;
@@ -1407,13 +1431,13 @@ function layOutSingleAxis(
     if (label.align !== "right") continue;
     // ECharts' default size and margin of the names, which name the layers in the data's third
     // field, as in ["2026-01-05", 12, "Docs"].
-    const charWidth = (typeof label.fontSize === "number" ? label.fontSize : 11) * 0.6;
+    const nameChar = (typeof label.fontSize === "number" ? label.fontSize : 11) * 0.6;
     const margin = (typeof label.margin === "number" ? label.margin : 4) + 8;
     const most = Math.round(width * MAX_LAYER_NAMES);
     const names = Array.isArray(river.data)
       ? river.data.map((item: unknown) => (Array.isArray(item) ? item[2] : undefined))
       : [];
-    const text = longestText(names, most / charWidth) * charWidth;
+    const text = longestText(names, most / nameChar) * nameChar;
     if (text + margin > most && label.width === undefined) {
       Object.assign(label, { width: most - margin, overflow: label.overflow ?? "truncate" });
     }
@@ -1428,6 +1452,7 @@ function layOutSingleAxis(
     top: reserved.top + 14 + (above ? labels : 0),
     bottom: reserved.bottom + 8 + (above ? 0 : labels),
   });
+  fewerTimeTicks(axis, width - reserved.left - left - reserved.right - 24, charWidth);
 }
 
 /** The type of an axis, which ECharts makes "category" for one with data. */
@@ -1621,10 +1646,33 @@ const compactLabel = (value: unknown) =>
     : (Math.abs(value) < 10_000 ? plainNumber : compactNumber).format(value);
 
 /**
+ * The templates of the labels of a time axis by the unit of the time each labels, ECharts' own but
+ * for a day, which ECharts labels by its number alone, as "3" among other numbers: by its month
+ * as well, as "Feb 3". As in ECharts' own, the label of a time that starts a larger unit than the
+ * ticks' step, as the "2026" of January 1st among days, is bold.
+ */
+const TIME_LABELS = {
+  year: "{yyyy}",
+  month: "{MMM}",
+  day: "{MMM} {d}",
+  hour: "{HH}:{mm}",
+  minute: "{HH}:{mm}",
+  second: "{HH}:{mm}:{ss}",
+  millisecond: "{HH}:{mm}:{ss} {SSS}",
+};
+const timeLabels = () =>
+  Object.fromEntries(
+    Object.entries(TIME_LABELS).map(([unit, template]) => [
+      unit,
+      [template, `{primary|${template}}`],
+    ]),
+  );
+
+/**
  * Labels the values of value and log axes compactly, as "1.5M" rather than "1,500,000", which
- * would take the plot's width, unless the axis formats its labels itself. ECharts labels them in
- * full, and an option sent as JSON cannot hold a formatter that does this. A parallel axis takes
- * what its parallel component sets for all of them.
+ * would take the plot's width, and the days of time axes by their month (see {@link TIME_LABELS}),
+ * unless the axis formats its labels itself. An option sent as JSON cannot hold a formatter that
+ * does the one. A parallel axis takes what its parallel component sets for all of them.
  */
 function compactAxisLabels(base: JsonObject): void {
   const parallels = asArray(base.parallel);
@@ -1640,10 +1688,11 @@ function compactAxisLabels(base: JsonObject): void {
       const formatted = [label, shared.axisLabel].some(
         (each) => isPlainObject(each) && each.formatter !== undefined,
       );
-      if ((type === "value" || type === "log") && !formatted) {
-        label.formatter = compactLabel;
-        axis.axisLabel = label;
-      }
+      if (formatted) continue;
+      if (type === "value" || type === "log") label.formatter = compactLabel;
+      else if (type === "time") label.formatter = timeLabels();
+      else continue;
+      axis.axisLabel = label;
     }
   }
 }
