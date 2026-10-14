@@ -26,7 +26,13 @@ import {
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { readabilityWarnings } from "./mermaidQuality";
-import { fontConfig, mermaidTheme, themeFixedColors } from "./mermaidTheme";
+import {
+  drawnAtWidth,
+  fontConfig,
+  mermaidTheme,
+  sizeConfig,
+  themeFixedColors,
+} from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
 import {
@@ -60,8 +66,9 @@ const WHEEL_ZOOM = 1.2;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 /**
- * How much the canvas width must change for a Gantt chart to be laid out again (scaling it to fit
- * meanwhile), and how long after the last change: not for a scrollbar, nor for each step of a drag.
+ * How much the canvas width must change for a chart drawn at its width to be laid out again
+ * (scaling it to fit meanwhile), and how long after the last change: not for a scrollbar, nor for
+ * each step of a drag.
  */
 const RELAYOUT_THRESHOLD = 16;
 export const RELAYOUT_DELAY = 200;
@@ -494,7 +501,7 @@ export class MermaidRenderer implements Renderer {
         if (this.fitting && this.displayedSource !== undefined) this.fit();
       });
     }
-    if (this.diagramType === "gantt") {
+    if (drawnAtWidth(this.diagramType)) {
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
     }
@@ -605,9 +612,17 @@ export class MermaidRenderer implements Renderer {
     this.resizeObserver.observe(canvas);
   }
 
-  /** How Mermaid is configured for the VS Code theme of these colors, to draw the source. */
-  private config(source: string, colors = readThemeColors()): Parameters<Mermaid["initialize"]>[0] {
+  /**
+   * How Mermaid is configured for the VS Code theme of these colors, to draw the source at the
+   * width that the panel has, by default the width that the drawing shown was laid out at.
+   */
+  private config(
+    source: string,
+    colors = readThemeColors(),
+    width = this.layoutWidth,
+  ): Parameters<Mermaid["initialize"]>[0] {
     const { settings, typeLine } = diagramHeader(source);
+    const keyword = typeLine?.split(/\s/)[0];
     return {
       startOnLoad: false,
       securityLevel: "strict",
@@ -618,8 +633,9 @@ export class MermaidRenderer implements Renderer {
       // these too, and the text of its nodes in the color meant for VS Code's theme.
       ...(OWN_THEME.test(settings)
         ? { theme: "base", themeVariables: {} }
-        : mermaidTheme(colors, typeLine?.split(/\s/)[0])),
+        : mermaidTheme(colors, keyword)),
       ...fontConfig(colors.fontFamily),
+      ...sizeConfig(keyword, settings, width),
     };
   }
 
@@ -631,12 +647,11 @@ export class MermaidRenderer implements Renderer {
     }
     const mermaid = await loadMermaid();
     const colors = readThemeColors();
-    const config = this.config(source, colors);
-    mermaid.initialize(config);
     const id = `diagram-svg-${++this.renderCounter}`;
     const container = layoutContainer();
-    // Gantt charts take the width of the element they are drawn in: give them the width they are
-    // shown at, rather than shrinking their text to fit. In the Source view the canvas has no
+    // Gantt charts take the width of the element they are drawn in, and other charts the size
+    // that they are configured to: give them the width they are shown at, rather than shrinking
+    // their text to fit. In the Source view the canvas has no
     // width: keep the last one, or before any, take the one it has in the Visual view. A hidden
     // tab has none to take: the chart is laid out again once the tab is shown.
     let { width } = this.contentSize();
@@ -653,6 +668,8 @@ export class MermaidRenderer implements Renderer {
         (scroller.offsetWidth - scroller.clientWidth);
       scroller.remove();
     }
+    const config = this.config(source, colors, width > 0 ? width : this.layoutWidth);
+    mermaid.initialize(config);
     // A drawing that fails leaves the one shown, and the width it was laid out at.
     const shownWidth = container.style.width;
     const drawWidth = width > 0 ? `${width}px` : shownWidth;
@@ -975,8 +992,8 @@ export class MermaidRenderer implements Renderer {
   }
 
   /**
-   * Lays a Gantt chart out again at the width of the canvas, which Mermaid draws it at, rather than
-   * scaling it with its text. A zoom by hand stays as much larger or smaller than fitting, and the
+   * Lays a Gantt chart, or another chart drawn at the width of the canvas, out again at that width,
+   * rather than scaling it with its text. A zoom by hand stays as much larger or smaller than fitting, and the
    * canvas stays scrolled to the same part of the chart.
    */
   private async relayout(): Promise<void> {
@@ -984,7 +1001,7 @@ export class MermaidRenderer implements Renderer {
     const room = this.contentSize();
     if (
       source === undefined ||
-      this.diagramType !== "gantt" ||
+      !drawnAtWidth(this.diagramType) ||
       room.width <= 0 ||
       Math.abs(room.width - this.layoutWidth) < RELAYOUT_THRESHOLD
     ) {
@@ -1026,7 +1043,7 @@ export class MermaidRenderer implements Renderer {
   }
 
   /**
-   * Fits the diagram, or lays a Gantt chart out, for the tab shown again. The resize observer
+   * Fits the diagram, or lays a chart drawn at the panel's width out, for the tab shown again. The resize observer
    * reports no size it reported before the tab was hidden, and the page can hear that the tab is
    * shown before it has the tab's size: observing anew reports the size in the next frame, and
    * any change after it.

@@ -189,12 +189,14 @@ suite("Mermaid readability in the webview", function () {
       (await warnings(`sequenceDiagram\n${messages.join("\n")}`))[0] ?? "",
       /\. Shorten its messages and show fewer participants or split it into several diagrams\.$/,
     );
+    // The panel draws a packet's bits narrower in a narrow panel, unless the packet sizes them.
+    assert.deepStrictEqual(await warnings(PACKET), []);
     assert.match(
-      (await warnings(PACKET))[0] ?? "",
+      (await warnings(`---\nconfig:\n  packet: {bitWidth: 32}\n---\n${PACKET}`))[0] ?? "",
       /\. Show fewer bits per row, with "packet: \{bitsPerRow: 16\}" under "config" in the front matter\.$/,
     );
     assert.deepStrictEqual(
-      await warnings(`---\nconfig:\n  packet: {bitsPerRow: 16}\n---\n${PACKET}`),
+      await warnings(`---\nconfig:\n  packet: {bitWidth: 32, bitsPerRow: 16}\n---\n${PACKET}`),
       [],
     );
   });

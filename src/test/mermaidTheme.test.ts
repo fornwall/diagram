@@ -1,6 +1,12 @@
 import * as assert from "node:assert";
 import { contrast, LABEL_CONTRAST, type Rgba, toCss } from "../webview/colors";
-import { fontConfig, mermaidTheme, mermaidThemeVariables } from "../webview/mermaidTheme";
+import {
+  drawnAtWidth,
+  fontConfig,
+  mermaidTheme,
+  mermaidThemeVariables,
+  sizeConfig,
+} from "../webview/mermaidTheme";
 import { vscodeThemes } from "./vscodeThemes";
 
 /** Parses the #rrggbb colors that the theme variables are written in. */
@@ -145,5 +151,34 @@ suite("Mermaid theme", () => {
       (config.c4 as Record<string, string>).external_system_dbFontFamily,
       "Segoe UI",
     );
+  });
+
+  test("sizes charts that Mermaid draws at a size of its own to the panel's width", () => {
+    // As wide as the panel has room for, between as narrow as their text allows and Mermaid's size.
+    assert.deepStrictEqual(sizeConfig("xychart-beta", "", 450), {
+      xyChart: { width: 450, height: 321 },
+    });
+    assert.deepStrictEqual(sizeConfig("xychart", "", 300), {
+      xyChart: { width: 400, height: 286 },
+    });
+    assert.deepStrictEqual(sizeConfig("xychart", "", 2000), {
+      xyChart: { width: 700, height: 500 },
+    });
+    // A radar's labels lie in its margins.
+    assert.deepStrictEqual(sizeConfig("radar-beta", "", 500), {
+      radar: { width: 400, height: 400 },
+    });
+    assert.deepStrictEqual(sizeConfig("packet", "", 410), { packet: { bitWidth: 16 } });
+    assert.deepStrictEqual(sizeConfig("packet-beta", "", 900), { packet: { bitWidth: 28 } });
+    // Not one whose settings size it, nor other diagrams, nor without a width.
+    assert.deepStrictEqual(sizeConfig("radar-beta", "config:\n  radar:\n    width: 300", 500), {});
+    assert.deepStrictEqual(sizeConfig("packet", "config:\n  packet:\n    bitsPerRow: 16", 500), {});
+    assert.deepStrictEqual(sizeConfig("flowchart", "", 500), {});
+    assert.deepStrictEqual(sizeConfig("sankey", "", 0), {});
+    // Mermaid's names for the types it detects, which are drawn again at a new width.
+    for (const type of ["gantt", "radar", "xychart", "quadrantChart", "sankey", "packet", "venn"]) {
+      assert.ok(drawnAtWidth(type), type);
+    }
+    assert.ok(!drawnAtWidth("flowchart-v2") && !drawnAtWidth(undefined));
   });
 });

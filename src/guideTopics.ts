@@ -430,12 +430,7 @@ Budget,"Fun, travel",1000`,
     aliases: ["packet-beta", "bits", "protocol-header"],
     summary: "Bit fields of a packet or binary format",
     language: "mermaid",
-    example: `---
-config:
-  packet:
-    bitsPerRow: 16
----
-packet
+    example: `packet
   title UDP header
   0-15: "Source port"
   16-31: "Destination port"
@@ -444,7 +439,7 @@ packet
   +32: "Data (variable)"`,
     notes: `- start-end: "Field" with inclusive bit numbers, n: "Flag" for one bit, +16: "Field" for the next 16 bits. Fields are contiguous from bit 0: a gap fails.
 - Labels in quotes: 0-7: Type fails. A field longer than a row continues on the next.
-- A row has 32 bits by default, which draws small in the panel; bitsPerRow: 16 as above draws at full size. bitOrder: descending puts the most significant bit on the left.
+- A row has 32 bits, which the panel narrows to fit; front matter config: packet: bitsPerRow: 16 halves the rows. bitOrder: descending puts the most significant bit on the left.
 - The title is drawn below the fields.`,
   },
   {
@@ -492,16 +487,7 @@ packet
     aliases: ["radar-beta", "spider", "mermaid-radar"],
     summary: "Several items scored on the same axes (an ECharts radar: echarts-radar)",
     language: "mermaid",
-    example: `---
-config:
-  radar:
-    width: 400
-    height: 400
-    marginTop: 80
-    marginLeft: 80
-    marginRight: 80
----
-radar-beta
+    example: `radar-beta
   title Team skills
   axis design["Design"], code["Code"], test["Testing"], ops["Ops"], docs["Docs"]
   curve ana["Ana"]{4, 3, 5, 2, 4}
@@ -512,7 +498,6 @@ radar-beta
     notes: `- The header is radar-beta. axis id["Label"], … with quoted labels: a[Alpha] fails.
 - curve id["Label"]{v1, v2, …} with a value per axis in axis order, or {axisId: value, …} naming every axis. Fewer values than axes silently draws no curve; negative values fail.
 - Options without a colon: max 5, min 0, ticks 5, showLegend true, graticule circle or polygon.
-- The default size draws small text in the panel: the front matter above makes it larger.
 - 4–8 axes and up to 3 curves read well; to compare exact values, use a bar chart.`,
   },
   {
@@ -740,8 +725,6 @@ note "Kettles are commoditising" [0.12, 0.25]`,
     example: `---
 config:
   cynefin:
-    width: 640
-    height: 480
     showDomainDescriptions: false
 ---
 cynefin-beta
@@ -763,7 +746,7 @@ cynefin-beta
     notes: `- Domains, lowercase only: complex, complicated, clear, chaotic, confusion. Each lists its items in double quotes; unquoted items fail. A domain listed twice keeps only its last items.
 - Transitions: from --> to : "label", with the label quoted (unquoted fails with a misleading error); -> fails.
 - Up to 4 items per domain (more spill into the next) with labels up to ~20 characters; at most 2 transitions, as their arrows cross the items.
-- The front matter above makes it fit the panel; showDomainDescriptions: false leaves out the "Probe → Sense → Respond" lines.`,
+- showDomainDescriptions: false in the front matter above leaves out the "Probe → Sense → Respond" lines.`,
   },
   {
     name: "railroad",

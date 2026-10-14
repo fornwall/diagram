@@ -332,6 +332,43 @@ suite("Mermaid in the webview", function () {
     });
   });
 
+  test("draws charts that Mermaid sizes at the width of the panel, unless they size themselves", async () => {
+    // The width that the drawing is laid out at, and the room for it, once laid out at a width.
+    const measure = (width: string) => `(async () => {
+      ${UNTIL}
+      const canvas = document.getElementById("canvas");
+      const room = () => {
+        const style = getComputedStyle(canvas);
+        return Math.round(canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+      };
+      const drawn = () => Math.round(document.querySelector("#diagram svg").viewBox.baseVal.width);
+      const before = document.querySelector("#diagram svg");
+      if ("${width}") {
+        canvas.style.maxWidth = "${width}";
+        await until(() => document.querySelector("#diagram svg") !== before, "the chart laid out again");
+      }
+      return { drawn: drawn(), room: room() };
+    })()`;
+    try {
+      await evaluate(`document.getElementById("canvas").style.maxWidth = "500px"`);
+      await draw({ source: "xychart\n  x-axis [jan, feb, mar]\n  bar [10, 50, 30]" });
+      // As wide as the panel, rather than Mermaid's 700, which would shrink its text to fit.
+      const narrow = (await evaluate(measure(""))) as { drawn: number; room: number };
+      assert.strictEqual(narrow.drawn, narrow.room);
+      const wider = (await evaluate(measure("560px"))) as { drawn: number; room: number };
+      assert.deepStrictEqual(wider, { drawn: narrow.room + 60, room: narrow.room + 60 });
+      // A chart that sets its size keeps it.
+      await draw({
+        source:
+          "---\nconfig:\n  xyChart:\n    width: 500\n---\nxychart\n  x-axis [jan]\n  bar [10]",
+      });
+      assert.strictEqual(((await evaluate(measure(""))) as { drawn: number }).drawn, 500);
+    } finally {
+      await evaluate(`document.getElementById("canvas").style.maxWidth = ""`);
+      await draw({ source: MERMAID["flowchart-v2"] });
+    }
+  });
+
   test("lays a Gantt chart out again at the next resize after laying it out failed", async () => {
     await draw({ source: MERMAID.gantt });
     const result = await evaluate(`(async () => {

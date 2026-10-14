@@ -338,6 +338,87 @@ export function mermaidTheme(
   return { theme: "base", themeVariables };
 }
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.round(Math.min(max, Math.max(min, value)));
+
+/**
+ * The charts that Mermaid draws at a size of its configuration, rather than of their content, by
+ * the type that it detects: the settings that size them, and their configuration for the width
+ * the panel has. Each is as wide as Mermaid draws it at most, and as narrow as its text allows.
+ */
+const SIZED: Record<string, { keys: string[]; config: (width: number) => object }> = {
+  // A radar's labels lie in its margins, of 50 on each side.
+  radar: {
+    keys: ["width", "height"],
+    config: (width) => {
+      const side = clamp(width - 100, 300, 600);
+      return { radar: { width: side, height: side } };
+    },
+  },
+  xychart: {
+    keys: ["width", "height"],
+    config: (width) => {
+      const wide = clamp(width, 400, 700);
+      return { xyChart: { width: wide, height: Math.round((wide * 5) / 7) } };
+    },
+  },
+  quadrantChart: {
+    keys: ["chartWidth", "chartHeight"],
+    config: (width) => {
+      const side = clamp(width, 320, 500);
+      return { quadrantChart: { chartWidth: side, chartHeight: side } };
+    },
+  },
+  sankey: {
+    keys: ["width", "height"],
+    config: (width) => {
+      const wide = clamp(width, 320, 600);
+      return { sankey: { width: wide, height: Math.round((wide * 2) / 3) } };
+    },
+  },
+  // Fields of a single bit keep room for their number.
+  packet: {
+    keys: ["bitWidth", "bitsPerRow"],
+    config: (width) => ({ packet: { bitWidth: clamp((width - 10) / 32, 16, 32) } }),
+  },
+  cynefin: {
+    keys: ["width", "height"],
+    config: (width) => {
+      // Its width takes in a padding of 40 on each side.
+      const wide = clamp(width - 80, 480, 800);
+      return { cynefin: { width: wide, height: Math.round(wide * 0.75) } };
+    },
+  },
+  venn: {
+    keys: ["width", "height"],
+    config: (width) => {
+      const wide = clamp(width, 400, 800);
+      return { venn: { width: wide, height: Math.round((wide * 9) / 16) } };
+    },
+  },
+};
+
+/** The diagram type that Mermaid detects for a diagram that starts with the keyword. */
+const sizedType = (keyword: string | undefined) => keyword?.replace(/-beta$/, "");
+
+/** Whether Mermaid draws a diagram of the type it detected at the width the panel has. */
+export const drawnAtWidth = (type: string | undefined) =>
+  type === "gantt" || (type !== undefined && Object.hasOwn(SIZED, type));
+
+/**
+ * The configuration that draws a chart of a size of Mermaid's at the width that the panel has for
+ * it, given the keyword that starts the diagram and its settings: in a narrow panel, its text
+ * would otherwise shrink with it. A diagram that sizes itself keeps its size.
+ */
+export function sizeConfig(keyword: string | undefined, settings: string, width: number): object {
+  const type = sizedType(keyword);
+  const sized = type !== undefined && Object.hasOwn(SIZED, type) ? SIZED[type] : undefined;
+  if (!sized || width <= 0 || sized.keys.some((key) => new RegExp(`\\b${key}\\b`).test(settings))) {
+    return {};
+  }
+  return sized.config(width);
+}
+
 /** The kinds of element of C4 diagrams, whose fonts Mermaid configures each on its own. */
 const C4_ELEMENTS = ["person", "system", "container", "component"].flatMap((kind) =>
   [kind, `${kind}_db`, `${kind}_queue`].flatMap((each) => [each, `external_${each}`]),
