@@ -1954,8 +1954,12 @@ function compactAxisLabels(base: JsonObject): void {
       );
       if (formatted) continue;
       if (type === "value" || type === "log") label.formatter = compactLabel;
-      else if (type === "time") label.formatter = timeLabels();
-      else continue;
+      else if (type === "time") {
+        label.formatter = timeLabels();
+        // ECharts adds the label of a month's or year's start between those of the ticks, however
+        // near one, which a day's label as wide as "Feb 2" then runs into.
+        label.hideOverlap ??= true;
+      } else continue;
       axis.axisLabel = label;
     }
   }

@@ -1045,7 +1045,10 @@ suite("echartsLayout", () => {
       ["Dec 31", "2026", "Jan 3"].every((text) => jan.includes(text)),
       String(jan),
     );
-    assert.match(svgOf(layout(line(days("2025-12-27", 14)))), /font-weight:bold[^>]*>2026</);
+    assert.match(
+      svgOf(layout(line(days("2025-12-27", 14))), { width: 800, height: 500 }),
+      /font-weight:bold[^>]*>2026</,
+    );
     // Fewer across a narrow plot, where ECharts would run them into each other.
     const narrow = layout(line(days("2026-02-02", 20)), { width: 400 });
     assert.strictEqual(narrow.xAxis.splitNumber, 3);
@@ -1071,6 +1074,28 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(
       [formatted.splitNumber, formatted.axisLabel],
       [undefined, { formatter: "{d}" }],
+    );
+    // The label of a month's start, which ECharts adds between the ticks of days, a day before
+    // "Feb 2" here: one of labels that would run into each other is left out.
+    const shown = withChart(
+      layout(line(days("2026-01-05", 30)), { width: 600 }),
+      (chart) => {
+        const boxes: { text: string; x: number; right: number }[] = [];
+        for (const line of chart.getZr().storage.getDisplayList(true)) {
+          const text = line.type === "tspan" ? (line.parent as unknown as Option) : undefined;
+          if (text?.type !== "text" || text.ignore || text.invisible) continue;
+          const box = text.getBoundingRect().clone();
+          box.applyTransform(text.getComputedTransform());
+          boxes.push({ text: String(text.style.text), x: box.x, right: box.x + box.width });
+        }
+        return boxes.sort((a, b) => a.x - b.x);
+      },
+      { width: 600, height: 500 },
+    );
+    assert.ok(
+      shown.some(({ text }) => text.includes("Feb")) &&
+        shown.every((box, index) => index === 0 || (shown[index - 1]?.right ?? 0) <= box.x),
+      JSON.stringify(shown),
     );
   });
 
