@@ -57,6 +57,15 @@ suite("documentDiagram", function () {
     };
   }
 
+  /**
+   * Shows the panel no tabs, as when no editor shows a document, until the test ends: VS Code itself
+   * opens a file that becomes unsaved without an editor in a background tab within 800 ms, which
+   * may be before the next write of a test.
+   */
+  function withoutTabs(): void {
+    replace(vscode.window, "tabGroups", { all: [] } as unknown as vscode.TabGroups);
+  }
+
   /** A panel showing the diagram, saved as it was when VS Code closed. */
   function restored(state: DiagramState) {
     return newFakePanel(new Map<string, unknown>([["diagram.state", state]]));
@@ -402,6 +411,7 @@ suite("documentDiagram", function () {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const name = path.basename(document.uri.fsPath);
     const { webview } = await restored(openedState(binding(document)));
+    withoutTabs();
     const notice = Promise.withResolvers<string>();
     const notices = recordMessages("showInformationMessage", (message, ...actions) => {
       notice.resolve(message);
@@ -432,6 +442,7 @@ suite("documentDiagram", function () {
   test("says that it wrote to a document that no editor shows that something else left unsaved", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const { webview } = await restored(openedState(binding(document)));
+    withoutTabs();
     const notices = recordMessages("showInformationMessage");
     // As a Replace All in Search does.
     await edit(document, new vscode.Range(0, 2, 0, 7), "Plans");
