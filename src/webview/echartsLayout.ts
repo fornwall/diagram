@@ -430,6 +430,7 @@ function layOut(
     if (grid) truncateTitle(title, (pixels(grid.width, size.width) ?? size.width) - 16);
   }
   layOutPie(base, series, reserved, size);
+  labelTreeNodes(series, size);
   layOutBoxSeries(series, reserved, size);
   layOutRadar(base, reserved, size);
   return size.height - reserved.top - reserved.bottom;
@@ -1436,9 +1437,67 @@ function funnelSides(
 }
 
 /**
+ * Labels the nodes of a tree laid out from left to right, or right to left, beside them, as
+ * ECharts' examples do, unless told otherwise: the nodes with children before them, toward the
+ * root, and the leaves after them. ECharts centers a label on its node, where it runs over the
+ * node and its lines. A label longer than the room the tree keeps beside it (see
+ * {@link treeSides}) goes onto lines, if the deepest nodes are far enough apart, or is cut short.
+ */
+function labelTreeNodes(series: JsonObject[], { width, height }: Size): void {
+  for (const tree of series) {
+    const orient = tree.orient ?? "LR";
+    const label = isPlainObject(tree.label) ? tree.label : {};
+    if (
+      tree.type !== "tree" ||
+      (tree.layout ?? "orthogonal") !== "orthogonal" ||
+      (orient !== "LR" && orient !== "RL") ||
+      label.position !== undefined
+    ) {
+      continue;
+    }
+    const [before, after] = orient === "LR" ? ["left", "right"] : ["right", "left"];
+    const [root] = Array.isArray(tree.data) ? tree.data : [];
+    const apart = height / Math.max(1, deepestShown(root, tree).length);
+    const beside = (side: string) => ({
+      position: side,
+      align: side === "left" ? "right" : "left",
+      verticalAlign: "middle",
+      width: Math.round(width * MAX_TREE_LABELS) - 12,
+      overflow: apart >= 2 * LABEL_LINE_HEIGHT + 4 ? "break" : "truncate",
+    });
+    tree.label = { ...beside(before), ...label };
+    const leaves = isPlainObject(tree.leaves) ? tree.leaves : {};
+    const leafLabel = isPlainObject(leaves.label) ? leaves.label : {};
+    if (leafLabel.position === undefined) {
+      tree.leaves = { ...leaves, label: { ...beside(after), ...leafLabel } };
+    }
+  }
+}
+
+/** The width of the labels beside a tree, at most, as a share of the chart's width. */
+const MAX_TREE_LABELS = 0.4;
+
+/** The nodes of the deepest level of a tree that ECharts shows, at first, below its root. */
+function deepestShown(root: unknown, tree: JsonObject): unknown[] {
+  // ECharts shows two levels below the root unless told otherwise.
+  const depth = typeof tree.initialTreeDepth === "number" ? tree.initialTreeDepth : 2;
+  let deepest: unknown[] = [root];
+  for (let level = 0; depth < 0 || level < depth; level++) {
+    const next = deepest.flatMap((node) =>
+      isPlainObject(node) && Array.isArray(node.children) && node.collapsed !== true
+        ? node.children
+        : [],
+    );
+    if (next.length === 0) break;
+    deepest = next;
+  }
+  return deepest;
+}
+
+/**
  * The room a tree laid out from left to right, or right to left, keeps beside it: the margin, or
  * as much as the labels at its ends take, of its root and of the nodes of the deepest level it
- * shows, which ECharts centers on their nodes unless told otherwise, up to 40% of the width.
+ * shows, beside them (see {@link labelTreeNodes}) or centered on them, up to 40% of the width.
  */
 function treeSides(
   tree: JsonObject,
@@ -1452,21 +1511,10 @@ function treeSides(
     return [margin, margin];
   }
   if (!isPlainObject(root)) return [margin, margin];
-  // ECharts shows two levels below the root unless told otherwise.
-  const depth = typeof tree.initialTreeDepth === "number" ? tree.initialTreeDepth : 2;
-  let deepest: unknown[] = [root];
-  for (let level = 0; depth < 0 || level < depth; level++) {
-    const next = deepest.flatMap((node) =>
-      isPlainObject(node) && Array.isArray(node.children) && node.collapsed !== true
-        ? node.children
-        : [],
-    );
-    if (next.length === 0) break;
-    deepest = next;
-  }
+  const deepest = deepestShown(root, tree);
   const position = (label: unknown) => (isPlainObject(label) ? label.position : undefined);
   const leaves = isPlainObject(tree.leaves) ? tree.leaves.label : undefined;
-  const most = Math.round(width * 0.4);
+  const most = Math.round(width * MAX_TREE_LABELS);
   // The width a label takes beyond its node on a side: all of it on that side, none on the
   // other, and half when centered on it. Past the symbol, with a gap to the edge.
   const room = (labels: unknown[], placed: unknown, side: "left" | "right") => {

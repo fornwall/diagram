@@ -743,6 +743,52 @@ suite("echartsLayout", () => {
     assert.strictEqual(radius(long, 1200), radius(short, 1200));
   });
 
+  test("labels the nodes of a tree beside them, rather than over them and their lines", () => {
+    const tree = (extra: Option = {}) =>
+      layout({
+        series: [
+          {
+            type: "tree",
+            data: [{ name: "root", children: [{ name: "leaf" }] }],
+            ...extra,
+          },
+        ],
+      }).series[0];
+    const beside = (position: string, align: string) => ({
+      position,
+      align,
+      verticalAlign: "middle",
+      // Onto lines past 40% of the width, as the leaves are far enough apart.
+      width: 800 * 0.4 - 12,
+      overflow: "break",
+    });
+    const laidOut = tree();
+    // Before the nodes with children, toward the root, and after the leaves.
+    assert.deepStrictEqual(
+      [laidOut.label, laidOut.leaves.label],
+      [beside("left", "right"), beside("right", "left")],
+    );
+    const svg = svgOf({ series: [laidOut] });
+    assert.match(svg, /text-anchor="end"[^>]*>root</);
+    assert.match(svg, /text-anchor="start"[^>]*>leaf</);
+    const mirrored = tree({ orient: "RL", leaves: { label: { color: "red" } } });
+    assert.deepStrictEqual(
+      [mirrored.label, mirrored.leaves.label],
+      [beside("right", "left"), { ...beside("left", "right"), color: "red" }],
+    );
+    // Cut short where the leaves are too close for lines.
+    const leaves = Array.from({ length: 40 }, (_, index) => ({ name: `leaf ${index}` }));
+    assert.strictEqual(
+      tree({ data: [{ name: "root", children: leaves }] }).leaves.label.overflow,
+      "truncate",
+    );
+    // Not placed by the option, nor from the top down or around the root.
+    assert.deepStrictEqual(tree({ label: { position: "top" } }).label, { position: "top" });
+    for (const extra of [{ orient: "TB" }, { layout: "radial" }]) {
+      assert.strictEqual(tree(extra).label, undefined, JSON.stringify(extra));
+    }
+  });
+
   test("keeps series laid out in a box clear of the title, with room for their labels", () => {
     const box = (type: string, extra: Option = {}) => {
       const { top, left, right, bottom } = layout({
@@ -759,16 +805,24 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "middle" } }), [44, 12, 12, 12]);
     assert.deepStrictEqual(box("tree"), [44, 96, 96, 12]);
     // The labels at the ends of a tree, of its root and of the deepest level it shows, which
-    // ECharts centers on their nodes unless told otherwise.
+    // the panel places beside their nodes: the leaves' after them.
     const leaf = "a leaf with a long name, and on";
     const tree = {
       data: [
         { name: "root", children: [{ name: "a", children: [{ name: leaf }] }, { name: "b" }] },
       ],
     };
-    const half = Math.round((leaf.length * colors.fontSize * 0.6) / 2 + 12);
-    assert.deepStrictEqual(box("tree", tree), [44, 96, Math.max(96, half), 12]);
     const whole = Math.round(leaf.length * colors.fontSize * 0.6 + 12);
+    assert.deepStrictEqual(box("tree", tree), [44, 96, whole, 12]);
+    assert.deepStrictEqual(box("tree", { ...tree, orient: "RL" }), [44, whole, 96, 12]);
+    // Centered on their nodes, half of them.
+    const half = Math.round((leaf.length * colors.fontSize * 0.6) / 2 + 12);
+    assert.deepStrictEqual(box("tree", { ...tree, label: { position: "inside" } }), [
+      44,
+      96,
+      Math.max(96, half),
+      12,
+    ]);
     const right = { leaves: { label: { position: "right" } } };
     assert.deepStrictEqual(box("tree", { ...tree, ...right }), [44, 96, whole, 12]);
     assert.deepStrictEqual(box("tree", { ...tree, ...right, orient: "RL" }), [44, 96, 96, 12]);
