@@ -347,6 +347,22 @@ suite("Mermaid readability in the webview", function () {
     );
   });
 
+  test("says when the labels of links lie over nodes, as between blocks side by side", async () => {
+    const blocks =
+      'block-beta\n  columns 3\n  a["Frontend"] b["API"] c["Store"]\n  b -- "reads" --> c';
+    assert.deepStrictEqual(await warnings(blocks, 800), [
+      'Labels of links lie over nodes, such as "reads" over "API" (2 pairs): leave room between the nodes they link, as a space block does between blocks, or shorten the labels.',
+    ]);
+    // A space between them leaves the label room.
+    assert.deepStrictEqual(
+      await warnings(
+        'block-beta\n  columns 4\n  a["Frontend"] b["API"] space c["Store"]\n  b -- "reads" --> c',
+        800,
+      ),
+      [],
+    );
+  });
+
   test("tells the model that rendered the diagram", async () => {
     await evaluate(`document.body.style.maxWidth = "450px"`);
     const result = await invokeTool(new RenderDiagramTool(page.panel), {

@@ -60,6 +60,7 @@ export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): st
     tooLarge(facts),
     loneNodes(facts),
     overlappingLabels(svg),
+    labelsOverNodes(svg),
     unknownTasks(facts),
     markedEnd(facts),
   ].filter((warning) => warning !== undefined);
@@ -348,4 +349,34 @@ function overlappingLabels(svg: SVGSVGElement): string | undefined {
   const text = (label: Element) => quote((label.textContent ?? "").replace(/\s+/g, " ").trim(), 30);
   const count = pairs.length > 1 ? ` (${formatCount(pairs.length)} pairs)` : "";
   return `Labels overlap, such as ${text(first[0])} and ${text(first[1])}${count}: shorten them, or draw fewer or more widely spaced items.`;
+}
+
+/**
+ * The labels of links drawn over nodes, as Mermaid draws those of links between blocks that it
+ * puts side by side: by a quarter of the label, over half of its height.
+ */
+function labelsOverNodes(svg: SVGSVGElement): string | undefined {
+  const nodes = Array.from(svg.querySelectorAll("g.node"), (node) => ({
+    node,
+    box: node.getBoundingClientRect(),
+  }));
+  const over: [Element, Element][] = [];
+  for (const edge of svg.querySelectorAll("g.edgeLabel")) {
+    const label = edge.querySelector("foreignObject, text");
+    if (!label?.textContent?.trim() || hidden(label, svg)) continue;
+    const a = textBox(label);
+    for (const { node, box: b } of nodes) {
+      const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (width > 0 && height > a.height / 2 && width * height > (a.width * a.height) / 4) {
+        over.push([label, node]);
+      }
+    }
+  }
+  const [first] = over;
+  if (!first) return undefined;
+  const text = (element: Element) =>
+    quote((element.textContent ?? "").replace(/\s+/g, " ").trim(), 30);
+  const count = over.length > 1 ? ` (${formatCount(over.length)} pairs)` : "";
+  return `Labels of links lie over nodes, such as ${text(first[0])} over ${text(first[1])}${count}: leave room between the nodes they link, as a space block does between blocks, or shorten the labels.`;
 }
