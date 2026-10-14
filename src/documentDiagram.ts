@@ -177,7 +177,7 @@ export async function writeFence(
 const MAX_WRITE_ATTEMPTS = 3;
 
 /**
- * Confirms writing to the original document a diagram that an agent replaced, or that JavaScript
+ * Confirms writing to the original document a diagram that an agent changed, or that JavaScript
  * code from a chart in the panel may have edited or asked to write.
  */
 export async function confirmWrite(
@@ -188,7 +188,7 @@ export async function confirmWrite(
   const noun = diagramNoun(binding.fence.language);
   const why =
     cause === "replaced"
-      ? `An agent replaced the ${noun} that was opened from ${name}.`
+      ? `An agent changed the ${noun} that was opened from ${name}.`
       : `The panel ran JavaScript code from a chart, which can apply edits and press Write to ${name} as if you had.`;
   const write = await vscode.window.showWarningMessage(
     `Write this ${noun} to ${name}?`,

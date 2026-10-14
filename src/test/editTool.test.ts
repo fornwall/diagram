@@ -364,9 +364,16 @@ suite("diagram_edit", function () {
     );
     assert.strictEqual(document.getText(), markdown);
     assert.strictEqual(panel.current?.document?.replaced, true);
-    const warnings = recordMessages("showWarningMessage");
+    const details: unknown[] = [];
+    const warnings = recordMessages("showWarningMessage", (_, options) => {
+      details.push((options as vscode.MessageOptions).detail);
+    });
     await webview.receive({ type: "writeToDocument", requestId: webview.render.requestId });
     assert.match(warnings[0] ?? "", /^Write this diagram to notes\.md\?/);
+    assert.match(
+      String(details[0]),
+      /^An agent changed the diagram that was opened from notes\.md\./,
+    );
     assert.strictEqual(document.getText(), markdown);
   });
 
