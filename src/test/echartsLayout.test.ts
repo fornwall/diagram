@@ -536,6 +536,71 @@ suite("echartsLayout", () => {
     assert.strictEqual(layout(bars()).xAxis.axisLabel, undefined);
   });
 
+  test("tells long category labels apart by lines, or else by what follows the start they share", () => {
+    const table = (count: number, name = (index: number) => `Northern Regional Center ${index}`) =>
+      `center,shipments\n${Array.from({ length: count }, (_, index) => `${name(index)},${index + 1}`).join("\n")}`;
+    const bars = (type: "bar" | "horizontalBar", data: string) =>
+      layout(builtOption({ type, data: "unused", labelColumn: "center" }, data), {
+        width: 400,
+        height: 700,
+      });
+    // Too many rows for lines: the labels are what follows "Northern Regional Center ", which
+    // names the axis above them, starting at the axis.
+    const many = bars("horizontalBar", table(25));
+    const label = many.yAxis.axisLabel;
+    assert.strictEqual(many.yAxis.name, "Northern Regional Center …");
+    assert.strictEqual(many.yAxis.nameTextStyle.align, "left");
+    assert.deepStrictEqual(
+      [label.formatter("Northern Regional Center 12"), label.formatter("Other"), label.width],
+      ["12", "Other", undefined],
+    );
+    const svg = svgOf(many, { width: 400, height: 700 });
+    assert.match(svg, />12</);
+    assert.match(svg, />Northern Regional Center …</);
+    assert.doesNotMatch(svg, /\.\.\.</);
+    // Rows with the height for them take lines.
+    const few = bars("horizontalBar", table(5)).yAxis;
+    assert.deepStrictEqual(
+      [few.axisLabel.overflow, few.axisLabel.formatter, few.name],
+      ["break", undefined, undefined],
+    );
+    // Columns name their axis below their labels, which then go across.
+    const columns = bars("bar", table(6)).xAxis;
+    assert.deepStrictEqual(
+      [columns.name, columns.nameLocation, columns.nameGap, columns.axisLabel.rotate],
+      ["Northern Regional Center …", "middle", 30, undefined],
+    );
+    // Labels that differ at the start, or share none up to a word, are cut short as before.
+    const sides = ["North", "South", "East", "West"];
+    for (const name of [
+      (index: number) => `${sides[index % 4]} Regional Distribution Center ${index}`,
+      (index: number) => `NorthernRegionalDistributionCenter${index}`,
+    ]) {
+      const axis = bars("horizontalBar", table(25, name)).yAxis;
+      assert.deepStrictEqual(
+        [axis.axisLabel.overflow, axis.axisLabel.formatter, axis.name],
+        ["truncate", undefined, undefined],
+      );
+    }
+    // A name of the option's own goes first, and labels it formats stay as they are.
+    const sites = (axis: Option) =>
+      layout(
+        {
+          xAxis: { type: "value" },
+          yAxis: {
+            type: "category",
+            data: Array.from({ length: 25 }, (_, index) => `Northern Regional Center ${index}`),
+            ...axis,
+          },
+          series: [{ type: "bar", data: Array(25).fill(1) }],
+        },
+        { width: 400, height: 700 },
+      ).yAxis;
+    assert.strictEqual(sites({ name: "Site" }).name, "Site: Northern Regional Center …");
+    const formatted = sites({ axisLabel: { formatter: "{value}" } });
+    assert.deepStrictEqual([formatted.name, formatted.axisLabel.formatter], [undefined, "{value}"]);
+  });
+
   test("names an inverse axis where it starts, above a heatmap's first row", () => {
     const spec = { type: "heatmap", labelColumn: ["day", "hour"], valueColumns: ["count"] };
     const heatmap = layout(

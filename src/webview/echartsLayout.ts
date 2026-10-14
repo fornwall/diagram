@@ -753,7 +753,12 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       facetGrid === undefined
         ? Math.max(60, Math.round(height * 0.22))
         : Math.max(40, Math.round(facetGrid.height * 0.35));
-    const labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
+    let labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
+    // Labels cut short to the same start are told apart by what follows it.
+    const rest =
+      labelWidth > Math.max(maxWidth, slot - 8) &&
+      dropSharedStart(axis, label, maxWidth / charWidth);
+    if (rest) labelWidth = rest * charWidth;
     if (labelWidth > slot - 8) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
       axis.axisLabel = {
@@ -764,6 +769,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       };
       const slanted = Math.min(labelWidth, maxWidth) * Math.sin((rotate * Math.PI) / 180);
       labelHeights.set(axis, LABEL_HEIGHT + Math.round(slanted));
+    }
+    // The shared start names the axis below its labels.
+    if (rest) {
+      axis.nameLocation ??= "middle";
+      axis.nameGap ??= (labelHeights.get(axis) ?? LABEL_HEIGHT) + 8;
     }
   }
   // A short or narrow plot, as of a facet or in a small panel, has room for fewer value labels.
@@ -794,9 +804,39 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
     );
     if (
-      label.width === undefined &&
-      longestText(axis.data, maxWidth / charWidth) * charWidth > maxWidth
+      label.width !== undefined ||
+      longestText(axis.data, maxWidth / charWidth) * charWidth <= maxWidth
     ) {
+      continue;
+    }
+    // Labels too long for their width go onto as many lines as the height of each row has room
+    // for, and else are told apart by what follows the start they share, if they do.
+    const xAxis = asArray(base.xAxis).find(({ gridIndex }) => gridIndex === axis.gridIndex);
+    const rowHeight =
+      panel === undefined || !Array.isArray(axis.data)
+        ? 0
+        : (panel.height -
+            (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0) -
+            (axis.name ? AXIS_NAME_HEIGHT : 0)) /
+          axis.data.length;
+    const lines = Math.floor((rowHeight - 4) / LABEL_LINE_HEIGHT);
+    if (lines >= 2 && wrapsInto(axis.data, maxWidth / charWidth, lines)) {
+      axis.axisLabel = {
+        width: maxWidth,
+        overflow: "break",
+        lineHeight: LABEL_LINE_HEIGHT - 1,
+        ...label,
+      };
+      continue;
+    }
+    const rest = dropSharedStart(axis, label, maxWidth / charWidth);
+    if (rest !== undefined) {
+      // The name above the labels starts at the axis, rather than centered on it, beside them.
+      const style = isPlainObject(axis.nameTextStyle) ? axis.nameTextStyle : {};
+      style.align ??= axis.position === "right" ? "right" : "left";
+      axis.nameTextStyle = style;
+    }
+    if (rest === undefined || rest * charWidth > maxWidth) {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }
   }
@@ -807,6 +847,76 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       axis.nameLocation = "start";
     }
   }
+}
+
+/** The categories of an axis beyond which the layout reads only as many as it must. */
+const MAX_READ_CATEGORIES = 200;
+/** The height of a line of an axis label that goes onto several. */
+const LABEL_LINE_HEIGHT = 17;
+
+/** The texts of the categories of an axis, if strings and no more than a few hundred. */
+function categoryTexts(data: unknown): string[] | undefined {
+  if (!Array.isArray(data) || data.length > MAX_READ_CATEGORIES) return undefined;
+  const texts = data.map((entry: unknown) => (isPlainObject(entry) ? entry.value : entry));
+  return texts.every((text) => typeof text === "string") ? texts : undefined;
+}
+
+/** Whether each category's text goes onto no more than some lines of a number of characters. */
+function wrapsInto(data: unknown, columns: number, lines: number): boolean {
+  const texts = categoryTexts(data);
+  if (texts === undefined) return false;
+  return texts.every((text) => {
+    // Word by word, as ECharts breaks them, and a word longer than a line across lines.
+    let count = 1;
+    let used = 0;
+    for (const word of text.split(/\s+/).filter(Boolean)) {
+      if (used > 0 && used + 1 + word.length <= columns) {
+        used += 1 + word.length;
+        continue;
+      }
+      if (used > 0) count++;
+      count += Math.ceil(word.length / columns) - 1;
+      used = word.length % columns || columns;
+    }
+    return count <= lines;
+  });
+}
+
+/** By the start they leave out, so that a layout of the same option has the same ones. */
+const sharedStartFormatters = new Map<string, (value: unknown) => string>();
+
+/**
+ * Labels the categories of an axis by what follows the start they share, when cut short to a
+ * number of characters they would read alike, as the "Northern Regional Distribution Center" of
+ * "… 0", "… 1", …, and names the axis by that start instead. The start ends with a word. Returns
+ * the length of the longest label left, if any.
+ */
+function dropSharedStart(axis: JsonObject, label: JsonObject, visible: number): number | undefined {
+  const texts = categoryTexts(axis.data);
+  if (!texts || texts.length < 2 || label.formatter !== undefined) return undefined;
+  const cut = (text: string) => text.slice(0, Math.max(1, Math.floor(visible) - 1));
+  if (new Set(texts.map(cut)).size === new Set(texts).size) return undefined;
+  let shared = texts[0] ?? "";
+  for (const text of texts) {
+    let length = 0;
+    while (length < shared.length && shared[length] === text[length]) length++;
+    shared = shared.slice(0, length);
+  }
+  const start = /^.*[\s\-_/:.,;|]/s.exec(shared)?.[0];
+  const name = start?.replace(/[\s\-_/:.,;|]+$/, "");
+  if (!start || !name || texts.some((text) => text.length <= start.length)) return undefined;
+  let formatter = sharedStartFormatters.get(start);
+  if (!formatter) {
+    formatter = (value: unknown) => {
+      const text = String(value);
+      return text.startsWith(start) ? text.slice(start.length) : text;
+    };
+    sharedStartFormatters.set(start, formatter);
+  }
+  label.formatter = formatter;
+  axis.axisLabel = label;
+  axis.name = typeof axis.name === "string" && axis.name ? `${axis.name}: ${name} …` : `${name} …`;
+  return Math.max(...texts.map((text) => text.length - start.length));
 }
 
 /** The height of a row of axis labels, with the gap to the axis. */

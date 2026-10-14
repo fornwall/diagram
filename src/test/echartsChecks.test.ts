@@ -613,19 +613,20 @@ suite("echartsChecks", function () {
     chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 1 } };
     assert.deepStrictEqual(warningsOf(chosen, narrow), []);
     const regions = ["North America Region East", "North America Region West", "Europe"];
-    assert.deepStrictEqual(
-      warningsOf(
-        {
-          yAxis: { type: "category", data: regions },
-          xAxis: {},
-          series: [{ type: "bar", data: [1, 2, 3] }],
-        },
-        narrow,
-      ),
-      [
-        'yAxis cuts its category labels short to fit, leaving 2 of them alike, such as "North America Regi...": use shorter names that differ at the start.',
-      ],
-    );
+    const bars = (data: string[]) => ({
+      yAxis: { type: "category", data },
+      xAxis: {},
+      series: [{ type: "bar", data: data.map((_, index) => index) }],
+    });
+    // Labels that the panel puts onto lines, or tells apart by what follows a start they share.
+    assert.deepStrictEqual(warningsOf(bars(regions), narrow), []);
+    const centers = Array.from({ length: 20 }, (_, index) => `North America Region ${index}`);
+    assert.deepStrictEqual(warningsOf(bars(centers), narrow), []);
+    // Too many to go onto lines, and sharing no start.
+    regions.push(...DEPARTMENTS.slice(0, 17));
+    assert.deepStrictEqual(warningsOf(bars(regions), narrow), [
+      'yAxis cuts its category labels short to fit, leaving 2 of them alike, such as "North America Regi...": use shorter names that differ at the start.',
+    ]);
   });
 
   test("tells of texts cut off at the edge of the chart", () => {
