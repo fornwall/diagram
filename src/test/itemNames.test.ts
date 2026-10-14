@@ -263,5 +263,16 @@ suite("itemNames", () => {
       ids: [],
       why: 'nothing goes from "my-org" to "Z"',
     });
+    // An id "o" or "x" before an arrow, which reads as a circle or cross at its start.
+    const marks = new ItemNames({
+      nodeIds: ["o", "x", "y"],
+      relationships: [relation("edge:ox", "o", "x"), relation("message:xy", "x", "y")],
+    });
+    assert.deepStrictEqual(marks.resolve("o-->x").ids, ["edge:ox"]);
+    assert.deepStrictEqual(marks.resolve("x->>y").ids, ["message:xy"]);
+    assert.deepStrictEqual(marks.resolve("o-->y"), {
+      ids: [],
+      why: 'nothing goes from "o" to "y"',
+    });
   });
 });

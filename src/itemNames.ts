@@ -256,7 +256,10 @@ export class ItemNames {
         index++;
         continue;
       }
-      const given = around(index, arrow.length);
+      // A circle or cross at its start ends the first end's id instead where nothing is before
+      // it, as the id "o" of "o-->x".
+      const marked = /^[ox*]/.test(arrow) && name.slice(0, index).trim() === "";
+      const given = marked ? around(index + 1, arrow.length - 1) : around(index, arrow.length);
       // An arrow with a head at its start alone goes from the second end to the first.
       const read = BACKWARD.test(arrow)
         ? given.map(({ source, target, label }) => ({ source: target, target: source, label }))
