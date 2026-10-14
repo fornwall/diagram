@@ -35,10 +35,10 @@ export type Detail = "brief" | "full" | "summary";
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
 /**
- * A longer list of relationships is left out in the same way. Each takes about 100 characters, so a
+ * A longer list of relationships is left out in the same way. Each takes about 50 characters, so a
  * large diagram's list could take more of every request than its source.
  */
-const MAX_RELATIONSHIPS_LENGTH = 5_000;
+const MAX_RELATIONSHIPS_LENGTH = 3_000;
 /** The most manual edits of a generated chart listed, each in about 40 characters. */
 const MAX_LISTED_EDITS = 20;
 /** Longer values of manual edits are shortened, as an object of styling may be large. */
@@ -149,7 +149,11 @@ export function describeDiagram(
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
-  const listed = nodeList(relationships);
+  // Their labels tell their ends and direction, and their ids their kind; the selection and picks
+  // name the ends' ids too.
+  const listed = relationships
+    .map(({ label, id }) => `${JSON.stringify(label)} (id: ${JSON.stringify(id)})`)
+    .join(", ");
   if (listed && (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
     lines.push(
       `Selectable relationships${has(ANNOTATE_TOOL) ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,

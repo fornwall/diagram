@@ -147,7 +147,15 @@ suite("describe", () => {
       describeDiagram(state, { relationships, tools: new Set<string>() }),
       /relation/,
     );
-    assert.match(describeDiagram(state, { relationships, detail: "full" }), /L_A_B_99";/);
+    assert.match(
+      describeDiagram(state, { relationships, detail: "full" }),
+      /: "A → B" \(id: "edge:L_A_B_0"\), .*, "A → B" \(id: "edge:L_A_B_99"\)\.$/m,
+    );
+    // Labels tell the ends and direction of each, and ids their kind, in about 30 characters.
+    assert.match(
+      describeDiagram(state, { relationships: relationships.slice(0, 90) }),
+      /^Selectable relationships \(use these exact ids for diagram_annotate\): .*"edge:L_A_B_89"\)\.$/m,
+    );
     // As for /explain, which may read the diagram but not mark it.
     const readOnly = describeDiagram(state, {
       relationships,
@@ -182,7 +190,7 @@ suite("describe", () => {
     assert.match(readOnly, /^Chart parameters: \{"type":"pie","file":"sales\.csv"\}\./m);
     assert.doesNotMatch(readOnly, /diagram_(updateChart|chart|render|inspectData)/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
-    assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);
+    assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"\)\.\n/);
     assert.match(described, /Marked chart items: "A" \(problem\)\./);
   });
 
