@@ -7,6 +7,7 @@ import { EditDiagramTool } from "../editTool";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel, Drawn } from "../panel";
 import { applySourceEdits, errorContext, type SourceEdit } from "../sourceEdits";
+import { StyleDiagramTool } from "../styleTool";
 import { lineAndColumn } from "../text";
 import { RenderDiagramTool } from "../tools";
 import { afterTest, recordMessages, tempDir } from "./afterTest";
@@ -497,6 +498,23 @@ suite("diagram_edit in the webview", function () {
       failed,
       /\n\nLines 1-5 of the source:\n1: \{\n[\s\S]*4: {3}"series": \[\{"type": "bar", "data": \[1 2\]\}\]\n5: \}\n\n/,
     );
+  });
+
+  test("gives a subgraph the id that diagram_style asks for, to color it", async () => {
+    await draw({ source: 'flowchart LR\n  subgraph "Payment flow"\n    A --> B\n  end' });
+    const style = (id: string) =>
+      invokeTool(new StyleDiagramTool(page.panel), { styles: [{ id, fill: "green" }] });
+    assert.match(
+      await style("Payment flow"),
+      /"Payment flow" is a label, not an id in the source, so no style line can name it\. Give the subgraph an id with diagram_edit first, e\.g\. `subgraph pay \[Payment flow\]`\./,
+    );
+    assert.match(
+      await editing({
+        edits: [{ oldText: 'subgraph "Payment flow"', newText: 'subgraph pay ["Payment flow"]' }],
+      }),
+      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 4\./,
+    );
+    assert.match(await style("pay"), /^Styled "pay" \(fill green/);
   });
 
   test("keeps the user's unapplied edits of the source, as with any incoming diagram", async () => {

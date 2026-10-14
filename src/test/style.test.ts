@@ -547,7 +547,10 @@ suite("diagram_style in the webview", function () {
 
     await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
     const chart = await style({ styles: [{ id: "background", fill: "red" }] });
-    assert.match(chart, /^Nothing was styled: Coloring isn't supported for charts\./);
+    assert.match(
+      chart,
+      /^Nothing was styled: Coloring isn't supported for charts\. Change the colors in the ECharts option with diagram_edit, after diagram_getState for its source\./,
+    );
     assert.match(chart, /background follows the VS Code theme/);
     assert.doesNotMatch(chart, /nodes/);
   });

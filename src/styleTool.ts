@@ -15,7 +15,7 @@ import {
   subgraphIds,
 } from "./mermaidStyle";
 import type { DiagramPanel } from "./panel";
-import { errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
+import { EDIT_TOOL, errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
 import { type StyleChange, type StyleInput, validateStyleInput } from "./styleInput";
 import { plural, quoteAll } from "./text";
 import { drawnResult, idList, textResult } from "./tools";
@@ -101,7 +101,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     const ids = change.styles.map(({ id }) => id);
     if (state.language !== "mermaid" || state.source === undefined) {
       throw new Error(
-        `Coloring isn't supported for charts. Read ${GET_STATE_TOOL}, edit the colors in its ECharts source and apply it with ${RENDER_TOOL}.` +
+        `Coloring isn't supported for charts. Change the colors in the ECharts option with ${EDIT_TOOL}, after ${GET_STATE_TOOL} for its source.` +
           (ids.some((id) => BACKGROUND_IDS.test(id)) ? ` ${BACKGROUND_FIXED}` : ""),
       );
     }
@@ -168,7 +168,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
       }
       if (!isStyleableId(id, kind) && declared.has(id)) {
         notes.push(
-          `${JSON.stringify(id)} is an id that no style line can name, as Mermaid takes only ${STYLEABLE_IDS[kind]} there, so it cannot be colored. Give it such an id with ${RENDER_TOOL} first.`,
+          `${JSON.stringify(id)} is an id that no style line can name, as Mermaid takes only ${STYLEABLE_IDS[kind]} there, so it cannot be colored. Give it such an id with ${EDIT_TOOL} first.`,
         );
         return false;
       }
@@ -176,7 +176,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
         notes.push(
           `${JSON.stringify(id)} is a label, not an id in the source, so no style line can name it. ` +
             (kind === "flowchart"
-              ? `Give the subgraph an id with ${RENDER_TOOL} first, e.g. \`subgraph pay [${id}]\`.`
+              ? `Give the subgraph an id with ${EDIT_TOOL} first, e.g. \`subgraph pay [${id}]\`.`
               : "Notes cannot be colored."),
         );
         return false;
