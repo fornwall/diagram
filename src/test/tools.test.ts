@@ -359,7 +359,7 @@ suite("tools", () => {
     assert.strictEqual(steps30.size[0], 1568);
     assert.match(
       steps30.text,
-      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px(?:, too small to read without zooming in)?\.$/,
+      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px(?:, too small to read without zooming in)?, \d+% of its width at a time, scrolling sideways for the rest\.$/,
     );
     const pie = '{"series": [{"type": "pie", "data": [{"name": "Pie", "value": 1}]}]}';
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
@@ -410,6 +410,8 @@ suite("tools", () => {
           { width: 400, height: 300, textSize: 16, scale: 1, panel: { ...room, zoom: 1 } },
         ),
         await view({}, { ...drawing, scale: 0.392 }),
+        // As fitting a wide drawing only as far as its text reads shows it.
+        await view({}, { ...drawing, scale: 0.392, panel: { ...room, zoom: 0.5625 } }),
         await view(
           { ids: ["A", "B", "C"] },
           {
@@ -425,6 +427,7 @@ suite("tools", () => {
       [
         "Revision 1 of the diagram: all of its 400×300 px drawing, at 100% in this 400×300 px image. The panel shows it at 100% in 800×600 px.",
         'Revision 1 of the diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
+        'Revision 1 of the diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 56% in 800×600 px, 36% of its width at a time, scrolling sideways for the rest.',
         'Revision 1 of the diagram: the part around "A", "B" (1500×300 px of the 4000×500 px drawing), at 40% in this 600×120 px image. Its text, 16 px, is 6.4 px here: too small to read reliably. To read it, give fewer "ids", of items close together. The panel shows it at 20% in 800×600 px, too small to read without zooming in.\n\nThese ids name nothing drawn, so the image leaves them out: "C".',
         'Revision 1 of the diagram: the part around "A" (200×120 px of the 4000×500 px drawing), at 100% in this 200×120 px image. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
         'There is no image to view. Nothing drawn has these ids: "A".',

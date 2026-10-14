@@ -26,7 +26,7 @@ import {
 } from "./mermaidErrors";
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
-import { readabilityWarnings } from "./mermaidQuality";
+import { fittingZoom, readabilityWarnings } from "./mermaidQuality";
 import {
   colorLabelsOnBlocks,
   drawnAtWidth,
@@ -66,13 +66,6 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 /** The zoom of a mouse wheel notch, or of as much scrolling on a trackpad. */
 const WHEEL_ZOOM = 1.2;
-/** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
-const MIN_HEIGHT_FIT = 0.6;
-/**
- * Fitting a wide diagram to the panel width never shows most of its text smaller than this many
- * pixels, where it could not be read without zooming in; it scrolls sideways instead.
- */
-export const MIN_FIT_TEXT = 9;
 /**
  * How much the canvas width must change for a chart drawn at its width to be laid out again
  * (scaling it to fit meanwhile), and how long after the last change: not for a scrollbar, nor for
@@ -725,6 +718,7 @@ export class MermaidRenderer implements Renderer {
           type: result.diagramType,
           source,
           db: parsed,
+          textSize: size,
           // A hidden tab's page has the default size of a frame, also when it is told that the
           // tab is shown before it has the tab's size, under load: the panel's is not known.
           roomWidth: innerWidth === 300 && innerHeight === 150 ? 0 : Math.max(0, width),
@@ -1208,12 +1202,7 @@ export class MermaidRenderer implements Renderer {
   ): number | undefined {
     if (!natural?.width || !natural.height) return 1;
     if (width <= 0 || height <= 0) return undefined;
-    const readable = this.textSize ? MIN_FIT_TEXT / this.textSize : 0;
-    return Math.min(
-      1,
-      Math.max(width / natural.width, readable),
-      Math.max(height / natural.height, MIN_HEIGHT_FIT),
-    );
+    return fittingZoom(natural, { width, height }, this.textSize);
   }
 
   /**

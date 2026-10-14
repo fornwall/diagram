@@ -383,7 +383,15 @@ function describeImage(
   }
   if (panel && language === "mermaid") {
     const unread = legible(panel.zoom) ? "" : ", too small to read without zooming in";
-    sentences.push(`The panel shows it at ${percent(panel.zoom)} in ${size(panel)}${unread}.`);
+    // The panel fits a wide drawing only as far as its text reads, and scrolls it sideways.
+    const shown = view.width * panel.zoom;
+    const across =
+      shown > panel.width + 1
+        ? `, ${percent(panel.width / shown)} of its width at a time, scrolling sideways for the rest`
+        : "";
+    sentences.push(
+      `The panel shows it at ${percent(panel.zoom)} in ${size(panel)}${unread}${across}.`,
+    );
   } else if (panel && panel.height < view.height) {
     sentences.push(`The panel shows ${size(panel)} of it at a time, and scrolls the rest.`);
   }

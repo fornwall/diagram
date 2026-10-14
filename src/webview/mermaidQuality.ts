@@ -5,18 +5,23 @@ import { formatCount, joinWords, quote } from "../text";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
-/** Text smaller than this many CSS pixels on screen is too small to read. */
-const MIN_TEXT = 5;
+/** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
+const MIN_HEIGHT_FIT = 0.6;
 /**
- * The width that a narrow panel beside the chat has for a drawing, which text is measured at while
- * the panel's size is not known.
+ * Fitting a wide diagram to the panel width never shows most of its text smaller than this many
+ * pixels, where it could not be read without zooming in; it scrolls sideways instead.
+ */
+export const MIN_FIT_TEXT = 9;
+/**
+ * A drawing that the panel shows more than this many times as wide as itself, which the user
+ * scrolls sideways across, is too wide for it.
+ */
+const MAX_SCROLL = 2;
+/**
+ * The width that a narrow panel beside the chat has for a drawing, which a drawing is measured for
+ * while the panel's size is not known.
  */
 const NARROW_ROOM = 500;
-/**
- * Fitting a drawing to the panel never shrinks it below this for its height (see the renderer's
- * MIN_HEIGHT_FIT): below this, it shrinks to fit the width alone.
- */
-const HEIGHT_FIT = 0.6;
 /** Widening the panel more than this many times over is no remedy: changing the diagram is. */
 const MAX_WIDENING = 1.5;
 /** More nodes or edges than this make a graph hard to follow in one diagram. */
@@ -46,17 +51,37 @@ export interface DrawingFacts {
   roomWidth: number;
   /** The width of the whole panel. */
   panelWidth: number;
+  /** The size of most of the drawing's text, at actual size. */
+  textSize: number | undefined;
 }
 
 /**
- * Warnings about how the drawing reads: text too small to read when fit to the panel, more nodes
+ * The zoom that fits a drawing of the natural size to the room of the panel: to its width, but
+ * not so far that most of its text, of the given size, is too small to read, and to its height
+ * within reason. The drawing scrolls where it is larger.
+ */
+export function fittingZoom(
+  natural: { width: number; height: number },
+  room: { width: number; height: number },
+  textSize: number | undefined,
+): number {
+  const readable = textSize ? MIN_FIT_TEXT / textSize : 0;
+  return Math.min(
+    1,
+    Math.max(room.width / natural.width, readable),
+    Math.max(room.height / natural.height, MIN_HEIGHT_FIT),
+  );
+}
+
+/**
+ * Warnings about how the drawing reads: too wide for the panel to show without scrolling far, more nodes
  * than read well, flowchart nodes linked to nothing, labels drawn over each other, and Gantt tasks
  * placed after or until tasks that the chart does not have. The drawing must be laid out, as it is
  * in the layout container, where it is measured.
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
   return [
-    tooSmall(svg, facts),
+    tooWide(svg, facts),
     tooLarge(facts),
     loneNodes(facts),
     overlappingLabels(svg),
@@ -165,28 +190,6 @@ function labels(svg: SVGSVGElement): Element[] {
   );
 }
 
-/** The font size, in the drawing's units, of most of its text: the median of its labels' sizes. */
-function textSize(svg: SVGSVGElement): number | undefined {
-  const sizes: number[] = [];
-  for (const label of labels(svg)) {
-    // The elements whose own text shows, as the size of an HTML label's text is that of its span.
-    const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
-    const holders = new Set<Element>();
-    while (walker.nextNode()) {
-      const { currentNode } = walker;
-      if (currentNode.nodeValue?.trim() && currentNode.parentElement) {
-        holders.add(currentNode.parentElement);
-      }
-    }
-    for (const holder of holders) {
-      const size = Number.parseFloat(getComputedStyle(holder).fontSize);
-      if (size > 0) sizes.push(size);
-    }
-  }
-  sizes.sort((a, b) => a - b);
-  return sizes[Math.floor(sizes.length / 2)];
-}
-
 /** How to lay the diagram out the other way, across rather than down or the reverse. */
 function otherDirection({ type, source, db }: DrawingFacts): string | undefined {
   const header = /^(flowchart|graph)(?:[^\S\n]+(TB|TD|BT|RL|LR))?\b/.exec(
@@ -208,39 +211,43 @@ const NARROWER: Record<string, string> = {
 };
 
 /**
- * Text that fitting the drawing to the panel's width, or to that of a narrow panel if the panel's is
- * not known, shows too small to read. A drawing is fit to the width alone below HEIGHT_FIT, where
- * text of any size that Mermaid draws by default reads.
+ * A drawing that the panel, or a narrow panel if the panel's size is not known, shows much wider
+ * than itself, at the zoom that leaves its text legible, so that the user scrolls sideways across
+ * it. The height that the panel has does not matter but for text smaller than Mermaid draws.
  */
-function tooSmall(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
+function tooWide(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
   const { width, height } = svg.viewBox.baseVal;
+  const size = facts.textSize;
   const known = facts.roomWidth > 0;
   const room = known ? facts.roomWidth : NARROW_ROOM;
-  const fit = room / width;
-  if (!(width > 0 && fit < HEIGHT_FIT)) return undefined;
-  const size = textSize(svg);
-  if (size === undefined || size * fit >= MIN_TEXT) return undefined;
+  /** How many times as wide as the room a drawing of the size is shown. */
+  const across = (drawn: { width: number; height: number }) =>
+    (drawn.width * fittingZoom(drawn, { width: room, height: Infinity }, size)) / room;
+  if (!(width > 0 && height > 0 && size) || across({ width, height }) <= MAX_SCROLL) {
+    return undefined;
+  }
+  const zoom = fittingZoom({ width, height }, { width: room, height: Infinity }, size);
   const remedies: string[] = [];
   const narrower = NARROWER[facts.type];
   if (narrower) remedies.push(narrower);
-  // The other direction lays the drawing out across its height, roughly, which helps if that
-  // makes it narrow enough to read.
+  // The other direction lays the drawing out across its height, roughly.
   const turned = otherDirection(facts);
-  if (turned && size * (room / height) >= MIN_TEXT) remedies.push(turned);
-  // A drawing a little too wide reads in a somewhat wider panel, whose room for the drawing grows
-  // at least in proportion, as the split view shares it.
+  if (turned && across({ width: height, height: width }) <= MAX_SCROLL) remedies.push(turned);
+  // A drawing a little too wide fits a somewhat wider panel, whose room for the drawing grows at
+  // least in proportion, as the split view shares it.
   const panel = facts.panelWidth;
-  const wider = (panel * width * MIN_TEXT) / size / room;
+  const wider = (panel * width * Math.min(1, MIN_FIT_TEXT / size)) / MAX_SCROLL / room;
   if (known && wider <= panel * MAX_WIDENING) {
     remedies.push(`widen the panel to at least ${formatCount(Math.ceil(wider / 10) * 10)} px`);
   }
   // A packet is split into rows already.
   if (facts.type !== "packet") remedies.push("split it into several diagrams");
-  const fits = known ? "the panel's" : "a narrow panel's";
+  const where = `${known ? "the panel's" : "a narrow panel's"} ${formatCount(Math.round(room))} px`;
+  const part = Math.max(1, Math.round((100 * room) / (width * zoom)));
   return (
-    `Too small to read: the ${formatCount(Math.round(width))} px wide drawing fits ${fits} ${formatCount(Math.round(room))} px width ` +
-    `at ${Math.round(fit * 100)}%, which shows its ${round(size)} px text at ${round(size * fit)} px. ` +
-    `${capitalize(joinWords(remedies, "or"))}.`
+    `Too wide: ${where} show the ${formatCount(Math.round(width))} px wide drawing at ${Math.round(zoom * 100)}%, ` +
+    `where its ${round(size)} px text is ${round(size * zoom)} px, and only ${part}% of its width at a time; ` +
+    `the user scrolls sideways for the rest. ${capitalize(joinWords(remedies, "or"))}.`
   );
 }
 

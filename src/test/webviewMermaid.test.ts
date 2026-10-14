@@ -1,7 +1,8 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
-import { MIN_FIT_TEXT, RELAYOUT_DELAY } from "../webview/mermaidRenderer";
+import { MIN_FIT_TEXT } from "../webview/mermaidQuality";
+import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
 import { afterTest, replace } from "./afterTest";
 import { webviewTabs } from "./newPanel";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";

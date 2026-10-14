@@ -365,7 +365,7 @@ export function boxOf(svg: SVGSVGElement, element: Element): Area | undefined {
 
 /**
  * The font size of most of the text of a drawing, in the drawing's units: the median of those of
- * its SVG text and its HTML labels, as far as the drawing scales them.
+ * its SVG text, also in spans, and its HTML labels, as far as the drawing scales them.
  */
 export function textSize(svg: SVGSVGElement): number | undefined {
   // Relative to the drawing's units, which the panel zooms. A drawing out of sight has no scale.
@@ -375,7 +375,7 @@ export function textSize(svg: SVGSVGElement): number | undefined {
     return matrix && root ? Math.hypot(matrix.a, matrix.b) / Math.hypot(root.a, root.b) : 1;
   };
   const sizes: number[] = [];
-  for (const element of svg.querySelectorAll("text, foreignObject *")) {
+  for (const element of svg.querySelectorAll("text, tspan, foreignObject *")) {
     // The elements with text of their own, rather than those that hold lines or words of it.
     const hasText = Array.from(element.childNodes).some(
       (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),

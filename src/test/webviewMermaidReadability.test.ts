@@ -158,10 +158,10 @@ suite("Mermaid readability in the webview", function () {
     }
   });
 
-  test("says when fitting a drawing to the panel makes its text too small, and what helps", async () => {
+  test("says when the panel shows a drawing so wide that the user scrolls far, and what helps", async () => {
     const tooSmall = (remedy: string) =>
       new RegExp(
-        `^Too small to read: the [\\d,]+ px wide drawing fits the panel's 4\\d\\d px width at \\d+%, which shows its 16 px text at [\\d.]+ px\\. ${remedy}\\.$`,
+        `^Too wide: the panel's 4\\d\\d px show the [\\d,]+ px wide drawing at 56%, where its 16 px text is 9 px, and only \\d+% of its width at a time; the user scrolls sideways for the rest\\. ${remedy}\\.$`,
       );
     assert.match(
       (await warnings(chain("flowchart LR", 15)))[0] ?? "",
@@ -203,7 +203,7 @@ suite("Mermaid readability in the webview", function () {
   test("says how wide a panel shows a drawing that is a little too wide for it", async () => {
     const [narrow] = await warnings(TIMELINE, 350);
     const wider =
-      /^Too small to read: the [\d,]+ px wide drawing fits the panel's (\d+) px width at \d+%, which shows its 16 px text at [\d.]+ px\. Widen the panel to at least (\d+) px or split it into several diagrams\.$/.exec(
+      /^Too wide: the panel's (\d+) px show the [\d,]+ px wide drawing at \d+%, where its 16 px text is 9 px, and only \d+% of its width at a time; the user scrolls sideways for the rest\. Widen the panel to at least (\d+) px or split it into several diagrams\.$/.exec(
         narrow ?? "",
       );
     assert.ok(wider, narrow);
@@ -242,7 +242,7 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(answers.get(2_000_000), []);
     assert.match(
       String((answers.get(2_000_001) as string[] | undefined)?.[0]),
-      /^Too small to read: the [\d,]+ px wide drawing fits a narrow panel's 500 px width at /,
+      /^Too wide: a narrow panel's 500 px show the [\d,]+ px wide drawing at /,
     );
   });
 
@@ -253,7 +253,7 @@ suite("Mermaid readability in the webview", function () {
     );
     const found = await warnings(`flowchart TD\n${edges.join("\n")}`, 2000);
     assert.deepStrictEqual(
-      found.filter((warning) => !warning.startsWith("Too small")),
+      found.filter((warning) => !warning.startsWith("Too wide")),
       [
         "Hard to follow: 70 nodes and 140 edges, where about 50 nodes or 80 edges read well in one diagram. Split it into several diagrams.",
       ],
@@ -391,7 +391,7 @@ suite("Mermaid readability in the webview", function () {
     });
     assert.match(
       result,
-      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\.\n\nToo small to read: the [\d,]+ px wide drawing fits the panel's 4\d\d px width .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
+      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\.\n\nToo wide: the panel's 4\d\d px show the [\d,]+ px wide drawing .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
     );
   });
 });
