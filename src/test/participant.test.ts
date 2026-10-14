@@ -949,8 +949,19 @@ suite("participant", () => {
     const { sent, shown } = await ask([batch, [text("Exploration stopped.")]]);
     assert.strictEqual(calls.count, 45);
     assert.strictEqual(sent.length, 2);
-    assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
+    // The calls left out say that a diagram block draws still.
+    assert.match(
+      messageText(sent[1]?.messages.at(-1)),
+      /Not run, as this request reached its tool call limit\. Answer without tools, and to draw, reply with the complete diagram in a mermaid or echarts code block\.$/,
+    );
     assert.strictEqual(shown, "Exploration stopped.");
+    // Nor in /explain, which does not draw.
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
+    const explained = await ask([batch, [text("Done.")]], { command: "explain" });
+    assert.match(
+      messageText(explained.sent[1]?.messages.at(-1)),
+      /tool call limit\. Answer without tools\.$/,
+    );
   });
 
   for (const name of ["Canceled", "CancellationError", "AbortError"]) {

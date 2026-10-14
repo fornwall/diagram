@@ -404,7 +404,14 @@ async function streamReply(
         toolUse.notRun ??= "this request reached its tool call limit";
       }
       if (toolUse.notRun) {
-        content = text(`Not run, as ${toolUse.notRun}. Answer without tools.`);
+        // A diagram block is drawn still.
+        const draw =
+          diagram === undefined &&
+          toolUse.drawn === undefined &&
+          tools.some((tool) => DRAWING_TOOLS.has(tool.name));
+        content = text(
+          `Not run, as ${toolUse.notRun}. Answer without tools${draw ? ", and to draw, reply with the complete diagram in a mermaid or echarts code block" : ""}.`,
+        );
       } else if (!options.tools?.some((tool) => tool.name === call.name)) {
         // invokeTool runs any registered tool, not only those the model was given. A required
         // round offers only the required tool, and the others in the next.
