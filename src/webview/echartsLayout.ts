@@ -579,10 +579,32 @@ function placeLegend(
       if (longest > enough) break;
     }
   } else {
-    longest = longestText(series.map(seriesName), enough);
+    longest = longestText(seriesEntries(series, MAX_READ_CATEGORIES), enough);
   }
   const legendWidth = Math.min(width * 0.32, Math.max(4, longest) * charWidth + extra);
   reserved[side] += Math.round(legendWidth) + 16;
+}
+
+/**
+ * The entries of a legend of series other than pies and funnels: their names, but the names of
+ * the layers of a theme river, in the third field of its data, as ECharts names them: as many as
+ * there are, or else a few more than the most that the layout takes.
+ */
+function seriesEntries(series: JsonObject[], most: number): string[] {
+  const entries = new Set<string>();
+  for (const each of series) {
+    if (each.type !== "themeRiver") {
+      const name = seriesName(each);
+      if (name !== undefined) entries.add(name);
+    } else if (Array.isArray(each.data)) {
+      for (const item of each.data) {
+        if (Array.isArray(item) && item[2] != null) entries.add(String(item[2]));
+        if (entries.size > most) break;
+      }
+    }
+    if (entries.size > most) break;
+  }
+  return [...entries];
 }
 
 /** The height of a row of a legend's entries. */
@@ -609,7 +631,7 @@ function legendRows(
       ? sliced.flatMap((each) =>
           Array.isArray(each.data) ? each.data.slice(0, MAX_WRAPPED_ENTRIES + 1) : [],
         )
-      : series.map(seriesName).filter((name) => name !== undefined);
+      : seriesEntries(series, MAX_WRAPPED_ENTRIES);
   if (entries.length > MAX_WRAPPED_ENTRIES) return 1;
   let rows = 1;
   let used = 0;

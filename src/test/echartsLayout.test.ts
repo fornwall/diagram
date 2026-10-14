@@ -1021,6 +1021,10 @@ suite("echartsLayout", () => {
     }
     const own = layout(river(["Frontend"], { singleAxis: { type: "time", top: 10 } }));
     assert.deepStrictEqual([own.singleAxis.top, own.singleAxis.left], [10, undefined]);
+    // A legend of many layers goes onto rows, as one of many series does, with room for them.
+    const layers = ["Docs", "Bug fixes", "Features", "Refactoring", "Performance", "Security"];
+    const many = layout(river([...layers, "Testing", "Releases"]), { width: 500, height: 650 });
+    assert.deepStrictEqual([many.legend.type, many.singleAxis.bottom], ["plain", 62 + 24]);
   });
 
   test("labels large values on value axes compactly, unless the axis formats them", () => {
