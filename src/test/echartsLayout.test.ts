@@ -788,6 +788,42 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("gives the names of parallel axes room, on two rows where the axes are close", () => {
+    const cars = (axis: Option = {}): Option => ({
+      title: { text: "Cars" },
+      parallelAxis: ["Price", "Horsepower", "Consumption", "Weight", "Origin"].map((name, dim) => ({
+        dim,
+        name,
+        ...axis,
+      })),
+      series: [{ type: "parallel", data: [[30000, 150, 7.5, 1400, 1]] }],
+    });
+    const narrow = { width: 404, height: 575 };
+    const laidOut = layout(cars(), narrow);
+    // Every other name a line higher, each as wide as the room between three axes.
+    assert.deepStrictEqual(
+      laidOut.parallelAxis.map((axis: Option) => axis.nameGap),
+      [15, 32, 15, 32, 15],
+    );
+    const { left, right, top } = laidOut.parallel;
+    const step = (404 - left - right) / 4;
+    assert.strictEqual(laidOut.parallelAxis[1].nameTruncate.maxWidth, Math.round(2 * step - 8));
+    assert.strictEqual(top, 32 + 15 + 2 * 17 + 8);
+    // Drawn whole, where ECharts cut them to "Horsep..." and "Consum...".
+    const svg = svgOf(laidOut, narrow);
+    assert.match(svg, />Horsepower</);
+    assert.match(svg, />Consumption</);
+    assert.doesNotMatch(svg, /\.\.\.</);
+    // On one row where they fit, and as the option places them otherwise.
+    const wide = layout(cars(), { width: 1200, height: 800 });
+    assert.deepStrictEqual(
+      [wide.parallelAxis[1].nameGap, wide.parallel.top],
+      [undefined, 32 + 15 + 17 + 8],
+    );
+    const own = layout(cars({ nameGap: 20 }), narrow);
+    assert.deepStrictEqual([own.parallelAxis[1].nameGap, own.parallel], [20, undefined]);
+  });
+
   test("leaves room beside a radar for the names of its indicators", () => {
     const radius = (names: string[], width: number) =>
       layout(

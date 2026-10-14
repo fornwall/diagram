@@ -426,6 +426,7 @@ function layOut(
   }
   layOutSingleAxis(base, series, reserved, size);
   layOutCalendar(base, reserved, size);
+  layOutParallel(base, reserved, size);
   for (const title of asArray(base.title)) {
     const grid = gridOf(base, title);
     if (grid) truncateTitle(title, (pixels(grid.width, size.width) ?? size.width) - 16);
@@ -1977,6 +1978,54 @@ function layOutCalendar(base: JsonObject, reserved: Insets, { width, height }: S
     top: reserved.top + 58,
     cellSize: [wide, Math.min(wide, tall)],
   });
+}
+
+/**
+ * Fits parallel coordinates into the space left, with room for the names above their axes.
+ * ECharts places them 80 pixels in from each side and 60 from the top and bottom, which leaves the
+ * axes of a narrow chart too close for their names, which it cuts short to the room between two
+ * axes, as "Horsep…": names that do not fit go on two rows instead, every other one raised, each
+ * as wide as the room between three axes. Only of axes across the chart that the option names and
+ * places as ECharts does.
+ */
+function layOutParallel(base: JsonObject, reserved: Insets, { width, charWidth }: Size): void {
+  const parallels = asArray(base.parallel);
+  if (parallels.length > 1 || asArray(base.parallelAxis).length < 2) return;
+  const parallel = parallels[0] ?? {};
+  const axes = asArray(base.parallelAxis);
+  const shared = isPlainObject(parallel.parallelAxisDefault) ? parallel.parallelAxisDefault : {};
+  const nameKeys = ["nameLocation", "nameGap", "nameRotate", "nameTruncate"];
+  if (
+    has(parallel, BOX_KEYS) ||
+    (parallel.layout ?? "horizontal") !== "horizontal" ||
+    parallel.axisExpandable === true ||
+    has(shared, nameKeys) ||
+    axes.some((axis) => has(axis, nameKeys) || Number(axis.parallelIndex ?? 0) !== 0)
+  ) {
+    return;
+  }
+  const names = axes.map((axis) => (typeof axis.name === "string" ? axis.name.length : 0));
+  const half = (index: number) => ((names[index] ?? 0) * charWidth) / 2;
+  // The first name centered above the first axis, and the labels of the last right of it.
+  const left = Math.round(Math.max(24, half(0) + 8));
+  const right = Math.round(Math.max(48, half(axes.length - 1) + 8));
+  const step = (width - reserved.left - reserved.right - left - right) / (axes.length - 1);
+  const longest = Math.max(...names) * charWidth;
+  const rows = longest + 8 > step ? 2 : 1;
+  if (rows === 2) {
+    axes.forEach((axis, index) => {
+      // ECharts' gap from the axis to its name, and a line more for every other one.
+      axis.nameGap = 15 + (index % 2) * LABEL_LINE_HEIGHT;
+      axis.nameTruncate = { maxWidth: Math.max(40, Math.round(2 * step - 8)) };
+    });
+  }
+  Object.assign(parallel, {
+    left: reserved.left + left,
+    right: reserved.right + right,
+    top: reserved.top + 15 + rows * LABEL_LINE_HEIGHT + 8,
+    bottom: reserved.bottom + 24,
+  });
+  if (parallels.length === 0) base.parallel = parallel;
 }
 
 function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
