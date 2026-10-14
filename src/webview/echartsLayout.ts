@@ -801,9 +801,12 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
         : Math.max(40, Math.round(facetGrid.height * 0.35));
     let labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
     // Labels cut short to the same start are told apart by what follows it.
+    // Named below the labels, across the middle of the axis, unless the option names it elsewhere.
+    const { name: own, nameLocation: location } = axis;
+    const middle = location === undefined || location === "middle" || location === "center";
     const rest =
       labelWidth > Math.max(maxWidth, slot - 8) &&
-      dropSharedStart(axis, label, maxWidth / charWidth);
+      dropSharedStart(axis, label, maxWidth / charWidth, middle);
     if (rest) labelWidth = rest * charWidth;
     if (labelWidth > slot - 8) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
@@ -817,7 +820,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       labelHeights.set(axis, LABEL_HEIGHT + Math.round(slanted));
     }
     // The shared start names the axis below its labels.
-    if (rest) {
+    if (rest && axis.name !== own) {
       axis.nameLocation ??= "middle";
       axis.nameGap ??= (labelHeights.get(axis) ?? LABEL_HEIGHT) + 8;
     }
@@ -876,8 +879,10 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       };
       continue;
     }
-    const rest = dropSharedStart(axis, label, maxWidth / charWidth);
-    if (rest !== undefined) {
+    const { name: own, nameLocation: location } = axis;
+    const rest = dropSharedStart(axis, label, maxWidth / charWidth, true);
+    const end = location === undefined || location === "start" || location === "end";
+    if (rest !== undefined && axis.name !== own && end) {
       // The name above the labels starts at the axis, rather than centered on it, beside them.
       const style = isPlainObject(axis.nameTextStyle) ? axis.nameTextStyle : {};
       style.align ??= axis.position === "right" ? "right" : "left";
@@ -935,10 +940,17 @@ const sharedStartFormatters = new Map<string, (value: unknown) => string>();
 /**
  * Labels the categories of an axis by what follows the start they share, when cut short to a
  * number of characters they would read alike, as the "Northern Regional Distribution Center" of
- * "… 0", "… 1", …, and names the axis by that start instead. The start ends with a word. Returns
- * the length of the longest label left, if any.
+ * "… 0", "… 1", …, and names the axis by that start instead. The start ends with a word. An axis
+ * named by the option, or where such a name would not fit, keeps its name, and its labels their
+ * last words instead, as many as fit, as "…Center 12". Returns the length of the longest label
+ * left, if any.
  */
-function dropSharedStart(axis: JsonObject, label: JsonObject, visible: number): number | undefined {
+function dropSharedStart(
+  axis: JsonObject,
+  label: JsonObject,
+  visible: number,
+  nameable: boolean,
+): number | undefined {
   const texts = categoryTexts(axis.data);
   // Not of labels that the option hides, which the name would tell nothing of.
   if (!texts || texts.length < 2 || label.formatter !== undefined || label.show === false) {
@@ -955,6 +967,12 @@ function dropSharedStart(axis: JsonObject, label: JsonObject, visible: number): 
   const start = /^.*[\s\-_/:.,;|]/s.exec(shared)?.[0];
   const name = start?.replace(/[\s\-_/:.,;|]+$/, "");
   if (!start || !name || texts.some((text) => text.length <= start.length)) return undefined;
+  if (!nameable || (axis.name !== undefined && axis.name !== "")) {
+    const most = Math.max(1, Math.floor(visible) - 1);
+    label.formatter = lastWords(most);
+    axis.axisLabel = label;
+    return Math.max(...texts.map((text) => Math.min(text.length, most + 1)));
+  }
   let formatter = sharedStartFormatters.get(start);
   if (!formatter) {
     formatter = (value: unknown) => {
@@ -965,8 +983,35 @@ function dropSharedStart(axis: JsonObject, label: JsonObject, visible: number): 
   }
   label.formatter = formatter;
   axis.axisLabel = label;
-  axis.name = typeof axis.name === "string" && axis.name ? `${axis.name}: ${name} …` : `${name} …`;
+  axis.name = `${name} …`;
   return Math.max(...texts.map((text) => text.length - start.length));
+}
+
+/** By the most characters they keep, so that a layout of the same option has the same ones. */
+const lastWordFormatters = new Map<number, (value: unknown) => string>();
+
+/**
+ * A formatter of labels longer than some characters that keeps their last words, as many as fit
+ * after an ellipsis, or else the last characters.
+ */
+function lastWords(most: number): (value: unknown) => string {
+  let formatter = lastWordFormatters.get(most);
+  if (!formatter) {
+    formatter = (value: unknown) => {
+      const text = String(value);
+      if (text.length <= most + 1) return text;
+      // Each word after the space before it.
+      const words = text.split(/(?=\s)/);
+      let kept = "";
+      for (const word of words.reverse()) {
+        if ((word + kept).trimStart().length > most - 1) break;
+        kept = word + kept;
+      }
+      return `…${kept.trimStart() || text.slice(text.length - (most - 1))}`;
+    };
+    lastWordFormatters.set(most, formatter);
+  }
+  return formatter;
 }
 
 /** The height of a row of axis labels, with the gap to the axis. */

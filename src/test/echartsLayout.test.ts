@@ -646,7 +646,19 @@ suite("echartsLayout", () => {
         },
         { width: 400, height: 700 },
       ).yAxis;
-    assert.strictEqual(sites({ name: "Site" }).name, "Site: Northern Regional Center …");
+    // The name of the option's own stays, and the labels then keep their ends, which tell them
+    // apart.
+    const named = sites({ name: "Site" });
+    assert.deepStrictEqual(
+      [named.name, named.axisLabel.formatter("Northern Regional Center 12"), named.nameTextStyle],
+      ["Site", "…Center 12", undefined],
+    );
+    // A name beside the labels in the middle of the axis is not aligned to its end.
+    const middle = sites({ nameLocation: "middle" });
+    assert.deepStrictEqual(
+      [middle.name, middle.nameTextStyle],
+      ["Northern Regional Center …", undefined],
+    );
     const formatted = sites({ axisLabel: { formatter: "{value}" } });
     assert.deepStrictEqual([formatted.name, formatted.axisLabel.formatter], [undefined, "{value}"]);
     // Labels that the option hides name nothing, across or down the chart.
