@@ -42,6 +42,7 @@ import {
   errorMessage,
   type FromWebview,
   GET_STATE_TOOL,
+  type ImageView,
   RENDER_TOOL,
   type RepeatedName,
   STYLE_TOOL,
@@ -259,6 +260,12 @@ export class DiagramPanel implements vscode.Disposable {
    */
   get drawnIds(): readonly string[] | undefined {
     return this.drawn?.nodeIds;
+  }
+
+  /** The ids of the nodes and relationships the panel has drawn, when it knows them. */
+  get drawnItemIds(): string[] | undefined {
+    const drawn = this.drawn;
+    return drawn?.nodeIds && [...drawn.nodeIds, ...(drawn.relationships ?? []).map(({ id }) => id)];
   }
 
   /** Whether the panel waits for the page to draw the diagram, whose ids it does not know yet. */
@@ -766,10 +773,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
     // The ids of the diagram as it is drawn now: opening the panel below draws it again.
     const drawn = this.drawn;
-    const ids = drawn?.nodeIds && [
-      ...drawn.nodeIds,
-      ...(drawn.relationships ?? []).map((node) => node.id),
-    ];
+    const ids = this.drawnItemIds;
     const known = ids && new Set(ids);
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
     const marks: Annotation["marks"] = [];
@@ -1479,10 +1483,14 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * A PNG of the drawing shown, at most maxSide pixels wide and high, for a model to check its
-   * layout with, or why there is none.
+   * A PNG of the drawing as the panel shows it, within the limits, for a model to check its layout
+   * with, and what it shows, or why there is none: all of it, or the part around the items with
+   * the ids, as far as they are drawn.
    */
-  async captureImage(maxSide: number): Promise<Uint8Array | string> {
+  async captureImage(
+    limits: { maxSide: number; maxPixels: number },
+    ids: string[] = [],
+  ): Promise<{ png: Uint8Array; view: ImageView | undefined } | string> {
     const state = this.state;
     const rendered = this.drawn?.requestId;
     if (!state) {
@@ -1496,7 +1504,7 @@ export class DiagramPanel implements vscode.Disposable {
       return "The chart's data was not kept when VS Code restarted. The user can press Refresh to load it again.";
     }
     if (state.error) {
-      return `The ${noun} fails to render: ${state.error}`;
+      return `The ${noun} fails to render. Render a working ${noun} first. The error is: ${state.error}`;
     }
     if (!this.webview.tab) {
       return "The diagram panel is closed. The user can open it again with Diagram: Show Panel.";
@@ -1505,16 +1513,16 @@ export class DiagramPanel implements vscode.Disposable {
       return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
     }
     const result = await this.requestExport(
-      { format: "png", renderRequestId: rendered, forModel: true, maxSide },
+      { format: "png", renderRequestId: rendered, forModel: true, ...limits, ids },
       `The diagram panel did not finish the image within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
     );
     if (result.type === "exportError") {
       return result.message;
     }
-    return (
-      (result.type === "exportImage" && result.format === "png" && pngBytes(result.data)) ||
-      "The diagram panel returned an invalid PNG image."
-    );
+    const png = result.type === "exportImage" && result.format === "png" && pngBytes(result.data);
+    return png
+      ? { png, view: result.type === "exportImage" ? result.view : undefined }
+      : "The diagram panel returned an invalid PNG image.";
   }
 
   /** Asks the page for the drawing, answering with timedOut if it does not answer in time. */

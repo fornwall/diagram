@@ -12,7 +12,7 @@ import {
   type ThemeColors,
   toCss,
 } from "./colors";
-import type { DiagramImage } from "./images";
+import type { DiagramImage, ModelImage } from "./images";
 import { closeLinkMenu } from "./linkMenu";
 import {
   describeError,
@@ -37,10 +37,15 @@ import {
   withModifier,
 } from "./renderer";
 import {
+  type Area,
+  areaAround,
+  boxOf,
+  drawingArea,
   hrefOf,
   inlineStyleSheets,
   SVG_NAMESPACE,
   standaloneSvg,
+  textSize,
   XLINK_NAMESPACE,
 } from "./svgImage";
 import { parseColor, readThemeColors } from "./vscodeTheme";
@@ -796,6 +801,51 @@ export class MermaidRenderer implements Renderer {
       // Leave Mermaid configured for the panel: a theme change or a resize may render before the
       // next diagram arrives, and would otherwise draw the labels as plain text.
       mermaid.initialize(this.config(source));
+    }
+  }
+
+  /**
+   * The drawing as the panel shows it, its labels as SVG text where they are shown, rather than an
+   * image drawn anew, whose labels can wrap otherwise: without the selection, marks and links, which
+   * the panel's style sheet shows.
+   */
+  async modelImage(background: string, ids: readonly string[]): Promise<ModelImage> {
+    const shown = this.diagram.querySelector("svg");
+    const natural = shown?.viewBox.baseVal;
+    if (this.displayedSource === undefined || !shown || !natural) {
+      throw new Error("There is no diagram to make an image of.");
+    }
+    // Measured in a copy at its actual size, where Mermaid laid it out: the drawing has no layout
+    // while out of sight, as in the Source view, and text zoomed out far has other widths.
+    const svg = shown.cloneNode(true) as SVGSVGElement;
+    svg.setAttribute("width", String(natural.width));
+    svg.setAttribute("height", String(natural.height));
+    layoutContainer().append(svg);
+    try {
+      const drawing = drawingArea(svg);
+      const boxes: Area[] = [];
+      const missing: string[] = [];
+      for (const id of ids) {
+        const elements = svg.querySelectorAll(`[data-diagram-id="${CSS.escape(id)}"]`);
+        const found = Array.from(elements, (element) => boxOf(svg, element) ?? []).flat();
+        if (found.length > 0) boxes.push(...found);
+        else missing.push(id);
+      }
+      const area = areaAround(drawing, boxes);
+      const room = this.contentSize();
+      return {
+        image: standaloneSvg(svg, background, area),
+        view: {
+          width: drawing.width,
+          height: drawing.height,
+          area: area && { width: area.width, height: area.height },
+          textSize: textSize(svg),
+          panel: room.width > 0 && room.height > 0 ? { ...room, zoom: this.zoom } : undefined,
+          missing,
+        },
+      };
+    } finally {
+      svg.remove();
     }
   }
 

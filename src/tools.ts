@@ -17,7 +17,9 @@ import {
   diagramNoun,
   EDIT_TOOL,
   errorMessage,
+  GET_IMAGE_TOOL,
   GET_STATE_TOOL,
+  type ImageView,
   isDiagramLanguage,
   isPlainObject,
   nodeNoun,
@@ -236,43 +238,132 @@ async function fits(
   return (await countTokens(text, token)) <= tokenBudget;
 }
 
-/** The longest side of an image for a model: labels stay readable, at about 1,000 tokens. */
-const IMAGE_SIDE = 1024;
+interface ImageInput {
+  ids?: string[];
+}
 
-export class GetDiagramImageTool implements vscode.LanguageModelTool<Record<string, never>> {
+/** The ids of the items to show the part of the drawing around, or what to fix in the input. */
+function parseImageInput(value: unknown): string[] | string {
+  const input = isPlainObject(value) ? givenProperties(value) : {};
+  const unknown = unknownProperties(input, ["ids"]);
+  if (unknown) return unknown;
+  // A model may give one id as it is.
+  const ids = typeof input.ids === "string" ? [input.ids] : (input.ids ?? []);
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
+    return '"ids" must be an array of item ids, such as ["A", "edge:A → B"].';
+  }
+  return [...new Set(ids)];
+}
+
+/**
+ * The longest side of an image for a model, and the most pixels in all, as Claude takes them
+ * without scaling them down, at about 1,500 tokens. Models of other vendors scale an image with a
+ * side as long down further, but one that long only for a long and narrow drawing, such as a
+ * flowchart from left to right.
+ */
+const IMAGE_LIMITS = { maxSide: 1568, maxPixels: 1_150_000 };
+/** How many pixels high text must be in an image for a model to read it. */
+const LEGIBLE_TEXT = 8;
+
+export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
-  prepareInvocation(): vscode.PreparedToolInvocation {
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<ImageInput>,
+  ): vscode.PreparedToolInvocation {
+    const noun = diagramNoun(this.panel.current?.language ?? "mermaid");
+    const ids = parseImageInput(options.input);
     return {
-      invocationMessage: `Viewing the ${diagramNoun(this.panel.current?.language ?? "mermaid")}`,
+      invocationMessage:
+        typeof ids === "string" || ids.length === 0
+          ? `Viewing the ${noun}`
+          : `Viewing ${ids.length <= 3 ? quoteAll(ids) : plural(ids.length, "item")} in the ${noun}`,
     };
   }
 
   async invoke(
-    _options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,
+    options: vscode.LanguageModelToolInvocationOptions<ImageInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     const { current, revision } = this.panel;
     if (!current) {
       return textResult(`No diagram is shown. Use ${RENDER_TOOL} or ${CHART_TOOL} to show one.`);
     }
-    const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_SIDE), token);
+    const ids = parseImageInput(options.input);
+    if (typeof ids === "string") {
+      return textResult(`There is no image to view: ${ids}`);
+    }
+    const noun = diagramNoun(current.language);
+    // A model is told the ids of a Mermaid diagram, which the panel knows; the page tells of others.
+    const known = this.panel.drawnItemIds;
+    if (ids.length > 0 && known && !ids.some((id) => known.includes(id))) {
+      return textResult(
+        `There is no image to view: no item of the ${noun} has these ids: ${quoteAll(ids)}. ` +
+          (known.length > 0
+            ? `Its ids are ${idList(known)}.`
+            : `It has no items to show alone: call ${GET_IMAGE_TOOL} without "ids".`),
+      );
+    }
+    const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_LIMITS, ids), token);
     if (typeof image === "string") {
       return textResult(`There is no image to view. ${image}`);
     }
-    // A chart fits the panel, and so is laid out for its size, which a panel hidden behind another
-    // tab has none of; a Mermaid image is the whole diagram, whatever the panel's zoom.
-    const where =
-      current.language === "echarts"
-        ? "laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden"
-        : "as drawn";
+    const about = `Revision ${revision} of the ${noun}`;
     return new vscode.LanguageModelToolResult([
       new vscode.LanguageModelTextPart(
-        `Revision ${revision} of the ${diagramNoun(current.language)}, ${where}:`,
+        image.view ? describeImage(about, image.view, current.language, ids, known) : `${about}:`,
       ),
-      vscode.LanguageModelDataPart.image(image, "image/png"),
+      vscode.LanguageModelDataPart.image(image.png, "image/png"),
     ]);
   }
+}
+
+/**
+ * What an image shows a model: what part of the drawing at what scale, whether its text can be
+ * read there, and how the user sees it in the panel.
+ */
+function describeImage(
+  about: string,
+  view: ImageView,
+  language: DiagramLanguage,
+  ids: readonly string[],
+  known: readonly string[] | undefined,
+): string {
+  const size = ({ width, height }: { width: number; height: number }, scale = 1) =>
+    `${Math.round(width * scale)}×${Math.round(height * scale)} px`;
+  const percent = (scale: number) => `${Math.round(scale * 100)}%`;
+  const { area, scale, textSize, panel, missing = [] } = view;
+  const left = new Set(missing);
+  const what = area
+    ? `the part around ${idList(ids.filter((id) => !left.has(id)))} (${size(area)} of the ${size(view)} drawing)`
+    : language === "echarts"
+      ? `all of it, laid out ${panel ? "for the panel " : ""}at ${size(view)}`
+      : `all of its ${size(view)} drawing`;
+  const sentences = [
+    `${about}: ${what}, at ${percent(scale)} in this ${size(area ?? view, scale)} image.`,
+  ];
+  const legible = (zoom: number) => textSize === undefined || textSize * zoom >= LEGIBLE_TEXT;
+  if (textSize !== undefined && !legible(scale)) {
+    const shown = Math.round(textSize * scale * 10) / 10;
+    sentences.push(
+      `Its text, ${Math.round(textSize)} px, is ${shown} px here: too small to read reliably. ` +
+        (area
+          ? 'To read it, give fewer "ids", of items close together.'
+          : `To read it, call ${GET_IMAGE_TOOL} with the "ids" of a few items, to see the part around them.`),
+    );
+  }
+  if (panel && language === "mermaid") {
+    const unread = legible(panel.zoom) ? "" : ", too small to read without zooming in";
+    sentences.push(`The panel shows it at ${percent(panel.zoom)} in ${size(panel)}${unread}.`);
+  } else if (panel && panel.height < view.height) {
+    sentences.push(`The panel shows ${size(panel)} of it at a time, and scrolls the rest.`);
+  }
+  const text = sentences.join(" ");
+  if (missing.length === 0) return text;
+  return (
+    `${text}\n\nThese ids name nothing drawn, so the image leaves them out: ${quoteAll(missing)}.` +
+    (known && known.length > 0 ? ` Its ids are ${idList(known)}.` : "")
+  );
 }
 
 export class PickDiagramNodesTool implements vscode.LanguageModelTool<PickNodesInput> {

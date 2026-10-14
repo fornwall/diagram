@@ -441,7 +441,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(file-media)",
         "userDescription": "Show the model an image of the diagram or chart in the diagram panel",
-        "modelDescription": "Return a PNG of the current diagram or chart as drawn in the panel, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. Call only if you can view images.",
+        "modelDescription": "Return a PNG of the current diagram or chart as the panel draws it, in the user's theme but without selection or marks, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. The result says what the image shows at what scale, and when its text is too small to read: then give \"ids\" to see the part around those items larger. Call only if you can view images.",
         "tags": [
           "diagram",
           "mermaid",
@@ -451,7 +451,15 @@
         ],
         "inputSchema": {
           "type": "object",
-          "properties": {},
+          "properties": {
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Show only the part around these items: Mermaid node ids, edge:/message: ids from diagram_getState, or chart item names. Omit for the whole drawing."
+            }
+          },
           "additionalProperties": false
         }
       },

@@ -86,7 +86,7 @@ suite("images", () => {
       [800, 400, 1024, 512],
       [300, 3000, 102, 1024],
     ] as const) {
-      await pngDataUrl({ svg: "<svg/>", width, height }, 1024);
+      await pngDataUrl({ svg: "<svg/>", width, height }, { maxSide: 1024 });
       assert.deepStrictEqual(browser.encodedSize, [expectedWidth, expectedHeight]);
     }
   });

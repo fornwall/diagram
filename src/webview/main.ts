@@ -9,11 +9,12 @@ import {
   isPlainObject,
   type ToWebview,
 } from "../protocol";
+import { quoteAll } from "../text";
 import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
 import { loadECharts } from "./echartsLoader";
-import { pngDataUrl } from "./images";
+import { MODEL_TEXT_SIZE, pngDataUrl, pngScale } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { preloadLayout } from "./mermaidLayout";
 import { enablePanning } from "./pan";
@@ -929,7 +930,7 @@ writeToButton.addEventListener("click", () => {
 
 /** Exports the drawing from the render queue, but rasterizes a PNG outside it, not to hold it up. */
 async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): Promise<void> {
-  const { requestId, renderRequestId, format, forModel, maxSide } = message;
+  const { requestId, renderRequestId, format, forModel, maxSide, maxPixels, ids } = message;
   const failed = (error: unknown) =>
     post({ type: "exportError", requestId, message: errorMessage(error) });
   try {
@@ -942,13 +943,34 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
       post({ type: "exportTheme", requestId, colors: readThemeColors() });
       return;
     }
+    const limits = { maxSide, maxPixels };
+    if (forModel && format === "png") {
+      const { image, view } = await active.modelImage(imageBackground(), ids ?? []);
+      if (ids && ids.length > 0 && view.area === undefined) {
+        throw new Error(`Nothing drawn has these ids: ${quoteAll(ids)}.`);
+      }
+      const { textSize } = view;
+      const sized = { ...limits, maxScale: textSize && Math.max(1, MODEL_TEXT_SIZE / textSize) };
+      void pngDataUrl(image, sized).then(
+        (data) =>
+          post({
+            type: "exportImage",
+            requestId,
+            format,
+            data,
+            view: { ...view, scale: pngScale(image, sized) },
+          }),
+        failed,
+      );
+      return;
+    }
     const image = await active.toImage(imageBackground());
     if (format === "svg") {
       post({ type: "exportImage", requestId, format, data: image.svg });
     } else {
-      void pngDataUrl(image, maxSide).then(
+      void pngDataUrl(image, limits).then(
         (data) => post({ type: "exportImage", requestId, format, data }),
-        (error) => failed(forModel ? error : `${errorMessage(error)} Try exporting as SVG.`),
+        (error) => failed(`${errorMessage(error)} Try exporting as SVG.`),
       );
     }
   } catch (error) {

@@ -139,6 +139,23 @@ export function safeFileName(title: string, fallback: string): string {
 
 export type ExportFormat = "png" | "svg" | "html";
 
+/** What an image for a model shows, in CSS pixels of the drawing at 100%. */
+export interface ImageView {
+  /** The size of the whole drawing, which a chart is laid out at. */
+  width: number;
+  height: number;
+  /** The size of the part around the items asked for, which the image shows, unless all of it. */
+  area?: { width: number; height: number } | undefined;
+  /** How many pixels of the image show a pixel of the drawing. */
+  scale: number;
+  /** The font size of most of its text, if it has any. */
+  textSize?: number | undefined;
+  /** The room the panel shows the drawing in, and its zoom, unless the drawing is out of sight. */
+  panel?: { width: number; height: number; zoom: number } | undefined;
+  /** The ids asked for that name nothing drawn. */
+  missing?: string[] | undefined;
+}
+
 export type ExportResult = Extract<
   FromWebview,
   { type: "exportImage" | "exportTheme" | "exportError" }
@@ -150,10 +167,17 @@ export type ToWebview =
       requestId: number;
       renderRequestId: number;
       format: ExportFormat;
-      /** Whether a model asks, which cannot export the drawing as SVG when a PNG fails. */
+      /**
+       * Whether a model asks, for a PNG of the drawing as the panel shows it, and what it shows.
+       * It cannot export the drawing as SVG instead when a PNG fails.
+       */
       forModel: boolean;
       /** The most pixels a PNG may have on either side, by default the most it can have. */
       maxSide?: number | undefined;
+      /** The most pixels a PNG may have in all. */
+      maxPixels?: number | undefined;
+      /** The items whose part of the drawing a model asks to see, by id, rather than all of it. */
+      ids?: string[] | undefined;
     }
   /** Whether the tab is hidden behind another, where the page has no size of its own. */
   | { type: "tabVisibility"; hidden: boolean }
@@ -245,7 +269,14 @@ export type FromWebview =
   | { type: "pickCancelled"; pickId: number }
   /** The user asked to reload the chart's data from its file or command. */
   | { type: "refresh" }
-  | { type: "exportImage"; requestId: number; format: "png" | "svg"; data: string }
+  | {
+      type: "exportImage";
+      requestId: number;
+      format: "png" | "svg";
+      data: string;
+      /** What the image shows, for a model that asked for it. */
+      view?: ImageView | undefined;
+    }
   | { type: "exportTheme"; requestId: number; colors: ThemeColors }
   | { type: "exportError"; requestId: number; message: string }
   /** Write the shown diagram to its bound code block without requiring a source edit. */
@@ -277,6 +308,16 @@ const optional =
   (check: Check): Check =>
   (value) =>
     value === undefined || check(value);
+const isSize: Check = (value) =>
+  isPlainObject(value) && isNumber(value.width) && isNumber(value.height);
+const isImageView: Check = (value) =>
+  isSize(value) &&
+  isPlainObject(value) &&
+  isNumber(value.scale) &&
+  optional(isSize)(value.area) &&
+  optional(isNumber)(value.textSize) &&
+  optional((panel) => isSize(panel) && isPlainObject(panel) && isNumber(panel.zoom))(value.panel) &&
+  optional(isStrings)(value.missing);
 const isRgba: Check = (value) =>
   isPlainObject(value) && [value.r, value.g, value.b, value.a].every(isNumber);
 
@@ -335,6 +376,7 @@ const FROM_WEBVIEW_FIELDS: {
     requestId: isId,
     format: (value) => value === "png" || value === "svg",
     data: isString,
+    view: optional(isImageView),
   },
   exportTheme: { requestId: isId, colors: isThemeColors },
   exportError: { requestId: isId, message: isString },

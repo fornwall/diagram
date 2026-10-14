@@ -1,5 +1,5 @@
 import type { Annotation, DiagramNode, RepeatedName } from "../protocol";
-import type { DiagramImage } from "./images";
+import type { DiagramImage, ModelImage } from "./images";
 
 /** A clickable part of a diagram: a Mermaid node or a chart data item. */
 export interface Hit {
@@ -55,6 +55,11 @@ export interface Renderer {
   tabShown(): void;
   /** Exports a self-contained image on the given background. */
   toImage(background: string): Promise<DiagramImage>;
+  /**
+   * An image of the drawing as the panel shows it, for a model to check, on the given background:
+   * all of it, or the area around the items with the ids, as far as they are drawn.
+   */
+  modelImage(background: string, ids: readonly string[]): Promise<ModelImage>;
   /** Whether the image can change while the source, theme and marks stay, as a chart's does. */
   readonly changesInPlace?: boolean;
   /** Renders the current diagram again with the current VS Code theme. */

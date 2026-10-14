@@ -5,7 +5,7 @@ import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
-import { ChartFocus } from "./echartsFocus";
+import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
   type ItemRef,
@@ -34,10 +34,17 @@ import {
 } from "./echartsOption";
 import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
-import type { DiagramImage } from "./images";
+import type { DiagramImage, ModelImage } from "./images";
 import { formatOption } from "./optionSource";
 import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
-import { standaloneSvg } from "./svgImage";
+import {
+  type Area,
+  areaAround,
+  drawingArea,
+  standaloneSvg,
+  textSize,
+  withTextIn,
+} from "./svgImage";
 
 /** How long the size of a chart stays the same before it is laid out for it, rather than resized. */
 export const SETTLE_DELAY = 150;
@@ -298,34 +305,89 @@ export class EChartsRenderer implements Renderer {
    * an early export includes every item, and without what the pointer and the toolbox add to it.
    */
   async toImage(background: string): Promise<DiagramImage> {
-    if (!this.chart) throw new Error("There is no chart to make an image of.");
+    return this.still(true, (svg) => standaloneSvg(svg, background));
+  }
+
+  /**
+   * The chart as {@link toImage} draws it, as laid out for the panel, but as its option alone draws
+   * it, without the selection and the marks, as a Mermaid diagram's image is. The area around
+   * items takes in the text it cuts into, such as their labels on an axis.
+   */
+  async modelImage(background: string, ids: readonly string[]): Promise<ModelImage> {
+    return this.still(false, (svg, chart) => {
+      const drawing = drawingArea(svg);
+      const navigation = new ChartNavigation(chart);
+      const boxes: Area[] = [];
+      const missing: string[] = [];
+      for (const id of ids) {
+        // Every item of a name that several go by, which only a mark must tell apart.
+        const found = this.find([id]).flatMap((ref) => navigation.box(ref) ?? []);
+        if (found.length > 0) boxes.push(...found);
+        else missing.push(id);
+      }
+      const around = areaAround(drawing, boxes);
+      const area = around && withTextIn(svg, drawing, around);
+      const { clientWidth: width, clientHeight: height } = this.container;
+      return {
+        image: standaloneSvg(svg, background, area),
+        view: {
+          width: drawing.width,
+          height: drawing.height,
+          area: area && { width: area.width, height: area.height },
+          textSize: textSize(svg),
+          panel:
+            !this.tabHidden() && width > 0 && height > 0 ? { width, height, zoom: 1 } : undefined,
+          missing,
+        },
+      };
+    });
+  }
+
+  /**
+   * Has the chart drawn as {@link toImage} describes, with its marks highlighted and its selection,
+   * or without them, which it shows again afterwards.
+   */
+  private async still<T>(
+    marked: boolean,
+    draw: (svg: SVGSVGElement, chart: ECharts.ECharts) => T,
+  ): Promise<T> {
     // Export can precede the resize observer or its debounced layout after changing views: lay out
     // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
     // dimensions of their last visible rendering.
-    this.apply(true);
+    if (this.chart) this.apply(true);
     this.cancelRelayout();
+    const chart = this.chart;
     const svg = this.container.querySelector("svg");
-    if (!svg) throw new Error("There is no chart to make an image of.");
+    if (!chart || !svg) throw new Error("There is no chart to make an image of.");
     // The pointer can still rest on the chart, as when the image is exported from the context menu
     // with the keyboard: leave out the axis pointer and the emphasis it shows, as if it had left.
-    // Downplaying everything clears the marks too, so highlight them again.
-    this.chart.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
-    this.chart.dispatchAction({ type: "downplay" }, { silent: true });
-    this.highlightMarked();
-    const drawing = this.chart.getZr();
-    // ECharts applies the states on its next frame: run it now.
-    drawing.animation.trigger("frame");
-    // ECharts' own export finishes the animations of what it draws, but labels fade in on the text
-    // element that holds their lines, and groups move as a whole: finish those too, or the labels
-    // of a chart exported as it appears are all but transparent.
-    const finished = new Set<object>();
-    for (const item of drawing.storage.getDisplayList(true)) {
-      for (let element: Animated | null = item; element && !finished.has(element); ) {
-        finished.add(element);
-        element.stopAnimation(undefined, true);
-        element = element.parent;
+    // Downplaying everything clears the marks too, so highlight them again, if they are wanted.
+    chart.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
+    chart.dispatchAction({ type: "downplay" }, { silent: true });
+    const selected = marked
+      ? []
+      : this.shownSelected.flatMap(({ dataIndex, ...series }) =>
+          dataIndex.map((index) => ({ ...series, dataIndex: index })),
+        );
+    if (marked) this.highlightMarked();
+    else if (selected.length > 0) chart.dispatchAction({ type: "unselect", batch: selected });
+    const drawing = chart.getZr();
+    const finish = () => {
+      // ECharts applies the states on its next frame: run it now.
+      drawing.animation.trigger("frame");
+      // ECharts' own export finishes the animations of what it draws, but labels fade in on the
+      // text element that holds their lines, and groups move as a whole: finish those too, or the
+      // labels of a chart exported as it appears are all but transparent.
+      const finished = new Set<object>();
+      for (const item of drawing.storage.getDisplayList(true)) {
+        for (let element: Animated | null = item; element && !finished.has(element); ) {
+          finished.add(element);
+          element.stopAnimation(undefined, true);
+          element = element.parent;
+        }
       }
-    }
+    };
+    finish();
     // Leave out the toolbox, as ECharts does from its own images: its buttons do nothing there.
     const toolboxes = drawing.storage
       .getRoots()
@@ -333,10 +395,17 @@ export class EChartsRenderer implements Renderer {
     for (const toolbox of toolboxes) toolbox.ignore = true;
     try {
       drawing.refreshImmediately();
-      return standaloneSvg(svg, background);
+      return draw(svg, chart);
     } finally {
       for (const toolbox of toolboxes) toolbox.ignore = false;
-      if (toolboxes.length > 0) drawing.refresh();
+      if (!marked) {
+        // Shown again as they were, rather than fading in: the marks after the selection, which
+        // ECharts does not fade around them.
+        if (selected.length > 0) chart.dispatchAction({ type: "select", batch: selected });
+        this.highlightMarked();
+        finish();
+      }
+      if (toolboxes.length > 0 || !marked) drawing.refresh();
     }
   }
 

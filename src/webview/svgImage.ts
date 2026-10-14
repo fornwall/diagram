@@ -21,6 +21,9 @@ const NOT_IN_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 const HTML_LABEL = "foreignObject:not(:has(math))";
 const HTML_LABEL_WITH_FALLBACK = `switch > ${HTML_LABEL}`;
 
+/** A computed color that paints nothing. */
+const TRANSPARENT = /^rgba\([^)]*,\s*0\)$/;
+
 /** The font properties that an HTML label's text keeps as SVG text. */
 const FONT = ["font-family", "font-size", "font-style", "font-weight", "letter-spacing"];
 /** Where the ascent and descent of fonts are measured. */
@@ -28,8 +31,8 @@ let fonts: CanvasRenderingContext2D | null | undefined;
 
 /**
  * The text of an HTML label in the document as SVG text, a text element for each piece of a text
- * node on a line, where the browser lays it out: wrapped, aligned and styled as it shows it.
- * Undefined if it shows none.
+ * node on a line, where the browser lays it out: wrapped, aligned and styled as it shows it, on the
+ * backgrounds that its HTML paints, such as an edge label's. Undefined if it shows none.
  */
 function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
   fonts ??= document.createElement("canvas").getContext("2d");
@@ -37,11 +40,11 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
   if (!toUser || !fonts) return undefined;
   const measure = fonts;
   /**
-   * Where a range is in the label's units, which its font size is in: its left, its middle and
-   * its size, along the lines of a label that the drawing turns, such as a vertical lane title.
+   * Where a box in the document is in the label's units, which its font size is in: its left, its
+   * middle and its size, along the lines of a label that the drawing turns, such as a vertical lane
+   * title.
    */
-  const place = (range: Range) => {
-    const { left, top, right, bottom } = range.getBoundingClientRect();
+  const place = ({ left, top, right, bottom }: DOMRect) => {
     const corners = [
       [left, top],
       [right, top],
@@ -55,6 +58,22 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
     return { x, middle: y + height / 2, width: Math.max(...xs) - x, height };
   };
   const group = document.createElementNS(SVG_NAMESPACE, "g");
+  for (const element of label.querySelectorAll("*")) {
+    const color = getComputedStyle(element).backgroundColor;
+    if (TRANSPARENT.test(color)) continue;
+    // A box for each line of an element on several.
+    for (const box of element.getClientRects()) {
+      const { x, middle, width, height } = place(box);
+      if (!width || !height) continue;
+      const rect = document.createElementNS(SVG_NAMESPACE, "rect");
+      for (const [name, value] of Object.entries({ x, y: middle - height / 2, width, height })) {
+        rect.setAttribute(name, String(value));
+      }
+      rect.style.fill = color;
+      group.append(rect);
+    }
+  }
+  const backgrounds = group.childElementCount;
   const range = document.createRange();
   const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -72,6 +91,10 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
       element.setAttribute("y", String(run.middle + (ascent - descent) / 2));
       for (const name of FONT) element.style.setProperty(name, style.getPropertyValue(name));
       element.style.fill = style.color;
+      // From where the line starts, on its baseline, whatever the drawing's style sheet says of
+      // the text of labels, such as a flowchart's, which centers it.
+      element.style.textAnchor = "start";
+      element.style.dominantBaseline = "auto";
       element.textContent = run.text.trimEnd();
       group.append(element);
       run = undefined;
@@ -81,7 +104,7 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
       range.setStart(node, i);
       i += char.length;
       range.setEnd(node, i);
-      const box = place(range);
+      const box = place(range.getBoundingClientRect());
       // Whitespace that the browser collapses has no width; a line starts with none.
       if (!box.width || (!run && !char.trim())) continue;
       if (run && Math.abs(box.middle - run.middle) > box.height / 2) end();
@@ -91,7 +114,7 @@ function labelAsText(label: SVGForeignObjectElement): SVGGElement | undefined {
     }
     end();
   }
-  return group.childElementCount > 0 ? group : undefined;
+  return group.childElementCount > backgrounds ? group : undefined;
 }
 
 /**
@@ -178,8 +201,23 @@ export function inlineStyleSheets(svg: SVGSVGElement): void {
   }
 }
 
-/** Clones the drawing with a background, without panel interaction attributes or link targets. */
-export function standaloneSvg(source: SVGSVGElement, background: string): DiagramImage {
+/** A part of a drawing, in its units: CSS pixels of the drawing at 100%. */
+export interface Area {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Clones the drawing with a background, without panel interaction attributes or link targets: all
+ * of it, or the area of it given.
+ */
+export function standaloneSvg(
+  source: SVGSVGElement,
+  background: string,
+  area?: Area,
+): DiagramImage {
   const svg = source.cloneNode(true) as SVGSVGElement;
   svg.setAttribute("xmlns", SVG_NAMESPACE);
   svg.setAttribute("xmlns:xlink", XLINK_NAMESPACE);
@@ -189,15 +227,8 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   // Mermaid leaves the color of some HTML labels, such as sequence diagram formulas, to the panel.
   svg.style.color = getComputedStyle(source).color;
 
-  const box = source.viewBox.baseVal;
-  // ECharts sets width and height without a viewBox. Its DOM bounds disappear in Source view,
-  // but those intrinsic dimensions still describe the drawing.
-  const width = box?.width || source.width.baseVal.value || source.getBoundingClientRect().width;
-  const height =
-    box?.height || source.height.baseVal.value || source.getBoundingClientRect().height;
-  if (!box?.width) {
-    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  }
+  const { x, y, width, height } = area ?? drawingArea(source);
+  svg.setAttribute("viewBox", `${x} ${y} ${width} ${height}`);
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
 
@@ -241,8 +272,8 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
   }
 
   const rect = svg.ownerDocument.createElementNS(SVG_NAMESPACE, "rect");
-  rect.setAttribute("x", String(box?.x ?? 0));
-  rect.setAttribute("y", String(box?.y ?? 0));
+  rect.setAttribute("x", String(x));
+  rect.setAttribute("y", String(y));
   rect.setAttribute("width", String(width));
   rect.setAttribute("height", String(height));
   rect.setAttribute("fill", background);
@@ -255,4 +286,104 @@ export function standaloneSvg(source: SVGSVGElement, background: string): Diagra
     .replace(NOT_IN_XML, "")
     .replace(QUOTED_URL, "url($1)");
   return { svg: markup, width, height };
+}
+
+/** All of a drawing, in its units. */
+export function drawingArea(svg: SVGSVGElement): Area {
+  const box = svg.viewBox.baseVal;
+  if (box?.width) return { x: box.x, y: box.y, width: box.width, height: box.height };
+  // ECharts sets width and height without a viewBox. Its DOM bounds disappear in Source view,
+  // but those intrinsic dimensions still describe the drawing.
+  return {
+    x: 0,
+    y: 0,
+    width: svg.width.baseVal.value || svg.getBoundingClientRect().width,
+    height: svg.height.baseVal.value || svg.getBoundingClientRect().height,
+  };
+}
+
+/** How far around the items that a model asks to see the image goes, to show what is next to them. */
+const AREA_MARGIN = 40;
+
+/** The area around the boxes, in the drawing's units, with a margin, within the drawing. */
+export function areaAround(
+  drawing: Area,
+  boxes: readonly Area[],
+  margin = AREA_MARGIN,
+): Area | undefined {
+  if (boxes.length === 0) return undefined;
+  const left = Math.max(drawing.x, Math.min(...boxes.map((box) => box.x)) - margin);
+  const top = Math.max(drawing.y, Math.min(...boxes.map((box) => box.y)) - margin);
+  const right = Math.min(
+    drawing.x + drawing.width,
+    Math.max(...boxes.map((box) => box.x + box.width)) + margin,
+  );
+  const bottom = Math.min(
+    drawing.y + drawing.height,
+    Math.max(...boxes.map((box) => box.y + box.height)) + margin,
+  );
+  return right > left && bottom > top
+    ? { x: left, y: top, width: right - left, height: bottom - top }
+    : undefined;
+}
+
+/**
+ * The area of a drawing in the document grown to take in the SVG text that it cuts into, within
+ * the drawing.
+ */
+export function withTextIn(svg: SVGSVGElement, drawing: Area, area: Area): Area {
+  const boxes = [area];
+  for (const text of svg.querySelectorAll("text")) {
+    const box = boxOf(svg, text);
+    if (
+      box &&
+      box.x < area.x + area.width &&
+      box.x + box.width > area.x &&
+      box.y < area.y + area.height &&
+      box.y + box.height > area.y
+    ) {
+      boxes.push(box);
+    }
+  }
+  return areaAround(drawing, boxes, 0) ?? area;
+}
+
+/** Where an element of a drawing in the document is drawn, in the drawing's units, if anywhere. */
+export function boxOf(svg: SVGSVGElement, element: Element): Area | undefined {
+  const toUser = svg.getScreenCTM()?.inverse();
+  const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+  if (!toUser || (!width && !height)) return undefined;
+  const start = new DOMPoint(left, top).matrixTransform(toUser);
+  const end = new DOMPoint(right, bottom).matrixTransform(toUser);
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+/**
+ * The font size of most of the text of a drawing, in the drawing's units: the median of those of
+ * its SVG text and its HTML labels, as far as the drawing scales them.
+ */
+export function textSize(svg: SVGSVGElement): number | undefined {
+  // Relative to the drawing's units, which the panel zooms. A drawing out of sight has no scale.
+  const root = svg.getScreenCTM();
+  const scaleOf = (element: Element | null) => {
+    const matrix = element instanceof SVGGraphicsElement ? element.getScreenCTM() : null;
+    return matrix && root ? Math.hypot(matrix.a, matrix.b) / Math.hypot(root.a, root.b) : 1;
+  };
+  const sizes: number[] = [];
+  for (const element of svg.querySelectorAll("text, foreignObject *")) {
+    // The elements with text of their own, rather than those that hold lines or words of it.
+    const hasText = Array.from(element.childNodes).some(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+    );
+    const size = Number.parseFloat(getComputedStyle(element).fontSize);
+    if (!hasText || !(size > 0)) continue;
+    sizes.push(size * scaleOf(element.closest("text, foreignObject")));
+  }
+  sizes.sort((a, b) => a - b);
+  return sizes[Math.floor(sizes.length / 2)];
 }

@@ -66,7 +66,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_edit` | `#diagramEdit` | Change the current diagram or chart with exact text replacements in its source, keeping the rest, its title, code links and click prompt. |
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
-| `diagram_getImage` | `#diagramImage` | Look at the drawing as an image, to check its layout, for a model that accepts images. |
+| `diagram_getImage` | `#diagramImage` | Look at the drawing, or at the part around some items, as an image, to check its layout, for a model that accepts images. |
 | `diagram_guide` | `#diagramGuide` | Look up a Mermaid diagram type or ECharts chart kind: an example that renders, the syntax rules models get wrong and layout tips. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
 | `diagram_annotate` | `#diagramAnnotate` | Mark items with notes, a caption and fading, without redrawing. Omit marks to clear them. |
@@ -87,7 +87,7 @@ Workspace tools stay within open workspace folders. Find and search respect `fil
 
 `diagram_style` accepts CSS colors, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, for flowchart nodes and subgraphs, classes, noncomposite states and ER entities. Opaque fills get contrasting black or white text unless you specify `text`; translucent fills use theme text. Omitted colors stay, `null` removes one, and `"clear": true` removes the item's style. Changes appear in source and exports; writing them to Markdown requires confirmation. The panel background follows the VS Code theme.
 
-`diagram_getImage` gives a PNG of at most 1024 pixels a side: a chart as laid out for the panel, a Mermaid diagram in full. `@diagram` leaves it out for a model that says it does not accept images.
+`diagram_getImage` gives a PNG of the drawing as the panel shows it, in its theme, without the selection and marks: all of it, a chart as laid out for the panel, or with `ids` the part around those items. Text is drawn about 16 pixels high where that fits in 1568 pixels a side and 1.15 megapixels. The result gives the drawing's size, the image's scale, whether its text is too small to read there, and the panel's zoom. `@diagram` leaves the tool out for a model that says it does not accept images.
 
 Use the `edge:` and `message:` ids from `diagram_getState` to distinguish parallel edges and repeated messages. These ids survive redraws but may change with the source. The tool also supplies ids for chart items with duplicate names.
 

@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { ChartTool } from "../chartTools";
 import type { DiagramPanel, DiagramState, Drawn } from "../panel";
-import type { FromWebview } from "../protocol";
+import type { FromWebview, ImageView } from "../protocol";
 import {
   AnnotateDiagramTool,
   GetDiagramImageTool,
@@ -270,11 +270,11 @@ suite("tools", () => {
     assert.strictEqual(values.get("diagram.state"), flowchart);
   });
 
-  test("diagram_getImage draws at most 1024 pixels a side, and a hidden chart as it was shown", async function () {
+  test("diagram_getImage draws within 1568 pixels a side and 1.15 million in all, and says what it shows", async function () {
     this.timeout(20_000);
     afterTest(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
     const opened = openWebviewPanel(panel);
-    const imageSize = async () => {
+    const view = async () => {
       const result = await new GetDiagramImageTool(panel).invoke(
         { input: {}, toolInvocationToken: undefined },
         new vscode.CancellationTokenSource().token,
@@ -283,26 +283,158 @@ suite("tools", () => {
       assert.ok(image instanceof vscode.LanguageModelDataPart, toolText(result));
       const png = Buffer.from(image.data);
       assert.strictEqual(png.subarray(1, 4).toString(), "PNG");
-      return [png.readUInt32BE(16), png.readUInt32BE(20)];
+      const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+      assert.ok(
+        Math.max(width, height) <= 1568 && width * height <= 1_150_000,
+        `${width}×${height}`,
+      );
+      const text = toolText(result);
+      // The text gives the size of the image the model sees.
+      assert.ok(text.includes(` in this ${width}×${height} px image.`), text);
+      return { text, size: [width, height] };
     };
-    const steps = Array.from({ length: 12 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
+    const steps = Array.from({ length: 30 }, (_, step) => `S${step}[Step ${step}]`).join(" --> ");
     const wide = {
       language: "mermaid",
       source: `flowchart LR\n  ${steps}`,
       title: "Steps",
     } as const;
     assert.ok((await panel.render(wide, "tool")).ok);
-    assert.strictEqual((await imageSize())[0], 1024);
+    const steps30 = await view();
+    assert.strictEqual(steps30.size[0], 1568);
+    assert.match(
+      steps30.text,
+      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px, too small to read without zooming in\.$/,
+    );
     const pie = '{"series": [{"type": "pie", "data": [{"name": "Pie", "value": 1}]}]}';
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
-    const shown = await imageSize();
-    assert.ok(Math.max(...shown) <= 1024 && Math.min(...shown) > 300, String(shown));
+    const shown = await view();
+    const layout = /^Revision \d+ of the chart: all of it, laid out for the panel at (\d+×\d+ px),/;
+    const [, size] = layout.exec(shown.text) ?? [];
+    assert.ok(size, shown.text);
     // The page of a hidden tab has the size of an empty frame, too small to lay the chart out for.
     const { viewColumn } = opened;
     assert.ok(viewColumn);
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), viewColumn);
     assert.ok(await within(() => !opened.visible));
-    assert.deepStrictEqual(await imageSize(), shown);
+    const hidden = await view();
+    assert.deepStrictEqual(hidden.size, shown.size);
+    assert.match(
+      hidden.text,
+      new RegExp(`^Revision \\d+ of the chart: all of it, laid out at ${size},`),
+    );
+  });
+
+  test("diagram_getImage tells what its image shows, and what it cannot show", async () => {
+    const { panel, webview } = await newFakePanel();
+    const drawn = webview.answer;
+    const view = async (input: unknown, answer: ImageView | string) => {
+      webview.answer = (message) =>
+        message.type !== "export"
+          ? drawn?.(message)
+          : typeof answer === "string"
+            ? { type: "exportError", requestId: message.requestId, message: answer }
+            : {
+                type: "exportImage",
+                requestId: message.requestId,
+                format: "png",
+                data: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+                view: answer,
+              };
+      return invokeTool(new GetDiagramImageTool(panel), input);
+    };
+    const flow = { language: "mermaid", source: "flowchart LR\n  A --> B", title: "Flow" } as const;
+    assert.ok((await panel.render(flow, "tool")).ok);
+    const room = { width: 800, height: 600, zoom: 0.2 };
+    const drawing = { width: 4000, height: 500, textSize: 16, panel: room };
+    assert.deepStrictEqual(
+      [
+        await view(
+          {},
+          { width: 400, height: 300, textSize: 16, scale: 1, panel: { ...room, zoom: 1 } },
+        ),
+        await view({}, { ...drawing, scale: 0.392 }),
+        await view(
+          { ids: ["A", "B", "C"] },
+          {
+            ...drawing,
+            area: { width: 1500, height: 300 },
+            scale: 0.4,
+            missing: ["C"],
+          },
+        ),
+        await view({ ids: "A" }, { ...drawing, area: { width: 200, height: 120 }, scale: 1 }),
+        await view({ ids: "A" }, 'Nothing drawn has these ids: "A".'),
+      ],
+      [
+        "Revision 1 of the diagram: all of its 400×300 px drawing, at 100% in this 400×300 px image. The panel shows it at 100% in 800×600 px.",
+        'Revision 1 of the diagram: all of its 4000×500 px drawing, at 39% in this 1568×196 px image. Its text, 16 px, is 6.3 px here: too small to read reliably. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
+        'Revision 1 of the diagram: the part around "A", "B" (1500×300 px of the 4000×500 px drawing), at 40% in this 600×120 px image. Its text, 16 px, is 6.4 px here: too small to read reliably. To read it, give fewer "ids", of items close together. The panel shows it at 20% in 800×600 px, too small to read without zooming in.\n\nThese ids name nothing drawn, so the image leaves them out: "C".',
+        'Revision 1 of the diagram: the part around "A" (200×120 px of the 4000×500 px drawing), at 100% in this 200×120 px image. The panel shows it at 20% in 800×600 px, too small to read without zooming in.',
+        'There is no image to view. Nothing drawn has these ids: "A".',
+      ],
+    );
+    const pie = '{"series": [{"type": "pie", "data": [1]}]}';
+    assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
+    const chart = { width: 800, height: 1400, textSize: 12, scale: 0.82 };
+    assert.deepStrictEqual(
+      [
+        await view({}, { ...chart, panel: { width: 800, height: 600, zoom: 1 } }),
+        await view({}, chart),
+      ],
+      [
+        "Revision 2 of the chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image. The panel shows 800×600 px of it at a time, and scrolls the rest.",
+        "Revision 2 of the chart: all of it, laid out at 800×1400 px, at 82% in this 656×1148 px image.",
+      ],
+    );
+  });
+
+  test("diagram_getImage checks the ids it is given, as far as the panel knows them", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: ["A", "B"],
+            relationships: [
+              {
+                id: "edge:L_A_B_0",
+                label: "A → B",
+                relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
+              },
+            ],
+          }
+        : undefined;
+    const flow = { language: "mermaid", source: "flowchart LR\n  A --> B", title: "Flow" } as const;
+    assert.ok((await panel.render(flow, "tool")).ok);
+    const tool = new GetDiagramImageTool(panel);
+    const results = [];
+    for (const input of [{ ids: ["X", "a"] }, { ids: [1] }, { id: "A" }]) {
+      results.push(await invokeTool(tool, input));
+    }
+    assert.deepStrictEqual(results, [
+      'There is no image to view: no item of the diagram has these ids: "X", "a". Its ids are "A", "B", "edge:L_A_B_0".',
+      'There is no image to view: "ids" must be an array of item ids, such as ["A", "edge:A → B"].',
+      'There is no image to view: Unknown property "id"; the properties are "ids".',
+    ]);
+    assert.deepStrictEqual(
+      webview.sent.filter((message) => message.type === "export"),
+      [],
+    );
+    assert.deepStrictEqual(
+      [
+        tool.prepareInvocation({ input: { ids: ["A", "edge:L_A_B_0"] } }).invocationMessage,
+        tool.prepareInvocation({ input: { ids: ["A", "B", "C", "D"] } }).invocationMessage,
+        tool.prepareInvocation({ input: {} }).invocationMessage,
+      ],
+      [
+        'Viewing "A", "edge:L_A_B_0" in the diagram',
+        "Viewing 4 items in the diagram",
+        "Viewing the diagram",
+      ],
+    );
   });
 
   test("diagram_getImage answers each of several calls at once", async () => {
@@ -318,8 +450,20 @@ suite("tools", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const exports = webview.sent.filter((message) => message.type === "export");
     assert.deepStrictEqual(
-      exports.map(({ format, forModel, maxSide }) => ({ format, forModel, maxSide })),
-      Array(2).fill({ format: "png", forModel: true, maxSide: 1024 }),
+      exports.map(({ format, forModel, maxSide, maxPixels, ids }) => ({
+        format,
+        forModel,
+        maxSide,
+        maxPixels,
+        ids,
+      })),
+      Array(2).fill({
+        format: "png",
+        forModel: true,
+        maxSide: 1568,
+        maxPixels: 1_150_000,
+        ids: [],
+      }),
     );
     // The page may answer them in any order.
     for (const [index, { requestId }] of exports.reverse().entries()) {
@@ -334,14 +478,8 @@ suite("tools", () => {
           `${image.mimeType}: ${Buffer.from(image.data)}`,
       ]),
       [
-        [
-          "Revision 1 of the chart, laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden:",
-          "image/png: png 1",
-        ],
-        [
-          "Revision 1 of the chart, laid out for the panel's size, or for 800 by 500 pixels if first drawn while the panel was hidden:",
-          "image/png: png 0",
-        ],
+        ["Revision 1 of the chart:", "image/png: png 1"],
+        ["Revision 1 of the chart:", "image/png: png 0"],
       ],
     );
   });
@@ -377,7 +515,7 @@ suite("tools", () => {
     assert.deepStrictEqual(reasons, [
       "No diagram is shown. Use diagram_render or diagram_chart to show one.",
       "There is no image to view. The diagram panel is closed. The user can open it again with Diagram: Show Panel.",
-      "There is no image to view. The diagram fails to render: Oops",
+      "There is no image to view. The diagram fails to render. Render a working diagram first. The error is: Oops",
       "There is no image to view. The panel is still drawing the diagram.",
       "There is no image to view. The diagram changed before it could be exported. Try again.",
       "There is no image to view. The diagram panel returned an invalid PNG image.",

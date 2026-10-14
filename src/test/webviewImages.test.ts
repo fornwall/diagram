@@ -241,7 +241,7 @@ suite("images in the webview", function () {
     })()`);
     try {
       await page.panel.exportDiagram();
-      const viewed = await page.panel.captureImage(1024);
+      const viewed = await page.panel.captureImage({ maxSide: 1024, maxPixels: 1_000_000 });
       const failure = "The browser could not create a PNG at this image size.";
       assert.deepStrictEqual(
         [...errors, viewed],
@@ -662,6 +662,201 @@ suite("images in the webview", function () {
     assert.deepStrictEqual(
       [first.drawn, again.drawn, changed.drawn, again.svg === first.svg, changed.svg === first.svg],
       [1, 0, 1, true, false],
+    );
+  });
+
+  /** The limits of an image for a model, as diagram_getImage asks for them. */
+  const MODEL_LIMITS = { maxSide: 1568, maxPixels: 1_150_000 };
+
+  /**
+   * Webview code defining `decoded(png)`: the pixels of the PNG, given as base64, by `pixel(x, y)`,
+   * an [r, g, b] array, and its size.
+   */
+  const DECODE = `
+    const decoded = async (png) => {
+      const image = new Image();
+      image.src = "data:image/png;base64," + png;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      [canvas.width, canvas.height] = [image.width, image.height];
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      const { data } = context.getImageData(0, 0, image.width, image.height);
+      const pixel = (x, y) => [...data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 3)];
+      return { pixel, width: image.width, height: image.height };
+    };`;
+
+  test("shows a model the part of a Mermaid diagram around items, its labels where the panel shows them", async () => {
+    await draw({
+      source:
+        "flowchart LR\n  A[Parser of input] --> B[A checker of types] --> C[Writer of output]",
+    });
+    const shown = (await evaluate(`(() => {
+      const svg = document.querySelector("#diagram svg");
+      const { width, height } = svg.viewBox.baseVal;
+      const zoom = Number(svg.getAttribute("width")) / width;
+      const box = svg.querySelector('[data-diagram-id="B"]').getBoundingClientRect();
+      return { width, height, zoom, node: [box.width / zoom, box.height / zoom] };
+    })()`)) as { width: number; height: number; zoom: number; node: [number, number] };
+    const view = async () => {
+      const image = await page.panel.captureImage(MODEL_LIMITS, ["B", "nope"]);
+      if (typeof image === "string") assert.fail(image);
+      assert.ok(image.view);
+      const { area, panel, ...rest } = image.view;
+      return {
+        png: Buffer.from(image.png).toString("base64"),
+        view: {
+          ...rest,
+          area: area && [area.width, area.height].map(Math.round),
+          zoom: panel?.zoom,
+        },
+      };
+    };
+    // B with a margin, as far as the drawing goes, at 100%, which shows its 16 px text legibly.
+    const expected = {
+      width: shown.width,
+      height: shown.height,
+      area: [shown.node[0] + 80, Math.min(shown.node[1] + 80, shown.height)].map(Math.round),
+      textSize: 16,
+      scale: 1,
+      missing: ["nope"],
+    };
+    const visual = await view();
+    assert.deepStrictEqual(visual.view, { ...expected, zoom: shown.zoom });
+    // B's text is centered in it, as in the panel, rather than as the style sheet of the drawing
+    // centers SVG text.
+    const text = await evaluate(`(async () => {
+      ${DECODE}
+      const { pixel, width, height } = await decoded(${JSON.stringify(visual.png)});
+      // B's fill, just inside its left edge, 40 pixels into the image, and the columns inside it
+      // that its text is in, on its lines, between its top and bottom edges.
+      const top = Math.ceil((height - ${shown.node[1]}) / 2) + 4;
+      const bottom = Math.floor((height + ${shown.node[1]}) / 2) - 4;
+      const fill = pixel(44, top);
+      const columns = [];
+      for (let x = 44; x < width - 44; x++) {
+        for (let y = top; y <= bottom; y++) {
+          const differs = pixel(x, y).reduce((sum, value, i) => sum + Math.abs(value - fill[i]), 0) > 100;
+          if (differs) { columns.push(x); break; }
+        }
+      }
+      return { width, height, center: (columns[0] + columns.at(-1)) / 2 };
+    })()`);
+    const [width = 0, height = 0] = expected.area;
+    assert.deepStrictEqual(
+      { ...(text as { width: number; height: number; center: number }), center: undefined },
+      { width, height, center: undefined },
+    );
+    assert.ok(Math.abs((text as { center: number }).center - width / 2) <= 3, JSON.stringify(text));
+    // The Source view hides the drawing, but not from the model: only the panel shows none of it.
+    await evaluate(`document.getElementById("view-source").click()`);
+    try {
+      const source = await view();
+      assert.deepStrictEqual(source, { png: visual.png, view: { ...expected, zoom: undefined } });
+    } finally {
+      await evaluate(`document.getElementById("view-visual").click()`);
+    }
+  });
+
+  test("shows a model the labels of Mermaid edges on their backgrounds, as the panel does", async () => {
+    await draw({
+      source: [
+        '%%{init: {"themeVariables": {"edgeLabelBackground": "#ff0000"}}}%%',
+        "flowchart LR",
+        "  A[Parser] -->|feeds the checker| B[Checker]",
+      ].join("\n"),
+    });
+    const image = await page.panel.captureImage(MODEL_LIMITS, ["edge:L_A_B_0"]);
+    if (typeof image === "string") assert.fail(image);
+    // How many pixels of the middle of the label, just inside its top edge above its text, are of
+    // its background, as red as the page reads the image.
+    const label = await evaluate(`(async () => {
+      ${DECODE}
+      const { pixel, width, height } = await decoded(${JSON.stringify(Buffer.from(image.png).toString("base64"))});
+      const differs = (a, b) => a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) > 30;
+      const background = pixel(0, 0);
+      // The edge starts 40 pixels into the image, as its line goes through the middle of the label.
+      const line = Array.from({length: height}, (_, y) => y).find((y) => differs(pixel(50, y), background));
+      // The label is 24 pixels high, as its text is 16 pixels high on lines of 1.5 times that.
+      return Array.from({length: 40}, (_, i) => pixel(Math.round(width / 2) - 20 + i, line - 11))
+        .filter(([r, g, b]) => r > 150 && g < 60 && b < 60).length;
+    })()`);
+    assert.strictEqual(label, 40);
+  });
+
+  test("shows a model a chart without its marks and selection, which the panel goes on showing", async () => {
+    const colors = ["#0000ff", "#00ff00", "#ff0000"];
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        animation: false,
+        xAxis: { type: "category", data: ["Alpha category", "Beta category", "Gamma category"] },
+        yAxis: {},
+        series: [
+          {
+            type: "bar",
+            data: colors.map((color, index) => ({ value: 10 + index, itemStyle: { color } })),
+          },
+        ],
+      }),
+    });
+    /**
+     * Whether each bar is faded, and whether Beta's is outlined, as ECharts shows it selected. The
+     * states change how ECharts writes the fills of the bars: they go by their color as drawn.
+     */
+    const shown = `(() => {
+      const paths = [...document.querySelectorAll("#chart svg path")];
+      const bars = ["rgb(0, 0, 255)", "rgb(0, 255, 0)", "rgb(255, 0, 0)"].map((color) =>
+        paths.find((path) => getComputedStyle(path).fill === color));
+      return [
+        ...bars.map((bar) => Number(bar?.getAttribute("fill-opacity") ?? bar?.getAttribute("opacity") ?? 1) < 1),
+        Boolean(bars[1]?.getAttribute("stroke")),
+      ].join();
+    })()`;
+    const plain = await page.panel.captureImage(MODEL_LIMITS);
+    if (typeof plain === "string") assert.fail(plain);
+    // Selects Beta's bar, and leaves the chart, where the pointer would emphasize it. ZRender takes
+    // a click only after a press and a release on the same item.
+    await evaluate(`(async () => {
+      const path = document.querySelector('#chart svg path[fill="#00ff00"]');
+      const bar = path.getBoundingClientRect();
+      for (const type of ["mousedown", "mouseup", "click"]) {
+        path.dispatchEvent(new MouseEvent(type, {
+          bubbles: true, clientX: bar.x + bar.width / 2, clientY: bar.y + bar.height / 2
+        }));
+      }
+      const svg = document.querySelector("#chart svg");
+      const corner = svg.getBoundingClientRect();
+      svg.dispatchEvent(new MouseEvent("mousemove", {bubbles: true, clientX: corner.x + 2, clientY: corner.y + 2}));
+      ${UNTIL}
+      await until(() => ${shown}.endsWith(",true"), "the selected bar outlined");
+    })()`);
+    page.panel.annotate({ marks: [{ id: "Gamma category", kind: "info" }], dim: true });
+    // Alpha faded around the mark, and Beta outlined, whether ECharts fades it or not, which
+    // depends on whether it took the pointer's emphasis.
+    const marks = /^true,(true|false),false,true$/;
+    await evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => ${marks}.test(${shown}), "the chart dimmed around its mark");
+    })()`);
+    const marked = await page.panel.captureImage(MODEL_LIMITS);
+    if (typeof marked === "string") assert.fail(marked);
+    // The same image as of the chart before, while the panel shows them again at once.
+    assert.ok(Buffer.from(marked.png).equals(Buffer.from(plain.png)));
+    assert.match(String(await evaluate(shown)), marks);
+    // Around Beta's bar, with its label on the axis, which lies outside its box.
+    const part = await page.panel.captureImage(MODEL_LIMITS, ["Beta category"]);
+    if (typeof part === "string") assert.fail(part);
+    const reach = (await evaluate(`(() => {
+      const bar = document.querySelector('#chart svg path[fill="#00ff00"]').getBoundingClientRect();
+      const label = [...document.querySelectorAll("#chart svg text")]
+        .find((text) => text.textContent === "Beta category").getBoundingClientRect();
+      return [Math.max(bar.width, label.width), label.bottom - bar.top];
+    })()`)) as [number, number];
+    const area = part.view?.area;
+    assert.ok(
+      area && area.width >= reach[0] && area.height >= reach[1] + 40,
+      JSON.stringify({ area, reach }),
     );
   });
 

@@ -1,6 +1,8 @@
 // Images of the drawing as they leave the panel: SVG, which svgImage.ts makes, and PNG drawn
 // from it.
 
+import type { ImageView } from "../protocol";
+
 /** A rendering as an image, ready to leave the panel. */
 export interface DiagramImage {
   /** Standalone SVG markup: no panel stylesheet, no CSS variables, no interaction attributes. */
@@ -9,6 +11,19 @@ export interface DiagramImage {
   width: number;
   height: number;
 }
+
+/** An image for a model, and what it shows, but for the scale, which the PNG of it decides. */
+export interface ModelImage {
+  image: DiagramImage;
+  view: Omit<ImageView, "scale">;
+}
+
+/**
+ * How many pixels high an image for a model draws most text, as far as its size allows: enough for
+ * the model to read it, without the pixels of a larger image, which cost the model time and input.
+ * The drawing is not drawn smaller than it is to get there.
+ */
+export const MODEL_TEXT_SIZE = 16;
 
 const PNG_SCALE = 2;
 const MAX_PNG_SIDE = 8000;
@@ -20,19 +35,33 @@ export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-/** Rasterizes self-contained SVG, at most maxSide pixels wide and high. */
-export async function pngDataUrl(
-  { svg, width, height }: DiagramImage,
-  maxSide = MAX_PNG_SIDE,
-): Promise<string> {
+/** The most pixels a PNG may have on either side and in all, and for each pixel of the drawing. */
+export interface PngLimits {
+  maxSide?: number | undefined;
+  maxPixels?: number | undefined;
+  maxScale?: number | undefined;
+}
+
+/** How many pixels of a PNG of the image within the limits make a pixel of the drawing. */
+export function pngScale(
+  { width, height }: Pick<DiagramImage, "width" | "height">,
+  { maxSide = MAX_PNG_SIDE, maxPixels = MAX_PNG_PIXELS, maxScale = PNG_SCALE }: PngLimits = {},
+): number {
+  return Math.min(
+    PNG_SCALE,
+    maxScale,
+    Math.min(maxSide, MAX_PNG_SIDE) / Math.max(width, height),
+    Math.sqrt(Math.min(maxPixels, MAX_PNG_PIXELS) / width) / Math.sqrt(height),
+  );
+}
+
+/** Rasterizes self-contained SVG, at most as large as the limits allow. */
+export async function pngDataUrl(drawing: DiagramImage, limits?: PngLimits): Promise<string> {
+  const { svg, width, height } = drawing;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error("The drawing has no valid dimensions for a PNG.");
   }
-  const scale = Math.min(
-    PNG_SCALE,
-    maxSide / Math.max(width, height),
-    Math.sqrt(MAX_PNG_PIXELS / width) / Math.sqrt(height),
-  );
+  const scale = pngScale(drawing, limits);
   const image = new Image();
   let canvas: HTMLCanvasElement | undefined;
   let blob: Blob | null;
