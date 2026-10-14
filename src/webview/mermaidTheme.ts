@@ -199,8 +199,8 @@ export function mermaidThemeVariables(colors: ThemeColors): Record<string, unkno
     tagLabelBackground: css(primary),
     tagLabelBorder: css(primaryBorder),
 
-    // User journeys.
-    faceColor: css(highContrast ? background : mix(background, yellow, dark ? 0.5 : 0.35)),
+    // User journeys: faces light in every theme, as Mermaid draws their eyes and mouths in grey.
+    faceColor: css(mix({ r: 255, g: 255, b: 255, a: 1 }, yellow, 0.35)),
 
     // Venn diagrams.
     vennTitleTextColor: text,
@@ -555,9 +555,10 @@ function c4Fill(kind: string): string {
 /**
  * Mermaid's configuration of fonts and fixed colors for the panel: C4 and use case diagrams take a
  * font of their own for each kind of element, Open Sans, rather than the diagram's, and user
- * journeys draw their titles in Trebuchet MS. C4 diagrams label elements in white, on fills of
- * their own, some of them too light for it, such as the grey of external systems: those are
- * darkened as far as the labels need, in every theme alike.
+ * journeys draw their titles in Trebuchet MS, at 4ex, twice the size of the titles of other
+ * charts. C4 diagrams label elements in white, on fills of their own, some of them too light for
+ * it, such as the grey of external systems: those are darkened as far as the labels need, in
+ * every theme alike.
  */
 export function elementConfig(fontFamily: string) {
   const fonts = (kinds: string[]) =>
@@ -566,7 +567,8 @@ export function elementConfig(fontFamily: string) {
   return {
     fontFamily,
     c4: { ...fonts([...C4_ELEMENTS, "boundary", "message"]), ...fills },
-    journey: fonts(["title", "task"]),
+    // As large as the titles of XY and quadrant charts.
+    journey: { ...fonts(["title", "task"]), titleFontSize: "20px" },
     usecase: fonts(["actor", "usecase"]),
   };
 }

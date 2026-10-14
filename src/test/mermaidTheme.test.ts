@@ -73,6 +73,8 @@ suite("Mermaid theme", () => {
       assert.strictEqual(variables.dropShadow, "none", theme);
       assert.strictEqual(variables.useGradient, false, theme);
       assert.strictEqual(variables.edgeLabelBackground, toCss(colors.background), theme);
+      // The grey eyes and mouths that Mermaid draws on a journey's faces show on them.
+      assert.ok(contrast(rgb(variables.faceColor), rgb("#666666")) >= 3, theme);
     }
   });
 
@@ -153,6 +155,8 @@ suite("Mermaid theme", () => {
     assert.strictEqual(fonts.length, 30);
     assert.ok(fonts.every((font) => font === "Segoe UI"));
     assert.strictEqual(c4.external_system_dbFontFamily, "Segoe UI");
+    // A journey's title in proportion to its text, rather than at 4ex.
+    assert.strictEqual(config.journey.titleFontSize, "20px");
   });
 
   test("fills C4 elements so that their white labels read on them", () => {
