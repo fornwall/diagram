@@ -317,20 +317,32 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     const about = `Revision ${revision} of the ${noun}`;
     return new vscode.LanguageModelToolResult([
       new vscode.LanguageModelTextPart(
-        image.view ? describeImage(about, image.view, current.language, ids, known) : `${about}:`,
+        image.view
+          ? describeImage(about, image.view, pngSize(image.png), current.language, ids, known)
+          : `${about}:`,
       ),
       vscode.LanguageModelDataPart.image(image.png, "image/png"),
     ]);
   }
 }
 
+/** The width and height of a PNG, from its header, if it has one. */
+function pngSize(png: Uint8Array): { width: number; height: number } | undefined {
+  const bytes = Buffer.from(png.buffer, png.byteOffset, png.byteLength);
+  return bytes.length >= 24 && bytes.toString("latin1", 12, 16) === "IHDR"
+    ? { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+    : undefined;
+}
+
 /**
  * What an image shows a model: what part of the drawing at what scale, whether its text can be
- * read there, and how the user sees it in the panel.
+ * read there, and how the user sees it in the panel. The size of the image is that of the PNG,
+ * whose sides the page rounds down.
  */
 function describeImage(
   about: string,
   view: ImageView,
+  png: { width: number; height: number } | undefined,
   language: DiagramLanguage,
   ids: readonly string[],
   known: readonly string[] | undefined,
@@ -346,7 +358,7 @@ function describeImage(
       ? `all of it, laid out ${panel ? "for the panel " : ""}at ${size(view)}`
       : `all of its ${size(view)} drawing`;
   const sentences = [
-    `${about}: ${what}, at ${percent(scale)} in this ${size(area ?? view, scale)} image.`,
+    `${about}: ${what}, at ${percent(scale)} in this ${size(png ?? area ?? view, png ? 1 : scale)} image.`,
   ];
   const legible = (zoom: number) => textSize === undefined || textSize * zoom >= LEGIBLE_TEXT;
   if (textSize !== undefined && !legible(scale)) {

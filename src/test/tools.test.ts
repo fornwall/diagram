@@ -374,6 +374,7 @@ suite("tools", () => {
   test("diagram_getImage tells what its image shows, and what it cannot show", async () => {
     const { panel, webview } = await newFakePanel();
     const drawn = webview.answer;
+    let png = Buffer.from("png");
     const view = async (input: unknown, answer: ImageView | string) => {
       webview.answer = (message) =>
         message.type !== "export"
@@ -384,7 +385,7 @@ suite("tools", () => {
                 type: "exportImage",
                 requestId: message.requestId,
                 format: "png",
-                data: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+                data: `data:image/png;base64,${png.toString("base64")}`,
                 view: answer,
               };
       return invokeTool(new GetDiagramImageTool(panel), input);
@@ -432,6 +433,16 @@ suite("tools", () => {
         "Revision 2 of the chart: all of it, laid out for the panel at 800×1400 px, at 82% in this 656×1148 px image. The panel shows 800×600 px of it at a time, and scrolls the rest.",
         "Revision 2 of the chart: all of it, laid out at 800×1400 px, at 82% in this 656×1148 px image.",
       ],
+    );
+    // The size of the image is that of the PNG, whose sides the page rounds down.
+    png = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
+    png.write("IHDR", 12);
+    png.writeUInt32BE(803, 16);
+    png.writeUInt32BE(897, 20);
+    assert.match(
+      await view({}, { width: 602, height: 673, scale: 1.3339 }),
+      / at 133% in this 803×897 px image\.$/,
     );
   });
 
