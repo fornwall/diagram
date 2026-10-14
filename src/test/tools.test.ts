@@ -12,7 +12,7 @@ import {
 } from "../tools";
 import { formatOption } from "../webview/optionSource";
 import { afterTest, cancellationSource, replace } from "./afterTest";
-import { newFakePanel, newPanel, openWebviewPanel, within } from "./newPanel";
+import { newFakePanel, newPanel, openWebviewPanelAlone, within } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
 
 const flowchart: DiagramState = {
@@ -328,7 +328,7 @@ suite("tools", () => {
   test("diagram_getImage draws within 1568 pixels a side and 1.15 million in all, and says what it shows", async function () {
     this.timeout(20_000);
     afterTest(() => vscode.commands.executeCommand("workbench.action.closeAllEditors"));
-    const opened = openWebviewPanel(panel);
+    const opened = await openWebviewPanelAlone(panel);
     const view = async () => {
       const result = await new GetDiagramImageTool(panel).invoke(
         { input: {}, toolInvocationToken: undefined },

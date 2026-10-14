@@ -248,6 +248,18 @@ export function openWebviewPanel(panel: DiagramPanel, preserveFocus = false): vs
   return opened;
 }
 
+/**
+ * Shows the panel with the window to itself, for a test of what its size decides, such as an image
+ * of a chart laid out for it: an editor that an earlier test left beside it would halve its width.
+ * The editors open before are closed.
+ */
+export async function openWebviewPanelAlone(panel: DiagramPanel): Promise<vscode.WebviewPanel> {
+  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  const opened = openWebviewPanel(panel);
+  assert.ok(await within(() => vscode.window.tabGroups.all.length === 1 && opened.visible));
+  return opened;
+}
+
 /** A render's outcome without its revision, which counts the renders before it. */
 export function withoutRevision({ revision: _, ...outcome }: Drawn): RenderOutcome {
   return outcome;
