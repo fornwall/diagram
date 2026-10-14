@@ -1166,6 +1166,24 @@ suite("webview", function () {
     );
   });
 
+  test("leaves source apply shortcuts to the input method while composing text", async () => {
+    await draw({ source: "flowchart LR\n A --> B" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        document.getElementById("view-source").click();
+        const source = document.getElementById("source");
+        source.value = "flowchart LR\\n A --> Draft";
+        source.dispatchEvent(new Event("input"));
+        return ["ctrlKey", "metaKey"].map(modifier => source.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Enter", [modifier]: true, isComposing: true, bubbles: true, cancelable: true
+        })));
+      })()`),
+      [true, true],
+    );
+    assert.strictEqual(page.panel.current?.source, "flowchart LR\n A --> B");
+    await evaluate('document.getElementById("revert").click()');
+  });
+
   test("keeps unapplied source edits across view changes and incoming diagrams", async () => {
     await draw({ source: "flowchart LR\n A --> B" });
     await evaluate(`(() => {

@@ -42,7 +42,7 @@ const MAX_LINE_CHARS = 1000;
 const MATCH_CONTEXT_CHARS = 200;
 const MAX_READ_LINES = 500;
 const DEFAULT_READ_LINES = 200;
-/** Files read ahead while searching, as reading them one by one waits on each. */
+/** Files read concurrently while searching or loading ignore rules. */
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
 const IGNORE_FILE = ".gitignore";
@@ -456,14 +456,18 @@ async function findIgnoreFiles(
       .filter(({ folder }) => !ignored(folder, true))
       .slice(0, MAX_IGNORE_FILES - read);
     read += kept.length;
-    const rules = await unlessCancelled(
-      () => Promise.all(kept.map(({ uri }) => readIgnoreFile(uri, check))),
-      token,
-    );
-    for (const [index, { folder }] of kept.entries()) {
-      const folderRules = rules[index] ?? [];
-      if (folderRules.length > 0) files.set(folder, folderRules);
+    for (let offset = 0; offset < kept.length; offset += READ_AHEAD) {
+      const batch = kept.slice(offset, offset + READ_AHEAD);
+      const rules = await unlessCancelled(
+        () => Promise.all(batch.map(({ uri }) => readIgnoreFile(uri, check))),
+        token,
+      );
+      for (const [index, { folder }] of batch.entries()) {
+        const folderRules = rules[index] ?? [];
+        if (folderRules.length > 0) files.set(folder, folderRules);
+      }
     }
+    if (read === MAX_IGNORE_FILES) break;
   }
   return files;
 }

@@ -163,6 +163,21 @@ suite("data", () => {
     assert.deepStrictEqual(parse("pod,members\na,800M\nb,1.2K").rows[0], ["a", 800e6]);
   });
 
+  test("signed durations remain numeric beside plain values with stated units", () => {
+    const table = parseTable("name,Latency (ms)\na,-250ms\nb,+1s\nc,\u2212500ms\nd,-750");
+    assert.deepStrictEqual(table.columns[1], {
+      name: "Latency (ms)",
+      numeric: true,
+      unit: "seconds",
+    });
+    assert.deepStrictEqual(table.rows, [
+      ["a", -0.25],
+      ["b", 1],
+      ["c", -0.5],
+      ["d", -0.75],
+    ]);
+  });
+
   test("reads durations in seconds, as Go, kubectl, time and systemd print them", () => {
     for (const [text, value] of [
       ["5.123s", 5.123],
@@ -2204,6 +2219,26 @@ suite("data", () => {
         ],
       },
     );
+  });
+
+  test("rejects colliding JSON fields instead of silently dropping their values", () => {
+    for (const row of [
+      { "cpu.user": 1, cpu: { user: 2 } },
+      { cpu: { user: 2 }, "cpu.user": 1 },
+      { "cpu.user": null, cpu: { user: 2 } },
+      { "cpu.user": 1, cpu: { user: null } },
+      { cpu: { "time.user": 1, time: { user: 2 } } },
+    ]) {
+      assert.throws(
+        () => parse(JSON.stringify([row])),
+        /multiple fields named "cpu\.(?:time\.)?user" after flattening nested objects\. Rename/,
+      );
+    }
+    // Dotted names remain unchanged when they do not collide within a row.
+    assert.deepStrictEqual(parse('[{"cpu.user":1},{"cpu":{"user":2}}]'), {
+      columns: ["cpu.user"],
+      rows: [[1], [2]],
+    });
   });
 
   test("looks into JSON objects that wrap a single object", () => {

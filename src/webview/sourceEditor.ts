@@ -61,7 +61,7 @@ export class SourceEditor {
     }
     input.addEventListener("input", () => this.edited());
     input.addEventListener("keydown", (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      if (!event.isComposing && (event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         this.apply();
       }

@@ -37,7 +37,14 @@ function flatten(
     if (isPlainObject(value) && Object.keys(value).length > 0 && depth < MAX_DEPTH) {
       flatten(value, `${prefix}${key}.`, fields, depth + 1);
     } else {
-      fields[`${prefix}${key}`] ??= value;
+      const name = `${prefix}${key}`;
+      if (Object.hasOwn(fields, name)) {
+        throw new Error(
+          `The JSON row has multiple fields named ${JSON.stringify(name)} after flattening ` +
+            "nested objects. Rename the dotted field or its nested counterpart.",
+        );
+      }
+      fields[name] = value;
     }
   }
   return fields;

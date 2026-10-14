@@ -55,15 +55,19 @@ const PER_SECOND: Record<string, number> = { ms: 1e3, us: 1e6, µs: 1e6, μs: 1e
 
 /** The seconds of a {@link DURATION}, or a {@link CLOCK} in a column of `durations`. */
 function parseDuration(text: string, durations = false): number | undefined {
+  const sign = text[0];
+  const signed = sign === "-" || sign === "+" || sign === "\u2212";
+  const unsigned = signed ? text.slice(1) : text;
   const [, d, h, m, s, unit = "s"] =
-    DURATION.exec(text) ?? (durations ? CLOCK.exec(text) : null) ?? [];
+    DURATION.exec(unsigned) ?? (durations ? CLOCK.exec(unsigned) : null) ?? [];
   const parts = [d, h, m, s].filter((part) => part !== undefined).length;
   // Alone, "5m" may be millions or meters, "3h" or "2d" other things and "1980s" a decade, except in
   // a column of durations, as kubectl's AGE. Commands write durations that long in minutes.
   const alone = s === undefined || (unit === "s" && /^[1-9]\d{3}$/.test(s));
   if (parts === 0 || (parts === 1 && alone && !durations)) return undefined;
   const minutes = (Number(d ?? 0) * 24 + Number(h ?? 0)) * 60 + Number(m ?? 0);
-  return minutes * 60 + Number(s ?? 0) / (PER_SECOND[unit] ?? 1);
+  const seconds = minutes * 60 + Number(s ?? 0) / (PER_SECOND[unit] ?? 1);
+  return sign === "-" || sign === "\u2212" ? -seconds : seconds;
 }
 
 /** A sign and a currency symbol, as in "-$5". */

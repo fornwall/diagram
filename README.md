@@ -13,24 +13,26 @@ Ask `@diagram` to draw, optionally attaching files with `#file`:
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 - `@diagram treemap of du -ah src`
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
-- `@diagram turn this whiteboard photo into a flowchart`, with an attached or pasted image (PNG, JPEG, GIF or WebP files, up to 3 MiB) for a model that accepts images. An image goes only with the request it is attached to.
+- `@diagram turn this whiteboard photo into a flowchart`
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. If a diagram fails to render, `@diagram` gives the model the error to fix it.
+Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors go back to the model for repair.
+
+Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model that accepts images. Images are sent only with the request they are attached to.
 
 ## Use the panel
 
 | Action | How |
 | --- | --- |
 | Select | Click a node, edge, sequence message or chart item. Ctrl/Cmd+click or Shift+click toggles it in the selection. A plain click follows an item's link or click prompt, if set, and zooms into treemap and sunburst items. |
-| Keyboard | Tab to the drawing; use arrows to move, Home/End for first/last, and Enter/Space to click. Add Ctrl/Cmd or Shift to toggle selection. Backspace goes up a treemap or sunburst; H hides the focused series or pie slice, and Shift+H restores all. Escape closes menus, Chart Options and the data view. |
-| Highlight a path | Select a start and destination in a flowchart, swimlane, agent flow or state diagram, then **Highlight Path**. It selects a shortest path following arrows, traversing plain lines and double arrows both ways, and skipping invisible links. Ties follow source order. |
+| Keyboard | Tab to the drawing; arrows move, Home/End move to first/last, and Enter/Space clicks. Ctrl/Cmd or Shift toggles selection. H hides the focused series or pie slice; Shift+H restores all. Escape closes menus, Chart Options and the data view. |
+| Highlight a path | Select a start and destination, then **Highlight Path** in a flowchart, swimlane, agent flow or state diagram. It selects a shortest path, follows arrows, traverses plain lines and double arrows both ways, skips invisible links and breaks ties by source order. |
 | Ask | Type a question or change and press **Send to chat**. The request includes your selection and goes to `@diagram`, or to chat without a mention if another agent drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
-| Edit | Use the view buttons to show source. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Unapplied edits survive view changes and incoming diagrams. Render errors link to their source location. Titles inferred from source follow your edits. |
+| Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. |
 | Find | Ctrl/Cmd+F finds text in the drawing and the source. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
-| Chart Options | Use the gear in the editor title bar or **Diagram: Chart Options…** to configure a chart made from data. Enter applies the options. |
-| Refresh | Reload file or command data, keeping styling made in the JSON source. Manual changes to the data, structure or JavaScript of the source must be reverted or reset first. |
+| Chart Options | Use the title bar gear or **Diagram: Chart Options…** to configure a chart made from data. Enter applies. |
+| Refresh | Reload file or command data, keeping JSON styling. Revert or reset manual changes to data, structure or JavaScript first. |
 | Export | Use the editor title bar, drawing's context menu or **Diagram: Export…** to save PNG, SVG or an offline interactive HTML chart. Exports default to the Markdown file's folder when writable, or the subfolder you last exported to. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
 | Open links | Click an underlined node to open its linked file or http, https or mailto URL. Sequence actors with several links offer a menu. VS Code asks before opening an untrusted website. |
@@ -38,21 +40,21 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 
 Images keep the theme and omit links. Mermaid images also omit selection and marks. PNGs use up to twice the drawing's resolution, with size metadata for documents. Mermaid SVGs use inline styles for apps such as Figma and Office.
 
-Chart Options reuses loaded data without rerunning commands. After a VS Code restart, **Refresh** reloads file or command data; inline data stays available. **Reset styling** removes manual presentation changes and reloads data if needed. To discard incompatible source edits, check **Replace manual source edits with the generated chart**.
+Chart Options reuses loaded data. After a restart, press **Refresh** to reload file or command data; inline data stays available. **Reset styling** removes manual styling and reloads data if needed. **Replace manual source edits with the generated chart** discards incompatible edits.
 
-In charts, arrows follow categories and series. Trees use ←/→ for parent/child and ↑/↓ for siblings; scatter, graph and sankey charts move to the nearest item. Enter expands tree nodes or zooms into treemaps and sunbursts.
+In charts, arrows follow categories and series. Trees use ←/→ for parent/child and ↑/↓ for siblings; scatter, graph and sankey charts move to the nearest item. Enter expands tree nodes or zooms into treemaps and sunbursts; Backspace goes up a treemap or sunburst.
 
 Diagrams follow your VS Code theme. Agents can mark items with notes, for example to walk you through a diagram.
 
-Charts provide a read-only data view. Toolbox chart-type switching, box zoom and brush are disabled because resizing would undo them. In short panels, charts progressively hide the visual map, zoom slider, subtitle and title to preserve room for the plot; wheel zoom and dragging remain available.
+Charts have a read-only data view. Toolbox chart-type switching, box zoom and brush are disabled because resizing would undo them. Short panels hide the visual map, zoom slider, subtitle and title as needed; wheel zoom and dragging remain available.
 
 ## Edit Markdown diagrams
 
 Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. Language names are case-insensitive; Azure DevOps `::: mermaid` containers, block quotes and list items are supported. Mermaid language aliases follow `markdown-mermaid.languages`. Set `diagram.codeLens.enabled` to `false` to hide the links above blocks.
 
-**Apply** renders your edits and updates the block, preserving fences, indentation, quote markers and surrounding text. Changes are undoable and are not saved automatically. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block to continue.
+**Apply** renders edits and updates the block, preserving fences, indentation, quote markers and surrounding text. Changes are undoable and remain unsaved. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block.
 
-**Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before **Apply** or **Write to** writes them. Switching between Mermaid and ECharts detaches the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
+**Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before either action writes them. `/new` and switching between Mermaid and ECharts detach the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
 
 ## Tools for agents
 
@@ -108,7 +110,9 @@ The panel loads images only from `data:` URLs, so a Mermaid image shape must emb
 
 Terminal colors are ignored. When DuckDB, Polars or pandas shorten a result, only the rows and columns shown are read.
 
-Abbreviations such as `1.5K` and `$1.2B` are thousands and billions, but in a column of sizes, such as `du -h` output or a column named `Size`, `1.5K` is 1536 bytes. Units such as `MiB` and `kB` always give bytes; bare units are powers of 1000 for commands run with `--si` or `df -H`. Durations such as `812ms` and `1h2m3s` become seconds, as do `45m` and `1:02:03` in a column named for durations, such as `Elapsed`. A unit in a header, as in `Size (KB)`, `Latency (ms)` or, in a column named for durations, `Elapsed (s)`, applies to the plain numbers below it. Charts show sizes and durations in the unit that suits the largest value.
+Abbreviations such as `1.5K` and `$1.2B` mean thousands and billions. In size columns, such as `du -h` output or a column named `Size`, `1.5K` means 1536 bytes. Units such as `MiB` and `kB` always mean bytes; bare units use powers of 1000 for commands run with `--si` or `df -H`.
+
+Durations such as `812ms`, `-250ms` and `1h2m3s` become seconds. In duration columns such as `Elapsed`, so do `45m` and `1:02:03`. Header units such as `Size (KB)`, `Latency (ms)` or `Elapsed (s)` apply to plain numbers below them. Charts display sizes and durations in the unit that suits the largest value.
 
 It draws pie, doughnut, bar, horizontal bar, stacked bar, line, area, stacked area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel charts. Bar, line, area and scatter charts put ISO dates and times (and `YYYY/MM/DD`, also with a time) of the first label column on a time axis.
 

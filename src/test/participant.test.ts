@@ -425,6 +425,22 @@ suite("participant", () => {
     assert.notStrictEqual(another, first);
   });
 
+  test("/new drops the previous document binding and export location", async () => {
+    const uri = vscode.Uri.file("/notes.md").toString();
+    const document = {
+      uri,
+      fence: { ...flowchart, openingLine: 0, lastLine: 2, prefix: "" },
+    };
+    for (const location of [{ document }, { openedFrom: uri }]) {
+      await panel.render({ ...flowchart, title: "Flow", ...location }, "document");
+      await ask([[text(valid)]]);
+      assert.strictEqual(panel.current?.document?.uri ?? panel.current?.openedFrom, uri);
+      await ask([[text(valid)]], { command: "new" });
+      assert.strictEqual(panel.current?.document, undefined);
+      assert.strictEqual(panel.current?.openedFrom, undefined);
+    }
+  });
+
   test("keeps a diagram the panel could not show, and says why", async () => {
     webview.deliver = (message) => message.type !== "render";
     const { result, shown, sent } = await ask([[text(`Here it is:\n${valid}`)]]);

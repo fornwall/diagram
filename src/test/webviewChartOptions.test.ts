@@ -576,6 +576,27 @@ suite("Chart Options in the webview", function () {
     );
   });
 
+  test("chart options leave Enter and Escape to the input method while composing text", async () => {
+    await showChartOptions({ type: "bar", data: "name,amount\na,1\nb,2" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const options = document.getElementById("chart-options");
+        const sort = document.getElementById("chart-option-sort");
+        sort.value = "descending";
+        const enter = sort.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Enter", isComposing: true, bubbles: true, cancelable: true
+        }));
+        options.querySelector("input").dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Escape", isComposing: true, bubbles: true
+        }));
+        return {enter, open: !options.hidden};
+      })()`),
+      { enter: true, open: true },
+    );
+    assert.strictEqual(page.panel.current?.chart?.sort, undefined);
+    await closeChartOptions();
+  });
+
   test("chart options apply with Enter in a list box, as in a text field", async () => {
     const data = "name,amount\na,1\nb,2";
     await showChartOptions({ type: "bar", data }, parseTable(data));

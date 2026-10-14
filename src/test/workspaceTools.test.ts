@@ -362,6 +362,41 @@ suite("workspaceTools", function () {
     assert.strictEqual(await invoke(finder, { glob: "dotted/**" }), "dotted/b.ts");
   });
 
+  test("bounds concurrent ignore-file reads across a wide workspace", async () => {
+    const root = vscode.Uri.parse("diagram-wide:/root");
+    const ignores = Array.from({ length: 24 }, (_, index) =>
+      vscode.Uri.joinPath(root, `p${index}`, ".gitignore"),
+    );
+    let active = 0;
+    let peak = 0;
+    let read = 0;
+    fileSystem("diagram-wide", {
+      stat: (uri) => ({
+        type: uri.path.endsWith(".gitignore") ? vscode.FileType.File : vscode.FileType.Directory,
+        ctime: 0,
+        mtime: 0,
+        size: 6,
+      }),
+      readFile: async (uri) => {
+        if (uri.path === "/root/.gitignore") return new Uint8Array();
+        peak = Math.max(peak, ++active);
+        read++;
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        active--;
+        return Buffer.from("*.tmp\n");
+      },
+    });
+    replace(vscode.workspace, "workspaceFolders", folders(root));
+    replace(vscode.workspace, "findFiles", async (include) =>
+      include instanceof vscode.RelativePattern && include.pattern === "**/.gitignore"
+        ? ignores
+        : [vscode.Uri.joinPath(root, "p0/a.ts"), vscode.Uri.joinPath(root, "p0/b.tmp")],
+    );
+    assert.strictEqual(await invoke(finder, {}), "p0/a.ts");
+    assert.strictEqual(read, ignores.length);
+    assert.ok(peak > 1 && peak <= 8, `${peak} concurrent reads`);
+  });
+
   test("keeps the ignore files found until one changes, when caching them", async function () {
     // Each call starts ripgrep, and the watcher may take a while on a busy machine.
     this.timeout(30_000);

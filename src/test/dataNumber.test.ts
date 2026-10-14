@@ -89,6 +89,26 @@ suite("dataNumber", () => {
     assert.strictEqual(parseNumber(`${"9".repeat(305)}d`, { durations: true }), undefined);
   });
 
+  test("reads signed durations and applies the sign to all their parts", () => {
+    for (const [text, seconds] of [
+      ["250ms", 0.25],
+      ["1.5s", 1.5],
+      ["1h2m3s", 3723],
+      ["1-02:03:04", 93784],
+    ] as const) {
+      for (const sign of ["", "+", "-", "\u2212"]) {
+        assert.deepStrictEqual(parseNumber(`${sign}${text}`, { durations: true }), {
+          value: (sign === "-" || sign === "\u2212" ? -1 : 1) * seconds,
+          unit: "seconds",
+        });
+      }
+    }
+    assert.deepStrictEqual(parseNumber("-250ms"), { value: -0.25, unit: "seconds" });
+    for (const text of ["--250ms", "+-1s", "1h-2m", "-1980s", "-3:45"]) {
+      assert.strictEqual(parseNumber(text), undefined, text);
+    }
+  });
+
   test("unit scaling rejects overflow and does not introduce it by rounding", () => {
     assert.throws(() => scale(1e308, 1000), /converted value exceeds the numeric range/);
     assert.strictEqual(scale(Number.MAX_VALUE / 10, 10), Number.MAX_VALUE);

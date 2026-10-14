@@ -279,4 +279,54 @@ suite("echartsFocus", () => {
     });
     assert.strictEqual(wide, `(${row(1).slice(0, 39).join(", ")})`);
   });
+
+  test("announces object dataset rows in dimension order, including columns named value", () => {
+    for (const measure of ["sales", "value"]) {
+      const values = withChart(
+        {
+          dataset: {
+            dimensions: ["day", measure, "cost"],
+            source: [
+              { cost: 2, day: "Mon", [measure]: 7 },
+              { cost: 3, day: "Tue", [measure]: 9 },
+            ],
+          },
+          xAxis: { type: "category" },
+          yAxis: {},
+          series: [{ type: "bar" }],
+        },
+        (chart) => {
+          const navigation = new ChartNavigation(chart);
+          return [0, 1].map((dataIndex) => navigation.about({ seriesIndex: 0, dataIndex })?.value);
+        },
+      );
+      assert.deepStrictEqual(values, ["(7, 2)", "(9, 3)"], measure);
+    }
+  });
+
+  test("reads reordered dataset dimensions without losing zero or announcing missing bars", () => {
+    const values = withChart(
+      {
+        dataset: {
+          dimensions: ["amount", "day"],
+          source: [
+            { day: "Mon", amount: null },
+            { day: "Tue" },
+            { day: "Wed", amount: 0 },
+            { day: "Thu", amount: 9 },
+          ],
+        },
+        xAxis: { type: "category" },
+        yAxis: {},
+        series: [{ type: "bar", encode: { x: "day", y: "amount" } }],
+      },
+      (chart) => {
+        const navigation = new ChartNavigation(chart);
+        return [0, 1, 2, 3].map(
+          (dataIndex) => navigation.about({ seriesIndex: 0, dataIndex })?.value,
+        );
+      },
+    );
+    assert.deepStrictEqual(values, [undefined, undefined, "0", "9"]);
+  });
 });

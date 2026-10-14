@@ -42,6 +42,8 @@ export interface ItemData {
   getRawIndex(index: number): number;
   getName(index: number): string;
   getRawDataItem(index: number): unknown;
+  /** Distinguishes dataset rows from series items, which also use objects. */
+  getStore(): { getSource(): { sourceFormat: string } };
   indexOfRawIndex(rawIndex: number): number;
   /** What draws the item, unless it is drawn together with others or not at all. */
   getItemGraphicEl(index: number): Graphic | null | undefined;
@@ -191,13 +193,24 @@ function itemLabel(data: ItemData, index: number): string {
 export function itemValue(data: ItemData, index: number): string | undefined {
   const label = itemLabel(data, index);
   const item = data.getRawDataItem(index);
-  let value = isPlainObject(item) ? item.value : item;
+  const objectRow =
+    isPlainObject(item) && data.getStore().getSource().sourceFormat === "objectRows";
+  let value = objectRow
+    ? data.dimensions.map((dimension) => item[dimension])
+    : isPlainObject(item)
+      ? item.value
+      : item;
   if (Array.isArray(value)) {
     // A value on a category axis can be the index of its category, as of the categories that the
     // axis lists, or that ECharts adds to the values of a box plot or candlestick: its category,
     // which ECharts holds by index. A row of a dataset has the item's name among its values.
     // ECharts leaves out the dimensions that a series does not use, of a wide dataset.
-    const dimensions = new Map(data.dimensions.map((each) => [data.getDimensionIndex(each), each]));
+    const dimensions = new Map(
+      data.dimensions.map((each, index) => [
+        objectRow ? index : data.getDimensionIndex(each),
+        each,
+      ]),
+    );
     const parts = value
       .map((part, at) => {
         const dimension = dimensions.get(at);

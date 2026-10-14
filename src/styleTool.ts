@@ -15,14 +15,7 @@ import {
   subgraphIds,
 } from "./mermaidStyle";
 import type { DiagramPanel } from "./panel";
-import {
-  CHART_TOOL,
-  errorMessage,
-  GET_STATE_TOOL,
-  RENDER_TOOL,
-  STYLE_TOOL,
-  UPDATE_CHART_TOOL,
-} from "./protocol";
+import { errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
 import { type StyleChange, type StyleInput, validateStyleInput } from "./styleInput";
 import { plural, quoteAll } from "./text";
 import { drawnResult, idList, textResult } from "./tools";
@@ -108,7 +101,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     const ids = change.styles.map(({ id }) => id);
     if (state.language !== "mermaid" || state.source === undefined) {
       throw new Error(
-        `Coloring isn't supported for charts. Set a chart's colors in its ECharts option: with the "options" of ${UPDATE_CHART_TOOL} for a chart that ${CHART_TOOL} drew, or else with ${RENDER_TOOL}.` +
+        `Coloring isn't supported for charts. Read ${GET_STATE_TOOL}, edit the colors in its ECharts source and apply it with ${RENDER_TOOL}.` +
           (ids.some((id) => BACKGROUND_IDS.test(id)) ? ` ${BACKGROUND_FIXED}` : ""),
       );
     }
