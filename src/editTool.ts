@@ -286,7 +286,7 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       const entries = [...kept, ...Object.entries(added)];
       links = entries.length > 0 ? Object.fromEntries(entries) : undefined;
     }
-    const leftOut = leftOutLinks(problems).trim();
+    const leftOut = leftOutLinks(problems, language).trim();
 
     // A title taken from the source, rather than given, follows it, as when the user edits it.
     const title =

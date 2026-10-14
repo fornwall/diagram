@@ -159,6 +159,16 @@ suite("tools", () => {
       await render(),
       /^The diagram could not be shown: The diagram panel is unavailable\. This is not a problem with the diagram, and the panel may still be drawing it: diagram_getState says whether it is shown\. Call diagram_render again only to reopen a closed panel/,
     );
+    // A chart takes no links, which no correction adds.
+    outcomes.push({ ok: true, diagramType: "bar", revision: 2 });
+    const chart = await invokeTool(new RenderDiagramTool(panel), {
+      source: '{"series": [{"type": "bar", "data": [1]}]}',
+      links: { A: "a.ts" },
+    });
+    assert.match(
+      chart,
+      /\n\nThe links were left out\. Links are only for the nodes of a Mermaid diagram; a chart's items are data points rather than places in the code\.\n\nRevision: 2\.$/,
+    );
   });
 
   test("diagram_render draws despite a misnamed property, and names it", async () => {

@@ -160,7 +160,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       return drawnResult(
         `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
           this.panel.warnings.map((warning) => ` ${warning}`).join("") +
-          leftOutLinks(problems) +
+          leftOutLinks(problems, diagram.language) +
           linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds) +
           ignored,
         outcome.revision,
@@ -179,7 +179,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
         RENDER_TOOL,
         `${context ? `${context}\n\n` : ""}${fix} with ${EDIT_TOOL}, or call ${RENDER_TOOL} again with the complete corrected source.`,
       ) +
-        leftOutLinks(problems) +
+        leftOutLinks(problems, diagram.language) +
         ignored,
       outcome.revision,
     );
@@ -514,9 +514,13 @@ export function idList(ids: readonly string[]): string {
   return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
 }
 
-export function leftOutLinks(problems: readonly string[]): string {
+export function leftOutLinks(problems: readonly string[], language: DiagramLanguage): string {
   if (problems.length === 0) {
     return "";
+  }
+  // A chart takes no links, which no correction adds.
+  if (language === "echarts") {
+    return `\n\nThe links were left out. ${problems.join(" ")}`;
   }
   return (
     `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
