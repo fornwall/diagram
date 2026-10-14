@@ -25,6 +25,7 @@ import {
 } from "./mermaidErrors";
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
+import { readabilityWarnings } from "./mermaidQuality";
 import { mermaidThemeVariables } from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
@@ -470,6 +471,8 @@ export class MermaidRenderer implements Renderer {
   /** The last image, and what it was drawn from, which an image of the same takes again. */
   private image: { from: string; image: DiagramImage } | undefined;
   private diagramType: string | undefined;
+  /** How the shown drawing reads, as measured when it was drawn. */
+  private readability: string[] = [];
   /** The width of the container that the drawing was laid out in. */
   private layoutWidth = 0;
   private fitFrame = 0;
@@ -670,13 +673,23 @@ export class MermaidRenderer implements Renderer {
         );
       });
       const db = WITH_DATABASE.has(result.diagramType) ? parsed : undefined;
-      return {
-        result,
-        db,
-        svg: await layOut(result.svg, result.diagramType, text, colors, async () => db),
-      };
+      const svg = await layOut(result.svg, result.diagramType, text, colors, async () => db);
+      // Measured in the layout container, as the canvas may be hidden, as by the Source view.
+      let readability: string[] = [];
+      try {
+        readability = readabilityWarnings(svg, {
+          type: result.diagramType,
+          source,
+          db: parsed,
+          roomWidth: Math.max(0, width),
+          panelWidth: document.body.clientWidth,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+      return { result, db, svg, readability };
     };
-    const { result, db, svg } = await drawing().catch((error: unknown) => {
+    const { result, db, svg, readability } = await drawing().catch((error: unknown) => {
       container.style.width = shownWidth;
       throw error;
     });
@@ -698,6 +711,7 @@ export class MermaidRenderer implements Renderer {
     this.diagram.hidden = false;
     this.displayedSource = source;
     this.diagramType = result.diagramType;
+    this.readability = readability;
     this.prepareSvg(svg, id, db);
     this.present();
     return result.diagramType;
@@ -866,6 +880,10 @@ export class MermaidRenderer implements Renderer {
 
   drawnNodes(): DiagramNode[] {
     return this.drawn.nodes;
+  }
+
+  warnings(): string[] {
+    return this.readability;
   }
 
   labelOf(id: string): string | undefined {

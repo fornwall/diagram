@@ -69,6 +69,7 @@ export interface DiagramDb {
   getData?(): {
     nodes: {
       id: string;
+      label?: string;
       parentId?: string;
       isGroup?: boolean;
       cssStyles?: string[];
