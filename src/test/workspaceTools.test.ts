@@ -6,6 +6,7 @@ import {
   boundary,
   cacheIgnoreFiles,
   FindWorkspaceFilesTool,
+  IGNORE_FILES_KEPT_MS,
   ReadWorkspaceFileTool,
   resolveWorkspaceFile,
   SearchWorkspaceTextTool,
@@ -21,7 +22,6 @@ import {
   suiteTempDir,
   workspaceRoot,
 } from "./afterTest";
-import { within } from "./newPanel";
 import { invokeTool as invoke } from "./toolText";
 
 suite("workspaceTools", function () {
@@ -397,11 +397,23 @@ suite("workspaceTools", function () {
     assert.ok(peak > 1 && peak <= 8, `${peak} concurrent reads`);
   });
 
-  test("keeps the ignore files found until one changes, when caching them", async function () {
-    // Each call starts ripgrep, and the watcher may take a while on a busy machine.
+  test("keeps the ignore files found until one changes, or for a while, when caching them", async function () {
+    // Each call starts ripgrep.
     this.timeout(30_000);
-    const caching = cacheIgnoreFiles();
+    // The watcher tells of changes as the test says: VS Code's misses some, and tells of those of
+    // other tests.
+    const watched: string[] = [];
+    const created = new vscode.EventEmitter<vscode.Uri>();
+    afterTest(() => created.dispose());
+    const none = new vscode.EventEmitter<vscode.Uri>().event;
+    replace(vscode.workspace, "createFileSystemWatcher", ((glob: string) => {
+      watched.push(glob);
+      return { onDidCreate: created.event, onDidChange: none, onDidDelete: none, dispose() {} };
+    }) as unknown as typeof vscode.workspace.createFileSystemWatcher);
+    let now = 0;
+    const caching = cacheIgnoreFiles(() => now);
     afterTest(() => caching.dispose());
+    assert.deepStrictEqual(watched, ["**/.gitignore"]);
     onlyTestFolder();
     await make("cached");
     await writeFile("cached/a.log", "");
@@ -414,25 +426,23 @@ suite("workspaceTools", function () {
       }
       return findFiles(include, ...rest);
     });
-    // A call after the first finds them again only if the watcher tells of a change, such as
-    // the removal of the files of earlier tests.
-    let reused = false;
-    const settled = Date.now() + 10_000;
-    for (let call = 0; !reused && (call < 2 || Date.now() < settled); call++) {
-      const before = searches;
-      assert.strictEqual(await invoke(finder, { glob: "cached/**" }), "cached/a.log\ncached/b.ts");
-      reused = call > 0 && searches === before;
-    }
-    assert.ok(reused);
-    await writeFile("cached/.gitignore", "*.log\n");
-    // The file watcher tells of the change soon after.
-    const expected = "cached/.gitignore\ncached/b.ts";
-    let listed = "";
-    await within(async () => {
-      listed = await invoke(finder, { glob: "cached/**" });
-      return listed === expected;
-    }, 10_000);
-    assert.strictEqual(listed, expected);
+    const listed = () => invoke(finder, { glob: "cached/**" });
+    assert.strictEqual(await listed(), "cached/a.log\ncached/b.ts");
+    // Until the watcher tells of a change, also of one it would not have told of.
+    const ignore = await writeFile("cached/.gitignore", "*.log\n");
+    now += IGNORE_FILES_KEPT_MS;
+    assert.strictEqual(await listed(), "cached/.gitignore\ncached/a.log\ncached/b.ts");
+    assert.strictEqual(searches, 1);
+    created.fire(vscode.Uri.file(ignore));
+    assert.strictEqual(await listed(), "cached/.gitignore\ncached/b.ts");
+    assert.strictEqual(searches, 2);
+    // Nor for longer than a while.
+    await fs.writeFile(ignore, "*.ts\n");
+    now += IGNORE_FILES_KEPT_MS;
+    assert.strictEqual(await listed(), "cached/.gitignore\ncached/b.ts");
+    now += 1;
+    assert.strictEqual(await listed(), "cached/.gitignore\ncached/a.log");
+    assert.strictEqual(searches, 3);
   });
 
   test("fills result limits across overlapping workspace roots", async () => {
@@ -987,7 +997,8 @@ suite("workspaceTools", function () {
     // The watcher may clear the cache meanwhile, as it tells of the files of earlier tests.
     let reused = false;
     for (let attempt = 0; !reused && attempt < 5; attempt++) {
-      const caching = cacheIgnoreFiles();
+      // However long the calls take.
+      const caching = cacheIgnoreFiles(() => 0);
       afterTest(() => caching.dispose());
       cancelled = cancellationSource();
       searches = 0;

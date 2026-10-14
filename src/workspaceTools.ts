@@ -59,6 +59,11 @@ const MAX_FOUND_IGNORE_FILES = 10 * MAX_IGNORE_FILES;
  * a command line of up to 32,767 characters; beyond them, the search fails.
  */
 const MAX_IGNORED_GLOB_CHARS = 10_000;
+/**
+ * How long the ignore files found in a folder are used before they are looked for again (see
+ * {@link cacheIgnoreFiles}): about as long as a model's calls in a row take.
+ */
+export const IGNORE_FILES_KEPT_MS = 10_000;
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
   if (value === undefined) return fallback;
@@ -348,19 +353,25 @@ async function withoutHiddenSiblings(
 
 /**
  * The ignore files found in each workspace folder, by the folder and the globs that excluded
- * folders from the search, while {@link cacheIgnoreFiles} keeps them.
+ * folders from the search, and when they were looked for, while {@link cacheIgnoreFiles} keeps
+ * them.
  */
-let ignoreCache: Map<string, Promise<IgnoreFiles>> | undefined;
+let ignoreCache:
+  | { found: Map<string, { files: Promise<IgnoreFiles>; since: number }>; now: () => number }
+  | undefined;
 
 /**
  * Keeps the .gitignore files found in each workspace folder, until one is created, changed or
- * deleted, rather than searching the folder for them on each call. A folder that is renamed or
- * copied with ignore files in it may go unnoticed until another changes.
+ * deleted, rather than searching the folder for them on each call, but for at most
+ * {@link IGNORE_FILES_KEPT_MS}: VS Code's watcher misses a file made right after its folder, as a
+ * checkout or a copy makes them, and the ignore files of a renamed folder. `now` tells the time in
+ * milliseconds.
  */
-export function cacheIgnoreFiles(): vscode.Disposable {
-  const cache = new Map<string, Promise<IgnoreFiles>>();
+export function cacheIgnoreFiles(now: () => number = Date.now): vscode.Disposable {
+  const found = new Map<string, { files: Promise<IgnoreFiles>; since: number }>();
+  const cache = { found, now };
   ignoreCache = cache;
-  const clear = () => cache.clear();
+  const clear = () => found.clear();
   const watcher = vscode.workspace.createFileSystemWatcher(`**/${IGNORE_FILE}`);
   const disposables = [
     watcher,
@@ -389,17 +400,20 @@ async function ignoreFiles(
   const cache = ignoreCache;
   if (!cache) return findIgnoreFiles(root, excludes, token);
   const key = `${root.uri.toString()}\n${excludes.join(",")}`;
-  let finding = cache.get(key);
-  if (!finding) {
+  const now = cache.now();
+  let kept = cache.found.get(key);
+  if (!kept || now - kept.since > IGNORE_FILES_KEPT_MS) {
     // Finished for later calls, also when this one is cancelled.
-    const found = findIgnoreFiles(root, excludes, new vscode.CancellationTokenSource().token);
-    cache.set(key, found);
-    found.catch(() => {
-      if (cache.get(key) === found) cache.delete(key);
+    const files = findIgnoreFiles(root, excludes, new vscode.CancellationTokenSource().token);
+    const finding = { files, since: now };
+    cache.found.set(key, finding);
+    files.catch(() => {
+      if (cache.found.get(key) === finding) cache.found.delete(key);
     });
-    finding = found;
+    kept = finding;
   }
-  return unlessCancelled(() => finding, token);
+  const { files } = kept;
+  return unlessCancelled(() => files, token);
 }
 
 /**
