@@ -247,7 +247,10 @@ export function mermaidThemeVariables(colors: ThemeColors): Record<string, unkno
       labelColor: text,
       lineColor: css(groupBorder),
       iconColor: css(colors.muted),
-      descriptionColor: css(colors.muted),
+      // Muted, unless on a highlighted row that leaves muted text too faint.
+      descriptionColor: css(
+        contrast(colors.muted, note) >= LABEL_CONTRAST ? colors.muted : foreground,
+      ),
       highlightBg: css(note),
       highlightStroke: css(noteBorder),
     },
@@ -526,17 +529,43 @@ const C4_ELEMENTS = ["person", "system", "container", "component"].flatMap((kind
   [kind, `${kind}_db`, `${kind}_queue`].flatMap((each) => [each, `external_${each}`]),
 );
 
+/** Mermaid's fills of C4 elements, by kind, which it labels in white. */
+const C4_FILLS: Record<string, string> = {
+  person: "#08427b",
+  external_person: "#686868",
+  system: "#1168bd",
+  external_system: "#999999",
+  container: "#438dd5",
+  external_container: "#b3b3b3",
+  component: "#85bbf0",
+  external_component: "#cccccc",
+};
+
+const WHITE: Rgba = { r: 255, g: 255, b: 255, a: 1 };
+const BLACK: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+
+/** A fill of Mermaid's C4 elements, darkened as far as its white labels need to read on it. */
+function c4Fill(kind: string): string {
+  const fill = parseCss(C4_FILLS[kind.replace(/_(?:db|queue)$/, "")] ?? "") ?? BLACK;
+  let amount = 0;
+  while (contrast(mix(fill, BLACK, amount), WHITE) < LABEL_CONTRAST) amount += 0.05;
+  return toCss(mix(fill, BLACK, amount));
+}
+
 /**
- * Mermaid's configuration of fonts for VS Code's: C4 and use case diagrams take a font of their
- * own for each kind of element, Open Sans, rather than the diagram's, and user journeys draw their
- * titles in Trebuchet MS.
+ * Mermaid's configuration of fonts and fixed colors for the panel: C4 and use case diagrams take a
+ * font of their own for each kind of element, Open Sans, rather than the diagram's, and user
+ * journeys draw their titles in Trebuchet MS. C4 diagrams label elements in white, on fills of
+ * their own, some of them too light for it, such as the grey of external systems: those are
+ * darkened as far as the labels need, in every theme alike.
  */
-export function fontConfig(fontFamily: string) {
+export function elementConfig(fontFamily: string) {
   const fonts = (kinds: string[]) =>
     Object.fromEntries(kinds.map((kind) => [`${kind}FontFamily`, fontFamily]));
+  const fills = Object.fromEntries(C4_ELEMENTS.map((kind) => [`${kind}_bg_color`, c4Fill(kind)]));
   return {
     fontFamily,
-    c4: fonts([...C4_ELEMENTS, "boundary", "message"]),
+    c4: { ...fonts([...C4_ELEMENTS, "boundary", "message"]), ...fills },
     journey: fonts(["title", "task"]),
     usecase: fonts(["actor", "usecase"]),
   };

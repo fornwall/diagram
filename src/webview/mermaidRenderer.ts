@@ -29,7 +29,7 @@ import { readabilityWarnings } from "./mermaidQuality";
 import {
   colorLabelsOnBlocks,
   drawnAtWidth,
-  fontConfig,
+  elementConfig,
   mermaidTheme,
   sizeConfig,
   themeFixedColors,
@@ -638,7 +638,7 @@ export class MermaidRenderer implements Renderer {
       ...(![undefined, "base"].includes(OWN_THEME.exec(settings)?.[1])
         ? { theme: "base", themeVariables: {} }
         : mermaidTheme(colors, keyword)),
-      ...fontConfig(colors.fontFamily),
+      ...elementConfig(colors.fontFamily),
       ...sizeConfig(keyword, settings, width),
     };
   }

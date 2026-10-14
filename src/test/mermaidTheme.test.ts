@@ -3,7 +3,7 @@ import { contrast, LABEL_CONTRAST, type Rgba, type ThemeColors, toCss } from "..
 import {
   adoptThemeVariables,
   drawnAtWidth,
-  fontConfig,
+  elementConfig,
   mermaidTheme,
   mermaidThemeVariables,
   sizeConfig,
@@ -142,16 +142,29 @@ suite("Mermaid theme", () => {
   });
 
   test("draws the text of every diagram in VS Code's font", () => {
-    const config = fontConfig("Segoe UI");
+    const config = elementConfig("Segoe UI");
     assert.strictEqual(config.fontFamily, "Segoe UI");
     // C4, use case and journey diagrams have fonts of their own for parts of them.
-    const fonts = [config.c4, config.usecase, config.journey].flatMap(Object.values);
+    const c4 = config.c4 as Record<string, string>;
+    const fonts = [c4, config.usecase, config.journey]
+      .flatMap((each) => Object.entries(each))
+      .filter(([key]) => key.endsWith("FontFamily"))
+      .map(([, font]) => font);
     assert.strictEqual(fonts.length, 30);
     assert.ok(fonts.every((font) => font === "Segoe UI"));
-    assert.strictEqual(
-      (config.c4 as Record<string, string>).external_system_dbFontFamily,
-      "Segoe UI",
-    );
+    assert.strictEqual(c4.external_system_dbFontFamily, "Segoe UI");
+  });
+
+  test("fills C4 elements so that their white labels read on them", () => {
+    const c4 = elementConfig("Segoe UI").c4 as Record<string, string>;
+    const fills = Object.entries(c4).filter(([key]) => key.endsWith("_bg_color"));
+    assert.strictEqual(fills.length, 24);
+    for (const [key, fill] of fills) {
+      const ratio = contrast(rgb(fill), { r: 255, g: 255, b: 255, a: 1 });
+      assert.ok(ratio >= LABEL_CONTRAST, `${key}: ${fill}, ${ratio.toFixed(2)}`);
+    }
+    // Mermaid's own where they read already.
+    assert.deepStrictEqual([c4.person_bg_color, c4.system_db_bg_color], ["#08427b", "#1168bd"]);
   });
 
   test("sizes charts that Mermaid draws at a size of its own to the panel's width", () => {
