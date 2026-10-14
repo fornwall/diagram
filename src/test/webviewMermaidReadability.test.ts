@@ -278,6 +278,37 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings("flowchart TD\n  A --> B\n  C\n  D"), []);
   });
 
+  test("says when a link takes the o or x of the node it was meant for as its end", async () => {
+    const cases = [
+      [
+        "api---orderService",
+        "circle",
+        "rderService",
+        "---o",
+        "o",
+        "orderService",
+        "api --- orderService",
+      ],
+      ["A--xray", "cross", "ray", "--x", "x", "xray", "A --- xray"],
+      ["A==oB", "circle", "B", "==o", "o", "oB", "A === oB"],
+      ["A-.-oB", "circle", "B", "-.-o", "o", "oB", "A -.- oB"],
+    ];
+    for (const [link, end, node, arrow, mark, meant, fixed] of cases) {
+      const source = (statement: string) => `flowchart LR\n  ${statement}\n  ${meant} --> db`;
+      assert.deepStrictEqual(await warnings(source(link as string)), [
+        `The link on line 2 ends in a ${end} at node "${node}", as "${arrow}" takes the "${mark}" of "${meant}": put spaces around the link, as in ${fixed}.`,
+      ]);
+      // The fix links the node meant, as the only node besides db.
+      assert.deepStrictEqual(await warnings(source(fixed as string)), []);
+      assert.strictEqual(page.panel.drawnIds?.length, 3, fixed);
+    }
+    // Links meant to end in a circle or cross, also without spaces.
+    assert.deepStrictEqual(
+      await warnings("flowchart LR\n  A --o B\n  A --x C\n  A o--o D\n  E--oF\n  E--xG"),
+      [],
+    );
+  });
+
   test("names Gantt tasks placed after or until a task that the chart does not have", async () => {
     const gantt = (build: string, test: string) =>
       `gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-05, 7d\n  Build :a2, ${build}, 7d\n  Test :${test}`;

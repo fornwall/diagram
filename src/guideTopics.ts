@@ -58,7 +58,7 @@ Panel: follows the VS Code theme (light, dark, high contrast; the background can
   events --> mail[Email worker]`,
     notes: `- Declare a node once as id[Label], then use the id alone. Shapes: [rect], (rounded), ([stadium]), [(database)], {decision}, {{hexagon}}, ((circle)); more as id@{ shape: doc, label: "Spec" } with shapes such as doc, docs, cyl, das, hex, cloud, person, browser, console, folder.
 - Edges: --> arrow, --- line, -.-> dotted, ==> thick, --o, --x. Label them with a verb: A -->|reads| B. Chain A --> B --> C; fan out A --> B & C.
-- Spaces around arrows: A---ops is an edge with a circle end to a node "ps".
+- Put spaces around links: A---ops and A--xray end in a circle or a cross at nodes "ps" and "ray"; A --- ops links node ops.
 - Quote labels with ( ) [ ] { } | ; or :, e.g. A["parse(input)"]; unquoted parentheses fail. Long text: a Markdown label A["\`**Bold** text that wraps\`"].
 - Ids have no spaces; lowercase end fails as an id (use done).
 - subgraph id [Title] … end groups nodes; edges can start or end at a subgraph id. direction LR inside a subgraph applies only when no edge crosses its border.

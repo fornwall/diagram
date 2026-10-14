@@ -61,8 +61,42 @@ export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): st
     loneNodes(facts),
     overlappingLabels(svg),
     unknownTasks(facts),
+    markedEnd(facts),
   ].filter((warning) => warning !== undefined);
 }
+
+/** The letters of the ends of flowchart links that end in a circle or a cross. */
+const END_MARKS: Record<string, string> = { arrow_circle: "o", arrow_cross: "x" };
+
+/**
+ * A flowchart link written without a space before a node whose id starts with "o" or "x", which
+ * Mermaid takes for a link that ends in a circle or cross at the rest of the id: "A---oB" links
+ * A to B, not to oB. Only when the diagram has a node of the whole id, which the link was meant
+ * for, as a link meant to end in a circle has none.
+ */
+function markedEnd({ type, source, db }: DrawingFacts): string | undefined {
+  if (!FLOWCHART.test(type)) return undefined;
+  const { nodes = [], edges = [] } = db?.getData?.() ?? {};
+  const ids = new Set(nodes.map(({ id }) => id));
+  for (const { end, arrowTypeEnd = "" } of edges) {
+    const mark = END_MARKS[arrowTypeEnd];
+    const meant = `${mark}${end}`;
+    if (!mark || !ids.has(meant)) continue;
+    const written = new RegExp(`([-=.]{2,})${literal(meant)}(?![\\w-])`).exec(source);
+    if (!written) continue;
+    const line = source.slice(0, written.index).split("\n").length;
+    const statement = source.split("\n")[line - 1]?.trim() ?? "";
+    // Two dashes or equals signs make a link only with the end mark: three without it.
+    const arrow =
+      written[1] === "--" || written[1] === "==" ? `${written[1]}${written[1][0]}` : written[1];
+    const fixed = statement.replace(written[0], ` ${arrow} ${meant}`).replace(/\s+/g, " ");
+    return `The link on line ${line} ends in a ${mark === "o" ? "circle" : "cross"} at node ${JSON.stringify(end)}, as "${written[1]}${mark}" takes the "${mark}" of ${JSON.stringify(meant)}: put spaces around the link, as in ${fixed}.`;
+  }
+  return undefined;
+}
+
+/** A pattern for the text. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The first Gantt task that starts after, or ends at, a task id that no task has, which Mermaid
