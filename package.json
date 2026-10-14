@@ -457,7 +457,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Show only the part around these items: Mermaid node ids, edges or sequence messages by their ends' node ids as \"A --> B\" (all between those nodes), or chart item names. Omit for the whole drawing."
+              "description": "Show only the part around these items: Mermaid node ids, edges or sequence messages by their ends' node ids as \"A --> B\" (all between those nodes) or \"A --> B: label\", or chart item names. Omit for the whole drawing."
             }
           },
           "additionalProperties": false
@@ -547,7 +547,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Exact Mermaid node id; an edge or sequence message by its ends' node ids as \"A --> B\", or by its edge:/message: id from diagram_getState where several go between the same nodes; or chart item name. Chart items that share a name need the ids diagram_getState lists for them."
+                    "description": "Exact Mermaid node id; an edge or sequence message by its ends' node ids as \"A --> B\", one of several between the same nodes with its label as \"A --> B: Yes\", or by its edge:/message: id from diagram_getState; or chart item name. Chart items that share a name need the ids diagram_getState lists for them."
                   },
                   "mark": {
                     "type": "string",

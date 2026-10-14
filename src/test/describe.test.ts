@@ -243,7 +243,7 @@ suite("describe", () => {
     });
     assert.match(
       describeDiagram(sequence, { items: messages }),
-      /^Name a message by its ends' ids, as in "S --> C", for diagram_annotate and diagram_getImage, and by these ids the messages between the same nodes as others: "C → S: Login" \(id: "message:i0"\), "C → S: Fetch" \(id: "message:i2"\)\.$/m,
+      /^Name a message by its ends' ids, as in "S --> C", and one of several between the same nodes with its label, as in "C --> S: Login", for diagram_annotate and diagram_getImage\.$/m,
     );
   });
 
@@ -257,7 +257,7 @@ suite("describe", () => {
     assert.doesNotMatch(summary, /L_A_B_/);
     assert.match(
       summary,
-      /as in "A --> B", for diagram_annotate and diagram_getImage\. 100 edges go between the same nodes as others, too many to list their ids in every request; diagram_getState lists them\./,
+      /as in "A --> B", for diagram_annotate and diagram_getImage\. It has 100 edges, which their ends and labels do not tell apart, too many to list their ids in every request; diagram_getState lists them\./,
     );
     assert.match(
       describeDiagram(state, { items, detail: "full" }),
@@ -265,13 +265,13 @@ suite("describe", () => {
     );
     assert.match(
       describeDiagram(state, { items, detail: "source" }),
-      /100 edges go between the same nodes as others, too many to list their ids in the room left in your input\./,
+      /It has 100 edges, which their ends and labels do not tell apart, too many to list their ids in the room left in your input\./,
     );
     // Labels tell the ends and direction of each, and ids their kind, in about 30 characters.
     const fewer = new ItemNames({ nodeIds: ["A", "B"], relationships: relationships.slice(0, 90) });
     assert.match(
       describeDiagram(state, { items: fewer }),
-      /the edges between the same nodes as others: .*"edge:L_A_B_89"\)\.$/m,
+      /\. Name by id these, which their ends and labels do not tell apart: .*"edge:L_A_B_89"\)\.$/m,
     );
     const long = flowchart(`flowchart LR\n%% ${"x".repeat(40_000)}`);
     assert.match(

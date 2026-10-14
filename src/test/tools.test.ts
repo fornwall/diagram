@@ -118,7 +118,7 @@ suite("tools", () => {
       assert.ok(state.includes(source), state.slice(0, 500));
       assert.match(
         state,
-        /1,600 edges go between the same nodes as others, too many to list their ids in the room left/,
+        /It has 1,600 edges, which their ends and labels do not tell apart, too many to list their ids in the room left/,
       );
     }
   });

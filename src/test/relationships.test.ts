@@ -284,12 +284,13 @@ suite("relationships", function () {
   test("marks and views flowchart edges named by their ends: self-loops, edges to subgraphs, and links both and no way", async () => {
     await draw({
       source:
-        "flowchart LR\n  A[Start] -->|Yes| B[Check]\n  A -->|No| B\n  B --> B\n  subgraph S [Group]\n    C[Inner]\n  end\n  B --> S\n  C <--> D[Peer]\n  D --- E[Plain]",
+        "flowchart LR\n  A[Start] -->|Yes| B[Check]\n  A -->|No| B\n  A --> B\n  B --> B\n  subgraph S [Group]\n    C[Inner]\n  end\n  B --> S\n  C <--> D[Peer]\n  D --- E[Plain]",
     });
     const ids = idsByLabel();
     assert.deepStrictEqual(Object.keys(ids), [
       "Start → Check: Yes",
       "Start → Check: No",
+      "Start → Check",
       "Check → Check",
       "Check → Group",
       "Inner ↔ Peer",
@@ -301,6 +302,7 @@ suite("relationships", function () {
         { id: "B --> S", mark: "good" },
         { id: "D → C", mark: "info" },
         "E --- D",
+        "A -->|No| B",
         "A --> B",
         "B --> A",
       ],
@@ -308,16 +310,16 @@ suite("relationships", function () {
     const [marked, unknown, several] = result.split("\n\n");
     assert.strictEqual(
       marked,
-      'Marked 4 items: "B -> B" (problem), "B --> S" (good), "D → C" (info), "E --- D" (current).',
+      'Marked 5 items: "B -> B" (problem), "B --> S" (good), "D → C" (info), "E --- D" (current), "A -->|No| B" (current).',
     );
     assert.strictEqual(
       unknown,
       'These ids are not selectable items of the diagram, so nothing was marked for them: "B --> A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
-        `Its items are ${nodes()}, ${JSON.stringify(ids["Start → Check: Yes"])}, ${JSON.stringify(ids["Start → Check: No"])}, "B --> B", "B --> S", "C --> D", "D --> E".`,
+        `Its items are ${nodes()}, "A --> B: Yes", "A --> B: No", ${JSON.stringify(ids["Start → Check"])}, "B --> B", "B --> S", "C --> D", "D --> E".`,
     );
     assert.strictEqual(
       several,
-      `These names each name several items of the diagram, so nothing was marked for them: "A --> B" (ids: ${JSON.stringify(ids["Start → Check: Yes"])} for "Start → Check: Yes", ${JSON.stringify(ids["Start → Check: No"])} for "Start → Check: No"). Mark the items you mean by their ids.`,
+      `These names each name several items of the diagram, so nothing was marked for them: "A --> B" (ids: ${JSON.stringify(ids["Start → Check: Yes"])} for "Start → Check: Yes", ${JSON.stringify(ids["Start → Check: No"])} for "Start → Check: No", ${JSON.stringify(ids["Start → Check"])} for "Start → Check"). Mark the items you mean by their ids.`,
     );
     await until(`document.querySelectorAll('[class*="diagram-mark-"]').length > 0`);
     assert.deepStrictEqual(await shownMarks(), {
@@ -325,6 +327,7 @@ suite("relationships", function () {
       [ids["Check → Group"] ?? ""]: "diagram-mark-good",
       [ids["Inner ↔ Peer"] ?? ""]: "diagram-mark-info",
       [ids["Peer — Plain"] ?? ""]: "diagram-mark-current",
+      [ids["Start → Check: No"] ?? ""]: "diagram-mark-current",
     });
     assert.match(page.panel.describeForModel() ?? "", /Marked items: .*"Loops"/);
 
@@ -336,21 +339,30 @@ suite("relationships", function () {
     assert.doesNotMatch(image, /leaves them out/);
   });
 
-  test("marks and views sequence messages named by their ends: replies, messages to oneself and repeated ones", async () => {
+  test("marks and views sequence messages named by their ends: replies, messages to oneself and repeated ones by their text", async () => {
     await draw({
       source:
         "sequenceDiagram\n  participant C as Client\n  participant S as Server\n  C->>S: Login\n  S-->>C: Token\n  C->>S: Fetch\n  C->>C: Cache",
     });
     const ids = idsByLabel();
     const result = await invokeTool(new AnnotateDiagramTool(page.panel), {
-      marks: ["S --> C", { id: "C ->> C", mark: "problem" }, "C ->> S", "Client -> Server"],
+      marks: [
+        "S --> C",
+        { id: "C ->> C", mark: "problem" },
+        "C->>S: Fetch",
+        "C ->> S",
+        "Client -> Server",
+      ],
     });
     const [marked, unknown, several] = result.split("\n\n");
-    assert.strictEqual(marked, 'Marked 2 items: "S --> C" (current), "C ->> C" (problem).');
+    assert.strictEqual(
+      marked,
+      'Marked 3 items: "S --> C" (current), "C ->> C" (problem), "C->>S: Fetch" (current).',
+    );
     assert.strictEqual(
       unknown,
       'These ids are not selectable items of the diagram, so nothing was marked for them: "Client -> Server" ("Client", "Server" are not node ids). ' +
-        `Its items are ${nodes()}, ${JSON.stringify(ids["Client → Server: Login"])}, "S --> C", ${JSON.stringify(ids["Client → Server: Fetch"])}, "C --> C".`,
+        `Its items are ${nodes()}, "C --> S: Login", "S --> C", "C --> S: Fetch", "C --> C".`,
     );
     assert.strictEqual(
       several,
@@ -360,6 +372,7 @@ suite("relationships", function () {
     assert.deepStrictEqual(await shownMarks(), {
       [ids["Server → Client: Token"] ?? ""]: "diagram-mark-current",
       [ids["Client → Client: Cache"] ?? ""]: "diagram-mark-problem",
+      [ids["Client → Server: Fetch"] ?? ""]: "diagram-mark-current",
     });
     const image = await invokeTool(new GetDiagramImageTool(page.panel), { ids: "C -> S" });
     assert.match(image, /^Revision \d+ of the diagram: the part around "C -> S" \(/);

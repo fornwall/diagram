@@ -77,7 +77,7 @@ suite("itemNames", () => {
     assert.deepStrictEqual(names.resolve("--> A"), { ids: [] });
   });
 
-  test("names each item by its id, or an edge by its ends unless others go between them too", () => {
+  test("names each item by its id, or an edge by its ends unless others go between them too, or its label", () => {
     assert.deepStrictEqual(names.names(), [
       "A",
       "B",
@@ -94,6 +94,53 @@ suite("itemNames", () => {
       "C --> my-node",
       "A --> A",
       "Solar power --> Grid",
+    ]);
+  });
+
+  /** Messages as the page reports them, labeled by their ends' labels and their text. */
+  const messages = new ItemNames({
+    nodeIds: ["C", "S", "S:1"],
+    relationships: [
+      { ...relation("message:i0", "C", "S"), label: "Client → Server: Login" },
+      { ...relation("message:i1", "C", "S"), label: "Client → Server: Fetch" },
+      { ...relation("message:i2", "C", "S"), label: "Client → Server: Fetch" },
+      { ...relation("message:i3", "C", "S"), label: "Client → Server: Log out" },
+      { ...relation("message:i4", "S", "C"), label: "Server → Client: Token: abc" },
+      { ...relation("message:i5", "C", "S:1"), label: "Client → Shard: Hi" },
+    ],
+  });
+
+  test("names one of several between the same ends by its label, as the source writes it", () => {
+    const named = (name: string) => messages.resolve(name);
+    assert.deepStrictEqual(named("C->>S: Login"), { ids: ["message:i0"] });
+    assert.deepStrictEqual(named("C -->|Login| S"), { ids: ["message:i0"] });
+    assert.deepStrictEqual(named('C -->|"login"| S'), { ids: ["message:i0"] });
+    // A line break in the source is a space in the label.
+    assert.deepStrictEqual(named("C->>S: Log<br/>out"), { ids: ["message:i3"] });
+    assert.deepStrictEqual(named("S --> C: Token: abc"), { ids: ["message:i4"] });
+    assert.deepStrictEqual(named("C --> S:1: Hi"), { ids: ["message:i5"] });
+    assert.deepStrictEqual(named("C --> S:1"), { ids: ["message:i5"] });
+    // All with the label, which does not tell them apart.
+    assert.deepStrictEqual(named("C --> S: Fetch"), { ids: ["message:i1", "message:i2"] });
+    assert.deepStrictEqual(named("C --> S: Logon"), {
+      ids: [],
+      why: 'nothing labeled "Logon" goes from "C" to "S"',
+    });
+    assert.deepStrictEqual(named("S --> C: Login"), {
+      ids: [],
+      why: 'nothing labeled "Login" goes from "S" to "C"',
+    });
+    assert.deepStrictEqual(named("Client -> Server: Login"), {
+      ids: [],
+      why: '"Client", "Server" are not node ids',
+    });
+    assert.deepStrictEqual(messages.names().slice(3), [
+      "C --> S: Login",
+      "message:i1",
+      "message:i2",
+      "C --> S: Log out",
+      "S --> C",
+      "C --> S:1",
     ]);
   });
 });

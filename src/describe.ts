@@ -250,8 +250,9 @@ export function describeChartParameters(chart: unknown): string {
 
 /**
  * How a model names the edges or messages of a drawing for the tools that take item ids: by their
- * ends' ids, which it knows from the source, unlike their ids, and by their ids those between the
- * same nodes as others, in a list that a long one leaves out.
+ * ends' ids, which it knows from the source, unlike their ids, with their labels those between the
+ * same nodes as others, and by their ids those that their labels do not tell apart either, in a
+ * list that a long one leaves out.
  */
 function describeRelationships(
   items: ItemNames,
@@ -268,21 +269,27 @@ function describeRelationships(
       : kinds.has("message")
         ? ["a message", "messages"]
         : ["an edge", "edges"];
-  // An example of the drawing's own, which shows that ids are those of the source.
-  const example =
-    relationships.map(({ id }) => items.name(id)).find((name) => !items.has(name)) ?? "A --> B";
-  const naming = `Name ${one} by its ends' ids, as in ${JSON.stringify(example)}, for ${joinWords(tools, "and")}`;
-  const shared = relationships.filter(({ id }) => items.name(id) === id);
-  if (shared.length === 0) return `${naming}.`;
-  const listed = relationshipList(shared);
+  // Examples of the drawing's own, which show that the ids are those of the source.
+  const named = relationships.map(({ id }) => items.named(id));
+  const example = (labeled: boolean) => named.find((name) => name?.labeled === labeled)?.name;
+  const labeled = example(true);
+  const naming =
+    `Name ${one} by its ends' ids, as in ${JSON.stringify(example(false) ?? "A --> B")}` +
+    (labeled
+      ? `, and one of several between the same nodes with its label, as in ${JSON.stringify(labeled)}`
+      : "") +
+    `, for ${joinWords(tools, "and")}`;
+  const unnamed = relationships.filter((_, index) => !named[index]);
+  if (unnamed.length === 0) return `${naming}.`;
+  const listed = relationshipList(unnamed);
   if (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH) {
-    return `${naming}, and by these ids the ${many} between the same nodes as others: ${listed}.`;
+    return `${naming}. Name by id these, which their ends and labels do not tell apart: ${listed}.`;
   }
-  const these = `${plural(shared.length, one.replace(/^an? /, ""), many)} go between the same nodes as others`;
+  const these = `${plural(unnamed.length, one.replace(/^an? /, ""), many)}, which their ends and labels do not tell apart`;
   return detail === "summary" || detail === "source"
-    ? `${naming}. ${these}, too many to list their ids in the room left in your input.`
+    ? `${naming}. It has ${these}, too many to list their ids in the room left in your input.`
     : has(GET_STATE_TOOL)
-      ? `${naming}. ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`
+      ? `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`
       : `${naming}.`;
 }
 

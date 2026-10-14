@@ -66,7 +66,7 @@ Layout:
 - TD for hierarchies, decisions and long chains (the panel is often narrow); LR for short pipelines of up to ~6 steps.
 - 15–25 nodes read well. Beyond that, group related nodes in subgraphs, or split into an overview and detail diagrams. Keep one main direction of flow.
 - Node labels of a few words; edge labels of 1–3 words.
-Panel: nodes and edges are selectable; edges have edge: ids in diagram_getState. Link nodes to code with diagram_render's "links".`,
+Panel: nodes and edges are selectable; diagram_annotate takes an edge as A --> B, or A --> B: label for one of several. Link nodes to code with diagram_render's "links".`,
   },
   {
     name: "sequence",
@@ -98,7 +98,7 @@ Panel: nodes and edges are selectable; edges have edge: ids in diagram_getState.
 Layout:
 - Up to 6–8 participants and ~30 messages read well; split long flows by phase into several diagrams.
 - Short message labels: a verb, an HTTP method and path, or a function name. autonumber lets you refer to steps by number.
-Panel: participants and messages are selectable; messages have message: ids in diagram_getState, for diagram_annotate.`,
+Panel: participants and messages are selectable; diagram_annotate takes a message as A --> B, or A --> B: text for one of several.`,
   },
   {
     name: "class",
