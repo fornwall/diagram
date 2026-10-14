@@ -735,12 +735,13 @@ suite("ECharts in the webview", function () {
   });
 
   test("resizes a chart with each frame of a drag only while that is quick", async () => {
-    // Drawing it takes 40 ms while `window.slowChart` is set, as a chart of many items would.
+    // Drawing it takes 40 ms of `window.chartTime` while `window.slowChart` is set, as a chart of
+    // many items would, and 5 ms otherwise.
     await draw({
       language: "echarts",
       source: `{animation: false, series: [{type: "custom", coordinateSystem: null, data: [1],
         renderItem: (params, api) => {
-          for (const end = performance.now() + (window.slowChart ? 40 : 0); performance.now() < end;);
+          window.chartTime += window.slowChart ? 40 : 5;
           return {type: "circle", shape: {cx: 20, cy: 20, r: 10}, style: api.style()};
         }}]}`,
     });
@@ -750,11 +751,28 @@ suite("ECharts in the webview", function () {
         ${ROTATED}
         const canvas = document.getElementById("canvas");
         const width = () => document.querySelector("#chart svg").getAttribute("width");
-        // How many widths the chart takes as its container narrows by 20 pixels every third frame.
+        // How many widths the chart takes as its container narrows by 20 pixels every third frame,
+        // however long frames take on a busy machine: the page's clock, which times resizing the
+        // chart, moves only by the time drawing it takes, and the layout due once the size settles
+        // waits for the end of the drag.
         const drag = async (slow) => {
           await chartFitted();
           await settled();
           window.slowChart = slow;
+          window.chartTime = 0;
+          const {setTimeout, clearTimeout} = window;
+          const settles = new Map();
+          window.setTimeout = (handler, delay, ...rest) => {
+            if (delay !== ${SETTLE_DELAY}) return setTimeout(handler, delay, ...rest);
+            const id = setTimeout(() => {}, 3600000);
+            settles.set(id, handler);
+            return id;
+          };
+          window.clearTimeout = (id) => {
+            settles.delete(id);
+            clearTimeout(id);
+          };
+          performance.now = () => window.chartTime;
           const widths = new Set();
           try {
             for (let step = 0; step < 6; step++) {
@@ -764,6 +782,12 @@ suite("ECharts in the webview", function () {
             }
           } finally {
             window.slowChart = false;
+            delete performance.now;
+            Object.assign(window, {setTimeout, clearTimeout});
+            for (const [id, settle] of settles) {
+              clearTimeout(id);
+              settle();
+            }
           }
           return widths.size;
         };
