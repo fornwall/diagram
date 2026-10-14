@@ -76,6 +76,13 @@ function changes(a: readonly string[], b: readonly string[]): Line[] {
 function hunks(lines: readonly Line[]): string[] {
   const changed = lines.flatMap((line, index) => (line.kind === " " ? [] : [index]));
   const result: string[] = [];
+  const count = (kinds: string, of: readonly Line[]) =>
+    of.filter(({ kind }) => kinds.includes(kind)).length;
+  // The lines of either version before the hunk, counted on from the hunk before, as counting
+  // them anew for each hunk would take long for many hunks in a long source.
+  let counted = 0;
+  let oldBefore = 0;
+  let newBefore = 0;
   let next = 0;
   while (next < changed.length) {
     const first = changed[next] ?? 0;
@@ -86,15 +93,17 @@ function hunks(lines: readonly Line[]): string[] {
     }
     const from = Math.max(0, first - CONTEXT);
     const to = Math.min(lines.length, last + CONTEXT + 1);
-    const before = lines.slice(0, from);
+    for (; counted < from; counted++) {
+      const kind = lines[counted]?.kind;
+      if (kind !== "+") oldBefore++;
+      if (kind !== "-") newBefore++;
+    }
     const shown = lines.slice(from, to);
-    const count = (kinds: string, of: readonly Line[]) =>
-      of.filter(({ kind }) => kinds.includes(kind)).length;
     const oldCount = count(" -", shown);
     const newCount = count(" +", shown);
     // As in unified diffs, an empty range starts at the line before it.
-    const oldStart = count(" -", before) + (oldCount > 0 ? 1 : 0);
-    const newStart = count(" +", before) + (newCount > 0 ? 1 : 0);
+    const oldStart = oldBefore + (oldCount > 0 ? 1 : 0);
+    const newStart = newBefore + (newCount > 0 ? 1 : 0);
     result.push(
       `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
       ...shown.map(({ kind, text }) => `${kind}${text}`),

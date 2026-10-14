@@ -273,6 +273,17 @@ suite("describe", () => {
       "@@ -1,4 +1,4 @@\n-1\n+x\n 2\n 3\n-4\n+y",
     );
     assert.strictEqual(lineDiff("a\nb\nc", "a\nc"), "@@ -1,3 +1,2 @@\n a\n-b\n c");
+    // Hunks after lines removed and added, each where it is in either version.
+    const lines = Array.from({ length: 40 }, (_, i) => `l${i}`);
+    const changed = [...lines];
+    changed[10] = "x10";
+    changed.splice(20, 1);
+    changed.splice(28, 0, "new");
+    changed[35] = "x36";
+    assert.strictEqual(
+      lineDiff(lines.join("\n"), changed.join("\n")),
+      "@@ -10,3 +10,3 @@\n l9\n-l10\n+x10\n l11\n@@ -20,3 +20,2 @@\n l19\n-l20\n l21\n@@ -29,2 +28,3 @@\n l28\n+new\n l29\n@@ -35,3 +35,3 @@\n l34\n-l35\n+x36\n l36",
+    );
     // Too many changed lines to compare quickly.
     const many = (prefix: string) => Array.from({ length: 1_500 }, (_, i) => `${prefix}${i}`);
     assert.strictEqual(lineDiff(many("a").join("\n"), many("b").join("\n")), undefined);
