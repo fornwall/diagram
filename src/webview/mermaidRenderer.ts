@@ -26,7 +26,13 @@ import {
 } from "./mermaidErrors";
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
-import { fittingZoom, readabilityWarnings } from "./mermaidQuality";
+import {
+  type DrawingWidth,
+  drawingWidth,
+  fittingZoom,
+  readabilityWarnings,
+  tooWide,
+} from "./mermaidQuality";
 import {
   colorLabelsOnBlocks,
   drawnAtWidth,
@@ -43,6 +49,7 @@ import {
   type Renderer,
   UNMARKED,
   type WebLink,
+  warningsMayChange,
   withModifier,
 } from "./renderer";
 import {
@@ -488,6 +495,8 @@ export class MermaidRenderer implements Renderer {
   private diagramType: string | undefined;
   /** How the shown drawing reads, as measured when it was drawn. */
   private readability: string[] = [];
+  /** How wide the drawing shown is, which the panel's width can be too narrow for. */
+  private measured: DrawingWidth | undefined;
   /** The size of most of the text of the drawing shown, at actual size. */
   private textSize: number | undefined;
   /** The width of the container that the drawing was laid out in. */
@@ -509,6 +518,8 @@ export class MermaidRenderer implements Renderer {
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
     }
+    // What the drawing warns of goes by the panel's width.
+    warningsMayChange(this.canvas);
   });
 
   constructor(
@@ -712,29 +723,23 @@ export class MermaidRenderer implements Renderer {
       // Measured in the layout container, as the canvas may be hidden, as by the Source view.
       let readability: string[] = [];
       let size: number | undefined;
+      let measured: DrawingWidth | undefined;
       try {
         size = textSize(svg);
-        readability = readabilityWarnings(svg, {
-          type: result.diagramType,
-          source,
-          db: parsed,
-          textSize: size,
-          // A hidden tab's page has the default size of a frame, also when it is told that the
-          // tab is shown before it has the tab's size, under load: the panel's is not known. The
-          // Source view hides the canvas, whose width the drawing keeps.
-          roomWidth:
-            innerWidth === 300 && innerHeight === 150 ? 0 : width > 0 ? width : this.layoutWidth,
-          panelWidth: document.body.clientWidth,
-        });
+        const facts = { type: result.diagramType, source, db: parsed };
+        readability = readabilityWarnings(svg, facts);
+        measured = drawingWidth(svg, facts, size);
       } catch (error) {
         console.error(error);
       }
-      return { result, db, svg, readability, size };
+      return { result, db, svg, readability, size, measured };
     };
-    const { result, db, svg, readability, size } = await drawing().catch((error: unknown) => {
-      container.style.width = shownWidth;
-      throw error;
-    });
+    const { result, db, svg, readability, size, measured } = await drawing().catch(
+      (error: unknown) => {
+        container.style.width = shownWidth;
+        throw error;
+      },
+    );
     if (width > 0) this.layoutWidth = width;
     this.drawnFrom = drawnFrom;
     this.diagram.replaceChildren(svg);
@@ -754,6 +759,7 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = source;
     this.diagramType = result.diagramType;
     this.readability = readability;
+    this.measured = measured;
     this.textSize = size;
     this.prepareSvg(svg, id, db);
     this.present();
@@ -970,8 +976,17 @@ export class MermaidRenderer implements Renderer {
     return this.drawn.nodes;
   }
 
+  /** What the drawing warns of, as measured when drawn, and against the panel's width now. */
   warnings(): string[] {
-    return this.readability;
+    // A hidden tab's page has the default size of a frame, also when it is told that the tab is
+    // shown before it has the tab's size, under load: the panel's is not known. The Source view
+    // hides the canvas, and a hidden tab's has no size: take the width the drawing was laid out at.
+    const room = this.contentSize().width;
+    const roomWidth =
+      innerWidth === 300 && innerHeight === 150 ? 0 : room > 0 ? room : this.layoutWidth;
+    const wide =
+      this.measured && tooWide(this.measured, { roomWidth, width: document.body.clientWidth });
+    return wide ? [wide, ...this.readability] : this.readability;
   }
 
   labelOf(id: string): string | undefined {
@@ -1031,6 +1046,7 @@ export class MermaidRenderer implements Renderer {
     const relativeZoom = this.zoom / (fitted(this.layoutWidth) ?? this.zoom);
     const { scrollLeft, scrollTop, scrollWidth, scrollHeight } = this.canvas;
     if (!(await this.redraw(source))) return;
+    warningsMayChange(this.canvas);
     if (!this.fitting) {
       this.setZoom((fitted(room.width) ?? 1) * relativeZoom);
     }

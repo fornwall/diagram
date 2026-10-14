@@ -18,7 +18,7 @@ import { MODEL_TEXT_SIZE, pngDataUrl, pngScale } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { preloadLayout } from "./mermaidLayout";
 import { enablePanning } from "./pan";
-import { type Hit, type Renderer, UNMARKED, withModifier } from "./renderer";
+import { type Hit, type Renderer, UNMARKED, WARNINGS_CHANGED, withModifier } from "./renderer";
 import { type EditorState, SourceEditor } from "./sourceEditor";
 import { enableSplitter } from "./splitter";
 import "./style.css";
@@ -178,6 +178,24 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
 }
 /** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
+/** The render that the drawing shown answered, and the warnings that the extension has of it. */
+let warned: { requestId: number; warnings: string } | undefined;
+/** How long the warnings of a drawing stay the same before the extension hears of a change. */
+const WARNINGS_DELAY = 250;
+let warningsTimer: ReturnType<typeof setTimeout> | undefined;
+// A drawing laid out again for a new size of the panel, or measured against it, can warn of other
+// things than when it was drawn: tell the extension once they settle.
+canvas.addEventListener(WARNINGS_CHANGED, () => {
+  clearTimeout(warningsTimer);
+  warningsTimer = setTimeout(() => {
+    if (!active || !warned) return;
+    const warnings = active.warnings?.() ?? [];
+    const json = JSON.stringify(warnings);
+    if (json === warned.warnings) return;
+    warned = { requestId: warned.requestId, warnings: json };
+    post({ type: "warningsChanged", requestId: warned.requestId, warnings });
+  }, WARNINGS_DELAY);
+});
 /** The last diagram rendered, which its revisions are too. */
 let renderedDiagram: number | undefined;
 
@@ -318,6 +336,8 @@ async function render(message: RenderMessage): Promise<void> {
     active = renderer;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
+    const warnings = renderer.warnings?.();
+    warned = { requestId, warnings: JSON.stringify(warnings ?? []) };
     // The ids go along so that the extension host can tell a model when it names a node that is
     // not in the diagram, e.g. in a link or a mark.
     post({
@@ -327,13 +347,14 @@ async function render(message: RenderMessage): Promise<void> {
       nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
       relationships: drawn?.filter((node) => node.relationship),
       repeatedNames: renderer.repeatedNames?.(),
-      warnings: renderer.warnings?.(),
+      warnings,
     });
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
     renderer.hide();
     active = undefined;
+    warned = undefined;
     const text = errorMessage(error);
     showError(renderer, text);
     post({ type: "renderError", requestId, message: text });

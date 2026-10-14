@@ -76,6 +76,16 @@ export interface Renderer {
   fitToPanel(): void;
 }
 
+/**
+ * The event that a renderer dispatches on the canvas when its warnings may have changed with the
+ * size of the panel, as when it lays the drawing out again for it.
+ */
+export const WARNINGS_CHANGED = "diagramwarningschanged";
+
+/** Tells the page that the warnings of the drawing in the canvas may have changed. */
+export const warningsMayChange = (canvas: HTMLElement) =>
+  canvas.dispatchEvent(new Event(WARNINGS_CHANGED));
+
 /** Initial or cleared annotations. */
 export const UNMARKED: Annotation = { marks: [], dim: false };
 

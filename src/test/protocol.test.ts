@@ -7,6 +7,7 @@ suite("protocol", () => {
     assert.ok(isFromWebview({ type: "ready" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
     assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
+    assert.ok(isFromWebview({ type: "warningsChanged", requestId: 2, warnings: ["Too wide"] }));
     const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
     assert.ok(isFromWebview({ ...options, replaceSource: false }));
     // Without controls, a reset of the chart's styling.
@@ -20,6 +21,8 @@ suite("protocol", () => {
       { type: "selectionChanged", nodes: [{ id: "A" }] },
       { type: "ask", nodes: [] },
       { type: "exportTheme", requestId: 1 },
+      { type: "warningsChanged", requestId: 2 },
+      { type: "warningsChanged", requestId: 2, warnings: [1] },
       // A saved chart needs every color to draw in.
       { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
       { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },

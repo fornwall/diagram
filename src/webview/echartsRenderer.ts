@@ -36,7 +36,13 @@ import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage, ModelImage } from "./images";
 import { formatOption } from "./optionSource";
-import { type ItemClickHandler, type Renderer, UNMARKED, withModifier } from "./renderer";
+import {
+  type ItemClickHandler,
+  type Renderer,
+  UNMARKED,
+  warningsMayChange,
+  withModifier,
+} from "./renderer";
 import {
   type Area,
   areaAround,
@@ -99,8 +105,9 @@ export class EChartsRenderer implements Renderer {
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
-  /** What the chart draws other than its option meant, as first drawn. */
+  /** What the chart draws other than its option meant, at the size it was checked at. */
   private drawnWarnings: string[] = [];
+  private checkedAt = "";
   private title = "";
   /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
   private laidOut = "";
@@ -187,6 +194,7 @@ export class EChartsRenderer implements Renderer {
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
     this.drawnWarnings = this.checkDrawn(option);
+    this.checkedAt = this.chartSize();
     if (this.scrollToStart) {
       this.scrollToStart = false;
       this.container.scrollTop = 0;
@@ -633,7 +641,22 @@ export class EChartsRenderer implements Renderer {
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */
   private relayout(): void {
-    if (this.chart && this.option) this.guard(() => this.apply(true));
+    const option = this.option;
+    if (!this.chart || !option) return;
+    this.guard(() => this.apply(true));
+    // What the chart leaves out for lack of room, such as category labels, goes by its size:
+    // check it again at a new size, but not at each size it has while the size keeps changing.
+    const size = this.chartSize();
+    if (size && size !== this.checkedAt && this.relayoutTimer === undefined) {
+      this.checkedAt = size;
+      this.drawnWarnings = this.checkDrawn(option);
+      warningsMayChange(this.canvas);
+    }
+  }
+
+  /** The size the chart is drawn at, if any. */
+  private chartSize(): string {
+    return this.chart ? `${this.chart.getWidth()}×${this.chart.getHeight()}` : "";
   }
 
   /**

@@ -44,15 +44,28 @@ export interface DrawingFacts {
   type: string;
   source: string;
   db: DiagramDb | undefined;
-  /**
-   * The width that the panel has for the drawing, in CSS pixels, or 0 if it is not known, as while
-   * the panel is hidden.
-   */
-  roomWidth: number;
-  /** The width of the whole panel. */
-  panelWidth: number;
+}
+
+/** What tells how wide a drawing is for a panel of any width. */
+export interface DrawingWidth {
+  type: string;
+  /** The drawing's size at actual size. */
+  width: number;
+  height: number;
   /** The size of most of the drawing's text, at actual size. */
   textSize: number | undefined;
+  /** How to lay the diagram out the other way, if its type has another direction. */
+  turned: string | undefined;
+}
+
+/** The width of a laid out drawing, which the panel measures against its own width. */
+export function drawingWidth(
+  svg: SVGSVGElement,
+  facts: DrawingFacts,
+  textSize: number | undefined,
+): DrawingWidth {
+  const { width, height } = svg.viewBox.baseVal;
+  return { type: facts.type, width, height, textSize, turned: otherDirection(facts) };
 }
 
 /**
@@ -81,7 +94,6 @@ export function fittingZoom(
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
   return [
-    tooWide(svg, facts),
     tooLarge(facts),
     loneNodes(facts),
     overlappingLabels(svg),
@@ -215,11 +227,18 @@ const NARROWER: Record<string, string> = {
  * than itself, at the zoom that leaves its text legible, so that the user scrolls sideways across
  * it. The height that the panel has does not matter but for text smaller than Mermaid draws.
  */
-function tooWide(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
-  const { width, height } = svg.viewBox.baseVal;
-  const size = facts.textSize;
-  const known = facts.roomWidth > 0;
-  const room = known ? facts.roomWidth : NARROW_ROOM;
+export function tooWide(
+  drawing: DrawingWidth,
+  panel: {
+    /** The width that the panel has for the drawing, or 0 if it is not known, as while hidden. */
+    roomWidth: number;
+    /** The width of the whole panel. */
+    width: number;
+  },
+): string | undefined {
+  const { width, height, textSize: size, type, turned } = drawing;
+  const known = panel.roomWidth > 0;
+  const room = known ? panel.roomWidth : NARROW_ROOM;
   /** How many times as wide as the room a drawing of the size is shown. */
   const across = (drawn: { width: number; height: number }) =>
     (drawn.width * fittingZoom(drawn, { width: room, height: Infinity }, size)) / room;
@@ -228,20 +247,18 @@ function tooWide(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
   }
   const zoom = fittingZoom({ width, height }, { width: room, height: Infinity }, size);
   const remedies: string[] = [];
-  const narrower = NARROWER[facts.type];
+  const narrower = NARROWER[type];
   if (narrower) remedies.push(narrower);
   // The other direction lays the drawing out across its height, roughly.
-  const turned = otherDirection(facts);
   if (turned && across({ width: height, height: width }) <= MAX_SCROLL) remedies.push(turned);
   // A drawing a little too wide fits a somewhat wider panel, whose room for the drawing grows at
   // least in proportion, as the split view shares it.
-  const panel = facts.panelWidth;
-  const wider = (panel * width * Math.min(1, MIN_FIT_TEXT / size)) / MAX_SCROLL / room;
-  if (known && wider <= panel * MAX_WIDENING) {
+  const wider = (panel.width * width * Math.min(1, MIN_FIT_TEXT / size)) / MAX_SCROLL / room;
+  if (known && wider <= panel.width * MAX_WIDENING) {
     remedies.push(`widen the panel to at least ${formatCount(Math.ceil(wider / 10) * 10)} px`);
   }
   // A packet is split into rows already.
-  if (facts.type !== "packet") remedies.push("split it into several diagrams");
+  if (type !== "packet") remedies.push("split it into several diagrams");
   const where = `${known ? "the panel's" : "a narrow panel's"} ${formatCount(Math.round(room))} px`;
   const part = Math.max(1, Math.round((100 * room) / (width * zoom)));
   return (

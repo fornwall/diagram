@@ -249,6 +249,11 @@ export type FromWebview =
       /** Parts of the source that the rendering leaves out. */
       warnings?: string[] | undefined;
     }
+  /**
+   * The warnings of the drawing that answered the render, after the panel's new size changed them,
+   * as by laying the drawing out again or measuring it against the panel's width.
+   */
+  | { type: "warningsChanged"; requestId: number; warnings: string[] }
   | {
       type: "renderError";
       requestId: number;
@@ -375,6 +380,7 @@ const FROM_WEBVIEW_FIELDS: {
     repeatedNames: optional(isRepeatedNames),
     warnings: optional(isStrings),
   },
+  warningsChanged: { requestId: isId, warnings: isStrings },
   renderError: { requestId: isId, message: isString, unavailable: optional(isBoolean) },
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },

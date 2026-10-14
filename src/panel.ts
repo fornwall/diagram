@@ -473,6 +473,11 @@ export class DiagramPanel implements vscode.Disposable {
         }
         this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
         break;
+      case "warningsChanged":
+        if (this.drawn && message.requestId === this.drawn.requestId) {
+          this.drawn = { ...this.drawn, warnings: message.warnings };
+        }
+        break;
       case "renderError":
         this.pageAnswered(message.requestId);
         this.finishRender(message.requestId, {
