@@ -1076,6 +1076,29 @@ suite("panel", function () {
     assert.strictEqual(restored.revision, revision + 1);
   });
 
+  test("an agent's edit drops the selection of the items it removes, as the page does", async () => {
+    const { panel, webview } = await newFakePanel();
+    // The page draws the nodes named by single capital letters.
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: [...new Set(message.source.match(/\b[A-Z]\b/g))],
+          }
+        : undefined;
+    const source = `${flowchart.source}\n  B --> C`;
+    assert.ok((await panel.render({ ...flowchart, source }, "tool")).ok);
+    await webview.select([{ id: "C", label: "C" }]);
+    assert.match(panel.describeForModel() ?? "", /has selected these nodes in the panel: "C"/);
+    const edit = { source: flowchart.source, title: flowchart.title };
+    assert.ok((await panel.editByAgent(edit, panel.revision)).ok);
+    assert.deepStrictEqual(webview.render.selection, ["C"]);
+    // Which leaves nothing selected in the page, which then says nothing.
+    assert.match(panel.describeForModel() ?? "", /has no nodes selected/);
+  });
+
   test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
     const { panel, webview } = await newFakePanel();
     const { sent } = webview;
