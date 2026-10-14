@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import { throwIfCancelled } from "./cancellation";
 import { documentName } from "./documentDiagram";
+import { type Resolved, resolvedList, severalList } from "./itemNames";
 import {
   type AppliedStyle,
   applyStyles,
@@ -16,7 +17,12 @@ import {
 } from "./mermaidStyle";
 import type { DiagramPanel } from "./panel";
 import { EDIT_TOOL, errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
-import { type StyleChange, type StyleInput, validateStyleInput } from "./styleInput";
+import {
+  type StyleChange,
+  type StyleInput,
+  type StyleRequest,
+  validateStyleInput,
+} from "./styleInput";
 import { plural, quoteAll } from "./text";
 import { drawnResult, drawnWarnings, idList, textResult } from "./tools";
 
@@ -120,7 +126,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     if (!kind) {
       throw new Error(
         `Coloring isn't supported for ${keyword ? `${keyword} diagrams` : "this diagram"}. ` +
-          `${STYLE_TOOL} colors flowchart nodes and subgraphs, classes, states and ER entities.`,
+          `${STYLE_TOOL} colors flowchart nodes, subgraphs and edges, classes, states and ER entities.`,
       );
     }
     const stillDrawing = "The diagram is still being drawn. Wait for the current render and retry.";
@@ -149,14 +155,17 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     const known = new Set([...drawn, ...(kind === "flowchart" ? subgraphIds(source) : [])]);
     const declared = sourceIds(source, kind);
     const composite = new Set(kind === "state" ? compositeStateIds(source) : []);
-    const unknown: string[] = [];
+    const unknown: Resolved[] = [];
     const notes: string[] = [];
-    // Edges and messages go by their ids or ends, as diagram_annotate takes them.
+    // Edges go by their ids or ends, as diagram_annotate takes them, and by their links' numbers.
     const names = this.panel.itemNames;
-    const isRelationship = (id: string) =>
-      names?.resolve(id).ids.some((named) => names.relationship(named)) === true;
-    const requests = change.styles.filter(({ id }) => {
+    const styledLinks = new Map<number, string>();
+    const requests: StyleRequest[] = [];
+    for (const style of change.styles) {
+      const { id } = style;
       if (!known.has(id)) {
+        const resolved = { name: id, ...(names?.resolve(id) ?? { ids: [] }) };
+        const edges = resolved.ids.flatMap((named) => names?.relationship(named) ?? []);
         if (EVERYTHING_IDS.test(id)) {
           notes.push(
             `${JSON.stringify(id)} is not an item: give the ids of the ${ITEM_NOUNS[kind]} to color, as the source that ${GET_STATE_TOOL} gives names them.`,
@@ -165,47 +174,59 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
           notes.push(
             `${JSON.stringify(id)} was not styled: ${BACKGROUND_FIXED} Color the diagram's ${ITEM_NOUNS[kind]} instead.`,
           );
-        } else if (isRelationship(id)) {
+        } else if (edges.length === 0 || !names) {
+          unknown.push(resolved);
+        } else if (kind !== "flowchart") {
           notes.push(
-            kind === "flowchart"
-              ? `${JSON.stringify(id)} is an edge, which ${STYLE_TOOL} does not color. Color edges with a linkStyle line through ${EDIT_TOOL}, which numbers them in the order the source writes them, from 0, e.g. \`linkStyle 0 stroke:red\`.`
-              : `${JSON.stringify(id)} is a relationship, which ${STYLE_TOOL} does not color.`,
+            `${JSON.stringify(id)} is a relationship, which ${STYLE_TOOL} does not color.`,
+          );
+        } else if (edges.length > 1) {
+          notes.push(
+            `${severalList([resolved], names)} names several edges, so none was styled: give the id of the one to color.`,
           );
         } else {
-          unknown.push(id);
+          const link = edges[0]?.relationship?.linkStyle;
+          const styled = link === undefined ? undefined : styledLinks.get(link);
+          if (link === undefined) {
+            notes.push(
+              `${JSON.stringify(id)} was not styled, as its number in linkStyle lines is not known. Color it with a linkStyle line through ${EDIT_TOOL}, which numbers the links in the order the source writes them, from 0, e.g. \`linkStyle 0 stroke:red\`.`,
+            );
+          } else if (styled !== undefined) {
+            notes.push(
+              `${JSON.stringify(id)} names the same edge as ${JSON.stringify(styled)}; give each edge one entry.`,
+            );
+          } else {
+            styledLinks.set(link, id);
+            requests.push({ ...style, link });
+          }
         }
-        return false;
-      }
-      if (!isStyleableId(id, kind) && declared.has(id)) {
+      } else if (!isStyleableId(id, kind) && declared.has(id)) {
         notes.push(
           `${JSON.stringify(id)} is an id that no style line can name, as Mermaid takes only ${STYLEABLE_IDS[kind]} there, so it cannot be colored. Give it such an id with ${EDIT_TOOL} first.`,
         );
-        return false;
-      }
-      if (!isStyleableId(id, kind) || !declared.has(id)) {
+      } else if (!isStyleableId(id, kind) || !declared.has(id)) {
         notes.push(
           `${JSON.stringify(id)} is a label, not an id in the source, so no style line can name it. ` +
             (kind === "flowchart"
               ? `Give the subgraph an id with ${EDIT_TOOL} first, e.g. \`subgraph pay [${id}]\`.`
               : "Notes cannot be colored."),
         );
-        return false;
-      }
-      if (composite.has(id)) {
+      } else if (composite.has(id)) {
         notes.push(
           `${JSON.stringify(id)} is a composite state, which Mermaid draws without colors; color the states inside it instead.`,
         );
-        return false;
+      } else {
+        requests.push(style);
       }
-      return true;
-    });
+    }
     if (unknown.length > 0) {
       const styleable = [...known].filter(
         (id) => isStyleableId(id, kind) && declared.has(id) && !composite.has(id),
       );
       notes.unshift(
-        `These ids are not ${ITEM_NOUNS[kind]} of the diagram, so they were not styled: ${quoteAll(unknown)}. ` +
-          `Its ids are ${idList(styleable)}.`,
+        `These ids are not ${ITEM_NOUNS[kind]} of the diagram, so they were not styled: ${resolvedList(unknown)}. ` +
+          `Its ids are ${idList(styleable)}.` +
+          (kind === "flowchart" ? ' Name an edge by its ends\' ids, as in "A --> B".' : ""),
       );
     }
 

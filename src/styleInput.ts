@@ -27,6 +27,11 @@ export interface StyleRequest {
   text?: string | null;
   /** Removes the item's style line, including the properties that this tool does not set. */
   clear?: true;
+  /**
+   * A flowchart edge's number in linkStyle lines, which the request is for, by the id or name that
+   * it gives the edge.
+   */
+  link?: number;
 }
 
 export interface StyleChange {

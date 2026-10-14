@@ -75,7 +75,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_readFile` | `#diagramRead` | Read a range of numbered lines from a workspace file, including unsaved edits. |
 | `diagram_inspectData` | `#diagramData` | Show a table's columns, inferred types and up to 20 sample rows without charting it. |
 | `diagram_updateChart` | `#diagramUpdate` | Change the current chart's settings using its loaded data, keeping supported styling. |
-| `diagram_style` | `#diagramStyle` | Set the fill, border and text colors of the nodes, subgraphs, classes, states and ER entities of a Mermaid diagram by editing their `style` lines. |
+| `diagram_style` | `#diagramStyle` | Set the fill, border and text colors of the nodes, subgraphs, edges, classes, states and ER entities of a Mermaid diagram by editing their `style` and `linkStyle` lines. |
 
 Workspace tools stay within open workspace folders. Find and search respect `files.exclude`, `search.exclude` and `search.useIgnoreFiles`, and always exclude `.git` and `node_modules`.
 
@@ -85,7 +85,7 @@ Workspace tools stay within open workspace folders. Find and search respect `fil
 
 `diagram_inspectData` without a source inspects the current chart's loaded data. A given source is read anew, rerunning a command.
 
-`diagram_style` accepts CSS colors, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, for flowchart nodes and subgraphs, classes, noncomposite states and ER entities. Opaque fills get contrasting black or white text unless you specify `text`; translucent fills use theme text. Omitted colors stay, `null` removes one, and `"clear": true` removes the item's style. Changes appear in source and exports; writing them to Markdown requires confirmation. The panel background follows the VS Code theme.
+`diagram_style` accepts CSS colors, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`, for flowchart nodes and subgraphs, classes, noncomposite states and ER entities, and flowchart edges, named by their ends as in `"A --> B"`, which get a `linkStyle` line of their own with `stroke` for the line and `text` for the label. Opaque fills get contrasting black or white text unless you specify `text`; translucent fills use theme text. Omitted colors stay, `null` removes one, and `"clear": true` removes the item's style. Changes appear in source and exports; writing them to Markdown requires confirmation. The panel background follows the VS Code theme.
 
 `diagram_getImage` gives a PNG of the drawing as the panel shows it, in its theme, without the selection and marks: all of it, a chart as laid out for the panel, or with `ids` the part around those items. Text is drawn about 16 pixels high where that fits in 1568 pixels a side and 1.15 megapixels. The result gives the drawing's size, the image's scale, whether its text is too small to read there, and the panel's zoom. `@diagram` leaves the tool out for a model that says it does not accept images.
 

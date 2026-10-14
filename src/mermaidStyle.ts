@@ -21,7 +21,7 @@ const KINDS: Record<string, StyleableKind> = {
 
 /** What the items of a kind of diagram are called. */
 export const ITEM_NOUNS: Record<StyleableKind, string> = {
-  flowchart: "nodes or subgraphs",
+  flowchart: "nodes, subgraphs or edges",
   class: "classes",
   state: "states",
   er: "entities",
@@ -212,6 +212,50 @@ const STYLE_LINE = /^(\s*)style\s+(\S+)\s+([^;\n]*?)\s*;?\s*$/;
 const STYLE_STATEMENT = /(?:^|;)\s*style\s+([^\s;]+)/g;
 /** A style property, whose value may have commas in parentheses, as in `fill:rgb(1,2,3)`. */
 const PROPERTY = /(?:[^,(]|\([^)]*\))+/g;
+/**
+ * A linkStyle line for links alone, by their numbers, and its properties as written. A line that
+ * also sets the links' curve, or with more statements after a semicolon, is not one.
+ */
+const LINK_STYLE_LINE =
+  /^(\s*)linkStyle\s+(\d+(?:\s*,\s*\d+)*)\s+(?!interpolate\b)([^;\n]*?)\s*;?\s*$/;
+/**
+ * A linkStyle statement, also among others of a line, and what follows its links' numbers: styles,
+ * or a curve, which a statement may set without styles.
+ */
+const LINK_STYLE_STATEMENT = /^\s*linkStyle\s+(\d+(?:\s*,\s*\d+)*)\s+(.*)$/;
+const CURVE_ONLY = /^interpolate\s+\S+\s*$/;
+
+/** A linkStyle line, or one to append, which the links styled anew are taken out of. */
+interface LinkLine {
+  /** Its index among the source's lines, or undefined for a line to append. */
+  index: number | undefined;
+  indent: string;
+  links: number[];
+  properties: string;
+  changed?: true;
+}
+
+/** The numbers of the links of a linkStyle statement, as in "0, 2". */
+const linkNumbers = (list: string) => list.split(",").map((link) => Number(link.trim()));
+
+/** The colors among style properties, by their names in lowercase, and the other properties. */
+function readProperties(
+  properties: string,
+  names: readonly string[],
+): { colors: Map<string, string>; others: string[] } {
+  const colors = new Map<string, string>();
+  const others: string[] = [];
+  for (const [property] of properties.matchAll(PROPERTY)) {
+    const [, key = "", value = ""] = /^\s*([^:]*?)\s*:\s*(.*?)\s*$/.exec(property) ?? [];
+    const name = key.toLowerCase();
+    if (names.includes(name)) {
+      colors.set(name, value);
+    } else if (property.trim()) {
+      others.push(property.trim());
+    }
+  }
+  return { colors, others };
+}
 
 /**
  * Sets the fill, stroke and text colors of items, keeping their other style properties. Each item's
@@ -229,12 +273,25 @@ export function applyStyles(
   const styleLines = new Map<string, { index: number; indent: string; properties: string }[]>();
   /** Items styled among other statements of a line, which is left as it is. */
   const inline = new Set<string>();
+  const linkLines: LinkLine[] = [];
+  /** Links styled in lines that are left as they are. */
+  const fixedLinks = new Set<number>();
   for (const { index, text } of body) {
     const [, indent = "", id = "", properties = ""] = STYLE_LINE.exec(text) ?? [];
+    const linkLine = LINK_STYLE_LINE.exec(text);
     if (id) {
       styleLines.set(id, [...(styleLines.get(id) ?? []), { index, indent, properties }]);
+    } else if (linkLine) {
+      const [, indent = "", links = "", properties = ""] = linkLine;
+      linkLines.push({ index, indent, links: linkNumbers(links), properties });
     } else {
       for (const [, styled = ""] of text.matchAll(STYLE_STATEMENT)) inline.add(styled);
+      // A statement that sets the links' curve alone leaves their styles.
+      for (const statement of text.split(";")) {
+        const [, links = "", rest = ""] = LINK_STYLE_STATEMENT.exec(statement) ?? [];
+        if (!links || CURVE_ONLY.test(rest)) continue;
+        for (const link of linkNumbers(links)) fixedLinks.add(link);
+      }
     }
   }
 
@@ -244,7 +301,73 @@ export function applyStyles(
   const applied: AppliedStyle[] = [];
   // The first statement after the declaration is at the top level.
   const indent = body[1] ? (/^\s*/.exec(body[1].text)?.[0] ?? "") : "  ";
+
+  /**
+   * Gives an edge's link a linkStyle line of its own with the colors, keeping its other style
+   * properties, and takes it out of the lines that name others too. Mermaid takes the style of a
+   * link from the last line that names it, which replaces those of the lines before.
+   */
+  const styleLink = (request: StyleRequest, link: number): AppliedStyle => {
+    const { id } = request;
+    if (fixedLinks.has(link)) {
+      return {
+        id,
+        problem:
+          "Its linkStyle is in a line with other statements, or one that sets its curve, which is left as it is: give it a line of its own first.",
+      };
+    }
+    if (request.fill !== undefined) {
+      return {
+        id,
+        problem: 'An edge has no fill: give "stroke" for its line and "text" for its label.',
+      };
+    }
+    if (request.text === AUTO_TEXT) {
+      return {
+        id,
+        problem: 'An edge has no fill to choose a text color for: give a "text" color.',
+      };
+    }
+    const naming = linkLines.filter((line) => line.links.includes(link));
+    const last = request.clear ? undefined : naming.at(-1);
+    const { colors, others } = readProperties(last?.properties ?? "", ["stroke", "color"]);
+    for (const [name, value] of [
+      ["stroke", request.stroke],
+      ["color", request.text],
+    ] as const) {
+      if (value === null) colors.delete(name);
+      else if (value !== undefined) colors.set(name, value);
+    }
+    const written = [
+      ...["stroke", "color"].flatMap((name) => {
+        const value = colors.get(name);
+        return value === undefined ? [] : [`${name}:${value}`];
+      }),
+      ...others,
+    ];
+    const own = naming.find((line) => line.links.length === 1);
+    for (const line of naming) {
+      line.links = line.links.filter((other) => other !== link);
+      line.changed = true;
+    }
+    if (written.length === 0) {
+      return naming.length > 0 ? { id, removed: true } : { id, unstyled: true };
+    }
+    const properties = written.join(",");
+    if (own) {
+      own.links = [link];
+      own.properties = properties;
+    } else {
+      linkLines.push({ index: undefined, indent, links: [link], properties, changed: true });
+    }
+    return { id, stroke: colors.get("stroke"), text: colors.get("color") };
+  };
+
   for (const request of requests) {
+    if (request.link !== undefined) {
+      applied.push(styleLink(request, request.link));
+      continue;
+    }
     // A line appended after it overrides colors, but cannot remove any.
     const removes =
       request.clear || request.fill === null || request.stroke === null || request.text === null;
@@ -257,19 +380,10 @@ export function applyStyles(
       continue;
     }
     const existing = styleLines.get(request.id) ?? [];
-    const colors = new Map<string, string>();
-    const others: string[] = [];
-    for (const { properties } of request.clear ? [] : existing) {
-      for (const [property] of properties.matchAll(PROPERTY)) {
-        const [, key = "", value = ""] = /^\s*([^:]*?)\s*:\s*(.*?)\s*$/.exec(property) ?? [];
-        const name = key.toLowerCase();
-        if (name === "fill" || name === "stroke" || name === "color") {
-          colors.set(name, value);
-        } else if (property.trim()) {
-          others.push(property.trim());
-        }
-      }
-    }
+    const { colors, others } = readProperties(
+      (request.clear ? [] : existing).map(({ properties }) => properties).join(","),
+      ["fill", "stroke", "color"],
+    );
     const set = (name: string, value: string | null | undefined) => {
       if (value === null) colors.delete(name);
       else if (value !== undefined) colors.set(name, value);
@@ -325,6 +439,14 @@ export function applyStyles(
           ? { id: request.id, removed: true }
           : { id: request.id, unstyled: true },
     );
+  }
+
+  for (const { index, indent, links, properties, changed } of linkLines) {
+    if (!changed) continue;
+    const line =
+      links.length > 0 ? `${indent}linkStyle ${links.join(",")} ${properties}` : undefined;
+    if (index !== undefined) replaced.set(index, line);
+    else if (line) appended.push(line);
   }
 
   const result = lines.flatMap((line, index) => {

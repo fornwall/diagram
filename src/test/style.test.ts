@@ -14,6 +14,7 @@ import {
 } from "../mermaidStyle";
 import { type StyleInput, validateStyleInput } from "../styleInput";
 import { StyleDiagramTool } from "../styleTool";
+import { quoteAll } from "../text";
 import { afterTest, cancellationSource, tempDir } from "./afterTest";
 import { newFakePanel, newPanel, within } from "./newPanel";
 import { invokeTool } from "./toolText";
@@ -334,6 +335,76 @@ suite("Mermaid style lines", () => {
       `${directive}\n    style CUSTOMER fill:#112233,color:white`,
     );
   });
+
+  /** Styles the links of edges, by their numbers in linkStyle lines, naming each by its number. */
+  const styleLinks = (source: string, styles: { link: number; [key: string]: unknown }[]) => {
+    const validated = validateStyleInput({
+      styles: styles.map(({ link, ...style }, index) => ({ id: `${index}: ${link}`, ...style })),
+    }).styles;
+    return applyStyles(
+      source,
+      styles.map(({ link }, index) => ({ ...validated[index], id: `edge ${link}`, link })),
+    );
+  };
+
+  test("gives an edge's link a linkStyle line of its own, keeping its other properties", () => {
+    const edges = "flowchart LR\n  A --> B --> C\n  linkStyle default stroke:gray\n";
+    const added = styleLinks(edges, [
+      { link: 1, stroke: "red", text: "blue" },
+      { link: 0, stroke: null },
+    ]);
+    assert.strictEqual(added.source, `${edges.trimEnd()}\n  linkStyle 1 stroke:red,color:blue\n`);
+    assert.deepStrictEqual(added.applied, [
+      { id: "edge 1", stroke: "red", text: "blue" },
+      { id: "edge 0", unstyled: true },
+    ]);
+    // In place, merged from the last line that names the link, which Mermaid takes it from.
+    const lines =
+      "flowchart LR\n  A --> B --> C --> D\n  linkStyle 1 stroke:blue;\n  linkStyle 0,1,2 stroke-width:4px,color:green\n  linkStyle 1 interpolate basis";
+    assert.strictEqual(
+      styleLinks(lines, [{ link: 1, stroke: "red" }]).source,
+      "flowchart LR\n  A --> B --> C --> D\n  linkStyle 1 stroke:red,color:green,stroke-width:4px\n  linkStyle 0,2 stroke-width:4px,color:green\n  linkStyle 1 interpolate basis",
+    );
+    assert.strictEqual(
+      styleLinks(lines, [{ link: 2, text: "red" }]).source,
+      "flowchart LR\n  A --> B --> C --> D\n  linkStyle 1 stroke:blue;\n  linkStyle 0,1 stroke-width:4px,color:green\n  linkStyle 1 interpolate basis\n  linkStyle 2 color:red,stroke-width:4px",
+    );
+    const cleared = styleLinks(lines, [
+      { link: 1, clear: true },
+      { link: 0, clear: true },
+      { link: 2, clear: true },
+      { link: 3, clear: true },
+    ]);
+    assert.strictEqual(
+      cleared.source,
+      "flowchart LR\n  A --> B --> C --> D\n  linkStyle 1 interpolate basis",
+    );
+    assert.deepStrictEqual(
+      cleared.applied.map((applied) => applied.removed ?? applied.unstyled),
+      [true, true, true, true],
+    );
+  });
+
+  test("leaves the links of lines with other statements, and refuses an edge's fill", () => {
+    const source =
+      "flowchart LR\n  A --> B --> C\n  linkStyle 0 interpolate basis stroke:red\n  B --> D; linkStyle 1 stroke:red";
+    const { source: edited, applied } = styleLinks(source, [
+      { link: 0, stroke: "blue" },
+      { link: 1, stroke: "blue" },
+      { link: 2, fill: "blue" },
+      { link: 2, text: "auto" },
+    ]);
+    assert.strictEqual(edited, source);
+    assert.deepStrictEqual(
+      applied.map(({ problem }) => problem),
+      [
+        "Its linkStyle is in a line with other statements, or one that sets its curve, which is left as it is: give it a line of its own first.",
+        "Its linkStyle is in a line with other statements, or one that sets its curve, which is left as it is: give it a line of its own first.",
+        'An edge has no fill: give "stroke" for its line and "text" for its label.',
+        'An edge has no fill to choose a text color for: give a "text" color.',
+      ],
+    );
+  });
 });
 
 suite("diagram_style", () => {
@@ -406,6 +477,41 @@ suite("diagram_style in the panel", () => {
     );
     assert.match(panel.describeForModel() ?? "", /watch/);
   });
+
+  test("leaves an edge whose number in linkStyle lines the page does not tell, saying how to color it", async () => {
+    const source = "flowchart TD\n  A --> B";
+    const { panel, webview } = await newFakePanel(
+      new Map<string, unknown>([
+        ["diagram.state", { language: "mermaid", source, title: "Flow", origin: "tool" }],
+      ]),
+    );
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: ["A", "B"],
+            relationships: [
+              {
+                id: "edge:L_A_B_0",
+                label: "A → B",
+                relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
+              },
+            ],
+          }
+        : undefined;
+    await webview.receive({ type: "ready" });
+    await within(() => panel.drawnIds !== undefined);
+    const result = await invokeTool(new StyleDiagramTool(panel), {
+      styles: [{ id: "A --> B", stroke: "red" }],
+    });
+    assert.strictEqual(
+      result,
+      'Nothing was styled. Revision: 0.\n\n"A --> B" was not styled, as its number in linkStyle lines is not known. Color it with a linkStyle line through diagram_edit, which numbers the links in the order the source writes them, from 0, e.g. `linkStyle 0 stroke:red`.',
+    );
+    assert.strictEqual(panel.current?.source, source);
+  });
 });
 
 suite("diagram_style in the webview", function () {
@@ -458,28 +564,68 @@ suite("diagram_style in the webview", function () {
     assert.strictEqual(await filled("A", "rgb(0, 128, 0)"), false);
   });
 
-  test("says that it does not color edges, and how to", async () => {
-    const edges = "flowchart LR\n  A[Parser] --> B[Checker]\n  B --> C[Done]";
+  test("colors flowchart edges named by their ends or ids with linkStyle lines, and clears them again", async () => {
+    const edges =
+      "flowchart LR\n  A[Parser] -->|parses| B[Checker]\n  B ~~~ D[Log]\n  B --> C[Done]\n  B --> C\n  linkStyle 0,2 stroke-width:3px";
     await draw({ source: edges });
     const result = await style({
       styles: [
-        { id: "A", fill: "green" },
+        { id: "A --> B", stroke: "#f00", text: "blue" },
+        { id: "edge:L_B_C_2", stroke: "hsl(120 100% 25%)" },
         { id: "B --> C", stroke: "red" },
+        { id: "A -> B", stroke: "red" },
+        { id: "C --> A", stroke: "red" },
       ],
     });
-    const [styled, edge] = result.split("\n\n");
-    assert.strictEqual(styled, 'Styled "A" (fill green, text white for contrast).');
+    const [styled, unknown, several, twice, revision] = result.split("\n\n");
     assert.strictEqual(
-      edge,
-      '"B --> C" is an edge, which diagram_style does not color. Color edges with a linkStyle line through diagram_edit, which numbers them in the order the source writes them, from 0, e.g. `linkStyle 0 stroke:red`.',
+      styled,
+      'Styled "A --> B" (stroke #ff0000, text blue), "edge:L_B_C_2" (stroke #008000).',
     );
-    // As it says.
-    await draw({ source: `${edges}\n  linkStyle 1 stroke:red` });
+    assert.strictEqual(
+      unknown,
+      `These ids are not nodes, subgraphs or edges of the diagram, so they were not styled: "C --> A" (nothing goes from "C" to "A"). Its ids are ${quoteAll(page.panel.drawnIds ?? [])}. Name an edge by its ends' ids, as in "A --> B".`,
+    );
+    assert.strictEqual(
+      several,
+      '"B --> C" (ids: "edge:L_B_C_0" for "Checker → Done", "edge:L_B_C_2" for "Checker → Done") names several edges, so none was styled: give the id of the one to color.',
+    );
+    assert.strictEqual(
+      twice,
+      '"A -> B" names the same edge as "A --> B"; give each edge one entry.',
+    );
+    assert.strictEqual(revision, `Revision: ${page.panel.revision}.`);
+    // The invisible link counts too, as Mermaid numbers the links.
+    assert.strictEqual(
+      source(),
+      "flowchart LR\n  A[Parser] -->|parses| B[Checker]\n  B ~~~ D[Log]\n  B --> C[Done]\n  B --> C\n  linkStyle 2 stroke-width:3px\n  linkStyle 0 stroke:#ff0000,color:blue,stroke-width:3px\n  linkStyle 3 stroke:#008000",
+    );
+    const line = (id: string, property: string) =>
+      evaluate(
+        `getComputedStyle(document.querySelector('#diagram .diagram-relationship:not(.diagram-relationship-hit)[data-diagram-id=${JSON.stringify(id)}]')).${property}`,
+      );
+    assert.deepStrictEqual(
+      [
+        await line("edge:L_A_B_0", "stroke"),
+        await line("edge:L_A_B_0", "strokeWidth"),
+        await line("edge:L_B_C_0", "strokeWidth"),
+        await line("edge:L_B_C_2", "stroke"),
+      ],
+      ["rgb(255, 0, 0)", "3px", "3px", "rgb(0, 128, 0)"],
+    );
+    // The label's text takes the color.
     assert.strictEqual(
       await evaluate(
-        `getComputedStyle(document.querySelector('#diagram .diagram-relationship:not(.diagram-relationship-hit)[data-diagram-id="edge:L_B_C_0"]')).stroke`,
+        `[...document.querySelectorAll('#diagram .edgeLabel [data-diagram-id="edge:L_A_B_0"], #diagram .edgeLabel [data-diagram-id="edge:L_A_B_0"] *')].some((e) => e.textContent.includes("parses") && getComputedStyle(e).color === "rgb(0, 0, 255)")`,
       ),
-      "rgb(255, 0, 0)",
+      true,
+    );
+
+    const cleared = await style({ styles: [{ id: "A --> B", clear: true }] });
+    assert.match(cleared, /^Removed the style of "A --> B"\.\n\nRevision: \d+\.$/);
+    assert.strictEqual(
+      source(),
+      "flowchart LR\n  A[Parser] -->|parses| B[Checker]\n  B ~~~ D[Log]\n  B --> C[Done]\n  B --> C\n  linkStyle 2 stroke-width:3px\n  linkStyle 3 stroke:#008000",
     );
   });
 
@@ -543,7 +689,7 @@ suite("diagram_style in the webview", function () {
     });
     assert.match(
       result,
-      /^Styled "B" \(fill #ff000080, text from the theme\), "C" \(fill transparent, text from the theme\)\.\n\n"background" was not styled: The panel background follows the VS Code theme and can't be changed\. Color the diagram's nodes or subgraphs instead\.\n\nThe fill of "B", "C" is translucent, so no text color was written: the panel picks one that reads on the theme\.\n\nRevision: \d+\.$/,
+      /^Styled "B" \(fill #ff000080, text from the theme\), "C" \(fill transparent, text from the theme\)\.\n\n"background" was not styled: The panel background follows the VS Code theme and can't be changed\. Color the diagram's nodes, subgraphs or edges instead\.\n\nThe fill of "B", "C" is translucent, so no text color was written: the panel picks one that reads on the theme\.\n\nRevision: \d+\.$/,
     );
     assert.strictEqual(
       source(),
@@ -566,7 +712,7 @@ suite("diagram_style in the webview", function () {
     await draw({ source: sequence });
     assert.strictEqual(
       await style({ styles: [{ id: "Alice", fill: "red" }] }),
-      `Nothing was styled: Coloring isn't supported for sequenceDiagram diagrams. diagram_style colors flowchart nodes and subgraphs, classes, states and ER entities. Revision: ${page.panel.revision}.`,
+      `Nothing was styled: Coloring isn't supported for sequenceDiagram diagrams. diagram_style colors flowchart nodes, subgraphs and edges, classes, states and ER entities. Revision: ${page.panel.revision}.`,
     );
     assert.strictEqual(source(), sequence);
 
