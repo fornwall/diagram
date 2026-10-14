@@ -1105,8 +1105,10 @@ function layOutBoxSeries(
     const [left, right] =
       type === "funnel"
         ? funnelSides(each, side, width, charWidth)
-        : // Room for the labels right of the last column of sankey nodes.
-          [side, type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side];
+        : type === "tree"
+          ? treeSides(each, side, width, charWidth)
+          : // Room for the labels right of the last column of sankey nodes.
+            [side, type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side];
     // Room for the breadcrumb of a treemap.
     const breadcrumb = type === "treemap" ? breadcrumbSide(each, height) : undefined;
     Object.assign(each, {
@@ -1152,6 +1154,61 @@ function funnelSides(
   const text = (longestText(funnel.data, most / charWidth) + added) * charWidth;
   const room = Math.max(margin, Math.min(most, Math.round(text + gap)));
   return position.startsWith("left") ? [room, margin] : [margin, room];
+}
+
+/**
+ * The room a tree laid out from left to right, or right to left, keeps beside it: the margin, or
+ * as much as the labels at its ends take, of its root and of the nodes of the deepest level it
+ * shows, which ECharts centers on their nodes unless told otherwise, up to 40% of the width.
+ */
+function treeSides(
+  tree: JsonObject,
+  margin: number,
+  width: number,
+  charWidth: number,
+): [number, number] {
+  const orient = tree.orient ?? "LR";
+  const [root] = Array.isArray(tree.data) ? tree.data : [];
+  if ((tree.layout ?? "orthogonal") !== "orthogonal" || (orient !== "LR" && orient !== "RL")) {
+    return [margin, margin];
+  }
+  if (!isPlainObject(root)) return [margin, margin];
+  // ECharts shows two levels below the root unless told otherwise.
+  const depth = typeof tree.initialTreeDepth === "number" ? tree.initialTreeDepth : 2;
+  let deepest: unknown[] = [root];
+  for (let level = 0; depth < 0 || level < depth; level++) {
+    const next = deepest.flatMap((node) =>
+      isPlainObject(node) && Array.isArray(node.children) && node.collapsed !== true
+        ? node.children
+        : [],
+    );
+    if (next.length === 0) break;
+    deepest = next;
+  }
+  const position = (label: unknown) => (isPlainObject(label) ? label.position : undefined);
+  const leaves = isPlainObject(tree.leaves) ? tree.leaves.label : undefined;
+  const most = Math.round(width * 0.4);
+  // The width a label takes beyond its node on a side: all of it on that side, none on the
+  // other, and half when centered on it. Past the symbol, with a gap to the edge.
+  const room = (labels: unknown[], placed: unknown, side: "left" | "right") => {
+    const share = placed === side ? 1 : placed === "left" || placed === "right" ? 0 : 0.5;
+    const text = longestText(labels, most / charWidth) * charWidth * share;
+    return Math.max(margin, Math.min(most, Math.round(text + 12)));
+  };
+  const rootSide = orient === "LR" ? "left" : "right";
+  const endSide = orient === "LR" ? "right" : "left";
+  const start = room([root], position(tree.label), rootSide);
+  // The leaves are labeled as "leaves" says, and the nodes whose children are not shown yet not.
+  const isLeaf = (node: unknown) => !isPlainObject(node) || !Array.isArray(node.children);
+  const end = Math.max(
+    room(deepest.filter(isLeaf), position(leaves) ?? position(tree.label), endSide),
+    room(
+      deepest.filter((node) => !isLeaf(node)),
+      position(tree.label),
+      endSide,
+    ),
+  );
+  return orient === "LR" ? [start, end] : [end, start];
 }
 
 /**

@@ -68,7 +68,10 @@ const LONG_LEAVES = {
   ],
 };
 
-suite("echartsChecks", () => {
+suite("echartsChecks", function () {
+  // Each test draws dozens of charts, which takes a while on a busy machine.
+  this.timeout(20_000);
+
   test("says nothing of typical charts of each type", () => {
     const sizes = [{}, { width: 520, height: 420 }];
     const options: Option[] = [
@@ -587,9 +590,12 @@ suite("echartsChecks", () => {
   });
 
   test("tells of texts cut off at the edge of the chart", () => {
-    assert.deepStrictEqual(warningsOf({ series: [LONG_LEAVES] }, { width: 400, height: 400 }), [
+    // A tree placed by the option, as the panel leaves room for the labels of one it places.
+    const placed = { ...LONG_LEAVES, left: 40, right: 40 };
+    assert.deepStrictEqual(warningsOf({ series: [placed] }, { width: 400, height: 400 }), [
       'series[0] has the text "a leaf with a long name that goes on" cut off at the right edge of the chart: leave room for them with the series\' "left", "right", "top" or "bottom", or shorten them.',
     ]);
+    assert.deepStrictEqual(warningsOf({ series: [LONG_LEAVES] }, { width: 400, height: 400 }), []);
     assert.deepStrictEqual(warningsOf({ title: { text: "Sales", left: 780 }, ...bars() }), [
       'title has the text "Sales" cut off at the right edge of the chart: place it within the chart with its "left", "right", "top" or "bottom", or shorten it.',
     ]);

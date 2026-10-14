@@ -643,6 +643,28 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "90%" } }), [44, 12, 12, 36]);
     assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "middle" } }), [44, 12, 12, 12]);
     assert.deepStrictEqual(box("tree"), [44, 96, 96, 12]);
+    // The labels at the ends of a tree, of its root and of the deepest level it shows, which
+    // ECharts centers on their nodes unless told otherwise.
+    const leaf = "a leaf with a long name, and on";
+    const tree = {
+      data: [
+        { name: "root", children: [{ name: "a", children: [{ name: leaf }] }, { name: "b" }] },
+      ],
+    };
+    const half = Math.round((leaf.length * colors.fontSize * 0.6) / 2 + 12);
+    assert.deepStrictEqual(box("tree", tree), [44, 96, Math.max(96, half), 12]);
+    const whole = Math.round(leaf.length * colors.fontSize * 0.6 + 12);
+    const right = { leaves: { label: { position: "right" } } };
+    assert.deepStrictEqual(box("tree", { ...tree, ...right }), [44, 96, whole, 12]);
+    assert.deepStrictEqual(box("tree", { ...tree, ...right, orient: "RL" }), [44, 96, 96, 12]);
+    const left = { leaves: { label: { position: "left" } }, orient: "RL" };
+    assert.deepStrictEqual(box("tree", { ...tree, ...left }), [44, whole, 96, 12]);
+    // Deeper than it shows, or laid out around its root.
+    assert.deepStrictEqual(
+      box("tree", { ...tree, ...right, initialTreeDepth: 1 }),
+      [44, 96, 96, 12],
+    );
+    assert.deepStrictEqual(box("tree", { ...tree, ...right, layout: "radial" }), [44, 96, 96, 12]);
     assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
     // A funnel's labels beside it on the right, unless placed otherwise, as long as they are.
     const stages = { data: [{ name: "Visited the product page", value: 3 }, { name: "Paid" }] };
