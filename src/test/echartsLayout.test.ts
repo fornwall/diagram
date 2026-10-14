@@ -604,6 +604,24 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("treemap", { breadcrumb: { top: "middle" } }), [44, 12, 12, 12]);
     assert.deepStrictEqual(box("tree"), [44, 96, 96, 12]);
     assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
+    // A funnel's labels beside it on the right, unless placed otherwise, as long as they are.
+    const stages = { data: [{ name: "Visited the product page", value: 3 }, { name: "Paid" }] };
+    const room = Math.round(24 * colors.fontSize * 0.6 + 33);
+    assert.deepStrictEqual(box("funnel", stages), [44, 80, room, 12]);
+    assert.deepStrictEqual(box("funnel", { ...stages, label: { position: "leftTop" } }), [
+      44,
+      room,
+      80,
+      12,
+    ]);
+    assert.deepStrictEqual(
+      box("funnel", { ...stages, label: { position: "inside" } }),
+      [44, 80, 80, 12],
+    );
+    assert.deepStrictEqual(
+      box("funnel", { ...stages, label: { formatter: "{b}: {c}" }, labelLine: { length: 10 } }),
+      [44, 80, Math.round((24 + 2 + 6) * colors.fontSize * 0.6 + 23), 12],
+    );
     assert.deepStrictEqual(box("sankey"), [44, 12, 144, 12]);
     assert.deepStrictEqual(box("chord"), [44, 12, 12, 12]);
   });

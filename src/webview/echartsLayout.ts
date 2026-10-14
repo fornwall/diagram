@@ -1015,7 +1015,11 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
 }
 
 /** Keeps series that ECharts lays out in a box clear of the title, legend and other components. */
-function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height }: Size): void {
+function layOutBoxSeries(
+  series: JsonObject[],
+  reserved: Insets,
+  { width, height, charWidth }: Size,
+): void {
   for (const each of series) {
     const type = String(each.type);
     const placed =
@@ -1047,16 +1051,56 @@ function layOutBoxSeries(series: JsonObject[], reserved: Insets, { width, height
       );
     // Trees and funnels keep ECharts' default margins, for the labels beside them.
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
+    const [left, right] =
+      type === "funnel"
+        ? funnelSides(each, side, width, charWidth)
+        : // Room for the labels right of the last column of sankey nodes.
+          [side, type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side];
     // Room for the breadcrumb of a treemap.
     const breadcrumb = type === "treemap" ? breadcrumbSide(each, height) : undefined;
     Object.assign(each, {
       top: reserved.top + (breadcrumb === "top" ? 36 : 12),
       bottom: reserved.bottom + (breadcrumb === "bottom" ? 36 : 12),
-      left: reserved.left + side,
-      // Room for the labels right of the last column of sankey nodes.
-      right: reserved.right + (type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side),
+      left: reserved.left + left,
+      right: reserved.right + right,
     });
   }
+}
+
+/**
+ * The room a funnel keeps on its left and right: the margin, and on the side of its labels, which
+ * ECharts draws beside it on the right unless told otherwise, as much as they take, up to 40% of
+ * the width: its widest part spans the box it is laid out in.
+ */
+function funnelSides(
+  funnel: JsonObject,
+  margin: number,
+  width: number,
+  charWidth: number,
+): [number, number] {
+  const label = isPlainObject(funnel.label) ? funnel.label : {};
+  const position = String(label.position ?? "outer");
+  if (
+    label.show === false ||
+    funnel.orient === "horizontal" ||
+    ["inner", "inside", "center", "insideLeft", "insideRight"].includes(position)
+  ) {
+    return [margin, margin];
+  }
+  const most = Math.round(width * 0.4);
+  // A template adds its text, and a value of about 6 characters for each other placeholder.
+  const { formatter } = label;
+  const added =
+    typeof formatter === "string"
+      ? formatter.replace(/\{[^{}]*\}/g, "").length +
+        6 * (formatter.match(/\{(?!b\})[^{}]*\}/g)?.length ?? 0)
+      : 0;
+  const line = isPlainObject(funnel.labelLine) ? funnel.labelLine : {};
+  // The label line, the gap after it, and a margin to the edge.
+  const gap = (typeof line.length === "number" ? line.length : 20) + 13;
+  const text = (longestText(funnel.data, most / charWidth) + added) * charWidth;
+  const room = Math.max(margin, Math.min(most, Math.round(text + gap)));
+  return position.startsWith("left") ? [room, margin] : [margin, room];
 }
 
 /**

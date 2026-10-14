@@ -305,8 +305,8 @@ suite("echartsChecks", () => {
           {
             type: "funnel",
             data: [
-              { name: "Visit", value: 100 },
-              { name: "Cart", value: 60 },
+              { name: "Visited the product page", value: 100 },
+              { name: "Added a product to the cart", value: 60 },
               { name: "Order", value: 20 },
             ],
           },
