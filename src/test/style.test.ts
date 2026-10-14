@@ -458,6 +458,31 @@ suite("diagram_style in the webview", function () {
     assert.strictEqual(await filled("A", "rgb(0, 128, 0)"), false);
   });
 
+  test("says that it does not color edges, and how to", async () => {
+    const edges = "flowchart LR\n  A[Parser] --> B[Checker]\n  B --> C[Done]";
+    await draw({ source: edges });
+    const result = await style({
+      styles: [
+        { id: "A", fill: "green" },
+        { id: "B --> C", stroke: "red" },
+      ],
+    });
+    const [styled, edge] = result.split("\n\n");
+    assert.strictEqual(styled, 'Styled "A" (fill green, text white for contrast).');
+    assert.strictEqual(
+      edge,
+      '"B --> C" is an edge, which diagram_style does not color. Color edges with a linkStyle line through diagram_edit, which numbers them in the order the source writes them, from 0, e.g. `linkStyle 0 stroke:red`.',
+    );
+    // As it says.
+    await draw({ source: `${edges}\n  linkStyle 1 stroke:red` });
+    assert.strictEqual(
+      await evaluate(
+        `getComputedStyle(document.querySelector('#diagram .diagram-relationship:not(.diagram-relationship-hit)[data-diagram-id="edge:L_B_C_0"]')).stroke`,
+      ),
+      "rgb(255, 0, 0)",
+    );
+  });
+
   test("names the ids it does not know, refuses note labels, and styles the others", async () => {
     await draw({
       source: "stateDiagram-v2\n  [*] --> A\n  A --> B\n  note right of A : Important",

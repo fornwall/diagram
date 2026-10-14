@@ -151,6 +151,10 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     const composite = new Set(kind === "state" ? compositeStateIds(source) : []);
     const unknown: string[] = [];
     const notes: string[] = [];
+    // Edges and messages go by their ids or ends, as diagram_annotate takes them.
+    const names = this.panel.itemNames;
+    const isRelationship = (id: string) =>
+      names?.resolve(id).ids.some((named) => names.relationship(named)) === true;
     const requests = change.styles.filter(({ id }) => {
       if (!known.has(id)) {
         if (EVERYTHING_IDS.test(id)) {
@@ -160,6 +164,12 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
         } else if (BACKGROUND_IDS.test(id)) {
           notes.push(
             `${JSON.stringify(id)} was not styled: ${BACKGROUND_FIXED} Color the diagram's ${ITEM_NOUNS[kind]} instead.`,
+          );
+        } else if (isRelationship(id)) {
+          notes.push(
+            kind === "flowchart"
+              ? `${JSON.stringify(id)} is an edge, which ${STYLE_TOOL} does not color. Color edges with a linkStyle line through ${EDIT_TOOL}, which numbers them in the order the source writes them, from 0, e.g. \`linkStyle 0 stroke:red\`.`
+              : `${JSON.stringify(id)} is a relationship, which ${STYLE_TOOL} does not color.`,
           );
         } else {
           unknown.push(id);
