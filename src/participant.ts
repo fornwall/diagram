@@ -28,7 +28,7 @@ import {
   STYLE_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { joinWords } from "./text";
+import { joinWords, plural } from "./text";
 import { revisionDrawn } from "./tools";
 import { resolveWorkspaceFile } from "./workspaceTools";
 
@@ -36,10 +36,23 @@ export const PARTICIPANT_ID = "diagram.participant";
 
 /** How many times to ask the model to fix a diagram that fails to render. */
 const MAX_REPAIR_ATTEMPTS = 2;
+/**
+ * Rounds of tool calls to read the diagram and explore the workspace: find files, search them,
+ * read them, then follow their imports and definitions, a hop a round.
+ */
+const EXPLORE_ROUNDS = 10;
+/**
+ * Rounds of tool calls to draw: render, view the image, fix what it or the render reports as many
+ * times as a diagram block may be repaired, then mark items or have the user pick.
+ */
+const DRAW_ROUNDS = 3 + MAX_REPAIR_ATTEMPTS;
 /** How many rounds of tool calls a single reply may take. */
-const MAX_TOOL_ROUNDS = 12;
-/** Shared across exploration and render repairs, including parallel call batches. */
-const MAX_TOOL_CALLS = 32;
+const MAX_TOOL_ROUNDS = EXPLORE_ROUNDS + DRAW_ROUNDS;
+/**
+ * Shared across exploration and render repairs, including parallel call batches: a few a round, as
+ * when reading the files that a search found, and one for each round of drawing.
+ */
+const MAX_TOOL_CALLS = 3 * MAX_TOOL_ROUNDS;
 
 const READ_ONLY_TOOLS = new Set([
   GET_STATE_TOOL,
@@ -394,6 +407,15 @@ async function streamReply(
       }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
+    // In a tool result, which any model accepts after its calls, unlike other text.
+    const left = diagram === undefined ? budgetLeft(toolUse, tools) : undefined;
+    const last = results.at(-1);
+    if (left && last) {
+      results[results.length - 1] = new vscode.LanguageModelToolResultPart(last.callId, [
+        ...last.content,
+        ...text(left),
+      ]);
+    }
     await fitToolResults(request.model, messages, results, token);
     throwIfCancelled(token);
     messages.push(vscode.LanguageModelChatMessage.User(results));
@@ -401,6 +423,29 @@ async function streamReply(
       stream.markdown("\n\n");
     }
   }
+}
+
+/**
+ * Tells a model that has not drawn yet that the tool rounds or calls left are down to those that
+ * drawing takes, so that it draws with what it has rather than explore until none are left.
+ */
+function budgetLeft(
+  { rounds, calls, notRun, drawn }: ToolUse,
+  tools: readonly vscode.LanguageModelChatTool[],
+): string | undefined {
+  const roundsLeft = MAX_TOOL_ROUNDS - rounds;
+  const callsLeft = MAX_TOOL_CALLS - calls;
+  if (notRun !== undefined || drawn !== undefined) return undefined;
+  if (roundsLeft > DRAW_ROUNDS && callsLeft > DRAW_ROUNDS) return undefined;
+  const draws = tools.some((tool) => DRAWING_TOOLS.has(tool.name));
+  if (roundsLeft <= 0 || callsLeft <= 0) {
+    // Its diagram block is drawn still.
+    return `No tool calls are left in this request: ${draws ? "reply with the complete diagram in a mermaid or echarts code block" : "answer with what you have"}.`;
+  }
+  const left = `This request has ${plural(roundsLeft, "round")} and ${plural(callsLeft, "call")} of tools left`;
+  return draws
+    ? `${left}: draw now with what you have, keeping the rest to check and fix the drawing.`
+    : `${left}: answer now with what you have.`;
 }
 
 /** The file that a call of {@link READ_FILE_TOOL} read, unless it failed. */

@@ -825,21 +825,65 @@ suite("participant", () => {
     );
   });
 
-  test("stops calling tools after twelve rounds, and says so", async () => {
+  test("stops calling tools after fifteen rounds, and says so", async () => {
     const calls = countToolCalls();
     const replies = Array.from({ length: 20 }, (_, i) => [getState(String(i))]);
     const { sent, shown } = await ask(replies);
-    assert.strictEqual(calls.count, 12);
-    assert.strictEqual(sent.length, 14);
-    assert.match(messageText(sent[13]?.messages.at(-1)), /tool round limit/);
+    assert.strictEqual(calls.count, 15);
+    assert.strictEqual(sent.length, 17);
+    assert.match(messageText(sent[16]?.messages.at(-1)), /tool round limit/);
     assert.match(shown, /Stopped tool use.*tool round limit/);
+    // From when the rounds left are those that drawing takes, the model is told to draw.
+    const left = sent.map(
+      ({ messages }) =>
+        /This request has .*|No tool calls .*/.exec(messageText(messages.at(-1)))?.[0],
+    );
+    assert.deepStrictEqual(left.slice(0, 10), Array(10).fill(undefined));
+    assert.strictEqual(
+      left[10],
+      "This request has 5 rounds and 35 calls of tools left: draw now with what you have, keeping the rest to check and fix the drawing.",
+    );
+    assert.match(left[14] ?? "", /^This request has 1 round and 31 calls/);
+    assert.strictEqual(
+      left[15],
+      "No tool calls are left in this request: reply with the complete diagram in a mermaid or echarts code block.",
+    );
+    assert.strictEqual(left[16], undefined);
   });
 
-  test("runs at most 32 tool calls, then lets the model answer", async () => {
+  test("tells a model how many tool calls are left only until it draws, and to answer in /explain", async () => {
+    assert.ok((await panel.render({ ...flowchart, title: "Flow" }, "tool")).ok);
+    countToolCalls((call) =>
+      call === 3
+        ? drawnResult("Rendered.", panel.revision)
+        : new vscode.LanguageModelToolResult([text("Read")]),
+    );
+    const batch = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) => getState(String(from + i)));
+    const drawing = await ask([
+      batch(0, 2),
+      [new vscode.LanguageModelToolCallPart("r", "diagram_render", {})],
+      batch(3, 40),
+      [text("Done.")],
+    ]);
+    assert.doesNotMatch(
+      drawing.sent.map(({ messages }) => messageText(messages.at(-1))).join(),
+      /tools left/,
+    );
+    const explained = await ask([batch(0, 40), batch(40, 2), [text("Done.")]], {
+      command: "explain",
+    });
+    assert.match(
+      messageText(explained.sent[1]?.messages.at(-1)),
+      /This request has 14 rounds and 5 calls of tools left: answer now with what you have\.$/,
+    );
+  });
+
+  test("runs at most 45 tool calls, then lets the model answer", async () => {
     const calls = countToolCalls();
-    const batch = Array.from({ length: 40 }, (_, i) => getState(String(i)));
+    const batch = Array.from({ length: 50 }, (_, i) => getState(String(i)));
     const { sent, shown } = await ask([batch, [text("Exploration stopped.")]]);
-    assert.strictEqual(calls.count, 32);
+    assert.strictEqual(calls.count, 45);
     assert.strictEqual(sent.length, 2);
     assert.match(messageText(sent[1]?.messages.at(-1)), /tool call limit/);
     assert.strictEqual(shown, "Exploration stopped.");
@@ -866,14 +910,14 @@ suite("participant", () => {
 
   test("shares the tool budget with rendering repairs", async () => {
     const calls = countToolCalls();
-    const batch = Array.from({ length: 32 }, (_, i) => getState(String(i)));
+    const batch = Array.from({ length: 45 }, (_, i) => getState(String(i)));
     const { result, sent } = await ask([
       batch,
       [text(invalid)],
       [getState("repair")],
       [text(valid)],
     ]);
-    assert.strictEqual(calls.count, 32);
+    assert.strictEqual(calls.count, 45);
     assert.strictEqual(sent.length, 4);
     assert.match(messageText(sent[3]?.messages.at(-1)), /tool call limit/);
     assert.strictEqual(result?.metadata?.source, "flowchart TD\n  A --> B");
