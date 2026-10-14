@@ -362,6 +362,42 @@ suite("echartsRenderer", () => {
     assert.strictEqual(setOptions, 2);
   });
 
+  test("checks a chart's data once, and at a new size only how it is laid out", async () => {
+    // Of more points than a layout is checked for, one of them unreadable.
+    const points: unknown[][] = Array.from({ length: 6000 }, (_, x) => [x, x % 7]);
+    points[3] = [3, "n/a"];
+    const option = {
+      xAxis: { type: "value" },
+      yAxis: {},
+      series: [{ type: "scatter", data: points }],
+    };
+    const { container, renderer, internals } = drawnRenderer(option);
+    Object.assign(container, { hidden: true, scrollTop: 0, setAttribute: () => {} });
+    Object.assign(renderer, {
+      canvas: { classList: { add: () => {} }, dispatchEvent: () => true },
+      resizeObserver: { observe: () => {}, unobserve: () => {} },
+    });
+    await renderer.render(JSON.stringify(option), "");
+    const warned = renderer.warnings();
+    assert.match(warned.join("\n"), /cannot read as a number, such as "n\/a"/);
+    const data = Object.getPrototypeOf(modelOf(internals.chart).getSeriesByIndex(0)?.getRawData());
+    const { getRawDataItem } = data;
+    let reads = 0;
+    data.getRawDataItem = function (this: unknown, index: number) {
+      reads++;
+      return getRawDataItem.call(this, index);
+    };
+    try {
+      container.clientWidth = 380;
+      (renderer as unknown as { relayout(): void }).relayout();
+    } finally {
+      data.getRawDataItem = getRawDataItem;
+    }
+    assert.strictEqual(internals.chart.getWidth(), 380);
+    assert.strictEqual(reads, 0);
+    assert.deepStrictEqual(renderer.warnings(), warned);
+  });
+
   test("draws a chart anew that ECharts left refusing every option by throwing in an action", () => {
     // An action whose handler throws, as ECharts' own can on an option it did not foresee.
     registerAction({ type: "diagramTestThrow", event: "diagramTestThrow", update: "none" }, () => {

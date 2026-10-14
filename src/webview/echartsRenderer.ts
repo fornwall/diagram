@@ -105,8 +105,10 @@ export class EChartsRenderer implements Renderer {
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
-  /** What the chart draws other than its option meant, at the size it was checked at. */
-  private drawnWarnings: string[] = [];
+  /** What the chart draws of its data other than its option meant, which no size changes. */
+  private dataWarnings: string[] = [];
+  /** What the chart lays out other than its option meant, at the size it was checked at. */
+  private layoutWarnings: string[] = [];
   private checkedAt = "";
   private title = "";
   /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
@@ -193,7 +195,8 @@ export class EChartsRenderer implements Renderer {
       this.disposeChart();
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
-    this.drawnWarnings = this.checkDrawn(option);
+    this.dataWarnings = this.checkData(option);
+    this.layoutWarnings = this.checkLayout(option);
     this.checkedAt = this.chartSize();
     if (this.scrollToStart) {
       this.scrollToStart = false;
@@ -216,7 +219,8 @@ export class EChartsRenderer implements Renderer {
   hide(): void {
     this.disposeChart();
     this.option = undefined;
-    this.drawnWarnings = [];
+    this.dataWarnings = [];
+    this.layoutWarnings = [];
     this.scrolls(undefined);
     this.container.hidden = true;
     this.canvas.classList.remove("chart-mode");
@@ -240,21 +244,34 @@ export class EChartsRenderer implements Renderer {
     return capWarnings([
       ...(this.option ? [...optionWarnings(this.option), ...toolWarnings(this.option)] : []),
       ...(this.items()?.warnings ?? []),
-      ...this.drawnWarnings,
+      ...this.dataWarnings,
+      ...this.layoutWarnings,
     ]);
   }
 
   /**
-   * What the chart draws other than the option meant, which a failing check leaves unsaid. Its
-   * layout is read from a copy drawn without animation, at the same size, as the chart starts what
-   * it animates where the animation moves it from, unless it has too many items to draw twice.
+   * What the chart draws of its data other than the option meant, which a failing check leaves
+   * unsaid: the same at any size, unlike how the chart is laid out.
    */
-  private checkDrawn(option: JsonObject): string[] {
+  private checkData(option: JsonObject): string[] {
+    try {
+      return this.chart ? dataWarnings(this.chart, option) : [];
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  }
+
+  /**
+   * What the chart lays out other than the option meant, which a failing check leaves unsaid,
+   * read from a copy drawn without animation, at the same size, as the chart starts what it
+   * animates where the animation moves it from, unless it has too many items to draw twice.
+   */
+  private checkLayout(option: JsonObject): string[] {
     const { chart, echarts, theme, layout } = this;
     if (!chart || !echarts || !theme || !layout) return [];
     const warnings: string[] = [];
     try {
-      warnings.push(...dataWarnings(chart, option));
       if (itemCount(chart) > MAX_LAYOUT_CHECKED_ITEMS) return warnings;
       const width = chart.getWidth();
       const height = chart.getHeight();
@@ -649,7 +666,7 @@ export class EChartsRenderer implements Renderer {
     const size = this.chartSize();
     if (size && size !== this.checkedAt && this.relayoutTimer === undefined) {
       this.checkedAt = size;
-      this.drawnWarnings = this.checkDrawn(option);
+      this.layoutWarnings = this.checkLayout(option);
       warningsMayChange(this.canvas);
     }
   }
