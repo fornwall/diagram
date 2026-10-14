@@ -21,10 +21,13 @@ const ARROWS = [
 const BACKWARD = /^<(?!.*(?:>|[)xo*])$)/;
 /**
  * A flowchart link with its label on it, as in "A -- Yes --> B", "A -. Yes .-> B" or
- * "A == Yes ==> B": its ends and label.
+ * "A == Yes ==> B", or a requirement diagram's relationship, as in "sim - satisfies -> req": its
+ * ends and label.
  */
 const LABELED_LINK =
-  /^(.+?)\s*(?:--|==|-\.)\s+(.+?)\s+(?:[-=.]*[-=.](?:>|[xo])|[-=.]{2,})\s*(.+)$/s;
+  /^(.+?)\s*(?:--|==|-\.|-)\s+(.+?)\s+(?:[-=.]*[-=.](?:>|[xo])|[-=.]{2,})\s*(.+)$/s;
+/** A label of a stereotype alone, as a requirement diagram's "<<satisfies>>": its name. */
+const STEREOTYPE = /^<<(.*)>>$/s;
 /** A letter, digit or underscore, which an id goes on with. */
 const WORD = /[\p{L}\p{N}_]/u;
 /** A relationship id's prefix, which a model may also put before ends. */
@@ -35,13 +38,17 @@ const PIPED = /^\|([^|]*)\|(.*)$/s;
 /** A key for the relationships from the source to the target. */
 const pair = (source: string, target: string) => JSON.stringify([source, target]);
 
-/** Label text as compared: without quotes, line breaks and runs of spaces, in lowercase. */
+/**
+ * Label text as compared: without quotes, the angle brackets of a stereotype, line breaks and runs
+ * of spaces, in lowercase.
+ */
 const comparable = (text: string) =>
   text
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^"(.*)"$/, "$1")
+    .replace(STEREOTYPE, "$1")
     .toLowerCase();
 
 /** The items of a drawing: its nodes, and its edges or sequence messages between them. */
@@ -316,10 +323,11 @@ function arrowAt(name: string, index: number): string | undefined {
 
 /**
  * The relationship's own label, as "Yes" of "Start → Check: Yes", which the page gives apart from
- * the labels of its ends, as those may hold colons too, as in "Step 1: Parse".
+ * the labels of its ends, as those may hold colons too, as in "Step 1: Parse"; of a stereotype, as
+ * a requirement diagram's "<<satisfies>>", its name, as the source writes it.
  */
 function labelText({ relationship }: DiagramNode): string {
-  return relationship?.text ?? "";
+  return (relationship?.text ?? "").replace(STEREOTYPE, "$1");
 }
 
 /** E.g. `"X", "A --> C" (nothing goes from "A" to "C")`. */

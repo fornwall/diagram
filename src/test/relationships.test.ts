@@ -392,6 +392,33 @@ suite("relationships", function () {
     assert.doesNotMatch(image, /leaves them out/);
   });
 
+  test("names a requirement diagram's relationships by their kinds, as the source writes them", async () => {
+    await draw({
+      source:
+        "requirementDiagram\n  requirement req {\n    id: 1\n  }\n  element sim {\n    type: simulation\n  }\n  sim - satisfies -> req\n  sim - verifies -> req",
+    });
+    const ids = idsByLabel();
+    assert.deepStrictEqual(Object.keys(ids), [
+      "sim → req: <<satisfies>>",
+      "sim → req: <<verifies>>",
+    ]);
+    const result = await invokeTool(new AnnotateDiagramTool(page.panel), {
+      marks: ["sim --> req: satisfies", { id: "sim - verifies -> req", mark: "problem" }],
+    });
+    assert.strictEqual(
+      result,
+      'Marked 2 items: "sim --> req: satisfies" (current), "sim - verifies -> req" (problem).',
+    );
+    assert.match(
+      page.panel.describeForModel() ?? "",
+      /as in "sim --> req: satisfies", for diagram_annotate/,
+    );
+    // Also as the drawing shows it.
+    assert.deepStrictEqual(page.panel.itemNames?.resolve("sim --> req: <<verifies>>").ids, [
+      ids["sim → req: <<verifies>>"],
+    ]);
+  });
+
   test("names edges by their own labels, not by the colons in the labels of their ends", async () => {
     await draw({
       source:
