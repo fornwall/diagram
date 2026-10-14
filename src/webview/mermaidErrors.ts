@@ -800,6 +800,64 @@ export function emptyStateError(
 }
 
 /**
+ * The error for two links of a flowchart with the same id, which Mermaid fails to draw with
+ * "Cannot read properties of undefined (reading 'filter')". Mermaid names a link by the ids of its
+ * ends, as L_P_Q_R_0 for both P_Q --> R and P --> Q_R, unless the source names it, also with a
+ * name that Mermaid gives another link.
+ */
+export function duplicateEdgeError(
+  error: unknown,
+  db: DiagramDb | undefined,
+  source: string,
+): Error | undefined {
+  if (!(error instanceof Error) || !/^Cannot read properties of undefined\b/.test(error.message)) {
+    return undefined;
+  }
+  const edges = db?.getData?.().edges ?? [];
+  const ids = new Set(edges.map(({ id }) => id));
+  const first = new Map<string, (typeof edges)[number]>();
+  for (const edge of edges) {
+    const other = first.get(edge.id);
+    if (!other) {
+      first.set(edge.id, edge);
+      continue;
+    }
+    const normalized = source.replace(/\r\n?/g, "\n");
+    const lineAt = (at: number | undefined) =>
+      at === undefined ? undefined : lineAndColumn(normalized, at).line;
+    const statement = (line: number | undefined) =>
+      line === undefined ? "" : (normalized.split("\n")[line - 1] ?? "").trim();
+    let free = 1;
+    while (ids.has(`e${free}`)) free++;
+    const named = [other, edge].find(({ isUserDefinedId }) => isUserDefinedId);
+    if (named) {
+      const generated = named === edge ? other : edge;
+      const line = lineAt(find(normalized, `${literal(named.id)}@`));
+      const fixed = statement(line).replace(`${named.id}@`, `e${free}@`);
+      return errorAt(
+        normalized,
+        find(normalized, `${literal(named.id)}@`),
+        `The link's id "${named.id}" is also the id that Mermaid gives the link from "${generated.start}" to "${generated.end}", and it cannot draw both: give the link another id, as in ${fixed}.`,
+      );
+    }
+    const [a, b] = [other, edge].map(({ start, end }) =>
+      find(normalized, `${word(start)}.*${word(end)}`),
+    );
+    const fixed = statement(lineAt(b)).replace(
+      new RegExp(`(${word(edge.start)}\\s*)((?:<|o|x)?(?:--|==|-\\.)[-.=]*[>ox]?)`),
+      `$1e${free}@$2`,
+    );
+    const where = a === undefined ? "" : ` on line ${lineAt(a)}`;
+    return errorAt(
+      normalized,
+      b,
+      `The links from "${other.start}" to "${other.end}"${where} and from "${edge.start}" to "${edge.end}" both get the id "${edge.id}", as Mermaid names a link by its ends, and it cannot draw both: rename a node, or give one link an id of its own, as in ${fixed}.`,
+    );
+  }
+  return undefined;
+}
+
+/**
  * The error for a relationship to something that the diagram does not define, such as an
  * undeclared requirement, on which Mermaid's layouts fail without saying what it is.
  */

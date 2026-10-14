@@ -16,6 +16,7 @@ import type { DiagramImage, ModelImage } from "./images";
 import { closeLinkMenu } from "./linkMenu";
 import {
   describeError,
+  duplicateEdgeError,
   emptyStateError,
   nestingError,
   numberError,
@@ -701,6 +702,7 @@ export class MermaidRenderer implements Renderer {
         throw (
           undefinedEndError(parsed, source) ??
           emptyStateError(error, parsed, source) ??
+          duplicateEdgeError(error, parsed, source) ??
           (await statementError(error, source, (part) => mermaid.parse(part))) ??
           describeError(error, source, () => mermaid.detectType(text))
         );

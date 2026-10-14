@@ -124,6 +124,19 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       'Parse error on line 5, column 12: unexpected "Group". Give the subgraph an id to link to it: "subgraph My_Group [My Group]", and link to My_Group.',
     fixed: "flowchart TD\n  subgraph My_Group [My Group]\n    A --> B\n  end\n  C --> My_Group",
   },
+  // Links that get the same id, which Mermaid fails on with "reading 'filter'".
+  {
+    broken: "flowchart LR\n  P_Q --> R\n  P --> Q_R",
+    error:
+      'Error on line 3: The links from "P_Q" to "R" on line 2 and from "P" to "Q_R" both get the id "L_P_Q_R_0", as Mermaid names a link by its ends, and it cannot draw both: rename a node, or give one link an id of its own, as in P e1@--> Q_R.',
+    fixed: "flowchart LR\n  P_Q --> R\n  P e1@--> Q_R",
+  },
+  {
+    broken: "flowchart LR\n  C L_A_B_0@--> D\n  A --> B",
+    error:
+      'Error on line 2: The link\'s id "L_A_B_0" is also the id that Mermaid gives the link from "A" to "B", and it cannot draw both: give the link another id, as in C e1@--> D.',
+    fixed: "flowchart LR\n  C e1@--> D\n  A --> B",
+  },
   // Subgraphs.
   {
     broken: "flowchart TD\n  subgraph S\n    A --> B\n  subgraph T\n    C\n  end",

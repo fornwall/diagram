@@ -59,6 +59,8 @@ interface ShapeEdge {
   thickness?: string;
   arrowTypeStart?: string;
   arrowTypeEnd?: string;
+  /** Whether the source gives the edge its id, as in A e1@--> B, rather than Mermaid. */
+  isUserDefinedId?: boolean;
 }
 
 export interface DiagramDb {
