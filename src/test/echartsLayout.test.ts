@@ -453,6 +453,37 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("keeps the shares of diagram_chart's pie labels where a word of them does not fit", () => {
+    const table =
+      "component,bugs\nParser,42\nRenderer,31\nCommand line interface,9\nDocumentation,6\nInstallation scripts,5";
+    const shares = ["45.16%", "33.33%", "9.68%", "6.45%", "5.38%"];
+    // Of the labels and the legend.
+    const words = new Set(table.split(/[\s,]+/).flatMap((word) => [word, `${word}:`]));
+    // Beside a pie of the panel's radius, and of diagram_chart's doughnut, where the shares fit.
+    for (const [width, type] of [
+      [260, "pie"],
+      [300, "pie"],
+      [350, "doughnut"],
+    ] as const) {
+      const size = { width, height: 575 };
+      const option = layout(
+        builtOption({ type, data: "unused", labelColumn: "component" }, table),
+        size,
+      );
+      const drawn = [...svgOf(option, size).matchAll(/>([^<>]+)<\/text>/g)]
+        .map(([, text = ""]) => text)
+        .join(" ");
+      // Each share, of a word cut short rather than broken within it.
+      for (const share of shares) assert.ok(drawn.includes(share), `${share} of ${drawn}`);
+      for (const word of drawn.split(/\s+/).filter(Boolean)) {
+        assert.ok(
+          words.has(word) || shares.includes(word) || /…:?$/.test(word),
+          `${word} of ${drawn}`,
+        );
+      }
+    }
+  });
+
   test("makes room for a pie's legend by the names of its slices", () => {
     const pie = (name: string, value: number) => ({
       legend: {},

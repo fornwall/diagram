@@ -1333,23 +1333,63 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   if (chosen && outer > most) {
     pie.radius = scaleRadius(pie.radius, Math.max(most, MIN_LABELED_PIE * half) / outer);
   }
-  // A label of a word wider than the room beside the pie, as of the option's radius, is cut short
-  // rather than broken within the word, which ECharts does to a word longer than a line: the
-  // tooltip tells it whole.
+  // A word of a name wider than the room beside the pie, as of the option's radius, is cut short
+  // rather than broken within it, which ECharts does to a word longer than a line, and the rest of
+  // the label, as the share it tells, goes onto lines after it; a label of no name to cut short, or
+  // beside too little room for its share, is cut short whole. The tooltip tells it whole.
   const radius = outerRadius(pie.radius, half) ?? outer;
   const edge = typeof label.edgeDistance === "number" ? label.edgeDistance : 8;
-  const cut = labels.map(
-    ({ across, word }) => boxWidth / 2 - edge - 5 - across * (radius + length) < word,
-  );
-  if (lines && Array.isArray(pie.data) && cut.some(Boolean)) {
+  // The room beside each slice whose label has a word wider than it.
+  const rooms = labels.map(({ across, word }) => {
+    const room = boxWidth / 2 - edge - 5 - across * (radius + length);
+    return room < word ? room : undefined;
+  });
+  if (lines && Array.isArray(pie.data) && rooms.some((room) => room !== undefined)) {
+    const { template, values } = labelTemplate(label);
     pie.data = pie.data.map((item: unknown, index) => {
-      if (!cut[index]) return item;
+      const room = rooms[index];
+      if (room === undefined) return item;
       const own: JsonObject = isPlainObject(item) ? item : { value: item };
       const itemLabel = isPlainObject(own.label) ? own.label : {};
-      return { ...own, label: { overflow: "truncate", ellipsis: "…", ...itemLabel } };
+      // The characters of a word cut short, with its ellipsis and the punctuation after it, as the
+      // ":" of "{b}: {d}%", of letters wider than most, as of a word's capital.
+      const most = Math.floor(room / (size.charWidth * 1.15)) - 2;
+      const name = own.name;
+      const formatter =
+        typeof name === "string" &&
+        template.includes("{b}") &&
+        // Not of the markup of a template, which ECharts would read in the name.
+        !/[{}]/.test(name) &&
+        most >= 1 &&
+        // Nor beside a value that the room is too narrow for, as "25.74%".
+        room >= (values > 0 ? VALUE_WORD - 1 : 0) * size.charWidth
+          ? template.replaceAll("{b}", () =>
+              name.replace(/\S+/g, (word) =>
+                word.length > most + 1 ? `${word.slice(0, most)}…` : word,
+              ),
+            )
+          : undefined;
+      return {
+        ...own,
+        label: formatter
+          ? { formatter, ...itemLabel }
+          : { overflow: "truncate", ellipsis: "…", ...itemLabel },
+      };
     });
   }
 }
+
+/**
+ * The template that labels the slices of a pie, by default their names, and how many values it
+ * tells besides, as the "{d}" of "{b}: {d}%".
+ */
+function labelTemplate(label: JsonObject): { template: string; values: number } {
+  const template = typeof label.formatter === "string" ? label.formatter : "{b}";
+  return { template, values: template.match(/\{(?!b\})[^{}|]*\}/g)?.length ?? 0 };
+}
+
+/** The characters of the widest value that a label tells, as "25.74%", with the punctuation after it. */
+const VALUE_WORD = 7;
 
 /**
  * Whether the option sets how to label the slices of a pie, as with a template that tells their
@@ -1384,8 +1424,7 @@ function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
   const label = isPlainObject(pie.label) ? pie.label : {};
   // ECharts labels a slice by its name, and a template adds its text and, for each value, about
   // 6 characters, as "25.74".
-  const template = typeof label.formatter === "string" ? label.formatter : "{b}";
-  const values = template.match(/\{(?!b\})[^{}|]*\}/g)?.length ?? 0;
+  const { template, values } = labelTemplate(label);
   const added = template.replace(/\{[^{}|]*\}/g, "").length + 6 * values;
   const named = template.includes("{b}");
   const value = (item: unknown) => {
@@ -1402,7 +1441,10 @@ function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
     before += share;
     const name = named ? String((isPlainObject(item) ? item.name : undefined) ?? "") : "";
     // With the punctuation after it, as the ":" of "{b}: {d}%".
-    const word = Math.max(values > 0 ? 7 : 0, ...name.split(/\s+/).map((part) => part.length + 1));
+    const word = Math.max(
+      values > 0 ? VALUE_WORD : 0,
+      ...name.split(/\s+/).map((part) => part.length + 1),
+    );
     const chars = name.length + added;
     return {
       across: Math.abs(Math.cos(middle)),
