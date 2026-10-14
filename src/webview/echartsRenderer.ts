@@ -4,6 +4,7 @@
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
+import { dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
 import { ChartFocus } from "./echartsFocus";
 import {
   ChartItems,
@@ -46,6 +47,8 @@ export const SETTLE_DELAY = 150;
 const RESIZE_BUDGET = 30;
 /** How long a line of values grows in an option formatted for editing before they go on the next. */
 const LINE_LENGTH = 100;
+/** The items of a chart up to which its layout is checked, which draws it a second time. */
+const MAX_LAYOUT_CHECKED_ITEMS = 5_000;
 
 /** A zrender element, which can animate, and the group it is in. */
 interface Animated {
@@ -90,6 +93,8 @@ export class EChartsRenderer implements Renderer {
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
+  /** What the chart draws other than its option meant, as first drawn. */
+  private drawnWarnings: string[] = [];
   private title = "";
   /** The size, motion preference and blur of the last layout, which decide whether to lay out again. */
   private laidOut = "";
@@ -175,6 +180,7 @@ export class EChartsRenderer implements Renderer {
       this.disposeChart();
       throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
     }
+    this.drawnWarnings = this.checkDrawn(option);
     if (this.scrollToStart) {
       this.scrollToStart = false;
       this.container.scrollTop = 0;
@@ -196,6 +202,7 @@ export class EChartsRenderer implements Renderer {
   hide(): void {
     this.disposeChart();
     this.option = undefined;
+    this.drawnWarnings = [];
     this.scrolls(undefined);
     this.container.hidden = true;
     this.canvas.classList.remove("chart-mode");
@@ -219,7 +226,42 @@ export class EChartsRenderer implements Renderer {
     return [
       ...(this.option ? [...optionWarnings(this.option), ...toolWarnings(this.option)] : []),
       ...(this.items()?.warnings ?? []),
+      ...this.drawnWarnings,
     ];
+  }
+
+  /**
+   * What the chart draws other than the option meant, which a failing check leaves unsaid. Its
+   * layout is read from a copy drawn without animation, at the same size, as the chart starts what
+   * it animates where the animation moves it from, unless it has too many items to draw twice.
+   */
+  private checkDrawn(option: JsonObject): string[] {
+    const { chart, echarts, theme, layout } = this;
+    if (!chart || !echarts || !theme || !layout) return [];
+    const warnings: string[] = [];
+    try {
+      warnings.push(...dataWarnings(chart, option));
+      if (itemCount(chart) > MAX_LAYOUT_CHECKED_ITEMS) return warnings;
+      const width = chart.getWidth();
+      const height = chart.getHeight();
+      const still = echarts.init(null, theme.echarts, {
+        renderer: "svg",
+        ssr: true,
+        width,
+        height,
+      });
+      try {
+        const copy = cloneOption(layout);
+        disableAnimation(copy);
+        still.setOption(copy, { notMerge: true });
+        warnings.push(...layoutWarnings(still, option));
+      } finally {
+        still.dispose();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    return warnings;
   }
 
   showMarks(annotation: Annotation): void {

@@ -222,6 +222,36 @@ suite("ECharts in the webview", function () {
     assert.match(outcome.error, /unsupported type "map"/);
   });
 
+  test("tells what a chart draws other than its option meant, as laid out once animated", async () => {
+    // The nodes of a tree start at its root and move out to where they are laid out.
+    const leaf = "a leaf whose name is far too long to fit beside the tree, which goes on and on";
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        xAxis: { type: "category", data: ["A", "B"] },
+        yAxis: { max: 10, gridIndex: 0 },
+        grid: { right: "55%" },
+        series: [
+          { type: "bar", data: [5, 50] },
+          { type: "tree", left: "55%", data: [{ name: "root", children: [{ name: leaf }] }] },
+        ],
+      }),
+    });
+    assert.deepStrictEqual(page.panel.warnings, [
+      'series[0] has values up to 50, above the "max" of yAxis, 10, which ECharts cuts off at the edge of the plot: raise "max", or leave it out.',
+      `series[1] has the text ${JSON.stringify(`${leaf.slice(0, 40)}…`)} cut off at the right edge of the chart: leave room for them with the series' "left", "right", "top" or "bottom", or shorten them.`,
+    ]);
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({
+        xAxis: { type: "category", data: ["A", "B"] },
+        yAxis: { max: 100 },
+        series: [{ type: "bar", data: [5, 50] }],
+      }),
+    });
+    assert.deepStrictEqual(page.panel.warnings, []);
+  });
+
   test("selects and marks chart names with surrounding spaces without conflating them", async () => {
     await renderChart({
       series: [
