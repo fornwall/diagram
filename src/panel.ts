@@ -1107,9 +1107,8 @@ export class DiagramPanel implements vscode.Disposable {
     const outcome = await this.renderCurrent({ keepSelection: true });
     // The marks and the selection of items that the edit removed would name nothing. The page
     // selects the others again, and says nothing when none is left.
-    const { annotation, drawn } = this;
-    if (outcome.ok && drawn?.nodeIds) {
-      const known = new Set([...drawn.nodeIds, ...(drawn.relationships ?? []).map(({ id }) => id)]);
+    const { annotation, itemNames: known } = this;
+    if (outcome.ok && known) {
       this.selection = this.selection.filter(({ id }) => known.has(id));
       const marks = annotation?.marks.filter(({ id }) => known.has(id));
       if (annotation && marks && marks.length < annotation.marks.length) {
