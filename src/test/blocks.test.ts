@@ -92,6 +92,15 @@ suite("blocks", () => {
     }
   });
 
+  test("titles a chart written as a JavaScript object literal, without running code", () => {
+    const chartTitle = (source: string) => guessTitle({ language: "echarts", source });
+    const literal = "{\n  // Monthly\n  title: {text: 'Sales'},\n  series: [{type: 'bar'}],\n}";
+    assert.strictEqual(chartTitle(literal), "Sales");
+    const code = "{title: {text: (globalThis.diagramTitleRan = 'Ran')}, series: []}";
+    assert.strictEqual(chartTitle(code), "Chart");
+    assert.strictEqual((globalThis as Record<string, unknown>).diagramTitleRan, undefined);
+  });
+
   function mermaidTitle(source: string): string {
     return guessTitle({ language: "mermaid", source });
   }

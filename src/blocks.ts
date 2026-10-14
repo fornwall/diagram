@@ -1,6 +1,7 @@
 import { FenceScanner, fenceMarker, trimBlankLines } from "./fences";
 import { DIRECTIVE } from "./mermaidSyntax";
-import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
+import { DIAGRAM_LANGUAGES, type DiagramLanguage, isPlainObject } from "./protocol";
+import { literalValue } from "./webview/optionSource";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
 export interface DiagramBlock {
@@ -24,18 +25,17 @@ export function guessTitle({ language, source }: DiagramBlock): string {
   return language === "echarts" ? guessChartTitle(source) : guessMermaidTitle(source);
 }
 
-/** Read JSON titles only: model-written JavaScript must never execute in the extension host. */
+/**
+ * Reads the title of JSON or a JavaScript object literal without evaluating it: model-written
+ * JavaScript must never execute in the extension host.
+ */
 function guessChartTitle(source: string): string {
-  try {
-    const { title } = JSON.parse(source) ?? {};
-    const text: unknown = (Array.isArray(title) ? title[0] : title)?.text;
-    if (typeof text === "string" && text.trim()) {
-      return text.trim();
-    }
-  } catch {
-    // A JavaScript option, or invalid source that is reported when rendering.
-  }
-  return "Chart";
+  // Not of an option with code, or invalid source that is reported when rendering.
+  const option = literalValue(source);
+  const title: unknown = isPlainObject(option) ? option.title : undefined;
+  const first: unknown = Array.isArray(title) ? title[0] : title;
+  const text = isPlainObject(first) ? first.text : undefined;
+  return typeof text === "string" && text.trim() ? text.trim() : "Chart";
 }
 
 /** Types with title statements; in other types, a "title" line may be a node. */

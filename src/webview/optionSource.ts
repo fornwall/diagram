@@ -167,6 +167,20 @@ export function formatOption(source: string): string {
 }
 
 /**
+ * The value of a source of literals only, JSON or a JavaScript object literal, read without
+ * evaluating any of it, as the extension host may read a model's or a document's source; else
+ * undefined.
+ */
+export function literalValue(source: string): unknown {
+  try {
+    return JSON.parse(source);
+  } catch {
+    const scanned = scan(source);
+    return Array.isArray(scanned) && scanned.length === 1 ? scanned[0] : undefined;
+  }
+}
+
+/**
  * The top-level values of a source of literals only; otherwise its first syntax error, where it
  * goes beyond literals, or undefined if it is nested too deeply to scan.
  */
