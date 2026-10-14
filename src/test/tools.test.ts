@@ -78,6 +78,42 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_getState gives the source of a diagram before a long list of its relationships", async () => {
+    const { panel: shown, webview } = await newFakePanel();
+    const count = 1_200;
+    const edges = Array.from({ length: count }, (_, i) => `  n${i}[Service ${i}] --> n${i + 1}`);
+    const source = `flowchart TD\n${edges.join("\n")}`;
+    const relationships = Array.from({ length: count }, (_, i) => ({
+      id: `edge:L_n${i}_n${i + 1}_0`,
+      label: `Service ${i} → Service ${i + 1}`,
+      relationship: {
+        kind: "edge",
+        source: `n${i}`,
+        target: `n${i + 1}`,
+        direction: "forward",
+      } as const,
+    }));
+    webview.answer = (message): FromWebview | undefined =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            relationships,
+          }
+        : undefined;
+    assert.ok((await shown.render({ language: "mermaid", source, title: "Services" }, "tool")).ok);
+    const full = shown.describeForModel({ detail: "full" }) ?? "";
+    assert.ok(full.length > 100_000, String(full.length));
+    // Without a budget, and with one that the source fits but not the list.
+    const budget = { tokenBudget: 20_000, countTokens: async (text: string) => text.length / 4 };
+    for (const room of [undefined, budget]) {
+      const state = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, room);
+      assert.ok(state.includes(source), state.slice(0, 500));
+      assert.match(state, /It has 1,200 selectable relationships, too many to list/);
+    }
+  });
+
   test("diagram_render says it renders a chart for a source that starts with a brace", () => {
     const tool = new RenderDiagramTool(panel);
     const message = (input: { source: string; language?: string }) =>

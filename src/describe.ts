@@ -29,10 +29,11 @@ import { formatOption } from "./webview/optionSource";
 
 /**
  * How much of a long source and list of relationships to give: "brief" leaves them out of every
- * chat request, "full" gives them, as {@link GET_STATE_TOOL} does, and "summary" leaves out even a
- * short source, when the full description has no room in the model's input.
+ * chat request, "full" gives them, as {@link GET_STATE_TOOL} does, "source" gives the source but
+ * not a long list, when the full description has no room in the model's input, and "summary"
+ * leaves out even a short source, when that has none either.
  */
-export type Detail = "brief" | "full" | "summary";
+export type Detail = "brief" | "full" | "source" | "summary";
 
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
@@ -173,7 +174,7 @@ export function describeDiagram(
   } else if (listed && has(GET_STATE_TOOL)) {
     const many = plural(relationships.length, "selectable relationship");
     lines.push(
-      detail === "summary"
+      detail === "summary" || detail === "source"
         ? `It has ${many}, too many to list in the room left in your input.`
         : `It has ${many}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
     );
@@ -309,7 +310,7 @@ function describeSource(
       ? `(${leftOut})`
       : `(${leftOut} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
   }
-  if (source.length <= MAX_SOURCE_LENGTH || detail === "full") {
+  if (source.length <= MAX_SOURCE_LENGTH || detail === "full" || detail === "source") {
     return codeFence(source, language);
   }
   const why = has(GET_STATE_TOOL)

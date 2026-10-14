@@ -200,16 +200,22 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
     // A source too long to repeat in every chat request is given in full here, as a model has to
     // read it to change it, unless it does not fit, as the caller would cut it short.
     const full = this.panel.describeForModel({ detail: "full" });
-    const summary = this.panel.describeForModel({ detail: "summary" });
-    if (full === undefined || summary === undefined) {
+    if (full === undefined) {
       return textResult(
         `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
       );
     }
     // A caller that gives no budget gets no more than a large Mermaid diagram's description takes.
     const room = options.tokenizationOptions;
-    const fitting = room ? await fits(full, room, token) : full.length <= MAX_UNBUDGETED_LENGTH;
-    return textResult(fitting ? full : summary);
+    const fitting = async (text: string) =>
+      room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    if (await fitting(full)) return textResult(full);
+    // The source, which a model needs to change the diagram, before a long list of relationships.
+    const source = this.panel.describeForModel({ detail: "source" });
+    if (source !== undefined && source !== full && (await fitting(source))) {
+      return textResult(source);
+    }
+    return textResult(this.panel.describeForModel({ detail: "summary" }) ?? full);
   }
 }
 
