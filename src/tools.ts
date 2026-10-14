@@ -204,10 +204,18 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
         `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
       );
     }
+    // A caller that gives no budget gets no more than a large Mermaid diagram's description takes.
     const room = options.tokenizationOptions;
-    return textResult(!room || (await fits(full, room, token)) ? full : summary);
+    const fitting = room ? await fits(full, room, token) : full.length <= MAX_UNBUDGETED_LENGTH;
+    return textResult(fitting ? full : summary);
   }
 }
+
+/**
+ * A description longer than this, as of a chart of much data, is given as a summary to a caller
+ * that gives no token budget: about 30,000 tokens.
+ */
+const MAX_UNBUDGETED_LENGTH = 100_000;
 
 /**
  * A token rarely stands for more than 10 characters, and typically for 3 or 4. Text longer than

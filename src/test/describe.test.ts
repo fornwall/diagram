@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
+import { buildChart } from "../charts";
 import { parseTable } from "../data";
-import { describeChartParameters, describeDiagram } from "../describe";
+import { describeChartParameters, describeDiagram, withoutValueRuns } from "../describe";
 import { lineDiff } from "../lineDiff";
 import type { DiagramState } from "../panel";
 import { formatOption } from "../webview/optionSource";
@@ -125,10 +126,55 @@ suite("describe", () => {
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(summary, /too long to repeat in every request; diagram_getState gives it in full/);
     assert.ok(describeDiagram(state, { detail: "full" }).includes(source));
-    // A generated chart is changed with the chart tools, not by rewriting its long option.
-    const generated = { ...chart, source: `{"dataset":${"[1,2],".repeat(10_000)}}` };
-    const full = describeDiagram(generated, { detail: "full" });
-    assert.match(full, /too long to show here/);
+  });
+
+  test("a long chart option is given without its long runs of values, and in full when asked for", () => {
+    const rows = Array.from({ length: 4_000 }, (_, i) => `r${i},${i * 7}`).join("\n");
+    const spec = { type: "bar", data: `name,value\n${rows}` } as const;
+    const source = formatOption(JSON.stringify(buildChart(spec, parseTable(spec.data)).option));
+    assert.ok(source.length > 30_000, String(source.length));
+    const generated = { ...chart, chart: spec, source };
+    const brief = describeDiagram(generated);
+    assert.match(
+      brief,
+      /The source is [\d,]+ characters long, too long to repeat in every request; diagram_getState gives it in full\. Here it is with long runs of lines of values left out, each marked by a line of "…", which diagram_edit's oldText must not include:\n```echarts\n\{\n/,
+    );
+    assert.ok(brief.length < 2_000, brief);
+    // The other lines are those of the source, from which an edit takes its text.
+    const shown = /```echarts\n([\s\S]*)\n```/.exec(brief)?.[1]?.split("\n") ?? [];
+    const marks = shown.filter((line) => line.includes("…"));
+    assert.deepStrictEqual(
+      marks.map((line) => line.trim().replace(/[\d,]+/, "N")),
+      ["… N more lines of values …", "… N more lines of values …"],
+    );
+    const lines = new Set(source.split("\n"));
+    assert.ok(shown.every((line) => line.includes("…") || lines.has(line)));
+    assert.ok(shown.some((line) => /"type": "bar"/.test(line)));
+    // Asked for, it is given in full, unless the room left is too small, when it is shortened.
+    assert.ok(describeDiagram(generated, { detail: "full" }).includes(source));
+    assert.match(
+      describeDiagram(generated, { detail: "summary" }),
+      /too long for the room left in your input\. Here it is with long runs of lines/,
+    );
+    // Neither a source without such runs, nor a Mermaid one, is shortened.
+    const oneLine = { ...chart, source: `{"dataset":${"[1,2],".repeat(10_000)}}` };
+    assert.match(
+      describeDiagram(oneLine),
+      /too long to repeat in every request; diagram_getState gives it in full\.\)/,
+    );
+    assert.match(
+      describeDiagram(oneLine, { tools: new Set() }),
+      /^\(The source is [\d,]+ characters long, too long to show here\.\)$/m,
+    );
+    assert.match(
+      describeDiagram(oneLine, { detail: "summary" }),
+      /\(The source, [\d,]+ characters long, is left out, as the room left in your input is too small for it\.\)/,
+    );
+    assert.strictEqual(
+      withoutValueRuns(`{\n${"  1,\n".repeat(20)}  2\n}`),
+      "{\n  1,\n  1,\n  … 18 more lines of values …\n  2\n}",
+    );
+    assert.strictEqual(withoutValueRuns('{\n  "a": [\n    1,\n    2\n  ]\n}'), undefined);
   });
 
   test("many relationships are left out of requests, but listed in full when asked for", () => {

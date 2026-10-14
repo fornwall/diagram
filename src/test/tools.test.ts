@@ -10,6 +10,7 @@ import {
   PickDiagramNodesTool,
   RenderDiagramTool,
 } from "../tools";
+import { formatOption } from "../webview/optionSource";
 import { afterTest, cancellationSource, replace } from "./afterTest";
 import { newFakePanel, newPanel, openWebviewPanel, within } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
@@ -58,6 +59,23 @@ suite("tools", () => {
       /\(The source, 40,013 characters long, is left out, as the room left in your input is too small for it\. Without it, you cannot change the diagram: tell the user/,
     );
     assert.match(summary, /"Flow"[\s\S]*The user edited this source/);
+  });
+
+  test("diagram_getState gives a caller without a token budget a large chart without its data", async () => {
+    const data = Array.from({ length: 20_000 }, (_, i) => i);
+    const source = formatOption(JSON.stringify({ series: [{ type: "line", data }] }));
+    values.set("diagram.state", { ...flowchart, language: "echarts", source, title: "Line" });
+    panel.dispose();
+    panel = newPanel(values);
+    const state = await invokeTool(new GetDiagramStateTool(panel), {});
+    assert.ok(source.length > 100_000);
+    assert.match(state, /too long for the room left in your input\. Here it is with long runs/);
+    assert.ok(state.length < 2_000, state);
+    // With a budget that it fits, it is given in full.
+    const budget = { tokenBudget: 100_000, countTokens: async (text: string) => text.length / 4 };
+    assert.ok(
+      (await invokeTool(new GetDiagramStateTool(panel), {}, undefined, budget)).includes(source),
+    );
   });
 
   test("diagram_render says it renders a chart for a source that starts with a brace", () => {

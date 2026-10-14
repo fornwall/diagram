@@ -47,6 +47,13 @@ const MAX_LISTED_EDITS = 20;
 const MAX_EDIT_VALUE_LENGTH = 60;
 /** A diff of the user's changes this long is given even if longer than the source. */
 const SMALL_DIFF_LENGTH = 1_000;
+/**
+ * An option without its long runs of values is given this long when the full source does not fit:
+ * about 3,000 tokens.
+ */
+const MAX_SUMMARY_SOURCE_LENGTH = 10_000;
+/** Longer runs of lines of values alone, such as of the data of a series, are left out of a long option. */
+const MAX_VALUE_LINES = 8;
 
 /** What the panel knows of the drawing and of the user's interactions with it. */
 interface Drawing {
@@ -84,7 +91,7 @@ export function describeDiagram(
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, detail, has(GET_STATE_TOOL)),
+    describeSource(state, detail, has),
     "",
   ];
   const refresh = state.chart?.file !== undefined || state.chart?.command !== undefined;
@@ -277,31 +284,79 @@ function describeMarks(
 
 /**
  * A long source is left out of every chat request, but given in full when asked for, as a model has
- * to read a source to change it. A chart generated from a large file or command output is the
- * exception: it can be too large for the model's context, and the chart tools change it instead.
- * A model without {@link GET_STATE_TOOL} is not told to read it with that.
+ * to read a source to change it, unless the room left in its input is too small for it. A long
+ * ECharts option, such as a chart of much data, is given without its long runs of lines of values,
+ * which shows a model what to change of the rest. A model without {@link GET_STATE_TOOL} is not
+ * told to read it with that.
  */
 function describeSource(
   { source, language, chart }: DiagramState,
   detail: Detail,
-  getsState: boolean,
+  has: (tool: string) => boolean,
 ): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
+  const length = `The source is ${formatCount(source.length)} characters long`;
   if (detail === "summary") {
+    const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
+    if (elided !== undefined && elided.length <= MAX_SUMMARY_SOURCE_LENGTH) {
+      return elidedSource(`${length}, too long for the room left in your input`, elided, has);
+    }
     // Part of a source would be of no use to change it.
-    const length = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
+    const leftOut = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
     return chart
-      ? `(${length})`
-      : `(${length} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
+      ? `(${leftOut})`
+      : `(${leftOut} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
   }
-  if (source.length <= MAX_SOURCE_LENGTH || (detail === "full" && !chart)) {
+  if (source.length <= MAX_SOURCE_LENGTH || detail === "full") {
     return codeFence(source, language);
   }
-  return chart || !getsState
-    ? `(The source is ${formatCount(source.length)} characters long, too long to show here.)`
-    : `(The source is ${formatCount(source.length)} characters long, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full.)`;
+  const why = has(GET_STATE_TOOL)
+    ? `${length}, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full`
+    : `${length}, too long to show here`;
+  const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
+  return elided !== undefined && elided.length <= MAX_SOURCE_LENGTH
+    ? elidedSource(why, elided, has)
+    : `(${why}.)`;
+}
+
+/** An option without its long runs of lines of values, saying why and which lines stand for them. */
+function elidedSource(why: string, elided: string, has: (tool: string) => boolean): string {
+  const edits = has(EDIT_TOOL) ? `, which ${EDIT_TOOL}'s oldText must not include` : "";
+  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…"${edits}:\n${codeFence(elided, "echarts")}`;
+}
+
+/** The values of a JSON array, its brackets and commas, of which a line of values consists. */
+const VALUE_TOKENS = /"(?:[^"\\]|\\.)*"|[[\],]|[^\s"[\],]+/g;
+const VALUE = /^(?:".*"|[[\],]|-?\.?\d[\w.+-]*|true|false|null)$/s;
+
+/**
+ * An ECharts option with each run of more than {@link MAX_VALUE_LINES} lines of values alone, as of
+ * the data of a series, shortened to its first two lines and its last, around a line of "…" that
+ * says how many it leaves out. Other lines stay as they are. Undefined if it shortens no run.
+ */
+export function withoutValueRuns(source: string): string | undefined {
+  const lines = source.split("\n");
+  const isValues = (line: string) => line.match(VALUE_TOKENS)?.every((token) => VALUE.test(token));
+  const kept: string[] = [];
+  let shortened = false;
+  for (let start = 0; start < lines.length; start++) {
+    let end = start;
+    while (end < lines.length && isValues(lines[end] ?? "")) end++;
+    const run = lines.slice(start, end);
+    if (run.length > MAX_VALUE_LINES) {
+      const indent = /^\s*/.exec(run[2] ?? "")?.[0] ?? "";
+      const more = `${indent}… ${plural(run.length - 3, "more line")} of values …`;
+      kept.push(run[0] ?? "", run[1] ?? "", more, run.at(-1) ?? "");
+      shortened = true;
+    } else {
+      kept.push(...run);
+    }
+    if (end < lines.length) kept.push(lines[end] ?? "");
+    start = end;
+  }
+  return shortened ? kept.join("\n") : undefined;
 }
 
 /**
