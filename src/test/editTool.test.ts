@@ -76,6 +76,21 @@ suite("source edits", () => {
       problems(many, [edit("A -->", "")])[0] ?? "",
       /^Edit 1: oldText occurs 8 times, on lines 2, 3, 4, 5 and 6 and 3 more\./,
     );
+    // Lines end as in the editor, also with "\r\n" or "\r".
+    assert.match(
+      problems("x\r\nx x\ry\nx", [edit("x", "")])[0] ?? "",
+      /^Edit 1: oldText occurs 4 times, on lines 1, 2 and 4\./,
+    );
+    // Text that a large chart has on each of its lines.
+    const large = `{\n${Array.from({ length: 100_000 }, (_, i) => `  "k${i}": ${i},`).join("\n")}\n}`;
+    assert.match(
+      problems(large, [edit('"', "")])[0] ?? "",
+      /^Edit 1: oldText occurs 200,000 times, on lines 2, 3, 4, 5 and 6 and 99,995 more\./,
+    );
+    assert.match(
+      problems(large, [edit('"k53017": 53071,\n"k53018"', "")])[0] ?? "",
+      /The closest lines are:\n53018: {3}"k53016": 53016,\n53019: {3}"k53017": 53017,\n/,
+    );
   });
 
   test("report every edit that does not apply, after those that do", () => {

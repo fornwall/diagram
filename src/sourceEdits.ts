@@ -40,7 +40,7 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
       continue;
     }
     if (found.length > 1 && !replaceAll) {
-      const lines = [...new Set(found.map((offset) => lineAndColumn(text, offset).line))];
+      const lines = linesOf(text, found);
       const listed = lines.slice(0, MAX_LISTED);
       problems.push(
         `${which}: oldText occurs ${formatCount(found.length)} times, on ${lines.length === 1 ? "line" : "lines"} ${joinWords(listed.map(String), "and")}${lines.length > listed.length ? ` and ${formatCount(lines.length - listed.length)} more` : ""}. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n${listed.map((line) => numberedLines(text, line, line)).join("\n")}`,
@@ -64,6 +64,25 @@ function occurrences(source: string, text: string): number[] {
     found.push(at);
   }
   return found;
+}
+
+/**
+ * The lines, counted from 1, that the offsets, in ascending order, are on, each once, in one pass
+ * over the text: text that a large chart has thousands of, such as a quote, is on many.
+ */
+function linesOf(text: string, offsets: readonly number[]): number[] {
+  const lines: number[] = [];
+  let line = 1;
+  let at = 0;
+  for (const offset of offsets) {
+    for (; at < offset; at++) {
+      const char = text[at];
+      // As lineAndColumn counts them: "\r\n", "\r" or "\n".
+      if (char === "\n" || (char === "\r" && text[at + 1] !== "\n")) line++;
+    }
+    if (lines.at(-1) !== line) lines.push(line);
+  }
+  return lines;
 }
 
 /**
