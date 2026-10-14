@@ -7,6 +7,7 @@ import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { nodeList, repeatedList } from "./describe";
 import { isClosingFence, openingFence } from "./fences";
+import { type ItemNames, type Resolved, resolvedList, severalList } from "./itemNames";
 import { LINK_SYNTAX, validateLinks, withoutMissingFiles } from "./links";
 import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
 import {
@@ -256,7 +257,7 @@ function parseImageInput(value: unknown): string[] | string {
   // A model may give one id as it is.
   const ids = typeof input.ids === "string" ? [input.ids] : (input.ids ?? []);
   if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) {
-    return '"ids" must be an array of item ids, such as ["A", "edge:A → B"].';
+    return '"ids" must be an array of item ids, such as ["A", "A --> B"].';
   }
   return [...new Set(ids)];
 }
@@ -300,17 +301,21 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
       return textResult(`There is no image to view: ${ids}`);
     }
     const noun = diagramNoun(current.language);
-    // A model is told the ids of a Mermaid diagram, which the panel knows; the page tells of others.
-    const known = this.panel.drawnItemIds;
-    if (ids.length > 0 && known && !ids.some((id) => known.includes(id))) {
+    // A model is told the items of a Mermaid diagram, which the panel knows, and may name an edge
+    // or message by its ends, all of those between them; the page tells of the items of others.
+    const names = this.panel.itemNames;
+    const named = names?.resolveAll(ids) ?? ids.map((id) => ({ name: id, ids: [id] }));
+    if (ids.length > 0 && names && named.every((item) => item.ids.length === 0)) {
+      const items = names.names();
       return textResult(
-        `There is no image to view: no item of the ${noun} has these ids: ${quoteAll(ids)}. ` +
-          (known.length > 0
-            ? `Its ids are ${idList(known)}.`
+        `There is no image to view: no item of the ${noun} has these ids: ${resolvedList(named)}. ` +
+          (items.length > 0
+            ? `Its items are ${idList(items)}.`
             : `It has no items to show alone: call ${GET_IMAGE_TOOL} without "ids".`),
       );
     }
-    const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_LIMITS, ids), token);
+    const drawn = [...new Set(named.flatMap((item) => item.ids))];
+    const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_LIMITS, drawn), token);
     if (typeof image === "string") {
       return textResult(`There is no image to view. ${image}`);
     }
@@ -318,7 +323,7 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     return new vscode.LanguageModelToolResult([
       new vscode.LanguageModelTextPart(
         image.view
-          ? describeImage(about, image.view, pngSize(image.png), current.language, ids, known)
+          ? describeImage(about, image.view, pngSize(image.png), current.language, named, names)
           : `${about}:`,
       ),
       vscode.LanguageModelDataPart.image(image.png, "image/png"),
@@ -344,16 +349,19 @@ function describeImage(
   view: ImageView,
   png: { width: number; height: number } | undefined,
   language: DiagramLanguage,
-  ids: readonly string[],
-  known: readonly string[] | undefined,
+  named: readonly Resolved[],
+  names: ItemNames | undefined,
 ): string {
   const size = ({ width, height }: { width: number; height: number }, scale = 1) =>
     `${Math.round(width * scale)}×${Math.round(height * scale)} px`;
   const percent = (scale: number) => `${Math.round(scale * 100)}%`;
-  const { area, scale, textSize, panel, missing = [] } = view;
-  const left = new Set(missing);
+  const { area, scale, textSize, panel } = view;
+  const left = new Set(view.missing);
+  const drawn = (item: Resolved) => item.ids.some((id) => !left.has(id));
+  const missing = named.filter((item) => !drawn(item));
+  const shown = named.filter(drawn);
   const what = area
-    ? `the part around ${idList(ids.filter((id) => !left.has(id)))} (${size(area)} of the ${size(view)} drawing)`
+    ? `the part around ${idList(shown.map(({ name }) => name))} (${size(area)} of the ${size(view)} drawing)`
     : language === "echarts"
       ? `all of it, laid out ${panel ? "for the panel " : ""}at ${size(view)}`
       : `all of its ${size(view)} drawing`;
@@ -362,9 +370,9 @@ function describeImage(
   ];
   const legible = (zoom: number) => textSize === undefined || textSize * zoom >= LEGIBLE_TEXT;
   if (textSize !== undefined && !legible(scale)) {
-    const shown = Math.round(textSize * scale * 10) / 10;
+    const here = Math.round(textSize * scale * 10) / 10;
     sentences.push(
-      `Its text, ${Math.round(textSize)} px, is ${shown} px here: too small to read reliably. ` +
+      `Its text, ${Math.round(textSize)} px, is ${here} px here: too small to read reliably. ` +
         (area
           ? 'To read it, give fewer "ids", of items close together.'
           : `To read it, call ${GET_IMAGE_TOOL} with the "ids" of a few items, to see the part around them.`),
@@ -378,9 +386,10 @@ function describeImage(
   }
   const text = sentences.join(" ");
   if (missing.length === 0) return text;
+  const items = names?.names() ?? [];
   return (
-    `${text}\n\nThese ids name nothing drawn, so the image leaves them out: ${quoteAll(missing)}.` +
-    (known && known.length > 0 ? ` Its ids are ${idList(known)}.` : "")
+    `${text}\n\nThese ids name nothing drawn, so the image leaves them out: ${resolvedList(missing)}.` +
+    (items.length > 0 ? ` Its items are ${idList(items)}.` : "")
   );
 }
 
@@ -447,7 +456,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     const language = this.panel.current?.language ?? "mermaid";
     const noun = diagramNoun(language);
     const { marks, caption, dim } = outcome.annotation;
-    const drawn = outcome.ids;
+    const { names, given, several } = outcome;
     const sentences: string[] = [];
     if (marks.length > 0) {
       const includesRelationships =
@@ -455,15 +464,22 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
         this.panel.drawnIds &&
         marks.some((mark) => !this.panel.drawnIds?.includes(mark.id));
       const marked = plural(marks.length, includesRelationships ? "item" : nodeNoun(language));
-      const listed = marks.map(({ id, kind }) => `${JSON.stringify(id)} (${kind})`).join(", ");
+      // As the model named them, also an edge or message by its ends.
+      const listed = marks
+        .map(({ id, kind }) => `${JSON.stringify(given.get(id) ?? id)} (${kind})`)
+        .join(", ");
       sentences.push(`Marked ${marked}: ${listed}.`);
       if (dim) {
         sentences.push("Unmarked items are faded.");
       }
-      if (drawn === undefined) {
+      if (names === undefined) {
         sentences.push("Item ids could not be verified; unknown items will not show marks.");
       }
-    } else if (outcome.unknown.length > 0 || outcome.repeated.length > 0) {
+    } else if (
+      outcome.unknown.length > 0 ||
+      outcome.repeated.length > 0 ||
+      outcome.several.length > 0
+    ) {
       sentences.push(`Nothing was marked; the ${noun}'s previous marks are cleared.`);
     } else {
       sentences.push(`Cleared the ${noun}'s marks.`);
@@ -472,15 +488,17 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
       sentences.push(`Caption: ${JSON.stringify(caption)}.`);
     }
     const unknown =
-      outcome.unknown.length > 0 && drawn
+      outcome.unknown.length > 0 && names
         ? `\n\nThese ids are not selectable items of the ${noun}, so nothing was marked for them: ` +
-          `${quoteAll(outcome.unknown)}. Its ids are ${idList(drawn)}.`
+          `${resolvedList(outcome.unknown)}. Its items are ${idList(names.names())}.`
         : "";
-    const repeated =
-      outcome.repeated.length > 0
-        ? `\n\nThese names each name several items of the ${noun}, so nothing was marked for them: ` +
-          `${repeatedList(outcome.repeated)}. Mark the items you mean by their ids.`
-        : "";
+    const ambiguous = [repeatedList(outcome.repeated), names ? severalList(several, names) : ""]
+      .filter(Boolean)
+      .join(", ");
+    const repeated = ambiguous
+      ? `\n\nThese names each name several items of the ${noun}, so nothing was marked for them: ` +
+        `${ambiguous}. Mark the items you mean by their ids.`
+      : "";
     return textResult(sentences.join(" ") + unknown + repeated);
   }
 }

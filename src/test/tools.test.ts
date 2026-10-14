@@ -448,37 +448,67 @@ suite("tools", () => {
 
   test("diagram_getImage checks the ids it is given, as far as the panel knows them", async () => {
     const { panel, webview } = await newFakePanel();
+    const edge = (id: string, source: string, target: string, direction = "forward") => ({
+      id,
+      label: `${source} → ${target}`,
+      relationship: { kind: "edge", source, target, direction },
+    });
     webview.answer = (message) =>
       message.type === "render"
-        ? {
+        ? ({
             type: "rendered",
             requestId: message.requestId,
             diagramType: "flowchart-v2",
-            nodeIds: ["A", "B"],
+            nodeIds: ["A", "B", "C"],
             relationships: [
-              {
-                id: "edge:L_A_B_0",
-                label: "A → B",
-                relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
-              },
+              edge("edge:L_A_B_0", "A", "B"),
+              edge("edge:L_A_B_1", "A", "B"),
+              edge("edge:L_B_C_0", "B", "C", "both"),
             ],
-          }
-        : undefined;
+          } as FromWebview)
+        : message.type === "export"
+          ? {
+              type: "exportImage",
+              requestId: message.requestId,
+              format: "png",
+              data: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+              view: { width: 400, height: 300, area: { width: 200, height: 100 }, scale: 1 },
+            }
+          : undefined;
     const flow = { language: "mermaid", source: "flowchart LR\n  A --> B", title: "Flow" } as const;
     assert.ok((await panel.render(flow, "tool")).ok);
     const tool = new GetDiagramImageTool(panel);
     const results = [];
-    for (const input of [{ ids: ["X", "a"] }, { ids: [1] }, { id: "A" }]) {
+    for (const input of [
+      { ids: ["X", "a"] },
+      { ids: ["A --> C", "Q -> A", "B → A"] },
+      { ids: [1] },
+      { id: "A" },
+    ]) {
       results.push(await invokeTool(tool, input));
     }
+    const items = '"A", "B", "C", "edge:L_A_B_0", "edge:L_A_B_1", "B --> C"';
     assert.deepStrictEqual(results, [
-      'There is no image to view: no item of the diagram has these ids: "X", "a". Its ids are "A", "B", "edge:L_A_B_0".',
-      'There is no image to view: "ids" must be an array of item ids, such as ["A", "edge:A → B"].',
+      `There is no image to view: no item of the diagram has these ids: "X", "a". Its items are ${items}.`,
+      'There is no image to view: no item of the diagram has these ids: "A --> C" (nothing goes from "A" to "C"), "Q -> A" ("Q" is not a node id), "B → A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
+        `Its items are ${items}.`,
+      'There is no image to view: "ids" must be an array of item ids, such as ["A", "A --> B"].',
       'There is no image to view: Unknown property "id"; the properties are "ids".',
     ]);
     assert.deepStrictEqual(
       webview.sent.filter((message) => message.type === "export"),
       [],
+    );
+    // Ends name all edges between them, either way for an edge both ways.
+    assert.strictEqual(
+      await invokeTool(tool, { ids: ["A --> B", "C -> B", "X"] }),
+      'Revision 1 of the diagram: the part around "A --> B", "C -> B" (200×100 px of the 400×300 px drawing), at 100% in this 200×100 px image.\n\n' +
+        `These ids name nothing drawn, so the image leaves them out: "X". Its items are ${items}.`,
+    );
+    const exported = webview.sent.filter((message) => message.type === "export");
+    assert.deepStrictEqual(
+      exported.map((message) => message.ids),
+      [["edge:L_A_B_0", "edge:L_A_B_1", "edge:L_B_C_0"]],
     );
     assert.deepStrictEqual(
       [

@@ -296,7 +296,7 @@ suite("extension", function () {
     // The label of a node is not its id, so there is nothing to mark for it.
     assert.match(
       marked,
-      /These ids are not selectable items of the diagram.*"Checker"\. Its ids are "parse", "check", "edge:L_parse_check_0"\./,
+      /These ids are not selectable items of the diagram.*"Checker"\. Its items are "parse", "check", "parse --> check"\./,
     );
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.

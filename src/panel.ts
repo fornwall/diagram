@@ -29,6 +29,7 @@ import {
 } from "./documentDiagram";
 import { exportDrawing, pngBytes } from "./export";
 import { fileName, resolveFile } from "./files";
+import { ItemNames, type Resolved } from "./itemNames";
 import { linkTexts, type NodeLink, type NodeLinks, openLink, openUrl } from "./links";
 import { StateStore } from "./panelState";
 import {
@@ -72,11 +73,16 @@ type AnnotateOutcome =
   | {
       ok: true;
       annotation: Annotation;
-      unknown: string[];
+      /** The names that name no item, and why, if they name the ends of a relationship. */
+      unknown: Resolved[];
       /** Names that several chart items go by, which were not marked. */
       repeated: RepeatedName[];
-      /** The ids the marks were checked against, or undefined when the panel does not know them. */
-      ids: readonly string[] | undefined;
+      /** Ends that several edges or messages go between, which were not marked. */
+      several: Resolved[];
+      /** The ends that named the edges or messages marked, by their ids. */
+      given: ReadonlyMap<string, string>;
+      /** The items the marks were checked against, or undefined when the panel does not know them. */
+      names: ItemNames | undefined;
     }
   | { ok: false; reason: string };
 
@@ -193,6 +199,8 @@ export class DiagramPanel implements vscode.Disposable {
    * it replaced.
    */
   private drawn: Extract<FromWebview, { type: "rendered" }> | undefined;
+  /** The names of the items {@link drawn}, made when first asked for. */
+  private drawnNames: { drawn: object; names: ItemNames } | undefined;
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
   /**
@@ -262,10 +270,18 @@ export class DiagramPanel implements vscode.Disposable {
     return this.drawn?.nodeIds;
   }
 
-  /** The ids of the nodes and relationships the panel has drawn, when it knows them. */
-  get drawnItemIds(): string[] | undefined {
+  /**
+   * The nodes and relationships the panel has drawn, when it knows them, by the names that the
+   * tools that take item ids take for them.
+   */
+  get itemNames(): ItemNames | undefined {
     const drawn = this.drawn;
-    return drawn?.nodeIds && [...drawn.nodeIds, ...(drawn.relationships ?? []).map(({ id }) => id)];
+    if (!drawn?.nodeIds) return undefined;
+    if (this.drawnNames?.drawn !== drawn) {
+      const { nodeIds, relationships = [] } = drawn;
+      this.drawnNames = { drawn, names: new ItemNames({ nodeIds, relationships }) };
+    }
+    return this.drawnNames.names;
   }
 
   /** Whether the panel waits for the page to draw the diagram, whose ids it does not know yet. */
@@ -771,14 +787,15 @@ export class DiagramPanel implements vscode.Disposable {
     if (nothing) {
       return { ok: false, reason: nothing };
     }
-    // The ids of the diagram as it is drawn now: opening the panel below draws it again.
+    // The items of the diagram as it is drawn now: opening the panel below draws it again.
     const drawn = this.drawn;
-    const ids = this.drawnItemIds;
-    const known = ids && new Set(ids);
+    const names = this.itemNames;
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
     const marks: Annotation["marks"] = [];
-    const unknown: string[] = [];
+    const unknown: Resolved[] = [];
     const repeated: RepeatedName[] = [];
+    const several: Resolved[] = [];
+    const given = new Map<string, string>();
     for (const mark of annotation.marks) {
       // A name that several items of a series go by does not say which of them to mark.
       const named = drawn?.repeatedNames?.find(({ name }) => name === mark.id);
@@ -788,14 +805,28 @@ export class DiagramPanel implements vscode.Disposable {
       }
       let id = mark.id;
       // Preserve exact chart names. Only repair padding for a known, unclaimed node.
-      if (known && !known.has(id) && known.has(id.trim()) && !claimed.has(id.trim())) {
+      if (names && !names.has(id) && names.has(id.trim()) && !claimed.has(id.trim())) {
         id = id.trim();
         claimed.add(id);
       }
-      if (known && !known.has(id)) {
-        unknown.push(mark.id);
-      } else {
+      if (!names || names.has(id)) {
         marks.push(id === mark.id ? mark : { ...mark, id });
+        continue;
+      }
+      // An edge or message named by its ends, as one of several there, like a name that several
+      // chart items go by, does not say which of them to mark.
+      const resolved = { name: mark.id, ...names.resolve(mark.id) };
+      const [only, ...others] = resolved.ids;
+      if (only === undefined) {
+        unknown.push(resolved);
+      } else if (others.length > 0) {
+        several.push(resolved);
+      } else if (claimed.has(only)) {
+        unknown.push({ ...resolved, why: `it is ${JSON.stringify(only)}, marked already` });
+      } else {
+        claimed.add(only);
+        given.set(only, mark.id);
+        marks.push({ ...mark, id: only });
       }
     }
     this.annotation = { ...annotation, marks };
@@ -803,7 +834,7 @@ export class DiagramPanel implements vscode.Disposable {
     // the webview's ready message either way.
     this.show(true);
     this.post({ type: "annotate", ...this.annotation });
-    return { ok: true, annotation: this.annotation, unknown, repeated, ids };
+    return { ok: true, annotation: this.annotation, unknown, repeated, several, given, names };
   }
 
   /** Why there is no drawing to pick from or mark, if there is none. */

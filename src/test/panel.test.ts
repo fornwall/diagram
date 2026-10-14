@@ -1171,7 +1171,7 @@ suite("panel", function () {
       dim: false,
     });
     assert.ok(outcome.ok);
-    assert.deepStrictEqual(outcome.unknown, ["Parser"]);
+    assert.deepStrictEqual(outcome.unknown, [{ name: "Parser", ids: [] }]);
     assert.deepStrictEqual(outcome.annotation.marks, [{ id: "A", kind: "good" }]);
     // The links of a diagram are checked against the same ids, once it is drawn.
     const links = { A: { file: "sizes.tsv" }, Checker: { file: "sizes.tsv" } };
@@ -1202,7 +1202,10 @@ suite("panel", function () {
         dim: false,
       });
       assert.ok(outcome.ok);
-      return { ids: outcome.annotation.marks.map((mark) => mark.id), unknown: outcome.unknown };
+      return {
+        ids: outcome.annotation.marks.map((mark) => mark.id),
+        unknown: outcome.unknown.map(({ name }) => name),
+      };
     };
     await draw(["A", "B", " B "]);
     assert.deepStrictEqual(annotate(" A ", " B "), { ids: ["A", " B "], unknown: [] });

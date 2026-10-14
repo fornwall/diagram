@@ -184,10 +184,15 @@ export function describeDiagram(
       `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
     );
   }
-  const parts = selection.some((node) => node.relationship)
-    ? "items"
-    : `${nodeNoun(state.language)}s`;
-  const marked = describeMarks(annotation, parts, has(ANNOTATE_TOOL));
+  const nodes = `${nodeNoun(state.language)}s`;
+  const parts = selection.some((node) => node.relationship) ? "items" : nodes;
+  const relationshipIds = new Set(relationships.map(({ id }) => id));
+  const marksRelationships = annotation?.marks.some(({ id }) => relationshipIds.has(id));
+  const marked = describeMarks(
+    annotation,
+    marksRelationships ? "items" : nodes,
+    has(ANNOTATE_TOOL),
+  );
   if (marked) {
     lines.push(marked);
   }
