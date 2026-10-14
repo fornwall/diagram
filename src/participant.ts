@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { codeFence, type DiagramBlock, DiagramBlockFilter, guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
+import { userChanges } from "./describe";
 import type { DiagramPanel } from "./panel";
 import {
   acceptsImages,
@@ -110,7 +111,13 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         ? undefined
         : panel.describeForModel({ tools: new Set(tools.map(({ name }) => name)) });
     const current =
-      description === undefined ? undefined : { description, source: panel.current?.source };
+      description === undefined || !panel.current
+        ? undefined
+        : {
+            description,
+            source: panel.current.source,
+            edited: userChanges(panel.current)?.from,
+          };
     // Until the request draws, or ends without drawing.
     panel.startsNew = request.command === "new";
     if (explain && !current) {

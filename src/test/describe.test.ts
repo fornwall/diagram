@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import { parseTable } from "../data";
 import { describeChartParameters, describeDiagram } from "../describe";
+import { lineDiff } from "../lineDiff";
 import type { DiagramState } from "../panel";
 
 suite("describe", () => {
@@ -137,6 +138,72 @@ suite("describe", () => {
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
     assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"; edge/);
     assert.match(described, /Marked chart items: "A" \(problem\)\./);
+  });
+
+  test("diffs lines with a line of context, joining hunks whose context meets", () => {
+    const before = [
+      "flowchart TD",
+      "  A --> B",
+      "  B --> C",
+      "  C --> D",
+      "  D --> E",
+      "  E --> F",
+    ];
+    const after = [
+      "flowchart TD",
+      "  A --> B",
+      "  B -->|ok| C",
+      "  C --> D",
+      "  D --> E",
+      "  E --> F",
+    ];
+    assert.strictEqual(
+      lineDiff(before.join("\n"), after.join("\n")),
+      "@@ -2,3 +2,3 @@\n   A --> B\n-  B --> C\n+  B -->|ok| C\n   C --> D",
+    );
+    assert.strictEqual(lineDiff("a\nb", "a\nb"), "");
+    // Separate changes, and changes two lines apart, whose context meets.
+    assert.strictEqual(
+      lineDiff("1\n2\n3\n4\n5\n6\n7", "0\n1\n2\n3\n4\n5\n6"),
+      "@@ -1,1 +1,2 @@\n+0\n 1\n@@ -6,2 +7,1 @@\n 6\n-7",
+    );
+    assert.strictEqual(
+      lineDiff("1\n2\n3\n4", "x\n2\n3\ny"),
+      "@@ -1,4 +1,4 @@\n-1\n+x\n 2\n 3\n-4\n+y",
+    );
+    assert.strictEqual(lineDiff("a\nb\nc", "a\nc"), "@@ -1,3 +1,2 @@\n a\n-b\n c");
+    // Too many changed lines to compare quickly.
+    const many = (prefix: string) => Array.from({ length: 1_500 }, (_, i) => `${prefix}${i}`);
+    assert.strictEqual(lineDiff(many("a").join("\n"), many("b").join("\n")), undefined);
+  });
+
+  test("tells what the user changed since an agent drew the diagram, and not a stale edit", () => {
+    const from = "flowchart TD\n  A --> B\n  B --> C";
+    const to = "flowchart TD\n  A --> B\n  B -->|retry| A\n  B --> C";
+    const edited = { ...flowchart(to), editedByUser: true, userEdit: { from, to } };
+    const description = describeDiagram(edited);
+    assert.ok(
+      description.includes(
+        "The user changed the source since an agent drew it, as this diff from the agent's version shows. Preserve their changes unless asked otherwise.\n" +
+          "```diff\n@@ -2,2 +2,3 @@\n   A --> B\n+  B -->|retry| A\n   B --> C\n```",
+      ),
+      description,
+    );
+    assert.doesNotMatch(description, /The user edited this source/);
+    // The source changed since the user's edit, as when an agent styled it.
+    const styled = describeDiagram({ ...edited, source: `${to}\n  style A fill:red` });
+    assert.doesNotMatch(styled, /diff/);
+    assert.match(styled, /The user edited this source\. Preserve their edits/);
+    // A rewrite is told by the source alone.
+    const rewritten = `flowchart LR\n${"  X --> Y\n".repeat(200)}`;
+    const rewrite = describeDiagram({
+      ...flowchart(rewritten),
+      editedByUser: true,
+      userEdit: { from: `flowchart TD\n${"  P --> Q\n".repeat(200)}`, to: rewritten },
+    });
+    assert.doesNotMatch(rewrite, /diff/);
+    assert.match(rewrite, /The user edited this source/);
+    assert.doesNotMatch(describeDiagram(edited, { detail: "summary" }), /diff/);
   });
 
   test("oversized chart options are omitted from model context", () => {

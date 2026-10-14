@@ -635,6 +635,46 @@ suite("participant", () => {
     }
   });
 
+  test("tells the model what the user changed of its diagram, rather than repeat its version", async () => {
+    const drawn = "flowchart TD\n  Cart --> Pay\n  Pay --> Done";
+    const edited = "flowchart TD\n  Cart --> Pay\n  Pay -->|declined| Cart\n  Pay --> Done";
+    const diagram = { language: "mermaid", source: drawn, title: "Checkout" } as const;
+    assert.ok((await panel.render(diagram, "participant")).ok);
+    await webview.edit(edited);
+    const history = exchange("Draw the checkout", "Here it is.", {
+      metadata: { language: "mermaid", source: drawn },
+    });
+    for (const capabilities of [{}, { supportsToolCalling: false }]) {
+      const { sent } = await ask([[text("Done.")]], { history, capabilities });
+      const prompt = sent[0]?.messages.map(messageText).join("\n") ?? "";
+      assert.ok(
+        prompt.includes("```diff\n@@ -2,2 +2,3 @@\n   Cart --> Pay\n+  Pay -->|declined| Cart\n"),
+      );
+      assert.match(
+        prompt,
+        /Here it is\.\n\n\(I drew the current diagram as it was before the user's changes, described below\.\)/,
+      );
+      assert.ok(!prompt.includes(`${drawn}\n\`\`\``));
+      assert.ok(prompt.includes(`${edited}\n\`\`\``));
+    }
+    // Further edits add to the user's changes, and undoing them leaves none.
+    await webview.edit(`${edited}\n  Done --> Cart`);
+    assert.deepStrictEqual(panel.current?.userEdit, {
+      from: drawn,
+      to: `${edited}\n  Done --> Cart`,
+    });
+    await webview.edit(drawn);
+    assert.strictEqual(panel.current?.userEdit, undefined);
+    // An agent's drawing has no changes of the user's.
+    await webview.edit(edited);
+    assert.ok((await panel.render({ ...diagram, source: edited }, "tool")).ok);
+    assert.strictEqual(panel.current?.userEdit, undefined);
+    // Nor does a diagram that the user opened from a document.
+    assert.ok((await panel.render(diagram, "document")).ok);
+    await webview.edit(edited);
+    assert.strictEqual(panel.current?.userEdit, undefined);
+  });
+
   test("makes the model call the tools that the user attached first, whose descriptors may be new objects", async () => {
     const descriptor = Object.getOwnPropertyDescriptor(vscode.lm, "tools");
     assert.ok(descriptor);

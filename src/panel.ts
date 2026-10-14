@@ -116,6 +116,11 @@ export interface DiagramState extends Omit<Diagram, "source"> {
   origin: DiagramOrigin;
   /** Set when the user changed the source in the panel after it was last rendered by an agent. */
   editedByUser: boolean;
+  /**
+   * The source of an agent's drawing, `from`, and the user's edit of it, `to`, which tells a model
+   * what the user changed while the source is still that edit.
+   */
+  userEdit?: { from: string; to: string } | undefined;
   /** The last render error, if the current source fails to render. */
   error?: string | undefined;
 }
@@ -818,11 +823,18 @@ export class DiagramPanel implements vscode.Disposable {
       state.title === guessTitle({ language: state.language, source: state.source })
         ? guessTitle({ language: state.language, source })
         : state.title;
+    // What the user changed of an agent's drawing, over all their edits since; a generated chart
+    // keeps them as its manual styling.
+    const { userEdit } = state;
+    const from = userEdit && userEdit.to === state.source ? userEdit.from : state.source;
+    const drawnByAgent = state.origin !== "document" && !state.chart;
     this.state = {
       ...state,
       source,
       title,
       editedByUser: true,
+      userEdit:
+        drawnByAgent && from !== undefined && from !== source ? { from, to: source } : undefined,
       chartPresentation: state.chart
         ? captureChartPresentation(source, state.chartPresentation)
         : undefined,

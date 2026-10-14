@@ -72,6 +72,9 @@ suite("panelState", () => {
     const openedFrom = "file:///read-only.md";
     assert.deepStrictEqual(load({ ...state, openedFrom }), { ...state, openedFrom });
     assert.deepStrictEqual(load({ ...state, openedFrom: 1 }), state);
+    const userEdit = { from: "flowchart LR\n  A", to: state.source };
+    assert.deepStrictEqual(load({ ...state, userEdit }), { ...state, userEdit });
+    assert.deepStrictEqual(load({ ...state, userEdit: { from: 1, to: "" } }), state);
     // Charts were saved without the presentation that tells manual styling apart, which a
     // refresh would discard, so the option is kept without the chart it was generated from.
     const chartState = { ...state, language: "echarts", source: '{"series": []}' };

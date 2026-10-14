@@ -81,6 +81,16 @@ const exactCounts = new WeakMap<
   Map<string, Promise<number>>
 >();
 
+/**
+ * The current diagram as described to the model, its source, and the source of the agent's drawing
+ * that the user edited, if the description gives the diff of the user's changes to it.
+ */
+interface Shown {
+  description: string;
+  source: string | undefined;
+  edited?: string | undefined;
+}
+
 /** An earlier request and its reply, which are given or left out together. */
 interface Exchange {
   prompt: string;
@@ -118,7 +128,7 @@ export async function promptMessages(
   context: vscode.ChatContext,
   explain: boolean,
   callsTools: boolean,
-  shown: { description: string; source: string | undefined } | undefined,
+  shown: Shown | undefined,
   token: vscode.CancellationToken,
 ): Promise<{ messages: vscode.LanguageModelChatMessage[]; notice: string | undefined } | string> {
   const { model } = request;
@@ -494,7 +504,7 @@ async function pastExchanges(
   documents: Map<string, Thenable<vscode.TextDocument>>,
   callsTools: boolean,
   imageKeys: ReadonlySet<string>,
-  shown: { description: string; source: string | undefined } | undefined,
+  shown: Shown | undefined,
 ): Promise<Exchange[]> {
   const exchanges: Exchange[] = [];
   const reads: Promise<void>[] = [];
@@ -529,10 +539,15 @@ async function pastExchanges(
     const chart: unknown = turn.result.metadata?.chart;
     if (typeof source === "string" && isDiagramLanguage(language)) {
       const fenced = codeFence(source, language);
+      const given =
+        shown?.source !== undefined &&
+        (callsTools || shown.description.includes(codeFence(shown.source, language)));
       exchange.diagram =
-        source === shown?.source && (callsTools || shown.description.includes(fenced))
+        given && source === shown.source
           ? `\n\n(I drew the current ${diagramNoun(language)}, described below.)`
-          : `\n\n${fenced}`;
+          : given && source === shown.edited
+            ? `\n\n(I drew the current ${diagramNoun(language)} as it was before the user's changes, described below.)`
+            : `\n\n${fenced}`;
     } else if (chart) {
       exchange.diagram = `\n\n(I drew a chart with ${CHART_TOOL}, with these parameters: ${describeChartParameters(chart)})`;
     }

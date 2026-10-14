@@ -87,6 +87,11 @@ function restoredState(saved: unknown): DiagramState | undefined {
   if (typeof source === "string") state.source = source;
   if (typeof saved.error === "string") state.error = saved.error;
   if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
+  const { userEdit } = saved;
+  if (isPlainObject(userEdit)) {
+    const { from, to } = userEdit;
+    if (typeof from === "string" && typeof to === "string") state.userEdit = { from, to };
+  }
   if (isNodeLinks(saved.links)) state.links = saved.links;
   const document = documentBinding(saved.document, state.source);
   if (document) state.document = document;

@@ -5,6 +5,7 @@ import { codeFence } from "./blocks";
 import { describeUnits } from "./chartColumns";
 import type { DataTable } from "./data";
 import { documentName } from "./documentDiagram";
+import { lineDiff } from "./lineDiff";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
 import {
@@ -37,6 +38,8 @@ const MAX_SOURCE_LENGTH = 30_000;
  * large diagram's list could take more of every request than its source.
  */
 const MAX_RELATIONSHIPS_LENGTH = 5_000;
+/** A diff of the user's changes this long is given even if longer than the source. */
+const SMALL_DIFF_LENGTH = 1_000;
 
 /** What the panel knows of the drawing and of the user's interactions with it. */
 interface Drawing {
@@ -126,7 +129,12 @@ export function describeDiagram(
   if (state.error) {
     lines.push(`It currently fails to render with this error: ${state.error}`);
   }
-  if (state.editedByUser) {
+  const changes = detail === "summary" ? undefined : userChanges(state);
+  if (changes) {
+    lines.push(
+      `The user changed the source since an agent drew it, as this diff from the agent's version shows. Preserve their changes unless asked otherwise.\n${codeFence(changes.diff, "diff")}`,
+    );
+  } else if (state.editedByUser) {
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
@@ -161,6 +169,24 @@ export function describeDiagram(
       : `The user has no ${parts} selected in the panel.`,
   );
   return lines.join("\n");
+}
+
+/**
+ * What the user changed of an agent's drawing, as a diff from the agent's source, while the source
+ * is the user's edit. A diff longer than a source that is not small tells less than the source:
+ * the user rewrote the diagram rather than edit it.
+ */
+export function userChanges({
+  userEdit,
+  source,
+}: DiagramState): { from: string; diff: string } | undefined {
+  if (!userEdit || userEdit.to !== source) return undefined;
+  const diff = lineDiff(userEdit.from, source);
+  return diff &&
+    diff.length <= Math.max(source.length, SMALL_DIFF_LENGTH) &&
+    diff.length <= MAX_SOURCE_LENGTH
+    ? { from: userEdit.from, diff }
+    : undefined;
 }
 
 /** Inline data is already represented by the chart; don't repeat it in every chat turn. */
