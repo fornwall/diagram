@@ -541,6 +541,47 @@ suite("participant", () => {
     );
   });
 
+  test("asks the model once to fix what a diagram block rendered with warnings, keeping it otherwise", async () => {
+    const warning = "Tree series 1 has 2 trees in its data, of which ECharts draws only the first.";
+    const trees = '{"series": [{"type": "tree", "data": [{"name": "a"}, {"name": "b"}]}]}';
+    const answer = webview.answer;
+    webview.answer = (message) => {
+      const answered = answer?.(message);
+      return answered?.type === "rendered" && message.type === "render" && message.source !== valid
+        ? { ...answered, warnings: [warning] }
+        : answered;
+    };
+    const chart = (source: string) => text(`\`\`\`echarts\n${source}\n\`\`\``);
+    const fixed = '{"series": [{"type": "tree", "data": [{"name": "root", "children": []}]}]}';
+    const fixing = await ask([
+      [chart(trees)],
+      [text("Joined them.\n"), chart(fixed)],
+      [chart(trees)],
+    ]);
+    assert.strictEqual(fixing.sent.length, 2);
+    assert.strictEqual(
+      messageText(fixing.sent[1]?.messages.at(-1)),
+      `That chart rendered, with these warnings:\n\n- ${warning}\n\nReply with one sentence about what you fixed, followed by the corrected complete chart in a single echarts code block, or say why you leave it as it is, without a code block.`,
+    );
+    // The fix's own warnings are not asked about again.
+    assert.strictEqual(fixing.result?.metadata?.source, fixed);
+    assert.strictEqual(panel.current?.source, fixed);
+    assert.strictEqual(fixing.shown, "\n\n---\n\nJoined them.\n");
+
+    const left = await ask([[chart(trees)], [text("ECharts draws one tree a series.")]]);
+    assert.strictEqual(left.result?.metadata?.source, trees);
+    assert.strictEqual(panel.current?.source, trees);
+
+    // A fix that fails to render, also when repaired, leaves the diagram as it was.
+    const broken = text(`\`\`\`echarts\n${brokenChart}\n\`\`\``);
+    const failed = await ask([[chart(trees)], [broken], [broken]]);
+    assert.strictEqual(failed.sent.length, 3);
+    assert.strictEqual(failed.result?.metadata?.source, trees);
+    assert.strictEqual(panel.current?.source, trees);
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.match(failed.shown, /The fix failed to render, so the chart stays as it was\.$/);
+  });
+
   test("adopts a diagram that its own tool call drew, unless it was drawn over since", async () => {
     /** Draws as a tool does, for this request or, while the model replies, for another. */
     const draw = async (source: string) => {

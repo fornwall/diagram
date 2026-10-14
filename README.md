@@ -15,7 +15,7 @@ Ask `@diagram` to draw, optionally attaching files with `#file`:
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
 - `@diagram turn this whiteboard photo into a flowchart`
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors go back to the model for repair.
+Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model for repair.
 
 Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model that accepts images. Images are sent only with the request they are attached to.
 

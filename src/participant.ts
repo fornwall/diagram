@@ -186,13 +186,34 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       }
 
       let failure: { block: DiagramBlock; error: string } | undefined;
+      /** A block that rendered with warnings, which stays drawn unless a fix of them renders. */
+      let warned: DiagramBlock | undefined;
+      const draw = (drawing: DiagramBlock) =>
+        unlessCancelled(
+          () => panel.render({ ...drawing, title: guessTitle(drawing) }, "participant"),
+          token,
+        );
       for (let attempt = 0; block && !token.isCancellationRequested; attempt++) {
         const noun = diagramNoun(block.language);
         stream.progress(`Rendering ${noun}…`);
-        const diagram = { ...block, title: guessTitle(block) };
-        const outcome = await unlessCancelled(() => panel.render(diagram, "participant"), token);
+        const outcome = await draw(block);
         if (token.isCancellationRequested) {
           return;
+        }
+        // Once, as a model may not be able to fix all, which it may say instead.
+        const warnings =
+          outcome.ok && !warned && attempt < MAX_REPAIR_ATTEMPTS ? panel.warnings : [];
+        if (warnings.length > 0) {
+          warned = block;
+          stream.progress("Fixing rendering warnings…");
+          stream.markdown("\n\n---\n\n");
+          messages.push(
+            vscode.LanguageModelChatMessage.User(
+              `That ${noun} rendered, with these warnings:\n\n- ${warnings.join("\n- ")}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block, or say why you leave it as it is, without a code block.`,
+            ),
+          );
+          block = await converse([]);
+          continue;
         }
         if (outcome.ok || outcome.kind === "unavailable") {
           if (!outcome.ok) {
@@ -225,6 +246,24 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
             ? { chart: drawn.chart }
             : { language: drawn.language, source: drawn.source },
         };
+      }
+      // A reply that left the warnings, or whose fix failed to render, keeps the block that had
+      // them, unless the user changed the diagram meanwhile.
+      const shows = (shown: DiagramBlock) =>
+        panel.current?.language === shown.language && panel.current.source === shown.source;
+      if (warned && !failure && shows(warned)) {
+        showButton(stream, warned.language);
+        return { metadata: warned };
+      }
+      if (warned && failure && shows(failure.block) && !token.isCancellationRequested) {
+        const kept = await draw(warned);
+        if (kept.ok) {
+          stream.markdown(
+            `\n\nThe fix failed to render, so the ${diagramNoun(warned.language)} stays as it was.`,
+          );
+          showButton(stream, warned.language);
+          return { metadata: warned };
+        }
       }
       if (!failure) {
         return;
