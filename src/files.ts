@@ -323,14 +323,18 @@ export function absolutePath(
 }
 
 /**
- * Resolves a path as given in a chart spec or a node link: "~" and "~/…" relative to the home
- * directory, absolute paths as {@link absoluteFile} does, and other paths relative to the first
- * workspace folder.
+ * Resolves a path as given in a chart spec or a node link: "~" and "~/…", or on Windows "~\…",
+ * relative to the home directory, absolute paths as {@link absoluteFile} does, and other paths
+ * relative to the first workspace folder.
  *
  * @throws Error when the path is relative but no workspace folder is open.
  */
 export function resolveFile(file: string): vscode.Uri {
-  if (file === "~" || file.startsWith("~/")) {
+  if (
+    file === "~" ||
+    file.startsWith("~/") ||
+    (process.platform === "win32" && file.startsWith("~\\"))
+  ) {
     return vscode.Uri.file(path.join(os.homedir(), file.slice(1)));
   }
   if (path.isAbsolute(file)) {

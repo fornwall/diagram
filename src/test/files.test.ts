@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -18,6 +19,7 @@ import {
   fileSystem,
   folders,
   recordFilePaths,
+  replace,
   suiteTempDir,
   workspaceLink,
   workspaceRoot,
@@ -54,6 +56,17 @@ suite("files", () => {
     assert.ok(inside("/owner/one/src/a.ts"));
     assert.ok(!inside("/owner/x/a.ts"));
     assert.ok(!inside("/owner/oneself"));
+  });
+
+  test("resolves a path in the home folder, also by Windows' backslash", () => {
+    const home = os.homedir();
+    assert.strictEqual(resolveFile("~").fsPath, home);
+    assert.strictEqual(resolveFile("~/data.csv").fsPath, path.join(home, "data.csv"));
+    // Elsewhere, "~\data.csv" names a file in the workspace folder.
+    const folder = () => path.dirname(resolveFile("~\\data.csv").fsPath);
+    assert.strictEqual(folder(), workspaceRoot().uri.fsPath);
+    replace(process, "platform", "win32");
+    assert.strictEqual(folder(), home);
   });
 
   test("resolves an absolute path that leads out of the workspace outside it", () => {
