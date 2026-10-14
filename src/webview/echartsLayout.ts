@@ -1286,7 +1286,9 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   const outsideLabels =
     label.show !== false &&
     !["inside", "inner", "center"].includes(String(label.position ?? "outside"));
-  if (pie.radius === undefined) {
+  // A radius of the option's own stays as it is, as of a doughnut.
+  const chosen = pie.radius === undefined;
+  if (chosen) {
     // In a wide box, the labels fit beside the pie, which can then take more of the height.
     const ratio = boxWidth / Math.max(1, boxHeight);
     const radius = !outsideLabels
@@ -1320,7 +1322,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
     return;
   }
   // Labels that do not fit beside the pie on one line go onto several, from the edge of the box
-  // in to their line, and the pie leaves the room for them.
+  // in to their line, and a pie of the panel's radius leaves the room for them.
   label.alignTo ??= "edge";
   label.edgeDistance ??= 8;
   if (label.width === undefined) label.overflow ??= "break";
@@ -1330,7 +1332,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   pie.labelLine = line;
   const most = labeledRadius(labels, boxWidth, length);
   const least = MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2);
-  if (outer > most) pie.radius = scaleRadius(pie.radius, Math.max(most, least) / outer);
+  if (chosen && outer > most) pie.radius = scaleRadius(pie.radius, Math.max(most, least) / outer);
 }
 
 /** The least radius of a pie with labels beside it, as a share of the radius it could have. */

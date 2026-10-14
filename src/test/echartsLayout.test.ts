@@ -350,13 +350,13 @@ suite("echartsLayout", () => {
 
   test("gives the labels of a narrow pie room on lines from the edge, or a legend instead", () => {
     // The example of the guide's echarts-pie topic.
-    const pie = (label: Option = { formatter: "{b}: {d}%" }): Option => ({
+    const pie = (label: Option = { formatter: "{b}: {d}%" }, own: Option = {}): Option => ({
       title: { text: "Disk usage", subtext: "GB" },
       series: [
         {
           type: "pie",
-          radius: ["45%", "70%"],
           label,
+          ...own,
           data: [
             { name: "Videos", value: 182 },
             { name: "Photos", value: 96 },
@@ -374,9 +374,8 @@ suite("echartsLayout", () => {
       [series.label.alignTo, series.label.overflow, series.labelLine.length2, narrow.legend],
       ["edge", "break", 0, undefined],
     );
-    // A smaller doughnut of the same shape.
-    const [inner, outer] = series.radius.map((radius: string) => Number.parseFloat(radius));
-    assert.ok(outer < 60 && Math.abs(inner / outer - 45 / 70) < 0.02, String(series.radius));
+    // A pie of a radius that leaves room for them.
+    assert.ok(Number.parseFloat(series.radius) <= 50, String(series.radius));
     // Drawn whole, where ECharts cut the labels to "Photo..." and "...".
     const svg = svgOf(narrow, size);
     assert.match(svg, />Photos: 25\.74%</);
@@ -384,16 +383,22 @@ suite("echartsLayout", () => {
     assert.doesNotMatch(svg, /\.\.\.</);
     // Beside a wide pie, the labels stay as ECharts places them.
     const wide = layout(pie()).series[0];
-    assert.deepStrictEqual([wide.label, wide.radius], [{ formatter: "{b}: {d}%" }, ["45%", "70%"]]);
+    assert.deepStrictEqual(wide.label, { formatter: "{b}: {d}%" });
+    // A radius of the option's own stays as it is, as a doughnut's.
+    const doughnut = layout(pie({ show: true }, { radius: ["45%", "70%"] }), size).series[0];
+    assert.deepStrictEqual(
+      [doughnut.radius, doughnut.label.alignTo, doughnut.label.overflow],
+      [["45%", "70%"], "edge", "break"],
+    );
     // Too narrow for them even so: a legend names the slices, unless the option says to label them.
     const narrower = layout(pie(), { width: 260, height: 575 });
     assert.deepStrictEqual([narrower.legend.bottom, narrower.series[0].label.show], [6, false]);
     const shown = layout(pie({ show: true }), { width: 260, height: 575 });
     assert.deepStrictEqual([shown.legend, shown.series[0].label.alignTo], [undefined, "edge"]);
-    assert.ok(Number.parseFloat(shown.series[0].radius[1]) >= 39, String(shown.series[0].radius));
+    assert.ok(Number.parseFloat(shown.series[0].radius) >= 39, String(shown.series[0].radius));
     // Nor labels inside the slices, or aligned otherwise by the option.
     for (const label of [{ position: "inside" }, { alignTo: "labelLine" }]) {
-      const own = layout(pie(label), size).series[0];
+      const own = layout(pie(label, { radius: ["45%", "70%"] }), size).series[0];
       assert.deepStrictEqual([own.label, own.radius], [label, ["45%", "70%"]]);
     }
   });
