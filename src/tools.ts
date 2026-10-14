@@ -25,6 +25,7 @@ import {
   isPlainObject,
   nodeNoun,
   RENDER_TOOL,
+  UPDATE_CHART_TOOL,
 } from "./protocol";
 import { errorContext } from "./sourceEdits";
 import { formatCount, givenProperties, plural, quoteAll, unknownProperties } from "./text";
@@ -159,8 +160,10 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     const noun = diagramNoun(diagram.language);
     if (outcome.ok) {
       return drawnResult(
-        `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.` +
-          this.panel.warnings.map((warning) => ` ${warning}`).join("") +
+        [
+          `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.`,
+          ...drawnWarnings(this.panel),
+        ].join("\n\n") +
           leftOutLinks(problems, diagram.language) +
           linksWithoutNodes(Object.keys(diagram.links ?? {}), this.panel.drawnIds) +
           ignored,
@@ -564,6 +567,24 @@ export function leftOutLinks(problems: readonly string[], language: DiagramLangu
     `${LINK_SYNTAX}. Correct them with "links" in ${EDIT_TOOL}.`
   );
 }
+
+/**
+ * What the panel warns of in what it drew, as paragraphs to follow what a drawing tool did. The
+ * warnings name the fixes in the source, which of a chart that diagram_chart made its settings
+ * rebuild: those settings that fix them follow.
+ */
+export function drawnWarnings(panel: DiagramPanel): string[] {
+  const { warnings } = panel;
+  if (warnings.length === 0) return [];
+  return panel.current?.chart ? [...warnings, GENERATED_CHART_FIXES] : [...warnings];
+}
+
+const GENERATED_CHART_FIXES =
+  `As ${CHART_TOOL} made this chart, fix these by its settings with ${UPDATE_CHART_TOOL} where ` +
+  'they do it: "type": "horizontalBar" for category names too long for the width, "sort": ' +
+  '"descending" with a "limit" to show only the largest categories or slices (a pie sums up the ' +
+  'rest as "Other"), or fewer "valueColumns" for fewer series. Change its styling, such as ' +
+  `"grid" or "dataZoom", with ${EDIT_TOOL}, and its data, such as shorter names, with ${CHART_TOOL}.`;
 
 export function renderFailure(
   outcome: Extract<RenderOutcome, { ok: false }>,

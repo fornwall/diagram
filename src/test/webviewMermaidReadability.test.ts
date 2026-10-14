@@ -354,7 +354,7 @@ suite("Mermaid readability in the webview", function () {
     });
     assert.match(
       result,
-      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\. Too small to read: the [\d,]+ px wide drawing fits the panel's 4\d\d px width .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
+      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\.\n\nToo small to read: the [\d,]+ px wide drawing fits the panel's 4\d\d px width .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
     );
   });
 });

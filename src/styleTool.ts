@@ -18,7 +18,7 @@ import type { DiagramPanel } from "./panel";
 import { EDIT_TOOL, errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
 import { type StyleChange, type StyleInput, validateStyleInput } from "./styleInput";
 import { plural, quoteAll } from "./text";
-import { drawnResult, idList, textResult } from "./tools";
+import { drawnResult, drawnWarnings, idList, textResult } from "./tools";
 
 /** Ids that name the panel rather than an item, unless the diagram has an item by that id. */
 const BACKGROUND_IDS = /^(?:background|bg|canvas|panel|page|diagram|chart|theme)$/i;
@@ -263,7 +263,10 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
         `The diagram was opened from a code block in ${documentName(state.document)}. The change is in the panel only, until the user writes it to that file with Apply or Write to.`,
       );
     }
-    return { paragraphs: [sentences.join(" "), ...notes], drawn: outcome.revision };
+    return {
+      paragraphs: [sentences.join(" "), ...drawnWarnings(this.panel), ...notes],
+      drawn: outcome.revision,
+    };
   }
 }
 

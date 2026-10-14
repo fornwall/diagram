@@ -17,7 +17,7 @@ import {
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { inWords, plural, quote, shorten, toolInput } from "./text";
-import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
+import { drawnResult, drawnWarnings, nonBlank, renderFailure, textResult } from "./tools";
 import { formatOption } from "./webview/optionSource";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
@@ -73,7 +73,11 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool", table), token);
     if (outcome.ok) {
       return drawnResult(
-        `Rendered the ${inWords(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}\n\nIf columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
+        [
+          `Rendered the ${inWords(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}`,
+          ...drawnWarnings(this.panel),
+          `If columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
+        ].join("\n\n"),
         outcome.revision,
       );
     }
@@ -250,7 +254,10 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
       // A failed update draws the kept chart again.
       return outcome.ok
         ? drawnResult(
-            `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""}`,
+            [
+              `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""}`,
+              ...drawnWarnings(this.panel),
+            ].join("\n\n"),
             outcome.revision,
           )
         : textResult(`The chart was not updated: ${outcome.error}`);

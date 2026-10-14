@@ -32,6 +32,7 @@ import {
 import { formatCount, givenProperties, lineAndColumn, unknownProperties } from "./text";
 import {
   drawnResult,
+  drawnWarnings,
   idList,
   leftOutLinks,
   linksWithoutNodes,
@@ -359,7 +360,7 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       );
     }
     return {
-      paragraphs: [sentences.join(" "), ...this.panel.warnings, ...notes],
+      paragraphs: [sentences.join(" "), ...drawnWarnings(this.panel), ...notes],
       drawn: outcome.revision,
     };
   }

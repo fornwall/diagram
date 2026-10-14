@@ -5,7 +5,10 @@ import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
+import { EditDiagramTool } from "../editTool";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
+import { StyleDiagramTool } from "../styleTool";
+import { RenderDiagramTool } from "../tools";
 import { formatOption } from "../webview/optionSource";
 import { afterTest, cancellationSource, replace, tempDir, workspaceLink } from "./afterTest";
 import { drawChart, newFakePanel } from "./newPanel";
@@ -441,6 +444,55 @@ suite("chartTools", function () {
     );
     assert.ok((await replacement)?.ok);
     assert.strictEqual(panel.current?.title, "Replacement");
+  });
+
+  test("every drawing tool tells what the panel warns of, and of a generated chart the settings that fix it", async () => {
+    const { panel, webview } = await harness();
+    const warning =
+      'xAxis shows only 9 of its 25 category labels at the panel\'s width of 376 pixels, leaving out the others for lack of room: put the categories on yAxis as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time.';
+    const drawn = webview.answer;
+    webview.answer = (message) => {
+      const answer = drawn?.(message);
+      return answer?.type === "rendered"
+        ? { ...answer, nodeIds: ["A", "B"], warnings: [warning] }
+        : answer;
+    };
+    const fixes =
+      'As diagram_chart made this chart, fix these by its settings with diagram_updateChart where they do it: "type": "horizontalBar" for category names too long for the width, "sort": "descending" with a "limit" to show only the largest categories or slices (a pie sums up the rest as "Other"), or fewer "valueColumns" for fewer series. Change its styling, such as "grid" or "dataZoom", with diagram_edit, and its data, such as shorter names, with diagram_chart.';
+    const told = (result: string, ...paragraphs: string[]) =>
+      assert.ok(result.includes(`\n\n${paragraphs.join("\n\n")}`), result);
+
+    told(
+      await invokeTool(new ChartTool(panel), { type: "bar", data }),
+      warning,
+      fixes,
+      "If columns",
+    );
+    told(
+      await invokeTool(new UpdateChartTool(panel), { sort: "descending" }),
+      warning,
+      fixes,
+      `Revision: ${panel.revision}.`,
+    );
+    told(
+      await invokeTool(new EditDiagramTool(panel), {
+        edits: [{ oldText: '"type": "value"', newText: '"type": "value", "splitNumber": 3' }],
+      }),
+      warning,
+      fixes,
+      `Revision: ${panel.revision}.`,
+    );
+    // Not of a diagram or chart drawn from its source alone, which a model fixes in the source.
+    const source = "flowchart LR\n  A --> B";
+    assert.strictEqual(
+      await invokeTool(new RenderDiagramTool(panel), { source }),
+      `Rendered the test diagram in the diagram panel next to the chat.\n\n${warning}\n\nRevision: ${panel.revision}.`,
+    );
+    told(
+      await invokeTool(new StyleDiagramTool(panel), { styles: [{ id: "A", fill: "red" }] }),
+      warning,
+      `Revision: ${panel.revision}.`,
+    );
   });
 
   test("diagram_chart writes the option as the source view shows it, with values on few lines", async () => {
