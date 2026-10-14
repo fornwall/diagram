@@ -377,10 +377,11 @@ export class EChartsRenderer implements Renderer {
     draw: (svg: SVGSVGElement, chart: ECharts.ECharts) => T,
   ): Promise<T> {
     // Export can precede the resize observer or its debounced layout after changing views: lay out
-    // for the size now, which leaves nothing to do once it settles. Hidden charts keep the
-    // dimensions of their last visible rendering.
+    // for the size now, and check it there, which leaves nothing to do once it settles. Hidden
+    // charts keep the dimensions of their last visible rendering.
     if (this.chart) this.apply(true);
     this.cancelRelayout();
+    this.checkSize();
     const chart = this.chart;
     const svg = this.container.querySelector("svg");
     if (!chart || !svg) throw new Error("There is no chart to make an image of.");
@@ -658,15 +659,21 @@ export class EChartsRenderer implements Renderer {
 
   /** Lays out the shown chart again, keeping what is shown if that fails. */
   private relayout(): void {
-    const option = this.option;
-    if (!this.chart || !option) return;
+    if (!this.chart || !this.option) return;
     this.guard(() => this.apply(true));
-    // What the chart leaves out for lack of room, such as category labels, goes by its size:
-    // check it again at a new size, but not at each size it has while the size keeps changing.
+    this.checkSize();
+  }
+
+  /**
+   * Checks how the chart is laid out again at a new size: what it leaves out for lack of room,
+   * such as category labels, goes by its size. Not at each size it has while the size keeps
+   * changing.
+   */
+  private checkSize(): void {
     const size = this.chartSize();
-    if (size && size !== this.checkedAt && this.relayoutTimer === undefined) {
+    if (this.option && size && size !== this.checkedAt && this.relayoutTimer === undefined) {
       this.checkedAt = size;
-      this.layoutWarnings = this.checkLayout(option);
+      this.layoutWarnings = this.checkLayout(this.option);
       warningsMayChange(this.canvas);
     }
   }

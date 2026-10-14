@@ -398,6 +398,47 @@ suite("echartsRenderer", () => {
     assert.deepStrictEqual(renderer.warnings(), warned);
   });
 
+  test("checks a chart drawn for an image at a new size there, though its size has not settled", async () => {
+    const departments = Array.from({ length: 30 }, (_, index) => `Department number ${index}`);
+    const option = {
+      xAxis: { type: "category", data: departments },
+      yAxis: {},
+      series: [{ type: "bar", data: departments.map((_, index) => index) }],
+    };
+    /** The warnings of a renderer that drew the chart at a width. */
+    const drawnAt = async (width: number) => {
+      const drawn = drawnRenderer(option);
+      Object.assign(drawn.container, {
+        clientWidth: width,
+        hidden: true,
+        scrollTop: 0,
+        setAttribute: () => {},
+        querySelector: () => ({}),
+      });
+      Object.assign(drawn.renderer, {
+        canvas: { classList: { add: () => {} }, dispatchEvent: () => true },
+        resizeObserver: { observe: () => {}, unobserve: () => {} },
+      });
+      drawn.internals.chart.resize({ width, height: 300 });
+      await drawn.renderer.render(JSON.stringify(option), "");
+      return drawn;
+    };
+    const narrow = (await drawnAt(250)).renderer.warnings();
+    const { container, renderer, internals } = await drawnAt(400);
+    assert.notDeepStrictEqual(renderer.warnings(), narrow);
+    // The panel narrowed, and the chart was resized, but is laid out once that settles.
+    const settle = setTimeout(() => {}, 60_000);
+    afterTest(() => clearTimeout(settle));
+    Object.assign(renderer, { relayoutTimer: settle });
+    container.clientWidth = 250;
+    const still = (
+      renderer as unknown as { still(marked: boolean, draw: () => void): Promise<void> }
+    ).still;
+    await still.call(renderer, true, () => {});
+    assert.strictEqual(internals.chart.getWidth(), 250);
+    assert.deepStrictEqual(renderer.warnings(), narrow);
+  });
+
   test("draws a chart anew that ECharts left refusing every option by throwing in an action", () => {
     // An action whose handler throws, as ECharts' own can on an option it did not foresee.
     registerAction({ type: "diagramTestThrow", event: "diagramTestThrow", update: "none" }, () => {
