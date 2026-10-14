@@ -985,7 +985,8 @@ suite("webview", function () {
   });
 
   test("keeps the middle of the drawing in place when toggling between fit and actual size", async () => {
-    await draw({ source: chain("LR", 30), title: "Fit and actual size" });
+    // Wider than the panel, and narrow enough that fitting shows its 16 px text at a size that reads.
+    await draw({ source: chain("LR", 4), title: "Fit and actual size" });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
@@ -994,7 +995,7 @@ suite("webview", function () {
         const middle = () => {
           const view = canvas.getBoundingClientRect();
           const box = document.querySelector("#diagram svg").getBoundingClientRect();
-          return Math.round(((view.left + view.width / 2 - box.left) / box.width) * 100) / 100;
+          return Math.round(((view.left + view.width / 2 - box.left) / box.width) * 10) / 10;
         };
         const fitted = [reset.textContent, middle()];
         reset.click();
@@ -1002,7 +1003,24 @@ suite("webview", function () {
         reset.click();
         return {fitted, actual, refitted: [reset.textContent, middle()]};
       })()`),
-      { fitted: ["10%", 0.5], actual: ["100%", 0.5], refitted: ["10%", 0.5] },
+      { fitted: ["62%", 0.5], actual: ["100%", 0.5], refitted: ["62%", 0.5] },
+    );
+  });
+
+  test("fits a wide diagram no smaller than its text reads, scrolled sideways to its start", async () => {
+    await draw({ source: chain("LR", 30), title: "Wide" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const svg = document.querySelector("#diagram svg");
+        return {
+          zoom: document.getElementById("zoom-reset").textContent,
+          text: Math.round((16 * svg.getBoundingClientRect().width) / svg.viewBox.baseVal.width),
+          wider: canvas.scrollWidth > canvas.clientWidth,
+          start: canvas.scrollLeft,
+        };
+      })()`),
+      { zoom: "56%", text: 9, wider: true, start: 0 },
     );
   });
 

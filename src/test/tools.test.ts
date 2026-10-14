@@ -359,7 +359,7 @@ suite("tools", () => {
     assert.strictEqual(steps30.size[0], 1568);
     assert.match(
       steps30.text,
-      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px, too small to read without zooming in\.$/,
+      /^Revision \d+ of the diagram: all of its \d{4}×\d+ px drawing, at \d\d% in this 1568×\d+ px image\. Its text, 16 px, is \d+(\.\d)? px here: too small to read reliably\. To read it, call diagram_getImage with the "ids" of a few items, to see the part around them\. The panel shows it at \d+% in \d+×\d+ px(?:, too small to read without zooming in)?\.$/,
     );
     const pie = '{"series": [{"type": "pie", "data": [{"name": "Pie", "value": 1}]}]}';
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);

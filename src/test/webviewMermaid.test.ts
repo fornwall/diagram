@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
-import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
+import { MIN_FIT_TEXT, RELAYOUT_DELAY } from "../webview/mermaidRenderer";
 import { afterTest, replace } from "./afterTest";
 import { webviewTabs } from "./newPanel";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
@@ -227,22 +227,26 @@ suite("Mermaid in the webview", function () {
         const room = () => canvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
         await until(() => innerWidth !== 300, "the size of the shown tab");
         const svg = () => document.querySelector("#diagram svg");
+        // The width that fitting shows the drawing at: no narrower than shows its 16 px text at
+        // the least size that reads.
+        const fitted = (laidOut) => Math.max(Math.round(room()), Math.round((laidOut * ${MIN_FIT_TEXT}) / 16));
         const drawn = () => ({
           laidOut: Math.round(svg().viewBox.baseVal.width),
           width: Math.round(svg().width.baseVal.value),
           room: Math.round(room()),
+          fitted: fitted(svg().viewBox.baseVal.width),
         });
         // Fitted, or for a Gantt chart laid out, for the shown tab.
         await until(() => {
-          const { laidOut, width, room } = drawn();
-          return ${gantt} ? laidOut === room : width === room;
+          const { laidOut, width, room, fitted } = drawn();
+          return ${gantt} ? laidOut === room : Math.abs(width - fitted) <= 1;
         }, "the diagram fitted", nextFrame).catch(() => {});
         return drawn();
       })()`);
-      const { laidOut, width, room } = shown as { laidOut: number; width: number; room: number };
+      const { laidOut, width, room, fitted } = shown as Record<string, number>;
       const message = JSON.stringify({ ...(shown as object), early });
       if (gantt) assert.strictEqual(laidOut, room, message);
-      else assert.strictEqual(width, room, message);
+      else assert.ok(Math.abs((width as number) - (fitted as number)) <= 1, message);
     }
   });
 

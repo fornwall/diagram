@@ -69,6 +69,11 @@ const WHEEL_ZOOM = 1.2;
 /** Fitting a tall diagram to the panel height never shrinks it below this; it scrolls instead. */
 const MIN_HEIGHT_FIT = 0.6;
 /**
+ * Fitting a wide diagram to the panel width never shows most of its text smaller than this many
+ * pixels, where it could not be read without zooming in; it scrolls sideways instead.
+ */
+export const MIN_FIT_TEXT = 9;
+/**
  * How much the canvas width must change for a chart drawn at its width to be laid out again
  * (scaling it to fit meanwhile), and how long after the last change: not for a scrollbar, nor for
  * each step of a drag.
@@ -490,6 +495,8 @@ export class MermaidRenderer implements Renderer {
   private diagramType: string | undefined;
   /** How the shown drawing reads, as measured when it was drawn. */
   private readability: string[] = [];
+  /** The size of most of the text of the drawing shown, at actual size. */
+  private textSize: number | undefined;
   /** The width of the container that the drawing was laid out in. */
   private layoutWidth = 0;
   private fitFrame = 0;
@@ -711,7 +718,9 @@ export class MermaidRenderer implements Renderer {
       const svg = await layOut(result.svg, result.diagramType, text, colors, async () => db);
       // Measured in the layout container, as the canvas may be hidden, as by the Source view.
       let readability: string[] = [];
+      let size: number | undefined;
       try {
+        size = textSize(svg);
         readability = readabilityWarnings(svg, {
           type: result.diagramType,
           source,
@@ -724,9 +733,9 @@ export class MermaidRenderer implements Renderer {
       } catch (error) {
         console.error(error);
       }
-      return { result, db, svg, readability };
+      return { result, db, svg, readability, size };
     };
-    const { result, db, svg, readability } = await drawing().catch((error: unknown) => {
+    const { result, db, svg, readability, size } = await drawing().catch((error: unknown) => {
       container.style.width = shownWidth;
       throw error;
     });
@@ -749,6 +758,7 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = source;
     this.diagramType = result.diagramType;
     this.readability = readability;
+    this.textSize = size;
     this.prepareSvg(svg, id, db);
     this.present();
     return result.diagramType;
@@ -1198,7 +1208,12 @@ export class MermaidRenderer implements Renderer {
   ): number | undefined {
     if (!natural?.width || !natural.height) return 1;
     if (width <= 0 || height <= 0) return undefined;
-    return Math.min(1, width / natural.width, Math.max(height / natural.height, MIN_HEIGHT_FIT));
+    const readable = this.textSize ? MIN_FIT_TEXT / this.textSize : 0;
+    return Math.min(
+      1,
+      Math.max(width / natural.width, readable),
+      Math.max(height / natural.height, MIN_HEIGHT_FIT),
+    );
   }
 
   /**

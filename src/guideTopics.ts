@@ -39,7 +39,7 @@ flowchart LR
 - %% starts a comment line. $$x^2$$ in a label draws math.
 - Mermaid 12 lays out flowcharts, class, state, ER and requirement diagrams with ELK by default, with right-angled edges; front matter config: layout: dagre gives the curved edges of Mermaid 11.
 - Leave out theme, themeVariables, classDef, style and fonts unless the user asks for colors (diagram_style sets them); never click directives or HTML. themeVariables without a theme, such as primaryColor and lineColor, recolor the panel's theme, which keeps text legible; any theme but base replaces it.
-Panel: follows the VS Code theme (light, dark, high contrast; the background can't be changed), fits the diagram to its width with zoom and pan, and makes nodes and edges selectable. Instead of click directives, give diagram_render "links" (node id → code location) or a "clickPrompt". Sources over 50,000 characters are refused: split them.`,
+Panel: follows the VS Code theme (light, dark, high contrast; the background can't be changed), fits the diagram to its width with zoom and pan (a wide one only down to legible text, then it scrolls sideways), and makes nodes and edges selectable. Instead of click directives, give diagram_render "links" (node id → code location) or a "clickPrompt". Sources over 50,000 characters are refused: split them.`,
   },
   {
     name: "flowchart",
