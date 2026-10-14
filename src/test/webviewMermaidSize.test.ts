@@ -29,6 +29,20 @@ suite("Mermaid charts sized for the panel in the webview", function () {
     );
   });
 
+  test("sizes the width of a chart whose configuration sets only its height", async () => {
+    await width("400px");
+    const sized = await drawnWidth(XY_CHART);
+    assert.strictEqual(
+      await drawnWidth(`---\nconfig:\n  xyChart:\n    height: 300\n---\n${XY_CHART}`),
+      sized,
+    );
+    // Its own height, rather than the panel's for its width, 286 px; and room for the text beyond.
+    const height = Number(
+      await evaluate(`document.querySelector("#diagram svg").viewBox.baseVal.height`),
+    );
+    assert.ok(height >= 300 && height < 305, `${height}`);
+  });
+
   test("keeps the size that a chart's configuration gives it, also Mermaid's own", async () => {
     await width("400px");
     assert.ok(Number(await drawnWidth(XY_CHART)) < 700);
