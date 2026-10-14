@@ -164,7 +164,9 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
   let renderer = renderers.get(language);
   if (!renderer) {
     renderer = createRenderer[language]().catch((error: unknown) => {
-      // Let a later render try again.
+      // Let a later render try again, which loads the ECharts script anew. A module that did not
+      // load, such as a chunk of Mermaid when VS Code gave up on reading it after 30 seconds,
+      // fails again at once: the browser keeps the failure until the page is loaded anew.
       renderers.delete(language);
       const name = language === "echarts" ? "ECharts" : "Mermaid";
       throw new Error(
