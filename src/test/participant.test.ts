@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { ChartTool, UpdateChartTool } from "../chartTools";
+import { EditDiagramTool } from "../editTool";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
 import { StyleDiagramTool } from "../styleTool";
@@ -28,6 +29,7 @@ const flowchart = {
 const defaultTools = [
   "diagram_annotate",
   "diagram_chart",
+  "diagram_edit",
   "diagram_findFiles",
   "diagram_getImage",
   "diagram_getState",
@@ -971,6 +973,48 @@ suite("participant", () => {
     assert.deepStrictEqual(result?.metadata, {
       language: "mermaid",
       source: `${source}\n  style A fill:red,color:black`,
+    });
+  });
+
+  test("changes the current diagram with diagram_edit, keeping its links, and adopts it", async () => {
+    webview.answer = (message) =>
+      message.type === "render"
+        ? { type: "rendered", requestId: message.requestId, diagramType: "flowchart-v2" }
+        : undefined;
+    const tool = new EditDiagramTool(panel);
+    replace(vscode.lm, "invokeTool", async (name, options, token) => {
+      assert.strictEqual(name, "diagram_edit");
+      return tool.invoke(
+        options as vscode.LanguageModelToolInvocationOptions<never>,
+        token ?? new vscode.CancellationTokenSource().token,
+      );
+    });
+    const links = { A: { file: "sizes.tsv", line: 1 } };
+    await panel.render(
+      { language: "mermaid", source: "flowchart TD\n  A --> B", title: "Flow", links },
+      "tool",
+    );
+    const edit = new vscode.LanguageModelToolCallPart("1", "diagram_edit", {
+      edits: [{ oldText: "A --> B", newText: "A --> C --> B" }],
+      revision: panel.revision,
+    });
+    const { result, sent } = await ask([[edit], [text("Added C.")]]);
+    const [instructions, ...rest] = sent[0]?.messages ?? [];
+    assert.match(messageText(instructions), /Change the current diagram with diagram_edit/);
+    const current = rest.map(messageText).find((message) => message.includes("Current Mermaid"));
+    assert.match(
+      current ?? "",
+      /Revision: \d+\.[\s\S]*Code links: A → sizes\.tsv#L1\. diagram_edit keeps them\./,
+    );
+    assert.match(
+      messageText(sent[1]?.messages.at(-1)),
+      /^Edited the flowchart-v2 diagram with 1 edit/,
+    );
+    assert.strictEqual(panel.current?.origin, "participant");
+    assert.deepStrictEqual(panel.current?.links, links);
+    assert.deepStrictEqual(result?.metadata, {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> C --> B",
     });
   });
 

@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import { ChartTool, InspectDataTool, UpdateChartTool } from "./chartTools";
+import { EditDiagramTool } from "./editTool";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
 import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
+  EDIT_TOOL,
   FIND_FILES_TOOL,
   GET_IMAGE_TOOL,
   GET_STATE_TOOL,
@@ -46,6 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
     panel,
     participant,
     vscode.lm.registerTool(RENDER_TOOL, new RenderDiagramTool(panel)),
+    vscode.lm.registerTool(EDIT_TOOL, new EditDiagramTool(panel)),
     vscode.lm.registerTool(CHART_TOOL, new ChartTool(panel)),
     vscode.lm.registerTool(GET_STATE_TOOL, new GetDiagramStateTool(panel)),
     vscode.lm.registerTool(GET_IMAGE_TOOL, new GetDiagramImageTool(panel)),

@@ -4,6 +4,7 @@ import type { ChartOptionsState } from "./chartOptions";
 import type { ThemeColors } from "./webview/colors";
 
 export const RENDER_TOOL = "diagram_render";
+export const EDIT_TOOL = "diagram_edit";
 export const CHART_TOOL = "diagram_chart";
 export const GET_STATE_TOOL = "diagram_getState";
 export const GET_IMAGE_TOOL = "diagram_getImage";

@@ -15,6 +15,7 @@ import {
   CHART_TOOL,
   type DiagramLanguage,
   diagramNoun,
+  EDIT_TOOL,
   errorMessage,
   FIND_FILES_TOOL,
   GET_IMAGE_TOOL,
@@ -50,6 +51,7 @@ const READ_ONLY_TOOLS = new Set([
 const DEFAULT_TOOLS = new Set([
   ...READ_ONLY_TOOLS,
   RENDER_TOOL,
+  EDIT_TOOL,
   CHART_TOOL,
   PICK_NODES_TOOL,
   ANNOTATE_TOOL,
@@ -57,7 +59,7 @@ const DEFAULT_TOOLS = new Set([
   UPDATE_CHART_TOOL,
   STYLE_TOOL,
 ]);
-const DRAWING_TOOLS = new Set([RENDER_TOOL, CHART_TOOL, UPDATE_CHART_TOOL, STYLE_TOOL]);
+const DRAWING_TOOLS = new Set([RENDER_TOOL, EDIT_TOOL, CHART_TOOL, UPDATE_CHART_TOOL, STYLE_TOOL]);
 
 /** What the tool calls of a request used and did, across its rounds and repairs. */
 interface ToolUse {

@@ -88,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To chart a file, command output or table, use diagram_chart.",
+        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -129,6 +129,81 @@
           },
           "required": [
             "source"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "diagram_edit",
+        "displayName": "Edit Current Diagram",
+        "toolReferenceName": "diagramEdit",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(edit)",
+        "userDescription": "Change the current diagram or chart with exact replacements in its source",
+        "modelDescription": "Change the current Mermaid diagram or ECharts chart with exact text replacements in its source instead of sending it all again with diagram_render, keeping the rest of the source, node ids, the user's edits, the title, code links and click prompt. Copy each oldText exactly from the source that diagram_getState gives. If any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, nodes added or removed, or the render error with the lines around it, and the revision. On a chart made by diagram_chart, edit only styling; change its type, columns or data with diagram_updateChart or diagram_chart.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "echarts",
+          "chart",
+          "visualization"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "edits": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "oldText": {
+                    "type": "string",
+                    "description": "Exact text of the source, with its indentation and line breaks, that occurs once unless replaceAll is set."
+                  },
+                  "newText": {
+                    "type": "string",
+                    "description": "The replacement; empty deletes oldText."
+                  },
+                  "replaceAll": {
+                    "type": "boolean",
+                    "description": "true replaces every occurrence."
+                  }
+                },
+                "required": [
+                  "oldText",
+                  "newText"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 50,
+              "description": "Replacements made in order, each in the source that those before it left; all or none are made. Keep each oldText short but unique, e.g. [{\"oldText\": \"A --> B\", \"newText\": \"A --> C[Cache] --> B\"}]."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState or the result of the tool call that drew the diagram; the edits are refused if it has changed since."
+            },
+            "title": {
+              "type": "string",
+              "description": "New title shown in the panel; omit to keep it."
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "description": "Code links to add or change, by Mermaid node id, as in diagram_render, e.g. {\"cache\": \"src/cache.ts#L12\"}; null removes one. The others are kept."
+            }
+          },
+          "required": [
+            "edits"
           ],
           "additionalProperties": false
         }

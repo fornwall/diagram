@@ -15,6 +15,7 @@ import {
   CHART_TOOL,
   type DiagramLanguage,
   diagramNoun,
+  EDIT_TOOL,
   errorMessage,
   GET_STATE_TOOL,
   isDiagramLanguage,
@@ -22,6 +23,7 @@ import {
   nodeNoun,
   RENDER_TOOL,
 } from "./protocol";
+import { errorContext } from "./sourceEdits";
 import { formatCount, givenProperties, plural, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
@@ -165,12 +167,14 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       diagram.language === "echarts"
         ? "Fix the ECharts option (JSON, or a JavaScript object literal for callbacks such as renderItem)"
         : "Fix the Mermaid syntax";
+    // The lines around the error, to fix with an edit of the source that the panel shows.
+    const context = errorContext(diagram.source, outcome.error);
     return drawnResult(
       renderFailure(
         outcome,
         noun,
         RENDER_TOOL,
-        `${fix} and call ${RENDER_TOOL} again with the complete corrected source.`,
+        `${context ? `${context}\n\n` : ""}${fix} with ${EDIT_TOOL}, or call ${RENDER_TOOL} again with the complete corrected source.`,
       ) +
         leftOutLinks(problems) +
         ignored,
@@ -381,7 +385,11 @@ function markingMessage({ marks, caption }: Annotation, language: DiagramLanguag
 }
 
 /** Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. */
-function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | undefined): string {
+export function linksWithoutNodes(
+  ids: readonly string[],
+  drawn: readonly string[] | undefined,
+  fix = `Call ${RENDER_TOOL} again with the links corrected to add them.`,
+): string {
   if (!drawn) {
     return "";
   }
@@ -392,7 +400,7 @@ function linksWithoutNodes(ids: readonly string[], drawn: readonly string[] | un
   }
   return (
     `\n\nThese links name nodes the diagram does not have, so nothing opens from them: ${quoteAll(unknown)}. ` +
-    `Its node ids are ${idList(drawn)}. Call ${RENDER_TOOL} again with the links corrected to add them.`
+    `Its node ids are ${idList(drawn)}. ${fix}`
   );
 }
 
@@ -404,14 +412,17 @@ export function idList(ids: readonly string[]): string {
   return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
 }
 
-function leftOutLinks(problems: readonly string[]): string {
+export function leftOutLinks(
+  problems: readonly string[],
+  fix = `Call ${RENDER_TOOL} again with the links corrected to add them.`,
+): string {
   if (problems.length === 0) {
     return "";
   }
   return (
     `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
     `A link is a path, absolute or relative to the first workspace folder, with an optional line: ` +
-    `${LINK_SYNTAX}. Call ${RENDER_TOOL} again with the links corrected to add them.`
+    `${LINK_SYNTAX}. ${fix}`
   );
 }
 

@@ -15,6 +15,7 @@ import {
   CHART_TOOL,
   type DiagramNode,
   diagramNoun,
+  EDIT_TOOL,
   GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   isPlainObject,
@@ -129,7 +130,10 @@ export function describeDiagram(
   if (links.length > 0) {
     lines.push(
       `Code links: ${links.join(", ")}.` +
-        (has(RENDER_TOOL) ? ` Pass them to ${RENDER_TOOL} when changing the diagram.` : ""),
+        (has(EDIT_TOOL) ? ` ${EDIT_TOOL} keeps them.` : "") +
+        (has(RENDER_TOOL)
+          ? ` Pass them to ${RENDER_TOOL} when ${has(EDIT_TOOL) ? "replacing" : "changing"} the diagram.`
+          : ""),
     );
   }
   if (state.document) {

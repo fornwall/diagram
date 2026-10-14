@@ -63,6 +63,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | Tool | Reference | Purpose |
 | --- | --- | --- |
 | `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks, custom series and timelines. Reports render errors. |
+| `diagram_edit` | `#diagramEdit` | Change the current diagram or chart with exact text replacements in its source, keeping the rest, its title, code links and click prompt. |
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
 | `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
 | `diagram_getImage` | `#diagramImage` | Look at the drawing as an image, to check its layout, for a model that accepts images. |
@@ -76,6 +77,8 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_style` | `#diagramStyle` | Set the fill, border and text colors of the nodes, subgraphs, classes, states and ER entities of a Mermaid diagram by editing their `style` lines. |
 
 Workspace tools stay within open workspace folders. Find and search respect `files.exclude`, `search.exclude` and `search.useIgnoreFiles`, and always exclude `.git` and `node_modules`.
+
+`diagram_edit` takes replacements such as `{"edits": [{"oldText": "A --> B", "newText": "A --> C --> B"}]}`, made in order. Each `oldText` must occur exactly once, unless `"replaceAll": true`; if any edit does not apply, none is made, and the result quotes the closest lines of the source. The result names the nodes added and removed, or the render error with the lines around it; an edit that fails to render stays shown, for the next edit to fix, as a failed `diagram_render` does. `links` adds or changes code links (`null` removes one) and keeps the others. Pass `revision` to reject stale edits. On a chart from `diagram_chart`, styling edits survive **Refresh** and `diagram_updateChart`, and changes to its data or structure are refused. Writing an edit to Markdown requires confirmation.
 
 `diagram_updateChart` keeps omitted settings unless the new chart type cannot use them; `null` clears a setting. Pass the revision from `diagram_getState` to reject stale updates. Incompatible manual source edits block the update.
 

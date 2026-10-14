@@ -37,6 +37,7 @@ import {
   type DiagramLanguage,
   type DiagramNode,
   diagramNoun,
+  EDIT_TOOL,
   type ExportResult,
   errorMessage,
   type FromWebview,
@@ -268,7 +269,7 @@ export class DiagramPanel implements vscode.Disposable {
    * Describes the current diagram and the user's interactions with it, for a language model.
    * `detail` says how much of a long source and relationship list to give. The model is told to
    * call only the `tools` it has, if not all, and is not told the revision without
-   * diagram_updateChart or diagram_style, which alone take it.
+   * diagram_updateChart, diagram_style or diagram_edit, which alone take it.
    */
   describeForModel({
     detail = "brief",
@@ -297,7 +298,7 @@ export class DiagramPanel implements vscode.Disposable {
       detail,
       tools,
     });
-    return !tools || tools.has(UPDATE_CHART_TOOL) || tools.has(STYLE_TOOL)
+    return !tools || tools.has(UPDATE_CHART_TOOL) || tools.has(STYLE_TOOL) || tools.has(EDIT_TOOL)
       ? `Revision: ${this.shownRevision}.\n\n${description}`
       : description;
   }
@@ -991,6 +992,49 @@ export class DiagramPanel implements vscode.Disposable {
       },
     );
     throwIfCancelled(token);
+    return outcome;
+  }
+
+  /**
+   * Shows an agent's edit of the current revision's source, as diagram_edit makes it, with its
+   * title, links and chart styling: like the user's Apply, a revision of the diagram that stays
+   * shown with its error if it fails to render, as the agent fixes it with a further edit, and
+   * whose items that are still drawn keep their selection and marks. As after an agent's
+   * replacement, Apply and Write to ask before writing it to the document the diagram was opened
+   * from.
+   */
+  async editByAgent(
+    edit: Pick<DiagramState, "source" | "title" | "links" | "chartPresentation">,
+    revision: number,
+  ): Promise<Drawn> {
+    const state = this.state;
+    if (!state || revision !== this.shownRevision) {
+      throw new Error(
+        `The diagram changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
+      );
+    }
+    if (this.pendingRender) {
+      throw new Error("The diagram is still being drawn. Wait for the current render and retry.");
+    }
+    this.state = {
+      ...state,
+      ...edit,
+      document: state.document && { ...state.document, replaced: true },
+      origin: "tool",
+    };
+    this.cancelPick("The diagram changed before the user picked.");
+    this.webview.reveal(true);
+    const outcome = await this.renderCurrent({ keepSelection: true });
+    // The marks of items that the edit removed would mark nothing.
+    const { annotation, drawn } = this;
+    if (outcome.ok && annotation && drawn?.nodeIds) {
+      const known = new Set([...drawn.nodeIds, ...(drawn.relationships ?? []).map(({ id }) => id)]);
+      const marks = annotation.marks.filter(({ id }) => known.has(id));
+      if (marks.length < annotation.marks.length) {
+        this.annotation = { ...annotation, marks };
+        this.post({ type: "annotate", ...this.annotation });
+      }
+    }
     return outcome;
   }
 
