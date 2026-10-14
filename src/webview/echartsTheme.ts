@@ -1,6 +1,9 @@
 // An ECharts theme built from the colors and fonts of the current VS Code theme.
 
-import { mix, type ThemeColors, toCss } from "./colors";
+import { parseColor } from "../cssColors";
+import { isPlainObject } from "../protocol";
+import { labelColorOn, legibleTints, mix, type ThemeColors, toCss } from "./colors";
+import type { JsonObject } from "./echartsOption";
 
 export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> {
   const foreground = toCss(colors.foreground);
@@ -129,7 +132,9 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     },
     graph: {
       lineStyle: { color: axisColor, opacity: 0.8 },
-      label: { color: foreground },
+      // Beside the node rather than on it, where a label in the text color may not read and a
+      // long one runs off a small node onto the background.
+      label: { color: foreground, position: "right" },
       itemStyle: { borderColor: background, borderWidth: 1 },
     },
     sankey: {
@@ -210,4 +215,63 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
     },
     markLine: { label: { color: foreground }, lineStyle: { color: axisColor } },
   };
+}
+
+/** The label positions of pies and funnels that lie on the slice, rather than beside it. */
+const INSIDE = new Set(["inside", "inner", "insideLeft", "insideRight"]);
+
+/**
+ * Labels items whose labels lie on them in a color legible on each, which the theme's one label
+ * color for a kind of series cannot be: the text color, or white in a treemap, all but vanish on
+ * some chart colors. The slices of pies and funnels that ECharts would color from the palette get
+ * that color, so that their labels know what they lie on. The rectangles of treemaps, large areas
+ * of color, take the chart colors mixed into the background as far as leaves the text color
+ * legible on them, as Mermaid's mind maps and treemaps do. Labels with a color of their own,
+ * series with colors of their own and series colored by a visual map are left alone.
+ */
+export function colorLabelsOnItems(base: JsonObject, series: JsonObject[], colors: ThemeColors) {
+  if (base.visualMap !== undefined) return;
+  const background = colors.background;
+  /** The color of a label on a fill, in CSS, if the fill is a CSS color. */
+  const labelOn = (fill: unknown) => {
+    const color = typeof fill === "string" ? parseColor(fill) : undefined;
+    return color && toCss(labelColorOn(mix(background, { ...color, a: 1 }, color.a), colors));
+  };
+  const ownPalette = (each: JsonObject) =>
+    [each.color, base.color].find(
+      (list): list is unknown[] => Array.isArray(list) && list.length > 0,
+    );
+  for (const each of series) {
+    const label = isPlainObject(each.label) ? each.label : {};
+    const data: unknown = each.data;
+    if (label.color !== undefined || !Array.isArray(data)) continue;
+    const insideLabel = (item: unknown) =>
+      INSIDE.has(
+        String((isPlainObject(item) && isPlainObject(item.label) ? item.label : label).position),
+      );
+    if ((each.type === "pie" || each.type === "funnel") && data.some(insideLabel)) {
+      const palette = ownPalette(each) ?? colors.palette.map(toCss);
+      // ECharts gives each name the next color, and a name that repeats the color it had.
+      const indices = new Map<unknown, number>();
+      each.data = data.map((item: unknown, index) => {
+        const copy: JsonObject = isPlainObject(item) ? { ...item } : { value: item };
+        const name = copy.name === undefined ? index : String(copy.name);
+        const colorIndex = indices.get(name) ?? indices.size;
+        indices.set(name, colorIndex);
+        const own = isPlainObject(copy.label) ? copy.label : {};
+        if (!insideLabel(item) || own.color !== undefined) return item;
+        const itemStyle = isPlainObject(copy.itemStyle) ? { ...copy.itemStyle } : {};
+        itemStyle.color ??= palette[colorIndex % palette.length];
+        const color = labelOn(itemStyle.color);
+        return color === undefined ? item : { ...copy, itemStyle, label: { ...own, color } };
+      });
+    }
+    if (each.type === "treemap" && each.levels === undefined && ownPalette(each) === undefined) {
+      const upperLabel = isPlainObject(each.upperLabel) ? each.upperLabel : {};
+      const text = toCss(colors.foreground);
+      each.levels = [{ color: legibleTints(colors).map(toCss) }];
+      each.label = { ...label, color: text };
+      each.upperLabel = { ...upperLabel, color: upperLabel.color ?? text };
+    }
+  }
 }

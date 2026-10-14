@@ -58,6 +58,24 @@ export function labelColorOn(
   );
 }
 
+/**
+ * The chart colors, mixed into the background as far as leaves the theme's text legible on them,
+ * and on the colors that `alike` makes of each: fills for areas that the text color labels, such
+ * as the sections of a mind map or the rectangles of a treemap.
+ */
+export function legibleTints(
+  { dark, palette, background, foreground }: ThemeColors,
+  alike: (color: Rgba) => Rgba[] = () => [],
+): Rgba[] {
+  const legible = (color: Rgba) =>
+    [color, ...alike(color)].every((each) => contrast(each, foreground) >= LABEL_CONTRAST);
+  return palette.slice(0, 12).map((hue) => {
+    let amount = dark ? 0.45 : 0.5;
+    while (amount > 0.15 && !legible(mix(background, hue, amount))) amount -= 0.05;
+    return mix(background, hue, amount);
+  });
+}
+
 /** Raises the HSL lightness of a color by `points` percentage points, as Mermaid's lighten does. */
 export function lighten({ r, g, b }: Rgba, points: number): Rgba {
   const [red, green, blue] = [r / 255, g / 255, b / 255] as [number, number, number];

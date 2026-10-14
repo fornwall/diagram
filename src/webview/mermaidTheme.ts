@@ -2,8 +2,8 @@
 
 import {
   contrast,
-  LABEL_CONTRAST,
   labelColorOn,
+  legibleTints,
   lighten,
   mix,
   type Rgba,
@@ -24,23 +24,6 @@ function atLeast(background: Rgba, color: Rgba, ratio: number, from: number): Rg
     if (contrast(mixed, background) >= ratio) return mixed;
   }
   return color;
-}
-
-/**
- * The colors of the sections of mind maps, timelines, kanban boards and pies, and of their labels:
- * VS Code's chart colors, mixed into the background as far as leaves the theme's text legible on
- * them. Kanban columns are drawn 10 points lighter, which their labels and headings must be
- * legible on too.
- */
-function sectionColors({ dark, palette, background, foreground }: ThemeColors): Rgba[] {
-  const legible = (color: Rgba) =>
-    contrast(color, foreground) >= LABEL_CONTRAST &&
-    contrast(lighten(color, 10), foreground) >= LABEL_CONTRAST;
-  return palette.slice(0, 12).map((hue) => {
-    let amount = dark ? 0.45 : 0.5;
-    while (amount > 0.15 && !legible(mix(background, hue, amount))) amount -= 0.05;
-    return mix(background, hue, amount);
-  });
 }
 
 /**
@@ -81,7 +64,10 @@ export function mermaidThemeVariables(colors: ThemeColors): Record<string, unkno
   const secondary = tint(foreground, dark ? 0.1 : 0.07);
   const note = tint(yellow, dark ? 0.16 : 0.2);
   const noteBorder = highContrast ? yellow : atLeast(background, yellow, 2, 0.3);
-  const sections = sectionColors(colors);
+  // The sections of mind maps, timelines, kanban boards, pies and treemaps, labeled in the text
+  // color. Kanban columns are drawn 10 points lighter, which their labels and headings must be
+  // legible on too.
+  const sections = legibleTints(colors, (color) => [lighten(color, 10)]);
   const hues = palette.slice(0, 8);
   const label = (color: Rgba) => css(labelColorOn(color, colors));
 

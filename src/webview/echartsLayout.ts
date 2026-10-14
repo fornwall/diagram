@@ -14,6 +14,7 @@ import {
   seriesOf,
   seriesPlaces,
 } from "./echartsOption";
+import { colorLabelsOnItems } from "./echartsTheme";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
@@ -251,6 +252,7 @@ function layOutAround(
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
   styleSeries(base, series, context.colors);
+  colorLabelsOnItems(base, series, context.colors);
   nameTreemapRoot(series);
   drawLargeSeries(option, series);
   showAxisLines(base);
