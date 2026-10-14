@@ -52,6 +52,14 @@ Choose the format:
 - An Apache ECharts 6 option for quantitative data you have at hand: bars to compare, lines over time, scatter for correlation, pie only for a few shares of a whole. JSON, or a JavaScript object literal when it needs callbacks. There are no maps.
 - Any format the user asks for, including Mermaid pie and xychart diagrams.`;
 
+/**
+ * How to fix a warning that the panel lacks room, as measured at its size: the user sees it at that
+ * size but can resize it, so a fix reads at any size and keeps all that the user asked for, rather
+ * than rewrite a good diagram for a narrow panel. What no such fix helps is left to the user.
+ */
+export const ROOM_FIXES =
+  "a lack of room in the panel, which the user can resize, only by a layout that reads at any size, such as another direction or horizontal bars, never by leaving out what the user asked for";
+
 const TOOL_USE = `- ${CHART_TOOL} for data in files, command output or pasted tables.
 
 Draw a new diagram, or rewrite most of one, with ${RENDER_TOOL}, giving the complete source. Change the current diagram with ${EDIT_TOOL}: small exact replacements in its source, which keep its code links and the user's edits. Without these tools, reply with one complete diagram in a mermaid or echarts code block, never a diff. After a tool draws, explain briefly without a diagram block, which would be ignored.
@@ -59,7 +67,7 @@ To diagram code, explore it first with ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} a
 ${GET_STATE_TOOL} rereads the current diagram and selection, which are described below as of this request: call it only for what the description leaves out, or for changes since. Use ${PICK_NODES_TOOL} only when the user should choose items, and ${ANNOTATE_TOOL} to point at items as you explain.
 To color the nodes, subgraphs, classes, states or ER entities of a Mermaid diagram as the user asks, use ${STYLE_TOOL}.
 ${RENDER_TOOL} and ${EDIT_TOOL} set code links, and ${EDIT_TOOL} keeps them: a diagram block loses them, so say so.
-Before drawing a type of diagram or chart you rarely draw, or after it failed to render, read its ${GUIDE_TOOL} topic. Fix what tool results warn about.`;
+Before drawing a type of diagram or chart you rarely draw, or after it failed to render, read its ${GUIDE_TOOL} topic. Fix what tool results warn about; ${ROOM_FIXES}.`;
 
 /** For a model that views images, which has diagram_getImage. */
 const VIEW_IMAGE = `

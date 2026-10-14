@@ -8,6 +8,7 @@ import {
   escapeMarkdown,
   fitToolResults,
   promptMessages,
+  ROOM_FIXES,
   toolResultBudget,
 } from "./prompt";
 import {
@@ -213,7 +214,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
           stream.markdown("\n\n---\n\n");
           messages.push(
             vscode.LanguageModelChatMessage.User(
-              `That ${noun} rendered, with these warnings:\n\n- ${warnings.join("\n- ")}\n\nReply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block, or say why you leave it as it is, without a code block.`,
+              `That ${noun} rendered, with these warnings:\n\n- ${warnings.join("\n- ")}\n\nFix what they warn about; ${ROOM_FIXES}. Reply with one sentence about what you fixed, followed by the corrected complete ${noun} in a single ${block.language} code block, or say why you leave it as it is, without a code block.`,
             ),
           );
           block = await converse([]);

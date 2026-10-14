@@ -15,7 +15,7 @@ Ask `@diagram` to draw, optionally attaching files with `#file`:
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
 - `@diagram turn this whiteboard photo into a flowchart`
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model for repair.
+Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model for repair. A warning that the panel lacks room is fixed only by a layout that reads at any size, never by leaving out what you asked for, or else left for you to resize the panel.
 
 Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model that accepts images. Images are sent only with the request they are attached to.
 

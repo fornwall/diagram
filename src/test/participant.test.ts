@@ -567,7 +567,12 @@ suite("participant", () => {
     assert.strictEqual(fixing.sent.length, 2);
     assert.strictEqual(
       messageText(fixing.sent[1]?.messages.at(-1)),
-      `That chart rendered, with these warnings:\n\n- ${warning}\n\nReply with one sentence about what you fixed, followed by the corrected complete chart in a single echarts code block, or say why you leave it as it is, without a code block.`,
+      `That chart rendered, with these warnings:\n\n- ${warning}\n\nFix what they warn about; a lack of room in the panel, which the user can resize, only by a layout that reads at any size, such as another direction or horizontal bars, never by leaving out what the user asked for. Reply with one sentence about what you fixed, followed by the corrected complete chart in a single echarts code block, or say why you leave it as it is, without a code block.`,
+    );
+    // As tool results are, which tell of warnings too.
+    assert.match(
+      messageText(fixing.sent[0]?.messages[0]),
+      /Fix what tool results warn about; a lack of room in the panel, which the user can resize, only by a layout that reads at any size,/,
     );
     // The fix's own warnings are not asked about again.
     assert.strictEqual(fixing.result?.metadata?.source, fixed);
@@ -1188,11 +1193,11 @@ suite("participant", () => {
       return new vscode.LanguageModelToolResult([text("Read")]);
     });
     await ask([[getState("1")], [getState("2"), getState("3")], [text("Done.")]], {
-      maxInputTokens: 10_000,
+      maxInputTokens: 20_000,
     });
     const [first = 0, second = 0, third] = budgets;
     // Up to 7/8 of the input, less the request so far.
-    assert.ok(first > 5_000 && first < 8_750, `${first}`);
+    assert.ok(first > 12_500 && first < 17_500, `${first}`);
     assert.ok(second < first / 2, `${second}`);
     assert.strictEqual(third, second);
   });
