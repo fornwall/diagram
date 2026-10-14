@@ -280,12 +280,14 @@ const isRgba: Check = (value) =>
 
 const THEME_COLOR_FIELDS: { [K in keyof ThemeColors]-?: Check } = {
   dark: isBoolean,
+  highContrast: isBoolean,
   background: isRgba,
   foreground: isRgba,
   muted: isRgba,
   gridLine: isRgba,
   axisLine: isRgba,
   focus: isRgba,
+  contrastBorder: isRgba,
   hoverBackground: isRgba,
   hoverBorder: isRgba,
   hoverForeground: isRgba,

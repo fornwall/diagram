@@ -36,11 +36,24 @@ export function parseColor(css: string): Rgba | undefined {
 /** Reads the colors and font that charts use from VS Code's CSS variables. */
 export function readThemeColors(): ThemeColors {
   const style = getComputedStyle(document.body);
-  const kind = document.body.dataset.vscodeThemeKind;
+  return themeColors(document.body.dataset.vscodeThemeKind, (name) =>
+    style.getPropertyValue(`--vscode-${name}`),
+  );
+}
+
+/**
+ * The colors and font that charts use, given the kind of VS Code's theme, as the body's data
+ * attribute has it, and the values of its CSS variables by name, without `--vscode-`.
+ */
+export function themeColors(
+  kind: string | undefined,
+  property: (name: string) => string,
+  parse: (css: string) => Rgba | undefined = parseColor,
+): ThemeColors {
   const dark = kind === "vscode-dark" || kind === "vscode-high-contrast";
-  const highContrast = kind?.startsWith("vscode-high-contrast");
-  const fontSize = Number.parseFloat(style.getPropertyValue("--vscode-font-size")) || 13;
-  const variable = (name: string) => parseColor(style.getPropertyValue(`--vscode-${name}`));
+  const highContrast = kind?.startsWith("vscode-high-contrast") ?? false;
+  const fontSize = Number.parseFloat(property("font-size")) || 13;
+  const variable = (name: string) => parse(property(name));
   // VS Code always defines these variables; the fallbacks only keep the chart legible without.
   const background = {
     ...(variable("editor-background") ?? fromHex(dark ? "#1f1f1f" : "#ffffff")),
@@ -79,12 +92,14 @@ export function readThemeColors(): ThemeColors {
 
   return {
     dark,
+    highContrast,
     background,
     foreground,
     muted: color("descriptionForeground"),
     gridLine: highContrast ? flatten(lines) : flatten({ ...lines, a: lines.a * 0.3 }),
     axisLine: highContrast ? foreground : flatten({ ...lines, a: lines.a * 0.75 }),
     focus: color("focusBorder"),
+    contrastBorder: color("contrastBorder"),
     hoverBackground: color("editorHoverWidget-background", background),
     hoverBorder: color("editorHoverWidget-border"),
     hoverForeground: color("editorHoverWidget-foreground"),
@@ -93,7 +108,7 @@ export function readThemeColors(): ThemeColors {
     blue,
     green,
     red,
-    fontFamily: style.getPropertyValue("--vscode-font-family").trim() || "system-ui, sans-serif",
+    fontFamily: property("font-family").trim() || "system-ui, sans-serif",
     fontSize: Math.max(11, fontSize - 1),
   };
 }

@@ -520,6 +520,47 @@ suite("Mermaid in the webview", function () {
     }
   });
 
+  test("draws diagrams in the VS Code theme's colors, flat, and labels on lines cut out of them", async () => {
+    const measure = async (source: string, kind: string, variables: string) => {
+      await draw({ source });
+      return evaluate(`(async () => {
+        ${CONTRAST}
+        ${IN_THEME}
+        return inTheme("${kind}", "${variables}", () => {
+          const shape = document.querySelector('#diagram [data-diagram-id="A"] rect');
+          const style = getComputedStyle(shape);
+          return {
+            label: contrast(document.querySelector('#diagram [data-diagram-id="A"]'), "foreignObject *", "rect")[1],
+            fill: style.fill, stroke: style.stroke, filter: style.filter,
+            edgeLabel: getComputedStyle(document.querySelector("#diagram .edgeLabel")).backgroundColor,
+          };
+        });
+      })()`) as Promise<Record<string, string | number>>;
+    };
+    const source = "flowchart LR\n  A[Start] -->|go| B[End]";
+    const blue = "--vscode-charts-blue: #59a4f9";
+    const dark = await measure(source, "vscode-dark", `${DARK_MODERN}; ${blue}`);
+    // Tinted with the theme's blue, outlined in it, and with labels on lines cut out of them.
+    assert.deepStrictEqual(dark, {
+      label: dark.label,
+      fill: "rgb(40, 52, 66)",
+      stroke: "rgb(66, 111, 162)",
+      filter: "none",
+      edgeLabel: "rgb(31, 31, 31)",
+    });
+    assert.ok(Number(dark.label) >= 4.5, `${dark.label}`);
+    // A high contrast theme fills nothing and outlines in its contrast border.
+    const highContrast = await measure(
+      source,
+      "vscode-high-contrast",
+      "--vscode-foreground: #ffffff; --vscode-editor-background: #000000; --vscode-contrastBorder: #6fc3df",
+    );
+    assert.deepStrictEqual(
+      [highContrast.fill, highContrast.stroke],
+      ["rgb(0, 0, 0)", "rgb(111, 195, 223)"],
+    );
+  });
+
   test("labels the nodes and groups that the source fills legibly on the fill, also in images", async () => {
     await draw({
       source: [

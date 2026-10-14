@@ -7,7 +7,6 @@ import {
   contrast,
   LABEL_CONTRAST,
   labelColorOn,
-  lighten,
   mix,
   type Rgba,
   type ThemeColors,
@@ -26,6 +25,7 @@ import {
 } from "./mermaidErrors";
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
+import { mermaidThemeVariables } from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
 import {
@@ -73,51 +73,6 @@ const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as c
 
 /** A theme that front matter or an init directive chooses, unlike its themeVariables. */
 const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:/m;
-
-/**
- * The colors of the sections of mind maps, timelines, kanban boards and pies, and of their labels:
- * VS Code's chart colors, mixed into the background as far as leaves the theme's text legible on
- * them. Mermaid's dark theme colors them almost black, and both of its themes draw some labels
- * illegibly, such as white on pastel or light grey on light colors. Kanban columns are drawn 10
- * points lighter, which their labels and headings must be legible on too.
- */
-function sectionColors(
-  { dark, palette, background, foreground }: ThemeColors,
-  kanban: boolean,
-): Record<string, string> {
-  const legible = (color: Rgba) =>
-    contrast(color, foreground) >= LABEL_CONTRAST &&
-    contrast(lighten(color, 10), foreground) >= LABEL_CONTRAST;
-  const scale = palette.slice(0, 12).map((hue) => {
-    let amount = dark ? 0.45 : 0.5;
-    while (amount > 0.15 && !legible(mix(background, hue, amount))) amount -= 0.05;
-    return mix(background, hue, amount);
-  });
-  const label = toCss(foreground);
-  const variables: Record<string, string> = { pieSectionTextColor: label };
-  // Kanban column headings read in the text color, which in Mermaid's dark theme is a fixed light
-  // grey that the high contrast themes' white outshines. Only for kanban boards, as the text of
-  // other diagrams is drawn on Mermaid's colors rather than these.
-  if (kanban) variables.textColor = label;
-  scale.forEach((color, i) => {
-    variables[`cScale${i}`] = toCss(color);
-    variables[`cScaleLabel${i}`] = label;
-    variables[`pie${i + 1}`] = toCss(color);
-  });
-  if (dark) {
-    // Mermaid's dark theme derives the colors of branches, and of a mind map's root, which it draws
-    // in the first, from its own colors and the pie colors, ignoring any given, as theme-dark.js
-    // does: label them in what is legible on them.
-    const branches = [
-      lighten(lighten({ r: 0x1f, g: 0x20, b: 0x20, a: 1 }, 16), 20),
-      ...scale.slice(1, 8).map((color, i) => lighten(color, i === 4 || i === 5 ? 10 : 20)),
-    ];
-    branches.forEach((color, i) => {
-      variables[`gitBranchLabel${i}`] = toCss(labelColorOn(color, { foreground, background }));
-    });
-  }
-  return variables;
-}
 
 /** What a node's links in the source are called in its tooltip: "Open …". */
 function describeLinks(targets: readonly WebLink[]): string {
@@ -643,19 +598,17 @@ export class MermaidRenderer implements Renderer {
 
   /** How Mermaid is configured for the VS Code theme of these colors, to draw the source. */
   private config(source: string, colors = readThemeColors()): Parameters<Mermaid["initialize"]>[0] {
-    const { settings, typeLine } = diagramHeader(source);
+    const { settings } = diagramHeader(source);
     return {
       startOnLoad: false,
       securityLevel: "strict",
       maxTextSize: MAX_TEXT_SIZE,
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
-      theme: colors.dark ? "dark" : "default",
+      theme: "base",
       // A diagram that chooses a theme of its own takes it whole: Mermaid would color it with
       // these too, and the text of its nodes in the color meant for VS Code's theme.
-      themeVariables: OWN_THEME.test(settings)
-        ? {}
-        : sectionColors(colors, /^kanban\b/.test(typeLine ?? "")),
+      themeVariables: OWN_THEME.test(settings) ? {} : mermaidThemeVariables(colors),
       fontFamily: colors.fontFamily,
     };
   }

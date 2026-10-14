@@ -92,6 +92,8 @@ export function lighten({ r, g, b }: Rgba, points: number): Rgba {
 /** The colors of the VS Code theme that charts use, all opaque. */
 export interface ThemeColors {
   dark: boolean;
+  /** A high contrast theme, which outlines rather than fills. */
+  highContrast: boolean;
   background: Rgba;
   foreground: Rgba;
   muted: Rgba;
@@ -100,6 +102,8 @@ export interface ThemeColors {
   /** Axis lines and other recessive chrome, one step stronger than grid lines. */
   axisLine: Rgba;
   focus: Rgba;
+  /** The border that a high contrast theme draws around everything, else the text color. */
+  contrastBorder: Rgba;
   hoverBackground: Rgba;
   hoverBorder: Rgba;
   hoverForeground: Rgba;
