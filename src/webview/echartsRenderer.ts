@@ -4,7 +4,7 @@
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
-import { dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
+import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
 import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
@@ -229,11 +229,11 @@ export class EChartsRenderer implements Renderer {
   }
 
   warnings(): string[] {
-    return [
+    return capWarnings([
       ...(this.option ? [...optionWarnings(this.option), ...toolWarnings(this.option)] : []),
       ...(this.items()?.warnings ?? []),
       ...this.drawnWarnings,
-    ];
+    ]);
   }
 
   /**

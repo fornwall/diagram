@@ -5,7 +5,7 @@
 
 import type * as ECharts from "echarts/core";
 import { isPlainObject } from "../protocol";
-import { brief, plural, quote, quoteAll } from "../text";
+import { brief, joinWords, plural, quote, quoteAll } from "../text";
 import { type Box, modelOf } from "./echartsItems";
 import { baseOption, type JsonObject } from "./echartsOption";
 
@@ -94,18 +94,98 @@ export function dataWarnings(chart: ECharts.ECharts, option: JsonObject): string
   const model = modelOf(chart) as unknown as Model;
   const base = baseOption(option);
   const given = Array.isArray(base.series) ? base.series : [base.series];
-  const warnings: string[] = [];
+  const findings: Finding[] = [];
   model.eachRawSeries((series) => {
     const path = seriesPath(base, series.componentIndex);
     const own = given[series.componentIndex];
-    warnings.push(
+    findings.push(
       ...unreadableValues(series, path),
       ...unpairedValues(series, path, base),
-      ...missingDimensions(series, path),
+      ...missingDimensions(series, path).map((warning) => alone(path, warning)),
       ...valuesOffScale(series, path, base, isPlainObject(own) ? own : {}),
     );
   });
-  return warnings;
+  return merge(findings);
+}
+
+/**
+ * A problem of a series, which merges with the same problem of other series into one warning, as
+ * of the series that have it, with the items of all.
+ */
+interface Finding {
+  /** The same for the same problem of other series. */
+  key: string;
+  path: string;
+  /** How many items have it, which merging adds up, or the value beyond a bound, of which it takes the farthest. */
+  amount: number;
+  merge: "sum" | "max" | "min";
+  example?: unknown;
+  /** The warning, of the paths of the series that have the problem. */
+  say(paths: string[], amount: number, example: unknown): string;
+}
+
+/** A finding that merges with none other, of a warning about one series. */
+const alone = (path: string, warning: string): Finding => ({
+  key: `${path}: ${warning}`,
+  path,
+  amount: 0,
+  merge: "sum",
+  say: () => warning,
+});
+
+/** One warning for the findings of each problem, in the order the first of each was found. */
+function merge(findings: Finding[]): string[] {
+  const problems = new Map<string, Finding[]>();
+  for (const finding of findings) {
+    const same = problems.get(finding.key);
+    if (same) same.push(finding);
+    else problems.set(finding.key, [finding]);
+  }
+  return [...problems.values()].map((same) => {
+    const [first] = same as [Finding, ...Finding[]];
+    const amounts = same.map(({ amount }) => amount);
+    const amount =
+      first.merge === "max"
+        ? Math.max(...amounts)
+        : first.merge === "min"
+          ? Math.min(...amounts)
+          : amounts.reduce((sum, each) => sum + each, 0);
+    return first.say(
+      same.map(({ path }) => path),
+      amount,
+      same.find(({ example }) => example !== undefined)?.example,
+    );
+  });
+}
+
+/** The paths of series, each with a suffix, such as "series[0].data and series[1].data". */
+function listed(paths: string[], suffix = ""): string {
+  const each = paths.map((path) => `${path}${suffix}`);
+  return each.length <= 3
+    ? joinWords(each, "and")
+    : `${each.slice(0, 2).join(", ")} and ${each.length - 2} more series`;
+}
+
+/** A verb for one series, or for several. */
+const verb = (paths: string[], one: string, several: string) =>
+  paths.length === 1 ? one : several;
+
+/** About how long the warnings about a chart may be in all, which go into every chat request. */
+const MAX_WARNINGS_LENGTH = 2000;
+
+/** The first warnings, up to about {@link MAX_WARNINGS_LENGTH} characters, and how many follow. */
+export function capWarnings(warnings: string[]): string[] {
+  const kept: string[] = [];
+  let length = 0;
+  for (const warning of warnings) {
+    if (kept.length > 0 && length + warning.length > MAX_WARNINGS_LENGTH) break;
+    kept.push(warning);
+    length += warning.length;
+  }
+  const left = warnings.length - kept.length;
+  return left === 0
+    ? kept
+    : [...kept, `${plural(left, "more warning")} left out, to tell once these are fixed.`];
 }
 
 /** How many items the series of a chart have, which a layout takes the longer to check. */
@@ -156,7 +236,7 @@ const YEARS = { from: 1000, to: 3000 };
  * "12%", dates that it cannot parse on a time axis, and items without a value, such as objects of
  * "x" and "y"; and years written as numbers on a time axis, which it reads as milliseconds.
  */
-function unreadableValues(series: Series, path: string): string[] {
+function unreadableValues(series: Series, path: string): Finding[] {
   const data = series.getRawData();
   const store = data.getStore();
   const format = store.getSource().sourceFormat;
@@ -220,40 +300,59 @@ function unreadableValues(series: Series, path: string): string[] {
       }
     }
   }
-  const where =
-    series.option.data == null ? `The dataset that ${path} reads has` : `${path}.data has`;
-  const { numbers, dates, years, valueless } = found;
-  const warnings: string[] = [];
-  if (numbers.count > 0) {
-    warnings.push(
-      `${where} ${plural(numbers.count, "value")} that ECharts cannot read as a number, such as ` +
-        `${brief(numbers.example)}, and draws nothing for: write plain numbers, without units, "%" ` +
-        "or thousands separators.",
-    );
-  }
-  if (dates.count > 0) {
-    warnings.push(
-      `${where} ${plural(dates.count, "date")} that the time axis cannot read, such as ` +
-        `${brief(dates.example)}, and draws nothing for: write dates as "2024-03-31" or ` +
+  // The data of the series, or the dataset they read.
+  const fromDataset = series.option.data == null;
+  const where = (paths: string[]) =>
+    fromDataset
+      ? `The dataset that ${listed(paths)} ${verb(paths, "reads", "read")} has`
+      : `${listed(paths, ".data")} ${verb(paths, "has", "have")}`;
+  const finding = (
+    kind: keyof typeof found,
+    say: (paths: string[], count: number, example: string) => string,
+  ): Finding[] =>
+    found[kind].count === 0
+      ? []
+      : [
+          {
+            key: `${kind}:${fromDataset}`,
+            path,
+            amount: found[kind].count,
+            merge: "sum",
+            example: found[kind].example,
+            say: (paths, count, example) => say(paths, count, brief(example)),
+          },
+        ];
+  const shape = ["pie", "funnel", "gauge"].includes(series.subType)
+    ? '{"name": "A", "value": 3}'
+    : '{"value": [x, y]} or [x, y]';
+  return [
+    ...finding(
+      "numbers",
+      (paths, count, example) =>
+        `${where(paths)} ${plural(count, "value")} that ECharts cannot read as a number, such ` +
+        `as ${example}, and draws nothing for: write plain numbers, without units, "%" or ` +
+        "thousands separators.",
+    ),
+    ...finding(
+      "dates",
+      (paths, count, example) =>
+        `${where(paths)} ${plural(count, "date")} that the time axis cannot read, such as ` +
+        `${example}, and draws nothing for: write dates as "2024-03-31" or ` +
         '"2024-03-31 14:30", or put labels such as quarters on a "category" axis.',
-    );
-  }
-  if (years.count > 0) {
-    warnings.push(
-      `${where} years as numbers on a time axis, such as ${brief(years.example)}, which it reads ` +
+    ),
+    ...finding(
+      "years",
+      (paths, _, example) =>
+        `${where(paths)} years as numbers on a time axis, such as ${example}, which it reads ` +
         'as milliseconds since 1970: write them as text, as "2024", or use a "category" axis.',
-    );
-  }
-  if (valueless.count > 0) {
-    const shape = ["pie", "funnel", "gauge"].includes(series.subType)
-      ? '{"name": "A", "value": 3}'
-      : '{"value": [x, y]} or [x, y]';
-    warnings.push(
-      `${where} ${plural(valueless.count, "item")} without a "value", such as ` +
-        `${brief(valueless.example)}, which ECharts draws nothing for: write each as ${shape}.`,
-    );
-  }
-  return warnings;
+    ),
+    ...finding(
+      "valueless",
+      (paths, count, example) =>
+        `${where(paths)} ${plural(count, "item")} without a "value", such as ${example}, which ` +
+        `ECharts draws nothing for: write each as ${shape}.`,
+    ),
+  ];
 }
 
 /**
@@ -261,7 +360,7 @@ function unreadableValues(series: Series, path: string): string[] {
  * other than as many values as the axis has categories: those past the last category are drawn
  * beyond the end of the axis, and with one left out, every value after it at the wrong category.
  */
-function unpairedValues(series: Series, path: string, base: JsonObject): string[] {
+function unpairedValues(series: Series, path: string, base: JsonObject): Finding[] {
   const axis = series.getBaseAxis?.();
   const categories = axis?.type === "category" ? axis.model.option.data : undefined;
   const data = series.option.data;
@@ -275,27 +374,33 @@ function unpairedValues(series: Series, path: string, base: JsonObject): string[
     return [];
   }
   const values = data.length;
+  if (values === categories.length) return [];
   const axisPath = componentPath(base, axis.model.mainType, axis.model.componentIndex);
-  const pairs =
-    `${path}.data has ${plural(values, "value")} for the ` +
-    `${plural(categories.length, "category", "categories")} of ${axisPath}.data, which ECharts ` +
-    "pairs by position";
-  if (values > categories.length) {
-    const extra = values - categories.length;
-    return [
-      `${pairs}: the last ${extra === 1 ? "value is" : `${extra} are`} drawn past the end of the ` +
-        "axis. Add the categories, or remove the values.",
-    ];
-  }
-  if (values < categories.length) {
-    const short = categories.length - values;
-    return [
-      `${pairs}, so the last ${short === 1 ? "category has" : `${short} have`} no value from ` +
-        "it, and with a value left out, every value after it is drawn at the wrong category: give " +
-        "a value for each category, null where one is missing on purpose.",
-    ];
-  }
-  return [];
+  const more = values > categories.length;
+  const of = `the ${plural(categories.length, "category", "categories")} of ${axisPath}.data`;
+  // Of one series, how many values it has, and of several, whether they have more or fewer.
+  const pairs = (paths: string[]) =>
+    paths.length === 1
+      ? `${path}.data has ${plural(values, "value")} for ${of}, which ECharts pairs by position`
+      : `${listed(paths, ".data")} have ${more ? "more" : "fewer"} values than ${of}, which ` +
+        "ECharts pairs by position";
+  const extra = Math.abs(values - categories.length);
+  return [
+    {
+      key: `${more ? "more" : "fewer"}:${axisPath}`,
+      path,
+      amount: 0,
+      merge: "sum",
+      say: (paths) =>
+        more
+          ? `${pairs(paths)}: ${paths.length > 1 ? "those past the last category are" : `the last ${extra === 1 ? "value is" : `${extra} are`}`} ` +
+            "drawn past the end of the axis. Add the categories, or remove the values."
+          : `${pairs(paths)}, so the last ${paths.length > 1 ? "categories have" : extra === 1 ? "category has" : `${extra} have`} ` +
+            `no value from ${verb(paths, "it", "them")}, and with a value left out, every value ` +
+            "after it is drawn at the wrong category: give a value for each category, null where " +
+            "one is missing on purpose.",
+    },
+  ];
 }
 
 /**
@@ -331,16 +436,25 @@ const number = (value: number) => String(Number(value.toPrecision(12)));
  * draws at the edge, or past it, as if they were the bound: values beyond the "min" or "max" of an
  * axis, of a gauge or of a radar's indicator, and values of 0 or less on a log axis.
  */
-function valuesOffScale(series: Series, path: string, base: JsonObject, own: JsonObject): string[] {
-  if (series.subType === "gauge") return gaugeOffScale(series, path, own);
-  if (series.subType === "radar") return radarOffScale(series, path, base);
+function valuesOffScale(
+  series: Series,
+  path: string,
+  base: JsonObject,
+  own: JsonObject,
+): Finding[] {
+  if (series.subType === "gauge") {
+    return gaugeOffScale(series, path, own).map((warning) => alone(path, warning));
+  }
+  if (series.subType === "radar") {
+    return radarOffScale(series, path, base).map((warning) => alone(path, warning));
+  }
   const system = series.coordinateSystem;
   // A data zoom shows part of the data on purpose.
   if (system?.type !== "cartesian2d" || base.dataZoom !== undefined) return [];
   const data = series.getData();
   const stacked = data.getCalculationInfo("stackedDimension");
   const result = data.getCalculationInfo("stackResultDimension");
-  const warnings: string[] = [];
+  const findings: Finding[] = [];
   for (const dim of ["x", "y"]) {
     const axis = system.getAxis?.(dim);
     if (!axis || axis.type === "category") continue;
@@ -367,18 +481,31 @@ function valuesOffScale(series: Series, path: string, base: JsonObject, own: Jso
         [least, most] = data.getDataExtent(dimension);
       }
       if (!(least <= most)) continue;
-      const has = dimension === stacked ? "stacks" : "has values";
+      const stacks = dimension === stacked;
+      const has = (paths: string[]) =>
+        stacks ? verb(paths, "stacks", "stack") : `${verb(paths, "has", "have")} values`;
       if (axis.type === "log" && least <= 0) {
-        warnings.push(
-          `${path} has values of 0 or less on the log axis ${axisPath}, which ECharts cannot ` +
-            'draw: use a "value" axis, or leave those values out.',
-        );
+        findings.push({
+          key: `log:${axisPath}`,
+          path,
+          amount: 0,
+          merge: "sum",
+          say: (paths) =>
+            `${listed(paths)} ${verb(paths, "has", "have")} values of 0 or less on the log axis ` +
+            `${axisPath}, which ECharts cannot draw: use a "value" axis, or leave those values out.`,
+        });
       } else if (typeof max === "number" || (typeof max === "string" && max !== "dataMax")) {
         if (most > high + slack) {
-          warnings.push(
-            `${path} ${has} up to ${number(most)}, above the "max" of ${axisPath}, ${brief(max)}, ` +
-              'which ECharts cuts off at the edge of the plot: raise "max", or leave it out.',
-          );
+          findings.push({
+            key: `max:${axisPath}:${stacks}`,
+            path,
+            amount: most,
+            merge: "max",
+            say: (paths, value) =>
+              `${listed(paths)} ${has(paths)} up to ${number(value)}, above the "max" of ` +
+              `${axisPath}, ${brief(max)}, which ECharts cuts off at the edge of the plot: raise ` +
+              '"max", or leave it out.',
+          });
         }
       }
       if (
@@ -386,14 +513,20 @@ function valuesOffScale(series: Series, path: string, base: JsonObject, own: Jso
         (typeof min === "number" || (typeof min === "string" && min !== "dataMin")) &&
         least < low - slack
       ) {
-        warnings.push(
-          `${path} ${has} down to ${number(least)}, below the "min" of ${axisPath}, ${brief(min)}, ` +
-            'which ECharts cuts off at the edge of the plot: lower "min", or leave it out.',
-        );
+        findings.push({
+          key: `min:${axisPath}:${stacks}`,
+          path,
+          amount: least,
+          merge: "min",
+          say: (paths, value) =>
+            `${listed(paths)} ${has(paths)} down to ${number(value)}, below the "min" of ` +
+            `${axisPath}, ${brief(min)}, which ECharts cuts off at the edge of the plot: lower ` +
+            '"min", or leave it out.',
+        });
       }
     }
   }
-  return warnings;
+  return findings;
 }
 
 /** The values of a gauge beyond its scale, of 0 to 100 unless it says, where its pointer stops. */

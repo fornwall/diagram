@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import { init } from "echarts";
 import type * as ECharts from "echarts/core";
 import { CHART_TYPES, type ChartType } from "../chartSpec";
-import { dataWarnings, layoutWarnings } from "../webview/echartsChecks";
+import { capWarnings, dataWarnings, layoutWarnings } from "../webview/echartsChecks";
 import { disableAnimation } from "../webview/echartsLayout";
 import { buildEChartsTheme } from "../webview/echartsTheme";
 import { bars, builtOption, layout, type Option } from "./echartsModel";
@@ -434,6 +434,45 @@ suite("echartsChecks", function () {
       warningsOf({ series: [{ type: "pie", data: [{ name: "A", count: 2 }] }] }).join(),
       /without a "value", such as \{"name":"A","count":2\}.*write each as \{"name": "A", "value": 3\}/,
     );
+  });
+
+  test("tells of the same problem of several series once, naming them", () => {
+    const percent = (count: number) =>
+      bars({
+        series: Array.from({ length: count }, () => ({ type: "bar", data: ["12%", "8%"] })),
+      });
+    assert.deepStrictEqual(warningsOf(percent(2)), [
+      'series[0].data and series[1].data have 4 values that ECharts cannot read as a number, such as "12%", and draws nothing for: write plain numbers, without units, "%" or thousands separators.',
+    ]);
+    assert.deepStrictEqual(warningsOf(percent(6)), [
+      'series[0].data, series[1].data and 4 more series have 12 values that ECharts cannot read as a number, such as "12%", and draws nothing for: write plain numbers, without units, "%" or thousands separators.',
+    ]);
+    assert.deepStrictEqual(
+      warningsOf(
+        bars({
+          yAxis: { max: 10 },
+          series: [
+            { type: "bar", data: [1, 2, 30] },
+            { type: "bar", data: [1, 20, 3] },
+          ],
+        }),
+      ),
+      [
+        "series[0].data and series[1].data have more values than the 2 categories of xAxis.data, which ECharts pairs by position: those past the last category are drawn past the end of the axis. Add the categories, or remove the values.",
+        'series[0] and series[1] have values up to 30, above the "max" of yAxis, 10, which ECharts cuts off at the edge of the plot: raise "max", or leave it out.',
+      ],
+    );
+  });
+
+  test("tells a model of the first warnings, up to a length, and how many more there are", () => {
+    const warnings = Array.from({ length: 30 }, (_, index) => `Warning ${index}`.padEnd(200, "."));
+    const capped = capWarnings(warnings);
+    assert.strictEqual(capped.length, 11);
+    assert.strictEqual(capped[9], warnings[9]);
+    assert.strictEqual(capped[10], "20 more warnings left out, to tell once these are fixed.");
+    assert.deepStrictEqual(capWarnings(warnings.slice(0, 3)), warnings.slice(0, 3));
+    // A first warning however long.
+    assert.deepStrictEqual(capWarnings(["x".repeat(3000)]), ["x".repeat(3000)]);
   });
 
   test("tells of values alone of other than one for each category, which ECharts pairs by position", () => {
