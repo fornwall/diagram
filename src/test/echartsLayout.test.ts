@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { modelOf } from "../webview/echartsItems";
-import { toolWarnings } from "../webview/echartsLayout";
+import { disableAnimation, toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
 import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
@@ -1178,27 +1178,111 @@ suite("echartsLayout", () => {
     }
   });
 
-  test("spreads the nodes of a force layout over the space there is, unless the option says", () => {
-    const graph = (count: number, force?: Option) => ({
+  test("places the nodes of a force layout at rest, the same each time, all in the chart", () => {
+    const names = ["extension", "panel", "participant", "tools", "prompt", "charts", "protocol"];
+    const pairs = [
+      [0, 1],
+      [0, 2],
+      [2, 4],
+      [2, 3],
+      [3, 5],
+      [1, 6],
+      [3, 6],
+    ];
+    const graph = (nodes: string[], links: number[][], extra: Option = {}): Option => ({
+      title: { text: "Modules" },
+      series: [
+        {
+          type: "graph",
+          layout: "force",
+          label: { show: true, position: "right" },
+          data: nodes.map((name, index) => ({ name, symbolSize: 10 + (index % 3) * 10 })),
+          links: links.map(([source = 0, target = 0]) => ({
+            source: nodes[source],
+            target: nodes[target],
+          })),
+          ...extra,
+        },
+      ],
+    });
+    const modules = graph(names, pairs);
+    const chain = graph(
+      Array.from({ length: 12 }, (_, index) => `a-rather-long-module-${index}`),
+      Array.from({ length: 11 }, (_, index) => [index, index + 1]),
+    );
+    const loose = graph(["one", "two", "three", "four", "five"], []);
+    for (const option of [modules, chain, loose]) {
+      for (const { width, height } of [
+        { width: 404, height: 575 },
+        { width: 1184, height: 675 },
+      ]) {
+        const laidOut = layout(option, { width, height });
+        disableAnimation(laidOut);
+        const [series] = laidOut.series;
+        // Placed, for ECharts to draw where they are.
+        assert.strictEqual(series.layout, "none");
+        assert.ok(series.data.every((node: Option) => Number.isFinite(node.x + node.y)));
+        // Nodes, links and labels are drawn within the chart.
+        const outside = withChart(
+          laidOut,
+          (chart) =>
+            (chart.getZr().storage.getDisplayList(true) as Option[]).filter((element) => {
+              let owner: Option | undefined;
+              for (let at = element; at && !owner; at = at.__hostTarget ?? at.parent) {
+                owner = at.__ecComponentInfo;
+              }
+              const box = element.getBoundingRect().clone();
+              box.applyTransform(element.getComputedTransform());
+              return (
+                owner?.mainType === "series" &&
+                (box.x < -1 ||
+                  box.y < -1 ||
+                  box.x + box.width > width + 1 ||
+                  box.y + box.height > height + 1)
+              );
+            }).length,
+          { width, height },
+        );
+        assert.strictEqual(outside, 0, `${series.data[0].name} at ${width}x${height}`);
+      }
+    }
+    // The same each time, and placed once for the same nodes and links, without changing them.
+    const [first, again] = [layout(modules), layout(modules)].map((each) => each.series[0].data);
+    assert.strictEqual(first, again);
+    assert.strictEqual(modules.series[0].data[0].x, undefined);
+    // By the option's edge length and repulsion, as ECharts' force layout would be.
+    const placedBy = (force: Option) =>
+      layout(graph(names, pairs, { force })).series[0].data.map(({ x }: Option) => x);
+    assert.notDeepStrictEqual(placedBy({ repulsion: 80 }), placedBy({ repulsion: 800 }));
+  });
+
+  test("spreads the nodes of a force layout it does not place over the space there is", () => {
+    const graph = (count: number, force?: Option, node: Option = {}) => ({
       series: [
         {
           type: "graph",
           layout: "force",
           ...(force && { force }),
-          data: Array.from({ length: count }, (_, index) => ({ name: `N${index}` })),
+          data: Array.from({ length: count }, (_, index) => ({ name: `N${index}`, ...node })),
         },
       ],
     });
+    // A layout that the option starts or animates itself, or of nodes it places.
     const force = (count: number, size: { width: number; height: number }) =>
-      layout(graph(count), size).series[0].force;
+      layout(graph(count, { layoutAnimation: true }), size).series[0].force;
     // Longer edges for fewer nodes and more room, and repulsion to match.
     const few = force(4, { width: 1200, height: 800 });
     assert.ok(few.edgeLength > 150 && few.repulsion > 1000, JSON.stringify(few));
     const narrow = force(4, { width: 360, height: 400 });
     assert.ok(narrow.edgeLength < few.edgeLength && narrow.edgeLength > 60, JSON.stringify(narrow));
-    assert.ok(force(200, { width: 360, height: 400 }).edgeLength < 30);
-    assert.deepStrictEqual(layout(graph(4, { repulsion: 80 })).series[0].force, { repulsion: 80 });
-    assert.deepStrictEqual(layout(graph(4, { gravity: 0.2 })).series[0].force.gravity, 0.2);
+    assert.ok(layout(graph(250), { width: 360, height: 400 }).series[0].force.edgeLength < 30);
+    for (const placed of [graph(4, { initLayout: "circular" }), graph(4, {}, { x: 1, y: 2 })]) {
+      assert.strictEqual(layout(placed).series[0].layout, "force");
+    }
+    assert.deepStrictEqual(layout(graph(4, { repulsion: 80, friction: 0.3 })).series[0].force, {
+      repulsion: 80,
+      friction: 0.3,
+    });
   });
 
   test("gives sankey nodes their own palette colors, also beyond eight", () => {

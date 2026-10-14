@@ -1028,7 +1028,7 @@ Panel: names an unnamed treemap's root "All" in its breadcrumb.`,
 - symbolSize by importance; "edgeSymbol": ["none", "arrow"] for direction; link labels with "label": {"show": true, "formatter": "calls"} on a link.
 - Up to ~50 labeled nodes read well; for more, hide labels and let emphasis show them.
 - For a few nodes with directed dependencies, a Mermaid flowchart reads better.
-Panel: spreads a force layout over the panel unless "force" sets repulsion or edgeLength.`,
+Panel: places a force layout of up to 200 nodes at rest itself, the same each time and all within the panel, and draws it as placed nodes, of which a dragged one moves alone; not if "force" sets initLayout, friction or layoutAnimation.`,
   },
   {
     name: "echarts-sankey",
