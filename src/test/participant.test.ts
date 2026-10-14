@@ -759,6 +759,15 @@ suite("participant", () => {
       [[availableDefaults().filter((name) => name !== "diagram_getImage"), undefined]],
     );
     assert.match(shown, /^Fake does not accept images, so it cannot view the diagram\.\n\n/);
+    // Nor is it told to view the diagram, unlike a model that accepts images.
+    const instructions = messageText(sent[0]?.messages[0]);
+    assert.match(instructions, /read its diagram_guide topic/);
+    assert.doesNotMatch(instructions, /diagram_getImage/);
+    const viewing = await ask([[text(valid)]]);
+    assert.match(
+      messageText(viewing.sent[0]?.messages[0]),
+      /After drawing a large diagram or a chart with many labels, view it with diagram_getImage/,
+    );
   });
 
   test("gives a model that cannot call tools none, and draws its diagram block", async () => {
