@@ -545,6 +545,18 @@ const blockSyntax: Rule = ({ type, normalized, line }) => {
   return columns ? `Write "columns ${columns[1]}", without a colon.` : undefined;
 };
 
+/**
+ * A quoted field that starts an indented line of a sankey diagram, which its parser fails on, or
+ * a header row of such fields.
+ */
+const sankeyQuote: Rule = ({ type, line, before, after }) => {
+  if (type !== "sankey" || !after.startsWith('"') || before.trim()) return undefined;
+  // A flow's value is a number: a word there is the name of a column.
+  return /,\s*"?\s*[A-Za-z][^,]*$/.test(line)
+    ? "A sankey diagram has no header row: remove this line, and start with the first flow."
+    : `Leave out the indentation of a line that starts with a quoted field: ${line.trim()}`;
+};
+
 /** Git commands rather than those of a git graph. */
 const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   if (type !== "gitGraph") return undefined;
@@ -593,5 +605,6 @@ const RULES: Rule[] = [
   erLabel,
   pieSlice,
   architectureEdge,
+  sankeyQuote,
   gitCommand,
 ];

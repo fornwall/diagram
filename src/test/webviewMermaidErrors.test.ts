@@ -449,6 +449,25 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       'Parse error on line 4, column 3: unexpected "e". Block diagrams group blocks with "block:front" and "end", not with the subgraph on line 2.',
     fixed: 'block-beta\n  block:front\n    ui["UI"] api["API"]\n  end',
   },
+  // Sankey diagrams.
+  {
+    broken: "sankey\n  source,target,value\n  Coal,Power,30",
+    error:
+      "Error on line 2: A sankey diagram has no header row: remove this line, and start with the first flow.",
+    fixed: "sankey\n  Coal,Power,30",
+  },
+  {
+    broken: 'sankey\n  "Source","Target","Value"\n  Coal,Power,30',
+    error:
+      'Parse error on line 2, column 3: unexpected "\\"". A sankey diagram has no header row: remove this line, and start with the first flow.',
+    fixed: "sankey\n  Coal,Power,30",
+  },
+  {
+    broken: 'sankey\n  "Coal, raw",Power,30\n  Power,Homes,20',
+    error:
+      'Parse error on line 2, column 3: unexpected "\\"". Leave out the indentation of a line that starts with a quoted field: "Coal, raw",Power,30',
+    fixed: 'sankey\n"Coal, raw",Power,30\n  Power,Homes,20',
+  },
   // Git graphs.
   {
     broken: "gitGraph\n  commit\n  checkout -b feature\n  commit",

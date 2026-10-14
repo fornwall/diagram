@@ -861,10 +861,20 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   if (flow === undefined) return undefined;
   // The value is the last field, which Mermaid reads the number at the start of.
   const ends = [flow.source, flow.target].map((end) => `(?=.*${literal(end)})`).join("");
+  const at = find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`);
+  // A first line of words is a header, as of a CSV file.
+  const header =
+    flow === flows[0] &&
+    at !== undefined &&
+    /^\s*"?[A-Za-z][^,\n]*,[^,\n]+,\s*"?[A-Za-z][^,\n]*$/.test(
+      normalized.slice(at).split("\n")[0] ?? "",
+    );
   return errorAt(
     normalized,
-    find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`),
-    `The value of the flow from "${flow.source}" to "${flow.target}" is not a number: write the number alone, such as 10, without units.`,
+    at,
+    header
+      ? "A sankey diagram has no header row: remove this line, and start with the first flow."
+      : `The value of the flow from "${flow.source}" to "${flow.target}" is not a number: write the number alone, such as 10, without units.`,
   );
 }
 
