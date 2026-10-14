@@ -1094,6 +1094,62 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual([many.legend.type, many.singleAxis.bottom], ["plain", 62 + 24]);
   });
 
+  test("spaces the names of a theme river's layers that start close, or leaves some out", () => {
+    const names = ["Frontend", "Backend", "Infrastructure", "Docs", "Tests", "Design", "Security"];
+    // Layers that start thin, whose names would go on top of each other.
+    const data = names.flatMap((name, index) => [
+      ["2026-01-01", 1 + (index % 2), name],
+      ["2026-01-02", 10 + index, name],
+      ["2026-01-03", 8, name],
+    ]);
+    const drawnNames = (option: Option, height: number) =>
+      withChart(
+        option,
+        (chart) => {
+          const texts = new Set<Option>();
+          for (const line of chart.getZr().storage.getDisplayList(true) as Option[]) {
+            if (line.type === "tspan" && line.parent?.__hostTarget?.type === "ec-polygon") {
+              texts.add(line.parent);
+            }
+          }
+          return [...texts]
+            .filter((text) => !text.ignore && !text.invisible)
+            .map((text) => {
+              const box = text.getBoundingRect().clone();
+              box.applyTransform(text.getComputedTransform());
+              return box;
+            });
+        },
+        { width: 800, height },
+      );
+    for (const height of [500, 160]) {
+      const option = layout(
+        { singleAxis: { type: "time" }, series: [{ type: "themeRiver", data }] },
+        { width: 800, height },
+      );
+      assert.deepStrictEqual(option.series[0].labelLayout, {
+        moveOverlap: "shiftY",
+        hideOverlap: true,
+      });
+      const boxes = drawnNames(option, height);
+      assert.ok(boxes.length > (height > 200 ? 6 : 1), `${boxes.length} at ${height}`);
+      boxes.forEach((a: Option, i: number) => {
+        for (const b of boxes.slice(i + 1)) {
+          const across = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const down = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+          assert.ok(across <= 1 || down <= 1, `${JSON.stringify(a)} ${JSON.stringify(b)}`);
+        }
+      });
+    }
+    // Unless the option lays them out itself.
+    const own = { moveOverlap: "shiftX" };
+    const placed = layout({
+      singleAxis: { type: "time" },
+      series: [{ type: "themeRiver", data, labelLayout: own }],
+    });
+    assert.deepStrictEqual(placed.series[0].labelLayout, own);
+  });
+
   test("labels large values on value axes compactly, unless the axis formats them", () => {
     const option = layout(
       bars({

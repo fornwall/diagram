@@ -2194,6 +2194,9 @@ function layOutSingleAxis(
     if (river.type !== "themeRiver" || label.show === false) continue;
     label.align ??= "right";
     river.label = label;
+    // The names of layers that start thin, close together, apart, as many as there is room for:
+    // the legend and tooltip name the others.
+    river.labelLayout ??= { moveOverlap: "shiftY", hideOverlap: true };
     if (label.align !== "right") continue;
     // ECharts' default size and margin of the names, which name the layers in the data's third
     // field, as in ["2026-01-05", 12, "Docs"].
