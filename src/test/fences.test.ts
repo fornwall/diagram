@@ -11,7 +11,7 @@ import {
   rewriteFence,
   setMermaidLanguages,
 } from "../fences";
-import { afterTest } from "./afterTest";
+import { afterTest, assertLinearTime } from "./afterTest";
 
 /**
  * The diagrams in a document, as "<opening fence line>-<last content line> <language> <prefix>".
@@ -375,17 +375,28 @@ suite("fences", () => {
 
   test("reads a line of many list markers, and the lines after it, in linear time", () => {
     // Each marker scanned the rest of the line, and each blank line after it every list item.
-    const start = Date.now();
-    const markdown = `${"- ".repeat(40_000)}x${"\n".repeat(20_000)}\`\`\`mermaid\nA\n\`\`\``;
-    assertSources([[markdown, ['20000-20001 mermaid "": "A"']]]);
-    assert.ok(Date.now() - start < 1000);
+    const markdown = (markers: number) =>
+      `${"- ".repeat(markers)}x${"\n".repeat(markers / 2)}\`\`\`mermaid\nA\n\`\`\``;
+    assertSources([[markdown(40_000), ['20000-20001 mermaid "": "A"']]]);
+    assertLinearTime((markers) => {
+      const text = markdown(markers);
+      return () => findDiagramFences(text);
+    }, 10_000);
   });
 
   test("reads lines of nested list markers, each scanned once for a thematic break", () => {
-    const start = Date.now();
-    const markdown = `${"- ".repeat(100)}x\n`.repeat(20_000);
-    assertSources([[`${markdown}\`\`\`mermaid\nA\n\`\`\``, ['20000-20001 mermaid "": "A"']]]);
-    assert.ok(Date.now() - start < 1000);
+    const markdown = (markers: number, lines: number) =>
+      `${`${"- ".repeat(markers)}x\n`.repeat(lines)}\`\`\`mermaid\nA\n\`\`\``;
+    assertSources([[markdown(100, 20_000), ['20000-20001 mermaid "": "A"']]]);
+    // In the markers of a line, up to the depth read, and in the lines.
+    assertLinearTime((markers) => {
+      const text = markdown(markers, 5_000);
+      return () => findDiagramFences(text);
+    }, 25);
+    assertLinearTime((lines) => {
+      const text = markdown(100, lines);
+      return () => findDiagramFences(text);
+    }, 2_000);
     // List markers nest until a thematic break, made of one character, ends the line.
     const fence = "    ```mermaid\n    A\n    ```\n";
     assertSources([

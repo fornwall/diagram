@@ -11,7 +11,14 @@ import {
   runCommand,
   unaskedError,
 } from "../dataSource";
-import { cancellationSource, setting, suiteTempDir, workspaceRoot } from "./afterTest";
+import {
+  afterTest,
+  assertLinearTime,
+  cancellationSource,
+  setting,
+  suiteTempDir,
+  workspaceRoot,
+} from "./afterTest";
 import { within } from "./newPanel";
 
 suite("dataSource", () => {
@@ -117,9 +124,11 @@ suite("dataSource", () => {
       for (const command of ["du --size", "x--si", "df -h /", "df / -H", "mydf -H", "df - -H"]) {
         assert.strictEqual(printsSiSizes(command), false, command);
       }
-      const start = Date.now();
       assert.strictEqual(printsSiSizes("-df ".repeat(20_000)), false);
-      assert.ok(Date.now() - start < 500);
+      assertLinearTime((size) => {
+        const command = "-df ".repeat(size);
+        return () => printsSiSizes(command);
+      }, 5_000);
     });
 
     test("reads UTF-16 output with a byte order mark, and output that is not UTF-8 as Windows-1252", async () => {
@@ -166,11 +175,13 @@ suite("dataSource", () => {
     });
 
     test("uses the output of a command that exited, while its background process holds the output open", async () => {
-      const started = Date.now();
-      assert.deepStrictEqual(await runCommand("echo 'a 1'; sleep 30 &", token), {
+      // It runs until the test has ended, so that a command waited for would time the test out.
+      const stop = path.join(dir, "stop-background");
+      afterTest(() => fs.writeFileSync(stop, ""));
+      const background = `i=0; while [ ! -e '${stop}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done`;
+      assert.deepStrictEqual(await runCommand(`echo 'a 1'; (${background}) &`, token), {
         output: "a 1\n",
       });
-      assert.ok(Date.now() - started < 5000);
     });
 
     test("fails when a command prints nothing", async () => {

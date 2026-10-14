@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import { type IgnoreFiles, ignoredGlobs, ignoreMatcher, ignoreRules } from "../gitignore";
+import { assertLinearTime } from "./afterTest";
 
 /** The paths that the ignore files, given by folder, ignore. */
 function ignoredOf(files: Record<string, string>, paths: readonly string[]): string[] {
@@ -121,16 +122,21 @@ suite("gitignore", () => {
 
   test("excludes by many ignore files with ! patterns in linear time", () => {
     // As where each of many folders is kept in git by an ignore file of "*" and "!.gitignore".
-    const files = new Map([["", ignoreRules("dist/\n*.log\n")]]);
-    for (let index = 0; index < 3000; index++) {
-      files.set(
-        `packages/p${index % 50}/f${index}`,
-        ignoreRules("*.tmp\ncache/\n*\n!.gitignore\n"),
-      );
-    }
-    const start = Date.now();
-    const globs = ignoredGlobs(files);
-    assert.ok(Date.now() - start < 300);
+    const ignoreFiles = (count: number) => {
+      const files = new Map([["", ignoreRules("dist/\n*.log\n")]]);
+      for (let index = 0; index < count; index++) {
+        files.set(
+          `packages/p${index % 50}/f${index}`,
+          ignoreRules("*.tmp\ncache/\n*\n!.gitignore\n"),
+        );
+      }
+      return files;
+    };
+    assertLinearTime((count) => {
+      const files = ignoreFiles(count);
+      return () => ignoredGlobs(files);
+    }, 750);
+    const globs = ignoredGlobs(ignoreFiles(3000));
     // The ! patterns below include again only what is named ".gitignore".
     assert.deepStrictEqual(globs.slice(0, 4), [
       "**/dist/**",

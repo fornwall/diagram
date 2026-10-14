@@ -173,3 +173,29 @@ export function recordMessages(
   replace(vscode.window, kind, show as (typeof vscode.window)[MessageKind]);
   return messages;
 }
+
+/**
+ * Asserts that the work takes time linear in the size of its input rather than quadratic: four
+ * times the size takes well under the sixteen times as long that quadratic time would. Each size is
+ * timed by its fastest of a few runs, which a busy machine does not slow down as it may a single
+ * one. `prepare` makes the input of a size, untimed, and gives the work to time, which it may run
+ * several times.
+ */
+export function assertLinearTime(prepare: (size: number) => () => unknown, size: number): void {
+  const sizes = [size, 4 * size];
+  const works = sizes.map(prepare);
+  const fastest = sizes.map(() => Number.POSITIVE_INFINITY);
+  for (let round = 0; round < 5; round++) {
+    for (const [index, work] of works.entries()) {
+      const start = performance.now();
+      work();
+      fastest[index] = Math.min(fastest[index] ?? 0, performance.now() - start);
+    }
+  }
+  const [small = 0, large = 0] = fastest;
+  // And a millisecond more, which a measure of under a millisecond is not exact to.
+  assert.ok(
+    large < 8 * small + 1,
+    `${small.toFixed(1)} ms for size ${size}, but ${large.toFixed(1)} ms for ${4 * size}`,
+  );
+}

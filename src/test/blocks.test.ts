@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import { codeFence, DiagramBlockFilter, guessTitle } from "../blocks";
 import { setMermaidLanguages } from "../fences";
-import { afterTest } from "./afterTest";
+import { afterTest, assertLinearTime } from "./afterTest";
 
 suite("blocks", () => {
   test("collects each mermaid and echarts block with its language, but no empty or unfinished one", () => {
@@ -145,15 +145,18 @@ suite("blocks", () => {
 
   test("streams a long line of list markers or backticks before its end, in linear time", () => {
     // Such as a model repeating itself: each fragment rescanned the line, which took seconds.
-    for (const line of ["- ".repeat(40_000), "`".repeat(80_000)]) {
-      const start = Date.now();
-      const filter = new DiagramBlockFilter();
-      let shown = "";
-      for (let offset = 0; offset < line.length; offset += 4) {
-        shown += filter.push(line.slice(offset, offset + 4));
-      }
-      assert.strictEqual(shown, line);
-      assert.ok(Date.now() - start < 1000);
+    for (const marker of ["- ", "``"]) {
+      const stream = (line: string) => () => {
+        const filter = new DiagramBlockFilter();
+        let shown = "";
+        for (let offset = 0; offset < line.length; offset += 4) {
+          shown += filter.push(line.slice(offset, offset + 4));
+        }
+        return shown;
+      };
+      const line = marker.repeat(40_000);
+      assert.strictEqual(stream(line)(), line);
+      assertLinearTime((size) => stream(marker.repeat(size)), 10_000);
     }
   });
 
