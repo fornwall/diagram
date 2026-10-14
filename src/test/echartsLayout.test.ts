@@ -128,6 +128,46 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual([show, x, type, top], [undefined, 1, "scroll", 6]);
   });
 
+  test("wraps a legend that the panel places into a few rows, rather than page through it", () => {
+    const named = (count: number, extra: Option = {}) =>
+      layout({
+        xAxis: { type: "category", data: ["a"] },
+        yAxis: {},
+        series: Array.from({ length: count }, (_, index) => ({
+          name: `Product line ${index + 1}`,
+          type: "line",
+          data: [index],
+        })),
+        ...extra,
+      });
+    const top = (option: Option) => [option.legend.type, option.grid.top];
+    assert.deepStrictEqual(top(named(5)), ["scroll", 44]);
+    assert.deepStrictEqual(top(named(12)), ["plain", 68]);
+    assert.deepStrictEqual(top(named(16)), ["plain", 92]);
+    // Too many to wrap into a few rows, or a legend that says its kind or place.
+    assert.deepStrictEqual(top(named(30)), ["scroll", 44]);
+    assert.deepStrictEqual(top(named(12, { legend: { type: "scroll" } })), ["scroll", 44]);
+    assert.strictEqual(named(12, { legend: { bottom: 0 } }).legend.type, "scroll");
+    // As many rows as a fifth of the height takes, as for the slices of a pie in a tall panel.
+    const slices = (height: number) =>
+      layout(
+        {
+          series: [
+            {
+              type: "pie",
+              data: Array.from({ length: 8 }, (_, index) => ({
+                name: `Browser ${index}`,
+                value: 1,
+              })),
+            },
+          ],
+        },
+        { width: 300, height },
+      ).legend.type;
+    assert.strictEqual(slices(600), "plain");
+    assert.strictEqual(slices(300), "scroll");
+  });
+
   test("keeps a date and a typed array in chart data as they are", () => {
     const point = new Date(86_400_000);
     const time = { xAxis: { type: "time" }, series: [{ type: "line", data: [[point, 1]] }] };

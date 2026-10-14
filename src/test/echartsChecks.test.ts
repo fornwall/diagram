@@ -615,8 +615,10 @@ suite("echartsChecks", () => {
       series,
     });
     assert.deepStrictEqual(warningsOf(chart(lines(5))), []);
-    assert.deepStrictEqual(warningsOf(chart(lines(12))), [
-      'legend has more entries than fit the panel, which it pages through, 2 pages of them, so that a reader sees only some at a time: show fewer series, or name each line at its end with "endLabel": {"show": true, "formatter": "{a}"} instead of a legend.',
+    // A legend that the panel places wraps into a few rows before it pages.
+    assert.deepStrictEqual(warningsOf(chart(lines(12))), []);
+    assert.deepStrictEqual(warningsOf(chart(lines(12)), { width: 400, height: 500 }), [
+      'legend has more entries than fit the panel, which it pages through, 4 pages of them, so that a reader sees only some at a time: show fewer series, or name each line at its end with "endLabel": {"show": true, "formatter": "{a}"} instead of a legend.',
     ]);
     assert.match(
       warningsOf(

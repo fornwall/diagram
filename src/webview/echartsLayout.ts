@@ -238,11 +238,6 @@ function layOutAround(
     disableAnimation(option);
   }
   hideRepeatedTitle(base, context.title);
-  for (const legend of asArray(base.legend)) {
-    if (legend.show !== false) {
-      legend.type ??= "scroll";
-    }
-  }
   // Options with media queries handle their own responsiveness.
   if (option.media === undefined) {
     const { width, height } = context;
@@ -250,6 +245,12 @@ function layOutAround(
     const charWidth = context.colors.fontSize * 0.6;
     const room = layOut(base, series, cartesian, { width, height, compact, charWidth }, squeeze);
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
+  }
+  // A legend that the layout did not wrap into rows pages through its entries, if they take more.
+  for (const legend of asArray(base.legend)) {
+    if (legend.show !== false) {
+      legend.type ??= "scroll";
+    }
   }
   styleSeries(base, series, context.colors);
   colorLabelsOnItems(base, series, context.colors);
@@ -493,7 +494,7 @@ function placeLegend(
       !isPlainObject(pies[0]?.label) &&
       (width < 420 || height - reserved.top < 260);
     if (named || smallPie) {
-      base.legend = { type: "scroll" };
+      base.legend = {};
     }
   }
   const legend = asArray(base.legend).find((l) => l.show !== false);
@@ -525,7 +526,15 @@ function placeLegend(
     side = legend.top !== undefined && legend.bottom === undefined ? "top" : "bottom";
   }
   if (side === "top" || side === "bottom") {
-    reserved[side] += side === "top" ? 30 : 32;
+    // A legend that the panel places wraps into a few rows rather than page through its entries,
+    // unless the option says what kind of legend it is: as many as take a fifth of the height.
+    const most = Math.max(2, Math.floor((height * 0.2) / LEGEND_ROW));
+    const rows =
+      !placed && legend.type === undefined
+        ? legendRows(legend, series, width - 20, charWidth, most)
+        : 1;
+    if (rows > 1) legend.type = "plain";
+    reserved[side] += (side === "top" ? 30 : 32) + (rows - 1) * LEGEND_ROW;
     return;
   }
   // The icon, the gap after it and the padding around the legend.
@@ -545,6 +554,48 @@ function placeLegend(
   }
   const legendWidth = Math.min(width * 0.32, Math.max(4, longest) * charWidth + extra);
   reserved[side] += Math.round(legendWidth) + 16;
+}
+
+/** The height of a row of a legend's entries. */
+const LEGEND_ROW = 24;
+/** The entries of a legend beyond which it pages through them, however short. */
+const MAX_WRAPPED_ENTRIES = 40;
+
+/**
+ * The rows that a horizontal legend wraps its entries into in a width, if it takes several and
+ * no more than the most there is room for; else 1, for a legend that pages through them instead.
+ * The entries name the slices of pies and funnels, or else the series.
+ */
+function legendRows(
+  legend: JsonObject,
+  series: JsonObject[],
+  width: number,
+  charWidth: number,
+  most: number,
+): number {
+  const sliced = series.filter((each) => each.type === "pie" || each.type === "funnel");
+  const entries: unknown[] = Array.isArray(legend.data)
+    ? legend.data
+    : sliced.length > 0
+      ? sliced.flatMap((each) =>
+          Array.isArray(each.data) ? each.data.slice(0, MAX_WRAPPED_ENTRIES + 1) : [],
+        )
+      : series.map(seriesName).filter((name) => name !== undefined);
+  if (entries.length > MAX_WRAPPED_ENTRIES) return 1;
+  let rows = 1;
+  let used = 0;
+  for (const entry of entries) {
+    const text = String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
+    // The icon and the gap after it, and the gap before the entry after another.
+    const size = 12 + 5 + text.length * charWidth;
+    if (used > 0 && used + 10 + size > width) {
+      rows++;
+      used = size;
+    } else {
+      used += (used > 0 ? 10 : 0) + size;
+    }
+  }
+  return rows <= most ? rows : 1;
 }
 
 /** The height in pixels below which a plot, with the labels of its axes, can hardly be read. */
