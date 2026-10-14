@@ -632,6 +632,54 @@ suite("Mermaid in the webview", function () {
     assert.notStrictEqual(drawn.line, "rgb(68, 68, 68)");
   });
 
+  test("draws in the theme variables that a diagram sets without a theme, legibly", async () => {
+    for (const source of [
+      '%%{init: {"themeVariables": {"primaryColor": "#ffcccc"}}}%%\nflowchart LR\n  A[Start] --> B[End]',
+      '---\nconfig:\n  themeVariables:\n    primaryColor: "#ffcccc"\n---\nflowchart LR\n  A[Start] --> B[End]',
+    ]) {
+      await draw({ source });
+      const drawn = (await evaluate(`(async () => {
+        ${CONTRAST}
+        ${IN_THEME}
+        return inTheme("vscode-dark", "${DARK_MODERN}", () => {
+          const node = document.querySelector('#diagram [data-diagram-id="A"]');
+          return [getComputedStyle(node.querySelector("rect")).fill, contrast(node, "foreignObject *", "rect")[1]];
+        });
+      })()`)) as [string, number];
+      assert.strictEqual(drawn[0], "rgb(255, 204, 204)", source);
+      assert.ok(drawn[1] >= 4.5, `${source}: ${drawn[1]}`);
+    }
+  });
+
+  test("labels the messages of a sequence diagram legibly on the colors of its blocks", async () => {
+    await draw({
+      source: [
+        "sequenceDiagram",
+        "  box Aqua Front",
+        "    participant A",
+        "  end",
+        "  participant B",
+        "  rect rgb(200, 220, 255)",
+        "    A->>B: Inside",
+        "  end",
+        "  A->>B: Outside",
+      ].join("\n"),
+    });
+    const colors = await evaluate(`(async () => {
+      ${IN_THEME}
+      return inTheme("vscode-dark", "${DARK_MODERN}", () => Object.fromEntries(
+        [...document.querySelectorAll("#diagram svg text")]
+          .filter((text) => ["Front", "Inside", "Outside"].includes(text.textContent))
+          .map((text) => [text.textContent, getComputedStyle(text).fill])));
+    })()`);
+    // The theme's background on the light blocks, and its text color off them.
+    assert.deepStrictEqual(colors, {
+      Front: "rgb(31, 31, 31)",
+      Inside: "rgb(31, 31, 31)",
+      Outside: "rgb(204, 204, 204)",
+    });
+  });
+
   test("labels the nodes and groups that the source fills legibly on the fill, also in images", async () => {
     await draw({
       source: [

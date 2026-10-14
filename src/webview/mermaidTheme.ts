@@ -1,7 +1,10 @@
 // Mermaid's base theme, the one meant to be given colors, in the colors of the VS Code theme.
 
+import type { Mermaid, MermaidConfig } from "mermaid";
+import { parseColor as parseCss } from "../cssColors";
 import {
   contrast,
+  LABEL_CONTRAST,
   labelColorOn,
   legibleTints,
   lighten,
@@ -10,6 +13,7 @@ import {
   type ThemeColors,
   toCss,
 } from "./colors";
+import { parseColor } from "./vscodeTheme";
 
 /** The contrast that lines and borders need with the background, as WCAG asks of graphics. */
 const GRAPHIC_CONTRAST = 3;
@@ -419,6 +423,104 @@ export function sizeConfig(keyword: string | undefined, settings: string, width:
   return sized.config(width);
 }
 
+/** The fills that Mermaid outlines in a color it derives from them, unless given one. */
+const BORDERS: [string, string][] = [
+  ["primaryColor", "primaryBorderColor"],
+  ["secondaryColor", "secondaryBorderColor"],
+  ["tertiaryColor", "tertiaryBorderColor"],
+  ["noteBkgColor", "noteBorderColor"],
+];
+
+/** The theme variables that color text, such as primaryTextColor and gitBranchLabel0. */
+const TEXT_VARIABLE = /(?:text|label|title)(?:color|fill|\d+)?$/i;
+
+/** The fills that the text in each of these colors lies on. */
+const TEXT_ON: [string, string[]][] = [
+  ["primaryColor", ["primaryTextColor"]],
+  ["mainBkg", ["nodeTextColor"]],
+  ["secondaryColor", ["secondaryTextColor"]],
+  ["tertiaryColor", ["tertiaryTextColor", "titleColor", "labelTextColor", "loopTextColor"]],
+  ["clusterBkg", ["titleColor"]],
+  ["noteBkgColor", ["noteTextColor"]],
+  ["actorBkg", ["actorTextColor"]],
+];
+
+/**
+ * The panel's theme variables with those that a diagram sets merged over them, for Mermaid to
+ * derive the rest from: what the panel's theme draws in the color of a variable that the diagram
+ * sets, other than text and what is unfilled, in the background color, takes that color too,
+ * outlines follow the fills that the diagram sets, and text on them takes a color legible there
+ * unless the diagram sets one. The background stays the panel's, which the diagram cannot change.
+ */
+export function adoptThemeVariables(
+  ours: Record<string, unknown>,
+  own: Record<string, unknown>,
+  colors: ThemeColors,
+): Record<string, unknown> {
+  const merged = { ...ours };
+  for (const [key, value] of Object.entries(own)) {
+    const mine = ours[key];
+    if (typeof mine === "string" && typeof value === "string" && mine !== ours.background) {
+      for (const [other, color] of Object.entries(ours)) {
+        if (color === mine && !Object.hasOwn(own, other) && !TEXT_VARIABLE.test(other)) {
+          merged[other] = value;
+        }
+      }
+    }
+    merged[key] = value;
+  }
+  for (const [fill, border] of BORDERS) {
+    if (Object.hasOwn(own, fill) && !Object.hasOwn(own, border)) delete merged[border];
+  }
+  for (const [fill, texts] of TEXT_ON) {
+    const color = typeof own[fill] === "string" ? parseCss(own[fill]) : undefined;
+    if (!color) continue;
+    const label = toCss(labelColorOn(mix(colors.background, { ...color, a: 1 }, color.a), colors));
+    for (const text of texts) if (!Object.hasOwn(own, text)) merged[text] = label;
+  }
+  // Labels on lines take the color of the text on nodes: where that does not read on the panel's
+  // background, they lie on the fill of the nodes, as in Mermaid's light themes.
+  const nodeText = parseCss(String(merged.nodeTextColor ?? merged.primaryTextColor));
+  const nodeFill = own.mainBkg ?? own.primaryColor;
+  if (
+    nodeText &&
+    nodeFill !== undefined &&
+    !Object.hasOwn(own, "edgeLabelBackground") &&
+    contrast(mix(colors.background, nodeText, nodeText.a), colors.background) < LABEL_CONTRAST
+  ) {
+    merged.edgeLabelBackground = nodeFill;
+  }
+  return merged;
+}
+
+/**
+ * The configuration, with the theme variables that the diagram sets without choosing a theme of
+ * its own merged over the panel's (see adoptThemeVariables): Mermaid's base theme derives colors
+ * only from those it is configured with, and merges those of a diagram over what it derived.
+ * Mermaid reads them from the diagram's front matter and directives, parsing it.
+ */
+export async function withOwnThemeVariables(
+  mermaid: Mermaid,
+  config: MermaidConfig,
+  text: string,
+  colors: ThemeColors,
+): Promise<MermaidConfig> {
+  const ours = config.themeVariables as Record<string, unknown> | undefined;
+  if (!ours || Object.keys(ours).length === 0 || !text.includes("themeVariables")) return config;
+  mermaid.initialize(config);
+  await mermaid.parse(text, { suppressErrors: true }).catch(() => false);
+  const site: Record<string, unknown> = mermaid.mermaidAPI.getSiteConfig().themeVariables ?? {};
+  const read: Record<string, unknown> = mermaid.mermaidAPI.getConfig().themeVariables ?? {};
+  const own = Object.fromEntries(
+    Object.entries(read).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(site[key]),
+    ),
+  );
+  return Object.keys(own).length === 0
+    ? config
+    : { ...config, themeVariables: adoptThemeVariables(ours, own, colors) };
+}
+
 /** The kinds of element of C4 diagrams, whose fonts Mermaid configures each on its own. */
 const C4_ELEMENTS = ["person", "system", "container", "component"].flatMap((kind) =>
   [kind, `${kind}_db`, `${kind}_queue`].flatMap((each) => [each, `external_${each}`]),
@@ -469,4 +571,50 @@ export function themeFixedColors(
       if (role) element.setAttribute(attribute, color[role]);
     }
   }
+}
+
+/**
+ * Draws the text of a sequence diagram that lies on the background of a `rect` block or a `box` of
+ * participants in a color legible there, where the theme's text color is not: the source colors
+ * them, often light, such as Aqua, on which the light text of a dark theme vanishes. Text on what
+ * is drawn over them, such as notes and participants, keeps its color. The drawing must be in the
+ * document, where the browser resolves fills.
+ */
+export function colorLabelsOnBlocks(svg: SVGSVGElement, colors: ThemeColors): void {
+  const blocks = svg.querySelectorAll("rect.rect");
+  if (blocks.length === 0) return;
+  // The filled shapes, in the order drawn, read before any color changes.
+  const shapes = Array.from(
+    svg.querySelectorAll<SVGGeometryElement>("rect, path, polygon, circle, ellipse"),
+  )
+    .filter((shape) => !shape.closest("defs, marker, text, foreignObject"))
+    .flatMap((shape) => {
+      const style = getComputedStyle(shape);
+      const fill = parseColor(style.fill);
+      const alpha = (fill?.a ?? 0) * Number(style.fillOpacity) * Number(style.opacity);
+      const toShape = shape.getScreenCTM()?.inverse();
+      return fill && alpha > 0 && toShape && style.display !== "none"
+        ? [{ shape, box: shape.getBoundingClientRect(), fill, alpha, toShape }]
+        : [];
+    });
+  const recolor: [SVGTextElement, string][] = [];
+  for (const text of svg.querySelectorAll<SVGTextElement>("text")) {
+    const box = text.getBoundingClientRect();
+    if (!box.width || !text.textContent?.trim()) continue;
+    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    let under = colors.background;
+    let onBlock = false;
+    for (const { shape, box: bounds, fill, alpha, toShape } of shapes) {
+      if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) continue;
+      if (!shape.isPointInFill(new DOMPoint(x, y).matrixTransform(toShape))) continue;
+      under = mix(under, fill, alpha);
+      // A shape drawn over a block covers it.
+      onBlock = shape.matches("rect.rect");
+    }
+    const color = parseColor(getComputedStyle(text).fill);
+    if (onBlock && color && contrast(mix(under, color, color.a), under) < LABEL_CONTRAST) {
+      recolor.push([text, toCss(labelColorOn(under, colors))]);
+    }
+  }
+  for (const [text, color] of recolor) text.style.fill = color;
 }

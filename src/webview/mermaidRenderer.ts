@@ -27,11 +27,13 @@ import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { readabilityWarnings } from "./mermaidQuality";
 import {
+  colorLabelsOnBlocks,
   drawnAtWidth,
   fontConfig,
   mermaidTheme,
   sizeConfig,
   themeFixedColors,
+  withOwnThemeVariables,
 } from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
@@ -85,7 +87,7 @@ const FORMULA = /\$\$(.*?)\$\$/;
 const MATHML = { displayMode: true, output: "mathml", throwOnError: false } as const;
 
 /** A theme that front matter or an init directive chooses, unlike its themeVariables. */
-const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:/m;
+const OWN_THEME = /(?:^|[\s{,])["']?theme["']?\s*:\s*["']?([\w-]*)/m;
 
 /** What a node's links in the source are called in its tooltip: "Open …". */
 function describeLinks(targets: readonly WebLink[]): string {
@@ -417,6 +419,7 @@ async function layOut(
   try {
     centerTextLabels(svg);
     themeFixedColors(svg, diagramType, colors);
+    if (diagramType === "sequence") colorLabelsOnBlocks(svg, colors);
     colorLabelsOnFills(svg, colors, diagramType === "er" ? filledEntities(svg, await db()) : []);
     if (diagramType === "sequence" && FORMULA.test(text)) {
       await drawParticipantFormulas(svg, await db());
@@ -630,8 +633,9 @@ export class MermaidRenderer implements Renderer {
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
       // A diagram that chooses a theme of its own takes it whole: Mermaid would color it with
-      // these too, and the text of its nodes in the color meant for VS Code's theme.
-      ...(OWN_THEME.test(settings)
+      // these too, and the text of its nodes in the color meant for VS Code's theme. The base
+      // theme is the panel's.
+      ...(![undefined, "base"].includes(OWN_THEME.exec(settings)?.[1])
         ? { theme: "base", themeVariables: {} }
         : mermaidTheme(colors, keyword)),
       ...fontConfig(colors.fontFamily),
@@ -651,9 +655,9 @@ export class MermaidRenderer implements Renderer {
     const container = layoutContainer();
     // Gantt charts take the width of the element they are drawn in, and other charts the size
     // that they are configured to: give them the width they are shown at, rather than shrinking
-    // their text to fit. In the Source view the canvas has no
-    // width: keep the last one, or before any, take the one it has in the Visual view. A hidden
-    // tab has none to take: the chart is laid out again once the tab is shown.
+    // their text to fit. In the Source view the canvas has no width: keep the last one, or before
+    // any, take the one it has in the Visual view. A hidden tab has none to take: the chart is
+    // laid out again once the tab is shown.
     let { width } = this.contentSize();
     if (width <= 0 && !container.style.width && !this.tabHidden() && this.canvas.parentElement) {
       const style = getComputedStyle(this.canvas);
@@ -668,7 +672,13 @@ export class MermaidRenderer implements Renderer {
         (scroller.offsetWidth - scroller.clientWidth);
       scroller.remove();
     }
-    const config = this.config(source, colors, width > 0 ? width : this.layoutWidth);
+    const text = parsableSource(source);
+    const config = await withOwnThemeVariables(
+      mermaid,
+      this.config(source, colors, width > 0 ? width : this.layoutWidth),
+      text,
+      colors,
+    );
     mermaid.initialize(config);
     // A drawing that fails leaves the one shown, and the width it was laid out at.
     const shownWidth = container.style.width;
@@ -682,7 +692,6 @@ export class MermaidRenderer implements Renderer {
       return this.diagramType;
     }
     container.style.width = drawWidth;
-    const text = parsableSource(source);
     const drawing = async () => {
       const parsed = await databaseOf(mermaid, text);
       // Mermaid would lay out the first forever, and draw the second out of place.
@@ -776,15 +785,15 @@ export class MermaidRenderer implements Renderer {
       throw new Error("There is no diagram to make an image of.");
     }
     const colors = readThemeColors();
-    const config = this.config(source, colors);
+    const mermaid = await loadMermaid();
+    const text = parsableSource(source);
+    const config = await withOwnThemeVariables(mermaid, this.config(source, colors), text, colors);
     // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
     // The image takes the color of the text around the drawing for labels that leave it to CSS.
     const color = getComputedStyle(document.body).color;
     const width = layoutContainer().style.width;
     const from = JSON.stringify([source, background, color, width, config]);
     if (this.image?.from === from) return this.image.image;
-    const mermaid = await loadMermaid();
-    const text = parsableSource(source);
     mermaid.initialize(
       FORMULA.test(text)
         ? config

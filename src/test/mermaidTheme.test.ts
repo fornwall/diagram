@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
-import { contrast, LABEL_CONTRAST, type Rgba, toCss } from "../webview/colors";
+import { contrast, LABEL_CONTRAST, type Rgba, type ThemeColors, toCss } from "../webview/colors";
 import {
+  adoptThemeVariables,
   drawnAtWidth,
   fontConfig,
   mermaidTheme,
@@ -180,5 +181,39 @@ suite("Mermaid theme", () => {
       assert.ok(drawnAtWidth(type), type);
     }
     assert.ok(!drawnAtWidth("flowchart-v2") && !drawnAtWidth(undefined));
+  });
+
+  test("merges the theme variables of a diagram over the panel's, legibly", () => {
+    const [, dark] = vscodeThemes.find(([theme]) => theme === "Dark Modern") as [
+      string,
+      ThemeColors,
+    ];
+    const ours = mermaidThemeVariables(dark);
+    const pink = adoptThemeVariables(ours, { primaryColor: "#ffcccc" }, dark);
+    assert.strictEqual(pink.primaryColor, "#ffcccc");
+    // What the panel draws in the primary color follows it, and Mermaid derives its outline.
+    assert.strictEqual(pink.tagLabelBackground, "#ffcccc");
+    assert.strictEqual(pink.primaryBorderColor, undefined);
+    // Text on it reads, and labels on lines that take its color lie on it.
+    assert.ok(contrast(rgb(pink.primaryTextColor), rgb("#ffcccc")) >= LABEL_CONTRAST);
+    assert.strictEqual(pink.edgeLabelBackground, "#ffcccc");
+    assert.strictEqual(pink.textColor, ours.textColor);
+    // A line color takes in the arrowheads and the lines of every diagram.
+    const red = adoptThemeVariables(ours, { lineColor: "#e91e63" }, dark);
+    for (const name of ["arrowheadColor", "signalColor", "transitionColor", "relationColor"]) {
+      assert.strictEqual(red[name], "#e91e63", name);
+    }
+    assert.strictEqual(red.edgeLabelBackground, ours.edgeLabelBackground);
+    // A high contrast theme fills nothing: its unfilled parts stay so.
+    const [, highContrast] = vscodeThemes.find(([, colors]) => colors.highContrast) as [
+      string,
+      ThemeColors,
+    ];
+    const outlined = mermaidThemeVariables(highContrast);
+    const filled = adoptThemeVariables(outlined, { primaryColor: "#ffcccc" }, highContrast);
+    assert.deepStrictEqual(
+      [filled.tertiaryColor, filled.edgeLabelBackground === "#ffcccc"],
+      [outlined.tertiaryColor, true],
+    );
   });
 });

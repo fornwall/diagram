@@ -44,7 +44,7 @@ Chart Options reuses loaded data. After a restart, press **Refresh** to reload f
 
 In charts, arrows follow categories and series. Trees use ←/→ for parent/child and ↑/↓ for siblings; scatter, graph and sankey charts move to the nearest item. Enter expands tree nodes or zooms into treemaps and sunbursts; Backspace goes up a treemap or sunburst.
 
-Diagrams follow your VS Code theme, high contrast themes included; a Mermaid diagram that sets its own `theme` keeps it. Agents can mark items with notes, for example to walk you through a diagram.
+Diagrams follow your VS Code theme, high contrast themes included; a Mermaid diagram that sets its own `theme` keeps it, and its `themeVariables` recolor the panel's theme. Agents can mark items with notes, for example to walk you through a diagram.
 
 Charts have a read-only data view. Toolbox chart-type switching, box zoom and brush are disabled because resizing would undo them. Short panels hide the visual map, zoom slider, subtitle and title as needed; wheel zoom and dragging remain available.
 
