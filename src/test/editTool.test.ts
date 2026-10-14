@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { ChartTool, UpdateChartTool } from "../chartTools";
+import { withoutValueRuns } from "../describe";
 import { EditDiagramTool } from "../editTool";
 import { findDiagramFences } from "../fences";
 import type { DiagramPanel, Drawn } from "../panel";
@@ -65,6 +66,19 @@ suite("source edits", () => {
     assert.deepStrictEqual(problems(source, [edit("%%", "")]), [
       "Edit 1: oldText is not in the source. ",
     ]);
+    // Or copy the line that stands for the values left out of a long option shown to it.
+    const option = `{\n  "series": [{\n    "data": [\n${"      1, 2, 3,\n".repeat(20)}      4\n    ]\n  }]\n}`;
+    const shown = withoutValueRuns(option) ?? "";
+    const marker = /^ *… 19 more lines of values …$/m.exec(shown)?.[0];
+    assert.ok(marker, shown);
+    assert.deepStrictEqual(
+      problems(option, [
+        edit(`      1, 2, 3,\n${marker}\n    ]\n  }]`, '    ],\n  "type": "bar"}]'),
+      ]),
+      [
+        'Edit 1: oldText is not in the source. Its line "… 19 more lines of values …" stands for lines left out of the source as it was shown to you: make the edit without that line, with text before or after it.',
+      ],
+    );
   });
 
   test("name the lines of text that occurs more than once", () => {

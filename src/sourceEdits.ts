@@ -25,6 +25,11 @@ const MAX_LINE_LENGTH = 200;
 const MAX_LISTED = 5;
 /** How many characters of lines times lines of oldText the search for the closest lines compares. */
 const MAX_COMPARED = 2_000_000;
+/**
+ * The line that stands for a run of lines of values left out of a long chart option shown to a
+ * model, as describe.ts's withoutValueRuns writes it.
+ */
+const LEFT_OUT_VALUES = /^\s*… [\d,]+ more lines? of values …\s*$/;
 
 export function applySourceEdits(source: string, edits: readonly SourceEdit[]): EditedSource {
   let text = source;
@@ -109,6 +114,11 @@ function notFound(source: string, text: string): string {
     if (source.includes(unnumbered)) {
       return 'Leave out the line numbers, such as "12: ", that the lines are quoted with.';
     }
+  }
+  // Or copy the line that stands for the values left out of the source as it was shown.
+  const leftOut = lines.find((line) => LEFT_OUT_VALUES.test(line) && !source.includes(line));
+  if (leftOut !== undefined) {
+    return `Its line ${JSON.stringify(leftOut.trim())} stands for lines left out of the source as it was shown to you: make the edit without that line, with text before or after it.`;
   }
   // Or write the line breaks of a JSON string as "\n" once too often.
   if (text.includes("\\n") && source.includes(text.replaceAll("\\n", "\n"))) {
