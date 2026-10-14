@@ -2225,45 +2225,73 @@ function layOutSingleAxis(
   base: JsonObject,
   series: JsonObject[],
   reserved: Insets,
-  { width, charWidth }: Size,
+  { width, height, charWidth }: Size,
 ): void {
   const axes = asArray(base.singleAxis);
   const axis = axes.length === 1 ? axes[0] : undefined;
   if (!axis || has(axis, BOX_KEYS) || axis.orient === "vertical") return;
+  // The labels of the axis, below it unless placed above.
+  const labels = isPlainObject(axis.axisLabel) && axis.axisLabel.show === false ? 0 : LABEL_HEIGHT;
+  const above = axis.position === "top";
+  const top = reserved.top + 14 + (above ? labels : 0);
+  const bottom = reserved.bottom + 8 + (above ? 0 : labels);
   let left = 24;
   for (const river of series) {
     const label = isPlainObject(river.label) ? river.label : {};
     if (river.type !== "themeRiver" || label.show === false) continue;
     label.align ??= "right";
     river.label = label;
-    // The names of layers that start thin, close together, apart, as many as there is room for:
-    // the legend and tooltip name the others.
-    river.labelLayout ??= { moveOverlap: "shiftY", hideOverlap: true };
-    if (label.align !== "right") continue;
-    // ECharts' default size and margin of the names, which name the layers in the data's third
-    // field, as in ["2026-01-05", 12, "Docs"].
-    const nameChar = (typeof label.fontSize === "number" ? label.fontSize : 11) * 0.6;
-    const margin = (typeof label.margin === "number" ? label.margin : 4) + 8;
-    const most = Math.round(width * MAX_LAYER_NAMES);
+    // The names of the layers, in the data's third field, as in ["2026-01-05", 12, "Docs"].
     const names = Array.isArray(river.data)
       ? river.data.map((item: unknown) => (Array.isArray(item) ? item[2] : undefined))
       : [];
+    // ECharts' default size of the names.
+    const fontSize = typeof label.fontSize === "number" ? label.fontSize : 11;
+    // The names of layers that start thin, close together, apart, where they all fit below the
+    // top of where the river starts, around the middle of its axis, as ECharts moves them down
+    // from there, and else onto its axis labels or legend: else as many as there is room for. The
+    // legend and tooltip name the others. Each name is as tall as its font is large.
+    const layers = new Set(names.filter((name: unknown) => name != null).map(String)).size;
+    const room = height - top - bottom;
+    // ECharts draws the river across the axis but for 10% at each side.
+    const start = Array.isArray(river.data) ? riverStart(river.data) * 0.8 * room : 0;
+    river.labelLayout ??=
+      layers * fontSize <= (room + start + fontSize) / 2
+        ? { moveOverlap: "shiftY", hideOverlap: true }
+        : { hideOverlap: true };
+    if (label.align !== "right") continue;
+    // ECharts' default margin of the names.
+    const nameChar = fontSize * 0.6;
+    const margin = (typeof label.margin === "number" ? label.margin : 4) + 8;
+    const most = Math.round(width * MAX_LAYER_NAMES);
     const text = longestText(names, most / nameChar) * nameChar;
     if (text + margin > most && label.width === undefined) {
       Object.assign(label, { width: most - margin, overflow: label.overflow ?? "truncate" });
     }
     left = Math.max(left, Math.round(Math.min(text + margin, most)));
   }
-  // The labels of the axis, below it unless placed above.
-  const labels = isPlainObject(axis.axisLabel) && axis.axisLabel.show === false ? 0 : LABEL_HEIGHT;
-  const above = axis.position === "top";
-  Object.assign(axis, {
-    left: reserved.left + left,
-    right: reserved.right + 24,
-    top: reserved.top + 14 + (above ? labels : 0),
-    bottom: reserved.bottom + 8 + (above ? 0 : labels),
-  });
+  Object.assign(axis, { left: reserved.left + left, right: reserved.right + 24, top, bottom });
   fewerTimeTicks(axis, width - reserved.left - left - reserved.right - 24, charWidth);
+}
+
+/**
+ * How thick a theme river is where it starts, at its first time, as a share of where it is
+ * thickest, of data as ["2026-01-05", 12, "Docs"]: 0 where its times do not tell which is first.
+ */
+function riverStart(data: unknown[]): number {
+  const sums = new Map<string, number>();
+  let first: { at: number; key: string } | undefined;
+  for (const item of data) {
+    if (!Array.isArray(item)) continue;
+    const key = String(item[0]);
+    const value = Number(item[1]);
+    sums.set(key, (sums.get(key) ?? 0) + (Number.isFinite(value) && value > 0 ? value : 0));
+    const at = typeof item[0] === "number" ? item[0] : Date.parse(key);
+    if (Number.isFinite(at) && (first === undefined || at < first.at)) first = { at, key };
+  }
+  let most = 0;
+  for (const sum of sums.values()) most = Math.max(most, sum);
+  return first && most > 0 ? (sums.get(first.key) ?? 0) / most : 0;
 }
 
 /** The type of an axis, which ECharts makes "category" for one with data. */

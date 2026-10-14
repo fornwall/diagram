@@ -1158,12 +1158,13 @@ suite("echartsLayout", () => {
         { singleAxis: { type: "time" }, series: [{ type: "themeRiver", data }] },
         { width: 800, height },
       );
-      assert.deepStrictEqual(option.series[0].labelLayout, {
-        moveOverlap: "shiftY",
-        hideOverlap: true,
-      });
+      // Moved apart where they fit beside the river, which they do not in a short chart.
+      assert.deepStrictEqual(
+        option.series[0].labelLayout,
+        height > 200 ? { moveOverlap: "shiftY", hideOverlap: true } : { hideOverlap: true },
+      );
       const boxes = drawnNames(option, height);
-      assert.ok(boxes.length > (height > 200 ? 6 : 1), `${boxes.length} at ${height}`);
+      assert.ok(boxes.length > (height > 200 ? 6 : 0), `${boxes.length} at ${height}`);
       boxes.forEach((a: Option, i: number) => {
         for (const b of boxes.slice(i + 1)) {
           const across = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
@@ -1179,6 +1180,55 @@ suite("echartsLayout", () => {
       series: [{ type: "themeRiver", data, labelLayout: own }],
     });
     assert.deepStrictEqual(placed.series[0].labelLayout, own);
+  });
+
+  test("keeps the names of a theme river's layers beside it, clear of its axis labels and legend", () => {
+    // Many layers that start thin, whose names spaced apart would reach past the river.
+    const names = Array.from({ length: 20 }, (_, index) => `Team ${index + 1}`);
+    const data = names.flatMap((name, index) => [
+      ["2026-01-01", 1 + (index % 3), name],
+      ["2026-01-02", 5 + (index % 7), name],
+      ["2026-01-03", 8, name],
+    ]);
+    for (const [width, height] of [
+      [800, 500],
+      [800, 320],
+      [420, 420],
+      [420, 700],
+    ] as const) {
+      const option = layout(
+        { legend: {}, singleAxis: { type: "time" }, series: [{ type: "themeRiver", data }] },
+        { width, height },
+      );
+      withChart(
+        option,
+        (chart) => {
+          const axis = (modelOf(chart) as Option).getComponent("singleAxis");
+          const rect = axis.coordinateSystem.getRect();
+          const texts = new Set<Option>();
+          for (const line of chart.getZr().storage.getDisplayList(true) as Option[]) {
+            if (line.type === "tspan" && line.parent?.__hostTarget?.type === "ec-polygon") {
+              texts.add(line.parent);
+            }
+          }
+          const shown = [...texts].filter((text) => !text.ignore && !text.invisible);
+          // All of them where they fit, and else as many as there is room for.
+          assert.ok(
+            shown.length === 20 || (height < 500 && shown.length > 0),
+            `${width}×${height}`,
+          );
+          for (const text of shown) {
+            const box = text.getBoundingRect().clone();
+            box.applyTransform(text.getComputedTransform());
+            assert.ok(
+              box.y >= rect.y - 1 && box.y + box.height <= rect.y + rect.height + 1,
+              `${text.style.text} at ${box.y}–${box.y + box.height}, beside ${rect.y}–${rect.y + rect.height} at ${width}×${height}`,
+            );
+          }
+        },
+        { width, height },
+      );
+    }
   });
 
   test("labels large values on value axes compactly, unless the axis formats them", () => {
