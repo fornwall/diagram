@@ -3,6 +3,7 @@
 
 import { codeFence } from "./blocks";
 import { describeUnits } from "./chartColumns";
+import type { ChartPresentation } from "./chartPresentation";
 import type { DataTable } from "./data";
 import { documentName } from "./documentDiagram";
 import { lineDiff } from "./lineDiff";
@@ -38,6 +39,10 @@ const MAX_SOURCE_LENGTH = 30_000;
  * large diagram's list could take more of every request than its source.
  */
 const MAX_RELATIONSHIPS_LENGTH = 5_000;
+/** The most manual edits of a generated chart listed, each in about 40 characters. */
+const MAX_LISTED_EDITS = 20;
+/** Longer values of manual edits are shortened, as an object of styling may be large. */
+const MAX_EDIT_VALUE_LENGTH = 60;
 /** A diff of the user's changes this long is given even if longer than the source. */
 const SMALL_DIFF_LENGTH = 1_000;
 
@@ -92,14 +97,20 @@ export function describeDiagram(
     const units = chartTable && describeUnits(chartTable);
     if (units) lines.push(units);
   }
+  // Which parts of a generated option were made by hand, which the source alone does not tell.
+  const presentation = state.chart ? state.chartPresentation : undefined;
+  const edits = (!presentation?.blocked && presentation?.edits) || [];
+  if (edits.length > 0) {
+    lines.push(
+      has(UPDATE_CHART_TOOL)
+        ? `Manual styling of the generated option, which ${UPDATE_CHART_TOOL} keeps: ${editList(edits)}. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must make these changes again.`
+        : `Manual styling of the generated option: ${editList(edits)}.`,
+    );
+  }
   // A model that cannot update a generated chart can still change its option as a whole.
   if (state.chart && has(UPDATE_CHART_TOOL)) {
-    if (state.chartPresentation?.blocked) {
-      lines.push(state.chartPresentation.blocked);
-    } else if (state.chartPresentation?.edits.length) {
-      lines.push(
-        `${UPDATE_CHART_TOOL} preserves supported manual styling. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must preserve those source customizations too.`,
-      );
+    if (presentation?.blocked) {
+      lines.push(presentation.blocked);
     }
     // Not the kept edits that the chart shows already, such as a scale that it has too.
     if (!state.chartPresentation?.blocked && state.chartPresentation?.kept?.some((e) => !e.shown)) {
@@ -134,7 +145,7 @@ export function describeDiagram(
     lines.push(
       `The user changed the source since an agent drew it, as this diff from the agent's version shows. Preserve their changes unless asked otherwise.\n${codeFence(changes.diff, "diff")}`,
     );
-  } else if (state.editedByUser) {
+  } else if (state.editedByUser && edits.length === 0) {
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
@@ -187,6 +198,25 @@ export function userChanges({
     diff.length <= MAX_SOURCE_LENGTH
     ? { from: userEdit.from, diff }
     : undefined;
+}
+
+/**
+ * Lists the manual edits of a generated option by where they are, e.g. `yAxis.name = "Revenue"`,
+ * shortening long values, which the source gives in full.
+ */
+function editList(edits: ChartPresentation["edits"]): string {
+  const listed = edits.slice(0, MAX_LISTED_EDITS).map(({ path, value, remove, append }) => {
+    const where = path
+      .map((key, index) => (typeof key === "number" ? `[${key}]` : index > 0 ? `.${key}` : key))
+      .join("");
+    if (remove) return `${where} removed`;
+    const json = JSON.stringify(value) ?? "undefined";
+    const shown =
+      json.length > MAX_EDIT_VALUE_LENGTH ? `${json.slice(0, MAX_EDIT_VALUE_LENGTH)}…` : json;
+    return append ? `${where} added ${shown}` : `${where} = ${shown}`;
+  });
+  const more = edits.length - listed.length;
+  return listed.join(", ") + (more > 0 ? ` and ${plural(more, "more edit")}` : "");
 }
 
 /** Inline data is already represented by the chart; don't repeat it in every chat turn. */

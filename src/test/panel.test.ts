@@ -866,7 +866,10 @@ suite("panel", function () {
     assert.strictEqual(refreshed.yAxis.name, "Revenue");
     assert.strictEqual(refreshed.yAxis.axisLabel.formatter, "USD {value}");
     assert.ok(panel.current?.editedByUser);
-    assert.match(panel.describeForModel() ?? "", /diagram_updateChart preserves.*styling/);
+    assert.match(
+      panel.describeForModel() ?? "",
+      /Manual styling of the generated option, which diagram_updateChart keeps: yAxis\.name = "Revenue", yAxis\.axisLabel = \{"formatter":"USD \{value\}"\}\. /,
+    );
   });
 
   test("blocked custom source is preserved without loading data", async () => {

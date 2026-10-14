@@ -56,6 +56,52 @@ suite("describe", () => {
     assert.doesNotMatch(description, /call diagram_chart/);
   });
 
+  test("lists the manual styling of a generated chart, shortening long values", () => {
+    const edits = [
+      { path: ["title", "text"], value: "Q3" },
+      { path: ["series", 1, "itemStyle", "color"], value: "#c00" },
+      { path: ["legend"], remove: true },
+      { path: ["title"], value: { text: "Note" }, append: true },
+      { path: ["graphic"], value: { elements: "x".repeat(100) } },
+    ];
+    const styled = {
+      ...chart,
+      editedByUser: true,
+      chartPresentation: { baseline: {}, dataHash: "", edits },
+    };
+    const listed =
+      'title.text = "Q3", series[1].itemStyle.color = "#c00", legend removed, title added {"text":"Note"}, ' +
+      `graphic = {"elements":"${"x".repeat(47)}…`;
+    const description = describeDiagram(styled);
+    assert.ok(
+      description.includes(
+        `Manual styling of the generated option, which diagram_updateChart keeps: ${listed}. Replacing the chart with diagram_chart or diagram_render must make these changes again.`,
+      ),
+      description,
+    );
+    assert.doesNotMatch(description, /The user edited/);
+    // As for /explain, which may read the chart but not update it.
+    assert.match(
+      describeDiagram(styled, { tools: new Set(["diagram_getState"]) }),
+      /^Manual styling of the generated option: title\.text = "Q3", .*…\.$/m,
+    );
+    const many = Array.from({ length: 25 }, (_, i) => ({ path: [`k${i}`], value: i }));
+    assert.match(
+      describeDiagram({
+        ...styled,
+        chartPresentation: { baseline: {}, dataHash: "", edits: many },
+      }),
+      /k19 = 19 and 5 more edits\./,
+    );
+    // Blocked styling says why, and that the user edited the source.
+    const blocked = describeDiagram({
+      ...styled,
+      chartPresentation: { baseline: {}, dataHash: "", edits, blocked: "Blocked." },
+    });
+    assert.doesNotMatch(blocked, /Manual styling/);
+    assert.match(blocked, /Blocked\.[\s\S]*The user edited this source/);
+  });
+
   test("large inline data does not bypass the source limit or hide chart settings", () => {
     const data = "name,value\nPrivate row,42\n".repeat(10_000);
     const description = describeDiagram(
