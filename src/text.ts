@@ -32,6 +32,32 @@ export function shorten(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).replace(/[\uD800-\uDBFF]$/, "")}…` : text;
 }
 
+/**
+ * The edit distance between two words: how many letters to add, remove or replace, or pairs of
+ * them to swap, as in "titel".
+ */
+export function editDistance(a: string, b: string): number {
+  let before: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      let least = Math.min(
+        (previous[j] as number) + 1,
+        (current[j - 1] as number) + 1,
+        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        least = Math.min(least, (before[j - 2] as number) + 1);
+      }
+      current[j] = least;
+    }
+    before = previous;
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
 /** A value as an error message names it: as JSON, unless too long to quote. */
 export function brief(value: unknown): string {
   if (value === undefined) {

@@ -1174,12 +1174,13 @@ suite("Mermaid in the webview", function () {
 
   test("names an unknown Mermaid diagram type, and what it could be", async () => {
     assert.deepStrictEqual(
-      await errors("flowchar TD\n  A --> B", "sequence\n  A->>B: x", "erdiagram", "C4"),
+      await errors("flowchar TD\n  A --> B", "sequence\n  A->>B: x", "erdiagram", "C4", "pei"),
       [
         'Unknown diagram type "flowchar": did you mean "flowchart"?',
         'Unknown diagram type "sequence": did you mean "sequenceDiagram"?',
         'Unknown diagram type "erdiagram": did you mean "erDiagram"?',
         'Unknown diagram type "C4": did you mean "C4Context", "C4Container" or "C4Component"?',
+        'Unknown diagram type "pei": did you mean "pie"?',
       ],
     );
     const [unknown, fenced, labeled, empty] = await errors(

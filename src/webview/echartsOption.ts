@@ -3,7 +3,7 @@
 // obscure error, or ignore, with actionable errors and warnings.
 
 import { asArray, isPlainObject } from "../protocol";
-import { joinWords, quoteAll } from "../text";
+import { editDistance, joinWords, quoteAll } from "../text";
 import { evaluateSource, isFunction } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
@@ -566,32 +566,6 @@ export function seriesTypes(option: JsonObject): string {
 }
 
 /**
- * The edit distance between two words: how many letters to add, remove or replace, or pairs of
- * them to swap, as in "titel".
- */
-function distance(a: string, b: string): number {
-  let before: number[] = [];
-  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      let least = Math.min(
-        (previous[j] as number) + 1,
-        (current[j - 1] as number) + 1,
-        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        least = Math.min(least, (before[j - 2] as number) + 1);
-      }
-      current[j] = least;
-    }
-    before = previous;
-    previous = current;
-  }
-  return previous[b.length] as number;
-}
-
-/**
  * The name that a misspelled one most likely means: the same but for case, one a letter or two
  * off, or one that it starts with or is the start of, as "scrollable" of "scroll".
  */
@@ -602,7 +576,7 @@ function closestName(name: string, names: readonly string[]): string | undefined
   let closest: string | undefined;
   let least = Math.max(1, Math.floor(name.length / 4)) + 1;
   for (const known of names) {
-    const off = distance(lower, known.toLowerCase());
+    const off = editDistance(lower, known.toLowerCase());
     if (off < least) {
       closest = known;
       least = off;

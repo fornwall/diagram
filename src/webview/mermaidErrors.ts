@@ -1,7 +1,7 @@
 // Describes Mermaid's errors concisely, at their positions in the source.
 
 import { DIRECTIVE, frontMatterEnd } from "../mermaidSyntax";
-import { joinWords, lineAndColumn, quote } from "../text";
+import { editDistance, joinWords, lineAndColumn, quote } from "../text";
 import { syntaxHint } from "./mermaidHints";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
@@ -54,25 +54,6 @@ export const DIAGRAM_TYPES = [
 
 const COMMON_TYPES = joinWords(DIAGRAM_TYPES.slice(0, 11), "or");
 
-/** The edit distance between two words, ignoring case. */
-function distance(a: string, b: string): number {
-  a = a.toLowerCase();
-  b = b.toLowerCase();
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      current[j] = Math.min(
-        (previous[j] as number) + 1,
-        (current[j - 1] as number) + 1,
-        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-    }
-    previous = current;
-  }
-  return previous[b.length] as number;
-}
-
 /** The first statements of diagrams without a type, and the type line that they need. */
 const STATEMENTS: [RegExp, string][] = [
   [/^\s*\[\*\]\s*-->/, "stateDiagram-v2"],
@@ -113,7 +94,7 @@ function unknownTypeError(message: string): Error {
     (known) =>
       // A letter starts too many types to tell.
       (lower.length > 1 && known.toLowerCase().startsWith(lower)) ||
-      distance(type, known) <= Math.max(1, Math.floor(type.length / 4)),
+      editDistance(lower, known.toLowerCase()) <= Math.max(1, Math.floor(type.length / 4)),
   ).slice(0, 3);
   return new Error(
     matches.length > 0

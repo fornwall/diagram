@@ -5,7 +5,7 @@ import type * as vscode from "vscode";
 import { throwIfCancelled } from "./cancellation";
 import { GUIDE_TOPICS, type GuideTopic } from "./guideTopics";
 import { CHART_TOOL, errorMessage, RENDER_TOOL } from "./protocol";
-import { quote, toolInput } from "./text";
+import { editDistance, quote, toolInput } from "./text";
 import { textResult } from "./tools";
 
 interface GuideInput {
@@ -30,23 +30,6 @@ export function findTopic(name: string): GuideTopic | undefined {
   return TOPICS_BY_KEY.get(wanted) ?? TOPICS_BY_KEY.get(bare);
 }
 
-/** The edit distance between two words. */
-function distance(a: string, b: string): number {
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      current[j] = Math.min(
-        (previous[j] as number) + 1,
-        (current[j - 1] as number) + 1,
-        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-    }
-    previous = current;
-  }
-  return previous[b.length] as number;
-}
-
 /**
  * The topic whose name or alias is closest to a name that none matches: the longest that the name
  * contains, as "flowchart" in "flowchart with subgraphs", or else the fewest edits away.
@@ -59,7 +42,9 @@ export function closestTopic(name: string): GuideTopic {
     .sort((a, b) => b.length - a.length)[0];
   const closest =
     contained ??
-    keys.reduce((best, each) => (distance(wanted, each) < distance(wanted, best) ? each : best));
+    keys.reduce((best, each) =>
+      editDistance(wanted, each) < editDistance(wanted, best) ? each : best,
+    );
   return TOPICS_BY_KEY.get(closest) as GuideTopic;
 }
 
