@@ -224,6 +224,28 @@ suite("chartTools", function () {
     assert.match(panel.describeForModel() ?? "", new RegExp(`Revision: ${panel.revision}`));
   });
 
+  test("a chart's default title follows its type, unlike a title given to it", async () => {
+    const { panel, webview } = await harness();
+    assert.match(
+      await invokeTool(new ChartTool(panel), { type: "bar", file: "sizes.tsv" }),
+      /^Rendered/,
+    );
+    assert.strictEqual(panel.current?.title, "Bar chart of sizes.tsv");
+    assert.ok((await panel.updateChart({ type: "pie" }, token)).ok);
+    assert.strictEqual(panel.current?.title, "Pie chart of sizes.tsv");
+    assert.strictEqual(webview.render.title, "Pie chart of sizes.tsv");
+    await webview.receive({
+      type: "applyChartOptions",
+      revision: panel.revision,
+      controls: { type: "horizontalBar" },
+      replaceSource: false,
+    });
+    assert.strictEqual(panel.current?.title, "Horizontal bar chart of sizes.tsv");
+    assert.ok((await panel.updateChart({ title: "Sizes" }, token)).ok);
+    assert.ok((await panel.updateChart({ type: "bar" }, token)).ok);
+    assert.strictEqual(panel.current?.title, "Sizes");
+  });
+
   test("a refused update says how to clear the setting that it keeps", async () => {
     const { panel } = await harness();
     const scores = "name,team,score\na,x,1\nb,y,2\nc,x,3";

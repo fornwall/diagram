@@ -14,6 +14,7 @@ import {
   rebuildChart,
 } from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
+import { chartTitle } from "./chartTools";
 import { type DataTable, parseTable } from "./data";
 import { loadTable, readAsks } from "./dataSource";
 import { type Detail, describeDiagram, nodeList } from "./describe";
@@ -1024,7 +1025,7 @@ export class DiagramPanel implements vscode.Disposable {
     const { state: next, summary } = withRebuiltChart(state, chart, table, state.chartPresentation);
     this.webview.reveal(true);
     const outcome = await this.showOrKeep(
-      { ...next, title: chart.title ?? state.title, origin: "tool" },
+      { ...next, origin: "tool" },
       { table, pickReason: "The chart changed before the user picked.", token },
     );
     throwIfCancelled(token);
@@ -1483,7 +1484,10 @@ export class DiagramPanel implements vscode.Disposable {
   }
 }
 
-/** The state with the chart rebuilt from the table, keeping the manual styling of presentation. */
+/**
+ * The state with the chart rebuilt from the table, keeping the manual styling of presentation. A
+ * title made from the chart's settings, as diagram_chart makes one, follows them.
+ */
 function withRebuiltChart(
   state: DiagramState,
   chart: ChartSpec,
@@ -1491,9 +1495,11 @@ function withRebuiltChart(
   presentation: ChartPresentation | undefined,
 ): { state: DiagramState; summary: string } {
   const rebuilt = rebuildChart(chart, table, presentation);
+  const made = state.chart !== undefined && state.title === chartTitle(state.chart);
   return {
     state: {
       ...state,
+      title: made ? chartTitle(chart) : (chart.title ?? state.title),
       chart,
       source: JSON.stringify(rebuilt.option, null, 2),
       chartPresentation: rebuilt.presentation,

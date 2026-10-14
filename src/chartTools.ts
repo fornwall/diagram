@@ -87,7 +87,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
 }
 
 /** The chart's title, by default e.g. "Horizontal bar chart of sales.csv". */
-function chartTitle({ type, title, file, command }: ChartSpec): string {
+export function chartTitle({ type, title, file, command }: ChartSpec): string {
   const words = inWords(type);
   const name = `${words.charAt(0).toUpperCase()}${words.slice(1)} chart`;
   const of = file ? file.split(/[/\\]/).at(-1) : command;
