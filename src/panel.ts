@@ -126,7 +126,7 @@ export interface DiagramState extends Omit<Diagram, "source"> {
   editedByUser: boolean;
   /**
    * The source of an agent's drawing, `from`, and the user's edit of it, `to`, which tells a model
-   * what the user changed while the source is still that edit.
+   * what the user changed while the source is still that edit, until an agent changes it.
    */
   userEdit?: { from: string; to: string } | undefined;
   /** The last render error, if the current source fails to render. */
@@ -1065,6 +1065,7 @@ export class DiagramPanel implements vscode.Disposable {
         ...state,
         source,
         error: undefined,
+        userEdit: source === state.source ? state.userEdit : undefined,
         document: state.document && { ...state.document, replaced: true },
         origin: "tool",
       },
@@ -1104,6 +1105,8 @@ export class DiagramPanel implements vscode.Disposable {
       ...state,
       ...edit,
       error: undefined,
+      // What the user changed of the source before, which the agent changed since.
+      userEdit: edit.source === state.source ? state.userEdit : undefined,
       document: state.document && { ...state.document, replaced: true },
       origin: "tool",
     };

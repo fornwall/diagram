@@ -60,6 +60,12 @@ export class StateStore {
       const { source: _, ...fence } = state.document.fence;
       saved = { ...state, document: { ...state.document, fence } };
     }
+    const { userEdit } = state;
+    if (userEdit) {
+      // The user's edit is the source, which is saved once; an edit that it no longer is, none.
+      const { userEdit: _, ...rest } = saved as DiagramState;
+      saved = userEdit.to === state.source ? { ...rest, userEdit: { from: userEdit.from } } : rest;
+    }
     const saving = { state: new WeakRef(state), revision, promise: Promise.resolve() };
     this.lastSave = saving;
     saving.promise = (async () => {
@@ -101,10 +107,12 @@ function restoredState(saved: unknown): DiagramState | undefined {
   if (typeof source === "string") state.source = source;
   if (typeof saved.error === "string") state.error = saved.error;
   if (typeof saved.clickPrompt === "string") state.clickPrompt = saved.clickPrompt;
+  // Saved without the user's edit, which is the source, or by older versions with it, also once
+  // the source was no longer that edit.
   const { userEdit } = saved;
-  if (isPlainObject(userEdit)) {
-    const { from, to } = userEdit;
-    if (typeof from === "string" && typeof to === "string") state.userEdit = { from, to };
+  if (isPlainObject(userEdit) && typeof userEdit.from === "string" && state.source !== undefined) {
+    const { from, to = state.source } = userEdit;
+    if (to === state.source) state.userEdit = { from, to: state.source };
   }
   if (isNodeLinks(saved.links)) state.links = saved.links;
   const document = documentBinding(saved.document, state.source);

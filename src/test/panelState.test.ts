@@ -48,6 +48,18 @@ suite("panelState", () => {
     assert.strictEqual(warnings.length, 1);
   });
 
+  test("saves the source once, without the user's edit that it is, and no edit that it is not", async () => {
+    const saved: unknown[] = [];
+    const store = new StateStore(memento(async (value) => void saved.push(value)));
+    const from = "flowchart LR\n  A";
+    await store.save({ ...state, userEdit: { from, to: state.source ?? "" } }, 1);
+    await store.save({ ...state, userEdit: { from, to: "flowchart TD" } }, 2);
+    assert.deepStrictEqual(saved, [
+      { ...state, userEdit: { from }, revision: 1 },
+      { ...state, revision: 2 },
+    ]);
+  });
+
   test("restored state needs no save until changed, also in its revision", async () => {
     const saved: unknown[] = [];
     const store = new StateStore(memento(async (value) => void saved.push(value), state));
@@ -86,6 +98,16 @@ suite("panelState", () => {
     const userEdit = { from: "flowchart LR\n  A", to: state.source };
     assert.deepStrictEqual(load({ ...state, userEdit }), { ...state, userEdit });
     assert.deepStrictEqual(load({ ...state, userEdit: { from: 1, to: "" } }), state);
+    // The user's edit is the source, which is saved once, without it.
+    assert.deepStrictEqual(load({ ...state, userEdit: { from: userEdit.from } }), {
+      ...state,
+      userEdit,
+    });
+    // An edit that the source no longer is, which older versions saved, tells nothing.
+    assert.deepStrictEqual(
+      load({ ...state, userEdit: { ...userEdit, to: "flowchart TD" } }),
+      state,
+    );
     // Charts were saved without the presentation that tells manual styling apart, which a
     // refresh would discard, so the option is kept without the chart it was generated from.
     const chartState = { ...state, language: "echarts", source: '{"series": []}' };

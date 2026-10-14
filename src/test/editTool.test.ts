@@ -331,6 +331,33 @@ suite("diagram_edit", function () {
     assert.strictEqual(panel.current?.title, "Build");
   });
 
+  test("forgets the user's changes to the source once an agent changes it, saving the source once", async () => {
+    const values = new Map<string, unknown>();
+    ({ panel, webview } = await newFakePanel(values));
+    drawMermaid(webview);
+    const saved = () => values.get("diagram.state") as Record<string, unknown>;
+    await draw();
+    const edited = `${flow}\n  B --> C[Done]`;
+    await webview.edit(edited);
+    assert.deepStrictEqual(panel.current?.userEdit, { from: flow, to: edited });
+    // The user's edit is the source, which is saved once.
+    assert.strictEqual(saved().source, edited);
+    assert.deepStrictEqual(saved().userEdit, { from: flow });
+    // A title leaves the source as the user changed it.
+    await editing({ edits: [], title: "Pipeline" });
+    assert.deepStrictEqual(panel.current?.userEdit, { from: flow, to: edited });
+    await editing({ edits: [{ oldText: "C[Done]", newText: "C[Finished]" }] });
+    assert.strictEqual(panel.current?.userEdit, undefined);
+    assert.strictEqual(saved().userEdit, undefined);
+    // As does coloring it.
+    await webview.edit(`${panel.current?.source}\n  C --> A`);
+    assert.ok(panel.current?.userEdit);
+    await invokeTool(new StyleDiagramTool(panel), { styles: [{ id: "A", fill: "green" }] });
+    assert.match(panel.current?.source ?? "", /style A fill:green/);
+    assert.strictEqual(panel.current?.userEdit, undefined);
+    assert.strictEqual(saved().userEdit, undefined);
+  });
+
   test("keeps a failed edit shown with its error and the lines around it, for the next edit to fix", async () => {
     await draw({ source: `${flow}\n  B --> C\n  C --> D`, links: { A: { file: "sizes.tsv" } } });
     const failed = await editing({ edits: [{ oldText: "B --> C", newText: "B -->--> C" }] });
