@@ -325,6 +325,27 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings(gantt("after a3", "a3, 2026-01-05, 3d")), []);
   });
 
+  test("says when Mermaid reads the id of a task after or until only up to a character that ids there cannot have", async () => {
+    const gantt = (build: string, test: string) =>
+      `gantt\n  dateFormat YYYY-MM-DD\n  Design :d.1, 2026-01-05, 7d\n  Build :b1, ${build}, 7d\n  Test :${test}`;
+    assert.deepStrictEqual(await warnings(gantt("after d.1", "after b1, 3d")), [
+      'Task "Build" starts with "after d.1", which Mermaid reads only up to the ".", as "after d": ids there take only letters, digits, "_" and "-". Give the task an id such as "d_1" instead of "d.1".',
+    ]);
+    // Also where what it reads names a task.
+    assert.deepStrictEqual(
+      await warnings(
+        gantt("2026-01-12", "after b1, until b1.x").replace("Design :d.1", "Design :b1.x"),
+      ),
+      [
+        'Task "Test" ends with "until b1.x", which Mermaid reads only up to the ".", as "until b1": ids there take only letters, digits, "_" and "-". Give the task an id such as "b1_x" instead of "b1.x".',
+      ],
+    );
+    // An example of an id that "after" can name.
+    assert.deepStrictEqual(await warnings(gantt("2026-01-12", "after b0, 3d")), [
+      'Task "Test" starts with "after b0", but no task has the id "b0", so Mermaid draws it from today: give the id of a task, such as "b1", or a date.',
+    ]);
+  });
+
   test("says when labels overlap, and what they say", async () => {
     const [close] = await warnings(`quadrantChart
   x-axis Low --> High

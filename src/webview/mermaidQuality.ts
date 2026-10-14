@@ -101,17 +101,24 @@ const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The first Gantt task that starts after, or ends at, a task id that no task has, which Mermaid
- * leaves out, and places the task from or to today if it names no other.
+ * leaves out, and places the task from or to today if it names no other; or that names an id with
+ * a character that Mermaid stops reading the ids there at, such as the "." of "after d.1".
  */
 function unknownTasks({ type, db }: DrawingFacts): string | undefined {
   if (type !== "gantt") return undefined;
   const tasks = db?.getTasks?.() ?? [];
   const ids = new Set(tasks.map(({ id }) => id));
-  const references = (text: string | undefined, keyword: string) =>
-    new RegExp(`^${keyword}\\s+([\\w -]+)`)
-      .exec(text?.trim() ?? "")?.[1]
-      ?.split(" ")
-      .filter(Boolean) ?? [];
+  /** The ids that Mermaid reads after the keyword, and where it stops reading short of the end. */
+  const references = (text: string | undefined, keyword: string) => {
+    const given = text?.trim() ?? "";
+    const read = new RegExp(`^${keyword}\\s+([\\w -]+)`).exec(given);
+    const named = read?.[1]?.split(" ").filter(Boolean) ?? [];
+    const rest = read ? given.slice(read[0].length) : "";
+    // The word that it stops in, as "d.1", and the character, as ".".
+    const word =
+      rest && `${read?.[1]?.endsWith(" ") ? "" : (named.at(-1) ?? "")}${rest.split(/\s/)[0]}`;
+    return { given, named, cut: word ? { word, at: rest[0] ?? "" } : undefined };
+  };
   const missing = tasks.flatMap((task) =>
     (
       [
@@ -119,14 +126,21 @@ function unknownTasks({ type, db }: DrawingFacts): string | undefined {
         ["until", task.raw?.endTime?.data, "ends", "to"],
       ] as const
     ).flatMap(([keyword, text, does, from]) => {
-      const named = references(text, keyword);
+      const { given, named, cut } = references(text, keyword);
       const unknown = named.filter((id) => !ids.has(id));
-      return unknown.length > 0 ? [{ task, keyword, does, from, named, unknown }] : [];
+      return unknown.length > 0 || cut
+        ? [{ task, keyword, does, from, given, named, unknown, cut }]
+        : [];
     }),
   );
   const [first] = missing;
   if (!first) return undefined;
-  const { task, keyword, does, from, named, unknown } = first;
+  const { task, keyword, does, from, given, named, unknown, cut } = first;
+  const more = missing.length > 1 ? ` (and ${formatCount(missing.length - 1)} more)` : "";
+  const name = quote(task.task?.trim() ?? "", 40);
+  if (cut) {
+    return `Task ${name} ${does} with ${JSON.stringify(given)}${more}, which Mermaid reads only up to the ${JSON.stringify(cut.at)}, as "${keyword} ${named.join(" ")}": ids there take only letters, digits, "_" and "-". Give the task an id such as ${JSON.stringify(cut.word.replace(/[^\w-]/g, "_"))} instead of ${JSON.stringify(cut.word)}.`;
+  }
   const which = joinWords(
     unknown.map((id) => JSON.stringify(id)),
     "or",
@@ -135,10 +149,12 @@ function unknownTasks({ type, db }: DrawingFacts): string | undefined {
     unknown.length === named.length
       ? `so Mermaid draws it ${from} today`
       : `and Mermaid leaves ${unknown.length > 1 ? "them" : "it"} out`;
-  // Ids that the source gives, rather than those that Mermaid makes up for the others.
-  const example = tasks.find(({ id }) => id && id !== task.id && !/^task\d+$/.test(id))?.id;
-  const more = missing.length > 1 ? ` (and ${formatCount(missing.length - 1)} more)` : "";
-  return `Task ${quote(task.task?.trim() ?? "", 40)} ${does} with "${keyword} ${named.join(" ")}", but no task has the id ${which}${more}, ${placed}: give the id of a task${example ? `, such as ${JSON.stringify(example)}` : ""}, or a date.`;
+  // Ids that the source gives, rather than those that Mermaid makes up for the others, and that
+  // "after" and "until" can name.
+  const example = tasks.find(
+    ({ id }) => id && id !== task.id && !/^task\d+$/.test(id) && /^[\w-]+$/.test(id),
+  )?.id;
+  return `Task ${name} ${does} with "${keyword} ${named.join(" ")}", but no task has the id ${which}${more}, ${placed}: give the id of a task${example ? `, such as ${JSON.stringify(example)}` : ""}, or a date.`;
 }
 
 /** The elements that hold the text of labels: SVG text, and HTML in foreign objects. */
