@@ -90,7 +90,7 @@ const BRACES: Blocks = {
   closer: "}",
   name: () => '"{"',
 };
-const SEQUENCE_BLOCKS = /^\s*(alt|opt|loop|par_over|par|critical|break|rect|box)\b/;
+const SEQUENCE_BLOCKS = /^\s*(alt|opt|loop|par_over|par|critical|break|rect|box)(?:\s|$)/;
 
 function blocksOf(type: string): Blocks | undefined {
   if (FLOWCHART.test(type)) {
@@ -145,17 +145,18 @@ const CONTINUES: Record<string, string> = { else: "alt", and: "par", option: "cr
 /** A line that closes or continues a block outside of any. */
 const strayEnd: Rule = ({ type, normalized, line, lineNumber, after }) => {
   const blocks = blocksOf(type);
-  const word = /^(end|else|and|option)\b/.exec(after)?.[1];
-  if (!blocks || !word || after.trim() !== line.trim()) return undefined;
-  if (word !== "end") {
-    const block = CONTINUES[word];
-    return type === "sequence" && block
-      ? `"${word}" goes inside an "${block}" block, between "${block}" and "end".`
+  if (!blocks || after.trim() !== line.trim()) return undefined;
+  const word = /^(else|and|option)\b/.exec(after)?.[1];
+  const block = word && CONTINUES[word];
+  if (block) {
+    return type === "sequence"
+      ? `"${word}" goes inside ${/^[aeiou]/.test(block) ? "an" : "a"} "${block}" block, between "${block}" and "end".`
       : undefined;
   }
-  if (!END.test(line) || openBlocks(normalized, blocks, lineNumber)?.length !== 0) {
+  if (!blocks.close.test(line) || openBlocks(normalized, blocks, lineNumber)?.length !== 0) {
     return undefined;
   }
+  if (blocks === BRACES) return 'This "}" closes no "{": remove it.';
   return FLOWCHART.test(type)
     ? 'This "end" closes no subgraph: remove it.'
     : `This "end" closes no block: remove it, or open the block before it${type === "sequence" ? ", with alt, opt, loop, par, critical, break, rect or box" : ""}.`;
@@ -287,6 +288,132 @@ const spacedId: Rule = ({ type, normalized, before, after }) => {
     : `Ids have no spaces: write the node as ${id}["${name}"], and link to ${id}.`;
 };
 
+/** The words that start statements of sequence diagrams, which cannot name participants. */
+const SEQUENCE_KEYWORDS =
+  "alt|opt|loop|par|par_over|critical|break|rect|box|end|else|and|option|note|create|destroy|activate|deactivate";
+
+/** A keyword that a message comes from or goes to, as a participant's name. */
+const sequenceKeyword: Rule = ({ type, normalized }) => {
+  if (type !== "sequence") return undefined;
+  const message = new RegExp(
+    `^[^\\S\\n]*(${SEQUENCE_KEYWORDS})[^\\S\\n]*(?:<<)?-|^[^\\S\\n]*\\S+?[^\\S\\n]*-[->x)]*[+-]?[^\\S\\n]*(${SEQUENCE_KEYWORDS})[^\\S\\n]*:`,
+    "im",
+  );
+  const found = message.exec(normalized);
+  const word = found?.[1] ?? found?.[2];
+  if (!found || !word) return undefined;
+  const line = normalized.slice(0, found.index).split("\n").length;
+  return `"${word}" on line ${line} is a keyword, so it cannot be a participant's name: declare the participant as "participant P as ${word}" and use P.`;
+};
+
+/** A ";" in the text of a message or note, which ends the statement there. */
+const sequenceSemicolon: Rule = ({ type, line }) => {
+  const colon = line.indexOf(":");
+  if (type !== "sequence" || colon < 0 || !line.includes(";", colon)) return undefined;
+  const text = line.slice(colon + 1);
+  const fixed = `${line.slice(0, colon + 1)}${text.replace(/&(\w+);|;/g, (_, name) => (name ? `#${name};` : "#59;"))}`;
+  return /&\w+;/.test(text)
+    ? `A ";" ends a statement: write entities as #name;, such as #amp; for &: ${fixed.trim()}.`
+    : `A ";" ends a statement: write it as #59; in text: ${fixed.trim()}.`;
+};
+
+/** A note or message without the colon before its text. */
+const sequenceColon: Rule = ({ type, line, expected }) => {
+  if (type !== "sequence" || !expected?.includes("TXT") || line.includes(":")) return undefined;
+  const note = /^\s*(note\s+(?:left of|right of|over)\s+[^\s:]+)\s+(\S.*)$/i.exec(line);
+  if (note) return `Put a colon before the note's text: ${note[1]}: ${note[2]}.`;
+  return `A message takes a colon before its text: ${line.trim()}: text.`;
+};
+
+/** An arrow of another language in a sequence diagram, such as => or <-. */
+const sequenceArrow: Rule = ({ type, line, column }) => {
+  if (type !== "sequence") return undefined;
+  // The run of arrow characters that the parser stopped in or right before.
+  let from = column;
+  while (from > 0 && /[-=<>]/.test(line[from - 1] as string)) from--;
+  let to = column;
+  while (to < line.length && /[-=<>]/.test(line[to] as string)) to++;
+  const arrow = line.slice(from, to);
+  if (!/[=<]|-{3}/.test(arrow)) return undefined;
+  const list = "Sequence arrows are ->>, -->>, ->, -->, -x, --x, -) and --)";
+  const reverse = /^(\s*)(\S+?)\s*<-+\s*(\S+?)\s*:(.*)$/.exec(line);
+  if (arrow.startsWith("<") && !arrow.startsWith("<<") && reverse) {
+    return `${list}, from the sender: ${reverse[3]}->>${reverse[2]}:${reverse[4]}.`;
+  }
+  const fixed = `${line.slice(0, from)}${arrow.startsWith("--") ? "-->>" : "->>"}${line.slice(to)}`;
+  return `${list}: ${fixed.trim()}.`;
+};
+
+/** Generic types in angle brackets, which class diagrams write with tildes. */
+function withTildes(text: string): string {
+  return text.replace(/(\w)<([^<>]*(?:<[^<>]*>[^<>]*)*)>/g, (_, name, inner: string) => {
+    // Class names take no generics within generics.
+    let flat = inner;
+    while (/<[^<>]*>/.test(flat)) flat = flat.replace(/<[^<>]*>/g, "");
+    return `${name}~${flat}~`;
+  });
+}
+
+/** Generic types in angle brackets, where the parser stopped. */
+const classGenerics: Rule = ({ type, line, column }) => {
+  const generic = Array.from(line.matchAll(/\w<[^<>\n]*(?:<[^<>\n]*>[^<>\n]*)*>/g)).find(
+    (match) => column >= match.index && column <= match.index + match[0].length,
+  );
+  if (type !== "classDiagram" || !generic) return undefined;
+  const nested = /\w<[^<>]*</.test(line) ? "; class names cannot nest them" : "";
+  return `Write generic types with tildes${nested}: ${withTildes(line)
+    .replace(/\s*\{\s*$/, "")
+    .trim()}.`;
+};
+
+/** A class relation: its classes, cardinalities and arrow. */
+const CLASS_RELATION =
+  /^(\s*)([\w.~]+)\s+(?:("?)([^\s"]+)\3\s+)?((?:<\||\*|o|<)?(?:--|\.\.)(?:\|>|\*|o|>)?)\s+(?:("?)([^\s"]+)\6\s+)?([\w.~]+)(.*)$/;
+
+const classCardinality: Rule = ({ type, line }) => {
+  const relation = type === "classDiagram" ? CLASS_RELATION.exec(line) : null;
+  if (!relation) return undefined;
+  const [, , from, quoted, left, arrow, quotedRight, right, to, rest] = relation;
+  if ((!left || quoted) && (!right || quotedRight)) return undefined;
+  const card = (value: string | undefined) => (value ? ` "${value}"` : "");
+  return `Put cardinalities in double quotes: ${from}${card(left)} ${arrow}${card(right)} ${to}${rest}.`;
+};
+
+const classArrow: Rule = ({ type, line, expected, after }) => {
+  if (type !== "classDiagram") return undefined;
+  const arrow = /\s(->|=>|==>)\s/.exec(line);
+  if (!arrow || !(expected?.includes("LINE") || after.startsWith("="))) return undefined;
+  const fixed = line.replace(arrow[1] as string, "-->");
+  return `Write relations as <|--, *--, o--, -->, --, ..>, ..|> or ..: ${fixed.trim()}.`;
+};
+
+const classNote: Rule = ({ type, line }) => {
+  const note = type === "classDiagram" ? /^\s*(note\s+for\s+\S+)\s*:\s*(.*)$/.exec(line) : null;
+  return note
+    ? `Put the note's text in double quotes: ${note[1]} "${(note[2] as string).replace(/"/g, "#quot;")}".`
+    : undefined;
+};
+
+const stateNoteOver: Rule = ({ type, line }) => {
+  const note = type === "stateDiagram" ? /^\s*note\s+over\s+(.*)$/i.exec(line) : null;
+  return note ? `A note goes left of or right of a state: note right of ${note[1]}.` : undefined;
+};
+
+const stateArrow: Rule = ({ type, before, after }) => {
+  if (type !== "stateDiagram" || !/^(->|=>)(?!>)/.test(after) || /[-=]$/.test(before)) {
+    return undefined;
+  }
+  return `Write transitions as -->: ${`${before}-->${after.slice(2)}`.trim()}.`;
+};
+
+const stateDash: Rule = ({ type, before, after }) => {
+  const head = type === "stateDiagram" ? /(\w+)$/.exec(before)?.[1] : undefined;
+  const tail = /^(?:-\w+)+/.exec(after)?.[0];
+  if (!head || !tail) return undefined;
+  const name = `${head}${tail}`;
+  return `State ids have no "-": use ${idOf(name)}, and show the name with state "${name}" as ${idOf(name)}.`;
+};
+
 const RULES: Rule[] = [
   comments,
   unclosedBlock,
@@ -297,4 +424,15 @@ const RULES: Rule[] = [
   afterEdgeLabel,
   flowchartArrow,
   spacedId,
+  sequenceKeyword,
+  sequenceSemicolon,
+  sequenceColon,
+  sequenceArrow,
+  classGenerics,
+  classCardinality,
+  classArrow,
+  classNote,
+  stateNoteOver,
+  stateArrow,
+  stateDash,
 ];

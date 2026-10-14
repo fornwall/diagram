@@ -167,6 +167,161 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
     error: 'The diagram has no type: start it with a line "flowchart TD".',
     fixed: "flowchart TD\nA[Start] --> B[Done]",
   },
+  {
+    broken: "Alice->>Bob: Hi\n  Bob-->>Alice: Hello",
+    error: 'The diagram has no type: start it with a line "sequenceDiagram".',
+    fixed: "sequenceDiagram\n  Alice->>Bob: Hi\n  Bob-->>Alice: Hello",
+  },
+  // Sequence diagrams.
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob: Hello; how are you?\n  Bob-->>Alice: Fine",
+    error:
+      'Parse error on line 2, column 35: unexpected end of line. A ";" ends a statement: write it as #59; in text: Alice->>Bob: Hello#59; how are you?.',
+    fixed: "sequenceDiagram\n  Alice->>Bob: Hello#59; how are you?\n  Bob-->>Alice: Fine",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob: Fish &amp; chips\n  Bob-->>Alice: Sure",
+    error:
+      'Parse error on line 2, column 32: unexpected end of line. A ";" ends a statement: write entities as #name;, such as #amp; for &: Alice->>Bob: Fish #amp; chips.',
+    fixed: "sequenceDiagram\n  Alice->>Bob: Fish #amp; chips\n  Bob-->>Alice: Sure",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob\n  Bob-->>Alice: Hi",
+    error:
+      "Parse error on line 2, column 14: unexpected end of line. A message takes a colon before its text: Alice->>Bob: text.",
+    fixed: "sequenceDiagram\n  Alice->>Bob: text\n  Bob-->>Alice: Hi",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob: Hi\n  Note right of Bob thinks it over",
+    error:
+      "Parse error on line 3, column 35: unexpected end of the diagram. Put a colon before the note's text: Note right of Bob: thinks it over.",
+    fixed: "sequenceDiagram\n  Alice->>Bob: Hi\n  Note right of Bob: thinks it over",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice=>>Bob: Hi",
+    error:
+      'Parse error on line 2, column 9: unexpected ">". Sequence arrows are ->>, -->>, ->, -->, -x, --x, -) and --): Alice->>Bob: Hi.',
+    fixed: "sequenceDiagram\n  Alice->>Bob: Hi",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice<-Bob: Hi",
+    error:
+      'Parse error on line 2, column 8: unexpected "<". Sequence arrows are ->>, -->>, ->, -->, -x, --x, -) and --), from the sender: Bob->>Alice: Hi.',
+    fixed: "sequenceDiagram\n  Bob->>Alice: Hi",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>loop: Hi",
+    error:
+      'Parse error on line 2, column 11: unexpected "loop". "loop" on line 2 is a keyword, so it cannot be a participant\'s name: declare the participant as "participant P as loop" and use P.',
+    fixed: "sequenceDiagram\n  participant P as loop\n  Alice->>P: Hi",
+  },
+  {
+    broken: "sequenceDiagram\n  participant end\n  end->>Bob: Hi",
+    error:
+      'Parse error on line 3, column 3: unexpected "end". "end" on line 3 is a keyword, so it cannot be a participant\'s name: declare the participant as "participant P as end" and use P.',
+    fixed: "sequenceDiagram\n  participant P as end\n  P->>Bob: Hi",
+  },
+  {
+    broken:
+      "sequenceDiagram\n  alt Valid\n    Alice->>Bob: Token\n  else Invalid\n    Bob-->>Alice: Error",
+    error:
+      'Parse error on line 5, column 24: unexpected end of the diagram. The "alt" block on line 2 is not closed: add a line "end" after its contents.',
+    fixed:
+      "sequenceDiagram\n  alt Valid\n    Alice->>Bob: Token\n  else Invalid\n    Bob-->>Alice: Error\n  end",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob: Hi\n  else Later\n  Bob-->>Alice: Bye",
+    error:
+      'Parse error on line 3, column 3: unexpected "else". "else" goes inside an "alt" block, between "alt" and "end".',
+    fixed:
+      "sequenceDiagram\n  alt Now\n    Alice->>Bob: Hi\n  else Later\n    Bob-->>Alice: Bye\n  end",
+  },
+  {
+    broken: "sequenceDiagram\n  Alice->>Bob: Hi\n  end",
+    error:
+      'Parse error on line 3, column 3: unexpected "end". This "end" closes no block: remove it, or open the block before it, with alt, opt, loop, par, critical, break, rect or box.',
+    fixed: "sequenceDiagram\n  Alice->>Bob: Hi",
+  },
+  // Class diagrams.
+  {
+    broken: "classDiagram\n  class List<T> {\n    +add(T item)\n  }",
+    error:
+      'Parse error on line 2, column 13: unexpected "<". Write generic types with tildes: class List~T~.',
+    fixed: "classDiagram\n  class List~T~ {\n    +add(T item)\n  }",
+  },
+  {
+    broken: "classDiagram\n  class Cache<String, List<Item>>",
+    error:
+      'Parse error on line 2, column 14: unexpected "<". Write generic types with tildes; class names cannot nest them: class Cache~String, List~.',
+    fixed: "classDiagram\n  class Cache~String, List~",
+  },
+  {
+    broken: "classDiagram\n  Repository<User> --> User",
+    error:
+      'Parse error on line 2, column 14: unexpected "User". Write generic types with tildes: Repository~User~ --> User.',
+    fixed: "classDiagram\n  Repository~User~ --> User",
+  },
+  {
+    broken: "classDiagram\n  User 1 --> 0..* Order : places",
+    error:
+      'Parse error on line 2, column 15: unexpected "..". Put cardinalities in double quotes: User "1" --> "0..*" Order : places.',
+    fixed: 'classDiagram\n  User "1" --> "0..*" Order : places',
+  },
+  {
+    broken: "classDiagram\n  Order -> Item : contains",
+    error:
+      'Parse error on line 2, column 12: unexpected "Item". Write relations as <|--, *--, o--, -->, --, ..>, ..|> or ..: Order --> Item : contains.',
+    fixed: "classDiagram\n  Order --> Item : contains",
+  },
+  {
+    broken: "classDiagram\n  class Order\n  note for Order: Aggregate root",
+    error:
+      'Parse error on line 3, column 17: unexpected ": Aggregate root". Put the note\'s text in double quotes: note for Order "Aggregate root".',
+    fixed: 'classDiagram\n  class Order\n  note for Order "Aggregate root"',
+  },
+  {
+    broken: "classDiagram\n  class A {\n    +run()\n  class B",
+    error:
+      'Parse error on line 4, column 10: unexpected end of the diagram. The "{" on line 2 is not closed: add a line "}" after its contents.',
+    fixed: "classDiagram\n  class A {\n    +run()\n  }\n  class B",
+  },
+  {
+    broken: "classDiagram\n  class A {\n    +run()\n  }\n  }",
+    error: 'Parse error on line 5, column 3: unexpected "}". This "}" closes no "{": remove it.',
+    fixed: "classDiagram\n  class A {\n    +run()\n  }",
+  },
+  {
+    broken: "classDiagram\n  <<interface>> Shape\n  Shape <|.. Circle",
+    error:
+      'Error on line 2: <<interface>> Shape annotates a class that is not declared before it: declare it first, with "class Shape".',
+    fixed: "classDiagram\n  class Shape\n  <<interface>> Shape\n  Shape <|.. Circle",
+  },
+  // State diagrams.
+  {
+    broken: "stateDiagram-v2\n  [*] --> Idle\n  note over Idle: Waits for input",
+    error:
+      'Parse error on line 3, column 8: unexpected "o". A note goes left of or right of a state: note right of Idle: Waits for input.',
+    fixed: "stateDiagram-v2\n  [*] --> Idle\n  note right of Idle: Waits for input",
+  },
+  {
+    broken: "stateDiagram-v2\n  [*] --> in-progress\n  in-progress --> [*]",
+    error:
+      'Parse error on line 2, column 13: unexpected "-". State ids have no "-": use in_progress, and show the name with state "in-progress" as in_progress.',
+    fixed:
+      'stateDiagram-v2\n  state "in-progress" as in_progress\n  [*] --> in_progress\n  in_progress --> [*]',
+  },
+  {
+    broken: "stateDiagram-v2\n  Idle -> Running",
+    error:
+      'Parse error on line 2, column 8: unexpected "-". Write transitions as -->: Idle --> Running.',
+    fixed: "stateDiagram-v2\n  Idle --> Running",
+  },
+  {
+    broken: "stateDiagram-v2\n  state Running {\n    Loading --> Ready",
+    error:
+      'Parse error on line 3, column 22: unexpected end of the diagram. The "{" on line 2 is not closed: add a line "}" after its contents.',
+    fixed: "stateDiagram-v2\n  state Running {\n    Loading --> Ready\n  }",
+  },
 ];
 
 suite("Mermaid errors in the webview", function () {

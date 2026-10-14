@@ -642,6 +642,21 @@ const UNPLACED: [
       ];
     },
   ],
+  // A class diagram annotates a class declared before the annotation, and fails on another.
+  [
+    /^Cannot read properties of undefined \(reading 'annotations'\)$/,
+    (_, normalized) => {
+      const at = find(normalized, "^[^\\S\\n]*<<[^>\\n]*>>[^\\S\\n]*[\\w.~]+");
+      const annotation =
+        at === undefined ? null : /<<([^>\n]*)>>\s*([\w.~]+)/.exec(normalized.slice(at));
+      return annotation
+        ? [
+            at,
+            `<<${annotation[1]}>> ${annotation[2]} annotates a class that is not declared before it: declare it first, with "class ${annotation[2]}".`,
+          ]
+        : undefined;
+    },
+  ],
   // A timeline adds an event to the last period, and fails on one before any: the first event.
   [
     /^Cannot read properties of undefined \(reading 'events'\)$/,
