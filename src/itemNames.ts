@@ -7,10 +7,26 @@ import type { DiagramNode } from "./protocol";
 import { quoteAll } from "./text";
 
 /**
- * An arrow between the ends of a relationship: "-->", "->" or "→" as documented, and the other
- * arrows of Mermaid sources and of relationship labels, such as "->>", "<-->", "---" and "↔".
+ * The arrows between the ends of a relationship, at a place in a name: "-->", "->" or "→" as
+ * documented, those of relationship labels, such as "↔", of ER diagrams, such as "||--o{", and the
+ * others of Mermaid sources, such as "->>", "-)", "--x", "o--o", "<-->", "==>", "-.->", "<|--" and
+ * "..>". A mark that starts one, as the "o" of "o--o", follows a space.
  */
-const ARROW = /<?[-=.]*[-=]>{1,2}|-{2,3}|[→↔—]/g;
+const ARROWS = [
+  /[→↔—]/y,
+  /[|}][o|](?:--|\.\.)[o|][|{]/y,
+  /(?:<<|<\|?|(?<=^|\s)[ox*])?(?:[-=.]+(?:>>|\|>|>|[xo)*])|[-=.]{2,})/y,
+];
+/** An arrow with a head at its start alone, as "<|--", which points from the second end. */
+const BACKWARD = /^<(?!.*(?:>|[)xo*])$)/;
+/**
+ * A flowchart link with its label on it, as in "A -- Yes --> B", "A -. Yes .-> B" or
+ * "A == Yes ==> B": its ends and label.
+ */
+const LABELED_LINK =
+  /^(.+?)\s*(?:--|==|-\.)\s+(.+?)\s+(?:[-=.]*[-=.](?:>|[xo])|[-=.]{2,})\s*(.+)$/s;
+/** A letter, digit or underscore, which an id goes on with. */
+const WORD = /[\p{L}\p{N}_]/u;
 /** A relationship id's prefix, which a model may also put before ends. */
 const KIND = /^(?:edge|message):/;
 /** A flowchart edge's label after its arrow, as in "A -->|Yes| B". */
@@ -109,6 +125,16 @@ export class ItemNames {
         .map(({ id }) => id);
       if (ids.length > 0) return { ids };
     }
+    const odd = between.length === 0 ? this.withoutArrow(name.replace(KIND, "")) : undefined;
+    if (odd) {
+      const fixed = JSON.stringify(`${odd.source} --> ${odd.target}`);
+      return {
+        ids: [],
+        why: odd.between
+          ? `${JSON.stringify(odd.between)} is not an arrow: write ${fixed}`
+          : `it has no arrow: write ${fixed}`,
+      };
+    }
     const ends = between[0] ?? fallback;
     if (!ends) return { ids: [] };
     const { source, target, label } = ends;
@@ -183,32 +209,109 @@ export class ItemNames {
 
   /**
    * The ends that the name may give on either side of an arrow, and the label after the second end
-   * or the arrow, in order; and the reading to tell a model why it names nothing, if none does: the
-   * first arrow's, with the label after the first colon rather than an end that holds it.
+   * or the arrow, in order; and the reading to tell a model why it names nothing, if none does: of
+   * the first arrow after a node id, or else set apart by spaces, or else the first, with the label
+   * after the first colon rather than an end that holds it.
    */
   private readings(name: string): { readings: Ends[]; fallback: Ends | undefined } {
     const readings: Ends[] = [];
-    let fallback: Ends | undefined;
-    for (const arrow of name.matchAll(ARROW)) {
-      const source = name.slice(0, arrow.index).trim();
-      const rest = name.slice(arrow.index + arrow[0].length).trim();
-      const piped = PIPED.exec(rest);
-      const read: Ends[] = piped
-        ? [{ source, target: (piped[2] ?? "").trim(), label: piped[1]?.trim() || undefined }]
-        : [
-            { source, target: rest },
-            ...Array.from(rest.matchAll(/:/g), ({ index }) => ({
-              source,
-              target: rest.slice(0, index).trim(),
-              label: rest.slice(index + 1).trim() || undefined,
-            })),
-          ];
-      const given = read.filter((ends) => ends.source && ends.target);
-      readings.push(...given);
-      fallback ??= given[1] ?? given[0];
+    const fallbacks: { ends: Ends; spaced: boolean }[] = [];
+    const link = LABELED_LINK.exec(name);
+    if (link) {
+      const [, source = "", label = "", target = ""] = link;
+      readings.push({ source: source.trim(), target: target.trim(), label: label.trim() });
     }
-    return { readings, fallback };
+    /** The ends on either side of the arrow at the index, of the length. */
+    const around = (index: number, length: number): Ends[] => {
+      const source = name.slice(0, index).trim();
+      const after = name.slice(index + length).trim();
+      // A sequence message may activate or deactivate its target, as in "A->>+B".
+      const rests = /^[+-]/.test(after) ? [after, after.slice(1).trim()] : [after];
+      return rests
+        .flatMap((rest): Ends[] => {
+          const piped = PIPED.exec(rest);
+          return piped
+            ? [{ source, target: (piped[2] ?? "").trim(), label: piped[1]?.trim() || undefined }]
+            : [
+                { source, target: rest },
+                ...Array.from(rest.matchAll(/:/g), ({ index }) => ({
+                  source,
+                  target: rest.slice(0, index).trim(),
+                  label: rest.slice(index + 1).trim() || undefined,
+                })),
+              ];
+        })
+        .filter((ends) => ends.source && ends.target);
+    };
+    for (let index = 0; index < name.length; ) {
+      const arrow = arrowAt(name, index);
+      if (!arrow) {
+        index++;
+        continue;
+      }
+      const given = around(index, arrow.length);
+      // An arrow with a head at its start alone goes from the second end to the first.
+      const read = BACKWARD.test(arrow)
+        ? given.map(({ source, target, label }) => ({ source: target, target: source, label }))
+        : given;
+      readings.push(...read);
+      const ends = read[1] ?? read[0];
+      const spaced =
+        /\s/.test(name.charAt(index - 1)) && /\s/.test(name.charAt(index + arrow.length));
+      if (ends) fallbacks.push({ ends, spaced });
+      // A circle or cross at its end may start the second end's id instead, as in "A --xray".
+      if (/[xo]$/.test(arrow)) readings.push(...around(index, arrow.length - 1));
+      index += arrow.length;
+    }
+    const fallback =
+      fallbacks.find(({ ends }) => this.nodes.has(ends.source)) ??
+      fallbacks.find(({ spaced }) => spaced) ??
+      fallbacks[0];
+    return { readings, fallback: fallback?.ends };
   }
+
+  /**
+   * The node ids that the name starts and ends with, before any label, if no arrow that the tools
+   * read goes between them, and what does.
+   */
+  private withoutArrow(
+    name: string,
+  ): { source: string; target: string; between: string } | undefined {
+    const text = name.trim();
+    const ids = [...this.nodes].sort((a, b) => b.length - a.length);
+    const source = ids.find(
+      (id) => text.startsWith(id) && !WORD.test(text.charAt(id.length)) && text.length > id.length,
+    );
+    if (source === undefined) return undefined;
+    // Up to a label after a colon.
+    const ends = [text, ...Array.from(text.matchAll(/:/g), ({ index }) => text.slice(0, index))];
+    for (const end of ends.map((each) => each.trimEnd())) {
+      const target = ids.find(
+        (id) =>
+          end.endsWith(id) &&
+          end.length - id.length >= source.length &&
+          !WORD.test(end.charAt(end.length - id.length - 1)),
+      );
+      if (target !== undefined) {
+        return {
+          source,
+          target,
+          between: end.slice(source.length, end.length - target.length).trim(),
+        };
+      }
+    }
+    return undefined;
+  }
+}
+
+/** The arrow at the index of the name, if one starts there: the longest. */
+function arrowAt(name: string, index: number): string | undefined {
+  for (const arrow of ARROWS) {
+    arrow.lastIndex = index;
+    const found = arrow.exec(name)?.[0];
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /**

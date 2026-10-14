@@ -154,4 +154,114 @@ suite("itemNames", () => {
       "C --> S:1",
     ]);
   });
+
+  /** An edge with a label of its own, as the page reports it. */
+  const labeled = (id: string, source: string, target: string, text: string): DiagramNode => ({
+    id,
+    label: `${source} → ${target}: ${text}`,
+    relationship: { kind: "edge", source, target, direction: "forward", text },
+  });
+  /** Edges and messages as the sources of several kinds of diagram write them. */
+  const sourced = new ItemNames({
+    nodeIds: ["A", "B", "C", "S", "ray", "xray", "Animal", "Duck", "CUSTOMER", "ORDER"],
+    relationships: [
+      message("message:i0", "C", "S", "Client → Server", "Login"),
+      message("message:i1", "C", "S", "Client → Server", "Fetch"),
+      message("message:i2", "S", "C", "Server → Client", "Token"),
+      labeled("edge:L_A_B_0", "A", "B", "Yes"),
+      labeled("edge:L_A_B_1", "A", "B", "No"),
+      relation("edge:L_A_ray_0", "A", "ray"),
+      // A class's inheritance, which the page draws from the child to the parent.
+      relation("edge:inherits", "Duck", "Animal"),
+      {
+        ...labeled("edge:places", "CUSTOMER", "ORDER", "places"),
+        relationship: {
+          kind: "edge",
+          source: "CUSTOMER",
+          target: "ORDER",
+          direction: "undirected",
+          text: "places",
+        },
+      },
+    ],
+  });
+
+  test("names edges and messages by the arrows of their sources, with marks at their ends and labels on them", () => {
+    const ids = (name: string) => sourced.resolve(name).ids;
+    for (const name of [
+      "C-)S: Login",
+      "C--)S: Login",
+      "C-xS: Login",
+      "C --x S: Login",
+      "C->>+S: Login",
+      "C-->>-S: Login",
+      "C<<->>S: Login",
+    ]) {
+      assert.deepStrictEqual(ids(name), ["message:i0"], name);
+    }
+    for (const name of [
+      "A --x B: Yes",
+      "A --o B: Yes",
+      "A x--x B: Yes",
+      "A o--o B: Yes",
+      "A <--> B: Yes",
+      "A -- Yes --> B",
+      "A -. Yes .-> B",
+      "A == Yes ==> B",
+      "A -- Yes --- B",
+      "A --x|Yes| B",
+    ]) {
+      assert.deepStrictEqual(ids(name), ["edge:L_A_B_0"], name);
+    }
+    // A cross at the end of a link, and one that starts the id of its end.
+    assert.deepStrictEqual(ids("A --xray"), ["edge:L_A_ray_0"]);
+    assert.deepStrictEqual(sourced.resolve("A --> xray"), {
+      ids: [],
+      why: 'nothing goes from "A" to "xray"',
+    });
+    // A class diagram's arrows, which point at the parent from either side.
+    assert.deepStrictEqual(ids("Animal <|-- Duck"), ["edge:inherits"]);
+    assert.deepStrictEqual(ids("Duck --|> Animal"), ["edge:inherits"]);
+    assert.deepStrictEqual(ids("Duck ..|> Animal"), ["edge:inherits"]);
+    assert.deepStrictEqual(sourced.resolve("Duck <|-- Animal"), {
+      ids: [],
+      why: 'nothing goes from "Animal" to "Duck", only from "Duck" to "Animal"',
+    });
+    // An ER diagram's cardinalities.
+    assert.deepStrictEqual(ids("CUSTOMER ||--o{ ORDER : places"), ["edge:places"]);
+    assert.deepStrictEqual(ids("ORDER }o..|| CUSTOMER"), ["edge:places"]);
+  });
+
+  test("says what is not an arrow between node ids", () => {
+    assert.deepStrictEqual(sourced.resolve("A ~> B"), {
+      ids: [],
+      why: '"~>" is not an arrow: write "A --> B"',
+    });
+    assert.deepStrictEqual(sourced.resolve("C ~ S: Login"), {
+      ids: [],
+      why: '"~" is not an arrow: write "C --> S"',
+    });
+    assert.deepStrictEqual(sourced.resolve("A B"), {
+      ids: [],
+      why: 'it has no arrow: write "A --> B"',
+    });
+    // Not where the ends are not node ids, or are one.
+    assert.deepStrictEqual(sourced.resolve("A ~> X"), { ids: [] });
+    assert.deepStrictEqual(sourced.resolve("AB"), { ids: [] });
+    assert.deepStrictEqual(sourced.resolve("A"), { ids: ["A"] });
+    // An id that holds what reads as an arrow, as "-o" or "-x".
+    const dashed = new ItemNames({
+      nodeIds: ["my-org", "box-x", "Z"],
+      relationships: [relation("edge:o", "my-org", "box-x")],
+    });
+    assert.deepStrictEqual(dashed.resolve("my-org --> box-x").ids, ["edge:o"]);
+    assert.deepStrictEqual(dashed.resolve("my-org --> X"), {
+      ids: [],
+      why: '"X" is not a node id',
+    });
+    assert.deepStrictEqual(dashed.resolve("my-org --> Z"), {
+      ids: [],
+      why: 'nothing goes from "my-org" to "Z"',
+    });
+  });
 });
