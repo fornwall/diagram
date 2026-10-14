@@ -249,6 +249,24 @@ suite("export", function () {
     assert.deepStrictEqual(errors, []);
   });
 
+  test("suggests a folder in the document's that the last export went to, also by another drive letter case", async () => {
+    const { panel } = await exportingPanel();
+    replace(vscode.workspace, "fs", { ...vscode.workspace.fs, writeFile: async () => {} });
+    // On Windows, a document's URI names its drive in lower case, and the save dialog as given.
+    const fence = { ...diagram, openingLine: 0, lastLine: 2, prefix: "" };
+    const document = { uri: "file:///c%3A/docs/notes.md", fence };
+    assert.ok((await panel.render({ ...diagram, document }, "document")).ok);
+    replace(vscode.window, "showSaveDialog", async (options) => {
+      dialogs.push(options ?? {});
+      return vscode.Uri.from({ scheme: "file", path: "/C:/docs/images/export.svg" });
+    });
+    await panel.exportDiagram();
+    assert.strictEqual(dialogs.at(-1)?.defaultUri?.path, "/c:/docs/Export test.svg");
+    await panel.exportDiagram();
+    assert.strictEqual(dialogs.at(-1)?.defaultUri?.path, "/C:/docs/images/Export test.svg");
+    assert.deepStrictEqual(errors, []);
+  });
+
   test("says where it saved an image, and opens it in VS Code if asked", async () => {
     const { panel } = await exportingPanel();
     const opened = Promise.withResolvers<unknown>();

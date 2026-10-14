@@ -2,7 +2,7 @@
 
 import * as os from "node:os";
 import * as vscode from "vscode";
-import { fileName } from "./files";
+import { contains, fileName } from "./files";
 import {
   type DiagramLanguage,
   diagramNoun,
@@ -113,11 +113,8 @@ function defaultFolder(document: vscode.Uri | undefined): vscode.Uri | undefined
     return lastFolder;
   }
   const folder = vscode.Uri.joinPath(document, "..");
-  const within =
-    lastFolder?.scheme === folder.scheme &&
-    lastFolder.authority === folder.authority &&
-    `${lastFolder.path}/`.startsWith(folder.path.endsWith("/") ? folder.path : `${folder.path}/`);
-  return within ? lastFolder : folder;
+  // By the file system's rules, as Windows names a drive in either case and ignores case.
+  return lastFolder && contains(folder, lastFolder) ? lastFolder : folder;
 }
 
 /** Says why the file could not be saved, without the "Error: " that VS Code puts before it. */
