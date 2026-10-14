@@ -469,6 +469,13 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       "Error on line 2: A sankey diagram has no header row: remove this line, and start with the first flow.",
     fixed: "sankey\n  Coal,Power,30",
   },
+  // A first flow of words, whose nodes the others link: not a header.
+  {
+    broken: "sankey\n  Coal,Power,lots\n  Power,Homes,20",
+    error:
+      'Error on line 2: The value of the flow from "Coal" to "Power" is not a number: write the number alone, such as 10, without units.',
+    fixed: "sankey\n  Coal,Power,30\n  Power,Homes,20",
+  },
   {
     broken: 'sankey\n  "Source","Target","Value"\n  Coal,Power,30',
     error:
