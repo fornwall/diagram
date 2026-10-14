@@ -1,12 +1,16 @@
 import * as assert from "node:assert";
+import * as fullECharts from "echarts";
 import { ComponentModel } from "echarts/core";
-import "../webview/echartsLibrary";
+import { init } from "../webview/echartsLibrary";
 import {
+  COMPONENT_TYPES,
+  GRAPHIC_TYPES,
   type JsonObject,
   optionWarnings,
   parseOption,
   SERIES_TYPES,
   seriesTypes,
+  TOP_LEVEL_KEYS,
 } from "../webview/echartsOption";
 import { thrown } from "./thrown";
 
@@ -18,6 +22,16 @@ const registry = ComponentModel as unknown as {
 const BAR = '"xAxis": {"type": "category", "data": ["A"]}, "yAxis": {}';
 
 const errorOf = (source: string) => thrown(parseOption, source);
+
+/** Draws the option with the ECharts of the panel, which throws on what it cannot draw. */
+function drawn(option: Record<string, unknown>): void {
+  const chart = init(null, undefined, { renderer: "svg", ssr: true, width: 400, height: 300 });
+  try {
+    chart.setOption(option);
+  } finally {
+    chart.dispose();
+  }
+}
 
 suite("echartsOption", () => {
   test("parses a valid option", () => {
@@ -358,5 +372,180 @@ suite("echartsOption", () => {
       errorOf('{series: [{type: "pie", label: Object.create({formatter: "p => p.name"})}]}'),
       /^series\[0\]\.label\.formatter is JavaScript code in a string/,
     );
+  });
+
+  test("suggests the series type that a misspelled one likely means", () => {
+    assert.match(
+      errorOf('{"series": [{"type": "bars"}]}'),
+      /unknown type "bars" \(did you mean "bar"\?\)/,
+    );
+    assert.match(errorOf('{"series": [{"type": "scater"}]}'), /\(did you mean "scatter"\?\)/);
+    assert.match(errorOf('{"series": [{"type": "sanky"}]}'), /\(did you mean "sankey"\?\)/);
+    assert.doesNotMatch(errorOf('{"series": [{"type": "waterfall"}]}'), /did you mean/);
+  });
+
+  test("names the kind that a component of a kind ECharts does not have likely means", () => {
+    const option = (extra: string) =>
+      `{${BAR}, "series": [{"type": "bar", "data": [1]}], ${extra}}`;
+    const cases: [string, string][] = [
+      [
+        '"dataZoom": [{"type": "inside"}, {"type": "slide"}]',
+        'dataZoom[1] has the unknown type "slide" (did you mean "slider"?). Valid types: inside, slider, select.',
+      ],
+      [
+        '"visualMap": {"type": "continous"}',
+        'visualMap has the unknown type "continous" (did you mean "continuous"?). Valid types: continuous, piecewise.',
+      ],
+      [
+        '"legend": {"type": "scrollable"}',
+        'legend has the unknown type "scrollable" (did you mean "scroll"?). Valid types: plain, scroll.',
+      ],
+      [
+        '"singleAxis": {"type": "categorie"}',
+        'singleAxis has the unknown type "categorie" (did you mean "category"?). Valid types: category, value, time, log.',
+      ],
+      [
+        '"graphic": [{"type": "rectangle"}]',
+        'graphic[0] has the unknown type "rectangle" (did you mean "rect"?). Valid types: group, image, text, rect, circle, ellipse, ring, sector, arc, polygon, polyline, line, bezierCurve.',
+      ],
+      [
+        '"graphic": {"elements": [{"type": "group", "children": [{"type": "txt"}]}]}',
+        'graphic.elements[0].children[0] has the unknown type "txt" (did you mean "text"?)',
+      ],
+      [
+        '"timeline": {"data": [1]}, "options": [{"xAxis": {"type": "times"}}]',
+        'options[0].xAxis has the unknown type "times" (did you mean "time"?)',
+      ],
+    ];
+    for (const [extra, message] of cases) {
+      assert.ok(errorOf(option(extra)).startsWith(message), extra);
+      // ECharts throws on them, saying that it is "used but not imported" at best.
+      assert.throws(() => drawn(JSON.parse(option(extra))), extra);
+    }
+    // Every kind that the panel's ECharts has, and the graphic elements it draws.
+    for (const [main, types] of Object.entries(COMPONENT_TYPES)) {
+      const registered = registry.getClassesByMainType(main).map(({ type }) => type.split(".")[1]);
+      assert.deepStrictEqual([...types].sort(), registered.filter(Boolean).sort(), main);
+    }
+    for (const type of GRAPHIC_TYPES) {
+      drawn(
+        parseOption(
+          `{"graphic": {"elements": [{"type": "${type}"}]}, "series": [{"type": "pie"}]}`,
+        ),
+      );
+    }
+    assert.throws(() => drawn({ graphic: { elements: [{ type: "rectangle" }] } }), /graphic type/);
+  });
+
+  test("refuses references to components that the option lacks, which ECharts throws on", () => {
+    const bar = '{"type": "bar", "data": [1]';
+    const cases: [string, string][] = [
+      [
+        `{${BAR}, "series": [${bar}, "xAxisIndex": 2}]}`,
+        'series[0].xAxisIndex is 2, but the option has only one "xAxis" (index 0): refer to one that exists, or add it.',
+      ],
+      [
+        `{${BAR}, "series": [${bar}}, ${bar}, "yAxisId": "right"}]}`,
+        'series[1].yAxisId is "right", but no "yAxis" has that id: refer to one that exists, or add it.',
+      ],
+      [
+        `{"xAxis": {"data": ["A"], "gridIndex": 1}, "yAxis": {}, "series": [${bar}}]}`,
+        'xAxis.gridIndex is 1, but the option has only one "grid" (index 0): refer to one that exists, or add it.',
+      ],
+      [
+        `{"polar": {}, "angleAxis": {"data": ["A"]}, "radiusAxis": {"polarIndex": 1}, "series": [${bar}, "coordinateSystem": "polar"}]}`,
+        'radiusAxis.polarIndex is 1, but the option has only one "polar" (index 0): refer to one that exists, or add it.',
+      ],
+      [
+        `{"dataset": [{"source": [["A", 1]]}, {"fromDatasetIndex": 2}], ${BAR}, "series": [{"type": "bar", "datasetIndex": 1}]}`,
+        'dataset[1].fromDatasetIndex is 2, but the option has 2 "dataset" (index 0 to 1): refer to one that exists, or add it.',
+      ],
+      [
+        `{"singleAxis": [{}, {}], "series": [{"type": "themeRiver", "singleAxisIndex": 2, "data": []}]}`,
+        'series[0].singleAxisIndex is 2, but the option has 2 "singleAxis" (index 0 to 1): refer to one that exists, or add it.',
+      ],
+    ];
+    for (const [source, message] of cases) {
+      assert.strictEqual(errorOf(source), message);
+      assert.throws(() => drawn(JSON.parse(source)), source);
+    }
+    // Axes on grids that ECharts adds, components by id, and one that a timeline step adds.
+    for (const source of [
+      `{${BAR}, "series": [${bar}, "xAxisIndex": 0, "yAxisIndex": 0}]}`,
+      `{"grid": [{}, {"id": "g"}], "xAxis": [{"data": ["A"]}, {"data": ["A"], "gridId": "g", "id": 2}], "yAxis": [{}, {"gridIndex": 1}], "series": [${bar}}, ${bar}, "xAxisId": 2, "yAxisIndex": 1}]}`,
+      `{${BAR}, "series": [{"type": "pie", "xAxisIndex": 4, "data": [1]}]}`,
+      `{"timeline": {"data": [1]}, ${BAR}, "series": [${bar}}], "options": [{"yAxis": [{}, {}], "series": [{"yAxisIndex": 1}]}]}`,
+    ]) {
+      drawn(parseOption(source));
+    }
+  });
+
+  test("warns of references to components that the option lacks, which ECharts ignores", () => {
+    const warnings = (source: string) => {
+      const option = parseOption(source);
+      drawn(option);
+      return optionWarnings(option);
+    };
+    const bars = `${BAR}, "series": [{"type": "bar", "data": [1]}]`;
+    assert.deepStrictEqual(
+      warnings(
+        `{"dataset": {"source": [["A", 1]]}, ${BAR}, "series": [{"type": "bar", "datasetIndex": 1}]}`,
+      ),
+      [
+        'series[0].datasetIndex is 1, but the option has only one "dataset" (index 0), so ECharts draws nothing for the series: refer to one that exists, or add it.',
+      ],
+    );
+    assert.deepStrictEqual(warnings(`{${bars}, "dataZoom": [{"yAxisIndex": [0, 3]}]}`), [
+      'dataZoom[0].yAxisIndex is 3, but the option has only one "yAxis" (index 0), which ECharts ignores, zooming no such axis: refer to one that exists, or add it.',
+    ]);
+    assert.deepStrictEqual(warnings(`{${bars}, "visualMap": {"seriesIndex": 1}}`), [
+      'visualMap.seriesIndex is 1, but the option has only one "series" (index 0), which ECharts ignores, coloring no such series: refer to one that exists, or add it.',
+    ]);
+    assert.match(
+      warnings(
+        '{"radar": {"indicator": [{"name": "a"}]}, "series": [{"type": "radar", "radarIndex": 1, "data": [[1]]}]}',
+      ).join(),
+      /^series\[0\]\.radarIndex is 1, but the option has only one "radar" \(index 0\), so ECharts draws nothing/,
+    );
+    assert.deepStrictEqual(
+      warnings(`{${bars}, "dataZoom": [{"xAxisIndex": "all"}], "visualMap": {"seriesIndex": [0]}}`),
+      [],
+    );
+  });
+
+  test("warns of top-level keys that ECharts ignores, with those that were likely meant", () => {
+    const warnings = (extra: string) =>
+      optionWarnings(parseOption(`{${BAR}, "series": [{"type": "bar", "data": [1]}], ${extra}}`));
+    assert.deepStrictEqual(
+      warnings(
+        '"xaxis": {}, "tooltips": {}, "legends": {}, "serie": [], "titel": {}, "smooth": true, "notes": "x"',
+      ),
+      [
+        'ECharts ignores what it does not know at the top level of the option: "xaxis" (did you mean "xAxis"?), "tooltips" (did you mean "tooltip"?), "legends" (did you mean "legend"?), "serie" (did you mean "series"?), "titel" (did you mean "title"?), "smooth" (a setting of each series: set it in "series"), "notes".',
+      ],
+    );
+    assert.deepStrictEqual(
+      optionWarnings(
+        parseOption(
+          `{"baseOption": {"timeline": {"data": [1]}, ${BAR}, "series": [{"type": "bar"}], "colors": []}, "options": [{"datazoom": {}}]}`,
+        ),
+      ),
+      [
+        'ECharts ignores what it does not know at the top level of the option: "baseOption.colors" (did you mean "color"?), "options[0].datazoom" (did you mean "dataZoom"?).',
+      ],
+    );
+    assert.deepStrictEqual(
+      warnings('"color": [], "backgroundColor": "#fff", "animation": false, "aria": {}'),
+      [],
+    );
+    // Every component that ECharts has.
+    const full = (
+      fullECharts as unknown as { ComponentModel: { getAllClassMainTypes(): string[] } }
+    ).ComponentModel;
+    for (const main of full.getAllClassMainTypes()) {
+      if (!["component", "markPoint", "markLine", "markArea"].includes(main)) {
+        assert.ok(TOP_LEVEL_KEYS.includes(main), main);
+      }
+    }
   });
 });

@@ -1,9 +1,9 @@
 // Reads ECharts options, the parts of them that timeline steps and media queries patch included,
-// and checks them for mistakes that ECharts would silently render as nothing, with actionable
-// errors.
+// and checks them for mistakes that ECharts would silently render as nothing, throw on with an
+// obscure error, or ignore, with actionable errors and warnings.
 
 import { asArray, isPlainObject } from "../protocol";
-import { joinWords } from "../text";
+import { joinWords, quoteAll } from "../text";
 import { evaluateSource, isFunction } from "./optionSource";
 
 export type JsonObject = Record<string, unknown>;
@@ -223,8 +223,10 @@ export function parseOption(source: string): JsonObject {
         `JavaScript object literal, not ${describe(option)}.`,
     );
   }
-  validateSeries(option);
+  const series = validateSeries(option);
+  // Before the components are read, which would follow a cycle around.
   findJavaScript(option, [], []);
+  checkComponents(option, series);
   return option;
 }
 
@@ -257,16 +259,21 @@ const IGNORED_STEPS =
 
 /** Tells a model which parts of its option ECharts ignores, though it draws the rest. */
 export function optionWarnings(option: JsonObject): string[] {
-  return optionPatches(option).steps.length > 0 && !showsSteps(option) ? [IGNORED_STEPS] : [];
+  return [
+    ...(optionPatches(option).steps.length > 0 && !showsSteps(option) ? [IGNORED_STEPS] : []),
+    ...unknownKeys(option),
+    ...ignoredReferences(option),
+  ];
 }
 
 /**
  * Checks the series that the chart draws: those of the base option, or with a timeline or media
  * queries, those of each step and query merged in, as the series may well be there alone. ECharts
  * merges each step into what the chart shows, so they are merged in one after the other, and each
- * media query into what the chart shows then: the base option, or each step.
+ * media query into what the chart shows then: the base option, or each step. Returns each series
+ * drawn, by its path.
  */
-function validateSeries(option: JsonObject): void {
+function validateSeries(option: JsonObject): [string, JsonObject][] {
   const base = baseOption(option);
   const patches = optionPatches(option);
   const steps = showsSteps(option) ? patches.steps : [];
@@ -299,9 +306,11 @@ function validateSeries(option: JsonObject): void {
         '"yAxis": {"type": "value"}.',
     );
   }
+  const checked = new Map<string, JsonObject>();
   for (const { option: merged, series } of drawn) {
     for (const [path, each] of series) {
       checkSeries(each, path, merged);
+      checked.set(path, each as JsonObject);
     }
     if (merged.geo !== undefined) {
       throw new Error(
@@ -310,6 +319,7 @@ function validateSeries(option: JsonObject): void {
       );
     }
   }
+  return [...checked];
 }
 
 /** Checks that a series has a type the panel has, and what it needs to draw anything. */
@@ -325,9 +335,10 @@ function checkSeries(each: unknown, path: string, base: JsonObject): void {
   }
   if (!SERIES_TYPES.includes(type)) {
     const sameName = SERIES_TYPES.find((known) => known.toLowerCase() === type.toLowerCase());
+    const near = closestName(type, SERIES_TYPES);
     const hint = sameName
       ? `types are case-sensitive: "${sameName}"`
-      : TYPE_HINTS[type.toLowerCase()];
+      : (TYPE_HINTS[type.toLowerCase()] ?? (near && `did you mean "${near}"?`));
     const problem = type === "map" ? "unsupported" : "unknown";
     throw new Error(
       `${path} has the ${problem} type "${type}"${hint ? ` (${hint})` : ""}. ` +
@@ -468,4 +479,450 @@ export function seriesTypes(option: JsonObject): string {
     typeof each.type === "string" ? [each.type] : [],
   );
   return Array.from(new Set(types)).join(", ");
+}
+
+/**
+ * The edit distance between two words: how many letters to add, remove or replace, or pairs of
+ * them to swap, as in "titel".
+ */
+function distance(a: string, b: string): number {
+  let before: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      let least = Math.min(
+        (previous[j] as number) + 1,
+        (current[j - 1] as number) + 1,
+        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        least = Math.min(least, (before[j - 2] as number) + 1);
+      }
+      current[j] = least;
+    }
+    before = previous;
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
+/**
+ * The name that a misspelled one most likely means: the same but for case, one a letter or two
+ * off, or one that it starts with or is the start of, as "scrollable" of "scroll".
+ */
+function closestName(name: string, names: readonly string[]): string | undefined {
+  const lower = name.toLowerCase();
+  const same = names.find((known) => known.toLowerCase() === lower);
+  if (same !== undefined) return same;
+  let closest: string | undefined;
+  let least = Math.max(1, Math.floor(name.length / 4)) + 1;
+  for (const known of names) {
+    const off = distance(lower, known.toLowerCase());
+    if (off < least) {
+      closest = known;
+      least = off;
+    }
+  }
+  return (
+    closest ??
+    names.find((known) => {
+      const word = known.toLowerCase();
+      return (
+        (word.length >= 4 && lower.startsWith(word)) ||
+        (lower.length >= 3 && word.startsWith(lower))
+      );
+    })
+  );
+}
+
+/** The base option and the options that patch it, each with the path that leads into it. */
+function optionParts(option: JsonObject): [prefix: string, part: JsonObject][] {
+  const { steps, media } = optionPatches(option);
+  return [
+    [isPlainObject(option.baseOption) ? "baseOption." : "", baseOption(option)],
+    ...[...steps, ...media].map(([path, patch]): [string, JsonObject] => [`${path}.`, patch]),
+  ];
+}
+
+/** The components of a type in the parts of an option, each by its path, as "xAxis[1]". */
+function componentsOf(parts: [string, JsonObject][], key: string): [string, JsonObject][] {
+  return parts.flatMap(([prefix, part]): [string, JsonObject][] => {
+    const value = part[key];
+    if (isPlainObject(value)) return [[`${prefix}${key}`, value]];
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((each, index): [string, JsonObject][] =>
+      isPlainObject(each) ? [[`${prefix}${key}[${index}]`, each]] : [],
+    );
+  });
+}
+
+const AXIS_TYPES = ["category", "value", "time", "log"];
+
+/**
+ * The kinds of the components that ECharts has several kinds of, as echartsLibrary.ts registers
+ * them, which it throws on another of with "Component … is used but not imported".
+ */
+export const COMPONENT_TYPES: Record<string, string[]> = {
+  xAxis: AXIS_TYPES,
+  yAxis: AXIS_TYPES,
+  radiusAxis: AXIS_TYPES,
+  angleAxis: AXIS_TYPES,
+  singleAxis: AXIS_TYPES,
+  parallelAxis: AXIS_TYPES,
+  dataZoom: ["inside", "slider", "select"],
+  visualMap: ["continuous", "piecewise"],
+  legend: ["plain", "scroll"],
+  timeline: ["slider"],
+};
+
+/** The types of the elements of the graphic component. */
+export const GRAPHIC_TYPES = [
+  "group",
+  "image",
+  "text",
+  "rect",
+  "circle",
+  "ellipse",
+  "ring",
+  "sector",
+  "arc",
+  "polygon",
+  "polyline",
+  "line",
+  "bezierCurve",
+];
+
+/** What a model may call a type of graphic element that ECharts names otherwise. */
+const GRAPHIC_HINTS: Record<string, string> = {
+  rectangle: "rect",
+  square: "rect",
+  label: "text",
+  path: "polyline",
+};
+
+/** An error for a type that ECharts does not have, with the one that was likely meant. */
+function unknownType(path: string, type: string, types: readonly string[], near?: string): Error {
+  const meant = near ?? closestName(type, types);
+  return new Error(
+    `${path} has the unknown type ${JSON.stringify(type)}${meant ? ` (did you mean "${meant}"?)` : ""}. ` +
+      `Valid types: ${types.join(", ")}.`,
+  );
+}
+
+/** The elements of the graphic component, with their paths, those in groups included. */
+function graphicElements(parts: [string, JsonObject][]): [string, JsonObject][] {
+  const elements: [string, JsonObject][] = [];
+  const add = (path: string, element: JsonObject) => {
+    elements.push([path, element]);
+    if (Array.isArray(element.children)) {
+      element.children.forEach((child, index) => {
+        if (isPlainObject(child)) add(`${path}.children[${index}]`, child);
+      });
+    }
+  };
+  for (const [prefix, part] of parts) {
+    const graphic = part.graphic;
+    const path = `${prefix}graphic`;
+    // Of a graphic component, or as ECharts takes it, an element alone, or a list of elements.
+    const components = isPlainObject(graphic)
+      ? [[path, graphic] as const]
+      : Array.isArray(graphic)
+        ? graphic.map((each, index) => [`${path}[${index}]`, each] as const)
+        : [];
+    for (const [at, component] of components) {
+      if (!isPlainObject(component)) continue;
+      if (component.elements === undefined) add(at, component);
+      if (!Array.isArray(component.elements)) continue;
+      component.elements.forEach((element, index) => {
+        if (isPlainObject(element)) add(`${at}.elements[${index}]`, element);
+      });
+    }
+  }
+  return elements;
+}
+
+/**
+ * The components of each type in the parts of an option, which their patches merge into by
+ * place, and the ids they have: what a reference by index or id can refer to. ECharts adds a grid
+ * for axes, and a parallel for parallel axes, unless the option has one.
+ */
+function referable(parts: [string, JsonObject][]) {
+  const count = (key: string) =>
+    Math.max(
+      0,
+      ...parts.map(([, part]) => (key === "series" ? seriesOf(part) : asArray(part[key])).length),
+    );
+  const ids = (key: string) =>
+    componentsOf(parts, key).flatMap(([, each]) => (each.id == null ? [] : [String(each.id)]));
+  return {
+    count: (key: string) =>
+      Math.max(
+        count(key),
+        (key === "grid" && count("xAxis") + count("yAxis") > 0) ||
+          (key === "parallel" && count("parallelAxis") > 0)
+          ? 1
+          : 0,
+      ),
+    ids,
+  };
+}
+
+/**
+ * What is wrong with the references by index or id of a component or series to components of a
+ * type, such as of a series to its "xAxis" by "xAxisIndex", or of a data zoom to several axes.
+ */
+function brokenReferences(
+  holder: JsonObject,
+  path: string,
+  key: string,
+  to: string,
+  components: ReturnType<typeof referable>,
+): string[] {
+  const broken: string[] = [];
+  const count = components.count(to);
+  const indices = holder[`${key}Index`];
+  for (const index of Array.isArray(indices) ? indices : [indices]) {
+    if (
+      typeof index !== "number" ||
+      (index >= 0 && index < count) ||
+      (index === 0 && count === 0)
+    ) {
+      continue;
+    }
+    const has =
+      count === 0
+        ? `the option has no "${to}"`
+        : count === 1
+          ? `the option has only one "${to}" (index 0)`
+          : `the option has ${count} "${to}" (index 0 to ${count - 1})`;
+    broken.push(`${path}.${key}Index is ${index}, but ${has}`);
+  }
+  const id = holder[`${key}Id`];
+  const ids = components.ids(to);
+  for (const each of Array.isArray(id) ? id : [id]) {
+    if ((typeof each !== "string" && typeof each !== "number") || ids.includes(String(each))) {
+      continue;
+    }
+    const known = ids.length > 0 ? ` (the ids are ${quoteAll(ids)})` : "";
+    broken.push(`${path}.${key}Id is ${JSON.stringify(each)}, but no "${to}" has that id${known}`);
+  }
+  return broken;
+}
+
+/** The components that a series refers to on the coordinate system it is drawn on, which ECharts throws on a reference to one of that is missing. */
+const SYSTEM_REFERENCES: Record<string, string[]> = {
+  cartesian2d: ["xAxis", "yAxis"],
+  polar: ["polar"],
+  singleAxis: ["singleAxis"],
+  calendar: ["calendar"],
+  parallel: ["parallel"],
+  matrix: ["matrix"],
+};
+
+/**
+ * Checks that the components of an option are of types that ECharts has, and that what refers to
+ * a component that ECharts would throw on the lack of, such as a series to its axis, refers to one
+ * the option has, with errors that name the place and what to use.
+ */
+function checkComponents(option: JsonObject, series: [string, JsonObject][]): void {
+  const parts = optionParts(option);
+  for (const [key, types] of Object.entries(COMPONENT_TYPES)) {
+    for (const [path, component] of componentsOf(parts, key)) {
+      const { type } = component;
+      if (typeof type === "string" && !types.includes(type)) throw unknownType(path, type, types);
+    }
+  }
+  for (const [path, element] of graphicElements(parts)) {
+    const { type } = element;
+    if (typeof type === "string" && !GRAPHIC_TYPES.includes(type)) {
+      throw unknownType(path, type, GRAPHIC_TYPES, GRAPHIC_HINTS[type.toLowerCase()]);
+    }
+  }
+  const components = referable(parts);
+  const broken = [
+    ...series.flatMap(([path, each]) => {
+      const system = coordinateSystem(each);
+      return (system === undefined ? [] : (SYSTEM_REFERENCES[system] ?? [])).flatMap((to) =>
+        brokenReferences(each, path, to, to, components),
+      );
+    }),
+    ...["xAxis", "yAxis"].flatMap((key) =>
+      componentsOf(parts, key).flatMap(([path, axis]) =>
+        brokenReferences(axis, path, "grid", "grid", components),
+      ),
+    ),
+    ...["angleAxis", "radiusAxis"].flatMap((key) =>
+      componentsOf(parts, key).flatMap(([path, axis]) =>
+        brokenReferences(axis, path, "polar", "polar", components),
+      ),
+    ),
+    ...componentsOf(parts, "parallelAxis").flatMap(([path, axis]) =>
+      brokenReferences(axis, path, "parallel", "parallel", components),
+    ),
+    ...componentsOf(parts, "dataset").flatMap(([path, dataset]) =>
+      brokenReferences(dataset, path, "fromDataset", "dataset", components),
+    ),
+  ];
+  if (broken.length > 0) {
+    throw new Error(`${broken[0]}: refer to one that exists, or add it.`);
+  }
+}
+
+/**
+ * What refers to a component that it ignores the lack of, such as a data zoom to an axis, or a
+ * series to its dataset, which then draws nothing.
+ */
+function ignoredReferences(option: JsonObject): string[] {
+  const parts = optionParts(option);
+  const components = referable(parts);
+  const series = parts.flatMap(([prefix, part]) =>
+    seriesOf(part).flatMap((each, index): [string, JsonObject][] =>
+      isPlainObject(each) ? [[`${prefix}series[${index}]`, each]] : [],
+    ),
+  );
+  const fix = "refer to one that exists, or add it";
+  return [
+    ...series
+      .flatMap(([path, each]) => [
+        ...brokenReferences(each, path, "dataset", "dataset", components),
+        ...(each.type === "radar"
+          ? brokenReferences(each, path, "radar", "radar", components)
+          : []),
+      ])
+      .map((broken) => `${broken}, so ECharts draws nothing for the series: ${fix}.`),
+    ...componentsOf(parts, "dataZoom")
+      .flatMap(([path, zoom]) =>
+        ["xAxis", "yAxis", "radiusAxis", "angleAxis", "singleAxis"].flatMap((axis) =>
+          brokenReferences(zoom, path, axis, axis, components),
+        ),
+      )
+      .map((broken) => `${broken}, which ECharts ignores, zooming no such axis: ${fix}.`),
+    ...componentsOf(parts, "visualMap")
+      .flatMap(([path, map]) => brokenReferences(map, path, "series", "series", components))
+      .map((broken) => `${broken}, which ECharts ignores, coloring no such series: ${fix}.`),
+  ];
+}
+
+/** What an ECharts option may have at its top level: its components and global settings. */
+export const TOP_LEVEL_KEYS = [
+  // Components.
+  "title",
+  "legend",
+  "grid",
+  "xAxis",
+  "yAxis",
+  "polar",
+  "radiusAxis",
+  "angleAxis",
+  "radar",
+  "dataZoom",
+  "visualMap",
+  "tooltip",
+  "axisPointer",
+  "toolbox",
+  "brush",
+  "geo",
+  "parallel",
+  "parallelAxis",
+  "singleAxis",
+  "timeline",
+  "graphic",
+  "calendar",
+  "matrix",
+  "thumbnail",
+  "dataset",
+  "aria",
+  "series",
+  // Timelines and media queries.
+  "baseOption",
+  "options",
+  "media",
+  // Global settings.
+  "darkMode",
+  "color",
+  "colorLayer",
+  "backgroundColor",
+  "textStyle",
+  "animation",
+  "animationThreshold",
+  "animationDuration",
+  "animationEasing",
+  "animationDelay",
+  "animationDurationUpdate",
+  "animationEasingUpdate",
+  "animationDelayUpdate",
+  "stateAnimation",
+  "blendMode",
+  "hoverLayerThreshold",
+  "progressive",
+  "progressiveThreshold",
+  "useUTC",
+  "legacyViewCoordSysCenterBase",
+  "legacyMinMaxDontInverseAxis",
+];
+
+/** Settings of each series, which a model may put at the top level of the option instead. */
+const SERIES_KEYS = new Set([
+  "type",
+  "name",
+  "data",
+  "stack",
+  "smooth",
+  "step",
+  "label",
+  "labelLine",
+  "endLabel",
+  "itemStyle",
+  "lineStyle",
+  "areaStyle",
+  "emphasis",
+  "radius",
+  "center",
+  "roseType",
+  "symbol",
+  "symbolSize",
+  "showSymbol",
+  "barWidth",
+  "barGap",
+  "barCategoryGap",
+  "encode",
+  "markLine",
+  "markPoint",
+  "markArea",
+  "links",
+  "edges",
+  "nodes",
+  "layout",
+  "roam",
+  "coordinateSystem",
+]);
+
+/**
+ * The keys at the top level of an option, and of its timeline steps and media queries, that
+ * ECharts ignores, as misspelled, as "xaxis" or "tooltips", or as settings of each series.
+ */
+function unknownKeys(option: JsonObject): string[] {
+  const parts: [string, JsonObject][] = isPlainObject(option.baseOption)
+    ? [["", option], ...optionParts(option)]
+    : optionParts(option);
+  const unknown: string[] = [];
+  for (const [prefix, part] of parts) {
+    for (const key of Object.keys(part)) {
+      if (TOP_LEVEL_KEYS.includes(key)) continue;
+      const near = closestName(key, TOP_LEVEL_KEYS);
+      const name = JSON.stringify(`${prefix}${key}`);
+      unknown.push(
+        SERIES_KEYS.has(key)
+          ? `${name} (a setting of each series: set it in "series")`
+          : near
+            ? `${name} (did you mean "${near}"?)`
+            : name,
+      );
+    }
+  }
+  if (unknown.length === 0) return [];
+  return [
+    `ECharts ignores what it does not know at the top level of the option: ${unknown.join(", ")}.`,
+  ];
 }
