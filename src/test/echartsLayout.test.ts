@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
+import { GUIDE_TOPICS } from "../guideTopics";
 import { modelOf } from "../webview/echartsItems";
 import { disableAnimation, toolWarnings } from "../webview/echartsLayout";
 import type { JsonObject } from "../webview/echartsOption";
@@ -428,6 +429,14 @@ suite("echartsLayout", () => {
       const own = layout(pie(label, { radius: ["45%", "70%"] }), size).series[0];
       assert.deepStrictEqual([own.label, own.radius], [label, ["45%", "70%"]]);
     }
+  });
+
+  test("draws the labels of the guide's pie whole in a narrow panel", () => {
+    const topic = GUIDE_TOPICS.find(({ name }) => name === "echarts-pie");
+    const size = { width: 396, height: 575 };
+    const svg = svgOf(layout(JSON.parse(topic?.example ?? "{}"), size), size);
+    assert.match(svg, />Photos:(?: 25\.74%)? ?</);
+    assert.doesNotMatch(svg, /(?:…|\.\.\.)</);
   });
 
   test("draws the labels of diagram_chart's pies whole in a narrow panel", () => {

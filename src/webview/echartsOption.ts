@@ -175,7 +175,7 @@ export const SERIES_TYPES = [
   "custom",
 ];
 
-const DONUT = 'for a donut chart, use "pie" with "radius": ["45%", "72%"]';
+const DONUT = 'for a donut chart, use "pie" with "radius": ["35%", "55%"]';
 const TYPE_HINTS: Record<string, string> = {
   donut: DONUT,
   doughnut: DONUT,

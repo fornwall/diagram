@@ -863,7 +863,7 @@ Panel: adds the legend for named series, the axis tooltip and room for labels.`,
   "title": {"text": "Disk usage", "subtext": "GB"},
   "series": [{
     "type": "pie",
-    "radius": ["45%", "70%"],
+    "radius": ["35%", "55%"],
     "padAngle": 1,
     "itemStyle": {"borderRadius": 4},
     "label": {"formatter": "{b}: {d}%"},
@@ -873,7 +873,7 @@ Panel: adds the legend for named series, the axis tooltip and room for labels.`,
     ]
   }]
 }`,
-    notes: `- "data" holds {"name", "value"} items; "radius": ["45%", "70%"] makes a doughnut.
+    notes: `- "data" holds {"name", "value"} items; "radius": ["35%", "55%"] makes a doughnut with room for labels beside it, also in a narrow panel.
 - Templates: {b} name, {c} value, {d} percent.
 - At most ~6 slices, largest first, the rest merged into "Other". To compare values or show change over time, use bars.
 - Avoid roseType and several pies side by side: angles and areas are hard to compare.
