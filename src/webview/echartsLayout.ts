@@ -493,11 +493,17 @@ function placeLegend(
   if (base.legend === undefined) {
     // Several named series: the identity of a series is never only color.
     const named = series.length >= 2 && series.every((s) => seriesName(s) !== undefined);
-    // A small pie has no room for labels, so its slices are named by a legend instead.
+    // A small pie has no room for labels, so its slices are named by a legend instead, unless
+    // the option says to label them.
+    const [pie] = pies;
+    const label = isPlainObject(pie?.label) ? pie.label : {};
     const smallPie =
+      pie !== undefined &&
       pies.length === 1 &&
-      !isPlainObject(pies[0]?.label) &&
-      (width < 420 || height - reserved.top < 260);
+      label.show === undefined &&
+      label.position === undefined &&
+      (height - reserved.top < 260 ||
+        !pieLabelsFit(pie, width - 16, height - reserved.top - 16, charWidth));
     if (named || smallPie) {
       base.legend = {};
     }
@@ -1179,16 +1185,20 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   const boxHeight = size.height - reserved.top - reserved.bottom - 16;
   let label = isPlainObject(pie.label) ? pie.label : {};
   const hasLegend = asArray(base.legend).some((l) => l.show !== false);
-  const small = boxWidth < 380 || boxHeight < 220;
-  if (label.show === undefined && label.position === undefined && hasLegend && small) {
+  if (
+    label.show === undefined &&
+    label.position === undefined &&
+    hasLegend &&
+    (boxHeight < 220 || !pieLabelsFit(pie, boxWidth, boxHeight, size.charWidth))
+  ) {
     // Too small for labels around the pie: the legend and tooltip name the slices.
     label = pie.label = { ...label, show: false };
     pie.labelLine = { ...(isPlainObject(pie.labelLine) ? pie.labelLine : {}), show: false };
   }
+  const outsideLabels =
+    label.show !== false &&
+    !["inside", "inner", "center"].includes(String(label.position ?? "outside"));
   if (pie.radius === undefined) {
-    const outsideLabels =
-      label.show !== false &&
-      !["inside", "inner", "center"].includes(String(label.position ?? "outside"));
     // In a wide box, the labels fit beside the pie, which can then take more of the height.
     const ratio = boxWidth / Math.max(1, boxHeight);
     const radius = !outsideLabels
@@ -1202,6 +1212,136 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
             : 50;
     pie.radius = `${radius}%`;
   }
+  const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
+  const outer = outerRadius(pie.radius, Math.min(boxWidth, boxHeight) / 2);
+  // ECharts' parts of a label line.
+  const [length, length2] = [line.length ?? 15, line.length2 ?? 30];
+  const labels = pieLabels(pie, size.charWidth);
+  if (
+    !outsideLabels ||
+    (label.alignTo ?? "edge") !== "edge" ||
+    outer === undefined ||
+    typeof length !== "number" ||
+    typeof length2 !== "number" ||
+    labels === undefined ||
+    // Beside the pie: after the line, the gap to the label, and ECharts' margin to the edge.
+    labels.every(
+      ({ across, whole }) => across * (outer + length) + length2 + 5 + 10 + whole <= boxWidth / 2,
+    )
+  ) {
+    return;
+  }
+  // Labels that do not fit beside the pie on one line go onto several, from the edge of the box
+  // in to their line, and the pie leaves the room for them.
+  label.alignTo ??= "edge";
+  label.edgeDistance ??= 8;
+  if (label.width === undefined) label.overflow ??= "break";
+  pie.label = label;
+  // The second part of a line is drawn out to its label at the edge anyway.
+  line.length2 ??= 0;
+  pie.labelLine = line;
+  const most = labeledRadius(labels, boxWidth, length);
+  const least = MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2);
+  if (outer > most) pie.radius = scaleRadius(pie.radius, Math.max(most, least) / outer);
+}
+
+/** The least radius of a pie with labels beside it, as a share of the radius it could have. */
+const MIN_LABELED_PIE = 0.4;
+
+/** The label of a slice of a pie, as wide as some pixels. */
+interface PieLabel {
+  /** How far across the pie the slice's middle is from its center, from 0 at the top to 1. */
+  across: number;
+  /** The width of the label on one line. */
+  whole: number;
+  /** The least width it goes onto three lines of, at least that of its longest word. */
+  least: number;
+}
+
+/**
+ * The labels of a pie's slices, as ECharts places them: around the pie from its top, clockwise,
+ * unless told otherwise. Undefined for more slices than the layout reads, which have no room for
+ * labels; none for the slices of a dataset.
+ */
+function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
+  const data: unknown[] = Array.isArray(pie.data) ? pie.data : [];
+  if (data.length > MAX_READ_CATEGORIES) return undefined;
+  const label = isPlainObject(pie.label) ? pie.label : {};
+  // ECharts labels a slice by its name, and a template adds its text and, for each value, about
+  // 6 characters, as "25.74".
+  const template = typeof label.formatter === "string" ? label.formatter : "{b}";
+  const values = template.match(/\{(?!b\})[^{}|]*\}/g)?.length ?? 0;
+  const added = template.replace(/\{[^{}|]*\}/g, "").length + 6 * values;
+  const named = template.includes("{b}");
+  const value = (item: unknown) => {
+    const number = Number(isPlainObject(item) ? item.value : item);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  };
+  const total = data.reduce((sum: number, item) => sum + value(item), 0);
+  const start = typeof pie.startAngle === "number" ? pie.startAngle : 90;
+  const turn = pie.clockwise === false ? 1 : -1;
+  let before = 0;
+  return data.map((item) => {
+    const share = total > 0 ? value(item) / total : 1 / data.length;
+    const middle = ((start + turn * 360 * (before + share / 2)) * Math.PI) / 180;
+    before += share;
+    const name = named ? String((isPlainObject(item) ? item.name : undefined) ?? "") : "";
+    // With the punctuation after it, as the ":" of "{b}: {d}%".
+    const word = Math.max(values > 0 ? 7 : 0, ...name.split(/\s+/).map((part) => part.length + 1));
+    const chars = name.length + added;
+    return {
+      across: Math.abs(Math.cos(middle)),
+      whole: chars * charWidth,
+      least: Math.max(word, Math.ceil(chars / 3)) * charWidth,
+    };
+  });
+}
+
+/**
+ * The most radius of a pie in a box whose labels go from the edge of the box in to their lines,
+ * of a first part of a length, each as wide as the least it goes onto lines of.
+ */
+function labeledRadius(labels: PieLabel[], boxWidth: number, length: number): number {
+  // The gap from the line to the label, the label's distance from the edge, and a margin.
+  const room = boxWidth / 2 - 5 - 8 - 4;
+  return Math.min(
+    boxWidth / 2,
+    ...labels.map(({ across, least }) =>
+      across > 0.01 ? (room - least) / across - length : boxWidth / 2,
+    ),
+  );
+}
+
+/** Whether a pie's labels fit beside it in a box, on lines from its edge, if need be. */
+function pieLabelsFit(
+  pie: JsonObject,
+  boxWidth: number,
+  boxHeight: number,
+  charWidth: number,
+): boolean {
+  const labels = pieLabels(pie, charWidth);
+  const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
+  return (
+    labels !== undefined &&
+    labeledRadius(labels, boxWidth, typeof line.length === "number" ? line.length : 15) >=
+      MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2)
+  );
+}
+
+/** The outer radius in pixels of a pie, of a box of a size half that, if it can tell. */
+function outerRadius(radius: unknown, half: number): number | undefined {
+  return pixels(Array.isArray(radius) ? radius[radius.length - 1] : radius, half);
+}
+
+/** A pie's radius, inner and outer, scaled by a factor, as percentages or pixels. */
+function scaleRadius(radius: unknown, factor: number): unknown {
+  const scale = (value: unknown) =>
+    typeof value === "number"
+      ? Math.round(value * factor)
+      : typeof value === "string" && value.endsWith("%")
+        ? `${Math.round(Number.parseFloat(value) * factor)}%`
+        : value;
+  return Array.isArray(radius) ? radius.map(scale) : scale(radius);
 }
 
 /** Keeps series that ECharts lays out in a box clear of the title, legend and other components. */

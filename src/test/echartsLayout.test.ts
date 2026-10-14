@@ -162,7 +162,7 @@ suite("echartsLayout", () => {
             },
           ],
         },
-        { width: 300, height },
+        { width: 260, height },
       ).legend.type;
     assert.strictEqual(slices(600), "plain");
     assert.strictEqual(slices(300), "scroll");
@@ -346,6 +346,56 @@ suite("echartsLayout", () => {
     assert.strictEqual(top.grid.right, vertical.grid.right);
     const left = layout(bars({ legend: { orient: "vertical", left: 0 } }));
     assert.deepStrictEqual([left.legend.right, left.grid.left > 60], [undefined, true]);
+  });
+
+  test("gives the labels of a narrow pie room on lines from the edge, or a legend instead", () => {
+    // The example of the guide's echarts-pie topic.
+    const pie = (label: Option = { formatter: "{b}: {d}%" }): Option => ({
+      title: { text: "Disk usage", subtext: "GB" },
+      series: [
+        {
+          type: "pie",
+          radius: ["45%", "70%"],
+          label,
+          data: [
+            { name: "Videos", value: 182 },
+            { name: "Photos", value: 96 },
+            { name: "Apps", value: 64 },
+            { name: "Other", value: 31 },
+          ],
+        },
+      ],
+    });
+    // As wide as a panel of 420 pixels draws it.
+    const size = { width: 396, height: 575 };
+    const narrow = layout(pie(), size);
+    const [series] = narrow.series;
+    assert.deepStrictEqual(
+      [series.label.alignTo, series.label.overflow, series.labelLine.length2, narrow.legend],
+      ["edge", "break", 0, undefined],
+    );
+    // A smaller doughnut of the same shape.
+    const [inner, outer] = series.radius.map((radius: string) => Number.parseFloat(radius));
+    assert.ok(outer < 60 && Math.abs(inner / outer - 45 / 70) < 0.02, String(series.radius));
+    // Drawn whole, where ECharts cut the labels to "Photo..." and "...".
+    const svg = svgOf(narrow, size);
+    assert.match(svg, />Photos: 25\.74%</);
+    assert.match(svg, />Videos: ?</);
+    assert.doesNotMatch(svg, /\.\.\.</);
+    // Beside a wide pie, the labels stay as ECharts places them.
+    const wide = layout(pie()).series[0];
+    assert.deepStrictEqual([wide.label, wide.radius], [{ formatter: "{b}: {d}%" }, ["45%", "70%"]]);
+    // Too narrow for them even so: a legend names the slices, unless the option says to label them.
+    const narrower = layout(pie(), { width: 260, height: 575 });
+    assert.deepStrictEqual([narrower.legend.bottom, narrower.series[0].label.show], [6, false]);
+    const shown = layout(pie({ show: true }), { width: 260, height: 575 });
+    assert.deepStrictEqual([shown.legend, shown.series[0].label.alignTo], [undefined, "edge"]);
+    assert.ok(Number.parseFloat(shown.series[0].radius[1]) >= 39, String(shown.series[0].radius));
+    // Nor labels inside the slices, or aligned otherwise by the option.
+    for (const label of [{ position: "inside" }, { alignTo: "labelLine" }]) {
+      const own = layout(pie(label), size).series[0];
+      assert.deepStrictEqual([own.label, own.radius], [label, ["45%", "70%"]]);
+    }
   });
 
   test("makes room for a pie's legend by the names of its slices", () => {
