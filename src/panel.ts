@@ -978,7 +978,10 @@ export class DiagramPanel implements vscode.Disposable {
     };
     void this.store.save(this.state, this.shownRevision);
     const tab = this.webview.tab;
-    if (tab && document) tab.title = `${state.title} — ${documentName(document)}`;
+    if (tab && document) {
+      tab.title = `${state.title} — ${documentName(document)}`;
+      this.post({ type: "writeTo", writeTo: documentName(document) });
+    }
   }
 
   /**

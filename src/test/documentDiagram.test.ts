@@ -368,6 +368,11 @@ suite("documentDiagram", function () {
     await rename(document.uri, renamed);
     assert.ok(await within(() => panel.current?.document?.uri === renamed.toString()));
     assert.strictEqual(webview.panel.title, `Flow — ${path.basename(renamed.fsPath)}`);
+    // The page's Write to and Apply name it too.
+    assert.deepStrictEqual(webview.sent.at(-1), {
+      type: "writeTo",
+      writeTo: path.basename(renamed.fsPath),
+    });
     await webview.edit("flowchart LR\n  A --> B");
     const written = "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n";
     assert.strictEqual((await vscode.workspace.openTextDocument(renamed)).getText(), written);

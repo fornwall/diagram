@@ -183,6 +183,8 @@ export type ToWebview =
     }
   /** The saved chart omitted its large source; ask the user to refresh its data. */
   | { type: "needsRefresh"; title: string; refreshFrom?: string | undefined }
+  /** The bound document's display name, as the document was renamed. */
+  | { type: "writeTo"; writeTo: string }
   | { type: "clearSelection" }
   /** Replace marks without redrawing; empty marks and no caption clears them. */
   | ({ type: "annotate" } & Annotation)

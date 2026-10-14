@@ -240,6 +240,11 @@ function showActions({
   links = new Map(Object.entries(linked ?? {}));
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(refreshFrom);
+  showWriteTo(writeTo);
+}
+
+/** Names the document that Write to and Apply write the diagram to, if any. */
+function showWriteTo(writeTo: string | undefined): void {
   writeToButton.hidden = writeTo === undefined;
   if (writeTo !== undefined) {
     writeToButton.textContent = `Write to ${writeTo}`;
@@ -473,6 +478,14 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "needsRefresh":
       enqueue(() => showNeedsRefresh(message));
       break;
+    case "writeTo": {
+      // After the renders sent before, which name the document as it was then.
+      const revision = renderRevision;
+      enqueue(() => {
+        if (revision === renderRevision && current) showWriteTo(message.writeTo);
+      });
+      break;
+    }
     case "clearSelection":
       clearSelection();
       break;

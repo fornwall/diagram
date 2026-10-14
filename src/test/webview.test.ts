@@ -157,6 +157,30 @@ suite("webview", function () {
     );
   });
 
+  test("names the document that Write to and Apply write to anew once it is renamed", async () => {
+    await draw({ source: MERMAID["flowchart-v2"] });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        receive({type: "render", requestId: 900020, language: "mermaid",
+          source: "flowchart LR\\n A --> B", title: "Notes", writeTo: "notes.md"});
+        await until(() => window.testRenderResults.includes(900020), "the render");
+        receive({type: "writeTo", writeTo: "renamed.md"});
+        const button = document.getElementById("write-to");
+        await until(() => button.textContent === "Write to renamed.md", "the new name");
+        return {hidden: button.hidden, title: button.title,
+          apply: document.getElementById("apply").title};
+      })()`),
+      {
+        hidden: false,
+        title: "Write the diagram as shown into the code block in renamed.md",
+        apply:
+          "Render your version and write it into the code block in renamed.md (Ctrl/Cmd+Enter)",
+      },
+    );
+    await draw({ source: MERMAID["flowchart-v2"] });
+  });
+
   test("hints at clicking the drawing only while one is shown", async () => {
     assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
     const failed = await evaluate(`document.getElementById("selection-label").textContent`);
