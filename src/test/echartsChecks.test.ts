@@ -696,6 +696,10 @@ suite("echartsChecks", function () {
       'series[0] has 2 texts, such as "a leaf with a long name that goes on", cut off at the right edge of the chart: leave room for them with the series\' "left", "right", "top" or "bottom", or shorten them.',
     ]);
     assert.deepStrictEqual(warningsOf({ series: [LONG_LEAVES] }, { width: 400, height: 400 }), []);
+    // A label of a width and line height is drawn in a box as wide, its text within it: of a
+    // tree, the root's ends at its node, near the left edge, and the leaves' start at theirs.
+    const spaced = { ...LONG_LEAVES, label: { lineHeight: 16 } };
+    assert.deepStrictEqual(warningsOf({ series: [spaced] }), []);
     assert.deepStrictEqual(warningsOf({ title: { text: "Sales", left: 780 }, ...bars() }), [
       'title has the text "Sales" cut off at the right edge of the chart: place it within the chart with its "left", "right", "top" or "bottom", or shorten it.',
     ]);

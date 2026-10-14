@@ -636,6 +636,28 @@ export function layoutWarnings(chart: ECharts.ECharts, option: JsonObject): stri
   ];
 }
 
+/**
+ * Where in the chart a text's lines are. A text of a width and line height of its own is laid out
+ * in a box as wide, which its bounds take in, though its lines may be narrower: a label that ends
+ * at its node, near the edge of the chart, is in a box that reaches past the edge.
+ */
+function linesBox(text: Element): Box {
+  const lines = (text.childrenRef?.() ?? []).filter((child) => child.type === "tspan");
+  const boxes = (lines.length > 0 ? lines : [text]).map((line) => {
+    const box = line.getBoundingRect().clone();
+    box.applyTransform(line.getComputedTransform());
+    return box;
+  });
+  const x = Math.min(...boxes.map((box) => box.x));
+  const y = Math.min(...boxes.map((box) => box.y));
+  return {
+    x,
+    y,
+    width: Math.max(...boxes.map((box) => box.x + box.width)) - x,
+    height: Math.max(...boxes.map((box) => box.y + box.height)) - y,
+  };
+}
+
 /** The texts that the chart draws. */
 function drawnTexts(views: Views): Text[] {
   const texts: Text[] = [];
@@ -646,8 +668,7 @@ function drawnTexts(views: Views): Text[] {
     if (element?.type !== "text" || seen.has(element)) continue;
     seen.add(element);
     if (element.invisible || element.style?.opacity === 0) continue;
-    const box = element.getBoundingRect().clone();
-    box.applyTransform(element.getComputedTransform());
+    const box = linesBox(element);
     if (box.width <= 0 || box.height <= 0) continue;
     let owner: Text["owner"];
     let clipped = false;
