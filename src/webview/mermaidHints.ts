@@ -3,6 +3,7 @@
 // error it is for (see webviewMermaidErrors.test.ts).
 
 import { frontMatterEnd } from "../mermaidSyntax";
+import { joinWords } from "../text";
 
 /** Where a parser stopped. */
 export interface Stop {
@@ -207,14 +208,19 @@ const NODE = new RegExp(
   `(?<![\\w.-])([A-Za-z0-9_](?:[\\w.-]*\\w)?)(${SHAPES.map(([open]) => literal(open)).join("|")})`,
   "g",
 );
-/** What follows a node on its line: a link, or another node of a group. */
-const AFTER_NODE = /\s*(?:<?--|<?==|-\.|~~~|&|:::|$)/;
+/** The opening bracket of each closing one. */
+const OPENING: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
 /** The characters that a label must be quoted for, besides quotes. */
 const SPECIAL = /[()[\]{}|"]/;
 
-/** A label with brackets, parentheses, braces, pipes or quotes, which must be quoted. */
+/**
+ * A label with brackets, parentheses, braces, pipes or quotes, which must be quoted, or any label of
+ * a block diagram.
+ */
 const unquotedLabel: Rule = ({ type, line, column }) => {
-  if (!FLOWCHART.test(type)) return undefined;
+  // Block diagrams take no label unquoted; mind maps take labels as flowcharts do.
+  const block = type === "block";
+  if (!FLOWCHART.test(type) && type !== "mindmap" && !block) return undefined;
   // The node whose label the parser stopped in: the last that starts before it, if no link
   // comes between.
   const node = Array.from(line.matchAll(NODE))
@@ -225,23 +231,25 @@ const unquotedLabel: Rule = ({ type, line, column }) => {
     const from = node.index + opened.length;
     if (!/<?--|==|-\.|~~~/.test(line.slice(from, column))) {
       const closers = SHAPES.find(([shape]) => shape === open)?.[1] ?? [];
-      // The label ends at the last of its closing brackets before the next link, after the
-      // characters that the parser stopped at.
-      const rest = line.slice(column);
-      const token = /^\S*/.exec(rest)?.[0].length ?? 0;
-      const next = AFTER_NODE.exec(rest.slice(token))?.index ?? rest.length;
-      const segment = line.slice(column, column + token + next);
-      const [close, end] = closers
-        .map((closer) => [closer, segment.lastIndexOf(closer)] as const)
-        .reduce((a, b) => (b[1] > a[1] ? b : a), ["", -1] as const);
-      const label = end >= 0 ? line.slice(from, column + end) : undefined;
-      if (label && SPECIAL.test(label) && !/^\s*".*"\s*$/.test(label)) {
+      // The label ends with the closing bracket that balances the opening ones and those in it.
+      const last = closers[0]?.at(-1) ?? "";
+      let depth = 0;
+      let end = from - open.length;
+      for (; end < line.length; end++) {
+        if (line[end] === OPENING[last]) depth++;
+        else if (line[end] === last && --depth <= 0) break;
+      }
+      end -= (closers[0]?.length ?? 1) - 1;
+      const close = closers.find((closer) => line.startsWith(closer, end));
+      const label = close && end >= column ? line.slice(from, end) : undefined;
+      if (label && (block || SPECIAL.test(label)) && !/^\s*".*"\s*$/.test(label)) {
         const quotes = label.includes('"') ? ", writing its quotes as #quot;" : "";
         return `Put the label in double quotes${quotes}: ${id}${open}"${label.replace(/"/g, "#quot;")}"${close}.`;
       }
     }
   }
   // An edge label between pipes.
+  if (!FLOWCHART.test(type)) return undefined;
   const pipe = /(?:<?-->|<?---|-\.->|-\.-|<?==>|===|--[xo]|==[xo])\|([^|]*)$/.exec(
     line.slice(0, column),
   );
@@ -414,8 +422,151 @@ const stateDash: Rule = ({ type, before, after }) => {
   return `State ids have no "-": use ${idOf(name)}, and show the name with state "${name}" as ${idOf(name)}.`;
 };
 
+/** An attribute written name: type. */
+const erAttribute: Rule = ({ type, line, after }) => {
+  const attribute = /^\s*([\w-]+)\s*:\s*(\S+)(.*)$/.exec(line);
+  if (type !== "er" || !after.startsWith(":") || !attribute) return undefined;
+  return `Write an attribute as its type, then its name: ${attribute[2]} ${attribute[1]}${attribute[3]}.`;
+};
+
+/** Keys of an attribute without commas between them, or a comment in single quotes. */
+const erKeys: Rule = ({ type, line, after }) => {
+  if (type !== "er") return undefined;
+  const keys = /\b(PK|FK|UK)\s+(?=(?:PK|FK|UK)\b)/g;
+  if (/^(PK|FK|UK)\b/.test(after) && keys.test(line)) {
+    return `Separate an attribute's keys with commas: ${line.replace(keys, "$1, ").trim()}.`;
+  }
+  return after.startsWith("'")
+    ? `Write an attribute's comment in double quotes: ${line.replace(/'([^']*)'/, '"$1"').trim()}.`
+    : undefined;
+};
+
+/** The cardinalities that ER diagrams write on the left and on the right of a relationship. */
+const LEFT_CARDINALITY: Record<string, string> = {
+  "1": "||",
+  "0..1": "|o",
+  "1..*": "}|",
+  "*": "}o",
+  "0..*": "}o",
+  n: "}o",
+};
+const RIGHT_CARDINALITY: Record<string, string> = {
+  "1": "||",
+  "0..1": "o|",
+  "1..*": "|{",
+  "*": "o{",
+  "0..*": "o{",
+  n: "o{",
+};
+const ER_LEFT = new Set(["||", "|o", "}|", "}o"]);
+const ER_RIGHT = new Set(["||", "o|", "|{", "o{"]);
+
+/** A relationship of an ER diagram: its entities, cardinalities and label. */
+const ER_RELATIONSHIP = /^\s*("[^"]*"|[\w-]+)\s+(\S+?)(--|\.\.)(\S+)\s+("[^"]*"|[\w-]+)(\s*:.*)?$/;
+
+const erCardinality: Rule = ({ type, line, expected }) => {
+  const relation = ER_RELATIONSHIP.exec(line);
+  if (type !== "er" || !expected?.includes("ZERO_OR_MORE") || !relation) return undefined;
+  const [, from, left = "", line_, right = "", to, label] = relation;
+  const l = ER_LEFT.has(left) ? left : LEFT_CARDINALITY[left];
+  const r = ER_RIGHT.has(right) ? right : RIGHT_CARDINALITY[right];
+  const example = `${from} ${l ?? "||"}${line_}${r ?? "o{"} ${to}${label ?? " : has"}`;
+  return `Write cardinalities as ||, |o, }| or }o left of -- or .., and ||, o|, |{ or o{ right of it: ${example.trim()}.`;
+};
+
+/** A relationship without a label, or with one that has characters that need quotes. */
+const erLabel: Rule = ({ type, line, column, expected }) => {
+  if (type !== "er" || !/--|\.\./.test(line)) return undefined;
+  const colon = line.indexOf(":");
+  if (colon < 0) {
+    return expected?.includes("COLON")
+      ? `A relationship takes a label after a colon, "" for none: ${line.trim()} : "".`
+      : undefined;
+  }
+  const label = line.slice(colon + 1).trim();
+  if (column <= colon || label.startsWith('"')) return undefined;
+  return `Put the label in double quotes: ${line.slice(0, colon).trim()} : "${label.replace(/"/g, "#quot;")}".`;
+};
+
+/** Entity labels in a relationship, which they are declared apart from. */
+const erAlias: Rule = ({ type, line }) => {
+  const aliases = type === "er" ? Array.from(line.matchAll(/([\w-]+)\["[^"]*"\]/g)) : [];
+  if (aliases.length === 0 || !/--|\.\./.test(line)) return undefined;
+  const declared = joinWords(
+    aliases.map(([alias]) => alias),
+    "and",
+  );
+  return `Declare an entity's label on a line of its own, as ${declared}, and use its id in relationships: ${line.replace(/\["[^"]*"\]/g, "").trim()}.`;
+};
+
+/** A pie slice whose label is not quoted, or whose value is not a number alone. */
+const pieSlice: Rule = ({ type, line, after }) => {
+  if (type !== "pie") return undefined;
+  const title = /^(\s*(?:pie\s+)?title)\s*:\s*(.*)$/.exec(line);
+  if (title) return `Write the title without a colon: ${title[1]?.trim()} ${title[2]}.`;
+  const slice = /^\s*("?)([^":]+?)\1\s*:\s*([-+]?[\d.]+)\s*(%?)\s*$/.exec(line);
+  if (!slice) return undefined;
+  const fixed = `"${slice[2]}" : ${slice[3]}`;
+  if (after.startsWith("%")) return `Give the value as a number alone: ${fixed}.`;
+  return slice[1] ? undefined : `Put the label in double quotes: ${fixed}.`;
+};
+
+/** An architecture edge without the sides that it joins, with sides in lower case, or a label. */
+const architectureEdge: Rule = ({ type, line, after, expected }) => {
+  if (type !== "architecture") return undefined;
+  const sides = "Architecture edges join sides of services, L, R, T or B";
+  const bare = /^\s*([\w-]+)\s*(<?--?>?)\s*([\w-]+)\s*$/.exec(line);
+  if (bare && expected?.includes(":")) return `${sides}: ${bare[1]}:R ${bare[2]} L:${bare[3]}.`;
+  if (expected?.includes("ARROW_DIRECTION")) {
+    const fixed = line.replace(/:([lrtb])\b|\b([lrtb]):/g, (side) => side.toUpperCase());
+    return `${sides}, in capitals: ${fixed.trim()}.`;
+  }
+  const labeled = /^\s*(\S+:[LRTB])\s*(<?)--?(>?)\s*([LRTB]:\S+)\s*:\s*"?([^"]*?)"?\s*$/.exec(line);
+  if (labeled && after.startsWith(":")) {
+    const [, from, start, end, to, label] = labeled;
+    return `Put an edge's label in the edge: ${from} ${start}-[${label}]-${end} ${to}.`;
+  }
+  const group = /^\s*group\s+([\w-]+)/.exec(line);
+  if (group && after.startsWith("{")) {
+    return `A group takes no braces: end the lines of the services in it with "in ${group[1]}", as in service db(database)[Database] in ${group[1]}.`;
+  }
+  return undefined;
+};
+
+/** Subgraphs and "columns: 3" in block diagrams. */
+const blockSyntax: Rule = ({ type, normalized, line }) => {
+  if (type !== "block") return undefined;
+  const subgraph = /^[^\S\n]*subgraph\s+([\w-]+)/m.exec(normalized);
+  if (subgraph) {
+    const lineNumber = normalized.slice(0, subgraph.index).split("\n").length;
+    return `Block diagrams group blocks with "block:${subgraph[1]}" and "end", not with the subgraph on line ${lineNumber}.`;
+  }
+  const columns = /^\s*columns\s*:\s*(\S+)/.exec(line);
+  return columns ? `Write "columns ${columns[1]}", without a colon.` : undefined;
+};
+
+/** Git commands rather than those of a git graph. */
+const gitCommand: Rule = ({ type, line, after, column, expected }) => {
+  if (type !== "gitGraph") return undefined;
+  const checkout = /^\s*(?:checkout|switch)\s+-[bc]\s+(\S+)/.exec(line);
+  if (checkout) {
+    return `Create a branch with "branch ${checkout[1]}", which also checks it out.`;
+  }
+  const git = /^\s*git\s+(\w.*)$/.exec(line);
+  if (git) return `Leave out "git": ${git[1]}.`;
+  if (/^--?[a-z]/.test(after)) {
+    return `Leave out git's options: ${line.replace(/\s+--?[a-z][\w-]*(?:[= ]\S+)?/g, "").trim()}.`;
+  }
+  const word = /^[\w.-]+/.exec(after)?.[0];
+  if (word && expected?.includes("STRING")) {
+    return `Put it in double quotes: ${`${line.slice(0, column)}"${word}"${line.slice(column + word.length)}`.trim()}.`;
+  }
+  return undefined;
+};
+
 const RULES: Rule[] = [
   comments,
+  blockSyntax,
   unclosedBlock,
   strayEnd,
   flowchartDirection,
@@ -435,4 +586,12 @@ const RULES: Rule[] = [
   stateNoteOver,
   stateArrow,
   stateDash,
+  erAttribute,
+  erKeys,
+  erCardinality,
+  erAlias,
+  erLabel,
+  pieSlice,
+  architectureEdge,
+  gitCommand,
 ];

@@ -322,6 +322,147 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       'Parse error on line 3, column 22: unexpected end of the diagram. The "{" on line 2 is not closed: add a line "}" after its contents.',
     fixed: "stateDiagram-v2\n  state Running {\n    Loading --> Ready\n  }",
   },
+  // ER diagrams.
+  {
+    broken: "erDiagram\n  USER {\n    id: int PK\n  }",
+    error:
+      'Parse error on line 3, column 7: unexpected ":". Write an attribute as its type, then its name: int id PK.',
+    fixed: "erDiagram\n  USER {\n    int id PK\n  }",
+  },
+  {
+    broken: "erDiagram\n  USER {\n    int id PK FK 'the id'\n  }",
+    error:
+      "Parse error on line 3, column 15: unexpected \"FK\". Separate an attribute's keys with commas: int id PK, FK 'the id'.",
+    fixed: 'erDiagram\n  USER {\n    int id PK, FK "the id"\n  }',
+  },
+  {
+    broken: "erDiagram\n  USER {\n    int id 'the id'\n  }",
+    error:
+      'Parse error on line 3, column 12: unexpected "\'". Write an attribute\'s comment in double quotes: int id "the id".',
+    fixed: 'erDiagram\n  USER {\n    int id "the id"\n  }',
+  },
+  {
+    broken: "erDiagram\n  CUSTOMER 1--* ORDER : places",
+    error:
+      'Parse error on line 2, column 15: unexpected "*". Write cardinalities as ||, |o, }| or }o left of -- or .., and ||, o|, |{ or o{ right of it: CUSTOMER ||--o{ ORDER : places.',
+    fixed: "erDiagram\n  CUSTOMER ||--o{ ORDER : places",
+  },
+  {
+    broken: "erDiagram\n  CUSTOMER ||--o{ ORDER\n  ORDER ||--|{ ITEM : contains",
+    error:
+      'Parse error on line 2, column 24: unexpected end of line. A relationship takes a label after a colon, "" for none: CUSTOMER ||--o{ ORDER : "".',
+    fixed: 'erDiagram\n  CUSTOMER ||--o{ ORDER : ""\n  ORDER ||--|{ ITEM : contains',
+  },
+  {
+    broken: "erDiagram\n  CUSTOMER ||--o{ ORDER : places (online)",
+    error:
+      'Parse error on line 2, column 34: unexpected "(". Put the label in double quotes: CUSTOMER ||--o{ ORDER : "places (online)".',
+    fixed: 'erDiagram\n  CUSTOMER ||--o{ ORDER : "places (online)"',
+  },
+  {
+    broken: "erDiagram\n  A ||--o{ B : key: value\n  B ||--|| C : #1",
+    error:
+      'Parse error on line 2, column 19: unexpected ":". Put the label in double quotes: A ||--o{ B : "key: value".',
+    fixed: 'erDiagram\n  A ||--o{ B : "key: value"\n  B ||--|| C : "#1"',
+  },
+  {
+    broken: 'erDiagram\n  OI["Order Item"] ||--o{ P["Product"] : lists',
+    error:
+      'Parse error on line 2, column 20: unexpected "||". Declare an entity\'s label on a line of its own, as OI["Order Item"] and P["Product"], and use its id in relationships: OI ||--o{ P : lists.',
+    fixed: 'erDiagram\n  OI["Order Item"]\n  P["Product"]\n  OI ||--o{ P : lists',
+  },
+  // Gantt charts.
+  {
+    broken:
+      "gantt\n  title: Release plan\n  dateFormat YYYY-MM-DD\n  section Build\n  Design :a1, 2026-01-01, 7d",
+    error: 'Error on line 2: "title" takes no colon: write "title Release plan".',
+    fixed:
+      "gantt\n  title Release plan\n  dateFormat YYYY-MM-DD\n  section Build\n  Design :a1, 2026-01-01, 7d",
+  },
+  {
+    broken: "gantt\n  dateFormat: YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d",
+    error: 'Error on line 2: "dateFormat" takes no colon: write "dateFormat YYYY-MM-DD".',
+    fixed: "gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d",
+  },
+  // Pie charts.
+  {
+    broken: 'pie title: Pets\n  Dogs : 386\n  "Cats" : 85%',
+    error:
+      'Parse error on line 1, column 5: unexpected "title". Write the title without a colon: pie title Pets.\nParse error on line 2, column 3: unexpected "Dogs". Put the label in double quotes: "Dogs" : 386.\nParse error on line 3, column 14: unexpected "%". Give the value as a number alone: "Cats" : 85.',
+    fixed: 'pie title Pets\n  "Dogs" : 386\n  "Cats" : 85',
+  },
+  // Mind maps.
+  {
+    broken: "mindmap\n  root((Plan))\n    Research[Users (interviews)]",
+    error:
+      'Parse error on line 3, column 21: unexpected "interviews". Put the label in double quotes: Research["Users (interviews)"].',
+    fixed: 'mindmap\n  root((Plan))\n    Research["Users (interviews)"]',
+  },
+  // Architecture diagrams.
+  {
+    broken:
+      "architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api --> db",
+    error:
+      'Parse error on line 4, column 7: unexpected "--". Architecture edges join sides of services, L, R, T or B: api:R --> L:db.',
+    fixed:
+      "architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api:R --> L:db",
+  },
+  {
+    broken:
+      "architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api:r -- l:db",
+    error:
+      'Parse error on line 4, column 7: unexpected "r". Architecture edges join sides of services, L, R, T or B, in capitals: api:R -- L:db.',
+    fixed:
+      "architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api:R -- L:db",
+  },
+  {
+    broken:
+      'architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api:R --> L:db : "queries"',
+    error:
+      'Parse error on line 4, column 18: unexpected ":". Put an edge\'s label in the edge: api:R -[queries]-> L:db.',
+    fixed:
+      "architecture-beta\n  service db(database)[Database]\n  service api(server)[API]\n  api:R -[queries]-> L:db",
+  },
+  {
+    broken:
+      "architecture-beta\n  group cloud(cloud)[Cloud] {\n    service db(database)[Database]\n  }",
+    error:
+      'Parse error on line 2, column 29: unexpected "{". A group takes no braces: end the lines of the services in it with "in cloud", as in service db(database)[Database] in cloud.\nParse error on line 4, column 3: unexpected "}".',
+    fixed:
+      "architecture-beta\n  group cloud(cloud)[Cloud]\n  service db(database)[Database] in cloud",
+  },
+  // Block diagrams.
+  {
+    broken: 'block-beta\n  columns: 2\n  a["Start"] b["End"]',
+    error: 'Parse error on line 2, column 10: unexpected ":". Write "columns 2", without a colon.',
+    fixed: 'block-beta\n  columns 2\n  a["Start"] b["End"]',
+  },
+  {
+    broken: "block-beta\n  columns 2\n  a[Start] b(End)",
+    error:
+      'Parse error on line 3, column 5: unexpected "S". Put the label in double quotes: a["Start"].',
+    fixed: 'block-beta\n  columns 2\n  a["Start"] b("End")',
+  },
+  {
+    broken: 'block-beta\n  subgraph front\n    ui["UI"] api["API"]\n  end',
+    error:
+      'Parse error on line 4, column 3: unexpected "e". Block diagrams group blocks with "block:front" and "end", not with the subgraph on line 2.',
+    fixed: 'block-beta\n  block:front\n    ui["UI"] api["API"]\n  end',
+  },
+  // Git graphs.
+  {
+    broken: "gitGraph\n  commit\n  checkout -b feature\n  commit",
+    error:
+      'Parse error on line 3, column 12: unexpected "-". Create a branch with "branch feature", which also checks it out.',
+    fixed: "gitGraph\n  commit\n  branch feature\n  commit",
+  },
+  {
+    broken: "gitGraph\n  git commit\n  commit id: first\n  branch dev\n  merge dev --no-ff",
+    error:
+      'Parse error on line 2, column 3: unexpected "git". Leave out "git": commit.\nParse error on line 3, column 14: unexpected "first". Put it in double quotes: commit id: "first".\nParse error on line 5, column 13: unexpected "--". Leave out git\'s options: merge dev.',
+    fixed:
+      'gitGraph\n  commit\n  commit id: "first"\n  branch dev\n  commit\n  checkout main\n  merge dev',
+  },
 ];
 
 suite("Mermaid errors in the webview", function () {

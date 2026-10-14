@@ -1184,7 +1184,7 @@ suite("Mermaid in the webview", function () {
       // Langium parsers report each error.
       [
         ["pie", '  "Dogs" : 386', "  Rats : 1", "  Cats : 2"],
-        'Parse error on line 10, column 3: unexpected "Rats".\nParse error on line 11, column 3: unexpected "Cats".',
+        'Parse error on line 10, column 3: unexpected "Rats". Put the label in double quotes: "Rats" : 1.\nParse error on line 11, column 3: unexpected "Cats". Put the label in double quotes: "Cats" : 2.',
       ],
       [
         ["gitGraph", "  commit", "  comit"],

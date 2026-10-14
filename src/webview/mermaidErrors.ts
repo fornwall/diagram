@@ -642,6 +642,22 @@ const UNPLACED: [
       ];
     },
   ],
+  // A Gantt chart takes a line with a colon for a task, such as "title: Plan", and fails on its dates.
+  [
+    /^Cannot read properties of undefined \(reading 'endTime'\)$/,
+    (_, normalized) => {
+      const keyword =
+        "title|dateFormat|axisFormat|tickInterval|todayMarker|excludes|includes|weekday|weekend|section|displayMode|inclusiveEndDates|topAxis";
+      const at = find(normalized, `^[^\\S\\n]*(?:${keyword})[^\\S\\n]*:`);
+      const statement =
+        at === undefined
+          ? null
+          : /^\s*(\w+)\s*:\s*(.*)/.exec(normalized.slice(at).split("\n")[0] ?? "");
+      return statement
+        ? [at, `"${statement[1]}" takes no colon: write "${statement[1]} ${statement[2]}".`]
+        : undefined;
+    },
+  ],
   // A class diagram annotates a class declared before the annotation, and fails on another.
   [
     /^Cannot read properties of undefined \(reading 'annotations'\)$/,
