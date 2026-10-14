@@ -512,14 +512,12 @@ function placeLegend(
     // Several named series: the identity of a series is never only color.
     const named = series.length >= 2 && series.every((s) => seriesName(s) !== undefined);
     // A small pie has no room for labels, so its slices are named by a legend instead, unless
-    // the option says to label them.
+    // the option sets how to label them.
     const [pie] = pies;
-    const label = isPlainObject(pie?.label) ? pie.label : {};
     const smallPie =
       pie !== undefined &&
       pies.length === 1 &&
-      label.show === undefined &&
-      label.position === undefined &&
+      !labelsSet(pie) &&
       (height - reserved.top < 260 ||
         !pieLabelsFit(pie, width - 16, height - reserved.top - 16, charWidth));
     if (named || smallPie) {
@@ -1274,8 +1272,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   let label = isPlainObject(pie.label) ? pie.label : {};
   const hasLegend = asArray(base.legend).some((l) => l.show !== false);
   if (
-    label.show === undefined &&
-    label.position === undefined &&
+    !labelsSet(pie) &&
     hasLegend &&
     (boxHeight < 220 || !pieLabelsFit(pie, boxWidth, boxHeight, size.charWidth))
   ) {
@@ -1334,6 +1331,13 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   const least = MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2);
   if (chosen && outer > most) pie.radius = scaleRadius(pie.radius, Math.max(most, least) / outer);
 }
+
+/**
+ * Whether the option sets how to label the slices of a pie, as with a template that tells their
+ * shares: then it labels them, as long as it shows them, for want of room as well.
+ */
+const labelsSet = (pie: JsonObject) =>
+  isPlainObject(pie.label) && Object.keys(pie.label).length > 0;
 
 /** The least radius of a pie with labels beside it, as a share of the radius it could have. */
 const MIN_LABELED_PIE = 0.4;
@@ -1411,10 +1415,13 @@ function pieLabelsFit(
 ): boolean {
   const labels = pieLabels(pie, charWidth);
   const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
+  const half = Math.min(boxWidth, boxHeight) / 2;
+  // Beside the radius that the option gives, or else as small as the panel makes a pie.
+  const radius = pie.radius === undefined ? MIN_LABELED_PIE * half : outerRadius(pie.radius, half);
   return (
     labels !== undefined &&
-    labeledRadius(labels, boxWidth, typeof line.length === "number" ? line.length : 15) >=
-      MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2)
+    radius !== undefined &&
+    labeledRadius(labels, boxWidth, typeof line.length === "number" ? line.length : 15) >= radius
   );
 }
 

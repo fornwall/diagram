@@ -350,12 +350,12 @@ suite("echartsLayout", () => {
 
   test("gives the labels of a narrow pie room on lines from the edge, or a legend instead", () => {
     // The example of the guide's echarts-pie topic.
-    const pie = (label: Option = { formatter: "{b}: {d}%" }, own: Option = {}): Option => ({
+    const pie = (label: Option | null = { formatter: "{b}: {d}%" }, own: Option = {}): Option => ({
       title: { text: "Disk usage", subtext: "GB" },
       series: [
         {
           type: "pie",
-          label,
+          ...(label && { label }),
           ...own,
           data: [
             { name: "Videos", value: 182 },
@@ -390,12 +390,28 @@ suite("echartsLayout", () => {
       [doughnut.radius, doughnut.label.alignTo, doughnut.label.overflow],
       [["45%", "70%"], "edge", "break"],
     );
-    // Too narrow for them even so: a legend names the slices, unless the option says to label them.
-    const narrower = layout(pie(), { width: 260, height: 575 });
-    assert.deepStrictEqual([narrower.legend.bottom, narrower.series[0].label.show], [6, false]);
-    const shown = layout(pie({ show: true }), { width: 260, height: 575 });
-    assert.deepStrictEqual([shown.legend, shown.series[0].label.alignTo], [undefined, "edge"]);
-    assert.ok(Number.parseFloat(shown.series[0].radius) >= 39, String(shown.series[0].radius));
+    // Too narrow for them even so: a legend names the slices, unless the option sets how to
+    // label them, as with a template that tells their shares.
+    const narrower = { width: 260, height: 575 };
+    const named = layout(pie(null), narrower);
+    assert.deepStrictEqual([named.legend.bottom, named.series[0].label.show], [6, false]);
+    for (const label of [{ formatter: "{b}: {d}%" }, { show: true }, { fontSize: 11 }]) {
+      const shown = layout(pie(label), narrower);
+      assert.deepStrictEqual(
+        [shown.legend, shown.series[0].label.show, shown.series[0].label.alignTo],
+        [undefined, label.show, "edge"],
+        JSON.stringify(label),
+      );
+      assert.ok(Number.parseFloat(shown.series[0].radius) >= 39, String(shown.series[0].radius));
+    }
+    // Nor beside a legend of the option's own.
+    const legend = layout({ ...pie(), legend: {} }, narrower).series[0].label;
+    assert.deepStrictEqual([legend.show, legend.alignTo], [undefined, "edge"]);
+    // Labels of no settings beside a radius of the option's own, too short for them.
+    assert.strictEqual(
+      layout(pie(null, { radius: ["45%", "70%"] }), size).series[0].label.show,
+      false,
+    );
     // Nor labels inside the slices, or aligned otherwise by the option.
     for (const label of [{ position: "inside" }, { alignTo: "labelLine" }]) {
       const own = layout(pie(label, { radius: ["45%", "70%"] }), size).series[0];
