@@ -725,6 +725,53 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(name({ series: [{ ...treemap, type: "sunburst" }] }), [undefined]);
   });
 
+  test("fits a calendar into the space left, across the chart or, in a narrow one, down it", () => {
+    const calendar = (width: number, height: number, own: Option = {}) =>
+      layout(
+        {
+          title: { text: "Contributions" },
+          visualMap: { min: 0, max: 10 },
+          calendar: { range: "2026", ...own },
+          series: [{ type: "heatmap", coordinateSystem: "calendar", data: [["2026-03-01", 4]] }],
+        },
+        { width, height },
+      ).calendar;
+    // Below the title, with square cells as large as there is room for: 53 weeks across, 7 days
+    // down, between the labels around them and the visual map below.
+    const wide = calendar(1200, 800);
+    assert.deepStrictEqual(
+      [wide.left, wide.top, wide.cellSize, wide.dayLabel],
+      [64, 62, [21, 21], undefined],
+    );
+    // Too close for a label a day, every other one.
+    assert.deepStrictEqual(calendar(600, 500).dayLabel.nameMap, ["", "M", "", "W", "", "F", ""]);
+    // A week a row, where the chart is too narrow for days to be read across it.
+    const narrow = calendar(420, 700);
+    assert.deepStrictEqual(
+      [narrow.orient, narrow.left, narrow.top, narrow.cellSize],
+      ["vertical", 40, 90, [52, 10]],
+    );
+    // A quarter, starting on a Thursday, takes 14 weeks.
+    assert.deepStrictEqual(
+      calendar(420, 700, { range: ["2026-01", "2026-03-31"] }).cellSize,
+      [24, 24],
+    );
+    // Drawn within the chart.
+    const svg = svgOf(
+      layout({ calendar: { range: "2026" }, series: [] }, { width: 420, height: 700 }),
+      { width: 420, height: 700 },
+    );
+    const xs = [...svg.matchAll(/translate\((-?[\d.]+) /g)].map(([, x]) => Number(x));
+    assert.ok(xs.length > 0 && xs.every((x) => x >= 0 && x <= 420), String(xs));
+    // Placed or sized by the option, or of a range it cannot tell, it stays as it is.
+    for (const own of [{ cellSize: 10 }, { orient: "horizontal" }, { top: 0 }, { range: "soon" }]) {
+      assert.deepStrictEqual(
+        Object.keys(calendar(420, 700, own)).sort(),
+        Object.keys({ range: 0, ...own }).sort(),
+      );
+    }
+  });
+
   test("leaves room beside a radar for the names of its indicators", () => {
     const radius = (names: string[], width: number) =>
       layout(

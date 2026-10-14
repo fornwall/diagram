@@ -335,6 +335,20 @@ suite("echartsChecks", function () {
           },
         ],
       },
+      {
+        visualMap: { min: 0, max: 10 },
+        calendar: { range: "2026" },
+        series: [
+          {
+            type: "heatmap",
+            coordinateSystem: "calendar",
+            data: [
+              ["2026-01-05", 3],
+              ["2026-06-30", 8],
+            ],
+          },
+        ],
+      },
     ];
     for (const option of options) {
       for (const size of sizes) {

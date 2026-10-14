@@ -425,6 +425,7 @@ function layOut(
     layOutGrid(base, reserved, size);
   }
   layOutSingleAxis(base, series, reserved, size);
+  layOutCalendar(base, reserved, size);
   for (const title of asArray(base.title)) {
     const grid = gridOf(base, title);
     if (grid) truncateTitle(title, (pixels(grid.width, size.width) ?? size.width) - 16);
@@ -1571,6 +1572,78 @@ function breadcrumbSide(treemap: JsonObject, height: number): "top" | "bottom" |
   }
   const offset = top === "top" ? 0 : pixels(top, height);
   return offset === undefined ? "bottom" : offset < height / 2 ? "top" : "bottom";
+}
+
+/** The days of a calendar's range, from its first to its last, as UTC dates. */
+function calendarDays(range: unknown): [Date, Date] | undefined {
+  const ends = Array.isArray(range) ? range : [range, range];
+  const day = (end: unknown, last: boolean) => {
+    const match = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$/.exec(String(end ?? "").trim());
+    if (!match) return undefined;
+    const [, year, month, date] = match.map(Number);
+    if (year === undefined) return undefined;
+    // The first or last day of a year or month that a range names.
+    if (month === undefined || Number.isNaN(month)) {
+      return new Date(Date.UTC(year, last ? 11 : 0, last ? 31 : 1));
+    }
+    if (date === undefined || Number.isNaN(date)) {
+      return new Date(Date.UTC(year, last ? month : month - 1, last ? 0 : 1));
+    }
+    return new Date(Date.UTC(year, month - 1, date));
+  };
+  const first = day(ends[0], false);
+  const last = day(ends[ends.length - 1], true);
+  return first && last && first <= last ? [first, last] : undefined;
+}
+
+/** The size of a calendar's cells below which its labels run into each other. */
+const MIN_CALENDAR_CELL = 12;
+
+/**
+ * Fits a calendar into the space left, as a grid is: ECharts places it 80 pixels in from the
+ * left and 60 down from the top, its cells 20 pixels square, so that a year runs past the right
+ * of a narrow chart and leaves a wide one mostly empty. Its cells, square across the chart, as
+ * large as there is room for, or down it, a week a row, in a chart too narrow for those to read.
+ */
+function layOutCalendar(base: JsonObject, reserved: Insets, { width, height }: Size): void {
+  const calendars = asArray(base.calendar);
+  const calendar = calendars.length === 1 ? calendars[0] : undefined;
+  if (!calendar || has(calendar, [...BOX_KEYS, "cellSize", "orient"]) || calendar.show === false) {
+    return;
+  }
+  const days = calendarDays(calendar.range);
+  if (!days) return;
+  const [first, last] = days;
+  const dayLabel = isPlainObject(calendar.dayLabel) ? calendar.dayLabel : {};
+  const firstDay = typeof dayLabel.firstDay === "number" ? dayLabel.firstDay : 0;
+  const count = Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1;
+  const weeks = Math.ceil((((first.getUTCDay() - firstDay + 7) % 7) + count) / 7);
+  const boxWidth = width - reserved.left - reserved.right;
+  const boxHeight = height - reserved.top - reserved.bottom;
+  // Across, the year and the days are labeled on the left and the months above; down, the year
+  // and the days above and the months on the left.
+  const across = Math.min(30, Math.floor(Math.min((boxWidth - 80) / weeks, (boxHeight - 38) / 7)));
+  const tall = Math.floor((boxHeight - 66) / weeks);
+  const wide = Math.min(60, Math.floor((boxWidth - 56) / 7));
+  if (across >= MIN_CALENDAR_CELL || across >= Math.min(tall, wide)) {
+    Object.assign(calendar, {
+      left: reserved.left + 64,
+      top: reserved.top + 30,
+      cellSize: [Math.max(1, across), Math.max(1, across)],
+    });
+    // Rows too close for a label each name every other day, as Monday, Wednesday and Friday.
+    if (across < MIN_CALENDAR_CELL && dayLabel.show !== false && dayLabel.nameMap === undefined) {
+      calendar.dayLabel = { ...dayLabel, nameMap: ["", "M", "", "W", "", "F", ""] };
+    }
+    return;
+  }
+  Object.assign(calendar, {
+    orient: "vertical",
+    // Centered across the chart, which a week takes only a few pixels of.
+    left: reserved.left + 40 + Math.round((boxWidth - 56 - 7 * wide) / 2),
+    top: reserved.top + 58,
+    cellSize: [wide, Math.min(wide, tall)],
+  });
 }
 
 function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
