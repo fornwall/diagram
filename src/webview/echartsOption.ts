@@ -403,6 +403,90 @@ function checkSeries(each: unknown, path: string, base: JsonObject): void {
         'drawn; set "layout": "force" or "circular" to place them automatically.',
     );
   }
+  if (NETWORK_TYPES.includes(type)) checkNodes(each, path, type);
+}
+
+/** The series types of nodes and the links between them. */
+const NETWORK_TYPES = ["graph", "sankey", "chord"];
+
+/** The nodes of a graph, sankey or chord series, and the links between them. */
+const networkOf = (series: JsonObject) => {
+  const nodes: unknown = series.data ?? series.nodes;
+  const links: unknown = series.links ?? series.edges;
+  return {
+    nodes: Array.isArray(nodes) ? nodes : [],
+    nodesKey: series.data != null ? "data" : "nodes",
+    links: Array.isArray(links) ? links : [],
+    linksKey: series.links != null ? "links" : "edges",
+  };
+};
+
+/** What links name a node by: its id, or else its name. A node that is no object has none. */
+function nodeKey(node: unknown): string | undefined {
+  const key = isPlainObject(node) ? (node.id ?? node.name) : undefined;
+  return typeof key === "string" || typeof key === "number" ? String(key) : undefined;
+}
+
+/**
+ * Checks that the nodes of a graph, sankey or chord series go by names or ids of their own, which
+ * ECharts throws on with "Cannot set properties of undefined", and that the links of a sankey go
+ * one way, as ECharts throws on a cycle without saying where.
+ */
+function checkNodes(series: JsonObject, path: string, type: string): void {
+  const { nodes, nodesKey, links } = networkOf(series);
+  const seen = new Map<string, number>();
+  nodes.forEach((node, index) => {
+    const key = nodeKey(node);
+    if (key === undefined) return;
+    const first = seen.get(key);
+    if (first === undefined) {
+      seen.set(key, index);
+      return;
+    }
+    const by = isPlainObject(node) && node.id != null ? "id" : "name";
+    const stages =
+      type === "sankey" ? ', as "Other (2024)" and "Other (2025)" for a node in two stages' : "";
+    throw new Error(
+      `${path}.${nodesKey}[${first}] and [${index}] have the same ${by}, ${JSON.stringify(key)}, ` +
+        `which ECharts cannot tell nodes apart without: give each node a name of its own${stages}, ` +
+        'or an "id".',
+    );
+  });
+  if (type !== "sankey") return;
+  // Where each node's links go, by node key or index, and a search for a way back to a node.
+  const ends = (end: unknown) =>
+    typeof end === "number" ? (nodeKey(nodes[end]) ?? String(end)) : String(end);
+  const next = new Map<string, string[]>();
+  for (const link of links) {
+    if (!isPlainObject(link)) continue;
+    const from = ends(link.source);
+    next.set(from, [...(next.get(from) ?? []), ends(link.target)]);
+  }
+  const done = new Set<string>();
+  const way: string[] = [];
+  const cycleFrom = (node: string): string[] | undefined => {
+    const at = way.indexOf(node);
+    if (at >= 0) return [...way.slice(at), node];
+    if (done.has(node)) return undefined;
+    way.push(node);
+    for (const target of next.get(node) ?? []) {
+      const cycle = cycleFrom(target);
+      if (cycle) return cycle;
+    }
+    way.pop();
+    done.add(node);
+    return undefined;
+  };
+  for (const node of next.keys()) {
+    const cycle = cycleFrom(node);
+    if (cycle) {
+      throw new Error(
+        `${path} has links that go around in a cycle, ${cycle.map((each) => JSON.stringify(each)).join(" → ")}, ` +
+          "which a sankey cannot draw, as its flows go one way: leave out a link of the cycle, or " +
+          'draw a "graph" with "layout": "force" instead.',
+      );
+    }
+  }
 }
 
 const isObject = (value: unknown): value is object => value !== null && typeof value === "object";
@@ -801,6 +885,35 @@ function ignoredReferences(option: JsonObject): string[] {
     ...componentsOf(parts, "visualMap")
       .flatMap(([path, map]) => brokenReferences(map, path, "series", "series", components))
       .map((broken) => `${broken}, which ECharts ignores, coloring no such series: ${fix}.`),
+    ...series.flatMap(([path, each]) =>
+      NETWORK_TYPES.includes(String(each.type)) ? looseLinks(each, path) : [],
+    ),
+  ];
+}
+
+/**
+ * The links of a graph, sankey or chord series to nodes that it does not have, which ECharts
+ * leaves out: a link names a node by its id, or else its name, or by its index.
+ */
+function looseLinks(series: JsonObject, path: string): string[] {
+  const { nodes, nodesKey, links, linksKey } = networkOf(series);
+  const keys = new Set(nodes.map(nodeKey));
+  const missing = (end: unknown) =>
+    typeof end === "number" ? !(end >= 0 && end < nodes.length) : !keys.has(String(end));
+  const loose = links.filter(
+    (link) => isPlainObject(link) && (missing(link.source) || missing(link.target)),
+  ) as JsonObject[];
+  const [first] = loose;
+  if (!first) return [];
+  const end = missing(first.source) ? first.source : first.target;
+  // A node with an id goes by its id alone.
+  const named = nodes.some((node) => isPlainObject(node) && node.id != null && node.name === end);
+  return [
+    `${path}.${linksKey} has ${loose.length === 1 ? "a link" : `${loose.length} links`} to nodes ` +
+      `that ${path}.${nodesKey} does not have, such as ${JSON.stringify(end)}, which ECharts leaves out: ` +
+      (named
+        ? `name a node that has an "id" by its id.`
+        : `add the nodes, or name them by their "id", else their "name".`),
   ];
 }
 

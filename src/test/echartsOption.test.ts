@@ -23,6 +23,20 @@ const BAR = '"xAxis": {"type": "category", "data": ["A"]}, "yAxis": {}';
 
 const errorOf = (source: string) => thrown(parseOption, source);
 
+/** Whether ECharts throws on the option, as it does on what it cannot draw, without its logs. */
+function drawingThrows(option: Record<string, unknown>): boolean {
+  const { error } = console;
+  console.error = () => {};
+  try {
+    drawn(option);
+    return false;
+  } catch {
+    return true;
+  } finally {
+    console.error = error;
+  }
+}
+
 /** Draws the option with the ECharts of the panel, which throws on what it cannot draw. */
 function drawn(option: Record<string, unknown>): void {
   const chart = init(null, undefined, { renderer: "svg", ssr: true, width: 400, height: 300 });
@@ -420,7 +434,7 @@ suite("echartsOption", () => {
     for (const [extra, message] of cases) {
       assert.ok(errorOf(option(extra)).startsWith(message), extra);
       // ECharts throws on them, saying that it is "used but not imported" at best.
-      assert.throws(() => drawn(JSON.parse(option(extra))), extra);
+      assert.ok(drawingThrows(JSON.parse(option(extra))), extra);
     }
     // Every kind that the panel's ECharts has, and the graphic elements it draws.
     for (const [main, types] of Object.entries(COMPONENT_TYPES)) {
@@ -467,7 +481,7 @@ suite("echartsOption", () => {
     ];
     for (const [source, message] of cases) {
       assert.strictEqual(errorOf(source), message);
-      assert.throws(() => drawn(JSON.parse(source)), source);
+      assert.ok(drawingThrows(JSON.parse(source)), source);
     }
     // Axes on grids that ECharts adds, components by id, and one that a timeline step adds.
     for (const source of [
@@ -547,5 +561,111 @@ suite("echartsOption", () => {
         assert.ok(TOP_LEVEL_KEYS.includes(main), main);
       }
     }
+  });
+
+  test("refuses nodes of the same name, and sankey links in a cycle, which ECharts throws on", () => {
+    const network = (type: string, data: unknown[], links: unknown[] = []) =>
+      JSON.stringify({ series: [{ type, layout: "circular", data, links }] });
+    const cases: [string, string][] = [
+      [
+        network("graph", [{ name: "a" }, { name: "b" }, { name: "a" }]),
+        'series[0].data[0] and [2] have the same name, "a", which ECharts cannot tell nodes apart without: give each node a name of its own, or an "id".',
+      ],
+      [
+        network("chord", [
+          { id: 1, name: "a" },
+          { id: "1", name: "b" },
+        ]),
+        'series[0].data[0] and [1] have the same id, "1", which ECharts cannot tell nodes apart without: give each node a name of its own, or an "id".',
+      ],
+      [
+        network("sankey", [{ name: "Other" }, { name: "Other" }]),
+        'series[0].data[0] and [1] have the same name, "Other", which ECharts cannot tell nodes apart without: give each node a name of its own, as "Other (2024)" and "Other (2025)" for a node in two stages, or an "id".',
+      ],
+      [
+        network(
+          "sankey",
+          [{ name: "a" }, { name: "b" }, { name: "c" }],
+          [
+            { source: "a", target: "b", value: 1 },
+            { source: "b", target: "c", value: 1 },
+            { source: 2, target: "a", value: 1 },
+          ],
+        ),
+        'series[0] has links that go around in a cycle, "a" → "b" → "c" → "a", which a sankey cannot draw, as its flows go one way: leave out a link of the cycle, or draw a "graph" with "layout": "force" instead.',
+      ],
+      [
+        network("sankey", [{ name: "a" }], [{ source: "a", target: "a", value: 1 }]),
+        'series[0] has links that go around in a cycle, "a" → "a", which a sankey cannot draw',
+      ],
+    ];
+    for (const [source, message] of cases) {
+      assert.ok(errorOf(source).startsWith(message), errorOf(source));
+      assert.ok(drawingThrows(JSON.parse(source)), source);
+    }
+    // Nodes of the same name with ids of their own, and flows that meet again.
+    for (const source of [
+      network("graph", [
+        { id: "x", name: "a" },
+        { id: "y", name: "a" },
+      ]),
+      network(
+        "sankey",
+        [{ name: "a" }, { name: "b" }, { name: "c" }],
+        [
+          { source: "a", target: "b", value: 1 },
+          { source: "a", target: "c", value: 1 },
+          { source: "b", target: "c", value: 1 },
+        ],
+      ),
+    ]) {
+      drawn(parseOption(source));
+    }
+  });
+
+  test("warns of links to nodes that a series does not have, which ECharts leaves out", () => {
+    const warnings = (type: string, data: unknown[], links: unknown[]) => {
+      const option = parseOption(
+        JSON.stringify({ series: [{ type, layout: "circular", data, links }] }),
+      );
+      drawn(option);
+      return optionWarnings(option);
+    };
+    const nodes = [{ name: "a" }, { name: "b" }];
+    assert.deepStrictEqual(
+      warnings("sankey", nodes, [
+        { source: "a", target: "b", value: 1 },
+        { source: "a", target: "c", value: 1 },
+        { source: "d", target: "b", value: 1 },
+      ]),
+      [
+        'series[0].links has 2 links to nodes that series[0].data does not have, such as "c", which ECharts leaves out: add the nodes, or name them by their "id", else their "name".',
+      ],
+    );
+    assert.deepStrictEqual(
+      warnings(
+        "graph",
+        [
+          { id: "1", name: "a" },
+          { id: "2", name: "b" },
+        ],
+        [{ source: "a", target: "2" }],
+      ),
+      [
+        'series[0].links has a link to nodes that series[0].data does not have, such as "a", which ECharts leaves out: name a node that has an "id" by its id.',
+      ],
+    );
+    assert.match(warnings("graph", nodes, [{ source: 0, target: 2 }]).join(), /such as 2,/);
+    assert.deepStrictEqual(
+      warnings(
+        "graph",
+        [{ id: 7, name: "a" }, { name: "b" }],
+        [
+          { source: "7", target: "b" },
+          { source: 0, target: 1 },
+        ],
+      ),
+      [],
+    );
   });
 });
