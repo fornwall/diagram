@@ -18,6 +18,7 @@ import {
 } from "./protocol";
 import { inWords, plural, quote, shorten, toolInput } from "./text";
 import { drawnResult, nonBlank, renderFailure, textResult } from "./tools";
+import { formatOption } from "./webview/optionSource";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };
 
@@ -51,7 +52,7 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
       const { option, summary, presentation } = rebuildChart(spec, table);
       const diagram: Diagram = {
         language: "echarts",
-        source: JSON.stringify(option, null, 2),
+        source: formatOption(JSON.stringify(option)),
         title: chartTitle(spec),
         clickPrompt: nonBlank(options.input.clickPrompt),
         chart: spec,

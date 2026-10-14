@@ -7,6 +7,7 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import type { DiagramPanel, DiagramState } from "../panel";
+import { formatOption } from "../webview/optionSource";
 import { afterTest, recordMessages, replace, suiteTempDir } from "./afterTest";
 import { drawChart, type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 
@@ -281,11 +282,11 @@ suite("chart options lifecycle", function () {
     fs.writeFileSync(file, "name,amount\na,41\nb,42");
     agreeToRead();
     await applyOptions(panel, webview, { replaceSource: true });
-    const expected = JSON.stringify(
-      buildChart(chart, parseTable("name,amount\na,41\nb,42")).option,
-      null,
-      2,
+    // As the source view formats it, with arrays of values on one line.
+    const expected = formatOption(
+      JSON.stringify(buildChart(chart, parseTable("name,amount\na,41\nb,42")).option),
     );
+    assert.match(expected, /^ {6}"data": \[41, 42\]$/m);
     assert.strictEqual(panel.current?.source, expected);
     assert.strictEqual(panel.current?.chartPresentation?.blocked, undefined);
     assert.strictEqual(panel.current?.editedByUser, false);

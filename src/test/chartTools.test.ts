@@ -6,6 +6,7 @@ import type { ChartSpec } from "../chartSpec";
 import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
 import { parseTable } from "../data";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
+import { formatOption } from "../webview/optionSource";
 import { afterTest, cancellationSource, replace, tempDir, workspaceLink } from "./afterTest";
 import { drawChart, newFakePanel } from "./newPanel";
 import { invokeTool } from "./toolText";
@@ -440,6 +441,16 @@ suite("chartTools", function () {
     );
     assert.ok((await replacement)?.ok);
     assert.strictEqual(panel.current?.title, "Replacement");
+  });
+
+  test("diagram_chart writes the option as the source view shows it, with values on few lines", async () => {
+    const { panel } = await harness();
+    const rows = Array.from({ length: 200 }, (_, i) => `r${i},${i}`).join("\n");
+    await invokeTool(new ChartTool(panel), { type: "bar", data: `name,value\n${rows}` });
+    const source = panel.current?.source ?? "";
+    assert.strictEqual(formatOption(JSON.stringify(JSON.parse(source))), source);
+    // Rather than a line for each of the 400 labels and values, which models read in every request.
+    assert.ok(source.split("\n").length < 60, source);
   });
 
   test("diagram_chart blames its options for a chart that fails to render", async () => {

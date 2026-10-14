@@ -48,7 +48,7 @@ import {
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { runsCode } from "./webview/optionSource";
+import { formatOption, runsCode } from "./webview/optionSource";
 import { WebviewChannel } from "./webviewChannel";
 
 /** Routes follow-up questions to the participant or the agent that invoked a tool. */
@@ -1606,7 +1606,7 @@ function withRebuiltChart(
       ...state,
       title: made ? chartTitle(chart) : (chart.title ?? state.title),
       chart,
-      source: JSON.stringify(rebuilt.option, null, 2),
+      source: formatOption(JSON.stringify(rebuilt.option)),
       error: undefined,
       chartPresentation: rebuilt.presentation,
       editedByUser: rebuilt.presentation.edits.length > 0,

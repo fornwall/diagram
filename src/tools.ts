@@ -25,6 +25,7 @@ import {
 } from "./protocol";
 import { errorContext } from "./sourceEdits";
 import { formatCount, givenProperties, plural, quoteAll, unknownProperties } from "./text";
+import { formatOption } from "./webview/optionSource";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
@@ -74,7 +75,7 @@ function parseRenderInput(
   // Models sometimes send an ECharts option as an object despite the schema. Sending it again as a
   // string would cost as much.
   if (isPlainObject(input.source) && (input.language ?? "echarts") === "echarts") {
-    input.source = JSON.stringify(input.source, null, 2);
+    input.source = formatOption(JSON.stringify(input.source));
   }
   if (typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
