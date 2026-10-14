@@ -162,6 +162,63 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(faded, [1, 1, 2]);
   });
 
+  test("draws every item in full again once the marks no longer dim the chart", async () => {
+    const colors = ["#0000ff", "#00ff00", "#ff0000"];
+    const marks = [{ id: "C", kind: "info" as const }];
+    // Without the marks, or with them but no longer dimming the chart around them.
+    for (const undimmed of [
+      { marks: [], dim: false },
+      { marks, dim: false },
+    ]) {
+      await renderChart({
+        xAxis: { type: "category", data: ["A", "B", "C"] },
+        yAxis: {},
+        series: [
+          { type: "bar", data: colors.map((color) => ({ value: 10, itemStyle: { color } })) },
+        ],
+      });
+      const faded = `(${JSON.stringify(colors)}).filter((color) => {
+        const path = document.querySelector('#chart svg path[fill="' + color + '"]');
+        return Number(path?.getAttribute("fill-opacity") ?? path?.getAttribute("opacity") ?? 1) < 1;
+      }).length`;
+      page.panel.annotate({ marks, dim: true });
+      await evaluate(`(async () => {
+        ${UNTIL}
+        await until(() => ${faded} === 2, "the chart dimmed around its mark");
+      })()`);
+      page.panel.annotate(undimmed);
+      const left = await evaluate(`(async () => {
+        ${UNTIL}
+        await until(() => ${faded} === 0, "every item drawn in full").catch(() => {});
+        return ${faded};
+      })()`);
+      assert.strictEqual(left, 0, JSON.stringify(undimmed));
+    }
+  });
+
+  test("draws a chart in full that replaces one dimmed around its marks", async () => {
+    const option = {
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: [{ type: "bar", data: [10, 20], itemStyle: { color: "#0000ff" } }],
+    };
+    const faded = `[...document.querySelectorAll('#chart svg path[fill="#0000ff"]')].filter((path) =>
+      Number(path.getAttribute("fill-opacity") ?? path.getAttribute("opacity") ?? 1) < 1).length`;
+    await renderChart(option);
+    page.panel.annotate({ marks: [{ id: "A", kind: "info" }], dim: true });
+    await evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => ${faded} === 1, "the chart dimmed around its mark");
+    })()`);
+    await renderChart({ ...option, title: { text: "Again" } });
+    const left = await evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => ${faded} === 0, "every item drawn in full").catch(() => {});
+      return ${faded};
+    })()`);
+    assert.strictEqual(left, 0);
+  });
+
   test("lays out a chart drawn in a hidden tab at an initial size, and for the tab once shown", async () => {
     // Mermaid leaves no chart whose size a new one would keep.
     await draw({ source: "flowchart LR\n A --> B" });

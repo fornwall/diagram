@@ -541,6 +541,12 @@ export class EChartsRenderer implements Renderer {
       // without the state handed over below.
       this.chart?.dispose();
       this.chart = undefined;
+    } else if (this.chart) {
+      // ECharts takes the blur off the series that it blurred, as around marks, by the flags it
+      // keeps in their models, which the new option replaces, while it keeps drawing the items
+      // with the same graphics: then nothing would take them out of the blur. Take it off first,
+      // as each highlight and downplay does, here of no series.
+      this.chart.dispatchAction({ type: "downplay", seriesIndex: [] }, { silent: true });
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
     if (restoreState) {
