@@ -56,18 +56,28 @@ export class ItemNames {
   private readonly relationships = new Map<string, DiagramNode>();
   /** The relationships from one node to another, by both, as keyed by {@link pair}. */
   private readonly pairs = new Map<string, DiagramNode[]>();
+  /** The label of each relationship, as compared. */
+  private readonly texts = new Map<string, string>();
+  /**
+   * What the names that {@link named} tries name: those of many relationships between the same
+   * nodes, with the same label, are the same.
+   */
+  private readonly tried = new Map<string, Named>();
 
   constructor(readonly drawn: DrawnItems) {
     this.nodes = new Set(drawn.nodeIds);
     this.ids = new Set([...drawn.nodeIds, ...drawn.relationships.map(({ id }) => id)]);
     const add = (source: string, target: string, node: DiagramNode) => {
       const key = pair(source, target);
-      this.pairs.set(key, [...(this.pairs.get(key) ?? []), node]);
+      const between = this.pairs.get(key);
+      if (between) between.push(node);
+      else this.pairs.set(key, [node]);
     };
     for (const node of drawn.relationships) {
       const relation = node.relationship;
       if (!relation) continue;
       this.relationships.set(node.id, node);
+      this.texts.set(node.id, comparable(labelText(node)));
       const { source, target, direction } = relation;
       add(source, target, node);
       // One both or no way goes between its ends either way.
@@ -93,8 +103,9 @@ export class ItemNames {
       ({ source, target }) => this.nodes.has(source) && this.nodes.has(target),
     );
     for (const ends of between) {
+      const label = ends.label === undefined ? undefined : comparable(ends.label);
       const ids = this.between(ends.source, ends.target)
-        .filter(({ id }) => ends.label === undefined || this.labeled(id, ends.label))
+        .filter(({ id }) => label === undefined || this.texts.get(id) === label)
         .map(({ id }) => id);
       if (ids.length > 0) return { ids };
     }
@@ -117,12 +128,6 @@ export class ItemNames {
           : `nothing goes ${from(source, target)}` +
             (this.between(target, source).length > 0 ? `, only ${from(target, source)}` : ""),
     };
-  }
-
-  /** Whether the relationship's label after its ends reads as the text. */
-  private labeled(id: string, text: string): boolean {
-    const node = this.relationships.get(id);
-    return node !== undefined && comparable(labelText(node)) === comparable(text);
   }
 
   /** What each of the names names. */
@@ -157,8 +162,12 @@ export class ItemNames {
     const relation = node?.relationship;
     if (!node || !relation) return undefined;
     const only = (name: string) => {
-      const { ids } = this.resolve(name);
-      return ids.length === 1 && ids[0] === id;
+      let named = this.tried.get(name);
+      if (!named) {
+        named = this.resolve(name);
+        this.tried.set(name, named);
+      }
+      return named.ids.length === 1 && named.ids[0] === id;
     };
     const ends = `${relation.source} --> ${relation.target}`;
     if (only(ends)) return { name: ends, labeled: false };
