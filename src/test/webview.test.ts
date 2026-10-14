@@ -1947,20 +1947,26 @@ suite("webview renderer loading", function () {
   }
 
   test("reports at once when a renderer's code does not load", async () => {
-    const { panel, evaluate } = await pageWithout(/^mermaidRenderer-\w+\.js$/);
+    const { panel, webview, evaluate } = await pageWithout(/^mermaidRenderer-\w+\.js$/);
     const flowchart: Diagram = {
       language: "mermaid",
       source: MERMAID["flowchart-v2"],
       title: "Flow",
     };
-    const started = Date.now();
+    // At once: the page answers that it cannot draw, rather than the panel giving up on an answer
+    // once its render timeout passed, which it reports with another error.
+    const answers: unknown[] = [];
+    const listener = webview.onDidReceiveMessage((message) => {
+      if (message.type === "renderError") answers.push(message.unavailable);
+    });
+    afterTest(() => listener.dispose());
     const outcome = await panel.render(flowchart, "tool");
     assert.ok(!outcome.ok && outcome.kind === "unavailable");
     assert.match(
       outcome.error,
       /^Could not load the Mermaid renderer: .+\. Reload the window \(Developer: Reload Window\)\.$/,
     );
-    assert.ok(Date.now() - started < 5000);
+    assert.deepStrictEqual(answers, [true]);
     assert.strictEqual(
       await evaluate(`document.getElementById("error").textContent`),
       outcome.error,
@@ -2052,14 +2058,19 @@ suite("webview renderer loading", function () {
       source: '{"series": [{"type": "pie", "data": [1]}]}',
       title: "Pie",
     };
-    const started = Date.now();
+    // At once: the page answers that it cannot draw, rather than the panel giving up on an answer.
+    const answers: unknown[] = [];
+    const listener = webview.onDidReceiveMessage((message) => {
+      if (message.type === "renderError") answers.push(message.unavailable);
+    });
+    afterTest(() => listener.dispose());
     const outcome = await panel.render(pie, "tool");
     assert.ok(!outcome.ok && outcome.kind === "unavailable", JSON.stringify(outcome));
     assert.match(
       outcome.error,
       /^Could not load the ECharts renderer: Cannot load ECharts from .*missing\/echarts\.js\. Reload the window/,
     );
-    assert.ok(Date.now() - started < 5000);
+    assert.deepStrictEqual(answers, [true]);
     // The failed script is gone, for the next chart to load it anew.
     assert.strictEqual(
       await evaluate(`document.querySelectorAll('script[src$="echarts.js"]').length`),
