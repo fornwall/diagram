@@ -1319,6 +1319,22 @@ suite("echartsLayout", () => {
       repulsion: 80,
       friction: 0.3,
     });
+    // Nor of a graph whose nodes the steps of a timeline give, which ECharts merges over those of
+    // the base option.
+    const nodes = (prefix: string) => ["A", "B", "C"].map((name) => ({ name: `${prefix}${name}` }));
+    const stepped = layout({
+      baseOption: {
+        timeline: { data: ["2025", "2026"] },
+        series: [{ type: "graph", layout: "force", data: nodes("") }],
+      },
+      options: [{ series: [{ data: nodes("") }] }, { series: [{ data: nodes("next ") }] }],
+    });
+    assert.strictEqual(stepped.baseOption.series[0].layout, "force");
+    const drawn = withChart(stepped, (chart) => {
+      const data = (modelOf(chart).getSeriesByIndex(0) as Option).getData();
+      return Array.from({ length: data.count() }, (_, index) => data.getItemLayout(index));
+    });
+    assert.ok(drawn.length === 3 && drawn.flat().every(Number.isFinite), JSON.stringify(drawn));
   });
 
   test("gives sankey nodes their own palette colors, also beyond eight", () => {

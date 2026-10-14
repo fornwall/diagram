@@ -243,7 +243,8 @@ function layOutAround(
     const { width, height } = context;
     const compact = width < 560 || height < 340;
     const charWidth = context.colors.fontSize * 0.6;
-    const room = layOut(base, series, cartesian, { width, height, compact, charWidth }, squeeze);
+    const size = { width, height, compact, charWidth };
+    const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
   // A legend that the layout did not wrap into rows pages through its entries, if they take more.
@@ -374,6 +375,7 @@ function layOut(
   cartesian: boolean,
   size: Size,
   squeeze: number,
+  stepped: ReadonlySet<unknown>,
 ): number {
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
   const tools = toolboxSize(base);
@@ -433,9 +435,22 @@ function layOut(
   }
   layOutPie(base, series, reserved, size);
   labelTreeNodes(series, size);
-  layOutBoxSeries(series, reserved, size);
+  layOutBoxSeries(series, reserved, size, stepped);
   layOutRadar(base, reserved, size);
   return size.height - reserved.top - reserved.bottom;
+}
+
+/** The series of the base option that the steps of a timeline set something of, merged over it. */
+function steppedSeries(option: JsonObject, base: JsonObject): Set<unknown> {
+  const series = seriesOf(base);
+  const stepped = new Set<unknown>();
+  for (const step of Array.isArray(option.options) ? option.options : []) {
+    if (!isPlainObject(step)) continue;
+    for (const place of seriesPlaces(series, seriesOf(step))) {
+      if (place !== undefined) stepped.add(series[place]);
+    }
+  }
+  return stepped;
 }
 
 /** The grid that a title names by having its id, such as a facet's. */
@@ -1350,11 +1365,16 @@ function scaleRadius(radius: unknown, factor: number): unknown {
   return Array.isArray(radius) ? radius.map(scale) : scale(radius);
 }
 
-/** Keeps series that ECharts lays out in a box clear of the title, legend and other components. */
+/**
+ * Keeps series that ECharts lays out in a box clear of the title, legend and other components.
+ * The nodes of a force layout that a timeline's steps set stay ECharts' to place, as those of the
+ * step shown would replace the nodes placed.
+ */
 function layOutBoxSeries(
   series: JsonObject[],
   reserved: Insets,
   { width, height, charWidth }: Size,
+  stepped: ReadonlySet<unknown>,
 ): void {
   for (const each of series) {
     const type = String(each.type);
@@ -1385,7 +1405,12 @@ function layOutBoxSeries(
       width: width - reserved.left - reserved.right - 16,
       height: height - reserved.top - reserved.bottom - 16,
     };
-    if (type === "graph" && each.layout === "force" && placeForceNodes(each, area, charWidth)) {
+    if (
+      type === "graph" &&
+      each.layout === "force" &&
+      !stepped.has(each) &&
+      placeForceNodes(each, area, charWidth)
+    ) {
       fitPlacedGraph(each, area, charWidth);
       each.preserveAspect ??= true;
       continue;
