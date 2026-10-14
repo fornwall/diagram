@@ -129,10 +129,7 @@ suite("tools", () => {
     const drawn = await render();
     assert.match(drawn, /^Rendered the flowchart diagram in the diagram panel next to the chat\./);
     assert.ok(drawn.includes(leftOut), drawn);
-    assert.match(
-      drawn,
-      /Call diagram_render again with the links corrected to add them\.\n\nRevision: 1\.$/,
-    );
+    assert.match(drawn, /\. Correct them with "links" in diagram_edit\.\n\nRevision: 1\.$/);
     assert.deepStrictEqual(linked, [{ A: { file: "sizes.tsv", line: 1 } }]);
     const invalid = await render();
     assert.match(

@@ -286,8 +286,7 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       const entries = [...kept, ...Object.entries(added)];
       links = entries.length > 0 ? Object.fromEntries(entries) : undefined;
     }
-    const linkFix = `Correct them with "links" in ${EDIT_TOOL}.`;
-    const leftOut = leftOutLinks(problems, linkFix).trim();
+    const leftOut = leftOutLinks(problems).trim();
 
     // A title taken from the source, rather than given, follows it, as when the user edits it.
     const title =
@@ -312,14 +311,7 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       token,
     );
     const linkIds = Object.keys(links ?? {});
-    const notes = [
-      leftOut,
-      linksWithoutNodes(
-        linkIds,
-        this.panel.drawnIds,
-        `Move or remove them with "links" in ${EDIT_TOOL}, e.g. {"newId": "src/file.ts#L3", "oldId": null}.`,
-      ).trim(),
-    ];
+    const notes = [leftOut, linksWithoutNodes(linkIds, this.panel.drawnIds).trim()];
     if (state.document) {
       notes.push(
         `The ${noun} was opened from a code block in ${documentName(state.document)}. The change is in the panel only, until the user writes it to that file with Apply or Write to.`,

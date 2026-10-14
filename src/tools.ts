@@ -384,11 +384,13 @@ function markingMessage({ marks, caption }: Annotation, language: DiagramLanguag
   return caption === undefined ? where : `${where}: ${caption}`;
 }
 
-/** Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. */
+/**
+ * Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. A model
+ * corrects them without sending the source again.
+ */
 export function linksWithoutNodes(
   ids: readonly string[],
   drawn: readonly string[] | undefined,
-  fix = `Call ${RENDER_TOOL} again with the links corrected to add them.`,
 ): string {
   if (!drawn) {
     return "";
@@ -400,7 +402,7 @@ export function linksWithoutNodes(
   }
   return (
     `\n\nThese links name nodes the diagram does not have, so nothing opens from them: ${quoteAll(unknown)}. ` +
-    `Its node ids are ${idList(drawn)}. ${fix}`
+    `Its node ids are ${idList(drawn)}. Correct them with "links" in ${EDIT_TOOL}, e.g. {"newId": "src/file.ts#L3", "oldId": null}.`
   );
 }
 
@@ -412,17 +414,14 @@ export function idList(ids: readonly string[]): string {
   return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
 }
 
-export function leftOutLinks(
-  problems: readonly string[],
-  fix = `Call ${RENDER_TOOL} again with the links corrected to add them.`,
-): string {
+export function leftOutLinks(problems: readonly string[]): string {
   if (problems.length === 0) {
     return "";
   }
   return (
     `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
     `A link is a path, absolute or relative to the first workspace folder, with an optional line: ` +
-    `${LINK_SYNTAX}. ${fix}`
+    `${LINK_SYNTAX}. Correct them with "links" in ${EDIT_TOOL}.`
   );
 }
 

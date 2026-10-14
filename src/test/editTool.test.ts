@@ -263,7 +263,7 @@ suite("diagram_edit", function () {
     const removed = await editing({ edits: [{ oldText: "A[Parser]", newText: "P[Parser]" }] });
     assert.match(
       removed,
-      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 2\. Nodes added: "P"\. Nodes removed: "A"\.\n\nThese links name nodes the diagram does not have, so nothing opens from them: "A"\. Its node ids are "P", "B"\. Move or remove them with "links" in diagram_edit, e\.g\. \{"newId": "src\/file\.ts#L3", "oldId": null\}\.\n\nRevision: \d+\.$/,
+      /^Edited the flowchart-v2 diagram with 1 edit, in line 2 of 2\. Nodes added: "P"\. Nodes removed: "A"\.\n\nThese links name nodes the diagram does not have, so nothing opens from them: "A"\. Its node ids are "P", "B"\. Correct them with "links" in diagram_edit, e\.g\. \{"newId": "src\/file\.ts#L3", "oldId": null\}\.\n\nRevision: \d+\.$/,
     );
     assert.deepStrictEqual(Object.keys(panel.current?.links ?? {}), ["A", "B"]);
 
@@ -456,6 +456,23 @@ suite("diagram_edit", function () {
     } finally {
       restored.dispose();
     }
+  });
+
+  test("corrects the links that diagram_render could not add, without the source", async () => {
+    const rendered = await invokeTool(new RenderDiagramTool(panel), {
+      source: flow,
+      links: { Parser: "sizes.tsv", B: "sizes.tsv:2" },
+    });
+    assert.match(
+      rendered,
+      /These links name nodes the diagram does not have, so nothing opens from them: "Parser"\. Its node ids are "A", "B"\. Correct them with "links" in diagram_edit, e\.g\. \{"newId": "src\/file\.ts#L3", "oldId": null\}\.\n\nRevision: \d+\.$/,
+    );
+    assert.match(rendered, /- "B": "sizes\.tsv:2" gives its line after a colon/);
+    assert.strictEqual(
+      await editing({ edits: [], links: { Parser: null, A: "sizes.tsv", B: "sizes.tsv#L2" } }),
+      `Updated the flowchart-v2 diagram. Its code links are on "A", "B".\n\nRevision: ${panel.revision}.`,
+    );
+    assert.strictEqual(panel.current?.source, flow);
   });
 
   test("diagram_render gives the lines around an error, to fix with an edit", async () => {
