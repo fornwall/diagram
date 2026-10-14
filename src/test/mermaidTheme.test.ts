@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { contrast, LABEL_CONTRAST, type Rgba, toCss } from "../webview/colors";
-import { mermaidThemeVariables } from "../webview/mermaidTheme";
+import { fontConfig, mermaidTheme, mermaidThemeVariables } from "../webview/mermaidTheme";
 import { vscodeThemes } from "./vscodeThemes";
 
 /** Parses the #rrggbb colors that the theme variables are written in. */
@@ -94,5 +94,56 @@ suite("Mermaid theme", () => {
       // Bluer than the background, as the accent is.
       assert.ok(fill.b - fill.r > colors.background.b - colors.background.r, theme);
     }
+  });
+
+  test("tells the kinds of an agent flow's nodes apart by the chart colors", () => {
+    for (const [theme, colors] of vscodeThemes) {
+      const { theme: mermaid, themeVariables } = mermaidTheme(colors, "agentflow-beta");
+      // Mermaid colors the kinds only in its color themes, from the colors given.
+      assert.strictEqual(mermaid, colors.dark ? "redux-dark-color" : "redux-color", theme);
+      assert.deepStrictEqual(
+        themeVariables.borderColorArray,
+        colors.palette.slice(0, 12).map(toCss),
+        theme,
+      );
+      const fills = themeVariables.bkgColorArray as string[];
+      assert.strictEqual(fills.length, colors.highContrast ? 0 : 12, theme);
+      for (const fill of fills) {
+        const ratio = contrast(rgb(themeVariables.textColor), rgb(fill));
+        assert.ok(ratio >= LABEL_CONTRAST, `${theme}: ${fill}, ${ratio.toFixed(2)}`);
+      }
+      // Other diagrams draw in the base theme.
+      assert.strictEqual(mermaidTheme(colors, "flowchart").theme, "base");
+    }
+  });
+
+  test("draws the curves of radar charts in the chart colors, over a wash", () => {
+    for (const [theme, colors] of vscodeThemes) {
+      const { themeVariables } = mermaidTheme(colors, "radar-beta");
+      assert.deepStrictEqual(
+        Array.from({ length: 12 }, (_, i) => themeVariables[`cScale${i}`]),
+        colors.palette.slice(0, 12).map(toCss),
+        theme,
+      );
+      assert.strictEqual((themeVariables.radar as { curveOpacity: number }).curveOpacity, 0.2);
+      // Mind maps keep sections that their labels read on.
+      assert.notStrictEqual(
+        mermaidTheme(colors, "mindmap").themeVariables.cScale0,
+        themeVariables.cScale0,
+      );
+    }
+  });
+
+  test("draws the text of every diagram in VS Code's font", () => {
+    const config = fontConfig("Segoe UI");
+    assert.strictEqual(config.fontFamily, "Segoe UI");
+    // C4, use case and journey diagrams have fonts of their own for parts of them.
+    const fonts = [config.c4, config.usecase, config.journey].flatMap(Object.values);
+    assert.strictEqual(fonts.length, 30);
+    assert.ok(fonts.every((font) => font === "Segoe UI"));
+    assert.strictEqual(
+      (config.c4 as Record<string, string>).external_system_dbFontFamily,
+      "Segoe UI",
+    );
   });
 });

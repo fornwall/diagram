@@ -561,6 +561,40 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("draws the relations and boundaries of C4 diagrams legibly in a dark theme, in its font", async () => {
+    await draw({
+      source: [
+        "C4Context",
+        '  Person(u, "User")',
+        '  Enterprise_Boundary(b, "Corp") {',
+        '    System(s, "Shop")',
+        "  }",
+        '  Rel(u, s, "Uses")',
+      ].join("\n"),
+    });
+    const drawn = (await evaluate(`(async () => {
+      ${IN_THEME}
+      return inTheme("vscode-dark", "${DARK_MODERN}", () => {
+        const svg = document.querySelector("#diagram svg");
+        const text = (label) => [...svg.querySelectorAll("text")].find((t) => t.textContent === label);
+        return {
+          relation: getComputedStyle(text("Uses")).fill,
+          boundary: getComputedStyle(text("Corp")).fill,
+          line: getComputedStyle(svg.querySelector("line, path[stroke-width]")).stroke,
+          font: getComputedStyle(text("Shop")).fontFamily === getComputedStyle(document.body).fontFamily,
+        };
+      });
+    })()`)) as Record<string, string | boolean>;
+    // The theme's text and line colors, rather than Mermaid's dark grey.
+    assert.deepStrictEqual(drawn, {
+      relation: "rgb(204, 204, 204)",
+      boundary: "rgb(204, 204, 204)",
+      line: drawn.line,
+      font: true,
+    });
+    assert.notStrictEqual(drawn.line, "rgb(68, 68, 68)");
+  });
+
   test("labels the nodes and groups that the source fills legibly on the fill, also in images", async () => {
     await draw({
       source: [

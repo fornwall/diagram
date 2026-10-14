@@ -300,3 +300,92 @@ export function mermaidThemeVariables(colors: ThemeColors): Record<string, unkno
   });
   return variables;
 }
+
+/**
+ * The Mermaid theme, and its variables, that draw a diagram of the type, the keyword that starts
+ * it, in the colors of a VS Code theme. Most draw in the base theme. Agent flows tell the kinds of
+ * their nodes apart by color only in Mermaid's color themes, which take their colors from the
+ * variables given: the chart colors, as outlines, with faint fills of them. Radar charts draw
+ * curves rather than areas that labels lie on: in the chart colors themselves, over a wash.
+ */
+export function mermaidTheme(
+  colors: ThemeColors,
+  type: string | undefined,
+): { theme: "base" | "redux-color" | "redux-dark-color"; themeVariables: Record<string, unknown> } {
+  const themeVariables = mermaidThemeVariables(colors);
+  const hues = colors.palette.slice(0, 12).map(toCss);
+  if (type === "agentflow-beta") {
+    return {
+      theme: colors.dark ? "redux-dark-color" : "redux-color",
+      themeVariables: {
+        ...themeVariables,
+        borderColorArray: hues,
+        // Fills as faint as those of the nodes of other diagrams, which flows lie on too.
+        bkgColorArray: colors.highContrast
+          ? []
+          : colors.palette
+              .slice(0, 12)
+              .map((hue) => toCss(mix(colors.background, hue, colors.dark ? 0.16 : 0.08))),
+      },
+    };
+  }
+  if (type === "radar-beta") {
+    hues.forEach((hue, i) => {
+      themeVariables[`cScale${i}`] = hue;
+    });
+    themeVariables.radar = { ...(themeVariables.radar as object), curveOpacity: 0.2 };
+  }
+  return { theme: "base", themeVariables };
+}
+
+/** The kinds of element of C4 diagrams, whose fonts Mermaid configures each on its own. */
+const C4_ELEMENTS = ["person", "system", "container", "component"].flatMap((kind) =>
+  [kind, `${kind}_db`, `${kind}_queue`].flatMap((each) => [each, `external_${each}`]),
+);
+
+/**
+ * Mermaid's configuration of fonts for VS Code's: C4 and use case diagrams take a font of their
+ * own for each kind of element, Open Sans, rather than the diagram's, and user journeys draw their
+ * titles in Trebuchet MS.
+ */
+export function fontConfig(fontFamily: string) {
+  const fonts = (kinds: string[]) =>
+    Object.fromEntries(kinds.map((kind) => [`${kind}FontFamily`, fontFamily]));
+  return {
+    fontFamily,
+    c4: fonts([...C4_ELEMENTS, "boundary", "message"]),
+    journey: fonts(["title", "task"]),
+    usecase: fonts(["actor", "usecase"]),
+  };
+}
+
+/**
+ * The colors that Mermaid draws parts of some diagrams in whatever the theme, by the type of the
+ * diagram, with what to draw them in instead: on lines and shapes, and on text. C4 diagrams draw
+ * relations, their labels and boundaries in a dark grey and arrowheads in black, and Wardley maps
+ * label anchors and divide stages in black, which all but vanish on a dark background.
+ */
+const FIXED_COLORS: Record<string, Record<string, ["line" | "text", "line" | "text"]>> = {
+  c4: { "#444444": ["line", "text"], black: ["line", "line"], "#000000": ["line", "line"] },
+  wardley: { "#000": ["line", "text"] },
+};
+
+/** Draws what Mermaid colors the same in every theme in the theme's line and text colors. */
+export function themeFixedColors(
+  svg: SVGSVGElement,
+  diagramType: string,
+  colors: ThemeColors,
+): void {
+  const fixed = FIXED_COLORS[diagramType];
+  if (!fixed) return;
+  const { lineColor, textColor } = mermaidThemeVariables(colors);
+  const color = { line: String(lineColor), text: String(textColor) };
+  for (const element of svg.querySelectorAll("[fill], [stroke]")) {
+    const text = element.matches("text, tspan");
+    for (const attribute of ["stroke", "fill"]) {
+      const roles = fixed[element.getAttribute(attribute)?.toLowerCase() ?? ""];
+      const role = roles?.[attribute === "fill" && text ? 1 : 0];
+      if (role) element.setAttribute(attribute, color[role]);
+    }
+  }
+}

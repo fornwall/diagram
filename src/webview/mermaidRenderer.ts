@@ -26,7 +26,7 @@ import {
 import { diagramHeader } from "./mermaidLayout";
 import { type DiagramDb, findNodes, NOTHING_DRAWN, WITH_DATABASE } from "./mermaidNodes";
 import { readabilityWarnings } from "./mermaidQuality";
-import { mermaidThemeVariables } from "./mermaidTheme";
+import { fontConfig, mermaidTheme, themeFixedColors } from "./mermaidTheme";
 import { arrowDirection, nearestInDirection, type Point } from "./navigation";
 import { shortestPath } from "./relationships";
 import {
@@ -409,6 +409,7 @@ async function layOut(
   layoutContainer().append(svg);
   try {
     centerTextLabels(svg);
+    themeFixedColors(svg, diagramType, colors);
     colorLabelsOnFills(svg, colors, diagramType === "er" ? filledEntities(svg, await db()) : []);
     if (diagramType === "sequence" && FORMULA.test(text)) {
       await drawParticipantFormulas(svg, await db());
@@ -606,18 +607,19 @@ export class MermaidRenderer implements Renderer {
 
   /** How Mermaid is configured for the VS Code theme of these colors, to draw the source. */
   private config(source: string, colors = readThemeColors()): Parameters<Mermaid["initialize"]>[0] {
-    const { settings } = diagramHeader(source);
+    const { settings, typeLine } = diagramHeader(source);
     return {
       startOnLoad: false,
       securityLevel: "strict",
       maxTextSize: MAX_TEXT_SIZE,
       // Throw errors instead of rendering them as a diagram, and clean up after failing.
       suppressErrorRendering: true,
-      theme: "base",
       // A diagram that chooses a theme of its own takes it whole: Mermaid would color it with
       // these too, and the text of its nodes in the color meant for VS Code's theme.
-      themeVariables: OWN_THEME.test(settings) ? {} : mermaidThemeVariables(colors),
-      fontFamily: colors.fontFamily,
+      ...(OWN_THEME.test(settings)
+        ? { theme: "base", themeVariables: {} }
+        : mermaidTheme(colors, typeLine?.split(/\s/)[0])),
+      ...fontConfig(colors.fontFamily),
     };
   }
 
