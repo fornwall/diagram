@@ -22,8 +22,6 @@ import {
   confirmWrite,
   type DocumentBinding,
   documentName,
-  forgetReportsOnSave,
-  reportUnshownWrite,
   reportWriteFailure,
   writeFence,
 } from "./documentDiagram";
@@ -152,7 +150,6 @@ export class DiagramPanel implements vscode.Disposable {
   private annotation: Annotation | undefined;
 
   private readonly webview: WebviewChannel;
-  private readonly saves = forgetReportsOnSave();
   private nextRequestId = 1;
   /** Counts renders, to detect intervening ones. */
   private renderVersion = 0;
@@ -401,7 +398,6 @@ export class DiagramPanel implements vscode.Disposable {
 
   dispose(): void {
     this.webview.dispose();
-    this.saves.dispose();
     this.renames.dispose();
   }
 
@@ -956,9 +952,6 @@ export class DiagramPanel implements vscode.Disposable {
     const writing = (async () => {
       await previous;
       const current = this.movedBinding(binding);
-      const saved = !vscode.workspace.textDocuments.some(
-        (document) => document.uri.toString() === current.uri && document.isDirty,
-      );
       const outcome = await writeFence(current, source, isCurrent(current));
       if (!outcome.written) {
         // Not awaited: the message stays until dismissed, and the diagram can be edited meanwhile.
@@ -968,7 +961,6 @@ export class DiagramPanel implements vscode.Disposable {
       // Follow the written block, unless another diagram acquired its own binding while writing.
       const moved = { uri: current.uri, fence: outcome.fence };
       this.movedBindings.set(current, moved);
-      void reportUnshownWrite(moved, saved);
       const state = this.state;
       const bound = state?.document;
       // An agent's change that came while VS Code applied the write copied the binding, with the

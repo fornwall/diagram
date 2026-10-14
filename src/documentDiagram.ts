@@ -82,6 +82,8 @@ type WriteOutcome = { written: true; fence: DiagramFence } | { written: false; r
  * block quote markers, indentation and line endings. Refuses ambiguous or changed blocks, and
  * source that would not read back unchanged. isCurrent guards against panel changes while opening
  * the document. An edit that races with typing in the document is made again on what it holds now.
+ * The document is left unsaved: VS Code opens one that no editor shows in a background tab, as
+ * after a Replace All in Search, unless auto save saves it within a second.
  */
 export async function writeFence(
   binding: DocumentBinding,
@@ -222,57 +224,6 @@ export async function reportWriteFailure(
   } catch (error) {
     void vscode.window.showErrorMessage(errorMessage(error));
   }
-}
-
-/**
- * The documents that {@link reportUnshownWrite} told of, until they are saved or a write finds them
- * saved, as after a revert.
- */
-const reportedUnsaved = new Set<string>();
-
-/** Forgets the report of a document once it is saved, for a later write to be reported again. */
-export function forgetReportsOnSave(): vscode.Disposable {
-  return vscode.workspace.onDidSaveTextDocument(({ uri }) =>
-    reportedUnsaved.delete(uri.toString()),
-  );
-}
-
-/**
- * Tells the user of a write to a document that no tab shows, as when its tab was closed, which
- * VS Code keeps unsaved with only the Explorer to mark it, and offers to show it: once until the
- * document is saved, which `savedBefore` says it was before the write.
- */
-export async function reportUnshownWrite(
-  binding: DocumentBinding,
-  savedBefore: boolean,
-): Promise<void> {
-  if (savedBefore) reportedUnsaved.delete(binding.uri);
-  const document = vscode.workspace.textDocuments.find(({ uri }) => uri.toString() === binding.uri);
-  const shown = vscode.window.tabGroups.all.some((group) =>
-    group.tabs.some(({ input }) => {
-      if (input instanceof vscode.TabInputText) return input.uri.toString() === binding.uri;
-      if (input instanceof vscode.TabInputTextDiff) {
-        return [input.original, input.modified].some((uri) => uri.toString() === binding.uri);
-      }
-      return (
-        input instanceof vscode.TabInputNotebook &&
-        vscode.workspace.notebookDocuments.some(
-          (notebook) =>
-            notebook.uri.toString() === input.uri.toString() &&
-            notebook.getCells().some((cell) => cell.document.uri.toString() === binding.uri),
-        )
-      );
-    }),
-  );
-  if (shown || !document?.isDirty || reportedUnsaved.has(binding.uri)) return;
-  reportedUnsaved.add(binding.uri);
-  const name = documentName(binding);
-  const show = `Show ${name}`;
-  const action = await vscode.window.showInformationMessage(
-    `The ${diagramNoun(binding.fence.language)} was written to ${name}, which is not open in an editor. Save it to keep the change.`,
-    show,
-  );
-  if (action === show) await showBlock(binding);
 }
 
 /** Opens the bound document at its block, saying why if it cannot. */

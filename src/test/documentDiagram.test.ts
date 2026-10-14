@@ -2,12 +2,7 @@ import * as assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import {
-  type DocumentBinding,
-  documentName,
-  reportUnshownWrite,
-  writeFence,
-} from "../documentDiagram";
+import { type DocumentBinding, documentName, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
 import { afterTest, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
@@ -55,15 +50,6 @@ suite("documentDiagram", function () {
       editedByUser: false,
       document: read,
     };
-  }
-
-  /**
-   * Shows the panel no tabs, as when no editor shows a document, until the test ends: VS Code itself
-   * opens a file that becomes unsaved without an editor in a background tab within 800 ms, which
-   * may be before the next write of a test.
-   */
-  function withoutTabs(): void {
-    replace(vscode.window, "tabGroups", { all: [] } as unknown as vscode.TabGroups);
   }
 
   /** A panel showing the diagram, saved as it was when VS Code closed. */
@@ -407,116 +393,27 @@ suite("documentDiagram", function () {
     assert.ok(await within(() => panel.current?.openedFrom === readonly.toString()));
   });
 
-  test("says that it wrote to a document that no editor shows, and shows it if asked", async () => {
-    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
-    const name = path.basename(document.uri.fsPath);
-    const { webview } = await restored(openedState(binding(document)));
-    withoutTabs();
-    const notice = Promise.withResolvers<string>();
-    const notices = recordMessages("showInformationMessage", (message, ...actions) => {
-      notice.resolve(message);
-      return notices.length === 1 ? actions[0] : undefined;
-    });
-    const shown = Promise.withResolvers<[vscode.TextDocument, vscode.TextDocumentShowOptions]>();
-    replace(vscode.window, "showTextDocument", (async (
-      document: vscode.TextDocument,
-      options: vscode.TextDocumentShowOptions,
-    ) => shown.resolve([document, options])) as unknown as typeof vscode.window.showTextDocument);
-    await webview.edit("flowchart LR");
-    assert.strictEqual(
-      await notice.promise,
-      `The diagram was written to ${name}, which is not open in an editor. Save it to keep the change.`,
-    );
-    const [opened, options] = await shown.promise;
-    assert.strictEqual(opened, document);
-    assert.deepStrictEqual(options.selection, new vscode.Range(2, 0, 2, 0));
-    // Not again while the document stays unsaved, but once a write leaves it unsaved again.
-    await webview.edit("flowchart RL");
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.strictEqual(notices.length, 1);
-    assert.ok(await document.save());
-    await webview.edit("flowchart TD");
-    assert.ok(await within(() => notices.length === 2));
-  });
-
-  test("says that it wrote to a document that no editor shows that something else left unsaved", async () => {
+  test("leaves a written document that no editor shows to the tab that VS Code opens for it", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const { webview } = await restored(openedState(binding(document)));
-    withoutTabs();
-    const notices = recordMessages("showInformationMessage");
-    // As a Replace All in Search does.
-    await edit(document, new vscode.Range(0, 2, 0, 7), "Plans");
-    assert.ok(document.isDirty);
-    await webview.edit("flowchart LR");
-    assert.strictEqual(document.getText(), "# Plans\n\n```mermaid\nflowchart LR\n```\n");
-    assert.ok(await within(() => notices.length === 1));
-    // Also once the user saved it, and something else left it unsaved again.
-    assert.ok(await document.save());
-    await edit(document, new vscode.Range(0, 2, 0, 7), "Notes");
-    await webview.edit("flowchart RL");
-    assert.ok(await within(() => notices.length === 2));
-  });
-
-  test("says nothing of a write to a document that a tab shows", async () => {
-    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
-    await vscode.window.showTextDocument(document);
+    const messages = recordMessages("showInformationMessage");
     afterTest(async () => {
       await vscode.window.showTextDocument(document);
       await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
     });
-    const { webview } = await restored(openedState(binding(document)));
-    const notices = recordMessages("showInformationMessage");
     await webview.edit("flowchart LR");
-    assert.ok(document.isDirty);
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.deepStrictEqual(notices, []);
-  });
-
-  test("checks the whole document URI before suppressing an unsaved-write notice", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
-    const read = binding(document);
-    await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
-    const notices = recordMessages("showInformationMessage");
-    const tab = { input: new vscode.TabInputText(document.uri) };
-    replace(vscode.window, "tabGroups", {
-      all: [{ tabs: [tab] }],
-    } as unknown as vscode.TabGroups);
-    for (const uri of [
-      document.uri.with({ scheme: "git", query: "HEAD" }),
-      document.uri.with({ authority: "another-host" }),
-      document.uri.with({ query: "another-document" }),
-    ]) {
-      tab.input = new vscode.TabInputText(uri);
-      await reportUnshownWrite(read, true);
-    }
-    assert.strictEqual(notices.length, 3);
-
-    tab.input = new vscode.TabInputText(document.uri);
-    await reportUnshownWrite(read, true);
-    assert.strictEqual(notices.length, 3);
-  });
-
-  test("recognizes documents shown in diff editors and notebook cells", async () => {
-    const document = await markdown("```mermaid\nflowchart TD\n```\n");
-    const read = binding(document);
-    await edit(document, new vscode.Range(1, 0, 1, 12), "flowchart LR");
-    const notices = recordMessages("showInformationMessage");
-    const notebookUri = document.uri.with({ path: `${document.uri.path}.ipynb` });
-    replace(vscode.workspace, "notebookDocuments", [
-      { uri: notebookUri, getCells: () => [{ document }] },
-    ] as unknown as vscode.NotebookDocument[]);
-    const original = document.uri.with({ scheme: "git", query: "HEAD" });
-    for (const input of [
-      new vscode.TabInputTextDiff(original, document.uri),
-      new vscode.TabInputTextDiff(document.uri, original),
-      new vscode.TabInputNotebook(notebookUri, "jupyter-notebook"),
-    ]) {
-      replace(vscode.window, "tabGroups", {
-        all: [{ tabs: [{ input }] }],
-      } as unknown as vscode.TabGroups);
-      await reportUnshownWrite(read, true);
-    }
-    assert.deepStrictEqual(notices, []);
+    assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
+    // Within 800 ms, marked as unsaved, which the panel need not tell of.
+    const tab = () =>
+      vscode.window.tabGroups.all
+        .flatMap((group) => group.tabs)
+        .find(
+          ({ input }) =>
+            input instanceof vscode.TabInputText &&
+            input.uri.toString() === document.uri.toString(),
+        );
+    assert.ok(await within(() => tab()?.isDirty === true));
+    assert.deepStrictEqual(messages, []);
   });
 
   test("writes the diagram as shown, which needs no edit, twice to the block it left", async () => {
