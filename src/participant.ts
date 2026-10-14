@@ -207,6 +207,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
           outcome.ok && !warned && attempt < MAX_REPAIR_ATTEMPTS ? panel.warnings : [];
         if (warnings.length > 0) {
           warned = block;
+          // It repaired any render error before it, and is what the reply drew unless fixed.
+          failure = undefined;
           stream.progress("Fixing rendering warnings…");
           stream.markdown("\n\n---\n\n");
           messages.push(

@@ -586,6 +586,14 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.source, trees);
     assert.strictEqual(panel.current?.error, undefined);
     assert.match(failed.shown, /The fix failed to render, so the chart stays as it was\.$/);
+
+    // A repair that rendered with warnings, which the model leaves, is what it drew, not the block
+    // whose render error it repaired.
+    const repaired = await ask([[broken], [chart(trees)], [text("ECharts draws one tree.")]]);
+    assert.strictEqual(repaired.sent.length, 3);
+    assert.strictEqual(repaired.result?.metadata?.source, trees);
+    assert.strictEqual(panel.current?.source, trees);
+    assert.doesNotMatch(repaired.shown, /failed to render/);
   });
 
   test("adopts a diagram that its own tool call drew, unless it was drawn over since", async () => {
