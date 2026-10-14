@@ -376,13 +376,22 @@ function overlappingLabels(svg: SVGSVGElement): string | undefined {
 
 /**
  * The labels of links drawn over nodes, as Mermaid draws those of links between blocks that it
- * puts side by side: by a quarter of the label, over half of its height.
+ * puts side by side: by a quarter of the label, over half of its height. Not over groups of nodes,
+ * such as a block diagram's composite blocks, which hold the links between their nodes.
  */
 function labelsOverNodes(svg: SVGSVGElement): string | undefined {
-  const nodes = Array.from(svg.querySelectorAll("g.node"), (node) => ({
+  const drawn = Array.from(svg.querySelectorAll("g.node"), (node) => ({
     node,
     box: node.getBoundingClientRect(),
   }));
+  const holds = (outer: DOMRect, inner: DOMRect) =>
+    inner.left >= outer.left &&
+    inner.right <= outer.right &&
+    inner.top >= outer.top &&
+    inner.bottom <= outer.bottom;
+  const nodes = drawn.filter(
+    ({ node, box }) => !drawn.some((other) => other.node !== node && holds(box, other.box)),
+  );
   const over: [Element, Element][] = [];
   for (const edge of svg.querySelectorAll("g.edgeLabel")) {
     const label = edge.querySelector("foreignObject, text");

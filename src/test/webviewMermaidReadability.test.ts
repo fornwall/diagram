@@ -382,6 +382,23 @@ suite("Mermaid readability in the webview", function () {
       ),
       [],
     );
+    // Also in a group of blocks, which the label lies in, as do the blocks.
+    assert.deepStrictEqual(
+      await warnings(
+        'block-beta\n  columns 1\n  block:group\n    columns 3\n    a["Frontend"] space b["API"]\n  end\n  a -- "calls" --> b',
+        800,
+      ),
+      [],
+    );
+    assert.match(
+      (
+        await warnings(
+          'block-beta\n  columns 1\n  block:group\n    columns 2\n    a["Frontend"] b["API"]\n  end\n  a -- "calls" --> b',
+          800,
+        )
+      )[0] ?? "",
+      /^Labels of links lie over nodes, such as "calls" over "(Frontend|API)"/,
+    );
   });
 
   test("tells the model that rendered the diagram", async () => {
