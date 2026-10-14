@@ -52,7 +52,7 @@ Charts have a read-only data view. Toolbox chart-type switching, box zoom and br
 
 Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram: Open Diagram at Cursor**. Language names are case-insensitive; Azure DevOps `::: mermaid` containers, block quotes and list items are supported. Mermaid language aliases follow `markdown-mermaid.languages`. Set `diagram.codeLens.enabled` to `false` to hide the links above blocks.
 
-**Apply** renders edits and updates the block, preserving fences, indentation, quote markers and surrounding text. Changes are undoable and remain unsaved. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block.
+**Apply** renders edits and updates the block, preserving fences, indentation, quote markers and surrounding text, also after the file is renamed in VS Code. Changes are undoable and remain unsaved. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block.
 
 **Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before either action writes them. `/new` and switching between Mermaid and ECharts detach the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
 

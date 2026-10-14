@@ -213,8 +213,14 @@ export class DiagramPanel implements vscode.Disposable {
   private exporting = false;
   /** The last write to a document, which the next one waits for. */
   private writing: Promise<void> | undefined;
-  /** Where a binding moved once its block was written, as the panel follows the written block. */
+  /**
+   * Where a binding moved once its block was written or its document renamed, as the panel follows
+   * the block.
+   */
   private readonly movedBindings = new WeakMap<DocumentBinding, DocumentBinding>();
+  private readonly renames = vscode.workspace.onDidRenameFiles(({ files }) =>
+    this.followRenames(files),
+  );
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
@@ -373,6 +379,7 @@ export class DiagramPanel implements vscode.Disposable {
   dispose(): void {
     this.webview.dispose();
     this.saves.dispose();
+    this.renames.dispose();
   }
 
   // The webview, and the requests waiting for its answers.
@@ -937,10 +944,41 @@ export class DiagramPanel implements vscode.Disposable {
     await writing;
   }
 
-  /** The binding of the block as the panel last wrote it. */
+  /** The binding of the block as the panel last wrote it, or its document was last renamed. */
   private movedBinding(binding: DocumentBinding): DocumentBinding {
     const moved = this.movedBindings.get(binding);
     return moved ? this.movedBinding(moved) : binding;
+  }
+
+  /**
+   * Follows the document that the diagram was opened from to its new name, also as its folder is
+   * renamed in VS Code, for Apply and Write to to write to it, and exports to go beside it.
+   */
+  private followRenames(files: readonly { oldUri: vscode.Uri; newUri: vscode.Uri }[]): void {
+    const renamed = (uri: string | undefined) => {
+      for (const { oldUri, newUri } of uri === undefined ? [] : files) {
+        const old = oldUri.toString();
+        if (uri === old || uri?.startsWith(old.endsWith("/") ? old : `${old}/`)) {
+          return newUri.toString().replace(/\/$/, "") + uri.slice(old.replace(/\/$/, "").length);
+        }
+      }
+      return undefined;
+    };
+    const state = this.state;
+    const uri = state?.document && renamed(state.document.uri);
+    const openedFrom = renamed(state?.openedFrom);
+    if (!state || (uri === undefined && openedFrom === undefined)) return;
+    const document = state.document && uri !== undefined ? { ...state.document, uri } : undefined;
+    // A write that waits for its turn, or an Apply that waits for its render, follows it too.
+    if (state.document && document) this.movedBindings.set(state.document, document);
+    this.state = {
+      ...state,
+      ...(document && { document }),
+      ...(openedFrom !== undefined && { openedFrom }),
+    };
+    void this.store.save(this.state, this.shownRevision);
+    const tab = this.webview.tab;
+    if (tab && document) tab.title = `${state.title} — ${documentName(document)}`;
   }
 
   /**

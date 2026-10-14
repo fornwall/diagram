@@ -355,6 +355,44 @@ suite("documentDiagram", function () {
     assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n```\n");
   });
 
+  test("follows a document that is renamed, also with its folder, to write to it", async () => {
+    const text = "# Notes\n\n```mermaid\nflowchart TD\n```\n";
+    const rename = async (from: vscode.Uri, to: vscode.Uri) => {
+      const renaming = new vscode.WorkspaceEdit();
+      renaming.renameFile(from, to);
+      assert.ok(await vscode.workspace.applyEdit(renaming));
+    };
+    const document = await markdown(text);
+    const { panel, webview } = await restored(openedState(binding(document)));
+    const renamed = vscode.Uri.file(path.join(dir, `renamed-${files++}.md`));
+    await rename(document.uri, renamed);
+    assert.ok(await within(() => panel.current?.document?.uri === renamed.toString()));
+    assert.strictEqual(webview.panel.title, `Flow — ${path.basename(renamed.fsPath)}`);
+    await webview.edit("flowchart LR\n  A --> B");
+    const written = "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n";
+    assert.strictEqual((await vscode.workspace.openTextDocument(renamed)).getText(), written);
+
+    const folder = path.join(dir, `folder-${files++}`);
+    fs.mkdirSync(folder);
+    fs.writeFileSync(path.join(folder, "notes.md"), text);
+    const inFolder = await vscode.workspace.openTextDocument(path.join(folder, "notes.md"));
+    assert.ok((await panel.render(openedState(binding(inFolder)), "document")).ok);
+    const moved = vscode.Uri.file(`${folder}-moved`);
+    await rename(vscode.Uri.file(folder), moved);
+    const movedFile = vscode.Uri.joinPath(moved, "notes.md");
+    assert.ok(await within(() => panel.current?.document?.uri === movedFile.toString()));
+    await webview.edit("flowchart LR\n  A --> B");
+    assert.strictEqual((await vscode.workspace.openTextDocument(movedFile)).getText(), written);
+
+    // A read-only document, which exports go beside.
+    const { document: _, ...unbound } = openedState(binding(inFolder));
+    const openedFrom = movedFile.toString();
+    assert.ok((await panel.render({ ...unbound, openedFrom }, "document")).ok);
+    const readonly = vscode.Uri.joinPath(moved, "read-only.md");
+    await rename(movedFile, readonly);
+    assert.ok(await within(() => panel.current?.openedFrom === readonly.toString()));
+  });
+
   test("says that it wrote to a document that no editor shows, and shows it if asked", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const name = path.basename(document.uri.fsPath);
