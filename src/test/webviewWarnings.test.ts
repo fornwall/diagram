@@ -31,10 +31,7 @@ suite("Warnings of a drawing in the webview as the panel changes size", function
   const width = (css: string) => evaluate(`document.body.style.maxWidth = "${css}"`);
   setup(() => afterTest(() => width("")));
 
-  /**
-   * The warnings that the extension has once they stay the same for a while: a chart is laid out
-   * again just after it is drawn, once the toolbar for it has its height.
-   */
+  /** The warnings that the extension has once they stay the same for a while. */
   const settled = async () => {
     for (;;) {
       const before = JSON.stringify(page.panel.warnings);
@@ -43,12 +40,19 @@ suite("Warnings of a drawing in the webview as the panel changes size", function
     }
   };
 
-  /** The warnings of the diagram drawn anew in a panel of the width, with no width for the full. */
+  /**
+   * The warnings of the diagram drawn anew in a panel of the width, with no width for the full,
+   * which the result of the tool call that drew it gives: those of the drawing as it stays. A chart
+   * drawn while the footer of the diagram before it took room from it would be laid out again, and
+   * checked again, once that went.
+   */
   const drawnAt = async (diagram: Partial<Diagram>, css: string) => {
     await page.draw({ source: "flowchart LR\n  A --> B" });
     await width(css);
     await page.draw(diagram);
-    return settled();
+    const drawn = page.panel.warnings;
+    assert.deepStrictEqual(await settled(), drawn, "The warnings stay those of the drawing.");
+    return drawn;
   };
 
   for (const [name, diagram] of [

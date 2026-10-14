@@ -229,15 +229,32 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   outline-offset: -3px;
 }
 
+/*
+ * Over the top of the drawing below the header, rather than taking room from it: a chart drawn
+ * while it shows would be laid out, and checked, for less room than it has once it goes.
+ */
 #render-status {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
+  box-sizing: border-box;
+  height: 31px;
+  /* As much as it is high: what follows starts where it does. */
+  margin-bottom: -31px;
   padding: 6px 12px;
+  overflow: hidden;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-/* Keep the live region exposed when idle, without reserving space above the drawing. */
+/* Keep the live region exposed when idle, without covering the drawing. */
 #render-status:empty {
+  height: 0;
+  margin: 0;
   padding: 0;
   border: 0;
 }

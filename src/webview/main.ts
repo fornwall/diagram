@@ -321,12 +321,12 @@ async function render(message: RenderMessage): Promise<void> {
     active = undefined;
   }
   // Before rendering, which measures the canvas: the first diagram shows the views, which make the
-  // header taller.
+  // header taller, and the footer of a chart can be lower than that of the diagram before it.
   updateToolbar();
+  prepareFooter(renderer);
   canvas.setAttribute("aria-busy", "true");
   errorElement.hidden = true;
-  // Only for a slow render: the status line would shift a quick one down and back up, and a chart
-  // measured meanwhile would not fit the canvas, as its resize observer may not see the change.
+  // Only for a slow render, over the top of the drawing: a quick one would flash it.
   const statusTimer = setTimeout(() => {
     renderStatus.textContent = `Rendering ${renderer.noun}…`;
   }, 300);
@@ -616,6 +616,26 @@ function hint(noun: string): string {
     ? "nodes or relationships"
     : `${noun}s`;
   return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
+}
+
+/**
+ * Lays the footer out as it will be for the renderer's next drawing, which is drawn without a
+ * selection, before the renderer draws it: a chart lays itself out for the height it has, and
+ * would be laid out again, and checked again, once the footer that the drawing before it had,
+ * such as a flowchart's taller one, makes room for it.
+ */
+function prepareFooter(renderer: Renderer): void {
+  const shown = active;
+  // What the hint says goes by the renderer that shows the drawing.
+  active = renderer;
+  try {
+    selectionLabel.textContent = hint(renderer.itemNoun);
+    selectionLabel.classList.add("hint");
+    clearSelectionButton.hidden = true;
+    highlightPathButton.hidden = !renderer.supportsPaths || pick !== undefined || nothingToClick();
+  } finally {
+    active = shown;
+  }
 }
 
 /** Whether the drawing has no parts to click, as a flowchart without nodes, unlike a chart. */
