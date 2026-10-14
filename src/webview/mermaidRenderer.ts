@@ -705,7 +705,9 @@ export class MermaidRenderer implements Renderer {
           type: result.diagramType,
           source,
           db: parsed,
-          roomWidth: Math.max(0, width),
+          // A hidden tab's page has the default size of a frame, also when it is told that the
+          // tab is shown before it has the tab's size, under load: the panel's is not known.
+          roomWidth: innerWidth === 300 && innerHeight === 150 ? 0 : Math.max(0, width),
           panelWidth: document.body.clientWidth,
         });
       } catch (error) {

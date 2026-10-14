@@ -8,9 +8,8 @@ import type { DiagramDb } from "./mermaidNodes";
 /** Text smaller than this many CSS pixels on screen is too small to read. */
 const MIN_TEXT = 5;
 /**
- * The width that a narrow panel beside the chat has for a drawing, which text is measured at in a
- * narrower panel: it is no more than the size of an empty frame while the panel is hidden, which
- * the page can be told is shown before it has the panel's size, under load.
+ * The width that a narrow panel beside the chat has for a drawing, which text is measured at while
+ * the panel's size is not known.
  */
 const NARROW_ROOM = 500;
 /**
@@ -40,7 +39,10 @@ export interface DrawingFacts {
   type: string;
   source: string;
   db: DiagramDb | undefined;
-  /** The width that the panel has for the drawing, in CSS pixels, or 0 if it is not known. */
+  /**
+   * The width that the panel has for the drawing, in CSS pixels, or 0 if it is not known, as while
+   * the panel is hidden.
+   */
   roomWidth: number;
   /** The width of the whole panel. */
   panelWidth: number;
@@ -108,14 +110,14 @@ const NARROWER: Record<string, string> = {
 };
 
 /**
- * Text that fitting the drawing to the panel's width, or to that of a narrow panel if the panel is
- * narrower, shows too small to read. A drawing is fit to the width alone below HEIGHT_FIT, where
+ * Text that fitting the drawing to the panel's width, or to that of a narrow panel if the panel's is
+ * not known, shows too small to read. A drawing is fit to the width alone below HEIGHT_FIT, where
  * text of any size that Mermaid draws by default reads.
  */
 function tooSmall(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
   const { width, height } = svg.viewBox.baseVal;
-  const narrow = facts.roomWidth < NARROW_ROOM;
-  const room = narrow ? NARROW_ROOM : facts.roomWidth;
+  const known = facts.roomWidth > 0;
+  const room = known ? facts.roomWidth : NARROW_ROOM;
   const fit = room / width;
   if (!(width > 0 && fit < HEIGHT_FIT)) return undefined;
   const size = textSize(svg);
@@ -131,12 +133,12 @@ function tooSmall(svg: SVGSVGElement, facts: DrawingFacts): string | undefined {
   // at least in proportion, as the split view shares it.
   const panel = facts.panelWidth;
   const wider = (panel * width * MIN_TEXT) / size / room;
-  if (!narrow && wider <= panel * MAX_WIDENING) {
+  if (known && wider <= panel * MAX_WIDENING) {
     remedies.push(`widen the panel to at least ${formatCount(Math.ceil(wider / 10) * 10)} px`);
   }
   // A packet is split into rows already.
   if (facts.type !== "packet") remedies.push("split it into several diagrams");
-  const fits = narrow ? "a narrow panel's" : "the panel's";
+  const fits = known ? "the panel's" : "a narrow panel's";
   return (
     `Too small to read: the ${formatCount(Math.round(width))} px wide drawing fits ${fits} ${formatCount(Math.round(room))} px width ` +
     `at ${Math.round(fit * 100)}%, which shows its ${round(size)} px text at ${round(size * fit)} px. ` +

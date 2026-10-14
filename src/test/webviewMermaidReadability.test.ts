@@ -1,8 +1,10 @@
 import * as assert from "node:assert";
+import * as vscode from "vscode";
 import { RenderDiagramTool } from "../tools";
 import { afterTest } from "./afterTest";
+import { webviewTabs } from "./newPanel";
 import { invokeTool } from "./toolText";
-import { suitePage } from "./webviewHarness";
+import { suitePage, UNTIL } from "./webviewHarness";
 
 /** Diagrams of the common types, as a model draws them, that read well in a narrow panel. */
 const READABLE = [
@@ -128,6 +130,9 @@ const READABLE = [
 const chain = (header: string, steps: number) =>
   `${header}\n${Array.from({ length: steps }, (_, i) => `  S${i}[Step ${i} of the pipeline] --> S${i + 1}[Step ${i + 1} of the pipeline]`).join("\n")}`;
 
+/** A timeline 1,190 px wide, which reads in a panel about 430 px wide. */
+const TIMELINE = "timeline\n  2023 : Prototype\n  2024 : Beta\n  2025 : 1.0\n  2026 : 2.0";
+
 const PACKET = `packet
   0-15: "Source Port"
   16-31: "Destination Port"
@@ -148,21 +153,15 @@ suite("Mermaid readability in the webview", function () {
   setup(() => afterTest(() => evaluate(`document.body.style.maxWidth = ""`)));
 
   test("says nothing of diagrams that read well in a narrow panel", async () => {
-    // Also at the size of an empty frame, which the page can have when told that a hidden panel is
-    // shown, under load.
-    for (const width of [450, 300]) {
-      for (const source of READABLE) {
-        assert.deepStrictEqual(await warnings(source, width), [], `${width}: ${source}`);
-      }
+    for (const source of READABLE) {
+      assert.deepStrictEqual(await warnings(source), [], source);
     }
   });
 
   test("says when fitting a drawing to the panel makes its text too small, and what helps", async () => {
-    // A panel this narrow, or one that the page has the size of an empty frame of while it is
-    // hidden, is taken for a narrow panel 500 px wide.
     const tooSmall = (remedy: string) =>
       new RegExp(
-        `^Too small to read: the [\\d,]+ px wide drawing fits a narrow panel's 500 px width at \\d+%, which shows its 16 px text at [\\d.]+ px\\. ${remedy}\\.$`,
+        `^Too small to read: the [\\d,]+ px wide drawing fits the panel's 4\\d\\d px width at \\d+%, which shows its 16 px text at [\\d.]+ px\\. ${remedy}\\.$`,
       );
     assert.match(
       (await warnings(chain("flowchart LR", 15)))[0] ?? "",
@@ -193,7 +192,7 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings(PACKET), []);
     assert.match(
       (await warnings(`---\nconfig:\n  packet: {bitWidth: 32}\n---\n${PACKET}`))[0] ?? "",
-      /\. Show fewer bits per row, with "packet: \{bitsPerRow: 16\}" under "config" in the front matter\.$/,
+      /\. Show fewer bits per row, with "packet: \{bitsPerRow: 16\}" under "config" in the front matter or widen the panel to at least \d+ px\.$/,
     );
     assert.deepStrictEqual(
       await warnings(`---\nconfig:\n  packet: {bitWidth: 32, bitsPerRow: 16}\n---\n${PACKET}`),
@@ -202,18 +201,49 @@ suite("Mermaid readability in the webview", function () {
   });
 
   test("says how wide a panel shows a drawing that is a little too wide for it", async () => {
-    // The panel that the tests draw in is not much wider than 600 px.
-    const periods = Array.from({ length: 7 }, (_, i) => `  ${2010 + i} : Release ${i}`);
-    const timeline = `timeline\n${periods.join("\n")}`;
-    const [narrow] = await warnings(timeline, 550);
+    const [narrow] = await warnings(TIMELINE, 350);
     const wider =
       /^Too small to read: the [\d,]+ px wide drawing fits the panel's (\d+) px width at \d+%, which shows its 16 px text at [\d.]+ px\. Widen the panel to at least (\d+) px or split it into several diagrams\.$/.exec(
         narrow ?? "",
       );
     assert.ok(wider, narrow);
     const [room, width] = [Number(wider[1]), Number(wider[2])];
-    assert.ok(room > 500 && room < 550 && width > 550 && width <= 825, narrow);
-    assert.deepStrictEqual(await warnings(timeline, width), []);
+    assert.ok(room < 350 && width > 350 && width <= 525, narrow);
+    assert.deepStrictEqual(await warnings(TIMELINE, width), []);
+  });
+
+  test("measures for a narrow panel while the page has the size of an empty frame", async () => {
+    const [tab] = await webviewTabs((labels) => labels.length === 1);
+    const column = tab?.group.viewColumn;
+    assert.ok(column);
+    // Too wide for a panel 300 px wide but not for one 500 px wide, and too wide for both.
+    const sources = [TIMELINE, chain("flowchart LR", 15)];
+    const answers = new Map<number, unknown>();
+    const listener = page.webview.onDidReceiveMessage((message) => {
+      if (message.type === "rendered") answers.set(message.requestId, message.warnings);
+    });
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(), column);
+    try {
+      // As when the page hears that the tab is shown before it has the tab's size, under load.
+      await evaluate(`(async () => {
+        ${UNTIL}
+        await until(() => innerWidth === 300, "the size of a hidden tab");
+        receive({type: "tabVisibility", hidden: false});
+        for (const [index, source] of ${JSON.stringify(sources)}.entries()) {
+          const requestId = 2000000 + index;
+          receive({type: "render", requestId, language: "mermaid", source, title: "Hidden"});
+          await until(() => testRenderResults.includes(requestId), "the diagram drawn");
+        }
+      })()`);
+    } finally {
+      listener.dispose();
+      page.panel.show(true);
+    }
+    assert.deepStrictEqual(answers.get(2_000_000), []);
+    assert.match(
+      String((answers.get(2_000_001) as string[] | undefined)?.[0]),
+      /^Too small to read: the [\d,]+ px wide drawing fits a narrow panel's 500 px width at /,
+    );
   });
 
   test("says when a graph has more nodes than read well", async () => {
@@ -277,7 +307,7 @@ suite("Mermaid readability in the webview", function () {
     });
     assert.match(
       result,
-      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\. Too small to read: the [\d,]+ px wide drawing fits a narrow panel's 500 px width .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
+      /^Rendered the flowchart-v2 diagram in the diagram panel next to the chat\. Too small to read: the [\d,]+ px wide drawing fits the panel's 4\d\d px width .* Change "flowchart LR" to "flowchart TB" or split it into several diagrams\.\n\nRevision: \d+\.$/,
     );
   });
 });
