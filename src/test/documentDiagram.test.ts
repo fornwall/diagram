@@ -735,4 +735,32 @@ suite("documentDiagram", function () {
     assert.ok(panel.current?.document?.replaced);
     assert.match(panel.describeForModel() ?? "", /Opened from a code block in notes-\d+\.md/);
   });
+
+  test("an agent's change while an Apply is written keeps the block that it wrote", async () => {
+    const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
+    const { panel, webview } = await restored(openedState(binding(document)));
+    const original = vscode.workspace.applyEdit;
+    const diagram = {
+      language: "mermaid",
+      source: "flowchart TD\n  A --> B",
+      title: "Flow",
+    } as const;
+    let agent: ReturnType<typeof panel.render> | undefined;
+    replace(vscode.workspace, "applyEdit", async (edit) => {
+      // The agent's diagram replaces the user's as VS Code applies the user's to the document.
+      agent ??= panel.render(diagram, "tool");
+      return original(edit);
+    });
+    await webview.edit("flowchart LR");
+    assert.ok((await agent)?.ok);
+    assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart LR\n```\n");
+    assert.strictEqual(panel.current?.document?.fence.source, "flowchart LR");
+    assert.ok(panel.current?.document?.replaced);
+    // Writing the agent's diagram asks first, and finds the block.
+    const asked = recordMessages("showWarningMessage", () => "Write");
+    await writeShown(webview);
+    assert.strictEqual(document.getText(), "# Notes\n\n```mermaid\nflowchart TD\n  A --> B\n```\n");
+    assert.strictEqual(asked.length, 1);
+    assert.match(asked[0] ?? "", /^Write this diagram to notes-\d+\.md\?$/);
+  });
 });

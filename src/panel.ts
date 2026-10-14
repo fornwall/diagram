@@ -935,8 +935,13 @@ export class DiagramPanel implements vscode.Disposable {
       this.movedBindings.set(current, moved);
       void reportUnshownWrite(moved, saved);
       const state = this.state;
-      if (state?.document === current) {
-        this.state = { ...state, document: moved };
+      const bound = state?.document;
+      // An agent's change that came while VS Code applied the write copied the binding, with the
+      // block as it was before, to ask before writing that change: it follows the block too.
+      if (bound && bound.uri === current.uri && bound.fence === current.fence) {
+        const followed = bound === current ? moved : { ...bound, fence: outcome.fence };
+        if (bound !== current) this.movedBindings.set(bound, followed);
+        this.state = { ...state, document: followed };
         await this.store.save(this.state, this.shownRevision);
       }
     })();
