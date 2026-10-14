@@ -868,19 +868,29 @@ function hiddenLabels(model: Model, base: JsonObject): string[] {
   return warnings;
 }
 
+/** The items of a series that a legend lists, rather than the series, by its type. */
+const LEGEND_ITEMS: Record<string, string> = {
+  themeRiver: "layers",
+  graph: "categories",
+  radar: "items",
+  chord: "nodes",
+};
+
 /** A legend that pages its entries, or that is drawn on top of the texts of other components. */
 function legends(views: Views, model: Model, base: JsonObject, texts: Text[]): string[] {
   const warnings: string[] = [];
   const types = new Set<string>();
   model.eachRawSeries((series) => types.add(series.subType));
-  // What the entries of a legend name: the slices of a pie or funnel, or else the series.
+  // What the entries of a legend name: the slices of a pie or funnel, the items of a series that
+  // lists them, as the layers of a theme river, or else the series.
+  const items = new Set([...types].map((type) => LEGEND_ITEMS[type] ?? "series"));
   const remedy =
     types.has("pie") || types.has("funnel")
       ? 'show fewer slices, as the largest and an "Other" that sums up the rest'
       : [...types].every((type) => type === "line")
         ? 'show fewer series, or name each line at its end with "endLabel": {"show": true, ' +
           '"formatter": "{a}"} instead of a legend'
-        : "show fewer series, or give them shorter names";
+        : `show fewer ${items.size === 1 ? [...items][0] : "entries"}, or give them shorter names`;
   model.eachComponent("legend", (legend) => {
     if (legend.get("show") === false) return;
     const path = componentPath(base, "legend", legend.componentIndex);

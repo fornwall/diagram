@@ -759,6 +759,41 @@ suite("echartsChecks", function () {
       ).join(),
       /^legend has more entries than fit the panel, which it pages through, \d+ pages of them, so that a reader sees only some at a time: show fewer slices, as the largest and an "Other" that sums up the rest\.$/,
     );
+    // The entries of a theme river name its layers, of the one series, and those of a graph the
+    // categories of its nodes.
+    const layers = Array.from({ length: 20 }, (_, index) => `Team ${index + 1}`);
+    const river = {
+      legend: {},
+      singleAxis: { type: "time" },
+      series: [
+        {
+          type: "themeRiver",
+          data: layers.flatMap((name) => [
+            ["2026-01-01", 2, name],
+            ["2026-01-02", 5, name],
+          ]),
+        },
+      ],
+    };
+    const graph = {
+      legend: {},
+      series: [
+        {
+          type: "graph",
+          categories: layers.map((name) => ({ name })),
+          data: layers.map((name, category) => ({ name, category, x: category, y: 0 })),
+        },
+      ],
+    };
+    for (const [option, remedy] of [
+      [river, "show fewer layers, or give them shorter names"],
+      [graph, "show fewer categories, or give them shorter names"],
+    ] as const) {
+      assert.match(
+        warningsOf(option, { width: 420, height: 420 }).join(),
+        new RegExp(`^legend has more entries than fit the panel, .*: ${remedy}\\.$`),
+      );
+    }
     assert.deepStrictEqual(
       warningsOf(
         chart([
