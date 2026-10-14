@@ -1060,6 +1060,22 @@ suite("panel", function () {
     assert.ok((await panel.updateChart({ limit: 1, revision: revision + 1 }, token)).ok);
   });
 
+  test("a diagram restored after a restart keeps its revision, which a model may still hold", async () => {
+    const values = new Map<string, unknown>();
+    const { panel, webview } = await newFakePanel(values);
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    await webview.edit("flowchart LR\n  A --> C");
+    const revision = panel.revision;
+    assert.strictEqual(revision, 2);
+    panel.dispose();
+
+    const { panel: restored } = await newFakePanel(values);
+    assert.strictEqual(restored.revision, revision);
+    // A later diagram's revision is not one that a model held for an earlier one.
+    assert.ok((await restored.render(flowchart, "tool")).ok);
+    assert.strictEqual(restored.revision, revision + 1);
+  });
+
   test("marking the diagram does not render it again, and a new diagram clears the marks", async () => {
     const { panel, webview } = await newFakePanel();
     const { sent } = webview;

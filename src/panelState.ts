@@ -15,24 +15,38 @@ const MAX_SAVED_CHART_SOURCE = 1_000_000;
 
 export class StateStore {
   /** State is replaced on every edit; weak identity avoids retaining an old large chart. */
-  private lastSave: { state: WeakRef<DiagramState>; promise: Promise<void> } | undefined;
+  private lastSave:
+    | { state: WeakRef<DiagramState>; revision: number; promise: Promise<void> }
+    | undefined;
   private failed = false;
 
   constructor(private readonly memento: vscode.Memento) {}
 
-  load(): DiagramState | undefined {
-    const state = restoredState(this.memento.get(STATE_KEY));
-    if (state) this.lastSave = { state: new WeakRef(state), promise: Promise.resolve() };
-    return state;
+  /**
+   * The saved state, and the revision it was shown in, which a model may still hold from a chat
+   * that goes on after VS Code restarts.
+   */
+  load(): { state: DiagramState; revision: number } | undefined {
+    const saved = this.memento.get(STATE_KEY);
+    const state = restoredState(saved);
+    if (!state) return undefined;
+    const revision =
+      isPlainObject(saved) && Number.isSafeInteger(saved.revision) && Number(saved.revision) >= 0
+        ? Number(saved.revision)
+        : 0;
+    this.lastSave = { state: new WeakRef(state), revision, promise: Promise.resolve() };
+    return { state, revision };
   }
 
   /**
-   * Saving the state already saved, or being saved, shares that write: reloads and reopening the
-   * panel render the same state, and serializing a large chart source again is costly.
+   * Saving the state already saved, or being saved, in the same revision shares that write:
+   * reloads and reopening the panel render the same state, and serializing a large chart source
+   * again is costly.
    */
-  save(state: DiagramState): Promise<void> {
-    if (this.lastSave?.state.deref() === state) return this.lastSave.promise;
-    let saved: unknown = state;
+  save(state: DiagramState, revision: number): Promise<void> {
+    const last = this.lastSave;
+    if (last?.state.deref() === state && last.revision === revision) return last.promise;
+    let saved: object = state;
     if (
       state.chart &&
       (state.chart.file !== undefined || state.chart.command !== undefined) &&
@@ -46,11 +60,11 @@ export class StateStore {
       const { source: _, ...fence } = state.document.fence;
       saved = { ...state, document: { ...state.document, fence } };
     }
-    const saving = { state: new WeakRef(state), promise: Promise.resolve() };
+    const saving = { state: new WeakRef(state), revision, promise: Promise.resolve() };
     this.lastSave = saving;
     saving.promise = (async () => {
       try {
-        await this.memento.update(STATE_KEY, saved);
+        await this.memento.update(STATE_KEY, { ...saved, revision });
         this.failed = false;
       } catch (error) {
         // Failed writes must remain retryable, including when the state has not changed.

@@ -350,7 +350,7 @@ suite("chartTools", function () {
     assert.ok(!result.ok);
     assert.match(result.error, /previous chart is kept/);
     assert.deepStrictEqual(panel.current, before);
-    assert.deepStrictEqual(values.get("diagram.state"), before);
+    assert.deepStrictEqual(values.get("diagram.state"), { ...before, revision: panel.revision });
     const renders = sent.filter((message) => message.type === "render");
     assert.strictEqual(renders.length, 2);
     assert.deepStrictEqual(sent.at(-1), { type: "annotate", ...annotation });

@@ -21,7 +21,7 @@ function memento(update: (value: unknown) => Thenable<void>, saved?: unknown) {
 }
 
 function load(saved: unknown): DiagramState | undefined {
-  return new StateStore(memento(async () => {}, saved)).load();
+  return new StateStore(memento(async () => {}, saved)).load()?.state;
 }
 
 suite("panelState", () => {
@@ -32,29 +32,40 @@ suite("panelState", () => {
     const store = new StateStore(
       memento(() => (++writes === 1 ? pending.promise : Promise.resolve())),
     );
-    const saving = store.save(state);
-    assert.strictEqual(store.save(state), saving);
+    const saving = store.save(state, 1);
+    assert.strictEqual(store.save(state, 1), saving);
     assert.strictEqual(writes, 1);
     pending.reject(new Error("Storage is unavailable"));
     await saving;
     assert.match(warnings[0] ?? "", /Storage is unavailable/);
-    await store.save(state);
+    await store.save(state, 1);
     assert.strictEqual(writes, 2, "retry unchanged state after failed persistence");
-    await store.save(state);
+    await store.save(state, 1);
     assert.strictEqual(writes, 2);
-    await store.save({ ...state, title: "Replacement" });
-    await store.save(state);
+    await store.save({ ...state, title: "Replacement" }, 1);
+    await store.save(state, 1);
     assert.strictEqual(writes, 4, "rolling back a previously saved state must write it again");
     assert.strictEqual(warnings.length, 1);
   });
 
-  test("restored state needs no save until changed", async () => {
-    let writes = 0;
-    const store = new StateStore(memento(async () => void writes++, state));
+  test("restored state needs no save until changed, also in its revision", async () => {
+    const saved: unknown[] = [];
+    const store = new StateStore(memento(async (value) => void saved.push(value), state));
+    // Older versions saved no revision.
     const loaded = store.load();
-    assert.deepStrictEqual(loaded, state);
-    if (loaded) await store.save(loaded);
-    assert.strictEqual(writes, 0);
+    assert.deepStrictEqual(loaded, { state, revision: 0 });
+    if (loaded) await store.save(loaded.state, 0);
+    assert.strictEqual(saved.length, 0);
+    if (loaded) await store.save(loaded.state, 3);
+    assert.deepStrictEqual(saved, [{ ...state, revision: 3 }]);
+    assert.deepStrictEqual(new StateStore(memento(async () => {}, saved[0])).load(), {
+      state,
+      revision: 3,
+    });
+    for (const revision of [-1, 1.5, "3", null]) {
+      const restored = new StateStore(memento(async () => {}, { ...state, revision })).load();
+      assert.deepStrictEqual(restored, { state, revision: 0 }, String(revision));
+    }
   });
 
   test("restores the states that older versions saved, leaving out what is no longer used", () => {
@@ -154,9 +165,9 @@ suite("panelState", () => {
       editedByUser: false,
       error: "stale",
     };
-    await store.save(chart);
-    await store.save({ ...chart, editedByUser: true });
-    await store.save({ ...chart, chart: { type: "pie", data: "a,1" } });
+    await store.save(chart, 1);
+    await store.save({ ...chart, editedByUser: true }, 1);
+    await store.save({ ...chart, chart: { type: "pie", data: "a,1" } }, 1);
     assert.deepStrictEqual(
       saved.map((value) => (value as DiagramState).source === undefined),
       [true, false, false],
@@ -170,10 +181,10 @@ suite("panelState", () => {
     const source = "flowchart LR\n  A --> B";
     const fence = { language: "mermaid", source, openingLine: 2, lastLine: 4, prefix: "" } as const;
     const document = { uri: "file:///a.md", fence };
-    await store.save({ ...state, source, document });
+    await store.save({ ...state, source, document }, 1);
     // An edit that the block does not hold yet.
     const edited: DiagramState = { ...state, source: "flowchart TD", editedByUser: true, document };
-    await store.save(edited);
+    await store.save(edited, 1);
     const [once, twice] = saved as DiagramState[];
     assert.strictEqual(once?.document?.fence.source, undefined);
     assert.strictEqual(twice?.document?.fence.source, state.source);

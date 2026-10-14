@@ -150,9 +150,9 @@ export class DiagramPanel implements vscode.Disposable {
   private renderVersion = 0;
   /**
    * Counts changes to the diagram shown, which tools and Chart Options see as its revision. Drawing
-   * the same diagram again, as when the page reloads, is no change.
+   * the same diagram again, as when the page reloads or VS Code restarts, is no change.
    */
-  private shownRevision = 0;
+  private shownRevision: number;
   /** Counts the changes that the user or a document started, such as an Apply or a Refresh. */
   private userChanges = 0;
   /** Pending renders and picks are replayed when the webview reloads. */
@@ -222,7 +222,9 @@ export class DiagramPanel implements vscode.Disposable {
       (message) => this.onMessage(message),
       () => this.closed(),
     );
-    this.state = this.store.load();
+    const restored = this.store.load();
+    this.state = restored?.state;
+    this.shownRevision = restored?.revision ?? 0;
     this.updateContext();
   }
 
@@ -342,7 +344,7 @@ export class DiagramPanel implements vscode.Disposable {
       return undefined;
     }
     this.state = { ...this.state, origin: "participant" };
-    void this.store.save(this.state);
+    void this.store.save(this.state, this.shownRevision);
     return this.state;
   }
 
@@ -589,7 +591,7 @@ export class DiagramPanel implements vscode.Disposable {
     } as const;
     this.sourceRequestId = message.requestId;
     // Preserve new source even if VS Code reloads before the webview answers.
-    let saved = this.store.save(state);
+    let saved = this.store.save(state, revision);
     const result = await new Promise<RenderOutcome>((resolve) => {
       this.pendingRender = { message, resolve };
       this.post(message);
@@ -630,7 +632,7 @@ export class DiagramPanel implements vscode.Disposable {
     ) {
       // A late answer replaces the error.
       this.state = { ...state, error: UNFINISHED };
-      void this.store.save(this.state);
+      void this.store.save(this.state, this.shownRevision);
     }
     if (this.pendingRender?.message !== message) return;
     this.finishRender(
@@ -686,7 +688,7 @@ export class DiagramPanel implements vscode.Disposable {
     const error = result.ok ? undefined : result.error;
     if (state.error === error) return undefined;
     this.state = { ...state, error };
-    return this.store.save(this.state);
+    return this.store.save(this.state, this.shownRevision);
   }
 
   private cancelRender(error: string): void {
@@ -925,7 +927,7 @@ export class DiagramPanel implements vscode.Disposable {
       const state = this.state;
       if (state?.document === current) {
         this.state = { ...state, document: moved };
-        await this.store.save(this.state);
+        await this.store.save(this.state, this.shownRevision);
       }
     })();
     this.writing = writing.catch(() => {});
@@ -1304,7 +1306,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.chartTable = chartTable;
     this.annotation = annotation;
     if (keepMarks) this.selection = selection;
-    await this.store.save(state);
+    await this.store.save(state, this.shownRevision);
     if (this.renderVersion === version && tab && this.webview.tab === tab) {
       // Draw the kept chart again, also after a page that stopped responding, which may still draw
       // the abandoned chart. Only a chart that failed to render waits for the kept one.
