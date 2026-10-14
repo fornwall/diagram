@@ -464,6 +464,52 @@ suite("echartsChecks", function () {
     );
   });
 
+  test("tells of the same problem of several series apart where the remedy or the dataset differs", () => {
+    // Items without a value, which a pie and a scatter series each write in a shape of their own.
+    assert.deepStrictEqual(
+      warningsOf({
+        xAxis: {},
+        yAxis: {},
+        series: [
+          { type: "scatter", data: [{ x: 1, y: 2 }] },
+          { type: "pie", radius: "20%", data: [{ name: "A", count: 2 }] },
+        ],
+      }).filter((warning) => warning.includes("without a")),
+      [
+        'series[0].data has 1 item without a "value", such as {"x":1,"y":2}, which ECharts draws nothing for: write each as {"value": [x, y]} or [x, y].',
+        'series[1].data has 1 item without a "value", such as {"name":"A","count":2}, which ECharts draws nothing for: write each as {"name": "A", "value": 3}.',
+      ],
+    );
+    const datasets = (indexes: number[]) => ({
+      dataset: [
+        {
+          source: [
+            ["city", "share"],
+            ["Oslo", "4 %"],
+          ],
+        },
+        {
+          source: [
+            ["city", "share"],
+            ["Rome", "5 %"],
+          ],
+        },
+      ],
+      xAxis: { type: "category" },
+      yAxis: {},
+      series: indexes.map((datasetIndex) => ({ type: "bar", datasetIndex })),
+    });
+    assert.deepStrictEqual(warningsOf(datasets([0, 1])), [
+      'The dataset that series[0] reads has 1 value that ECharts cannot read as a number, such as "4 %", and draws nothing for: write plain numbers, without units, "%" or thousands separators.',
+      'The dataset that series[1] reads has 1 value that ECharts cannot read as a number, such as "5 %", and draws nothing for: write plain numbers, without units, "%" or thousands separators.',
+    ]);
+    // Those that read the same dataset have it once.
+    assert.match(
+      warningsOf(datasets([1, 1])).join("\n"),
+      /^The dataset that series\[0\] and series\[1\] read has /,
+    );
+  });
+
   test("tells a model of the first warnings, up to a length, and how many more there are", () => {
     const warnings = Array.from({ length: 30 }, (_, index) => `Warning ${index}`.padEnd(200, "."));
     const capped = capWarnings(warnings);

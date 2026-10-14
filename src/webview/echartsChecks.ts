@@ -300,8 +300,12 @@ function unreadableValues(series: Series, path: string): Finding[] {
       }
     }
   }
-  // The data of the series, or the dataset they read.
+  // The data of the series, or the dataset they read, which the same problem of other series that
+  // read it merges with.
   const fromDataset = series.option.data == null;
+  const source = fromDataset
+    ? JSON.stringify(series.option.datasetId ?? series.option.datasetIndex ?? 0)
+    : "data";
   const where = (paths: string[]) =>
     fromDataset
       ? `The dataset that ${listed(paths)} ${verb(paths, "reads", "read")} has`
@@ -309,12 +313,13 @@ function unreadableValues(series: Series, path: string): Finding[] {
   const finding = (
     kind: keyof typeof found,
     say: (paths: string[], count: number, example: string) => string,
+    remedy = "",
   ): Finding[] =>
     found[kind].count === 0
       ? []
       : [
           {
-            key: `${kind}:${fromDataset}`,
+            key: `${kind}:${source}:${remedy}`,
             path,
             amount: found[kind].count,
             merge: "sum",
@@ -351,6 +356,8 @@ function unreadableValues(series: Series, path: string): Finding[] {
       (paths, count, example) =>
         `${where(paths)} ${plural(count, "item")} without a "value", such as ${example}, which ` +
         `ECharts draws nothing for: write each as ${shape}.`,
+      // Only with those of series that write items in the same shape.
+      shape,
     ),
   ];
 }
