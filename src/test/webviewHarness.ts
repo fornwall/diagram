@@ -181,6 +181,10 @@ export function suitePage(): Page {
   // editor that an earlier test left or opened beside it, also one that opens late under load,
   // would halve its width: close the other tab groups.
   setup(async () => {
+    // Nor does a test start with the keyboard focus that an earlier one left in the page: the next
+    // drawing would take it while the page has the focus, which VS Code gives it when it will, and
+    // a chart then shows the item it had focused, as the pointer does.
+    await page().harness.evaluate("document.activeElement?.blur()");
     const groups = vscode.window.tabGroups.all;
     const own = groups.find((group) =>
       group.tabs.some((tab) => tab.input instanceof vscode.TabInputWebview),
