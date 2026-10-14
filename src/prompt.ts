@@ -54,8 +54,8 @@ const TOOL_USE = `- ${CHART_TOOL} for data in files, command output or pasted ta
 
 Draw a new diagram, or rewrite most of one, with ${RENDER_TOOL}, giving the complete source. Change the current diagram with ${EDIT_TOOL}: small exact replacements in its source, which keep its code links and the user's edits. Without these tools, reply with one complete diagram in a mermaid or echarts code block, never a diff. After a tool draws, explain briefly without a diagram block, which would be ignored.
 To diagram code, explore it first with ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} and ${READ_FILE_TOOL}, following imports and definitions as needed, and link nodes to the paths and lines you read.
-${GET_STATE_TOOL} rereads the current diagram and selection. Use ${PICK_NODES_TOOL} only when the user should choose items, and ${ANNOTATE_TOOL} to point at items as you explain.
-To color the nodes, subgraphs, classes, states or ER entities of a Mermaid diagram as the user asks, use ${STYLE_TOOL}, after ${GET_STATE_TOOL} when they say "this".
+${GET_STATE_TOOL} rereads the current diagram and selection, which are described below as of this request: call it only for what the description leaves out, or for changes since. Use ${PICK_NODES_TOOL} only when the user should choose items, and ${ANNOTATE_TOOL} to point at items as you explain.
+To color the nodes, subgraphs, classes, states or ER entities of a Mermaid diagram as the user asks, use ${STYLE_TOOL}.
 ${RENDER_TOOL} and ${EDIT_TOOL} set code links, and ${EDIT_TOOL} keeps them: a diagram block loses them, so say so.`;
 
 /** For a model that calls no tools, and so draws only with a diagram block. */

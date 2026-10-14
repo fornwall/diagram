@@ -473,6 +473,10 @@ suite("participant", () => {
     assert.strictEqual(panel.current?.source, "flowchart TD\n  A --> B");
     assert.strictEqual(shown, "Here it is:\nIt has two nodes.");
     assert.strictEqual(sent.length, 2);
+    // The model is not sent to reread the diagram and selection it was given.
+    const instructions = messageText(sent[0]?.messages[0]);
+    assert.match(instructions, /call it only for what the description leaves out, or for changes/);
+    assert.doesNotMatch(instructions, /after diagram_getState/);
   });
 
   for (const finalBlock of [false, true]) {
