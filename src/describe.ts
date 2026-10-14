@@ -6,6 +6,7 @@ import { describeUnits } from "./chartColumns";
 import type { ChartPresentation } from "./chartPresentation";
 import type { DataTable } from "./data";
 import { documentName } from "./documentDiagram";
+import { type ItemNames, relationshipList } from "./itemNames";
 import { lineDiff } from "./lineDiff";
 import { linkText } from "./links";
 import type { DiagramState } from "./panel";
@@ -16,6 +17,7 @@ import {
   type DiagramNode,
   diagramNoun,
   EDIT_TOOL,
+  GET_IMAGE_TOOL,
   GET_STATE_TOOL,
   INSPECT_DATA_TOOL,
   isPlainObject,
@@ -24,7 +26,7 @@ import {
   type RepeatedName,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { formatCount, inWords, plural, quoteAll } from "./text";
+import { formatCount, inWords, joinWords, plural, quoteAll } from "./text";
 import { formatOption } from "./webview/optionSource";
 
 /**
@@ -60,7 +62,8 @@ const MAX_VALUE_LINES = 8;
 interface Drawing {
   selection?: readonly DiagramNode[];
   annotation?: Annotation | undefined;
-  relationships?: readonly DiagramNode[];
+  /** The nodes and relationships drawn, by the names that the tools take for them. */
+  items?: ItemNames | undefined;
   repeatedNames?: readonly RepeatedName[];
   warnings?: readonly string[];
   /**
@@ -79,7 +82,7 @@ export function describeDiagram(
   {
     selection = [],
     annotation,
-    relationships = [],
+    items,
     repeatedNames = [],
     warnings = [],
     chartTable,
@@ -162,22 +165,9 @@ export function describeDiagram(
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
-  // Their labels tell their ends and direction, and their ids their kind; the selection and picks
-  // name the ends' ids too.
-  const listed = relationships
-    .map(({ label, id }) => `${JSON.stringify(label)} (id: ${JSON.stringify(id)})`)
-    .join(", ");
-  if (listed && (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH)) {
-    lines.push(
-      `Selectable relationships${has(ANNOTATE_TOOL) ? ` (use these exact ids for ${ANNOTATE_TOOL})` : ""}: ${listed}.`,
-    );
-  } else if (listed && has(GET_STATE_TOOL)) {
-    const many = plural(relationships.length, "selectable relationship");
-    lines.push(
-      detail === "summary" || detail === "source"
-        ? `It has ${many}, too many to list in the room left in your input.`
-        : `It has ${many}, too many to list in every request; ${GET_STATE_TOOL} lists their ids.`,
-    );
+  const named = items && describeRelationships(items, detail, has);
+  if (named) {
+    lines.push(named);
   }
   if (repeatedNames.length > 0 && has(ANNOTATE_TOOL)) {
     lines.push(
@@ -186,11 +176,11 @@ export function describeDiagram(
   }
   const nodes = `${nodeNoun(state.language)}s`;
   const parts = selection.some((node) => node.relationship) ? "items" : nodes;
-  const relationshipIds = new Set(relationships.map(({ id }) => id));
-  const marksRelationships = annotation?.marks.some(({ id }) => relationshipIds.has(id));
+  const marksRelationships = annotation?.marks.some(({ id }) => items?.relationship(id));
   const marked = describeMarks(
     annotation,
     marksRelationships ? "items" : nodes,
+    (id) => items?.name(id) ?? id,
     has(ANNOTATE_TOOL),
   );
   if (marked) {
@@ -258,10 +248,49 @@ export function describeChartParameters(chart: unknown): string {
     : description;
 }
 
+/**
+ * How a model names the edges or messages of a drawing for the tools that take item ids: by their
+ * ends' ids, which it knows from the source, unlike their ids, and by their ids those between the
+ * same nodes as others, in a list that a long one leaves out.
+ */
+function describeRelationships(
+  items: ItemNames,
+  detail: Detail,
+  has: (tool: string) => boolean,
+): string | undefined {
+  const { relationships } = items.drawn;
+  const tools = [ANNOTATE_TOOL, GET_IMAGE_TOOL].filter(has);
+  if (relationships.length === 0 || tools.length === 0) return undefined;
+  const kinds = new Set(relationships.map(({ relationship }) => relationship?.kind));
+  const [one, many] =
+    kinds.size > 1
+      ? ["an edge or message", "edges and messages"]
+      : kinds.has("message")
+        ? ["a message", "messages"]
+        : ["an edge", "edges"];
+  // An example of the drawing's own, which shows that ids are those of the source.
+  const example =
+    relationships.map(({ id }) => items.name(id)).find((name) => !items.has(name)) ?? "A --> B";
+  const naming = `Name ${one} by its ends' ids, as in ${JSON.stringify(example)}, for ${joinWords(tools, "and")}`;
+  const shared = relationships.filter(({ id }) => items.name(id) === id);
+  if (shared.length === 0) return `${naming}.`;
+  const listed = relationshipList(shared);
+  if (detail === "full" || listed.length <= MAX_RELATIONSHIPS_LENGTH) {
+    return `${naming}, and by these ids the ${many} between the same nodes as others: ${listed}.`;
+  }
+  const these = `${plural(shared.length, one.replace(/^an? /, ""), many)} go between the same nodes as others`;
+  return detail === "summary" || detail === "source"
+    ? `${naming}. ${these}, too many to list their ids in the room left in your input.`
+    : has(GET_STATE_TOOL)
+      ? `${naming}. ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`
+      : `${naming}.`;
+}
+
 /** What the user is looking at on the diagram, as the last call to the annotate tool left it. */
 function describeMarks(
   annotation: Annotation | undefined,
   parts: string,
+  name: (id: string) => string,
   annotates: boolean,
 ): string | undefined {
   if (!annotation || (annotation.marks.length === 0 && annotation.caption === undefined)) {
@@ -275,7 +304,7 @@ function describeMarks(
   if (marks.length > 0) {
     const listed = marks.map(
       ({ id, kind, note }) =>
-        `${JSON.stringify(id)} (${kind}${note === undefined ? "" : `: ${JSON.stringify(note)}`})`,
+        `${JSON.stringify(name(id))} (${kind}${note === undefined ? "" : `: ${JSON.stringify(note)}`})`,
     );
     lines.push(
       `Marked ${parts}: ${listed.join(", ")}.` +

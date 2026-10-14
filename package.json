@@ -420,7 +420,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the panel's current diagram or chart: source, revision, chart parameters, code links, render error, user edits, marks, selected items, and the ids of selectable edges, sequence messages and same-named chart items. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
+        "modelDescription": "Read the panel's current diagram or chart: source, revision, chart parameters, code links, render error, user edits, marks, selected items, and the ids of same-named chart items and of edges or sequence messages between the same nodes. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
         "tags": [
           "diagram",
           "mermaid",

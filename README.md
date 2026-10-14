@@ -65,7 +65,7 @@ Any chat agent can use these tools; `@diagram` includes them by default, unless 
 | `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript, including callbacks, custom series and timelines. Reports render errors, with fixes for common Mermaid mistakes, chart problems such as hidden labels, unreadable values, values beyond an axis or misspelled keys, and Mermaid drawings that read badly in the panel. |
 | `diagram_edit` | `#diagramEdit` | Change the current diagram or chart with exact text replacements in its source, keeping the rest, its title, code links and click prompt. |
 | `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
-| `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of selectable relationships. |
+| `diagram_getState` | `#diagramState` | Read the source, revision, edits, render error, selection, marks and the ids of edges or messages between the same nodes. |
 | `diagram_getImage` | `#diagramImage` | Look at the drawing, or at the part around some items, as an image, to check its layout, for a model that accepts images. |
 | `diagram_guide` | `#diagramGuide` | Look up a Mermaid diagram type or ECharts chart kind: an example that renders, the syntax rules models get wrong and layout tips. |
 | `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |

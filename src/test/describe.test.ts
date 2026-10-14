@@ -2,8 +2,10 @@ import * as assert from "node:assert";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { describeChartParameters, describeDiagram, withoutValueRuns } from "../describe";
+import { ItemNames } from "../itemNames";
 import { lineDiff } from "../lineDiff";
 import type { DiagramState } from "../panel";
+import type { DiagramNode } from "../protocol";
 import { formatOption } from "../webview/optionSource";
 
 suite("describe", () => {
@@ -177,40 +179,99 @@ suite("describe", () => {
     assert.strictEqual(withoutValueRuns('{\n  "a": [\n    1,\n    2\n  ]\n}'), undefined);
   });
 
-  test("many relationships are left out of requests, but listed in full when asked for", () => {
-    const relationships = Array.from({ length: 100 }, (_, index) => ({
-      id: `edge:L_A_B_${index}`,
-      label: "A → B",
-      relationship: { kind: "edge", source: "A", target: "B", direction: "forward" } as const,
-    }));
+  /** A relationship of the kind, between the ends, as the page reports it. */
+  const relation = (
+    id: string,
+    label: string,
+    source: string,
+    target: string,
+    direction: "forward" | "both" | "undirected" = "forward",
+  ) =>
+    ({
+      id,
+      label,
+      relationship: {
+        kind: id.startsWith("message:") ? "message" : "edge",
+        source,
+        target,
+        direction,
+      },
+    }) satisfies DiagramNode;
+
+  test("tells a model to name edges and messages by their ends, and the ids of those that share them", () => {
+    const flow = flowchart("flowchart LR\n  parse[Parser] --> check[Checker]\n  check --- emit");
+    const items = new ItemNames({
+      nodeIds: ["parse", "check", "emit"],
+      relationships: [
+        relation("edge:L_parse_check_0", "Parser → Checker", "parse", "check"),
+        relation("edge:L_check_emit_0", "Checker — emit", "check", "emit", "undirected"),
+      ],
+    });
+    const annotation = {
+      marks: [
+        { id: "edge:L_check_emit_0", kind: "problem" as const, note: "Slow" },
+        { id: "parse", kind: "current" as const },
+      ],
+      dim: false,
+    };
+    const described = describeDiagram(flow, { items, annotation });
+    assert.match(
+      described,
+      /^Name an edge by its ends' ids, as in "parse --> check", for diagram_annotate and diagram_getImage\.$/m,
+    );
+    // Marks are named as the model names them.
+    assert.match(
+      described,
+      /^Marked items: "check --> emit" \(problem: "Slow"\), "parse" \(current\)\./m,
+    );
+    assert.doesNotMatch(described, /L_parse_check_0/);
+    // As for /explain, which may view the diagram but not mark it, and a model without tools.
+    assert.match(
+      describeDiagram(flow, { items, tools: new Set(["diagram_getImage"]) }),
+      /^Name an edge by its ends' ids, as in "parse --> check", for diagram_getImage\.$/m,
+    );
+    assert.doesNotMatch(describeDiagram(flow, { items, tools: new Set() }), /ends/);
+
+    const sequence = flowchart("sequenceDiagram\n  C->>S: Login\n  S-->>C: Token\n  C->>S: Fetch");
+    const messages = new ItemNames({
+      nodeIds: ["C", "S"],
+      relationships: [
+        relation("message:i0", "C → S: Login", "C", "S"),
+        relation("message:i1", "S → C: Token", "S", "C"),
+        relation("message:i2", "C → S: Fetch", "C", "S"),
+      ],
+    });
+    assert.match(
+      describeDiagram(sequence, { items: messages }),
+      /^Name a message by its ends' ids, as in "S --> C", for diagram_annotate and diagram_getImage, and by these ids the messages between the same nodes as others: "C → S: Login" \(id: "message:i0"\), "C → S: Fetch" \(id: "message:i2"\)\.$/m,
+    );
+  });
+
+  test("many relationships between the same nodes are left out of requests, but listed in full when asked for", () => {
+    const relationships = Array.from({ length: 100 }, (_, index) =>
+      relation(`edge:L_A_B_${index}`, "A → B", "A", "B"),
+    );
+    const items = new ItemNames({ nodeIds: ["A", "B"], relationships });
     const state = flowchart("flowchart LR\n  A --> B");
-    const summary = describeDiagram(state, { relationships });
+    const summary = describeDiagram(state, { items });
     assert.doesNotMatch(summary, /L_A_B_/);
     assert.match(
       summary,
-      /It has 100 selectable relationships, .*diagram_getState lists their ids/,
-    );
-    assert.doesNotMatch(
-      describeDiagram(state, { relationships, tools: new Set<string>() }),
-      /relation/,
+      /as in "A --> B", for diagram_annotate and diagram_getImage\. 100 edges go between the same nodes as others, too many to list their ids in every request; diagram_getState lists them\./,
     );
     assert.match(
-      describeDiagram(state, { relationships, detail: "full" }),
+      describeDiagram(state, { items, detail: "full" }),
       /: "A → B" \(id: "edge:L_A_B_0"\), .*, "A → B" \(id: "edge:L_A_B_99"\)\.$/m,
     );
-    // Labels tell the ends and direction of each, and ids their kind, in about 30 characters.
     assert.match(
-      describeDiagram(state, { relationships: relationships.slice(0, 90) }),
-      /^Selectable relationships \(use these exact ids for diagram_annotate\): .*"edge:L_A_B_89"\)\.$/m,
+      describeDiagram(state, { items, detail: "source" }),
+      /100 edges go between the same nodes as others, too many to list their ids in the room left in your input\./,
     );
-    // As for /explain, which may read the diagram but not mark it.
-    const readOnly = describeDiagram(state, {
-      relationships,
-      tools: new Set(["diagram_getState"]),
-    });
+    // Labels tell the ends and direction of each, and ids their kind, in about 30 characters.
+    const fewer = new ItemNames({ nodeIds: ["A", "B"], relationships: relationships.slice(0, 90) });
     assert.match(
-      readOnly,
-      /It has 100 selectable relationships, .*diagram_getState lists their ids/,
+      describeDiagram(state, { items: fewer }),
+      /the edges between the same nodes as others: .*"edge:L_A_B_89"\)\.$/m,
     );
     const long = flowchart(`flowchart LR\n%% ${"x".repeat(40_000)}`);
     assert.match(
@@ -221,9 +282,7 @@ suite("describe", () => {
   });
 
   test("a model that calls no tools is told of the drawing, but of no tool", () => {
-    const edge = { kind: "edge", source: "A", target: "B", direction: "forward" } as const;
     const drawing = {
-      relationships: [{ id: "L_A_B", label: "A → B", relationship: edge }],
       repeatedNames: [{ name: "Sales", ids: ["Sales", "Sales/1"], count: 2 }],
       annotation: { marks: [{ id: "A", kind: "problem" as const }], dim: false },
     };
@@ -237,7 +296,6 @@ suite("describe", () => {
     assert.match(readOnly, /^Chart parameters: \{"type":"pie","file":"sales\.csv"\}\./m);
     assert.doesNotMatch(readOnly, /diagram_(updateChart|chart|render|inspectData)/);
     assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
-    assert.match(described, /Selectable relationships: "A → B" \(id: "L_A_B"\)\.\n/);
     assert.match(described, /Marked chart items: "A" \(problem\)\./);
   });
 

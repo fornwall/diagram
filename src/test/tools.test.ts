@@ -80,16 +80,21 @@ suite("tools", () => {
 
   test("diagram_getState gives the source of a diagram before a long list of its relationships", async () => {
     const { panel: shown, webview } = await newFakePanel();
-    const count = 1_200;
-    const edges = Array.from({ length: count }, (_, i) => `  n${i}[Service ${i}] --> n${i + 1}`);
+    // Two edges between each pair of nodes, which only their ids tell apart.
+    const count = 1_600;
+    const pair = (i: number) => [`n${Math.floor(i / 2)}`, `n${Math.floor(i / 2) + 1}`] as const;
+    const edges = Array.from(
+      { length: count },
+      (_, i) => `  ${pair(i)[0]}[Service] --> ${pair(i)[1]}`,
+    );
     const source = `flowchart TD\n${edges.join("\n")}`;
     const relationships = Array.from({ length: count }, (_, i) => ({
-      id: `edge:L_n${i}_n${i + 1}_0`,
-      label: `Service ${i} → Service ${i + 1}`,
+      id: `edge:L_${pair(i).join("_")}_${i % 2}`,
+      label: "Service → Service",
       relationship: {
         kind: "edge",
-        source: `n${i}`,
-        target: `n${i + 1}`,
+        source: pair(i)[0],
+        target: pair(i)[1],
         direction: "forward",
       } as const,
     }));
@@ -99,6 +104,7 @@ suite("tools", () => {
             type: "rendered",
             requestId: message.requestId,
             diagramType: "flowchart-v2",
+            nodeIds: Array.from({ length: count / 2 + 1 }, (_, i) => `n${i}`),
             relationships,
           }
         : undefined;
@@ -110,7 +116,10 @@ suite("tools", () => {
     for (const room of [undefined, budget]) {
       const state = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, room);
       assert.ok(state.includes(source), state.slice(0, 500));
-      assert.match(state, /It has 1,200 selectable relationships, too many to list/);
+      assert.match(
+        state,
+        /1,600 edges go between the same nodes as others, too many to list their ids in the room left/,
+      );
     }
   });
 

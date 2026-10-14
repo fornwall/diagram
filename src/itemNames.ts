@@ -12,6 +12,8 @@ import { quoteAll } from "./text";
 const ARROW = /<?[-=.]*[-=]>{1,2}|-{2,3}|[→↔—]/g;
 /** A relationship id's prefix, which a model may also put before ends. */
 const KIND = /^(?:edge|message):/;
+/** A key for the relationships from the source to the target. */
+const pair = (source: string, target: string) => JSON.stringify([source, target]);
 
 /** The items of a drawing: its nodes, and its edges or sequence messages between them. */
 export interface DrawnItems {
@@ -31,10 +33,26 @@ export type Resolved = Named & { name: string };
 export class ItemNames {
   private readonly nodes: ReadonlySet<string>;
   private readonly ids: ReadonlySet<string>;
+  private readonly relationships = new Map<string, DiagramNode>();
+  /** The relationships from one node to another, by both, as keyed by {@link pair}. */
+  private readonly pairs = new Map<string, DiagramNode[]>();
 
   constructor(readonly drawn: DrawnItems) {
     this.nodes = new Set(drawn.nodeIds);
     this.ids = new Set([...drawn.nodeIds, ...drawn.relationships.map(({ id }) => id)]);
+    const add = (source: string, target: string, node: DiagramNode) => {
+      const key = pair(source, target);
+      this.pairs.set(key, [...(this.pairs.get(key) ?? []), node]);
+    };
+    for (const node of drawn.relationships) {
+      const relation = node.relationship;
+      if (!relation) continue;
+      this.relationships.set(node.id, node);
+      const { source, target, direction } = relation;
+      add(source, target, node);
+      // One both or no way goes between its ends either way.
+      if (direction !== "forward" && source !== target) add(target, source, node);
+    }
   }
 
   /** Whether an item has the id. */
@@ -76,7 +94,7 @@ export class ItemNames {
 
   /** The relationship of the id, if it is one. */
   relationship(id: string): DiagramNode | undefined {
-    return this.drawn.relationships.find((node) => node.id === id);
+    return this.relationships.get(id);
   }
 
   /**
@@ -84,25 +102,24 @@ export class ItemNames {
    * unless others go between them too.
    */
   names(): string[] {
-    return [...this.drawn.nodeIds, ...this.drawn.relationships.map((node) => this.nameOf(node))];
+    return [...this.drawn.nodeIds, ...this.drawn.relationships.map(({ id }) => this.name(id))];
   }
 
-  /** A relationship's name by its ends, as in "A --> B", or its id if that names others too. */
-  nameOf({ id, relationship }: DiagramNode): string {
-    if (!relationship) return id;
-    const name = `${relationship.source} --> ${relationship.target}`;
+  /**
+   * The shortest name of the item of the id: a relationship's ends, as in "A --> B", unless that
+   * names others too, and else its id.
+   */
+  name(id: string): string {
+    const relation = this.relationships.get(id)?.relationship;
+    if (!relation) return id;
+    const name = `${relation.source} --> ${relation.target}`;
     const named = this.resolve(name).ids;
     return named.length === 1 && named[0] === id ? name : id;
   }
 
   /** The relationships from the source to the target, also those that go both or no way. */
-  private between(source: string, target: string): DiagramNode[] {
-    return this.drawn.relationships.filter(
-      ({ relationship: r }) =>
-        r &&
-        ((r.source === source && r.target === target) ||
-          (r.direction !== "forward" && r.source === target && r.target === source)),
-    );
+  private between(source: string, target: string): readonly DiagramNode[] {
+    return this.pairs.get(pair(source, target)) ?? [];
   }
 
   /**

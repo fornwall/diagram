@@ -317,7 +317,7 @@ export class DiagramPanel implements vscode.Disposable {
     const description = describeDiagram(this.state, {
       selection: this.selection,
       annotation: this.annotation,
-      relationships: this.drawn?.relationships ?? [],
+      items: this.itemNames,
       repeatedNames: this.drawn?.repeatedNames ?? [],
       // A page busy with a large drawing may still show it.
       warnings: this.unavailable
