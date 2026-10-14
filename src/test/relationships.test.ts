@@ -66,6 +66,7 @@ suite("relationships", function () {
       source: "A_B",
       target: "B_C",
       direction: "forward",
+      text: "First",
       linkStyle: 0,
     });
     assert.match(selection[0]?.label ?? "", /First/);
@@ -126,6 +127,7 @@ suite("relationships", function () {
       source: "A",
       target: "A",
       direction: "forward",
+      text: "Repeat",
     });
     await evaluate(
       `document.querySelector(${JSON.stringify(node(ids[1] ?? ""))}).dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',shiftKey:true,bubbles:true}))`,
@@ -388,6 +390,30 @@ suite("relationships", function () {
     });
     assert.match(image, /^Revision \d+ of the diagram: the part around "A --> B", "D -> C" \(/);
     assert.doesNotMatch(image, /leaves them out/);
+  });
+
+  test("names edges by their own labels, not by the colons in the labels of their ends", async () => {
+    await draw({
+      source:
+        'flowchart LR\n  A["Step 1: Parse"] -->|Yes| B["Step 2: Check"]\n  A --> B\n  B -->|"Retry: once"| A',
+    });
+    const ids = idsByLabel();
+    const result = await invokeTool(new AnnotateDiagramTool(page.panel), {
+      marks: ["A --> B: Yes", { id: "A --> B: Check", mark: "problem" }],
+    });
+    const [marked, unknown] = result.split("\n\n");
+    assert.strictEqual(marked, 'Marked 1 item: "A --> B: Yes" (current).');
+    assert.match(
+      unknown ?? "",
+      /"A --> B: Check" \(nothing labeled "Check" goes from "A" to "B"\)/,
+    );
+    await until(`document.querySelectorAll('[class*="diagram-mark-"]').length > 0`);
+    assert.deepStrictEqual(await shownMarks(), {
+      [ids["Step 1: Parse → Step 2: Check: Yes"] ?? ""]: "diagram-mark-current",
+    });
+    const described = page.panel.describeForModel() ?? "";
+    assert.match(described, /as in "B --> A", and one of several .* as in "A --> B: Yes"/);
+    assert.match(described, /Name by id these, .*: "Step 1: Parse → Step 2: Check" \(id: /);
   });
 
   test("marks and views sequence messages named by their ends: replies, messages to oneself and repeated ones by their text", async () => {

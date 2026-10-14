@@ -195,6 +195,8 @@ suite("describe", () => {
         source,
         target,
         direction,
+        // The ends of these have no colons.
+        text: label.split(": ").slice(1).join(": "),
       },
     }) satisfies DiagramNode;
 

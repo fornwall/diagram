@@ -77,6 +77,11 @@ export interface DiagramNode {
      * when that tells it.
      */
     linkStyle?: number;
+    /**
+     * Its own label, "" for none, which the label of the whole joins to its ends' labels: as these
+     * may hold colons too, the tools take this to tell it from others between the same ends.
+     */
+    text?: string | undefined;
   };
 }
 
@@ -302,7 +307,8 @@ const isNode: Check = (value) =>
       isString(value.relationship.source) &&
       isString(value.relationship.target) &&
       ["forward", "both", "undirected"].includes(value.relationship.direction as string) &&
-      (value.relationship.linkStyle === undefined || isId(value.relationship.linkStyle))));
+      (value.relationship.linkStyle === undefined || isId(value.relationship.linkStyle)) &&
+      (value.relationship.text === undefined || isString(value.relationship.text))));
 const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
 const isStrings: Check = (value) => Array.isArray(value) && value.every(isString);
 const isRepeatedNames: Check = (value) =>

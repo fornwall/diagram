@@ -15,8 +15,6 @@ const ARROW = /<?[-=.]*[-=]>{1,2}|-{2,3}|[→↔—]/g;
 const KIND = /^(?:edge|message):/;
 /** A flowchart edge's label after its arrow, as in "A -->|Yes| B". */
 const PIPED = /^\|([^|]*)\|(.*)$/s;
-/** The arrow between the ends in a relationship's label, as the page writes it. */
-const LABEL_ARROW = / [→↔—] /;
 
 /** A key for the relationships from the source to the target. */
 const pair = (source: string, target: string) => JSON.stringify([source, target]);
@@ -204,11 +202,12 @@ export class ItemNames {
   }
 }
 
-/** The text of a relationship's label after its ends, as in "Yes" of "Start → Check: Yes". */
-function labelText({ label }: DiagramNode): string {
-  const arrow = LABEL_ARROW.exec(label);
-  const colon = arrow ? label.indexOf(": ", arrow.index + arrow[0].length) : -1;
-  return colon < 0 ? "" : label.slice(colon + 2);
+/**
+ * The relationship's own label, as "Yes" of "Start → Check: Yes", which the page gives apart from
+ * the labels of its ends, as those may hold colons too, as in "Step 1: Parse".
+ */
+function labelText({ relationship }: DiagramNode): string {
+  return relationship?.text ?? "";
 }
 
 /** E.g. `"X", "A --> C" (nothing goes from "A" to "C")`. */

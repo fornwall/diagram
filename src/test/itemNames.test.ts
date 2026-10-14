@@ -97,16 +97,27 @@ suite("itemNames", () => {
     ]);
   });
 
-  /** Messages as the page reports them, labeled by their ends' labels and their text. */
+  /** A message as the page reports it, labeled by its ends' labels and its own. */
+  const message = (
+    id: string,
+    source: string,
+    target: string,
+    ends: string,
+    text: string,
+  ): DiagramNode => ({
+    id,
+    label: `${ends}: ${text}`,
+    relationship: { kind: "message", source, target, direction: "forward", text },
+  });
   const messages = new ItemNames({
     nodeIds: ["C", "S", "S:1"],
     relationships: [
-      { ...relation("message:i0", "C", "S"), label: "Client → Server: Login" },
-      { ...relation("message:i1", "C", "S"), label: "Client → Server: Fetch" },
-      { ...relation("message:i2", "C", "S"), label: "Client → Server: Fetch" },
-      { ...relation("message:i3", "C", "S"), label: "Client → Server: Log out" },
-      { ...relation("message:i4", "S", "C"), label: "Server → Client: Token: abc" },
-      { ...relation("message:i5", "C", "S:1"), label: "Client → Shard: Hi" },
+      message("message:i0", "C", "S", "Client → Server", "Login"),
+      message("message:i1", "C", "S", "Client → Server", "Fetch"),
+      message("message:i2", "C", "S", "Client → Server", "Fetch"),
+      message("message:i3", "C", "S", "Client → Server", "Log out"),
+      message("message:i4", "S", "C", "Server → Client", "Token: abc"),
+      message("message:i5", "C", "S:1", "Client → Shard", "Hi"),
     ],
   });
 

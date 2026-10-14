@@ -320,7 +320,7 @@ class Finder {
     return {
       id: this.uniqueId(`${kind}:${id}`),
       label: `${name(source)} ${arrow} ${name(target)}${text ? `: ${text}` : ""}`,
-      relationship: { kind, source, target, direction },
+      relationship: { kind, source, target, direction, text },
     };
   }
 
