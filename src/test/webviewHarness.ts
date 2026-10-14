@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
 import { newPanel, openWebviewPanel, withoutRevision } from "./newPanel";
 
@@ -177,6 +177,23 @@ export function suitePage(): Page {
     assert.ok(shared, "The page opens before the tests of the suite.");
     return shared;
   };
+  // The tests take the page to be as wide as the window, as for the text size of a drawing. An
+  // editor that an earlier test left or opened beside it, also one that opens late under load,
+  // would halve its width: close the other tab groups.
+  setup(async () => {
+    const groups = vscode.window.tabGroups.all;
+    const own = groups.find((group) =>
+      group.tabs.some((tab) => tab.input instanceof vscode.TabInputWebview),
+    );
+    const others = groups.filter((group) => group.viewColumn !== own?.viewColumn);
+    if (!own || others.length === 0) return;
+    const width = await page().harness.evaluate("innerWidth");
+    await vscode.window.tabGroups.close(others, true);
+    await page().harness.evaluate(`(async () => {
+      ${UNTIL}
+      await until(() => innerWidth > ${width}, "the page as wide as the window");
+    })()`);
+  });
   const render = async (diagram: Partial<Diagram>): Promise<RenderOutcome> => {
     const drawn = await page().panel.render(
       { language: "mermaid", source: "", title: "Test", ...diagram },
