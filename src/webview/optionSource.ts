@@ -86,6 +86,86 @@ export function runsCode(source: string): boolean {
   }
 }
 
+/** How long a line of values grows in an option formatted for editing before they go on the next. */
+const LINE_LENGTH = 100;
+
+/**
+ * A one-line JSON option indented for editing as JSON.stringify would, with arrays of values alone
+ * on as few lines as fit. Other sources, of several lines or not JSON, stay as they are.
+ */
+export function formatOption(source: string): string {
+  if (source.includes("\n")) {
+    return source;
+  }
+  try {
+    JSON.parse(source);
+  } catch {
+    // Not JSON: an option written as JavaScript, or one with an error, stays as it is.
+    return source;
+  }
+  // Indent the tokens as JSON.stringify would, rather than writing out the parsed values, which
+  // would round integers beyond 2^53, such as IDs, in the source that the user edits and saves.
+  const tokens = source.match(/"(?:[^"\\]|\\.)*"|[{}[\],:]|[^\s"{}[\],:]+/g) ?? [];
+  // Arrays of values alone, such as data of [x, y] points, go on as few lines as fit, by where
+  // they start and end: a line for every value would make a large chart's source hundreds of
+  // thousands of lines, which take seconds to lay out.
+  const valueArrays = new Map<number, number>();
+  const open: { start: number; values: boolean }[] = [];
+  tokens.forEach((token, index) => {
+    if (token === "[") open.push({ start: index, values: true });
+    else if (token === "{") for (const array of open) array.values = false;
+    else if (token === "]") {
+      const array = open.pop();
+      if (array?.values) valueArrays.set(array.start, index);
+    }
+  });
+  let text = "";
+  let depth = 0;
+  /** Where the last line starts in the text. */
+  let line = 0;
+  const newLine = (indent = depth) => {
+    line = text.length + 1;
+    text += `\n${"  ".repeat(indent)}`;
+  };
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index] ?? "";
+    const end = valueArrays.get(index);
+    if (end !== undefined) {
+      // On the next line, indented, once a line is long, and inside an inner array only once it
+      // is as many times as long, so as not to split the arrays of a long one, such as points.
+      let nesting = 0;
+      for (let at = index; at <= end; at++) {
+        const each = tokens[at] as string;
+        nesting += each === "[" ? 1 : each === "]" ? -1 : 0;
+        if (each !== ",") text += each;
+        else if (text.length - line < LINE_LENGTH * nesting) text += ", ";
+        else {
+          text += ",";
+          newLine(depth + 1);
+        }
+      }
+      index = end;
+    } else if (token === "{" && tokens[index + 1] === "}") {
+      text += "{}";
+      index++;
+    } else if (token === "{" || token === "[") {
+      depth++;
+      text += token;
+      newLine();
+    } else if (token === "}" || token === "]") {
+      depth--;
+      newLine();
+      text += token;
+    } else if (token === ",") {
+      text += ",";
+      newLine();
+    } else {
+      text += token === ":" ? ": " : token;
+    }
+  }
+  return text;
+}
+
 /**
  * The top-level values of a source of literals only; otherwise its first syntax error, where it
  * goes beyond literals, or undefined if it is nested too deeply to scan.

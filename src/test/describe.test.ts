@@ -3,6 +3,7 @@ import { parseTable } from "../data";
 import { describeChartParameters, describeDiagram } from "../describe";
 import { lineDiff } from "../lineDiff";
 import type { DiagramState } from "../panel";
+import { formatOption } from "../webview/optionSource";
 
 suite("describe", () => {
   const chart: DiagramState = {
@@ -258,6 +259,23 @@ suite("describe", () => {
     assert.doesNotMatch(rewrite, /diff/);
     assert.match(rewrite, /The user edited this source/);
     assert.doesNotMatch(describeDiagram(edited, { detail: "summary" }), /diff/);
+    // The user edits a one-line option as the source view formats it.
+    const option = '{"title":{"text":"Sales"},"series":[{"type":"pie","data":[1,2]}]}';
+    const retitled = formatOption(option).replace('"Sales"', '"Revenue"');
+    const described = describeDiagram({
+      language: "echarts",
+      source: retitled,
+      title: "Revenue",
+      origin: "tool",
+      editedByUser: true,
+      userEdit: { from: option, to: retitled },
+    });
+    assert.ok(
+      described.includes(
+        '```diff\n@@ -2,3 +2,3 @@\n   "title": {\n-    "text": "Sales"\n+    "text": "Revenue"\n   },\n```',
+      ),
+      described,
+    );
   });
 
   test("oversized chart options are omitted from model context", () => {

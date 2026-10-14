@@ -25,6 +25,7 @@ import {
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { formatCount, inWords, plural, quoteAll } from "./text";
+import { formatOption } from "./webview/optionSource";
 
 /**
  * How much of a long source and list of relationships to give: "brief" leaves them out of every
@@ -198,9 +199,12 @@ export function describeDiagram(
 export function userChanges({
   userEdit,
   source,
+  language,
 }: DiagramState): { from: string; diff: string } | undefined {
   if (!userEdit || userEdit.to !== source) return undefined;
-  const diff = lineDiff(userEdit.from, source);
+  // The user edits a one-line option as the source view formats it.
+  const from = language === "echarts" ? formatOption(userEdit.from) : userEdit.from;
+  const diff = lineDiff(from, source);
   return diff &&
     diff.length <= Math.max(source.length, SMALL_DIFF_LENGTH) &&
     diff.length <= MAX_SOURCE_LENGTH
