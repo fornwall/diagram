@@ -38,6 +38,7 @@ import {
   drawnAtWidth,
   elementConfig,
   mermaidTheme,
+  setsOwnSize,
   sizeConfig,
   themeFixedColors,
   withOwnThemeVariables,
@@ -495,6 +496,8 @@ export class MermaidRenderer implements Renderer {
   private diagramType: string | undefined;
   /** How the shown drawing reads, as measured when it was drawn. */
   private readability: string[] = [];
+  /** Whether the diagram shown sets its own size, rather than the panel sizing it. */
+  private ownSize = false;
   /** How wide the drawing shown is, which the panel's width can be too narrow for. */
   private measured: DrawingWidth | undefined;
   /** The size of most of the text of the drawing shown, at actual size. */
@@ -514,7 +517,7 @@ export class MermaidRenderer implements Renderer {
         if (this.fitting && this.displayedSource !== undefined) this.fit();
       });
     }
-    if (drawnAtWidth(this.diagramType)) {
+    if (drawnAtWidth(this.diagramType, this.ownSize)) {
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
     }
@@ -629,12 +632,14 @@ export class MermaidRenderer implements Renderer {
 
   /**
    * How Mermaid is configured for the VS Code theme of these colors, to draw the source at the
-   * width that the panel has, by default the width that the drawing shown was laid out at.
+   * width that the panel has, by default the width that the drawing shown was laid out at, unless
+   * it sets its own size, as by default the drawing shown does.
    */
   private config(
     source: string,
     colors = readThemeColors(),
     width = this.layoutWidth,
+    ownSize = this.ownSize,
   ): Parameters<Mermaid["initialize"]>[0] {
     const { settings, typeLine } = diagramHeader(source);
     const keyword = typeLine?.split(/\s/)[0];
@@ -651,7 +656,7 @@ export class MermaidRenderer implements Renderer {
         ? { theme: "base", themeVariables: {} }
         : mermaidTheme(colors, keyword)),
       ...elementConfig(colors.fontFamily),
-      ...sizeConfig(keyword, settings, width),
+      ...sizeConfig(keyword, ownSize, width),
     };
   }
 
@@ -685,9 +690,11 @@ export class MermaidRenderer implements Renderer {
       scroller.remove();
     }
     const text = parsableSource(source);
+    const keyword = diagramHeader(source).typeLine?.split(/\s/)[0];
+    const ownSize = await setsOwnSize(mermaid, this.config(source, colors, 0, true), text, keyword);
     const config = await withOwnThemeVariables(
       mermaid,
-      this.config(source, colors, width > 0 ? width : this.layoutWidth),
+      this.config(source, colors, width > 0 ? width : this.layoutWidth, ownSize),
       text,
       colors,
     );
@@ -760,6 +767,7 @@ export class MermaidRenderer implements Renderer {
     this.diagramType = result.diagramType;
     this.readability = readability;
     this.measured = measured;
+    this.ownSize = ownSize;
     this.textSize = size;
     this.prepareSvg(svg, id, db);
     this.present();
@@ -1035,7 +1043,7 @@ export class MermaidRenderer implements Renderer {
     const room = this.contentSize();
     if (
       source === undefined ||
-      !drawnAtWidth(this.diagramType) ||
+      !drawnAtWidth(this.diagramType, this.ownSize) ||
       room.width <= 0 ||
       Math.abs(room.width - this.layoutWidth) < RELAYOUT_THRESHOLD
     ) {

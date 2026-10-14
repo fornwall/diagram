@@ -350,12 +350,17 @@ const clamp = (value: number, min: number, max: number) =>
 
 /**
  * The charts that Mermaid draws at a size of its configuration, rather than of their content, by
- * the type that it detects: the settings that size them, and their configuration for the width
- * the panel has. Each is as wide as Mermaid draws it at most, and as narrow as its text allows.
+ * the type that it detects: the section of the configuration and the settings in it that size
+ * them, and their configuration for the width the panel has. Each is as wide as Mermaid draws it
+ * at most, and as narrow as its text allows.
  */
-const SIZED: Record<string, { keys: string[]; config: (width: number) => object }> = {
+const SIZED: Record<
+  string,
+  { section: string; keys: string[]; config: (width: number) => object }
+> = {
   // A radar's labels lie in its margins, of 50 on each side.
   radar: {
+    section: "radar",
     keys: ["width", "height"],
     config: (width) => {
       const side = clamp(width - 100, 300, 600);
@@ -363,6 +368,7 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
     },
   },
   xychart: {
+    section: "xyChart",
     keys: ["width", "height"],
     config: (width) => {
       const wide = clamp(width, 400, 700);
@@ -370,6 +376,7 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
     },
   },
   quadrantChart: {
+    section: "quadrantChart",
     keys: ["chartWidth", "chartHeight"],
     config: (width) => {
       const side = clamp(width, 320, 500);
@@ -377,6 +384,7 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
     },
   },
   sankey: {
+    section: "sankey",
     keys: ["width", "height"],
     config: (width) => {
       const wide = clamp(width, 320, 600);
@@ -385,10 +393,12 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
   },
   // Fields of a single bit keep room for their number.
   packet: {
+    section: "packet",
     keys: ["bitWidth", "bitsPerRow"],
     config: (width) => ({ packet: { bitWidth: clamp((width - 10) / 32, 16, 32) } }),
   },
   cynefin: {
+    section: "cynefin",
     keys: ["width", "height"],
     config: (width) => {
       // Its width takes in a padding of 40 on each side.
@@ -397,6 +407,7 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
     },
   },
   venn: {
+    section: "venn",
     keys: ["width", "height"],
     config: (width) => {
       const wide = clamp(width, 400, 800);
@@ -405,25 +416,54 @@ const SIZED: Record<string, { keys: string[]; config: (width: number) => object 
   },
 };
 
-/** The diagram type that Mermaid detects for a diagram that starts with the keyword. */
-const sizedType = (keyword: string | undefined) => keyword?.replace(/-beta$/, "");
+/** How Mermaid sizes a chart that starts with the keyword, if it draws it at a size of its own. */
+const sizedBy = (keyword: string | undefined) => {
+  const type = keyword?.replace(/-beta$/, "");
+  return type !== undefined && Object.hasOwn(SIZED, type) ? SIZED[type] : undefined;
+};
 
-/** Whether Mermaid draws a diagram of the type it detected at the width the panel has. */
-export const drawnAtWidth = (type: string | undefined) =>
-  type === "gantt" || (type !== undefined && Object.hasOwn(SIZED, type));
+/**
+ * Whether the panel lays a diagram of the type that Mermaid detected out at its width: a Gantt
+ * chart, which takes the width it is drawn in, and a chart of a size of Mermaid's that the panel
+ * sizes, as it does not size itself.
+ */
+export const drawnAtWidth = (type: string | undefined, ownSize: boolean) =>
+  type === "gantt" || (!ownSize && sizedBy(type) !== undefined);
+
+/** A size that no diagram gives a chart, for the configuration to tell those that it does. */
+const UNSET_SIZE = 999_983;
+
+/**
+ * Whether the diagram that starts with the keyword sizes itself, as a chart of a size of Mermaid's,
+ * with the settings of its front matter or directives that size it, also to Mermaid's own size:
+ * as Mermaid reads those, by parsing the text with sizes that no diagram gives, which a setting of
+ * the diagram replaces. Mermaid keeps the configuration that it parsed with.
+ */
+export async function setsOwnSize(
+  mermaid: Mermaid,
+  config: MermaidConfig,
+  text: string,
+  keyword: string | undefined,
+): Promise<boolean> {
+  const sized = sizedBy(keyword);
+  // Only a diagram that names a setting can set it.
+  if (!sized?.keys.some((key) => text.includes(key))) return false;
+  const unset = Object.fromEntries(sized.keys.map((key) => [key, UNSET_SIZE]));
+  mermaid.initialize({ ...config, [sized.section]: unset });
+  await mermaid.parse(text, { suppressErrors: true }).catch(() => false);
+  const read = ((mermaid.mermaidAPI.getConfig() as Record<string, unknown>)[sized.section] ??
+    {}) as Record<string, unknown>;
+  return sized.keys.some((key) => read[key] !== UNSET_SIZE);
+}
 
 /**
  * The configuration that draws a chart of a size of Mermaid's at the width that the panel has for
- * it, given the keyword that starts the diagram and its settings: in a narrow panel, its text
- * would otherwise shrink with it. A diagram that sizes itself keeps its size.
+ * it, given the keyword that starts the diagram: in a narrow panel, its text would otherwise
+ * shrink with it. A diagram that sizes itself keeps its size.
  */
-export function sizeConfig(keyword: string | undefined, settings: string, width: number): object {
-  const type = sizedType(keyword);
-  const sized = type !== undefined && Object.hasOwn(SIZED, type) ? SIZED[type] : undefined;
-  if (!sized || width <= 0 || sized.keys.some((key) => new RegExp(`\\b${key}\\b`).test(settings))) {
-    return {};
-  }
-  return sized.config(width);
+export function sizeConfig(keyword: string | undefined, ownSize: boolean, width: number): object {
+  const sized = sizedBy(keyword);
+  return !sized || ownSize || width <= 0 ? {} : sized.config(width);
 }
 
 /** The fills that Mermaid outlines in a color it derives from them, unless given one. */

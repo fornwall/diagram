@@ -173,31 +173,32 @@ suite("Mermaid theme", () => {
 
   test("sizes charts that Mermaid draws at a size of its own to the panel's width", () => {
     // As wide as the panel has room for, between as narrow as their text allows and Mermaid's size.
-    assert.deepStrictEqual(sizeConfig("xychart-beta", "", 450), {
+    assert.deepStrictEqual(sizeConfig("xychart-beta", false, 450), {
       xyChart: { width: 450, height: 321 },
     });
-    assert.deepStrictEqual(sizeConfig("xychart", "", 300), {
+    assert.deepStrictEqual(sizeConfig("xychart", false, 300), {
       xyChart: { width: 400, height: 286 },
     });
-    assert.deepStrictEqual(sizeConfig("xychart", "", 2000), {
+    assert.deepStrictEqual(sizeConfig("xychart", false, 2000), {
       xyChart: { width: 700, height: 500 },
     });
     // A radar's labels lie in its margins.
-    assert.deepStrictEqual(sizeConfig("radar-beta", "", 500), {
+    assert.deepStrictEqual(sizeConfig("radar-beta", false, 500), {
       radar: { width: 400, height: 400 },
     });
-    assert.deepStrictEqual(sizeConfig("packet", "", 410), { packet: { bitWidth: 16 } });
-    assert.deepStrictEqual(sizeConfig("packet-beta", "", 900), { packet: { bitWidth: 28 } });
+    assert.deepStrictEqual(sizeConfig("packet", false, 410), { packet: { bitWidth: 16 } });
+    assert.deepStrictEqual(sizeConfig("packet-beta", false, 900), { packet: { bitWidth: 28 } });
     // Not one whose settings size it, nor other diagrams, nor without a width.
-    assert.deepStrictEqual(sizeConfig("radar-beta", "config:\n  radar:\n    width: 300", 500), {});
-    assert.deepStrictEqual(sizeConfig("packet", "config:\n  packet:\n    bitsPerRow: 16", 500), {});
-    assert.deepStrictEqual(sizeConfig("flowchart", "", 500), {});
-    assert.deepStrictEqual(sizeConfig("sankey", "", 0), {});
+    assert.deepStrictEqual(sizeConfig("radar-beta", true, 500), {});
+    assert.deepStrictEqual(sizeConfig("flowchart", false, 500), {});
+    assert.deepStrictEqual(sizeConfig("sankey", false, 0), {});
     // Mermaid's names for the types it detects, which are drawn again at a new width.
     for (const type of ["gantt", "radar", "xychart", "quadrantChart", "sankey", "packet", "venn"]) {
-      assert.ok(drawnAtWidth(type), type);
+      assert.ok(drawnAtWidth(type, false), type);
     }
-    assert.ok(!drawnAtWidth("flowchart-v2") && !drawnAtWidth(undefined));
+    assert.ok(!drawnAtWidth("flowchart-v2", false) && !drawnAtWidth(undefined, false));
+    // A chart that sizes itself is not, but a Gantt chart always takes the width it is drawn in.
+    assert.ok(!drawnAtWidth("xychart", true) && drawnAtWidth("gantt", true));
   });
 
   test("merges the theme variables of a diagram over the panel's, legibly", () => {
