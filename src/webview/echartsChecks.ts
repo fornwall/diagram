@@ -119,6 +119,11 @@ interface Finding {
   /** How many items have it, which merging adds up, or the value beyond a bound, of which it takes the farthest. */
   amount: number;
   merge: "sum" | "max" | "min";
+  /**
+   * The values of a dataset that have it, by row and column, which merging counts once each in
+   * place of the amounts: series that read the same dataset can read the same column, as of days.
+   */
+  cells?: Set<string> | undefined;
   example?: unknown;
   /** The warning, of the paths of the series that have the problem. */
   say(paths: string[], amount: number, example: unknown): string;
@@ -144,8 +149,9 @@ function merge(findings: Finding[]): string[] {
   return [...problems.values()].map((same) => {
     const [first] = same as [Finding, ...Finding[]];
     const amounts = same.map(({ amount }) => amount);
-    const amount =
-      first.merge === "max"
+    const amount = first.cells
+      ? new Set(same.flatMap(({ cells }) => [...(cells ?? [])])).size
+      : first.merge === "max"
         ? Math.max(...amounts)
         : first.merge === "min"
           ? Math.min(...amounts)
@@ -256,15 +262,20 @@ function unreadableValues(series: Series, path: string): Finding[] {
     const time = info.type === "time";
     return [{ dimension, index, key: store.getDimensionProperty(index), time }];
   });
+  // The data of the series, or the dataset they read, which the same problem of other series that
+  // read it merges with, each value of it once.
+  const fromDataset = series.option.data == null;
   const found = {
-    numbers: { count: 0, example: undefined as unknown },
-    dates: { count: 0, example: undefined as unknown },
-    years: { count: 0, example: undefined as unknown },
-    valueless: { count: 0, example: undefined as unknown },
+    numbers: { count: 0, example: undefined as unknown, cells: new Set<string>() },
+    dates: { count: 0, example: undefined as unknown, cells: new Set<string>() },
+    years: { count: 0, example: undefined as unknown, cells: new Set<string>() },
+    valueless: { count: 0, example: undefined as unknown, cells: new Set<string>() },
   };
-  const note = (kind: keyof typeof found, example: unknown) => {
+  /** Notes a value that has a problem, of a dataset by its row and column. */
+  const note = (kind: keyof typeof found, example: unknown, cell: string) => {
     found[kind].count++;
     found[kind].example ??= example;
+    if (fromDataset) found[kind].cells.add(cell);
   };
   const valued = VALUED_TYPES.has(series.subType);
   const count = Math.min(data.count(), MAX_READ_ITEMS);
@@ -273,7 +284,7 @@ function unreadableValues(series: Series, path: string): Finding[] {
     const value = isPlainObject(item) && !(item instanceof Date) ? item.value : item;
     if (format === "original" && valued && isPlainObject(item) && !("value" in item)) {
       if (dimensions.some(({ dimension }) => Number.isNaN(data.get(dimension, index)))) {
-        note("valueless", item);
+        note("valueless", item, String(index));
       }
       continue;
     }
@@ -289,20 +300,17 @@ function unreadableValues(series: Series, path: string): Finding[] {
             ? values[at]
             : values;
       if (Number.isNaN(data.get(dimension, index))) {
-        if (!isMissing(raw)) note(time ? "dates" : "numbers", raw);
+        if (!isMissing(raw)) note(time ? "dates" : "numbers", raw, `${index}:${key ?? at}`);
       } else if (
         time &&
         Number.isInteger(raw) &&
         Number(raw) >= YEARS.from &&
         Number(raw) <= YEARS.to
       ) {
-        note("years", raw);
+        note("years", raw, `${index}:${key ?? at}`);
       }
     }
   }
-  // The data of the series, or the dataset they read, which the same problem of other series that
-  // read it merges with.
-  const fromDataset = series.option.data == null;
   const source = fromDataset
     ? JSON.stringify(series.option.datasetId ?? series.option.datasetIndex ?? 0)
     : "data";
@@ -323,6 +331,7 @@ function unreadableValues(series: Series, path: string): Finding[] {
             path,
             amount: found[kind].count,
             merge: "sum",
+            cells: fromDataset ? found[kind].cells : undefined,
             example: found[kind].example,
             say: (paths, count, example) => say(paths, count, brief(example)),
           },

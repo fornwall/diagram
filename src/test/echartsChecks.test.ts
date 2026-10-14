@@ -524,6 +524,28 @@ suite("echartsChecks", function () {
     );
   });
 
+  test("counts each value of a dataset that several series read once", () => {
+    // Each line reads the column of days, which has one ECharts cannot read, and a column of its
+    // own; two read the same column, which has one too.
+    const lines = (y: string[]) => ({
+      dataset: {
+        source: [
+          ["day", "a", "b"],
+          ["2026-01-05", 1, "n/a"],
+          ["soon", 2, 3],
+          ["2026-01-07", 3, 4],
+        ],
+      },
+      xAxis: { type: "time" },
+      yAxis: {},
+      series: y.map((column) => ({ type: "line", encode: { x: "day", y: column } })),
+    });
+    assert.deepStrictEqual(warningsOf(lines(["a", "b", "b"])), [
+      'The dataset that series[0], series[1] and series[2] read has 1 date that the time axis cannot read, such as "soon", and draws nothing for: write dates as "2024-03-31" or "2024-03-31 14:30", or put labels such as quarters on a "category" axis.',
+      'The dataset that series[1] and series[2] read has 1 value that ECharts cannot read as a number, such as "n/a", and draws nothing for: write plain numbers, without units, "%" or thousands separators.',
+    ]);
+  });
+
   test("tells a model of the first warnings, up to a length, and how many more there are", () => {
     const warnings = Array.from({ length: 30 }, (_, index) => `Warning ${index}`.padEnd(200, "."));
     const capped = capWarnings(warnings);
