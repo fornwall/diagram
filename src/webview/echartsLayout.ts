@@ -940,8 +940,8 @@ const sharedStartFormatters = new Map<string, (value: unknown) => string>();
  * number of characters they would read alike, as the "Northern Regional Distribution Center" of
  * "… 0", "… 1", …, and names the axis by that start instead. The start ends with a word. An axis
  * named by the option, or where such a name would not fit, keeps its name, and its labels their
- * last words instead, as many as fit, as "…Center 12". Returns the length of the longest label
- * left, if any.
+ * last words instead, as many as fit, as "…Center 12", unless those read alike too: then they
+ * are what follows the start all the same. Returns the length of the longest label left, if any.
  */
 function dropSharedStart(
   axis: JsonObject,
@@ -965,11 +965,16 @@ function dropSharedStart(
   const start = /^.*[\s\-_/:.,;|]/s.exec(shared)?.[0];
   const name = start?.replace(/[\s\-_/:.,;|]+$/, "");
   if (!start || !name || texts.some((text) => text.length <= start.length)) return undefined;
-  if (!nameable || (axis.name !== undefined && axis.name !== "")) {
+  const named = !nameable || (axis.name !== undefined && axis.name !== "");
+  if (named) {
     const most = Math.max(1, Math.floor(visible) - 1);
-    label.formatter = lastWords(most);
-    axis.axisLabel = label;
-    return Math.max(...texts.map((text) => Math.min(text.length, most + 1)));
+    const last = lastWords(most);
+    // Unless they read alike so too, as of labels that also end alike.
+    if (new Set(texts.map(last)).size === new Set(texts).size) {
+      label.formatter = last;
+      axis.axisLabel = label;
+      return Math.max(...texts.map((text) => Math.min(text.length, most + 1)));
+    }
   }
   let formatter = sharedStartFormatters.get(start);
   if (!formatter) {
@@ -981,7 +986,7 @@ function dropSharedStart(
   }
   label.formatter = formatter;
   axis.axisLabel = label;
-  axis.name = `${name} …`;
+  if (!named) axis.name = `${name} …`;
   return Math.max(...texts.map((text) => text.length - start.length));
 }
 

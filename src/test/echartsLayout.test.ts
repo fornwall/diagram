@@ -739,6 +739,27 @@ suite("echartsLayout", () => {
       [named.name, named.axisLabel.formatter("Northern Regional Center 12"), named.nameTextStyle],
       ["Site", "…Center 12", undefined],
     );
+    // Unless they end alike too: then they are told apart by what follows the start they share,
+    // across the chart as down it.
+    const warehouses = Array.from(
+      { length: 25 },
+      (_, index) => `Northern Regional Center ${index} (Warehouse and Logistics)`,
+    );
+    const across = layout(
+      {
+        xAxis: { type: "category", name: "Site", data: warehouses },
+        yAxis: { type: "value" },
+        series: [{ type: "bar", data: Array(25).fill(1) }],
+      },
+      { width: 800, height: 500 },
+    ).xAxis;
+    for (const axis of [sites({ name: "Site", data: warehouses }), across]) {
+      const { formatter } = axis.axisLabel;
+      assert.deepStrictEqual(
+        [axis.name, formatter(warehouses[12]), new Set(warehouses.map(formatter)).size],
+        ["Site", "12 (Warehouse and Logistics)", 25],
+      );
+    }
     // A name beside the labels in the middle of the axis is not aligned to its end.
     const middle = sites({ nameLocation: "middle" });
     assert.deepStrictEqual(
