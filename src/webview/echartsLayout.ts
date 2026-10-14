@@ -1322,14 +1322,33 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   // in to their line, and a pie of the panel's radius leaves the room for them.
   label.alignTo ??= "edge";
   label.edgeDistance ??= 8;
-  if (label.width === undefined) label.overflow ??= "break";
+  const lines = label.width === undefined && label.overflow === undefined;
+  if (lines) label.overflow = "break";
   pie.label = label;
   // The second part of a line is drawn out to its label at the edge anyway.
   line.length2 ??= 0;
   pie.labelLine = line;
   const most = labeledRadius(labels, boxWidth, length);
-  const least = MIN_LABELED_PIE * (Math.min(boxWidth, boxHeight) / 2);
-  if (chosen && outer > most) pie.radius = scaleRadius(pie.radius, Math.max(most, least) / outer);
+  const half = Math.min(boxWidth, boxHeight) / 2;
+  if (chosen && outer > most) {
+    pie.radius = scaleRadius(pie.radius, Math.max(most, MIN_LABELED_PIE * half) / outer);
+  }
+  // A label of a word wider than the room beside the pie, as of the option's radius, is cut short
+  // rather than broken within the word, which ECharts does to a word longer than a line: the
+  // tooltip tells it whole.
+  const radius = outerRadius(pie.radius, half) ?? outer;
+  const edge = typeof label.edgeDistance === "number" ? label.edgeDistance : 8;
+  const cut = labels.map(
+    ({ across, word }) => boxWidth / 2 - edge - 5 - across * (radius + length) < word,
+  );
+  if (lines && Array.isArray(pie.data) && cut.some(Boolean)) {
+    pie.data = pie.data.map((item: unknown, index) => {
+      if (!cut[index]) return item;
+      const own: JsonObject = isPlainObject(item) ? item : { value: item };
+      const itemLabel = isPlainObject(own.label) ? own.label : {};
+      return { ...own, label: { overflow: "truncate", ellipsis: "…", ...itemLabel } };
+    });
+  }
 }
 
 /**
@@ -1350,6 +1369,8 @@ interface PieLabel {
   whole: number;
   /** The least width it goes onto three lines of, at least that of its longest word. */
   least: number;
+  /** The width of its longest word. */
+  word: number;
 }
 
 /**
@@ -1387,6 +1408,7 @@ function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
       across: Math.abs(Math.cos(middle)),
       whole: chars * charWidth,
       least: Math.max(word, Math.ceil(chars / 3)) * charWidth,
+      word: word * charWidth,
     };
   });
 }

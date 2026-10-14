@@ -384,12 +384,23 @@ suite("echartsLayout", () => {
     // Beside a wide pie, the labels stay as ECharts places them.
     const wide = layout(pie()).series[0];
     assert.deepStrictEqual(wide.label, { formatter: "{b}: {d}%" });
-    // A radius of the option's own stays as it is, as a doughnut's.
-    const doughnut = layout(pie({ show: true }, { radius: ["45%", "70%"] }), size).series[0];
+    // A radius of the option's own stays as it is, as a doughnut's: the labels go onto lines,
+    // and those whose words do not fit beside it are cut short, never broken within a word.
+    const ring = layout(pie(undefined, { radius: ["45%", "70%"] }), size);
+    const [doughnut] = ring.series;
     assert.deepStrictEqual(
       [doughnut.radius, doughnut.label.alignTo, doughnut.label.overflow],
       [["45%", "70%"], "edge", "break"],
     );
+    const words = new Set(["Disk", "usage", "GB", "Videos:", "Photos:", "Apps:", "Other:"]);
+    for (const share of ["48.79%", "25.74%", "17.16%", "8.31%"]) words.add(share);
+    const drawn = [...svgOf(ring, size).matchAll(/>([^<>]+)<\/text>/g)].flatMap(([, text = ""]) =>
+      text.split(/\s+/).filter(Boolean),
+    );
+    assert.ok(drawn.length > 0);
+    for (const word of drawn) {
+      assert.ok(words.has(word) || word.endsWith("…"), `${word} of ${drawn.join(" ")}`);
+    }
     // Too narrow for them even so: a legend names the slices, unless the option sets how to
     // label them, as with a template that tells their shares.
     const narrower = { width: 260, height: 575 };
