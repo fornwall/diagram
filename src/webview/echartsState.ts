@@ -110,16 +110,24 @@ function placedBounds(nodes: Nodes, skipped: (id: string) => boolean = () => fal
  */
 function draggedNodes(series: SeriesModel): Drags | undefined {
   if (series.subType !== "graph" || series.get("layout") !== "none") return undefined;
-  const nodes = (series as unknown as { getData(): Nodes }).getData();
+  // All the nodes, also those of categories that the legend hides, which the data drawn leaves
+  // out, and where those drawn are.
+  const nodes = series.getRawData() as unknown as Nodes;
+  const drawn = (series as unknown as { getData(): Nodes }).getData();
+  const where = new Map<string, unknown>();
+  for (let index = 0, count = drawn.count(); index < count; index++) {
+    where.set(drawn.getId(index), drawn.getItemLayout(index));
+  }
   const handed = handedDrags.get(series);
   const ids = new Set(handed?.drags.keys());
   const points = new Map<string, [number, number]>();
   for (let index = 0, count = nodes.count(); index < count; index++) {
-    const at = nodes.getItemLayout(index);
+    const id = nodes.getId(index);
     const placed = placedAt(nodes.getRawDataItem(index));
+    // A node that the legend hides stays where it is placed.
+    const at = where.has(id) ? where.get(id) : placed;
     const [x, y] = Array.isArray(at) ? at.map(Number) : [];
     if (!placed || x === undefined || y === undefined || !Number.isFinite(x + y)) continue;
-    const id = nodes.getId(index);
     points.set(id, [x, y]);
     if (Math.abs(x - placed[0]) + Math.abs(y - placed[1]) > 1e-9) ids.add(id);
   }

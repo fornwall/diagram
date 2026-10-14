@@ -139,4 +139,83 @@ suite("echartsState", () => {
     );
     for (const chart of [first, second, third]) chart.dispose();
   });
+
+  test("keeps a dragged node of a placed graph where dragged through a layout whose legend hides it", () => {
+    // A is of a category of its own, which the legend hides, and then all others but D.
+    const graph = (selected: Record<string, boolean>) => ({
+      animation: false,
+      legend: { selected },
+      series: [
+        {
+          type: "graph",
+          layout: "force",
+          draggable: true,
+          categories: [{ name: "Own" }, { name: "Edge" }, { name: "Rest" }],
+          data: ["A", "B", "C", "D", "E"].map((name) => ({
+            name,
+            category: name === "A" ? 0 : name === "D" ? 1 : 2,
+          })),
+          links: [
+            { source: "A", target: "B" },
+            { source: "B", target: "C" },
+            { source: "C", target: "D" },
+            { source: "D", target: "E" },
+          ],
+        },
+      ],
+    });
+    const draw = (
+      width: number,
+      selected: Record<string, boolean>,
+      from?: ECharts.ECharts,
+    ): ECharts.ECharts => {
+      const chart = init(null, undefined, {
+        renderer: "svg",
+        ssr: true,
+        width,
+        height: 500,
+      }) as unknown as ECharts.ECharts;
+      const restore = from && modelState(from);
+      chart.setOption(layout(graph(selected), { width, height: 500 }), {
+        notMerge: true,
+        lazyUpdate: true,
+      });
+      restore?.(chart);
+      chart.resize({ width, height: 500 });
+      return chart;
+    };
+    // Where A is, across and down the bounds of where the others are placed.
+    const placedA = (chart: ECharts.ECharts, width: number) => {
+      const data = (modelOf(chart).getSeriesByIndex(0) as unknown as Option).getData();
+      const index = Array.from({ length: data.count() }, (_, each) => each).find(
+        (each) => data.getName(each) === "A",
+      );
+      assert.ok(index !== undefined);
+      const [x = 0, y = 0] = data.getItemLayout(index) as number[];
+      const others = layout(graph({}), { width, height: 500 })
+        .series[0].data.filter(({ name }: Option) => name !== "A")
+        .map(({ x, y }: Option) => [x, y]);
+      const xs = others.map(([x]: number[]) => x);
+      const ys = others.map(([, y]: number[]) => y);
+      const [left, top] = [Math.min(...xs), Math.min(...ys)];
+      return [(x - left) / (Math.max(...xs) - left), (y - top) / (Math.max(...ys) - top)].map(
+        (value) => value.toFixed(6),
+      );
+    };
+    const first = draw(800, {});
+    const data = (modelOf(first).getSeriesByIndex(0) as unknown as Option).getData();
+    const [x = 0, y = 0] = data.getItemLayout(0) as number[];
+    data.setItemLayout(0, [x + 60, y - 45]);
+    const dragged = placedA(first, 800);
+    // Hidden by the legend, and shown again; and beside nodes that the legend hides, of the
+    // bounds of all others still.
+    const hidden = draw(600, { Own: false }, first);
+    const shown = draw(700, {}, hidden);
+    assert.deepStrictEqual(placedA(shown, 700), dragged);
+    const beside = draw(600, { Rest: false }, shown);
+    assert.deepStrictEqual(placedA(beside, 600), dragged);
+    const again = draw(700, {}, beside);
+    assert.deepStrictEqual(placedA(again, 700), dragged);
+    for (const chart of [first, hidden, shown, beside, again]) chart.dispose();
+  });
 });
