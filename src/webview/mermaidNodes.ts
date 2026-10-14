@@ -106,6 +106,11 @@ export interface DiagramDb {
     rhsInto?: boolean;
     title?: string;
   })[];
+  /**
+   * Styles a flowchart's links, which linkStyle lines number in the order of getEdges: as Mermaid
+   * reads them, invisible ones too.
+   */
+  updateLink?(positions: (number | "default")[], style: string[]): void;
   /** A class diagram's classes, which tell it from other diagrams. */
   getClasses?(): unknown;
   /** A requirement diagram's relationships, which getData leaves the undefined ends out of. */
@@ -415,6 +420,13 @@ function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
     );
   const counts = new Map<string, number>();
   for (const edge of edges) counts.set(edge.id, (counts.get(edge.id) ?? 0) + 1);
+  // The number of each link in linkStyle lines, where its id tells it, as getData leaves some out.
+  const links = new Map<string, number | undefined>();
+  if (f.db?.updateLink) {
+    for (const [index, { id }] of (f.db.getEdges?.() ?? []).entries()) {
+      if (id !== undefined) links.set(id, links.has(id) ? undefined : index);
+    }
+  }
   const byId = (selector: string) =>
     new Map(Array.from(f.all(selector), (element) => [element.getAttribute("data-id"), element]));
   const labels = byId(".edgeLabel .label[data-id]");
@@ -442,6 +454,8 @@ function shapeEdges(f: Finder, nodeIds: ReadonlyMap<string, string>): void {
     const text = label ? textOf(label) : plainText(edge.label ?? "");
     const arrows = [arrowhead(edge.arrowTypeStart), arrowhead(edge.arrowTypeEnd)] as const;
     const node = f.relation(source, target, text, arrows, edge.id);
+    const link = links.get(edge.id);
+    if (link !== undefined && node.relationship) node.relationship.linkStyle = link;
     f.addLine(line, node);
     if (label) f.add(label, node);
   }

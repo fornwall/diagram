@@ -72,6 +72,11 @@ export interface DiagramNode {
     source: string;
     target: string;
     direction: "forward" | "both" | "undirected";
+    /**
+     * A flowchart edge's number in linkStyle lines, which count the links as Mermaid reads them,
+     * when that tells it.
+     */
+    linkStyle?: number;
   };
 }
 
@@ -296,7 +301,8 @@ const isNode: Check = (value) =>
       (value.relationship.kind === "edge" || value.relationship.kind === "message") &&
       isString(value.relationship.source) &&
       isString(value.relationship.target) &&
-      ["forward", "both", "undirected"].includes(value.relationship.direction as string)));
+      ["forward", "both", "undirected"].includes(value.relationship.direction as string) &&
+      (value.relationship.linkStyle === undefined || isId(value.relationship.linkStyle))));
 const isNodes: Check = (value) => Array.isArray(value) && value.every(isNode);
 const isStrings: Check = (value) => Array.isArray(value) && value.every(isString);
 const isRepeatedNames: Check = (value) =>

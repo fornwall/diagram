@@ -66,6 +66,7 @@ suite("relationships", function () {
       source: "A_B",
       target: "B_C",
       direction: "forward",
+      linkStyle: 0,
     });
     assert.match(selection[0]?.label ?? "", /First/);
     await click(node("edge:second"), true);
@@ -255,6 +256,56 @@ suite("relationships", function () {
       ["Still", "edge:edge1", "Moving", "edge:edge2", "hit", "edge:edge3", "Crash"],
     );
     assert.strictEqual(await path("classDiagram\n  Animal <|-- Duck", "Duck", "Animal"), undefined);
+  });
+
+  test("numbers flowchart edges as linkStyle lines do: chains, fans, subgraphs, invisible links and ids taken", async () => {
+    const source = [
+      "flowchart LR",
+      "  A --> B --> C",
+      "  A & B --> D",
+      "  subgraph S [Group]",
+      "    E --> F",
+      "  end",
+      "  C ~~~ E",
+      "  D --> S",
+      "  G e1@--> H",
+      // An id taken already, which Mermaid gives the edge one of its own instead of.
+      "  H e1@--> G",
+      "  F --> F",
+      "  A --> B",
+    ].join("\n");
+    // Each link in a blue of its own, by Mermaid's numbering.
+    const blue = (link: number) => `rgb(0, 0, ${100 + link})`;
+    const styles = Array.from(
+      { length: 11 },
+      (_, link) => `  linkStyle ${link} stroke:#0000${(100 + link).toString(16)}`,
+    );
+    await draw({ source: [source, ...styles].join("\n") });
+    const links = drawnRelationships.map(({ label, relationship }) => [
+      label,
+      relationship?.linkStyle,
+    ]);
+    assert.deepStrictEqual(links, [
+      ["A → B", 0],
+      ["B → C", 1],
+      ["A → D", 2],
+      ["B → D", 3],
+      ["E → F", 4],
+      ["D → Group", 6],
+      ["G → H", 7],
+      ["H → G", 8],
+      ["F → F", 9],
+      ["A → B", 10],
+    ]);
+    for (const { id, relationship } of drawnRelationships) {
+      assert.strictEqual(
+        await evaluate(
+          `getComputedStyle(document.querySelector('#diagram .diagram-relationship:not(.diagram-relationship-hit)[data-diagram-id=${JSON.stringify(id)}]')).stroke`,
+        ),
+        blue(relationship?.linkStyle ?? -1),
+        id,
+      );
+    }
   });
 
   test("respects bidirectional, undirected and invisible flowchart edges", async () => {
