@@ -124,7 +124,7 @@ Panel: participants and messages are selectable; messages have message: ids in d
   Canvas "1" *-- "*" Shape : contains
   Canvas ..> Repository~T~ : loads with`,
     notes: `- Relations: <|-- inherits, ..|> implements, *-- composition, o-- aggregation, --> association, ..> dependency, -- link. Label after " : "; cardinality in quotes beside the class: A "1" *-- "*" B.
-- Generics with tildes: List~T~. List<T> fails.
+- Generics with tildes: List~T~. List<T> fails; generics do not nest (List~List~int~~ fails): name the inner type, e.g. List~Row~.
 - Members: + public, - private, # protected, ~ package; a method's return type after the parentheses; * or $ at the end marks it abstract or static. <<interface>> or <<abstract>> as the first line of the body.
 - class A["Order service"] gives a class a label with spaces; refer to it by A.
 - namespace Name { class A … } groups classes.
