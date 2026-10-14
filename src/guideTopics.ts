@@ -37,7 +37,7 @@ flowchart LR
 - Ids are short ASCII words (letters, digits, _) that stay the same across edits: selection, marks, code links and the user's edits refer to them. Labels carry the text.
 - Quote labels with punctuation: A["parse(input)"]. Write a quote inside one as #quot;. Lowercase end as an id breaks flowcharts and sequence diagrams, where it closes blocks.
 - %% starts a comment line. $$x^2$$ in a label draws math.
-- Mermaid 12 lays out flowcharts, class, state, ER and requirement diagrams with ELK by default; front matter config: layout: dagre gives the older layout, often more compact for small trees.
+- Mermaid 12 lays out flowcharts, class, state, ER and requirement diagrams with ELK by default, with right-angled edges; front matter config: layout: dagre gives the curved edges of Mermaid 11.
 - Leave out theme, themeVariables, classDef, style and fonts unless the user asks for colors (diagram_style sets them); never click directives or HTML.
 Panel: follows the VS Code theme (light, dark, high contrast; the background can't be changed), fits the diagram to its width with zoom and pan, and makes nodes and edges selectable. Instead of click directives, give diagram_render "links" (node id → code location) or a "clickPrompt". Sources over 50,000 characters are refused: split them.`,
   },
