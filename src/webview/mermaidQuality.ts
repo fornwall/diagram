@@ -50,13 +50,60 @@ export interface DrawingFacts {
 
 /**
  * Warnings about how the drawing reads: text too small to read when fit to the panel, more nodes
- * than read well, flowchart nodes linked to nothing, and labels drawn over each other. The drawing
- * must be laid out, as it is in the layout container, where it is measured.
+ * than read well, flowchart nodes linked to nothing, labels drawn over each other, and Gantt tasks
+ * placed after or until tasks that the chart does not have. The drawing must be laid out, as it is
+ * in the layout container, where it is measured.
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
-  return [tooSmall(svg, facts), tooLarge(facts), loneNodes(facts), overlappingLabels(svg)].filter(
-    (warning) => warning !== undefined,
+  return [
+    tooSmall(svg, facts),
+    tooLarge(facts),
+    loneNodes(facts),
+    overlappingLabels(svg),
+    unknownTasks(facts),
+  ].filter((warning) => warning !== undefined);
+}
+
+/**
+ * The first Gantt task that starts after, or ends at, a task id that no task has, which Mermaid
+ * leaves out, and places the task from or to today if it names no other.
+ */
+function unknownTasks({ type, db }: DrawingFacts): string | undefined {
+  if (type !== "gantt") return undefined;
+  const tasks = db?.getTasks?.() ?? [];
+  const ids = new Set(tasks.map(({ id }) => id));
+  const references = (text: string | undefined, keyword: string) =>
+    new RegExp(`^${keyword}\\s+([\\w -]+)`)
+      .exec(text?.trim() ?? "")?.[1]
+      ?.split(" ")
+      .filter(Boolean) ?? [];
+  const missing = tasks.flatMap((task) =>
+    (
+      [
+        ["after", task.raw?.startTime?.startData, "starts", "from"],
+        ["until", task.raw?.endTime?.data, "ends", "to"],
+      ] as const
+    ).flatMap(([keyword, text, does, from]) => {
+      const named = references(text, keyword);
+      const unknown = named.filter((id) => !ids.has(id));
+      return unknown.length > 0 ? [{ task, keyword, does, from, named, unknown }] : [];
+    }),
   );
+  const [first] = missing;
+  if (!first) return undefined;
+  const { task, keyword, does, from, named, unknown } = first;
+  const which = joinWords(
+    unknown.map((id) => JSON.stringify(id)),
+    "or",
+  );
+  const placed =
+    unknown.length === named.length
+      ? `so Mermaid draws it ${from} today`
+      : `and Mermaid leaves ${unknown.length > 1 ? "them" : "it"} out`;
+  // Ids that the source gives, rather than those that Mermaid makes up for the others.
+  const example = tasks.find(({ id }) => id && id !== task.id && !/^task\d+$/.test(id))?.id;
+  const more = missing.length > 1 ? ` (and ${formatCount(missing.length - 1)} more)` : "";
+  return `Task ${quote(task.task?.trim() ?? "", 40)} ${does} with "${keyword} ${named.join(" ")}", but no task has the id ${which}${more}, ${placed}: give the id of a task${example ? `, such as ${JSON.stringify(example)}` : ""}, or a date.`;
 }
 
 /** The elements that hold the text of labels: SVG text, and HTML in foreign objects. */

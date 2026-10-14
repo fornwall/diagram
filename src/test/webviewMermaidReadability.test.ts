@@ -278,6 +278,22 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings("flowchart TD\n  A --> B\n  C\n  D"), []);
   });
 
+  test("names Gantt tasks placed after or until a task that the chart does not have", async () => {
+    const gantt = (build: string, test: string) =>
+      `gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-05, 7d\n  Build :a2, ${build}, 7d\n  Test :${test}`;
+    assert.deepStrictEqual(await warnings(gantt("after a0", "after a2, until a9")), [
+      'Task "Build" starts with "after a0", but no task has the id "a0" (and 1 more), so Mermaid draws it from today: give the id of a task, such as "a1", or a date.',
+    ]);
+    assert.deepStrictEqual(await warnings(gantt("after a1 design", "after a2, 3d")), [
+      'Task "Build" starts with "after a1 design", but no task has the id "design", and Mermaid leaves it out: give the id of a task, such as "a1", or a date.',
+    ]);
+    assert.deepStrictEqual(await warnings(gantt("2026-01-12", "after a2, until a9")), [
+      'Task "Test" ends with "until a9", but no task has the id "a9", so Mermaid draws it to today: give the id of a task, such as "a1", or a date.',
+    ]);
+    // Tasks may name tasks that come after them.
+    assert.deepStrictEqual(await warnings(gantt("after a3", "a3, 2026-01-05, 3d")), []);
+  });
+
   test("says when labels overlap, and what they say", async () => {
     const [close] = await warnings(`quadrantChart
   x-axis Low --> High
