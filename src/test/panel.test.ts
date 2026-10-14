@@ -1076,6 +1076,26 @@ suite("panel", function () {
     assert.strictEqual(restored.revision, revision + 1);
   });
 
+  test("a changed source that the panel draws has no error yet, whatever the one before had", async () => {
+    const { panel, webview } = await newFakePanel();
+    const broken = "Parse error on line 2.";
+    webview.failNextRender(broken);
+    await panel.render(flowchart, "tool");
+    assert.strictEqual(panel.current?.error, broken);
+    // The page takes its time to draw the user's fix, and an agent's.
+    webview.answer = undefined;
+    const applying = webview.edit("flowchart LR\n  A --> C");
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.doesNotMatch(panel.describeForModel() ?? "", /Parse error/);
+    await webview.finishRender(broken);
+    await applying;
+    assert.strictEqual(panel.current?.error, broken);
+    const editing = panel.editByAgent({ source: flowchart.source, title: "Flow" }, panel.revision);
+    assert.strictEqual(panel.current?.error, undefined);
+    await webview.finishRender();
+    assert.ok((await editing).ok);
+  });
+
   test("an agent's edit drops the selection of the items it removes, as the page does", async () => {
     const { panel, webview } = await newFakePanel();
     // The page draws the nodes named by single capital letters.

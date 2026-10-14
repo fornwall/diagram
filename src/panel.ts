@@ -834,6 +834,8 @@ export class DiagramPanel implements vscode.Disposable {
     this.state = {
       ...state,
       source,
+      // The error of the source before, which says nothing of this one while the page draws it.
+      error: undefined,
       title,
       editedByUser: true,
       userEdit:
@@ -981,6 +983,7 @@ export class DiagramPanel implements vscode.Disposable {
       {
         ...state,
         source,
+        error: undefined,
         document: state.document && { ...state.document, replaced: true },
         origin: "tool",
       },
@@ -1019,6 +1022,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.state = {
       ...state,
       ...edit,
+      error: undefined,
       document: state.document && { ...state.document, replaced: true },
       origin: "tool",
     };
@@ -1562,6 +1566,7 @@ function withRebuiltChart(
       title: made ? chartTitle(chart) : (chart.title ?? state.title),
       chart,
       source: JSON.stringify(rebuilt.option, null, 2),
+      error: undefined,
       chartPresentation: rebuilt.presentation,
       editedByUser: rebuilt.presentation.edits.length > 0,
     },
