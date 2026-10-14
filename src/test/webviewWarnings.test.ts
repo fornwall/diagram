@@ -77,4 +77,16 @@ suite("Warnings of a drawing in the webview as the panel changes size", function
       );
     });
   }
+
+  test("answers a render as drawn whose warnings fail to be read, without them", async () => {
+    // As of a check of the drawing that fails, here measuring the width of the panel.
+    await evaluate(`void Object.defineProperty(document.body, "clientWidth", {
+      configurable: true,
+      get() { throw new Error("A check failed."); },
+    })`);
+    afterTest(() => evaluate("delete document.body.clientWidth"));
+    const outcome = await page.render({ source: TIMELINE });
+    assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+    assert.deepStrictEqual(page.panel.warnings, []);
+  });
 });

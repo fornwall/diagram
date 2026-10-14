@@ -389,9 +389,15 @@ async function render(message: RenderMessage): Promise<void> {
     }
   } finally {
     // What the drawing warns of, read once the toolbar and the footer are those of the drawing,
-    // and so the room that the panel fits it to, by its height too.
+    // and so the room that the panel fits it to, by its height too. A check that fails leaves
+    // them unsaid, rather than the render unanswered, which the extension would wait for.
     if (answer) {
-      const warnings = active?.warnings?.();
+      let warnings: string[] | undefined;
+      try {
+        warnings = active?.warnings?.();
+      } catch (error) {
+        console.error(error);
+      }
       warned = { requestId, warnings: JSON.stringify(warnings ?? []) };
       post({ ...answer, warnings });
     }
