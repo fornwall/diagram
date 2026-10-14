@@ -1840,6 +1840,40 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     assert.deepStrictEqual(opened, ["https://example.com/dash", "https://example.com/repo"]);
   });
 
+  test("keeps link menu clicks from panning an overflowing drawing", async () => {
+    await draw({ source: actorLinks });
+    const opened = recordOpened();
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const canvas = document.getElementById("canvas");
+        const actor = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        actor.focus();
+        actor.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        const item = document.querySelector(".link-menu button");
+        const box = item.getBoundingClientRect();
+        const init = {pointerId: 71, pointerType: "mouse", button: 0, isPrimary: true,
+          clientX: box.left + 5, clientY: box.top + 5, bubbles: true, cancelable: true};
+        Object.defineProperty(canvas, "scrollWidth", {value: canvas.clientWidth + 100, configurable: true});
+        canvas.setPointerCapture = () => {};
+        try {
+          const down = new PointerEvent("pointerdown", init);
+          item.dispatchEvent(down);
+          // A small movement within a menu entry is still a click, even on a zoomed diagram.
+          item.dispatchEvent(new PointerEvent("pointermove", {...init, clientX: init.clientX + 4}));
+          const panning = canvas.classList.contains("panning");
+          item.dispatchEvent(new PointerEvent("pointerup", {...init, clientX: init.clientX + 4}));
+          item.dispatchEvent(new MouseEvent("click", {...init, clientX: init.clientX + 4, detail: 1}));
+          return {prevented: down.defaultPrevented, panning, menu: !!document.querySelector(".link-menu")};
+        } finally {
+          delete canvas.scrollWidth;
+          delete canvas.setPointerCapture;
+        }
+      })()`),
+      { prevented: false, panning: false, menu: false },
+    );
+    assert.deepStrictEqual(opened, ["https://example.com/wiki"]);
+  });
+
   test("closes an actor's menu when the diagram is drawn again, keeping the focus on the actor", async () => {
     /** Opens Bob's menu, draws the diagram again as `drawAgain` does, and tells how it ends up. */
     const redraw = async (drawAgain: () => Promise<unknown>) => {

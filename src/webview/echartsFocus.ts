@@ -391,7 +391,9 @@ export class ChartFocus {
     element.addEventListener("focusout", ({ relatedTarget }) => {
       if (!(relatedTarget instanceof Node && element.contains(relatedTarget))) this.hide();
     });
-    element.addEventListener("pointerdown", () => {
+    element.addEventListener("pointerdown", (event) => {
+      // A touch or press on a tooltip link must not hide it before the click arrives.
+      if (event.target instanceof Element && event.target.closest("a[href]")) return;
       this.keyboard = false;
       this.hide();
     });

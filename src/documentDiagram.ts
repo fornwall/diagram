@@ -247,15 +247,22 @@ export async function reportUnshownWrite(
   savedBefore: boolean,
 ): Promise<void> {
   if (savedBefore) reportedUnsaved.delete(binding.uri);
-  const { path } = vscode.Uri.parse(binding.uri);
   const document = vscode.workspace.textDocuments.find(({ uri }) => uri.toString() === binding.uri);
-  // By path, as a notebook's tab shows the documents of its cells.
   const shown = vscode.window.tabGroups.all.some((group) =>
-    group.tabs.some(
-      ({ input }) =>
-        (input instanceof vscode.TabInputText || input instanceof vscode.TabInputNotebook) &&
-        input.uri.path === path,
-    ),
+    group.tabs.some(({ input }) => {
+      if (input instanceof vscode.TabInputText) return input.uri.toString() === binding.uri;
+      if (input instanceof vscode.TabInputTextDiff) {
+        return [input.original, input.modified].some((uri) => uri.toString() === binding.uri);
+      }
+      return (
+        input instanceof vscode.TabInputNotebook &&
+        vscode.workspace.notebookDocuments.some(
+          (notebook) =>
+            notebook.uri.toString() === input.uri.toString() &&
+            notebook.getCells().some((cell) => cell.document.uri.toString() === binding.uri),
+        )
+      );
+    }),
   );
   if (shown || !document?.isDirty || reportedUnsaved.has(binding.uri)) return;
   reportedUnsaved.add(binding.uri);

@@ -75,6 +75,14 @@ export function enablePanning(canvas: HTMLElement): void {
     if (!drag) {
       // A new gesture must not inherit a pan whose click landed outside the canvas.
       panned = false;
+      pressed = undefined;
+      // Menus and chart controls keep their native focus, text selection and dragging.
+      if (
+        event.target instanceof Element &&
+        event.target.closest("button, input, textarea, select, [contenteditable], a[href]")
+      ) {
+        return;
+      }
       pressed =
         event.pointerType === "mouse" && event.button === 0 && event.isPrimary
           ? { x: event.clientX, y: event.clientY }

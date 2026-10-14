@@ -987,9 +987,32 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     return { ...splitDelimited(text.slice(declared[0].length), declared[1]), csv: true };
   }
   const all = text.split(/\r\n?|\n/);
+  // Explicit delimited formats have literal fields, including "..." rows and columns.
+  if (format === "csv" || format === "tsv") return splitShown(text, all, format);
+  const tables = format === "auto" ? markdownTables(all) : [];
+  const elidedRows = all.some((line) => ELIDED_ROWS.test(line));
+  if (format === "auto" && text.includes('"') && (elidedRows || tables.length > 0)) {
+    // A quoted CSV/TSV field may contain a whole Markdown table or literal ellipses.
+    // Read it before interpreting those physical lines as display formatting.
+    let table: Records | undefined;
+    try {
+      table = splitShown(text, all, format);
+    } catch (error) {
+      // Prose around a Markdown table need not be valid CSV or fit the table's size limits.
+      if (!(error instanceof QuoteError || error instanceof TableSizeError)) throw error;
+    }
+    if (
+      table !== undefined &&
+      (table.csv || all.find((line) => !isBlank(line))?.includes("\t")) &&
+      table.records.some((record) =>
+        record.some((cell) => typeof cell === "string" && cell.includes("\n")),
+      )
+    ) {
+      return table;
+    }
+  }
   if (format === "auto") {
     // A Markdown table in a document or a chat answer, with text or more tables around it.
-    const tables = markdownTables(all);
     const [table] = tables;
     if (
       table !== undefined &&
@@ -1006,7 +1029,6 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
       return { ...inner, note: inner.note === undefined ? note : `${note} ${inner.note}` };
     }
   }
-  const elidedRows = all.some((line) => ELIDED_ROWS.test(line));
   // Left as empty lines, which are skipped, as errors count lines.
   const shown = elidedRows ? all.map((line) => (ELIDED_ROWS.test(line) ? "" : line)) : all;
   const table = splitShown(elidedRows ? shown.join("\n") : text, shown, format);
@@ -1051,7 +1073,11 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
   }
   const tabs = lines.filter((line) => line.includes("\t")).length;
   let tabular: Records | undefined;
-  if (format === "tsv" || (format === "auto" && tabs > lines.length / 2)) {
+  if (
+    format === "tsv" ||
+    (format === "auto" &&
+      (tabs > lines.length / 2 || (text.includes('"') && lines[0]?.includes("\t"))))
+  ) {
     // Tab-separated output, e.g. from du, is rarely quoted but may contain quotes in file names.
     const { table, quoteError } = splitLeniently(text, "\t");
     tabular = table;

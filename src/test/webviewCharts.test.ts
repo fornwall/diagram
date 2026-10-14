@@ -1000,7 +1000,7 @@ suite("ECharts in the webview", function () {
     );
   });
 
-  test("keeps the tooltip shown while the focus is on its links, and hides it after", async () => {
+  test("keeps tooltip links reachable by keyboard and touch, and hides them after focus leaves", async () => {
     await renderChart({
       ...SALES,
       tooltip: { formatter: '<a href="https://example.com/docs">Docs</a>' },
@@ -1022,11 +1022,17 @@ suite("ECharts in the webview", function () {
       link.focus();
       await settled();
       const onLink = state();
+      // Touch has no mouseenter to tell ECharts to keep its tooltip under the pointer.
+      link.dispatchEvent(new PointerEvent("pointerdown", {pointerType: "touch", bubbles: true}));
+      await settled();
+      const pressedLink = state();
+      link.dispatchEvent(new PointerEvent("pointerup", {pointerType: "touch", bubbles: true}));
       document.getElementById("ask-input").focus();
       await until(() => !reachable(), "the tooltip to hide");
-      return [onLink, state()];
+      return [onLink, pressedLink, state()];
     })()`);
     assert.deepStrictEqual(states, [
+      { focused: true, reachable: true, status: true },
       { focused: true, reachable: true, status: true },
       { focused: "ask-input", reachable: false, status: false },
     ]);

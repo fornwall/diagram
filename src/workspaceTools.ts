@@ -807,7 +807,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     let scannedBytes = 0;
     let outputChars = 0;
     let stopped: string | undefined;
-    const reads: Promise<FileText | { failure: unknown }>[] = [];
+    const reads: (Promise<FileText | { failure: unknown }> | undefined)[] = [];
     const read = (index: number) => {
       const uri = files[index];
       if (uri && !reads[index]) {
@@ -819,6 +819,8 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     search: for (const [index, uri] of files.entries()) {
       for (let ahead = index; ahead < index + READ_AHEAD; ahead++) read(ahead);
       const content = await unlessCancelled(async () => reads[index], token);
+      // Release the decoded file once consumed instead of retaining every searched file.
+      reads[index] = undefined;
       throwIfCancelled(token);
       if (!content || "failure" in content) {
         if (content?.failure instanceof vscode.CancellationError) throw content.failure;

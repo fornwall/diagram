@@ -50,6 +50,62 @@ suite("data", () => {
     ]);
   });
 
+  test("preserves display-like text inside multiline CSV and TSV fields", () => {
+    const labels = [
+      "first\nsecond\nthird\nfourth",
+      "before\n...\nafter",
+      "before\n│ … │\nafter",
+      "before\n| name | value |\n| --- | --- |\n| nested | 99 |\nafter",
+    ];
+    for (const [format, delimiter] of [
+      ["csv", ","],
+      ["csv", ";"],
+      ["tsv", "\t"],
+    ] as const) {
+      for (const label of labels) {
+        const text = `name${delimiter}value\n"${label}"${delimiter}1\nlast${delimiter}2`;
+        for (const selected of [format, "auto"] as const) {
+          const table = parseTable(text, selected);
+          assert.deepStrictEqual(table.rows, [
+            [label, 1],
+            ["last", 2],
+          ]);
+          assert.strictEqual(table.note, undefined);
+        }
+      }
+    }
+  });
+
+  test("explicit CSV and TSV keep literal ellipsis rows and columns", () => {
+    for (const [format, delimiter] of [
+      ["csv", ","],
+      ["tsv", "\t"],
+    ] as const) {
+      for (const marker of ["...", '"..."']) {
+        assert.deepStrictEqual(splitText(`name\n${marker}\nlast`, format).records, [
+          ["name"],
+          ["..."],
+          ["last"],
+        ]);
+        assert.deepStrictEqual(
+          splitText(`name${delimiter}${marker}\na${delimiter}${marker}`, format).records,
+          [
+            ["name", "..."],
+            ["a", "..."],
+          ],
+        );
+      }
+    }
+  });
+
+  test("extracts Markdown tables even when surrounding prose looks like invalid CSV", () => {
+    const table = parseTable(
+      '"Summary, open quote\n| name | value |\n| --- | --- |\n| nested | 99 |',
+    );
+    assert.deepStrictEqual(table.rows, [["nested", 99]]);
+    assert.match(table.note ?? "", /Only the Markdown table/);
+  });
+
   test("parses spaces between numbers and units in tabular exports", () => {
     const table = parseTable("name;size;share\na;1,5 MiB;12,5 %\nb;2\u00a0MiB;25\u202f%");
     assert.deepStrictEqual(table.rows, [

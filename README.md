@@ -108,7 +108,7 @@ The panel loads images only from `data:` URLs, so a Mermaid image shape must emb
 - Markdown tables, also within text, and tables drawn with pipes or box-drawing characters, such as `psql`, `mysql`, `sqlite3`, DuckDB, Polars and `git diff --stat` output
 - Whitespace-separated output such as `du`, `wc -l`, `ls -l`, `df`, `free`, `docker ps`, `kubectl`, `go test -bench`, `top -b`, `cloc`, `tasklist`, PowerShell tables and pandas data frames
 
-Terminal colors are ignored. When DuckDB, Polars or pandas shorten a result, only the rows and columns shown are read.
+Terminal colors are ignored. In auto format, shortened DuckDB, Polars or pandas results include only the rows and columns shown. Use `format: "csv"` or `"tsv"` to keep literal ellipsis rows and columns. Quoted multiline fields keep their contents.
 
 Abbreviations such as `1.5K` and `$1.2B` mean thousands and billions. In size columns, such as `du -h` output or a column named `Size`, `1.5K` means 1536 bytes. Units such as `MiB` and `kB` always mean bytes; bare units use powers of 1000 for commands run with `--si` or `df -H`.
 
