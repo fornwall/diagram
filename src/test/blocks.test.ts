@@ -75,6 +75,13 @@ suite("blocks", () => {
     assert.strictEqual(mermaidTitle(""), "Diagram");
   });
 
+  test("reads past directives that span lines", () => {
+    const init = "%%{\n  init: {\n    'theme': 'dark'\n  }\n}%%";
+    assert.strictEqual(mermaidTitle(`${init}\nflowchart LR\n  A --> B`), "flowchart");
+    assert.strictEqual(mermaidTitle(`${init}\npie title Pets\n  "Dogs" : 386`), "Pets");
+    assert.strictEqual(mermaidTitle(`gantt\n  ${init}\n  title Plan`), "Plan");
+  });
+
   test("titles a chart by the title of its ECharts option", () => {
     const chartTitle = (source: string) => guessTitle({ language: "echarts", source });
     assert.strictEqual(chartTitle('{"title": {"text": "Sales"}, "series": []}'), "Sales");

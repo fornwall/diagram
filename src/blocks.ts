@@ -1,4 +1,5 @@
 import { FenceScanner, fenceMarker, trimBlankLines } from "./fences";
+import { DIRECTIVE } from "./mermaidSyntax";
 import { DIAGRAM_LANGUAGES, type DiagramLanguage } from "./protocol";
 
 /** A diagram written in a fenced code block: ```mermaid, or ```echarts with an ECharts option. */
@@ -47,7 +48,8 @@ const TITLE_STATEMENT = /^(?:showData\s+)?title(?:\s+|:\s*)(.*?)\s*(?:%%.*)?$/i;
 function guessMermaidTitle(source: string): string {
   let type: string | undefined;
   let inFrontmatter = false;
-  for (const line of source.split("\n")) {
+  // Directives, which may span lines, are read past as Mermaid does.
+  for (const line of source.replace(DIRECTIVE, "").split("\n")) {
     const trimmed = line.trim();
     if (type === undefined && trimmed === "---") {
       inFrontmatter = !inFrontmatter;
