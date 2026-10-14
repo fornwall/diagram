@@ -410,6 +410,22 @@ suite("Mermaid readability in the webview", function () {
     );
   });
 
+  test("says the zoom that the panel shows a drawing at, also where its height limits it", async () => {
+    // Wide and tall, of text small enough for fitting the height to shrink it below 9 px.
+    const chains = Array.from({ length: 7 }, (_, chain) =>
+      Array.from({ length: 5 }, (_, step) => `  N${chain}_${step}[Step ${step}]`).join(" --> "),
+    );
+    const source = `---\nconfig:\n  themeVariables:\n    fontSize: 10px\n---\nflowchart TB\n${chains.join("\n")}`;
+    await evaluate(`document.body.style.maxHeight = "450px"`);
+    afterTest(() => evaluate(`document.body.style.maxHeight = ""`));
+    const [wide] = await warnings(source, 350);
+    const zoom = await evaluate(`document.getElementById("zoom-reset").textContent`);
+    assert.match(
+      wide ?? "",
+      new RegExp(`^Too wide: the panel's \\d+ px show the [\\d,]+ px wide drawing at ${zoom}, `),
+    );
+  });
+
   test("tells the model that rendered the diagram", async () => {
     await evaluate(`document.body.style.maxWidth = "450px"`);
     const result = await invokeTool(new RenderDiagramTool(page.panel), {

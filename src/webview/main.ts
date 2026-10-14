@@ -332,25 +332,23 @@ async function render(message: RenderMessage): Promise<void> {
   const statusTimer = setTimeout(() => {
     renderStatus.textContent = `Rendering ${renderer.noun}…`;
   }, 300);
+  let answer: Extract<FromWebview, { type: "rendered" }> | undefined;
   try {
     if (message.notDrawn !== undefined) throw new Error(message.notDrawn);
     const diagramType = await inertUntil(renderer.render(source, message.title));
     active = renderer;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
-    const warnings = renderer.warnings?.();
-    warned = { requestId, warnings: JSON.stringify(warnings ?? []) };
     // The ids go along so that the extension host can tell a model when it names a node that is
     // not in the diagram, e.g. in a link or a mark.
-    post({
+    answer = {
       type: "rendered",
       requestId,
       diagramType,
       nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
       relationships: drawn?.filter((node) => node.relationship),
       repeatedNames: renderer.repeatedNames?.(),
-      warnings,
-    });
+    };
   } catch (error) {
     // Show only the error, as the title, Refresh, clicks and the source editor are now for the
     // diagram that failed, which is also the one the extension describes to the model.
@@ -365,27 +363,38 @@ async function render(message: RenderMessage): Promise<void> {
     clearTimeout(statusTimer);
     renderStatus.textContent = "";
   }
-  // A drawing that replaces the one a pick was asked on is described by its question as well.
-  if (pick) describeByPick(drawingFocus(), true);
-  // Only while the page has the focus: focus() would take it from wherever the user went meanwhile.
-  // The canvas, which a chart does not render inert, keeps it, but takes the keys only for Mermaid;
-  // it also has it from a control that the new drawing hid, such as a zoom button.
-  const lost = document.activeElement === document.body || document.activeElement === canvas;
-  if ((focused || document.activeElement === canvas) && lost && document.hasFocus()) {
-    const id = focused?.getAttribute("data-diagram-id");
-    const node =
-      id && canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`);
-    (node || drawingFocus()).focus({ preventScroll: true });
-  }
-  diagramReplaced();
-  // A revision that keeps its items, such as one that colors them, keeps their selection.
-  const kept = message.selection && active?.drawnNodes?.();
-  if (kept) {
-    const ids = new Set(message.selection);
-    for (const node of kept) {
-      if (ids.has(node.id)) selection.set(node.id, node);
+  try {
+    // A drawing that replaces the one a pick was asked on is described by its question as well.
+    if (pick) describeByPick(drawingFocus(), true);
+    // Only while the page has the focus: focus() would take it from wherever the user went
+    // meanwhile. The canvas, which a chart does not render inert, keeps it, but takes the keys
+    // only for Mermaid; it also has it from a control that the new drawing hid, such as a zoom
+    // button.
+    const lost = document.activeElement === document.body || document.activeElement === canvas;
+    if ((focused || document.activeElement === canvas) && lost && document.hasFocus()) {
+      const id = focused?.getAttribute("data-diagram-id");
+      const node =
+        id && canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`);
+      (node || drawingFocus()).focus({ preventScroll: true });
     }
-    if (selection.size > 0) selectionChanged();
+    diagramReplaced();
+    // A revision that keeps its items, such as one that colors them, keeps their selection.
+    const kept = message.selection && active?.drawnNodes?.();
+    if (kept) {
+      const ids = new Set(message.selection);
+      for (const node of kept) {
+        if (ids.has(node.id)) selection.set(node.id, node);
+      }
+      if (selection.size > 0) selectionChanged();
+    }
+  } finally {
+    // What the drawing warns of, read once the toolbar and the footer are those of the drawing,
+    // and so the room that the panel fits it to, by its height too.
+    if (answer) {
+      const warnings = active?.warnings?.();
+      warned = { requestId, warnings: JSON.stringify(warnings ?? []) };
+      post({ ...answer, warnings });
+    }
   }
 }
 

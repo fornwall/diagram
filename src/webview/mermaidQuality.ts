@@ -224,43 +224,49 @@ const NARROWER: Record<string, string> = {
 
 /**
  * A drawing that the panel, or a narrow panel if the panel's size is not known, shows much wider
- * than itself, at the zoom that leaves its text legible, so that the user scrolls sideways across
- * it. The height that the panel has does not matter but for text smaller than Mermaid draws.
+ * than itself, at the zoom that fits it to the panel, which leaves its text legible but where its
+ * height asks for less, so that the user scrolls sideways across it.
  */
 export function tooWide(
   drawing: DrawingWidth,
   panel: {
-    /** The width that the panel has for the drawing, or 0 if it is not known, as while hidden. */
+    /** The room that the panel has for the drawing, a side 0 if it is not known, as while hidden. */
     roomWidth: number;
+    roomHeight: number;
     /** The width of the whole panel. */
     width: number;
   },
 ): string | undefined {
   const { width, height, textSize: size, type, turned } = drawing;
   const known = panel.roomWidth > 0;
-  const room = known ? panel.roomWidth : NARROW_ROOM;
+  const room = {
+    width: known ? panel.roomWidth : NARROW_ROOM,
+    height: known && panel.roomHeight > 0 ? panel.roomHeight : Number.POSITIVE_INFINITY,
+  };
   /** How many times as wide as the room a drawing of the size is shown. */
   const across = (drawn: { width: number; height: number }) =>
-    (drawn.width * fittingZoom(drawn, { width: room, height: Infinity }, size)) / room;
+    (drawn.width * fittingZoom(drawn, room, size)) / room.width;
   if (!(width > 0 && height > 0 && size) || across({ width, height }) <= MAX_SCROLL) {
     return undefined;
   }
-  const zoom = fittingZoom({ width, height }, { width: room, height: Infinity }, size);
+  const zoom = fittingZoom({ width, height }, room, size);
   const remedies: string[] = [];
   const narrower = NARROWER[type];
   if (narrower) remedies.push(narrower);
   // The other direction lays the drawing out across its height, roughly.
   if (turned && across({ width: height, height: width }) <= MAX_SCROLL) remedies.push(turned);
   // A drawing a little too wide fits a somewhat wider panel, whose room for the drawing grows at
-  // least in proportion, as the split view shares it.
-  const wider = (panel.width * width * Math.min(1, MIN_FIT_TEXT / size)) / MAX_SCROLL / room;
+  // least in proportion, as the split view shares it. There, the zoom that fits it is as far as
+  // fitting the height or its text leaves it.
+  const least = fittingZoom({ width, height }, { width: 0, height: room.height }, size);
+  const wider = (panel.width * width * least) / MAX_SCROLL / room.width;
   if (known && wider <= panel.width * MAX_WIDENING) {
     remedies.push(`widen the panel to at least ${formatCount(Math.ceil(wider / 10) * 10)} px`);
   }
   // A packet is split into rows already.
   if (type !== "packet") remedies.push("split it into several diagrams");
-  const where = `${known ? "the panel's" : "a narrow panel's"} ${formatCount(Math.round(room))} px`;
-  const part = Math.max(1, Math.round((100 * room) / (width * zoom)));
+  const where = `${known ? "the panel's" : "a narrow panel's"} ${formatCount(Math.round(room.width))} px`;
+  const part = Math.max(1, Math.round((100 * room.width) / (width * zoom)));
   return (
     `Too wide: ${where} show the ${formatCount(Math.round(width))} px wide drawing at ${Math.round(zoom * 100)}%, ` +
     `where its ${round(size)} px text is ${round(size * zoom)} px, and only ${part}% of its width at a time; ` +

@@ -994,11 +994,14 @@ export class MermaidRenderer implements Renderer {
     // A hidden tab's page has the default size of a frame, also when it is told that the tab is
     // shown before it has the tab's size, under load: the panel's is not known. The Source view
     // hides the canvas, and a hidden tab's has no size: take the width the drawing was laid out at.
-    const room = this.contentSize().width;
-    const roomWidth =
-      innerWidth === 300 && innerHeight === 150 ? 0 : room > 0 ? room : this.layoutWidth;
+    // The height that fitting the drawing goes by is then not known either.
+    const frame = innerWidth === 300 && innerHeight === 150;
+    const room = this.contentSize();
+    const roomWidth = frame ? 0 : room.width > 0 ? room.width : this.layoutWidth;
+    const roomHeight = frame || room.width <= 0 ? 0 : room.height;
     const wide =
-      this.measured && tooWide(this.measured, { roomWidth, width: document.body.clientWidth });
+      this.measured &&
+      tooWide(this.measured, { roomWidth, roomHeight, width: document.body.clientWidth });
     return wide ? [wide, ...this.readability] : this.readability;
   }
 
