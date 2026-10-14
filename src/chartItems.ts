@@ -14,7 +14,9 @@ export function pieOption(doughnut: boolean, reading: Reading): Record<string, u
       {
         type: "pie",
         name: names[0] ?? "",
-        ...(doughnut ? { radius: ["45%", "72%"] } : {}),
+        // Of a size that leaves room for the labels beside it also in a narrow panel, where the
+        // panel makes a pie of no radius smaller for them, but leaves a radius of the option's own.
+        ...(doughnut ? { radius: ["35%", "55%"] } : {}),
         label: { formatter: "{b}: {d}%" },
         // Labels of slices under 1% would overlap; the legend and tooltip still name them.
         minShowLabelAngle: 3.6,

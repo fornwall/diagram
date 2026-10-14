@@ -430,6 +430,20 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("draws the labels of diagram_chart's pies whole in a narrow panel", () => {
+    const table = "component,bugs\nParser,42\nRenderer,31\nCommand line,9\nDocumentation,6";
+    const size = { width: 396, height: 575 };
+    for (const type of ["pie", "doughnut"] as const) {
+      const option = layout(
+        builtOption({ type, data: "unused", labelColumn: "component" }, table),
+        size,
+      );
+      const svg = svgOf(option, size);
+      assert.match(svg, />Documentation: 6\.82%</, type);
+      assert.doesNotMatch(svg, /(?:…|\.\.\.)</, type);
+    }
+  });
+
   test("makes room for a pie's legend by the names of its slices", () => {
     const pie = (name: string, value: number) => ({
       legend: {},
