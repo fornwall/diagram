@@ -245,6 +245,17 @@ suite("itemNames", () => {
       ids: [],
       why: 'it has no arrow: write "A --> B"',
     });
+    // One that points back, from the second end to the first.
+    for (const arrow of ["<-", "←", "<~", "⇐"]) {
+      assert.deepStrictEqual(sourced.resolve(`B ${arrow} A`), {
+        ids: [],
+        why: `${JSON.stringify(arrow)} is not an arrow: write "A --> B"`,
+      });
+    }
+    assert.deepStrictEqual(
+      sourced.resolve("A <~> B").why,
+      '"<~>" is not an arrow: write "A --> B"',
+    );
     // Not where the ends are not node ids, or are one.
     assert.deepStrictEqual(sourced.resolve("A ~> X"), { ids: [] });
     assert.deepStrictEqual(sourced.resolve("AB"), { ids: [] });

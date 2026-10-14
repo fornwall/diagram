@@ -134,7 +134,10 @@ export class ItemNames {
     }
     const odd = between.length === 0 ? this.withoutArrow(name.replace(KIND, "")) : undefined;
     if (odd) {
-      const fixed = JSON.stringify(`${odd.source} --> ${odd.target}`);
+      // What points back, as "<-" or "←", goes from the second end to the first.
+      const back = /^[<←⇐⟵]/.test(odd.between) && !/[>→⇒⟶]$/.test(odd.between);
+      const [from, to] = back ? [odd.target, odd.source] : [odd.source, odd.target];
+      const fixed = JSON.stringify(`${from} --> ${to}`);
       return {
         ids: [],
         why: odd.between
