@@ -61,13 +61,25 @@ interface Nodes {
 }
 
 /**
- * Where the user dragged the nodes of a graph, by id: across and down the bounds of the nodes
- * that stay where they are placed, from 0 at their left or top to 1 at their right or bottom.
+ * Where the user dragged the nodes of a graph, by id: across and down the bounds of where the
+ * nodes not dragged are placed, or else all nodes, from 0 at their left or top to 1 at their right
+ * or bottom.
  */
 type Drags = Map<string, [number, number]>;
 
-/** The nodes dragged in the graphs that a model was handed them for, as they still are. */
-const handedDrags = new WeakMap<object, Drags>();
+/** The bounds of where nodes are placed, of a unit where they are all in a line. */
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The nodes dragged in the graphs that a model was handed them for, and the bounds of where all
+ * its nodes are placed, which placing the dragged ones where dragged leaves its model without.
+ */
+const handedDrags = new WeakMap<object, { drags: Drags; bounds: Bounds }>();
 
 /** Where a node is placed, if it is. */
 function placedAt(item: unknown): [number, number] | undefined {
@@ -77,8 +89,8 @@ function placedAt(item: unknown): [number, number] | undefined {
     : undefined;
 }
 
-/** The bounds of where the nodes are placed but those of some ids, if any. */
-function placedBounds(nodes: Nodes, skipped: (id: string) => boolean) {
+/** The bounds of where the nodes are placed, but those of some ids, if any are. */
+function placedBounds(nodes: Nodes, skipped: (id: string) => boolean = () => false) {
   const points: [number, number][] = [];
   for (let index = 0, count = nodes.count(); index < count; index++) {
     const at = placedAt(nodes.getRawDataItem(index));
@@ -88,48 +100,53 @@ function placedBounds(nodes: Nodes, skipped: (id: string) => boolean) {
   const xs = points.map(([x]) => x);
   const ys = points.map(([, y]) => y);
   const [x, y] = [Math.min(...xs), Math.min(...ys)];
-  // Of a unit where the nodes are all in a line.
   return { x, y, width: Math.max(...xs) - x || 1, height: Math.max(...ys) - y || 1 };
 }
 
 /**
  * Where the user dragged the nodes of a graph of placed nodes, as the panel places those of a
- * force layout, besides those dragged before a new layout and not since. ECharts moves a dragged
- * node from where it is placed, which a new layout, as for another size, would place it again.
+ * force layout, also those dragged before a new layout and not since. ECharts moves a dragged node
+ * from where it is placed, which a new layout, as for another size, would place it again.
  */
 function draggedNodes(series: SeriesModel): Drags | undefined {
   if (series.subType !== "graph" || series.get("layout") !== "none") return undefined;
   const nodes = (series as unknown as { getData(): Nodes }).getData();
-  const drags: Drags = new Map(handedDrags.get(series));
-  const moved: [string, number, number][] = [];
+  const handed = handedDrags.get(series);
+  const ids = new Set(handed?.drags.keys());
+  const points = new Map<string, [number, number]>();
   for (let index = 0, count = nodes.count(); index < count; index++) {
     const at = nodes.getItemLayout(index);
     const placed = placedAt(nodes.getRawDataItem(index));
     const [x, y] = Array.isArray(at) ? at.map(Number) : [];
-    if (placed && x !== undefined && y !== undefined && Number.isFinite(x + y)) {
-      if (Math.abs(x - placed[0]) + Math.abs(y - placed[1]) > 1e-9) {
-        moved.push([nodes.getId(index), x, y]);
-      }
-    }
+    if (!placed || x === undefined || y === undefined || !Number.isFinite(x + y)) continue;
+    const id = nodes.getId(index);
+    points.set(id, [x, y]);
+    if (Math.abs(x - placed[0]) + Math.abs(y - placed[1]) > 1e-9) ids.add(id);
   }
-  const box = placedBounds(nodes, (id) => drags.has(id) || moved.some(([each]) => each === id));
-  if (box) {
-    for (const [id, x, y] of moved) {
+  // Of the nodes not dragged, where those handed over are placed as they were: else where all
+  // were placed before those were placed where dragged.
+  const box = placedBounds(nodes, (id) => ids.has(id)) ?? handed?.bounds ?? placedBounds(nodes);
+  if (!box || ids.size === 0) return undefined;
+  const drags: Drags = new Map();
+  for (const id of ids) {
+    const [x, y] = points.get(id) ?? [];
+    if (x !== undefined && y !== undefined) {
       drags.set(id, [(x - box.x) / box.width, (y - box.y) / box.height]);
     }
   }
-  return drags.size > 0 ? drags : undefined;
+  return drags;
 }
 
 /**
- * Places the dragged nodes of a graph where the user dragged them, of the bounds of the others as
- * they are placed now, as for another size.
+ * Places the dragged nodes of a graph where the user dragged them, of the bounds of where the
+ * others are placed now, or else all, as for another size.
  */
 function placeDragged(series: SeriesModel, drags: Drags): void {
   if (series.subType !== "graph" || series.get("layout") !== "none") return;
   const nodes = series.getRawData() as unknown as Nodes;
-  const box = placedBounds(nodes, (id) => drags.has(id));
-  if (!box) return;
+  const bounds = placedBounds(nodes);
+  const box = placedBounds(nodes, (id) => drags.has(id)) ?? bounds;
+  if (!box || !bounds) return;
   for (let index = 0, count = nodes.count(); index < count; index++) {
     const drag = drags.get(nodes.getId(index));
     // The model's own copy of the node, which ECharts made of the option.
@@ -139,7 +156,7 @@ function placeDragged(series: SeriesModel, drags: Drags): void {
       item.y = box.y + drag[1] * box.height;
     }
   }
-  handedDrags.set(series, drags);
+  handedDrags.set(series, { drags, bounds });
 }
 
 /**
