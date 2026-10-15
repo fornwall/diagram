@@ -287,6 +287,18 @@ suite("echartsItems", () => {
     const [repeated] = items.repeatedNames();
     assert.strictEqual(repeated?.ids.length, 20);
     assert.strictEqual(repeated?.count, 30);
+    // Dates as a time axis labels them, rather than as JavaScript writes them out.
+    for (const [date, text] of [
+      [new Date(2020, 0, 2), "2020-01-02"],
+      [new Date(2020, 0, 2, 10, 30), "2020-01-02 10:30:00"],
+    ] as const) {
+      const dated = itemsOf({
+        xAxis: { type: "time" },
+        yAxis: {},
+        series: [{ type: "line", data: [[date, 1]] }],
+      });
+      assert.strictEqual(dated.node("0::0")?.label, `(${text}, 1)`);
+    }
   });
 
   test("reads the same items from a new layout of the option, without working them out again", () => {

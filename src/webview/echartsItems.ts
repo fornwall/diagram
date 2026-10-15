@@ -170,12 +170,25 @@ function valueText(value: unknown): string | undefined {
     return undefined;
   }
   if (Array.isArray(value)) {
-    return `(${value.map((item) => String(item)).join(", ")})`;
+    return `(${value.map((item) => valueText(item) ?? String(item)).join(", ")})`;
+  }
+  if (value instanceof Date) {
+    return dateText(value);
   }
   if (typeof value === "object") {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+/** A date as a time axis labels it, in local time: its day, and its time of day unless midnight. */
+function dateText(date: Date): string {
+  if (Number.isNaN(date.getTime())) return "Invalid Date";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const time = [date.getHours(), date.getMinutes(), date.getSeconds()];
+  if (time.every((part) => part === 0)) return day;
+  return `${day} ${time.map(pad).join(":")}`;
 }
 
 function itemLabel(data: ItemData, index: number): string {
