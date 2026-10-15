@@ -1901,12 +1901,13 @@ function funnelSides(
   // The label line, the gap after it, and a margin to the edge.
   const gap = (typeof line.length === "number" ? line.length : 20) + 13;
   const data: unknown[] = Array.isArray(funnel.data) ? funnel.data : [];
-  const inward =
+  const stages =
     data.length <= MAX_READ_CATEGORIES ? funnelInward(funnel, data, position) : undefined;
-  if (!inward) {
+  if (!stages) {
     const text = widestText(funnel.data, width, most) + added;
     return sides(Math.max(margin, Math.min(most, Math.round(text + gap))));
   }
+  const { inward, edge } = stages;
   // The box spans the area but for the margin and the room on the side of the labels.
   const free = area.width - margin;
   const texts = data.map((item) => width(entryText(item)) + added);
@@ -1936,7 +1937,8 @@ function funnelSides(
     const shown = template.replace(/\{b\}/g, () => name).replace(/\{[^{}]*\}/g, "000.00");
     const lineWidth = Math.max(40, Math.floor(available));
     const lines = lineCount(shown, lineWidth, breakWidth);
-    const overflow = lines * LABEL_LINE_HEIGHT <= stage ? "break" : "truncate";
+    // Centered on the corner at the funnel's top or bottom, more than a line would reach past it.
+    const overflow = lines * LABEL_LINE_HEIGHT <= stage && index !== edge ? "break" : "truncate";
     return { ...own, label: { width: lineWidth, overflow, ...itemLabel } };
   });
   return sides(room);
@@ -1946,9 +1948,14 @@ function funnelSides(
  * How far in from the side of its box ECharts starts the label of each stage of a funnel beside
  * it, as a share of the box's width: from the middle of the stage's side, or its corner, where the
  * stage is as wide as its value and the next stage's value make it, between its least and most
- * size. Undefined where the layout cannot tell, as of a funnel aligned, sorted or sized otherwise.
+ * size; and the stage whose label is at the funnel's top or bottom, beside its corner there.
+ * Undefined where the layout cannot tell, as of a funnel aligned, sorted or sized otherwise.
  */
-function funnelInward(funnel: JsonObject, data: unknown[], position: string): number[] | undefined {
+function funnelInward(
+  funnel: JsonObject,
+  data: unknown[],
+  position: string,
+): { inward: number[]; edge: number | undefined } | undefined {
   const share = (size: unknown, fallback: number) =>
     size === undefined
       ? fallback
@@ -1995,7 +2002,14 @@ function funnelInward(funnel: JsonObject, data: unknown[], position: string): nu
         : (own + after) / 4;
     inward[index] = Math.max(0, 1 / 2 - side);
   });
-  return inward;
+  // The first stage starts at the top of the funnel, or ascending at its bottom, and the last
+  // ends at the other.
+  const edge = position.endsWith("Top")
+    ? order[0]
+    : position.endsWith("Bottom")
+      ? order[order.length - 1]
+      : undefined;
+  return { inward, edge };
 }
 
 /**

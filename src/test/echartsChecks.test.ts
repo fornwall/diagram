@@ -892,6 +892,23 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(crowded, size), []);
   });
 
+  test("cuts short the label of a funnel beside the corner of its top or bottom stage", () => {
+    const data = [
+      { name: "Website visits from search and social campaigns", value: 1000 },
+      { name: "Product page views", value: 700 },
+      { name: "Added to cart by returning customers", value: 400 },
+      { name: "Orders completed in the Middle East and Africa", value: 90 },
+    ];
+    // Centered on the corner at the edge of the funnel, on lines it would reach past the chart.
+    for (const position of ["rightTop", "leftTop"]) {
+      for (const sort of ["descending", "ascending"]) {
+        const option = { series: [{ type: "funnel", sort, data, label: { position } }] };
+        const size = { width: 330, height: 400 };
+        assert.deepStrictEqual(warningsOf(option, size), [], `${position} ${sort}`);
+      }
+    }
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);
