@@ -623,6 +623,51 @@ export function drawnResult(text: string, revision: number): vscode.LanguageMode
   return textResult(`${text}\n\nRevision: ${revision}.`);
 }
 
+/**
+ * What a tool that changes the current diagram tells a model: paragraphs, the first saying what
+ * happened, and the revision it drew, if it drew.
+ */
+export interface Answer {
+  paragraphs: [string, ...string[]];
+  drawn?: number | undefined;
+}
+
+/**
+ * Runs a tool that changes the current diagram, answering what it did, or why it did nothing: the
+ * input that `parse` refuses, with what to fix and the tool to call again, or the reason that
+ * `change` throws. Every answer gives the revision to pass next, but only a drawing ends with it,
+ * which @diagram takes for one that it drew (see {@link revisionDrawn}).
+ */
+export async function changeResult<T>(
+  panel: DiagramPanel,
+  token: vscode.CancellationToken,
+  nothing: string,
+  tool: string,
+  parse: () => T,
+  change: (input: T) => Promise<Answer>,
+): Promise<vscode.LanguageModelToolResult> {
+  throwIfCancelled(token);
+  let input: T;
+  try {
+    input = parse();
+  } catch (error) {
+    return textResult(
+      `${nothing}, as the input is invalid. Fix it and call ${tool} again. Revision: ${panel.revision}.\n\n${errorMessage(error)}`,
+    );
+  }
+  let answer: Answer;
+  try {
+    answer = await change(input);
+  } catch (error) {
+    if (error instanceof vscode.CancellationError) throw error;
+    answer = { paragraphs: [`${nothing}: ${errorMessage(error)}`] };
+  }
+  const [first, ...rest] = answer.paragraphs.filter(Boolean);
+  return answer.drawn === undefined
+    ? textResult([`${first} Revision: ${panel.revision}.`, ...rest].join("\n\n"))
+    : drawnResult([first, ...rest].join("\n\n"), answer.drawn);
+}
+
 /** The revision that a {@link drawnResult} says its tool call drew. */
 export function revisionDrawn(content: readonly unknown[]): number | undefined {
   const [result] = content;

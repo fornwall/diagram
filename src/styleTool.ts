@@ -1,6 +1,6 @@
 // diagram_style: colors the items of the Mermaid diagram in the panel by editing its style lines.
 
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { throwIfCancelled } from "./cancellation";
 import { documentName } from "./documentDiagram";
 import { type Resolved, resolvedList, severalList } from "./itemNames";
@@ -16,7 +16,7 @@ import {
   subgraphIds,
 } from "./mermaidStyle";
 import type { DiagramPanel } from "./panel";
-import { EDIT_TOOL, errorMessage, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
+import { EDIT_TOOL, GET_STATE_TOOL, RENDER_TOOL, STYLE_TOOL } from "./protocol";
 import {
   type StyleChange,
   type StyleInput,
@@ -24,7 +24,7 @@ import {
   validateStyleInput,
 } from "./styleInput";
 import { plural, quoteAll } from "./text";
-import { drawnResult, drawnWarnings, idList, textResult } from "./tools";
+import { type Answer, changeResult, drawnWarnings, idList } from "./tools";
 
 /** Ids that name the panel rather than an item, unless the diagram has an item by that id. */
 const BACKGROUND_IDS = /^(?:background|bg|canvas|panel|page|diagram|chart|theme)$/i;
@@ -32,12 +32,6 @@ const BACKGROUND_IDS = /^(?:background|bg|canvas|panel|page|diagram|chart|theme)
 const EVERYTHING_IDS = /^(?:all|everything|\*)$/i;
 
 const BACKGROUND_FIXED = "The panel background follows the VS Code theme and can't be changed.";
-
-/** What styling did: the paragraphs of the answer, and the revision it drew, if it drew. */
-interface Styled {
-  paragraphs: [string, ...string[]];
-  drawn?: number;
-}
 
 export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
   constructor(private readonly panel: DiagramPanel) {}
@@ -63,43 +57,21 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     }
   }
 
-  async invoke(
+  invoke(
     options: vscode.LanguageModelToolInvocationOptions<StyleInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    throwIfCancelled(token);
-    let change: StyleChange;
-    try {
-      change = validateStyleInput(options.input);
-    } catch (error) {
-      return this.answer({
-        paragraphs: [
-          `Nothing was styled, as the input is invalid. Fix it and call ${STYLE_TOOL} again.`,
-          errorMessage(error),
-        ],
-      });
-    }
-    let styled: Styled;
-    try {
-      styled = await this.style(change, token);
-    } catch (error) {
-      if (error instanceof vscode.CancellationError) throw error;
-      styled = { paragraphs: [`Nothing was styled: ${errorMessage(error)}`] };
-    }
-    return this.answer(styled);
+    return changeResult(
+      this.panel,
+      token,
+      "Nothing was styled",
+      STYLE_TOOL,
+      () => validateStyleInput(options.input),
+      (change) => this.style(change, token),
+    );
   }
 
-  private answer({ paragraphs, drawn }: Styled): vscode.LanguageModelToolResult {
-    if (drawn !== undefined) {
-      return drawnResult(paragraphs.join("\n\n"), drawn);
-    }
-    // Every answer gives the revision to pass next, but only a drawing ends with it, which
-    // @diagram takes for one that it drew (see revisionDrawn).
-    const [first, ...rest] = paragraphs;
-    return textResult([`${first} Revision: ${this.panel.revision}.`, ...rest].join("\n\n"));
-  }
-
-  private async style(change: StyleChange, token: vscode.CancellationToken): Promise<Styled> {
+  private async style(change: StyleChange, token: vscode.CancellationToken): Promise<Answer> {
     const state = this.panel.current;
     if (!state) {
       throw new Error(`There is no diagram to color. Render one with ${RENDER_TOOL} first.`);

@@ -3,9 +3,9 @@
 // links and the click prompt.
 
 import { isDeepStrictEqual } from "node:util";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { guessTitle } from "./blocks";
-import { throwIfCancelled, unlessCancelled } from "./cancellation";
+import { unlessCancelled } from "./cancellation";
 import { type ChartPresentation, captureChartPresentation } from "./chartPresentation";
 import { documentName } from "./documentDiagram";
 import { type NodeLinks, validateLinks, withoutMissingFiles } from "./links";
@@ -15,7 +15,6 @@ import {
   diagramNoun,
   EDIT_TOOL,
   errorClause,
-  errorMessage,
   GET_STATE_TOOL,
   isPlainObject,
   RENDER_TOOL,
@@ -31,13 +30,13 @@ import {
 } from "./sourceEdits";
 import { formatCount, givenProperties, lineAndColumn, unknownProperties } from "./text";
 import {
-  drawnResult,
+  type Answer,
+  changeResult,
   drawnWarnings,
   idList,
   leftOutLinks,
   linksWithoutNodes,
   nonBlank,
-  textResult,
 } from "./tools";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
@@ -159,12 +158,6 @@ function parseEdit(value: unknown): SourceEdit | string {
   return { oldText, newText, replaceAll };
 }
 
-/** What a model is told: paragraphs, the first saying what happened, and the revision drawn. */
-interface Answer {
-  paragraphs: [string, ...string[]];
-  drawn?: number;
-}
-
 export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
@@ -177,41 +170,18 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
     };
   }
 
-  async invoke(
+  invoke(
     options: vscode.LanguageModelToolInvocationOptions<EditInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    throwIfCancelled(token);
-    let change: EditChange;
-    try {
-      change = validateEditInput(options.input);
-    } catch (error) {
-      return this.answer({
-        paragraphs: [
-          `Nothing was changed, as the input is invalid. Fix it and call ${EDIT_TOOL} again.`,
-          errorMessage(error),
-        ],
-      });
-    }
-    let answer: Answer;
-    try {
-      answer = await this.edit(change, token);
-    } catch (error) {
-      if (error instanceof vscode.CancellationError) throw error;
-      answer = { paragraphs: [`Nothing was changed: ${errorMessage(error)}`] };
-    }
-    return this.answer(answer);
-  }
-
-  private answer({ paragraphs, drawn }: Answer): vscode.LanguageModelToolResult {
-    const text = paragraphs.filter(Boolean);
-    if (drawn !== undefined) {
-      return drawnResult(text.join("\n\n"), drawn);
-    }
-    // Every answer gives the revision to pass next, but only a drawing ends with it, which
-    // @diagram takes for one that it drew (see revisionDrawn).
-    const [first, ...rest] = text;
-    return textResult([`${first} Revision: ${this.panel.revision}.`, ...rest].join("\n\n"));
+    return changeResult(
+      this.panel,
+      token,
+      "Nothing was changed",
+      EDIT_TOOL,
+      () => validateEditInput(options.input),
+      (change) => this.edit(change, token),
+    );
   }
 
   private async edit(change: EditChange, token: vscode.CancellationToken): Promise<Answer> {
