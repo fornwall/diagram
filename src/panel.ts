@@ -1487,7 +1487,6 @@ export class DiagramPanel implements vscode.Disposable {
     ids: string[] = [],
   ): Promise<{ png: Uint8Array; view: ImageView | undefined } | string> {
     const state = this.state;
-    const rendered = this.drawn?.requestId;
     if (!state) {
       return "No diagram is shown.";
     }
@@ -1501,9 +1500,13 @@ export class DiagramPanel implements vscode.Disposable {
     if (state.error) {
       return `The ${noun} fails to render. Render a working ${noun} first. The error is: ${state.error}`;
     }
-    if (!this.webview.tab) {
-      return "The diagram panel is closed. The user can open it again with Diagram: Show Panel.";
+    // Closed by the user, or not drawn since the window reloaded: open it beside chat again,
+    // without taking the focus, and draw it, as a model views what the user sees.
+    if (!this.webview.tab || !this.drawn) {
+      const opened = this.webview.reveal(true);
+      await this.renderCurrent({ redraw: true, newPage: opened });
     }
+    const rendered = this.drawn?.requestId;
     if (!this.webview.isReady || rendered === undefined) {
       return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
     }

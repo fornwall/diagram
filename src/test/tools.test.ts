@@ -384,6 +384,13 @@ suite("tools", () => {
       hidden.text,
       new RegExp(`^Revision \\d+ of the chart: all of it, laid out at ${size},`),
     );
+    // The user closed the panel: viewing opens it again, beside chat, without taking the focus.
+    const tabs = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs);
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    assert.ok(await within(() => tabs().length === 0));
+    const reopened = await view();
+    assert.match(reopened.text, layout);
+    assert.ok(tabs().some((tab) => tab.input instanceof vscode.TabInputWebview));
   });
 
   test("diagram_getImage tells what its image shows, and what it cannot show", async () => {
@@ -595,7 +602,7 @@ suite("tools", () => {
     afterTest(() => empty.dispose());
     const flow = { language: "mermaid", source: "flowchart LR\n  A --> B", title: "Flow" } as const;
     const { panel: shown, webview } = await newFakePanel();
-    const reasons = [await view(empty), await view(panel)];
+    const reasons = [await view(empty)];
     webview.failNextRender("Oops");
     assert.ok(!(await shown.render(flow, "tool")).ok);
     reasons.push(await view(shown));
@@ -619,7 +626,6 @@ suite("tools", () => {
     }
     assert.deepStrictEqual(reasons, [
       "There is no diagram to view. Render one with diagram_render or diagram_chart first.",
-      "There is no image to view. The diagram panel is closed. The user can open it again with Diagram: Show Panel.",
       "There is no image to view. The diagram fails to render. Render a working diagram first. The error is: Oops",
       "There is no image to view. The panel is still drawing the diagram.",
       "There is no image to view. The diagram changed before it could be exported. Try again.",
