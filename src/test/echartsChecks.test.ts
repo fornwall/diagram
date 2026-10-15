@@ -656,6 +656,17 @@ suite("echartsChecks", function () {
     );
   });
 
+  test("turns category labels in Chinese to fit, as wide as their characters are drawn", () => {
+    const sites = ["华北地区物流配送中心", "华东地区物流配送中心", "华南地区仓储管理中心"];
+    sites.push("西南地区仓储管理中心", "东北地区客户服务中心");
+    const option = {
+      xAxis: { type: "category", data: sites },
+      yAxis: {},
+      series: [{ type: "bar", data: [5, 8, 3, 6, 2] }],
+    };
+    assert.deepStrictEqual(warningsOf(option, { width: 600, height: 500 }), []);
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);
@@ -749,8 +760,9 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(chart(lines(5))), []);
     // A legend that the panel places wraps into a few rows before it pages.
     assert.deepStrictEqual(warningsOf(chart(lines(12))), []);
-    assert.deepStrictEqual(warningsOf(chart(lines(12)), { width: 400, height: 500 }), [
-      'legend has more entries than fit the panel, which it pages through, 4 pages of them, so that a reader sees only some at a time: show fewer series, or name each line at its end with "endLabel": {"show": true, "formatter": "{a}"} instead of a legend.',
+    assert.deepStrictEqual(warningsOf(chart(lines(12)), { width: 400, height: 500 }), []);
+    assert.deepStrictEqual(warningsOf(chart(lines(16)), { width: 400, height: 500 }), [
+      'legend has more entries than fit the panel, which it pages through, 6 pages of them, so that a reader sees only some at a time: show fewer series, or name each line at its end with "endLabel": {"show": true, "formatter": "{a}"} instead of a legend.',
     ]);
     assert.match(
       warningsOf(

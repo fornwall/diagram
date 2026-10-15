@@ -23,38 +23,49 @@ type Side = "top" | "bottom" | "left" | "right";
 /** Space in pixels taken from each side of the chart by the title, legend, sliders, … */
 type Insets = Record<Side, number>;
 
+/** A font of chart text, and how wide it draws a text, as ECharts measures it. */
+interface Font {
+  /** As CSS, as "bold 12px sans-serif". */
+  css: string;
+  /** The width of a text, as ECharts measures it to break it onto lines. */
+  width(text: string): number;
+}
+
 interface Size {
   width: number;
   height: number;
   /** Too small for a legend above the grid. */
   compact: boolean;
-  /** The approximate width of a character of chart text. */
-  charWidth: number;
   /**
-   * The width of a text in the font of the first of some text styles that sets each part of it,
-   * as its size and weight, or else in the chart's.
+   * The font of the first of some text styles that sets each part of it, as its size and weight,
+   * or else of the chart's text, as ECharts makes the font of a text.
    */
-  textWidth(text: string, ...styles: JsonObject[]): number;
+  font(...styles: JsonObject[]): Font;
 }
 
+/** The text style of an option's setting, as its "axisLabel", if it is one. */
+const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? style : {});
+
 /**
- * The length of the longest category or legend entry: a value, a category `{value}`, or a legend
- * entry or data item named by `{name}` (whose value is a number).
+ * The text of a category or legend entry: a value, a category `{value}`, or a legend entry or
+ * data item named by `{name}` (whose value is a number).
  */
-function longestText(entries: unknown, enough = Infinity): number {
+const entryText = (entry: unknown) =>
+  String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
+
+/** The width of the widest category or legend entry (see {@link entryText}). */
+function widestText(entries: unknown, width: (text: string) => number, enough = Infinity): number {
   if (!Array.isArray(entries)) {
     return 0;
   }
-  const text = (entry: unknown) =>
-    String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
   // Once the label exceeds every layout threshold, further entries cannot change the result.
   // Dense axes and long legends often reach that point with their very first entry.
-  let longest = 0;
+  let widest = 0;
   for (const entry of entries) {
-    longest = Math.max(longest, text(entry).length);
-    if (longest > enough) break;
+    widest = Math.max(widest, width(entryText(entry)));
+    if (widest > enough) break;
   }
-  return longest;
+  return widest;
 }
 
 function seriesName(series: JsonObject): string | undefined {
@@ -252,28 +263,25 @@ function layOutAround(
   if (option.media === undefined) {
     const { width, height } = context;
     const compact = width < 560 || height < 340;
-    const charWidth = context.colors.fontSize * 0.6;
     // The text style of the chart: the option's, over the theme's.
     const chartStyle: JsonObject = {
       fontFamily: context.colors.fontFamily,
       fontSize: context.colors.fontSize,
       ...(isPlainObject(base.textStyle) ? base.textStyle : {}),
     };
-    // As ECharts measures it to break it onto lines within a width, in the font of the first style
-    // that sets each of its parts, or else the chart's.
-    const textWidth = (text: string, ...styles: JsonObject[]) => {
+    const font = (...styles: JsonObject[]): Font => {
       const part = (key: string) =>
         [...styles, chartStyle].map((style) => style[key]).find((value) => value != null);
       // Of pixels, as a number or as "14px".
       const fontSize = /^\d+(?:\.\d+)?(?:px)?$/.test(String(part("fontSize")).trim())
         ? Number.parseFloat(String(part("fontSize")))
         : context.colors.fontSize;
-      const font = [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
+      const css = [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
         .filter((value) => value != null && value !== "")
         .join(" ");
-      return context.textWidth(text, font);
+      return { css, width: (text) => context.textWidth(text, css) };
     };
-    const size = { width, height, compact, charWidth, textWidth };
+    const size = { width, height, compact, font };
     const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
@@ -537,7 +545,7 @@ function placeLegend(
   reserved: Insets,
   size: Size,
 ): void {
-  const { width, height, compact, charWidth } = size;
+  const { width, height, compact } = size;
   const pies = series.filter((s) => s.type === "pie");
   if (base.legend === undefined) {
     // Several named series: the identity of a series is never only color.
@@ -564,6 +572,7 @@ function placeLegend(
   }
   let side: Side;
   const placed = has(legend, BOX_KEYS);
+  const { width: textWidth } = size.font(styleOf(legend.textStyle));
   if (
     legend.orient === "vertical" ||
     (legend.orient === undefined && !placed && !alongAxes && width >= 560)
@@ -592,7 +601,7 @@ function placeLegend(
     const most = Math.max(2, Math.floor((height * 0.2) / LEGEND_ROW));
     const rows =
       !placed && legend.type === undefined
-        ? legendRows(legend, series, width - 20, charWidth, most)
+        ? legendRows(legend, series, width - 20, textWidth, most)
         : 1;
     if (rows > 1) legend.type = "plain";
     reserved[side] += (side === "top" ? 30 : 32) + (rows - 1) * LEGEND_ROW;
@@ -600,20 +609,21 @@ function placeLegend(
   }
   // The icon, the gap after it and the padding around the legend.
   const extra = 12 + 5 + 24;
-  const enough = (width * 0.32 - extra) / charWidth;
-  let longest = 0;
+  const enough = width * 0.32 - extra;
+  let widest = 0;
   if (Array.isArray(legend.data)) {
-    longest = longestText(legend.data, enough);
+    widest = widestText(legend.data, textWidth, enough);
   } else if (pies.length > 0 || series.some((s) => s.type === "funnel")) {
     // Read each series in place rather than allocating an array of every slice on each resize.
     for (const each of series) {
-      longest = Math.max(longest, longestText(each.data, enough));
-      if (longest > enough) break;
+      widest = Math.max(widest, widestText(each.data, textWidth, enough));
+      if (widest > enough) break;
     }
   } else {
-    longest = longestText(seriesEntries(series, MAX_READ_CATEGORIES), enough);
+    widest = widestText(seriesEntries(series, MAX_READ_CATEGORIES), textWidth, enough);
   }
-  const legendWidth = Math.min(width * 0.32, Math.max(4, longest) * charWidth + extra);
+  // At least as wide as a few characters.
+  const legendWidth = Math.min(width * 0.32, Math.max(textWidth("0000"), widest) + extra);
   reserved[side] += Math.round(legendWidth) + 16;
 }
 
@@ -653,7 +663,7 @@ function legendRows(
   legend: JsonObject,
   series: JsonObject[],
   width: number,
-  charWidth: number,
+  textWidth: (text: string) => number,
   most: number,
 ): number {
   const sliced = series.filter((each) => each.type === "pie" || each.type === "funnel");
@@ -668,9 +678,8 @@ function legendRows(
   let rows = 1;
   let used = 0;
   for (const entry of entries) {
-    const text = String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
     // The icon and the gap after it, and the gap before the entry after another.
-    const size = 12 + 5 + text.length * charWidth;
+    const size = 12 + 5 + textWidth(entryText(entry));
     if (used > 0 && used + 10 + size > width) {
       rows++;
       used = size;
@@ -776,7 +785,7 @@ function isContinuous(visualMap: JsonObject): boolean {
 
 /** Fits a single grid, or the panels of facets, into the space left, and keeps axis labels apart. */
 function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
-  const { width, height, compact, charWidth } = size;
+  const { width, height, compact } = size;
   const grids = asArray(base.grid);
   /** The size of the plot of each grid, with its labels, where the layout places the grids. */
   let panel: { width: number; height: number } | undefined;
@@ -831,16 +840,21 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       facetGrid === undefined
         ? Math.max(60, Math.round(height * 0.22))
         : Math.max(40, Math.round(facetGrid.height * 0.35));
-    let labelWidth = longestText(axis.data, Math.max(slot * 3, maxWidth) / charWidth) * charWidth;
+    const font = size.font(label);
+    let labelWidth = widestText(axis.data, font.width, Math.max(slot * 3, maxWidth));
+    // ECharts shows each label across the axis where, a third wider, it fits in the width of its
+    // category, and else leaves some out.
+    const across = (width: number) => width * CATEGORY_LABEL_ROOM <= slot - 8;
     // Labels cut short to the same start are told apart by what follows it.
     // Named below the labels, across the middle of the axis, unless the option names it elsewhere.
     const { name: own, nameLocation: location } = axis;
     const middle = location === undefined || location === "middle" || location === "center";
     const rest =
-      labelWidth > Math.max(maxWidth, slot - 8) &&
-      dropSharedStart(axis, label, maxWidth / charWidth, middle);
-    if (rest) labelWidth = rest * charWidth;
-    if (labelWidth > slot - 8) {
+      !across(labelWidth) &&
+      labelWidth > maxWidth &&
+      dropSharedStart(axis, label, maxWidth, middle, font);
+    if (rest) labelWidth = rest;
+    if (!across(labelWidth)) {
       const rotate = labelWidth > slot * 3 ? 45 : 30;
       axis.axisLabel = {
         rotate,
@@ -866,8 +880,10 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       const digits = [axis.min, axis.max].map((bound) =>
         typeof bound === "number" ? compactLabel(bound).length : 4,
       );
-      fewerTicks(axis, panel.width - 50, (Math.max(...digits) + 1) * charWidth + 16, faceted);
-      fewerTimeTicks(axis, panel.width - 50, charWidth);
+      const font = size.font(styleOf(axis.axisLabel));
+      const label = font.width("0".repeat(Math.max(...digits) + 1));
+      fewerTicks(axis, panel.width - 50, label + 16, faceted);
+      fewerTimeTicks(axis, panel.width - 50, font);
     }
     for (const axis of asArray(base.yAxis)) {
       const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
@@ -885,10 +901,8 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     const maxWidth = Math.round(
       (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
     );
-    if (
-      label.width !== undefined ||
-      longestText(axis.data, maxWidth / charWidth) * charWidth <= maxWidth
-    ) {
+    const font = size.font(label);
+    if (label.width !== undefined || widestText(axis.data, font.width, maxWidth) <= maxWidth) {
       continue;
     }
     // Labels too long for their width go onto as many lines as the height of each row has room
@@ -902,7 +916,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
             (axis.name ? AXIS_NAME_HEIGHT : 0)) /
           axis.data.length;
     const lines = Math.floor((rowHeight - 4) / LABEL_LINE_HEIGHT);
-    if (lines >= 2 && wrapsInto(axis.data, maxWidth / charWidth, lines)) {
+    if (lines >= 2 && wrapsInto(axis.data, maxWidth, lines, font.width)) {
       axis.axisLabel = {
         width: maxWidth,
         overflow: "break",
@@ -912,7 +926,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       continue;
     }
     const { name: own, nameLocation: location } = axis;
-    const rest = dropSharedStart(axis, label, maxWidth / charWidth, true);
+    const rest = dropSharedStart(axis, label, maxWidth, true, font);
     const end = location === undefined || location === "start" || location === "end";
     if (rest !== undefined && axis.name !== own && end) {
       // The name above the labels starts at the axis, rather than centered on it, beside them.
@@ -920,7 +934,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       style.align ??= axis.position === "right" ? "right" : "left";
       axis.nameTextStyle = style;
     }
-    if (rest === undefined || rest * charWidth > maxWidth) {
+    if (rest === undefined || rest > maxWidth) {
       axis.axisLabel = { width: maxWidth, overflow: "truncate", ...label };
     }
   }
@@ -935,6 +949,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
 
 /** The categories of an axis beyond which the layout reads only as many as it must. */
 const MAX_READ_CATEGORIES = 200;
+/**
+ * How much wider than a category label is the room that ECharts makes sure each has, to show
+ * them all.
+ */
+const CATEGORY_LABEL_ROOM = 1.3;
 /** The height of a line of an axis label that goes onto several. */
 const LABEL_LINE_HEIGHT = 17;
 
@@ -945,25 +964,42 @@ function categoryTexts(data: unknown): string[] | undefined {
   return texts.every((text) => typeof text === "string") ? texts : undefined;
 }
 
-/** Whether each category's text goes onto no more than some lines of a number of characters. */
-function wrapsInto(data: unknown, columns: number, lines: number): boolean {
+/** Whether each category's text goes onto no more than some lines of a width, in a font. */
+function wrapsInto(
+  data: unknown,
+  room: number,
+  lines: number,
+  width: (text: string) => number,
+): boolean {
   const texts = categoryTexts(data);
   if (texts === undefined) return false;
   return texts.every((text) => {
-    // Word by word, as ECharts breaks them, and a word longer than a line across lines.
+    // Word by word, as ECharts breaks them, and a word wider than a line across lines.
     let count = 1;
     let used = 0;
-    for (const word of text.split(/\s+/).filter(Boolean)) {
-      if (used > 0 && used + 1 + word.length <= columns) {
-        used += 1 + word.length;
+    for (const word of text.match(WORDS) ?? []) {
+      const size = width(word);
+      if (used + size <= room) {
+        used += size;
         continue;
       }
       if (used > 0) count++;
-      count += Math.ceil(word.length / columns) - 1;
-      used = word.length % columns || columns;
+      count += Math.ceil(size / room) - 1;
+      used = size % room || room;
     }
     return count <= lines;
   });
+}
+
+/** As much of the start of a text as fits in a width, in a font, but at least a character. */
+function startOf(text: string, room: number, width: (text: string) => number): string {
+  let used = 0;
+  for (let end = 0; end < text.length; end++) {
+    // ECharts measures a text as wide as its characters.
+    used += width(text.charAt(end));
+    if (used > room) return text.slice(0, Math.max(1, end));
+  }
+  return text;
 }
 
 /** By the start they leave out, so that a layout of the same option has the same ones. */
@@ -971,24 +1007,27 @@ const sharedStartFormatters = new Map<string, (value: unknown) => string>();
 
 /**
  * Labels the categories of an axis by what follows the start they share, when cut short to a
- * number of characters they would read alike, as the "Northern Regional Distribution Center" of
- * "… 0", "… 1", …, and names the axis by that start instead. The start ends with a word. An axis
- * named by the option, or where such a name would not fit, keeps its name, and its labels their
- * last words instead, as many as fit, as "…Center 12", unless those read alike too: then they
- * are what follows the start all the same. Returns the length of the longest label left, if any.
+ * width they would read alike, as the "Northern Regional Distribution Center" of "… 0", "… 1",
+ * …, and names the axis by that start instead. The start ends with a word. An axis named by the
+ * option, or where such a name would not fit, keeps its name, and its labels their last words
+ * instead, as many as fit, as "…Center 12", unless those read alike too: then they are what
+ * follows the start all the same. Returns the width of the widest label left, if any, in the font
+ * of the labels.
  */
 function dropSharedStart(
   axis: JsonObject,
   label: JsonObject,
-  visible: number,
+  room: number,
   nameable: boolean,
+  font: Font,
 ): number | undefined {
   const texts = categoryTexts(axis.data);
   // Not of labels that the option hides, which the name would tell nothing of.
   if (!texts || texts.length < 2 || label.formatter !== undefined || label.show === false) {
     return undefined;
   }
-  const cut = (text: string) => text.slice(0, Math.max(1, Math.floor(visible) - 1));
+  // As ECharts cuts them short, before an ellipsis.
+  const cut = (text: string) => startOf(text, room - font.width("…"), font.width);
   if (new Set(texts.map(cut)).size === new Set(texts).size) return undefined;
   let shared = texts[0] ?? "";
   for (const text of texts) {
@@ -1001,13 +1040,12 @@ function dropSharedStart(
   if (!start || !name || texts.some((text) => text.length <= start.length)) return undefined;
   const named = !nameable || (axis.name !== undefined && axis.name !== "");
   if (named) {
-    const most = Math.max(1, Math.floor(visible) - 1);
-    const last = lastWords(most);
+    const last = lastWords(room, font);
     // Unless they read alike so too, as of labels that also end alike.
     if (new Set(texts.map(last)).size === new Set(texts).size) {
       label.formatter = last;
       axis.axisLabel = label;
-      return Math.max(...texts.map((text) => Math.min(text.length, most + 1)));
+      return Math.max(...texts.map((text) => font.width(last(text))));
     }
   }
   let formatter = sharedStartFormatters.get(start);
@@ -1021,32 +1059,40 @@ function dropSharedStart(
   label.formatter = formatter;
   axis.axisLabel = label;
   if (!named) axis.name = `${name} …`;
-  return Math.max(...texts.map((text) => text.length - start.length));
+  return Math.max(...texts.map((text) => font.width(text.slice(start.length))));
 }
 
-/** By the most characters they keep, so that a layout of the same option has the same ones. */
-const lastWordFormatters = new Map<number, (value: unknown) => string>();
+/**
+ * By the width and font of the labels they keep, so that a layout of the same option has the
+ * same ones.
+ */
+const lastWordFormatters = new Map<string, (value: unknown) => string>();
 
 /**
- * A formatter of labels longer than some characters that keeps their last words, as many as fit
- * after an ellipsis, or else the last characters.
+ * A formatter of labels wider than some pixels in a font that keeps their last words, as many as
+ * fit after an ellipsis, or else the last characters.
  */
-function lastWords(most: number): (value: unknown) => string {
-  let formatter = lastWordFormatters.get(most);
+function lastWords(room: number, font: Font): (value: unknown) => string {
+  const key = `${Math.round(room)} ${font.css}`;
+  let formatter = lastWordFormatters.get(key);
   if (!formatter) {
     formatter = (value: unknown) => {
       const text = String(value);
-      if (text.length <= most + 1) return text;
+      if (font.width(text) <= room) return text;
+      const fits = (end: string) => font.width(`…${end}`) <= room;
       // Each word after the space before it.
       const words = text.split(/(?=\s)/);
       let kept = "";
       for (const word of words.reverse()) {
-        if ((word + kept).trimStart().length > most - 1) break;
+        if (!fits((word + kept).trimStart())) break;
         kept = word + kept;
       }
-      return `…${kept.trimStart() || text.slice(text.length - (most - 1))}`;
+      if (kept.trimStart()) return `…${kept.trimStart()}`;
+      let end = text.length - 1;
+      while (end > 0 && fits(text.slice(end - 1))) end--;
+      return `…${text.slice(end)}`;
     };
-    lastWordFormatters.set(most, formatter);
+    lastWordFormatters.set(key, formatter);
   }
   return formatter;
 }
@@ -1140,8 +1186,9 @@ export function minimumHeight(option: JsonObject, width: number): number {
 function layOutFacets(
   { facets, columns: placed }: { facets: Facet[]; columns: number },
   reserved: Insets,
-  { width, height }: Size,
+  size: Size,
 ): { width: number; height: number } {
+  const { width, height } = size;
   const top = reserved.top + 8;
   const left = reserved.left + 16;
   const areaWidth = width - left - reserved.right - 16;
@@ -1176,7 +1223,7 @@ function layOutFacets(
       height: down(gridHeight),
     });
   });
-  shortenFacetTitles(facets, gridWidth - 16);
+  shortenFacetTitles(facets, gridWidth - 16, size);
   return { width: gridWidth, height: gridHeight };
 }
 
@@ -1185,12 +1232,11 @@ function layOutFacets(
  * them would not fit its panel: the values tell the panels apart, and the panel's header or the
  * chart's title usually names the column.
  */
-function shortenFacetTitles(facets: Facet[], width: number): void {
+function shortenFacetTitles(facets: Facet[], width: number, size: Size): void {
   const texts = facets.map(({ title }) => (typeof title.text === "string" ? title.text : ""));
-  const style = facets[0]?.title.textStyle;
-  const fontSize = isPlainObject(style) && typeof style.fontSize === "number" ? style.fontSize : 13;
-  // Bold characters, a little wider than others.
-  if (texts.every((text) => text.length * fontSize * 0.62 <= width)) return;
+  // In the theme's font of titles, but of chartFacets' size.
+  const font = size.font(styleOf(facets[0]?.title.textStyle), { fontSize: 13, fontWeight: 600 });
+  if (texts.every((text) => font.width(text) <= width)) return;
   const values = facets.map(({ grid }) => facetValue(grid.id));
   // chartFacets titles a facet "<column> = <value>", the value quoted when values would collide.
   const prefixes = texts.map((text, index) => {
@@ -1225,7 +1271,7 @@ function facetValue(id: unknown): { value: unknown } | undefined {
  * draws every label. Only of an axis whose labels the panel formats (see {@link TIME_LABELS}),
  * as wide as "Feb 13" or "12:30".
  */
-function fewerTimeTicks(axis: JsonObject, length: number, charWidth: number): void {
+function fewerTimeTicks(axis: JsonObject, length: number, font: Font): void {
   const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
   if (
     axisType(axis) !== "time" ||
@@ -1238,7 +1284,7 @@ function fewerTimeTicks(axis: JsonObject, length: number, charWidth: number): vo
   }
   // ECharts rounds the step down to a whole one, which can make half as many ticks again as the
   // split number asks for, as with value axes; it asks for 6 itself.
-  const asked = Math.max(2, Math.floor(length / (6 * charWidth + 16) / 1.5));
+  const asked = Math.max(2, Math.floor(length / (font.width("Feb 13") + 16) / 1.5));
   if (asked < 6) axis.splitNumber = asked;
 }
 
@@ -1447,12 +1493,11 @@ const WORDS = /[!-%'-+\-.0-:<->@-\\^-\u024f\u0370-\u10ff\u1200-\u13ff\u1e00-\u20
  * their template sets them in, as the "name" of "{name|{b}}", over the label's own, as ECharts
  * makes a name's font, as its size or weight, and else the chart's.
  */
-function labelWidth(label: JsonObject, { textWidth }: Size): (text: string) => number {
+function labelWidth(label: JsonObject, size: Size): (text: string) => number {
   const { template } = labelTemplate(label);
   const name = /\{(\w+)\|[^{}]*\{b\}/.exec(template)?.[1];
   const rich = isPlainObject(label.rich) && name !== undefined ? label.rich[name] : undefined;
-  const styles = isPlainObject(rich) ? [rich, label] : [label];
-  return (text) => textWidth(text, ...styles);
+  return size.font(...(isPlainObject(rich) ? [rich, label] : [label])).width;
 }
 
 /** Hides the labels of a pie's slices and their lines. Returns the label settings. */
@@ -1582,9 +1627,10 @@ function scaleRadius(radius: unknown, factor: number): unknown {
 function layOutBoxSeries(
   series: JsonObject[],
   reserved: Insets,
-  { width, height, charWidth }: Size,
+  size: Size,
   stepped: ReadonlySet<unknown>,
 ): void {
+  const { width, height } = size;
   for (const each of series) {
     const type = String(each.type);
     const placed =
@@ -1618,9 +1664,9 @@ function layOutBoxSeries(
       type === "graph" &&
       each.layout === "force" &&
       !stepped.has(each) &&
-      placeForceNodes(each, area, charWidth)
+      placeForceNodes(each, area, size)
     ) {
-      fitPlacedGraph(each, area, charWidth);
+      fitPlacedGraph(each, area, size);
       each.preserveAspect ??= true;
       continue;
     }
@@ -1634,9 +1680,9 @@ function layOutBoxSeries(
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
     const [left, right] =
       type === "funnel"
-        ? funnelSides(each, side, width, charWidth)
+        ? funnelSides(each, side, size)
         : type === "tree"
-          ? treeSides(each, side, width, charWidth)
+          ? treeSides(each, side, size)
           : // Room for the labels right of the last column of sankey nodes.
             [side, type === "sankey" ? Math.round(Math.min(160, width * 0.18)) : side];
     // Room for the breadcrumb of a treemap.
@@ -1655,12 +1701,7 @@ function layOutBoxSeries(
  * ECharts draws beside it on the right unless told otherwise, as much as they take, up to 40% of
  * the width: its widest part spans the box it is laid out in.
  */
-function funnelSides(
-  funnel: JsonObject,
-  margin: number,
-  width: number,
-  charWidth: number,
-): [number, number] {
+function funnelSides(funnel: JsonObject, margin: number, size: Size): [number, number] {
   const label = isPlainObject(funnel.label) ? funnel.label : {};
   const position = String(label.position ?? "outer");
   if (
@@ -1670,18 +1711,21 @@ function funnelSides(
   ) {
     return [margin, margin];
   }
-  const most = Math.round(width * 0.4);
+  const most = Math.round(size.width * 0.4);
+  const { width } = size.font(label);
   // A template adds its text, and a value of about 6 characters for each other placeholder.
   const { formatter } = label;
   const added =
     typeof formatter === "string"
-      ? formatter.replace(/\{[^{}]*\}/g, "").length +
-        6 * (formatter.match(/\{(?!b\})[^{}]*\}/g)?.length ?? 0)
+      ? width(
+          formatter.replace(/\{[^{}]*\}/g, "") +
+            "000.00".repeat(formatter.match(/\{(?!b\})[^{}]*\}/g)?.length ?? 0),
+        )
       : 0;
   const line = isPlainObject(funnel.labelLine) ? funnel.labelLine : {};
   // The label line, the gap after it, and a margin to the edge.
   const gap = (typeof line.length === "number" ? line.length : 20) + 13;
-  const text = (longestText(funnel.data, most / charWidth) + added) * charWidth;
+  const text = widestText(funnel.data, width, most) + added;
   const room = Math.max(margin, Math.min(most, Math.round(text + gap)));
   return position.startsWith("left") ? [room, margin] : [margin, room];
 }
@@ -1749,12 +1793,7 @@ function deepestShown(root: unknown, tree: JsonObject): unknown[] {
  * as much as the labels at its ends take, of its root and of the nodes of the deepest level it
  * shows, beside them (see {@link labelTreeNodes}) or centered on them, up to 40% of the width.
  */
-function treeSides(
-  tree: JsonObject,
-  margin: number,
-  width: number,
-  charWidth: number,
-): [number, number] {
+function treeSides(tree: JsonObject, margin: number, size: Size): [number, number] {
   const orient = tree.orient ?? "LR";
   const [root] = Array.isArray(tree.data) ? tree.data : [];
   if ((tree.layout ?? "orthogonal") !== "orthogonal" || (orient !== "LR" && orient !== "RL")) {
@@ -1764,25 +1803,32 @@ function treeSides(
   const deepest = deepestShown(root, tree);
   const position = (label: unknown) => (isPlainObject(label) ? label.position : undefined);
   const leaves = isPlainObject(tree.leaves) ? tree.leaves.label : undefined;
-  const most = Math.round(width * MAX_TREE_LABELS);
+  const most = Math.round(size.width * MAX_TREE_LABELS);
   // The width a label takes beyond its node on a side: all of it on that side, none on the
   // other, and half when centered on it. Past the symbol, with a gap to the edge.
-  const room = (labels: unknown[], placed: unknown, side: "left" | "right") => {
+  const room = (labels: unknown[], placed: unknown, side: "left" | "right", font: Font) => {
     const share = placed === side ? 1 : placed === "left" || placed === "right" ? 0 : 0.5;
-    const text = longestText(labels, most / charWidth) * charWidth * share;
+    const text = widestText(labels, font.width, most) * share;
     return Math.max(margin, Math.min(most, Math.round(text + 12)));
   };
   const rootSide = orient === "LR" ? "left" : "right";
   const endSide = orient === "LR" ? "right" : "left";
-  const start = room([root], position(tree.label), rootSide);
+  const font = size.font(styleOf(tree.label));
+  const start = room([root], position(tree.label), rootSide, font);
   // The leaves are labeled as "leaves" says, and the nodes whose children are not shown yet not.
   const isLeaf = (node: unknown) => !isPlainObject(node) || !Array.isArray(node.children);
   const end = Math.max(
-    room(deepest.filter(isLeaf), position(leaves) ?? position(tree.label), endSide),
+    room(
+      deepest.filter(isLeaf),
+      position(leaves) ?? position(tree.label),
+      endSide,
+      size.font(styleOf(leaves), styleOf(tree.label)),
+    ),
     room(
       deepest.filter((node) => !isLeaf(node)),
       position(tree.label),
       endSide,
+      font,
     ),
   );
   return orient === "LR" ? [start, end] : [end, start];
@@ -1800,13 +1846,8 @@ interface Area {
  * The width of the room for a graph's nodes in an area as a share of its height, less what their
  * symbols and labels take around them on average, of 0.4 to 2.5.
  */
-function nodesAspect(
-  graph: JsonObject,
-  nodes: JsonObject[],
-  area: Area,
-  charWidth: number,
-): number {
-  const extents = nodes.map((node) => nodeExtent(node, graph, charWidth));
+function nodesAspect(graph: JsonObject, nodes: JsonObject[], area: Area, size: Size): number {
+  const extents = nodes.map((node) => nodeExtent(node, graph, size));
   const average = (side: number) =>
     extents.reduce((sum, extent) => sum + (extent[side] ?? 0), 0) / Math.max(1, extents.length);
   const width = area.width - average(0) - average(1);
@@ -1834,7 +1875,7 @@ const placedNodes = new WeakMap<object, { links: unknown; force: string; nodes: 
  * whose nodes the option places or fixes, or whose layout it starts or animates otherwise, nor
  * one of more nodes than the panel places quickly.
  */
-function placeForceNodes(graph: JsonObject, area: Area, charWidth: number): boolean {
+function placeForceNodes(graph: JsonObject, area: Area, size: Size): boolean {
   const key = graph.data != null ? "data" : "nodes";
   const nodes: unknown = graph[key];
   const links: unknown = graph.links ?? graph.edges;
@@ -1854,7 +1895,7 @@ function placeForceNodes(graph: JsonObject, area: Area, charWidth: number): bool
     force.repulsion ?? (force.edgeLength === undefined ? 50 * (FORCE_EDGE / 30) ** 2 : [0, 50]);
   const gravity = typeof force.gravity === "number" ? force.gravity : 0.1;
   // As wide as the area for them is, apart from their labels, in steps of a fourth of a doubling.
-  const stretch = 2 ** (Math.round(4 * Math.log2(nodesAspect(graph, nodes, area, charWidth))) / 4);
+  const stretch = 2 ** (Math.round(4 * Math.log2(nodesAspect(graph, nodes, area, size))) / 4);
   const settings = JSON.stringify([edgeLength, repulsion, gravity, stretch]);
   const cached = placedNodes.get(nodes);
   let placed =
@@ -2005,20 +2046,20 @@ function restingPoints(
 function nodeExtent(
   node: JsonObject,
   graph: JsonObject,
-  charWidth: number,
+  size: Size,
 ): [number, number, number, number] {
-  const size = (value: unknown): number[] | undefined =>
+  const symbol = (value: unknown): number[] | undefined =>
     typeof value === "number"
       ? [value, value]
       : Array.isArray(value) && value.every((each) => typeof each === "number")
         ? [value[0] ?? 0, value[1] ?? value[0] ?? 0]
         : undefined;
-  const [width = 10, height = 10] = size(node.symbolSize) ?? size(graph.symbolSize) ?? [];
+  const [width = 10, height = 10] = symbol(node.symbolSize) ?? symbol(graph.symbolSize) ?? [];
   const [x, y] = [width / 2, height / 2];
   const own = isPlainObject(node.label) ? node.label : {};
   const label = { ...(isPlainObject(graph.label) ? graph.label : {}), ...own };
   if (label.show !== true) return [x, x, y, y];
-  const text = String(node.name ?? "").length * charWidth;
+  const text = size.font(label).width(String(node.name ?? ""));
   // A line of text, half above and below the middle of the node beside it.
   const line = LABEL_LINE_HEIGHT / 2;
   switch (label.position ?? "right") {
@@ -2058,12 +2099,12 @@ function mostScale(at: number[], before: number[], after: number[], length: numb
  * fits them into, keeping their aspect, is where their bounds go, as much bigger than the area as
  * labels may take beyond them, which are not as long as the longest at every edge.
  */
-function fitPlacedGraph(graph: JsonObject, area: Area, charWidth: number): void {
+function fitPlacedGraph(graph: JsonObject, area: Area, size: Size): void {
   const data: unknown = graph.data ?? graph.nodes;
   const nodes = (Array.isArray(data) ? data : []).filter(isPlainObject);
   const xs = nodes.map((node) => Number(node.x));
   const ys = nodes.map((node) => Number(node.y));
-  const extents = nodes.map((node) => nodeExtent(node, graph, charWidth));
+  const extents = nodes.map((node) => nodeExtent(node, graph, size));
   const side = (index: number) => extents.map((extent) => extent[index] ?? 0);
   const [left, right, top, bottom] = [side(0), side(1), side(2), side(3)];
   const fit = (before: number[][], after: number[][]) =>
@@ -2222,7 +2263,8 @@ function layOutCalendar(base: JsonObject, reserved: Insets, { width, height }: S
  * as wide as the room between three axes. Only of axes across the chart that the option names and
  * places as ECharts does.
  */
-function layOutParallel(base: JsonObject, reserved: Insets, { width, charWidth }: Size): void {
+function layOutParallel(base: JsonObject, reserved: Insets, size: Size): void {
+  const { width } = size;
   const parallels = asArray(base.parallel);
   if (parallels.length > 1 || asArray(base.parallelAxis).length < 2) return;
   const parallel = parallels[0] ?? {};
@@ -2238,13 +2280,18 @@ function layOutParallel(base: JsonObject, reserved: Insets, { width, charWidth }
   ) {
     return;
   }
-  const names = axes.map((axis) => (typeof axis.name === "string" ? axis.name.length : 0));
-  const half = (index: number) => ((names[index] ?? 0) * charWidth) / 2;
+  // The width of each axis's name, in the font of its own or of all.
+  const names = axes.map((axis) =>
+    typeof axis.name === "string"
+      ? size.font(styleOf(axis.nameTextStyle), styleOf(shared.nameTextStyle)).width(axis.name)
+      : 0,
+  );
+  const half = (index: number) => (names[index] ?? 0) / 2;
   // The first name centered above the first axis, and the labels of the last right of it.
   const left = Math.round(Math.max(24, half(0) + 8));
   const right = Math.round(Math.max(48, half(axes.length - 1) + 8));
   const step = (width - reserved.left - reserved.right - left - right) / (axes.length - 1);
-  const longest = Math.max(...names) * charWidth;
+  const longest = Math.max(...names);
   const rows = longest + 8 > step ? 2 : 1;
   if (rows === 2) {
     axes.forEach((axis, index) => {
@@ -2272,7 +2319,8 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
   const boxHeight = size.height - reserved.top - reserved.bottom;
   radar.center = [reserved.left + boxWidth / 2, reserved.top + boxHeight / 2];
   // Leave room beside the radar for the names of its indicators, of up to a fourth of the width.
-  const nameWidth = Math.min(longestText(radar.indicator) * size.charWidth, boxWidth / 4);
+  const font = size.font(styleOf(radar.axisName));
+  const nameWidth = Math.min(widestText(radar.indicator, font.width, boxWidth / 4), boxWidth / 4);
   radar.radius = Math.max(40, Math.min(boxWidth - 2 * nameWidth - 40, boxHeight - 56) / 2);
 }
 
@@ -2294,8 +2342,9 @@ function layOutSingleAxis(
   base: JsonObject,
   series: JsonObject[],
   reserved: Insets,
-  { width, height, charWidth }: Size,
+  size: Size,
 ): void {
+  const { width, height } = size;
   const axes = asArray(base.singleAxis);
   const axis = axes.length === 1 ? axes[0] : undefined;
   if (!axis || has(axis, BOX_KEYS) || axis.orient === "vertical") return;
@@ -2330,17 +2379,17 @@ function layOutSingleAxis(
         : { hideOverlap: true };
     if (label.align !== "right") continue;
     // ECharts' default margin of the names.
-    const nameChar = fontSize * 0.6;
     const margin = (typeof label.margin === "number" ? label.margin : 4) + 8;
     const most = Math.round(width * MAX_LAYER_NAMES);
-    const text = longestText(names, most / nameChar) * nameChar;
+    const text = widestText(names, size.font(label, { fontSize }).width, most);
     if (text + margin > most && label.width === undefined) {
       Object.assign(label, { width: most - margin, overflow: label.overflow ?? "truncate" });
     }
     left = Math.max(left, Math.round(Math.min(text + margin, most)));
   }
   Object.assign(axis, { left: reserved.left + left, right: reserved.right + 24, top, bottom });
-  fewerTimeTicks(axis, width - reserved.left - left - reserved.right - 24, charWidth);
+  const length = width - reserved.left - left - reserved.right - 24;
+  fewerTimeTicks(axis, length, size.font(styleOf(axis.axisLabel)));
 }
 
 /**

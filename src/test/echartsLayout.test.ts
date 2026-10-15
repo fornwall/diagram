@@ -3,9 +3,14 @@ import type { ChartSpec } from "../chartSpec";
 import { GUIDE_TOPICS } from "../guideTopics";
 import { modelOf } from "../webview/echartsItems";
 import { disableAnimation, toolWarnings } from "../webview/echartsLayout";
+import { textWidth } from "../webview/echartsLibrary";
 import type { JsonObject } from "../webview/echartsOption";
 import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
+
+/** The width of a text in the test colors' font, of its size or another, as ECharts measures it. */
+const widthOf = (text: string, fontSize = colors.fontSize) =>
+  textWidth(text, `${fontSize}px ${colors.fontFamily}`);
 
 suite("echartsLayout", () => {
   test("leaves out the toolbox features that a new layout would undo", () => {
@@ -95,7 +100,7 @@ suite("echartsLayout", () => {
     const source = { series: [series], legend: {} };
     const box = ({ left, right, top, radius }: Option) => [left, right, top, radius];
     const wide = layout(source, { width: 1400, height: 900 });
-    assert.deepStrictEqual(box(wide.series[0]), [8, 94, 8, "68%"]);
+    assert.deepStrictEqual(box(wide.series[0]), [8, 92, 8, "68%"]);
     assert.deepStrictEqual(Object.keys(series), ["data"]);
     // The first layout is not written to the source, so a second one is not stale.
     const narrow = layout(source, { width: 300, height: 220 });
@@ -747,10 +752,10 @@ suite("echartsLayout", () => {
   test("tells long category labels apart by lines, or else by what follows the start they share", () => {
     const table = (count: number, name = (index: number) => `Northern Regional Center ${index}`) =>
       `center,shipments\n${Array.from({ length: count }, (_, index) => `${name(index)},${index + 1}`).join("\n")}`;
-    const bars = (type: "bar" | "horizontalBar", data: string) =>
+    const bars = (type: "bar" | "horizontalBar", data: string, height = 700) =>
       layout(builtOption({ type, data: "unused", labelColumn: "center" }, data), {
         width: 400,
-        height: 700,
+        height,
       });
     // Too many rows for lines: the labels are what follows "Northern Regional Center ", which
     // names the axis above them, starting at the axis.
@@ -772,8 +777,9 @@ suite("echartsLayout", () => {
       [few.axisLabel.overflow, few.axisLabel.formatter, few.name],
       ["break", undefined, undefined],
     );
-    // Columns name their axis below their labels, which then go across.
-    const columns = bars("bar", table(6)).xAxis;
+    // Columns name their axis below their labels, which then go across, where the labels would
+    // be cut short slanted.
+    const columns = bars("bar", table(6), 500).xAxis;
     assert.deepStrictEqual(
       [columns.name, columns.nameLocation, columns.nameGap, columns.axisLabel.rotate],
       ["Northern Regional Center …", "middle", 30, undefined],
@@ -809,7 +815,7 @@ suite("echartsLayout", () => {
     const named = sites({ name: "Site" });
     assert.deepStrictEqual(
       [named.name, named.axisLabel.formatter("Northern Regional Center 12"), named.nameTextStyle],
-      ["Site", "…Center 12", undefined],
+      ["Site", "…Regional Center 12", undefined],
     );
     // Unless they end alike too: then they are told apart by what follows the start they share,
     // across the chart as down it.
@@ -989,7 +995,7 @@ suite("echartsLayout", () => {
       })),
       series: [{ type: "parallel", data: [[30000, 150, 7.5, 1400, 1]] }],
     });
-    const narrow = { width: 404, height: 575 };
+    const narrow = { width: 370, height: 575 };
     const laidOut = layout(cars(), narrow);
     // Every other name a line higher, each as wide as the room between three axes.
     assert.deepStrictEqual(
@@ -997,7 +1003,7 @@ suite("echartsLayout", () => {
       [15, 32, 15, 32, 15],
     );
     const { left, right, top } = laidOut.parallel;
-    const step = (404 - left - right) / 4;
+    const step = (narrow.width - left - right) / 4;
     assert.strictEqual(laidOut.parallelAxis[1].nameTruncate.maxWidth, Math.round(2 * step - 8));
     assert.strictEqual(top, 32 + 15 + 2 * 17 + 8);
     // Drawn whole, where ECharts cut them to "Horsep..." and "Consum...".
@@ -1028,7 +1034,7 @@ suite("echartsLayout", () => {
     const long = ["Speed", "Intelligence", "Size"];
     // In a narrow chart, the names take from the width of the radar.
     assert.ok(radius(long, 360) < radius(short, 360));
-    assert.ok(radius(long, 360) <= (360 - 2 * 12 * colors.fontSize * 0.6) / 2 - 20);
+    assert.ok(radius(long, 360) <= (360 - 2 * widthOf("Intelligence")) / 2 - 20);
     // In a wide one, the height decides.
     assert.strictEqual(radius(long, 1200), radius(short, 1200));
   });
@@ -1102,11 +1108,11 @@ suite("echartsLayout", () => {
         { name: "root", children: [{ name: "a", children: [{ name: leaf }] }, { name: "b" }] },
       ],
     };
-    const whole = Math.round(leaf.length * colors.fontSize * 0.6 + 12);
+    const whole = Math.round(widthOf(leaf) + 12);
     assert.deepStrictEqual(box("tree", tree), [44, 96, whole, 12]);
     assert.deepStrictEqual(box("tree", { ...tree, orient: "RL" }), [44, whole, 96, 12]);
     // Centered on their nodes, half of them.
-    const half = Math.round((leaf.length * colors.fontSize * 0.6) / 2 + 12);
+    const half = Math.round(widthOf(leaf) / 2 + 12);
     assert.deepStrictEqual(box("tree", { ...tree, label: { position: "inside" } }), [
       44,
       96,
@@ -1127,7 +1133,7 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
     // A funnel's labels beside it on the right, unless placed otherwise, as long as they are.
     const stages = { data: [{ name: "Visited the product page", value: 3 }, { name: "Paid" }] };
-    const room = Math.round(24 * colors.fontSize * 0.6 + 33);
+    const room = Math.round(widthOf("Visited the product page") + 33);
     assert.deepStrictEqual(box("funnel", stages), [44, 80, room, 12]);
     assert.deepStrictEqual(box("funnel", { ...stages, label: { position: "leftTop" } }), [
       44,
@@ -1141,7 +1147,7 @@ suite("echartsLayout", () => {
     );
     assert.deepStrictEqual(
       box("funnel", { ...stages, label: { formatter: "{b}: {c}" }, labelLine: { length: 10 } }),
-      [44, 80, Math.round((24 + 2 + 6) * colors.fontSize * 0.6 + 23), 12],
+      [44, 80, Math.round(widthOf("Visited the product page: 000.00") + 23), 12],
     );
     assert.deepStrictEqual(box("sankey"), [44, 12, 144, 12]);
     assert.deepStrictEqual(box("chord"), [44, 12, 12, 12]);
@@ -1166,7 +1172,8 @@ suite("echartsLayout", () => {
     const option = layout(river(["Docs", "Frontend"]));
     // The legend above the river, below the title, as above a grid, rather than over it.
     assert.deepStrictEqual([option.legend.top, option.legend.orient], [32, undefined]);
-    const nameWidth = Math.round(8 * 11 * 0.6 + 12);
+    // Of ECharts' size of the names.
+    const nameWidth = Math.round(widthOf("Frontend", 11) + 12);
     const { left, right, top, bottom } = option.singleAxis;
     assert.deepStrictEqual([left, right, top, bottom], [nameWidth, 24, 76, 30]);
     assert.strictEqual(option.series[0].label.align, "right");
@@ -1388,7 +1395,7 @@ suite("echartsLayout", () => {
     );
     // Fewer across a narrow plot, where ECharts would run them into each other.
     const narrow = layout(line(days("2026-02-02", 20)), { width: 400 });
-    assert.strictEqual(narrow.xAxis.splitNumber, 3);
+    assert.strictEqual(narrow.xAxis.splitNumber, 4);
     assert.deepStrictEqual(labels(line(days("2026-02-02", 20)), 400), [
       "Feb 5",
       "Feb 9",
@@ -1401,7 +1408,7 @@ suite("echartsLayout", () => {
       { singleAxis: { type: "time" }, series: [{ type: "themeRiver", data: [] }] },
       { width: 400 },
     );
-    assert.strictEqual(river.singleAxis.splitNumber, 3);
+    assert.strictEqual(river.singleAxis.splitNumber, 4);
     assert.deepStrictEqual(river.singleAxis.axisLabel.formatter.day, [
       "{MMM} {d}",
       "{primary|{MMM} {d}}",
