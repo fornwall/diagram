@@ -167,11 +167,11 @@ function merge(findings: Finding[]): string[] {
 }
 
 /** The paths of series, each with a suffix, such as "series[0].data and series[1].data". */
-function listed(paths: string[], suffix = ""): string {
+function listed(paths: string[], suffix = "", noun = "series"): string {
   const each = paths.map((path) => `${path}${suffix}`);
   return each.length <= 3
     ? joinWords(each, "and")
-    : `${each.slice(0, 2).join(", ")} and ${each.length - 2} more series`;
+    : `${each.slice(0, 2).join(", ")} and ${each.length - 2} more ${noun}`;
 }
 
 /** A verb for one series, or for several. */
@@ -715,7 +715,8 @@ function namesCategories(categories: string[]): boolean {
 
 /**
  * Category labels that ECharts leaves out, as they would overlap, of an axis whose categories are
- * names, and labels cut short so that several read alike.
+ * names; labels drawn over each other, as of an axis whose option shows them all; and labels cut
+ * short so that several read alike. The same of several axes, as of facets, is told once.
  */
 function categoryLabels(
   views: Views,
@@ -723,7 +724,7 @@ function categoryLabels(
   base: JsonObject,
   size: { width: number; height: number },
 ): string[] {
-  const warnings: string[] = [];
+  const findings: Finding[] = [];
   for (const mainType of ["xAxis", "yAxis"]) {
     model.eachComponent(mainType, (component) => {
       const axisModel = component as AxisModel;
@@ -740,18 +741,51 @@ function categoryLabels(
       const categories = axisModel.getCategories().slice(start, end + 1);
       const path = componentPath(base, mainType, axisModel.componentIndex);
       const horizontal = axis.isHorizontal?.() ?? mainType === "xAxis";
+      const room = horizontal ? `width of ${size.width}` : `height of ${size.height}`;
+      const fewer = horizontal
+        ? `put the categories on ${mainType === "xAxis" ? "yAxis" : "xAxis"} as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time`
+        : (paths: string[]) =>
+            `show fewer categories, such as the largest and an "Other", or add a "dataZoom" on ${paths.length === 1 ? path : "each axis"} to show fewer at a time`;
+      const remedy = (paths: string[]) => (typeof fewer === "string" ? fewer : fewer(paths));
+      const finding = (key: string, say: Finding["say"]): Finding => ({
+        key: `${key}:${mainType}:${horizontal}`,
+        path,
+        amount: 0,
+        merge: "sum",
+        say,
+      });
       if (
         (interval === undefined || interval === "auto") &&
         shown.length < categories.length &&
         namesCategories(categories)
       ) {
-        const room = horizontal ? `width of ${size.width}` : `height of ${size.height}`;
-        const remedy = horizontal
-          ? `put the categories on ${mainType === "xAxis" ? "yAxis" : "xAxis"} as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time`
-          : `show fewer categories, such as the largest and an "Other", or add a "dataZoom" on ${path} to show fewer at a time`;
-        warnings.push(
-          `${path} shows only ${shown.length} of its ${categories.length} category labels at ` +
-            `the panel's ${room} pixels, leaving out the others for lack of room: ${remedy}.`,
+        findings.push(
+          finding(`left:${shown.length}:${categories.length}`, (paths) => {
+            const of = paths.length === 1 ? "its" : "their";
+            return (
+              `${listed(paths, "", "axes")} ${verb(paths, "shows", "show")} only ${shown.length} of ${of} ` +
+              `${categories.length} category labels${paths.length > 1 ? " each" : ""} at the ` +
+              `panel's ${room} pixels, leaving out the others for lack of room: ${remedy(paths)}.`
+            );
+          }),
+        );
+      }
+      const over = overlappingLabels(shown);
+      if (over > 0) {
+        const chosen = interval !== undefined && interval !== "auto";
+        findings.push(
+          finding(`over:${over}:${shown.length}:${chosen}`, (paths) => {
+            const of = paths.length === 1 ? "its" : "their";
+            const which =
+              over === shown.length ? `${of} ${over}` : `${over} of ${of} ${shown.length}`;
+            const instead = chosen
+              ? `leave "interval" out of ${listed(paths, ".axisLabel", "axes")}, for the panel to turn them or leave some out, or shorten the names`
+              : remedy(paths);
+            return (
+              `${listed(paths, "", "axes")} ${verb(paths, "draws", "draw")} ${which} category ` +
+              `labels over each other at the panel's ${room} pixels: ${instead}.`
+            );
+          }),
         );
       }
       // Labels cut short alike, which the reader cannot tell apart.
@@ -767,14 +801,53 @@ function categoryLabels(
       if (alike.length > 0) {
         const [text = ""] = alike[0] ?? [];
         const count = alike.reduce((sum, [, full]) => sum + full.size, 0);
-        warnings.push(
-          `${path} cuts its category labels short to fit, leaving ${count} of them alike, such ` +
-            `as ${quote(text)}: use shorter names that differ at the start${horizontal ? ", or a horizontal bar chart" : ""}.`,
+        findings.push(
+          finding(
+            `alike:${count}:${text}`,
+            (paths) =>
+              `${listed(paths, "", "axes")} ${verb(paths, "cuts its", "cut their")} category labels short ` +
+              `to fit, leaving ${count} of them alike, such as ${quote(text)}: use shorter names ` +
+              `that differ at the start${horizontal ? ", or a horizontal bar chart" : ""}.`,
+          ),
         );
       }
     });
   }
-  return warnings;
+  return merge(findings);
+}
+
+/** The matrix of an element without a transform. */
+const IDENTITY = [1, 0, 0, 1, 0, 0];
+
+/**
+ * How many of the labels of an axis, in order along it, are drawn over the one before or after,
+ * as those of an axis whose option shows them all are, where they are too wide for their room. Two
+ * labels turned alike are compared in the frame of the first, where both are upright: a label
+ * turned 45° takes less of the axis than the box around it.
+ */
+function overlappingLabels(labels: Element[]): number {
+  const over = new Set<Element>();
+  for (let index = 1; index < labels.length; index++) {
+    const [a, b] = [labels[index - 1], labels[index]] as [Element, Element];
+    const [ma, mb] = [a.getComputedTransform() ?? IDENTITY, b.getComputedTransform() ?? IDENTITY];
+    const [cos = 1, sin = 0] = ma;
+    if (Math.abs(cos - (mb[0] ?? 1)) > 1e-6 || Math.abs(sin - (mb[1] ?? 0)) > 1e-6) continue;
+    // Where b is in a's frame: the offset between them turned back by their angle.
+    const [dx, dy] = [(mb[4] ?? 0) - (ma[4] ?? 0), (mb[5] ?? 0) - (ma[5] ?? 0)];
+    const own = a.getBoundingRect();
+    const other = b.getBoundingRect();
+    const box = {
+      x: other.x + cos * dx + sin * dy,
+      y: other.y - sin * dx + cos * dy,
+      width: other.width,
+      height: other.height,
+    };
+    if (overlap(own, box)) {
+      over.add(a);
+      over.add(b);
+    }
+  }
+  return over.size;
 }
 
 /** How far in pixels a text may reach past the edge of the chart, as by antialiasing. */

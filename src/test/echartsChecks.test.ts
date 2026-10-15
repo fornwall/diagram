@@ -943,10 +943,28 @@ suite("echartsChecks", function () {
         [],
       );
     }
-    // Nor an axis that chooses which labels to show.
+    // Nor an axis that chooses which labels to show, which the panel turns to fit.
     const chosen = departments("xAxis");
     chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 1 } };
     assert.deepStrictEqual(warningsOf(chosen, narrow), []);
+    // But of one that shows every label where they run into each other, however turned.
+    chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 0 } };
+    assert.deepStrictEqual(warningsOf(chosen, narrow), []);
+    assert.deepStrictEqual(warningsOf(chosen, { width: 300, height: 500 }), [
+      'xAxis draws its 20 category labels over each other at the panel\'s width of 300 pixels: leave "interval" out of xAxis.axisLabel, for the panel to turn them or leave some out, or shorten the names.',
+    ]);
+    chosen.xAxis = { ...chosen.xAxis, axisLabel: { interval: 0, rotate: 0 } };
+    assert.deepStrictEqual(warningsOf(chosen, narrow), [
+      'xAxis draws its 20 category labels over each other at the panel\'s width of 400 pixels: leave "interval" out of xAxis.axisLabel, for the panel to turn them or leave some out, or shorten the names.',
+    ]);
+    // The same of the axes of several facets is told once.
+    const facets = builtOption(
+      { type: "bar", data: "unused", labelColumn: "department", facetColumn: "region" },
+      `region,department,staff\n${["North", "South", "East", "West"].flatMap((region) => DEPARTMENTS.map((department, index) => `${region},${department},${index}`)).join("\n")}`,
+    );
+    assert.deepStrictEqual(warningsOf(facets, { width: 800, height: 600 }), [
+      'xAxis[0], xAxis[1] and 2 more axes show only 10 of their 20 category labels each at the panel\'s width of 800 pixels, leaving out the others for lack of room: put the categories on yAxis as a horizontal bar chart, shorten the names, or add a "dataZoom" to show fewer at a time.',
+    ]);
     const regions = ["North America Region East", "North America Region West", "Europe"];
     const bars = (data: string[]) => ({
       yAxis: { type: "category", data },

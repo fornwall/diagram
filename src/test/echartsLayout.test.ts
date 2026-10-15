@@ -779,8 +779,16 @@ suite("echartsLayout", () => {
   test("rotates category labels that would overlap", () => {
     const labels = Array.from({ length: 20 }, (_, index) => `Category ${index}`);
     const option = layout(bars({ xAxis: { type: "category", data: labels } }));
-    assert.strictEqual(option.xAxis.axisLabel.rotate, 30);
+    assert.deepStrictEqual(option.xAxis.axisLabel, { rotate: 30, hideOverlap: true });
     assert.strictEqual(layout(bars()).xAxis.axisLabel, undefined);
+    // Labels that the option shows every one of, or every other one, stay shown, turned to fit.
+    const every = (interval: number, width: number) =>
+      layout(bars({ xAxis: { type: "category", data: labels, axisLabel: { interval } } }), {
+        width,
+      }).xAxis.axisLabel;
+    assert.deepStrictEqual(every(0, 800), { rotate: 30, interval: 0 });
+    assert.deepStrictEqual(every(0, 400), { rotate: 45, interval: 0 });
+    assert.deepStrictEqual(every(1, 400), { rotate: 30, interval: 1 });
   });
 
   test("tells long category labels apart by lines, or else by what follows the start they share", () => {

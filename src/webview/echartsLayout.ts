@@ -881,10 +881,14 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
   for (const axis of asArray(base.xAxis)) {
     const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
     const count = Array.isArray(axis.data) ? axis.data.length : 0;
-    if (count === 0 || label.rotate !== undefined || label.interval !== undefined) {
+    if (count === 0 || label.rotate !== undefined) {
       continue;
     }
-    const slot = panelWidth(axis) / count;
+    // The option can show every label, or every so many, which then stay shown however they are
+    // turned; else ECharts leaves out those that would overlap along the slant.
+    const { interval } = label;
+    const chosen = typeof interval === "number" && interval >= 0;
+    const slot = (panelWidth(axis) / count) * (chosen ? interval + 1 : 1);
     // Slanted labels take the height of the plot, of a facet's own in a faceted chart.
     const maxWidth =
       facetGrid === undefined
@@ -915,7 +919,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       const rotate = labelWidth > slot * 3 || !apart(30) ? 45 : 30;
       axis.axisLabel = {
         rotate,
-        hideOverlap: true,
+        ...(chosen ? {} : { hideOverlap: true }),
         ...(labelWidth > maxWidth ? { width: maxWidth, overflow: "truncate" } : {}),
         ...label,
       };
