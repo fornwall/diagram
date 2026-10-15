@@ -85,6 +85,8 @@ const common = {
   sourcemap: !production,
   sourcesContent: false,
   metafile: true,
+  // dist/THIRD_PARTY_NOTICES.txt and the saved page carry the licenses in full instead.
+  legalComments: "none",
   logLevel: "silent",
   plugins: [problemMatcherPlugin],
 };
@@ -103,8 +105,6 @@ const savedPage = {
   outdir: "dist",
   minify: true,
   sourcemap: false,
-  // Replaced by the full notices that noticesPlugin puts first.
-  legalComments: "none",
   plugins: [noticesPlugin, problemMatcherPlugin],
 };
 
