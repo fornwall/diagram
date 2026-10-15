@@ -14,7 +14,7 @@ export interface SourceEdit {
  * The source with the edits made in turn, each to the source the edits before it left, with the
  * number of occurrences that each replaced; or why some did not apply, in which case none is made.
  */
-export type EditedSource =
+type EditedSource =
   | { ok: true; source: string; replaced: number[] }
   | { ok: false; problems: string[] };
 
@@ -94,7 +94,7 @@ function linesOf(text: string, offsets: readonly number[]): number[] {
  * Lines `from` to `to` of the text, counted from 1, as "12: text", cutting long lines short, which
  * an edit's oldText can still quote the start of.
  */
-export function numberedLines(text: string, from: number, to: number): string {
+function numberedLines(text: string, from: number, to: number): string {
   const lines = text.split(/\r\n?|\n/);
   const first = Math.max(1, from);
   const last = Math.min(lines.length, to);

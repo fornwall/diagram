@@ -34,7 +34,7 @@ export function findTopic(name: string): GuideTopic | undefined {
  * The topic whose name or alias is closest to a name that none matches: the longest that the name
  * contains, as "flowchart" in "flowchart with subgraphs", or else the fewest edits away.
  */
-export function closestTopic(name: string): GuideTopic {
+function closestTopic(name: string): GuideTopic {
   const wanted = key(name);
   const keys = [...TOPICS_BY_KEY.keys()];
   const contained = keys

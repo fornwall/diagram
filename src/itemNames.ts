@@ -52,7 +52,7 @@ const comparable = (text: string) =>
     .toLowerCase();
 
 /** The items of a drawing: its nodes, and its edges or sequence messages between them. */
-export interface DrawnItems {
+interface DrawnItems {
   nodeIds: readonly string[];
   relationships: readonly DiagramNode[];
 }

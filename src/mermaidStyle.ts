@@ -6,7 +6,7 @@ import { DIRECTIVE, frontMatterEnd } from "./mermaidSyntax";
 import { AUTO_TEXT, type StyleRequest } from "./styleInput";
 
 /** The diagram types whose items Mermaid styles with `style <id> fill:...,stroke:...,color:...`. */
-export type StyleableKind = "flowchart" | "class" | "state" | "er";
+type StyleableKind = "flowchart" | "class" | "state" | "er";
 
 const KINDS: Record<string, StyleableKind> = {
   flowchart: "flowchart",
