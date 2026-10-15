@@ -888,6 +888,23 @@ suite("charts", () => {
     assert.deepStrictEqual(low.series[0].data, [[1, 1.25, 2.5, 3.75, 5]]);
     assert.deepStrictEqual(low.series[1].data, [["x", -100]]);
     assert.throws(() => build(chart("boxplot", { limit: 3 }), times), /"limit" would leave out/);
+    // "sort" orders the boxes by their medians: "b" has the largest value but the lowest median.
+    const spread = "test,ms\na,1\na,5\na,9\nb,2\nb,3\nb,4\nb,40";
+    const sorted = build(chart("boxplot", { sort: "descending" }), spread);
+    assert.deepStrictEqual(sorted.xAxis.data, ["a", "b"]);
+    assert.deepStrictEqual(
+      sorted.series[0].data.map((box: number[]) => box[2]),
+      [5, 3.5],
+    );
+    assert.deepStrictEqual(sorted.series[1].data, [["b", 40]]);
+    assert.deepStrictEqual(build(chart("boxplot", { sort: "ascending" }), spread).xAxis.data, [
+      "b",
+      "a",
+    ]);
+    assert.match(
+      summary(chart("boxplot", { sort: "descending" }), spread),
+      /; ordered the boxes by their medians, the largest first; computed/,
+    );
   });
 
   test("boxplot without a label column draws a box per value column", () => {

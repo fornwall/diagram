@@ -351,8 +351,12 @@ export function heatmapOption({
   };
 }
 
-/** Compute box statistics per label group, or per value column when rows are unlabeled. */
+/**
+ * Compute box statistics per label group, or per value column when rows are unlabeled. "sort"
+ * orders the boxes by their medians: the rows it sorted would order the groups by their extremes.
+ */
 export function boxplotOption({
+  spec,
   table,
   columns,
   names,
@@ -368,8 +372,8 @@ export function boxplotOption({
   const grouped: Map<string, number[]> = labeled
     ? new Map([...Map.groupBy(rows, label)].map(([group, members]) => [group, numbers(members, 0)]))
     : new Map(names.map((name, column) => [name, numbers(rows, column)]));
-  const categories: string[] = [];
-  const boxes: number[][] = [];
+  let categories: string[] = [];
+  let boxes: number[][] = [];
   const outliers: [string, number][] = [];
   let counted = 0;
   for (const [group, numbers] of grouped) {
@@ -402,6 +406,17 @@ export function boxplotOption({
   }
   if (boxes.length === 0) {
     throw new Error(`A box plot needs numbers to summarize, but ${quoteAll(names)} holds none.`);
+  }
+  if (spec.sort !== undefined) {
+    const direction = spec.sort === "ascending" ? 1 : -1;
+    const order = [...boxes.keys()].sort(
+      (a, b) => ((boxes[a]?.[2] ?? 0) - (boxes[b]?.[2] ?? 0)) * direction,
+    );
+    categories = order.map((i) => categories[i] ?? "");
+    boxes = order.map((i) => boxes[i] ?? []);
+    notes.push(
+      `ordered the boxes by their medians, the ${direction > 0 ? "smallest" : "largest"} first`,
+    );
   }
   notes.push(
     `computed the quartiles of ${plural(boxes.length, "box", "boxes")} from ` +
