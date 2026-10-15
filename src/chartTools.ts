@@ -9,10 +9,23 @@ import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { Diagram, DiagramPanel } from "./panel";
-import { CHART_TOOL, errorMessage, isPlainObject, RENDER_TOOL } from "./protocol";
+import {
+  CHART_TOOL,
+  errorMessage,
+  isPlainObject,
+  RENDER_TOOL,
+  UPDATE_CHART_TOOL,
+} from "./protocol";
 import { renderOptions } from "./renderOptions";
 import { inWords, nonBlank, plural, quote, shorten, toolInput } from "./text";
-import { drawnResult, drawnWarnings, renderFailure, textResult } from "./toolResults";
+import {
+  type Answer,
+  changeResult,
+  drawnResult,
+  drawnWarnings,
+  renderFailure,
+  textResult,
+} from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
 type ChartInput = ChartSpec & { clickPrompt?: string; revision?: number; newDiagram?: boolean };
@@ -442,25 +455,36 @@ export class UpdateChartTool implements vscode.LanguageModelTool<ChartUpdateInpu
     return { invocationMessage: updateMessage(options.input) };
   }
 
-  async invoke(
+  invoke(
     options: vscode.LanguageModelToolInvocationOptions<ChartUpdateInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
-    try {
-      const outcome = await this.panel.updateChart(options.input, token);
-      // A failed update draws the kept chart again.
-      return outcome.ok
-        ? drawnResult(
-            [
-              `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""}`,
-              ...drawnWarnings(this.panel),
-            ].join("\n\n"),
-            outcome.revision,
-          )
-        : textResult(`The chart was not updated: ${outcome.error}`);
-    } catch (error) {
-      if (error instanceof vscode.CancellationError) throw error;
-      return textResult(`The chart was not updated: ${errorMessage(error)}`);
+    // The input is checked against the chart it updates, so the update parses it itself.
+    return changeResult(
+      this.panel,
+      token,
+      "The chart was not updated",
+      UPDATE_CHART_TOOL,
+      () => options.input,
+      (input) => this.update(input, token),
+    );
+  }
+
+  private async update(input: ChartUpdateInput, token: vscode.CancellationToken): Promise<Answer> {
+    const outcome = await this.panel.updateChart(input, token);
+    // A failed update draws the kept chart again.
+    if (!outcome.ok) {
+      return {
+        paragraphs: [`The chart was not updated: ${outcome.error}`],
+        drawn: outcome.revision,
+      };
     }
+    return {
+      paragraphs: [
+        `Updated the ${outcome.diagramType} chart using the loaded data, keeping the styling changes that still apply.${outcome.summary ? ` ${outcome.summary}` : ""}`,
+        ...drawnWarnings(this.panel),
+      ],
+      drawn: outcome.revision,
+    };
   }
 }

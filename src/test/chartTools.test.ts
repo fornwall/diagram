@@ -552,7 +552,9 @@ suite("chartTools", function () {
     const update = (input: object) => invokeTool(new UpdateChartTool(panel), input);
     assert.match(
       await update({ labelColumn: ["name", "team"] }),
-      /Leave "limit" out \(set it to null with diagram_updateChart\)/,
+      new RegExp(
+        `^The chart was not updated: .*Leave "limit" out \\(set it to null with diagram_updateChart\\).* Revision: ${panel.revision}\\.$`,
+      ),
     );
     assert.match(await update({ labelColumn: ["name", "team"], limit: null }), /^Updated/);
   });
