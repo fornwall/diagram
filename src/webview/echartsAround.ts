@@ -192,7 +192,7 @@ const VISUAL_MAP_HEIGHT = 52;
 
 /**
  * Places data zoom sliders along the axis they control, and visual maps below the chart, unless
- * the squeeze gives them up (see {@link SQUEEZES}).
+ * the squeeze gives them up (see {@link SQUEEZES} in echartsLayout.ts).
  */
 export function placeSliders(
   base: JsonObject,

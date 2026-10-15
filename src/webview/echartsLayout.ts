@@ -1,5 +1,9 @@
-// Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
-// and defaults. Only fills in what the option leaves unset, so explicit choices always win.
+// Adapts an ECharts option written by a model to the panel: lays it out for the panel's size,
+// placing the components around the plot (echartsAround.ts, echartsLegend.ts) and fitting the
+// plot into the space left (echartsGrid.ts, echartsPie.ts, echartsBoxSeries.ts,
+// echartsCoordinates.ts), giving up what is around the plot step by step where it is too short,
+// and then fills in the panel's defaults (echartsDefaults.ts). Only fills in what the option leaves
+// unset, so explicit choices always win.
 
 import { asArray, isPlainObject } from "../protocol";
 import {
