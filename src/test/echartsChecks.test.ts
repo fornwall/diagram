@@ -723,6 +723,29 @@ suite("echartsChecks", function () {
     assert.strictEqual(layout(chart(regions), wide).xAxis.axisLabel.rotate, 30);
   });
 
+  test("turns category labels of several lines gently where their lines stay apart", () => {
+    const regions = ["Northern Region", "Southern Region", "Eastern Region", "Western Region"];
+    regions.push("Central Region", "Overseas Branches");
+    const chart = (data: string[], axisLabel: Option = {}) => ({
+      xAxis: { type: "category", data, axisLabel },
+      yAxis: {},
+      series: [{ type: "bar", data: data.map((_, index) => index + 1) }],
+    });
+    // ECharts tells whether labels are too close as of a line, a third taller, and the layout
+    // hides those whose lines overlap: lines as far apart across the slant as they are tall.
+    const options = [
+      chart(regions, { width: 70, overflow: "break" }),
+      chart(regions.map((region) => region.replace(" ", "\n"))),
+    ];
+    for (const option of options) {
+      for (const width of [380, 420]) {
+        const size = { width, height: 500 };
+        assert.strictEqual(layout(option, size).xAxis.axisLabel.rotate, 30, `${width}`);
+        assert.deepStrictEqual(warningsOf(option, size), [], `${width}`);
+      }
+    }
+  });
+
   test("keeps category labels across in the width that the labels of the value axes leave", () => {
     const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
     const xAxis = { type: "category", data: people };

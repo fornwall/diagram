@@ -905,11 +905,12 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       dropSharedStart(axis, label, maxWidth, middle, font);
     if (rest) labelWidth = rest;
     if (!across(labelWidth)) {
-      // ECharts keeps turned labels a third of their height apart across the slant, and else
-      // leaves some out: steeper where categories are too narrow for that at 30°, as of labels of
-      // several lines.
+      // ECharts keeps turned labels a third of a line apart across the slant, as it measures them
+      // on one, and else leaves some out, and hides those whose lines overlap: steeper where
+      // categories are too narrow for either at 30°, as of labels of several lines.
       const lineHeight = typeof label.lineHeight === "number" ? label.lineHeight : font.size;
-      const tall = labelLines(axis.data, label, font) * lineHeight * CATEGORY_LABEL_ROOM;
+      const lines = labelLines(axis.data, label, font);
+      const tall = Math.max(font.size * CATEGORY_LABEL_ROOM, lines * lineHeight);
       const apart = (angle: number) => tall <= slot * Math.sin((angle * Math.PI) / 180);
       const rotate = labelWidth > slot * 3 || !apart(30) ? 45 : 30;
       axis.axisLabel = {
