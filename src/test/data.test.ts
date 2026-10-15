@@ -1251,11 +1251,40 @@ suite("data", () => {
       {
         columns: ["Column 1", "total", "used", "free", "shared", "buff/cache", "available"],
         rows: [
-          ["Mem:", 15904, 6458, 1340, 826, 8105, 9125],
-          ["Swap:", 2047, 0, 2047, null, null, null],
+          ["Mem", 15904, 6458, 1340, 826, 8105, 9125],
+          ["Swap", 2047, 0, 2047, null, null, null],
         ],
       },
     );
+  });
+
+  test("leaves out the colon after the labels of a listing of names and values", () => {
+    assert.deepStrictEqual(
+      parse(
+        "MemTotal:       32000000 kB\nMemFree:         2000000 kB\nBuffers:          300000 kB",
+      ),
+      {
+        columns: ["Column 1", "Column 2", "Column 3"],
+        rows: [
+          ["MemTotal", 32000000, "kB"],
+          ["MemFree", 2000000, "kB"],
+          ["Buffers", 300000, "kB"],
+        ],
+      },
+    );
+    assert.deepStrictEqual(parse("name: count\ncpu: 12\nmem: 34").rows, [
+      ["cpu", 12],
+      ["mem", 34],
+    ]);
+    // Only when every label has one: elsewhere a colon is part of the text.
+    assert.deepStrictEqual(parse("cpu: 12\nmem 34").rows, [
+      ["cpu:", 12],
+      ["mem", 34],
+    ]);
+    assert.deepStrictEqual(parse("a:b 1\nc:d 2").rows, [
+      ["a:b", 1],
+      ["c:d", 2],
+    ]);
   });
 
   test("leaves out the groups of columns that vmstat prints above its header", () => {

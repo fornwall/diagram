@@ -913,6 +913,24 @@ function splitWhitespace(lines: string[], underline: string | undefined): Record
 }
 
 /**
+ * Leaves out the colon after each label in the first column, as free ("Mem:"), /proc/meminfo
+ * ("MemTotal:") and other listings of "name: value" write them, when every label has one.
+ */
+function withoutLabelColons(table: Records): Records {
+  const labels = table.records.slice(table.header ? 1 : 0).map((record) => record[0]);
+  if (
+    labels.length === 0 ||
+    !labels.every((label) => typeof label === "string" && /^[^\s:].*:$/.test(label))
+  ) {
+    return table;
+  }
+  for (const record of table.records.slice(table.header ? 1 : 0)) {
+    record[0] = String(record[0]).slice(0, -1);
+  }
+  return table;
+}
+
+/**
  * Whether `line` may be above a table rather than in it, as exports from spreadsheets, banks and
  * Google Analytics have them: a comment ("# exported 2024-01-01"), or a title ("Sales by region")
  * of words without a delimiter, a leading digit or quote, or the wide gaps of aligned columns.
@@ -1131,5 +1149,5 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       return { ...table, csv: true };
     }
   }
-  return tabular ?? splitWhitespace(lines, underline);
+  return tabular ?? withoutLabelColons(splitWhitespace(lines, underline));
 }
