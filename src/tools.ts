@@ -207,9 +207,7 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
     // read it to change it, unless it does not fit, as the caller would cut it short.
     const full = this.panel.describeForModel({ detail: "full" });
     if (full === undefined) {
-      return textResult(
-        `No diagram has been rendered yet. Use the ${RENDER_TOOL} or ${CHART_TOOL} tool to show one.`,
-      );
+      return textResult(noDiagram("read"));
     }
     // A caller that gives no budget gets no more than a large Mermaid diagram's description takes.
     const room = options.tokenizationOptions;
@@ -299,7 +297,7 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
   ): Promise<vscode.LanguageModelToolResult> {
     const { current, revision } = this.panel;
     if (!current) {
-      return textResult(`No diagram is shown. Use ${RENDER_TOOL} or ${CHART_TOOL} to show one.`);
+      return textResult(noDiagram("view"));
     }
     const ids = parseImageInput(options.input);
     if (typeof ids === "string") {
@@ -605,6 +603,11 @@ export function renderFailure(
   return outcome.kind === "invalid"
     ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
     : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown. Call ${tool} again only to reopen a closed panel, if the user still wants to see it.`;
+}
+
+/** Why a tool that takes the current diagram did nothing: there is none. */
+export function noDiagram(action: string): string {
+  return `There is no diagram to ${action}. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`;
 }
 
 export function nonBlank(value: unknown): string | undefined {

@@ -36,6 +36,7 @@ import {
   idList,
   leftOutLinks,
   linksWithoutNodes,
+  noDiagram,
   nonBlank,
 } from "./tools";
 
@@ -187,9 +188,7 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
   private async edit(change: EditChange, token: vscode.CancellationToken): Promise<Answer> {
     const state = this.panel.current;
     if (!state) {
-      throw new Error(
-        `There is no diagram to edit. Draw one with ${RENDER_TOOL} or ${CHART_TOOL} first.`,
-      );
+      throw new Error(noDiagram("edit"));
     }
     const { language, source } = state;
     const noun = diagramNoun(language);

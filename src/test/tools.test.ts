@@ -618,7 +618,7 @@ suite("tools", () => {
       reasons.push(await view(shown));
     }
     assert.deepStrictEqual(reasons, [
-      "No diagram is shown. Use diagram_render or diagram_chart to show one.",
+      "There is no diagram to view. Render one with diagram_render or diagram_chart first.",
       "There is no image to view. The diagram panel is closed. The user can open it again with Diagram: Show Panel.",
       "There is no image to view. The diagram fails to render. Render a working diagram first. The error is: Oops",
       "There is no image to view. The panel is still drawing the diagram.",

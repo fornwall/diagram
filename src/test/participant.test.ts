@@ -758,7 +758,7 @@ suite("participant", () => {
     );
     assert.match(
       messageText(sent[1]?.messages.at(-1)),
-      /Current Mermaid diagram|No diagram has been rendered/,
+      /Current Mermaid diagram|There is no diagram to read/,
     );
   });
 

@@ -190,7 +190,7 @@ suite("diagram_edit", function () {
     assert.strictEqual(tool.prepareInvocation().invocationMessage, "Editing the diagram");
     assert.strictEqual(
       await editing({ edits: [{ oldText: "A", newText: "B" }] }),
-      "Nothing was changed: There is no diagram to edit. Draw one with diagram_render or diagram_chart first. Revision: 0.",
+      "Nothing was changed: There is no diagram to edit. Render one with diagram_render or diagram_chart first. Revision: 0.",
     );
     await draw();
     assert.strictEqual(tool.prepareInvocation().invocationMessage, 'Editing the diagram "Flow"');
