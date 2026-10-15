@@ -667,6 +667,21 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(option, { width: 600, height: 500 }), []);
   });
 
+  test("keeps category labels across where ECharts draws them all so", () => {
+    const option = {
+      xAxis: { type: "category", data: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] },
+      yAxis: {},
+      series: [{ type: "bar", data: [5, 8, 3, 6, 2, 7, 4] }],
+    };
+    // Each label, a third wider, fits the width of its category, as ECharts makes sure of.
+    for (const width of [330, 350]) {
+      const size = { width, height: 500 };
+      assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
+      assert.deepStrictEqual(warningsOf(option, size), []);
+    }
+    assert.strictEqual(layout(option, { width: 290, height: 500 }).xAxis.axisLabel?.rotate, 30);
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);

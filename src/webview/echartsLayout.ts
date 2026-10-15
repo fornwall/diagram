@@ -843,8 +843,8 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     const font = size.font(label);
     let labelWidth = widestText(axis.data, font.width, Math.max(slot * 3, maxWidth));
     // ECharts shows each label across the axis where, a third wider, it fits in the width of its
-    // category, and else leaves some out.
-    const across = (width: number) => width * CATEGORY_LABEL_ROOM <= slot - 8;
+    // category, and else leaves some out: the third is the gap between them.
+    const across = (width: number) => width * CATEGORY_LABEL_ROOM <= slot;
     // Labels cut short to the same start are told apart by what follows it.
     // Named below the labels, across the middle of the axis, unless the option names it elsewhere.
     const { name: own, nameLocation: location } = axis;
