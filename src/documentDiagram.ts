@@ -7,7 +7,7 @@ import {
   rewriteFence,
   trimBlankLines,
 } from "./fences";
-import { openDocument } from "./files";
+import { baseName, openDocument } from "./files";
 import { diagramNoun, errorMessage } from "./protocol";
 
 /** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
@@ -20,8 +20,7 @@ export interface DocumentBinding {
 }
 
 export function documentName({ uri }: DocumentBinding): string {
-  const { path } = vscode.Uri.parse(uri);
-  return path.split("/").pop() || path;
+  return baseName(vscode.Uri.parse(uri));
 }
 
 /**

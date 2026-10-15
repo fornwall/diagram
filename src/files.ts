@@ -401,6 +401,11 @@ const NODE_CODES: Record<string, FileErrorCode> = {
   EPERM: "NoPermissions",
 };
 
+/** The last name in the path of `uri`, as titles name a file. */
+export function baseName(uri: vscode.Uri): string {
+  return uri.path.split("/").pop() || uri.path;
+}
+
 /**
  * How messages name a file: relative to its workspace folder, else by its path, or by its URI
  * outside the workspace in a virtual file system, where a path alone does not tell which file.

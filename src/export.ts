@@ -2,7 +2,7 @@
 
 import * as os from "node:os";
 import * as vscode from "vscode";
-import { contains, fileName } from "./files";
+import { baseName, contains, fileName } from "./files";
 import {
   type DiagramLanguage,
   diagramNoun,
@@ -132,9 +132,8 @@ function saveError(error: unknown, target: vscode.Uri): Error {
  */
 async function offerToOpen(target: vscode.Uri, noun: string, format: ExportFormat): Promise<void> {
   try {
-    const name = target.path.split("/").pop() || target.path;
     const open = await vscode.window.showInformationMessage(
-      `Saved the ${noun} to ${name}.`,
+      `Saved the ${noun} to ${baseName(target)}.`,
       "Open",
     );
     if (!open) return;
