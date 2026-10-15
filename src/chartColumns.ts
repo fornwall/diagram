@@ -393,6 +393,14 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
       `read ${JSON.stringify(name(axis))} as ${times} on a time axis; ` +
         `{"${labelAxis(type)}": {"type": "category"}} in "options" reads them as labels instead`,
     );
+    if (spec.sort !== undefined) {
+      notes.push(
+        spec.limit === undefined
+          ? 'the time axis orders the rows by time, so "sort" changed nothing; with "limit" it ' +
+              "would choose the rows to keep"
+          : 'the time axis orders the rows by time, so "sort" only chose the rows to keep',
+      );
+    }
   }
 
   const given = spec.valueColumns && findColumns(table, spec.valueColumns, "valueColumns");

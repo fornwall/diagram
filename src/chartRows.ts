@@ -474,9 +474,6 @@ export function readRows(
           ? rowTotal
           : (row: Row) => row.values[0] ?? null;
     rows = sortRows(rows, spec.sort, key);
-    if (columns.timeAxis) {
-      notes.push('the time axis orders the rows by time, so "sort" only chose the rows to keep');
-    }
   }
   if (spec.limit !== undefined && beforeLimit > spec.limit) {
     if (combineOther) {

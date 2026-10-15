@@ -1587,7 +1587,11 @@ suite("charts", () => {
     ]);
     assert.match(
       summary(chart("line", { sort: "descending" }), unordered),
-      /the time axis orders the rows by time, so "sort" only chose the rows to keep/,
+      /the time axis orders the rows by time, so "sort" changed nothing; with "limit" it would choose the rows to keep/,
+    );
+    assert.match(
+      summary(chart("line", { sort: "descending", limit: 2 }), unordered),
+      /the time axis orders the rows by time, so "sort" only chose the rows to keep; kept the first 2 of 3 rows/,
     );
     // A stack adds up the points of each series at the same index.
     const stacked = build(
