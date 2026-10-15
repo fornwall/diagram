@@ -935,7 +935,8 @@ suite("echartsLayout", () => {
     assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
     assert.strictEqual(option.xAxis.axisLabel.overflow, "truncate");
     assert.strictEqual(option.yAxis.axisLabel.overflow, "truncate");
-    assert.strictEqual(reads, 2);
+    // A label of each, and of the vertical one again for the room it takes beside the plot.
+    assert.strictEqual(reads, 3);
   });
 
   test("caps a pie legend without flattening or measuring every slice", () => {

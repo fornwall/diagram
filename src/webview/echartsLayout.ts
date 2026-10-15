@@ -848,7 +848,14 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
 
   // Rotate category labels when they would overlap, and truncate very long ones.
   const labelHeights = new Map<JsonObject, number>();
-  const plotWidth = Math.max(80, width - reserved.left - reserved.right - 80);
+  // Of a grid that the layout places, as wide as the room for it less what its vertical axes take
+  // beside it; else of about as much.
+  const plotWidth = Math.max(
+    80,
+    panel !== undefined && grids.length <= 1
+      ? panel.width - besidePlot(base, size, Math.round(width * (compact ? 0.3 : 0.22)))
+      : width - reserved.left - reserved.right - 80,
+  );
   // Multi-grid charts need label decisions based on their own panel, not the entire canvas.
   const panelWidth = (axis: JsonObject): number => {
     if (grids.length <= 1) return plotWidth;
@@ -982,6 +989,71 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     }
   }
 }
+
+/**
+ * The width that the axes of the first grid take beside its plot, as ECharts keeps their labels
+ * and names within the grid. A vertical axis takes the margin and its widest label, or half its
+ * name, centered on it above or below, where wider, on the side ECharts places it: the first left
+ * and the next right, unless placed. A horizontal axis takes its name, after its end or before its
+ * start, with the gap to it. The labels of a value axis are as wide as the panel labels its values,
+ * compactly as "12.5K" (see {@link compactAxisLabels}), and those of a category axis as its widest,
+ * but no wider than the most that the layout cuts them to.
+ */
+function besidePlot(base: JsonObject, size: Size, most: number): number {
+  const sides = { left: 0, right: 0 };
+  const onGrid = (axis: JsonObject) => Number(axis.gridIndex ?? 0) === 0;
+  const used = new Set<string>();
+  for (const axis of asArray(base.yAxis).filter(onGrid)) {
+    const { position } = axis;
+    const placed = position === "left" || position === "right";
+    const side = placed ? position : used.has("left") ? "right" : "left";
+    used.add(side);
+    if (axis.show === false) continue;
+    const label = styleOf(axis.axisLabel);
+    const font = size.font(label, size.themed);
+    let room = 0;
+    if (label.show !== false && label.inside !== true) {
+      const type = axisType(axis);
+      const { formatter } = label;
+      let text = UNKNOWN_LABELS;
+      if (type === "category") {
+        text = Math.min(widestText(axis.data, font.width, most), most);
+      } else if (formatter === undefined || typeof formatter === "string") {
+        // As wide as the labels of its bounds, where the option sets them, or else as "-1500".
+        const bounds = [axis.min, axis.max];
+        const digits = bounds.every((bound) => typeof bound === "number")
+          ? Math.max(...bounds.map((bound) => compactLabel(bound).length))
+          : 5;
+        const value = type === "time" ? "Feb 13" : "0".repeat(digits);
+        text = font.width(formatter === undefined ? value : formatter.replaceAll("{value}", value));
+      }
+      room = text + (typeof label.margin === "number" ? label.margin : 8);
+    }
+    const { name, nameLocation: location } = axis;
+    if (
+      typeof name === "string" &&
+      (location === undefined || location === "end" || location === "start") &&
+      axis.nameRotate === undefined
+    ) {
+      const nameWidth = size.font(styleOf(axis.nameTextStyle), size.themed).width(name);
+      room = Math.max(room, nameWidth / 2);
+    }
+    sides[side] += room + (typeof axis.offset === "number" ? axis.offset : 0);
+  }
+  for (const axis of asArray(base.xAxis).filter(onGrid)) {
+    const { name, nameLocation: location } = axis;
+    if (axis.show === false || typeof name !== "string" || !name) continue;
+    if (location !== undefined && location !== "end" && location !== "start") continue;
+    const nameWidth = size.font(styleOf(axis.nameTextStyle), size.themed).width(name);
+    const room = nameWidth + (typeof axis.nameGap === "number" ? axis.nameGap : 15);
+    const side = (location !== "start") !== (axis.inverse === true) ? "right" : "left";
+    sides[side] = Math.max(sides[side], room);
+  }
+  return sides.left + sides.right;
+}
+
+/** The width of the labels of an axis that the option formats in a way the layout cannot tell. */
+const UNKNOWN_LABELS = 44;
 
 /** The categories of an axis beyond which the layout reads only as many as it must. */
 const MAX_READ_CATEGORIES = 200;

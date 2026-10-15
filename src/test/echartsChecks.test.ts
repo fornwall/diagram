@@ -723,6 +723,34 @@ suite("echartsChecks", function () {
     assert.strictEqual(layout(chart(regions), wide).xAxis.axisLabel.rotate, 30);
   });
 
+  test("keeps category labels across in the width that the labels of the value axes leave", () => {
+    const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
+    const xAxis = { type: "category", data: people };
+    // Values of a digit leave the plot most of the width.
+    const single = { xAxis, yAxis: {}, series: [{ type: "bar", data: [5, 8, 3, 6, 2, 7, 4] }] };
+    const size = { width: 275, height: 500 };
+    assert.strictEqual(layout(single, size).xAxis.axisLabel?.rotate, undefined);
+    assert.deepStrictEqual(warningsOf(single, size), []);
+    // Two value axes, labeled on both sides, leave less: the labels turn where ECharts would
+    // leave some out across.
+    const dual = {
+      xAxis,
+      yAxis: [{}, {}],
+      series: [
+        { type: "bar", data: people.map((_, index) => 1_200_000 + index * 70_000) },
+        { type: "line", yAxisIndex: 1, data: people.map((_, index) => 0.1 + index / 20) },
+      ],
+    };
+    const narrow = { width: 285, height: 500 };
+    assert.ok(layout(dual, narrow).xAxis.axisLabel?.rotate > 0);
+    assert.deepStrictEqual(warningsOf(dual, narrow), []);
+    // As does the name of the category axis after its end.
+    const named = { ...single, xAxis: { ...xAxis, name: "Assigned engineer" } };
+    const wider = { width: 340, height: 500 };
+    assert.ok(layout(named, wider).xAxis.axisLabel?.rotate > 0);
+    assert.deepStrictEqual(warningsOf(named, wider), []);
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);
