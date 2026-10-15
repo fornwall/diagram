@@ -433,6 +433,26 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
         columnCount(most, "value"),
     );
   }
+  if (given === undefined && values.length < most) {
+    // Inference left out numeric columns that the chart could have shown, which a model that
+    // expected them to be charted is to name.
+    const left = table.columns.flatMap((column, i) =>
+      column.numeric && !labels.includes(i) && !values.includes(i) ? [i] : [],
+    );
+    const identifiers = left.filter((i) => isIdName(name(i)) || numbersRows(table, i));
+    const units = left.filter((i) => !identifiers.includes(i));
+    if (identifiers.length > 0) {
+      notes.push(
+        `left out ${quoteAll(identifiers.map(name))}, read as ${identifiers.length === 1 ? "an identifier" : "identifiers"}`,
+      );
+    }
+    if (units.length > 0) {
+      notes.push(
+        `left out ${quoteAll(units.map(name))}, as ${units.length === 1 ? "its unit differs" : "their units differ"} ` +
+          `from ${JSON.stringify(name(values[0]))}'s; name them in "valueColumns" to chart them together`,
+      );
+    }
+  }
   if (values.length === 0) {
     // The columns were inferred, leaving out the label columns, which may hold the only numbers.
     const numericLabels = labels.filter((index) => table.columns[index]?.numeric);

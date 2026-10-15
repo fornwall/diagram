@@ -1700,7 +1700,9 @@ suite("charts", () => {
     assert.deepStrictEqual(option.series[1].data, [300, 12 / 1024, 0]);
     assert.strictEqual(
       summary(chart("bar"), df),
-      'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; showed sizes in GiB.',
+      'Charted "Size (GiB)", "Used (GiB)", "Avail (GiB)" by "Mounted on"; left out "Use%", as ' +
+        'its unit differs from "Size"\'s; name them in "valueColumns" to chart them together; ' +
+        "showed sizes in GiB.",
     );
     const top = build(
       chart("bar", { valueColumns: ["CPU(cores)", "MEMORY(bytes)"] }),
@@ -1850,6 +1852,19 @@ suite("charts", () => {
       "paid",
       "score",
     ]);
+    // The summary says what inference left out of a chart that could have shown it.
+    assert.strictEqual(
+      summary(chart("bar"), table),
+      'Charted "score" by "name"; left out "id", read as an identifier.',
+    );
+    assert.strictEqual(summary(chart("pie"), table), 'Charted "score" by "name".');
+    const mixed = "host,size,latency (ms),load\na,1 KiB,120,0.5\nb,2 KiB,300,0.7";
+    assert.deepStrictEqual(seriesNames(build(chart("bar"), mixed)), ["size (KiB)"]);
+    assert.strictEqual(
+      summary(chart("bar"), mixed),
+      'Charted "size (KiB)" by "host"; left out "latency (ms)", "load", as their units differ ' +
+        'from "size"\'s; name them in "valueColumns" to chart them together; showed sizes in KiB.',
+    );
   });
 
   test("columns are matched loosely, and unknown columns are listed", () => {
