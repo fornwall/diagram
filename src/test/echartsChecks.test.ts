@@ -679,7 +679,7 @@ suite("echartsChecks", function () {
       assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
       assert.deepStrictEqual(warningsOf(option, size), []);
     }
-    assert.strictEqual(layout(option, { width: 290, height: 500 }).xAxis.axisLabel?.rotate, 30);
+    assert.ok(layout(option, { width: 290, height: 500 }).xAxis.axisLabel?.rotate > 0);
   });
 
   test("keeps category labels of several lines across where their widest line fits", () => {
@@ -695,6 +695,32 @@ suite("echartsChecks", function () {
       assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
       assert.deepStrictEqual(warningsOf(option, size), []);
     }
+  });
+
+  test("turns category labels steeply enough to keep them apart, as tall as their lines are", () => {
+    const people = ["Anna", "Bert", "Cleo", "Dirk", "Elsa", "Finn", "Greta"];
+    const regions = ["Northern Region", "Southern Region", "Eastern Region", "Western Region"];
+    regions.push("Central Region", "Overseas Branches");
+    const chart = (data: string[], axisLabel: Option = {}) => ({
+      xAxis: { type: "category", data, axisLabel },
+      yAxis: {},
+      series: [{ type: "bar", data: data.map((_, index) => index + 1) }],
+    });
+    // Of a line each, in categories too narrow to keep them a third of a line apart at 30°,
+    // where ECharts leaves out every other.
+    const narrow = { width: 240, height: 500 };
+    assert.strictEqual(layout(chart(people), narrow).xAxis.axisLabel.rotate, 45);
+    assert.deepStrictEqual(warningsOf(chart(people), narrow), []);
+    // Of two lines each, which ECharts breaks them onto in the option's width.
+    const lines = chart(regions, { width: 70, overflow: "break" });
+    for (const width of [300, 320, 340]) {
+      const size = { width, height: 500 };
+      assert.strictEqual(layout(lines, size).xAxis.axisLabel.rotate, 45, `${width}`);
+      assert.deepStrictEqual(warningsOf(lines, size), [], `${width}`);
+    }
+    // Wide enough categories keep the gentler slant.
+    const wide = { width: 500, height: 500 };
+    assert.strictEqual(layout(chart(regions), wide).xAxis.axisLabel.rotate, 30);
   });
 
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {

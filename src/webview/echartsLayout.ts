@@ -27,6 +27,8 @@ type Insets = Record<Side, number>;
 interface Font {
   /** As CSS, as "bold 12px sans-serif". */
   css: string;
+  /** Its size in pixels, as tall as ECharts measures a line of it. */
+  size: number;
   /**
    * The width of a text as drawn, as ECharts measures it to place it, to tell whether labels fit
    * across an axis or a text within a width.
@@ -296,6 +298,7 @@ function layOutAround(
         .join(" ");
       return {
         css,
+        size: fontSize,
         // A text of several lines as wide as its widest, as ECharts draws it.
         width: (text) =>
           text.includes("\n")
@@ -882,7 +885,13 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       dropSharedStart(axis, label, maxWidth, middle, font);
     if (rest) labelWidth = rest;
     if (!across(labelWidth)) {
-      const rotate = labelWidth > slot * 3 ? 45 : 30;
+      // ECharts keeps turned labels a third of their height apart across the slant, and else
+      // leaves some out: steeper where categories are too narrow for that at 30°, as of labels of
+      // several lines.
+      const lineHeight = typeof label.lineHeight === "number" ? label.lineHeight : font.size;
+      const tall = labelLines(axis.data, label, font) * lineHeight * CATEGORY_LABEL_ROOM;
+      const apart = (angle: number) => tall <= slot * Math.sin((angle * Math.PI) / 180);
+      const rotate = labelWidth > slot * 3 || !apart(30) ? 45 : 30;
       axis.axisLabel = {
         rotate,
         hideOverlap: true,
@@ -1000,11 +1009,19 @@ function wrapsInto(
 ): boolean {
   const texts = categoryTexts(data);
   if (texts === undefined) return false;
-  return texts.every((text) => {
-    // Word by word, as ECharts breaks them, and a word wider than a line across lines.
-    let count = 1;
+  return texts.every((text) => lineCount(text, room, width) <= lines);
+}
+
+/**
+ * The lines that ECharts breaks a text onto in a width, in a font: those it starts, and within
+ * each, word by word, a word wider than a line across lines.
+ */
+function lineCount(text: string, room: number, width: (text: string) => number): number {
+  let count = 0;
+  for (const line of text.split("\n")) {
+    count++;
     let used = 0;
-    for (const word of text.match(WORDS) ?? []) {
+    for (const word of line.match(WORDS) ?? []) {
       const size = width(word);
       if (used + size <= room) {
         used += size;
@@ -1014,8 +1031,20 @@ function wrapsInto(
       count += Math.ceil(size / room) - 1;
       used = size % room || room;
     }
-    return count <= lines;
-  });
+  }
+  return count;
+}
+
+/**
+ * The most lines that ECharts draws a category label on: those of its own, and those it breaks
+ * it onto in the width of a label that the option breaks.
+ */
+function labelLines(data: unknown, label: JsonObject, font: Font): number {
+  const texts = categoryTexts(data) ?? [];
+  const breaks = label.overflow === "break" || label.overflow === "breakAll";
+  const room =
+    typeof label.width === "number" && label.width > 0 && breaks ? label.width : Infinity;
+  return Math.max(1, ...texts.map((text) => lineCount(text, room, font.breakWidth)));
 }
 
 /** As much of the start of a text as fits in a width, in a font, but at least a character. */
