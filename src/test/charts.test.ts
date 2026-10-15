@@ -1860,6 +1860,18 @@ suite("charts", () => {
 
   test("throws when there is nothing numeric to chart", () => {
     assert.throws(() => build(chart("bar"), "a,b\nx,y"), /No column holds numbers/);
+    // The only numbers are in the label column, which the message says rather than "no column".
+    assert.throws(
+      () => build(chart("bar", { labelColumn: "n" }), "a,n\nx,1\ny,2"),
+      new Error(
+        'Only the label column "n" holds numbers. Choose a text column as "labelColumn" and ' +
+          'give "valueColumns", or use "aggregate": "count" to count rows per label.',
+      ),
+    );
+    assert.throws(
+      () => build(chart("heatmap", { labelColumn: ["n", "m"] }), "n,m\n1,2\n3,4"),
+      /^Error: Only the label columns "n", "m" hold numbers\./,
+    );
     assert.throws(
       () => build(chart("bar", { valueColumns: ["Column 2"] }), "a,b\nx,y"),
       /holds no numbers/,

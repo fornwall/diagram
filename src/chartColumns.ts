@@ -434,6 +434,16 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
     );
   }
   if (values.length === 0) {
+    // The columns were inferred, leaving out the label columns, which may hold the only numbers.
+    const numericLabels = labels.filter((index) => table.columns[index]?.numeric);
+    if (numericLabels.length > 0) {
+      const only = numericLabels.length === 1 ? "column" : "columns";
+      throw new Error(
+        `Only the label ${only} ${quoteAll(numericLabels.map(name))} ${numericLabels.length === 1 ? "holds" : "hold"} ` +
+          `numbers. Choose a text column as "labelColumn" and give "valueColumns", or use ` +
+          '"aggregate": "count" to count rows per label.',
+      );
+    }
     throw new Error(
       `No column holds numbers to chart. Columns: ${describeColumns(table)}. If the data was not ` +
         'split into columns as intended, set "format"; otherwise use "aggregate": "count" to ' +
