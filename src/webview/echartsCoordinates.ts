@@ -54,7 +54,7 @@ export function layOutCalendar(base: JsonObject, reserved: Insets, { width, heig
   const days = calendarDays(calendar.range);
   if (!days) return;
   const [first, last] = days;
-  const dayLabel = isPlainObject(calendar.dayLabel) ? calendar.dayLabel : {};
+  const dayLabel = styleOf(calendar.dayLabel);
   const firstDay = typeof dayLabel.firstDay === "number" ? dayLabel.firstDay : 0;
   const count = Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1;
   const weeks = Math.ceil((((first.getUTCDay() - firstDay + 7) % 7) + count) / 7);
@@ -100,7 +100,7 @@ export function layOutParallel(base: JsonObject, reserved: Insets, size: Size): 
   if (parallels.length > 1 || asArray(base.parallelAxis).length < 2) return;
   const parallel = parallels[0] ?? {};
   const axes = asArray(base.parallelAxis);
-  const shared = isPlainObject(parallel.parallelAxisDefault) ? parallel.parallelAxisDefault : {};
+  const shared = styleOf(parallel.parallelAxisDefault);
   const nameKeys = ["nameLocation", "nameGap", "nameRotate", "nameTruncate"];
   if (
     has(parallel, BOX_KEYS) ||
@@ -188,7 +188,7 @@ export function layOutSingleAxis(
   const bottom = reserved.bottom + 8 + (above ? 0 : labels);
   let left = 24;
   for (const river of series) {
-    const label = isPlainObject(river.label) ? river.label : {};
+    const label = styleOf(river.label);
     if (river.type !== "themeRiver" || label.show === false) continue;
     label.align ??= "right";
     river.label = label;

@@ -115,7 +115,7 @@ function funnelSides(
   size: Size,
   area: { width: number; height: number },
 ): [number, number] {
-  const label = isPlainObject(funnel.label) ? funnel.label : {};
+  const label = styleOf(funnel.label);
   const position = String(label.position ?? "outer");
   if (
     label.show === false ||
@@ -137,7 +137,7 @@ function funnelSides(
             "000.00".repeat(formatter.match(/\{(?!b\})[^{}]*\}/g)?.length ?? 0),
         )
       : 0;
-  const line = isPlainObject(funnel.labelLine) ? funnel.labelLine : {};
+  const line = styleOf(funnel.labelLine);
   // The label line, the gap after it, and a margin to the edge.
   const gap = (typeof line.length === "number" ? line.length : 20) + 13;
   const data: unknown[] = Array.isArray(funnel.data) ? funnel.data : [];
@@ -262,7 +262,7 @@ function funnelInward(
 export function labelTreeNodes(series: JsonObject[], { width, height }: Size): void {
   for (const tree of series) {
     const orient = tree.orient ?? "LR";
-    const label = isPlainObject(tree.label) ? tree.label : {};
+    const label = styleOf(tree.label);
     if (
       tree.type !== "tree" ||
       (tree.layout ?? "orthogonal") !== "orthogonal" ||
@@ -282,8 +282,8 @@ export function labelTreeNodes(series: JsonObject[], { width, height }: Size): v
       overflow: apart >= 2 * LABEL_LINE_HEIGHT + 4 ? "break" : "truncate",
     });
     tree.label = { ...beside(before), ...label };
-    const leaves = isPlainObject(tree.leaves) ? tree.leaves : {};
-    const leafLabel = isPlainObject(leaves.label) ? leaves.label : {};
+    const leaves = styleOf(tree.leaves);
+    const leafLabel = styleOf(leaves.label);
     if (leafLabel.position === undefined) {
       tree.leaves = { ...leaves, label: { ...beside(after), ...leafLabel } };
     }
@@ -358,7 +358,7 @@ function treeSides(tree: JsonObject, margin: number, size: Size): [number, numbe
 
 /** The side of the chart a treemap shows its breadcrumb on, which is the bottom unless moved. */
 function breadcrumbSide(treemap: JsonObject, height: number): "top" | "bottom" | undefined {
-  const breadcrumb = isPlainObject(treemap.breadcrumb) ? treemap.breadcrumb : {};
+  const breadcrumb = styleOf(treemap.breadcrumb);
   if (breadcrumb.show === false) {
     return undefined;
   }

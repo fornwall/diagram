@@ -2,7 +2,7 @@
 // them into the chart, so that a graph is drawn whole and the same each time.
 
 import { isPlainObject } from "../protocol";
-import { type Area, LABEL_LINE_HEIGHT, type Size } from "./echartsMeasure";
+import { type Area, LABEL_LINE_HEIGHT, type Size, styleOf } from "./echartsMeasure";
 import type { JsonObject } from "./echartsOption";
 
 /**
@@ -44,7 +44,7 @@ export function placeForceNodes(graph: JsonObject, area: Area, size: Size): bool
   const key = graph.data != null ? "data" : "nodes";
   const nodes: unknown = graph[key];
   const links: unknown = graph.links ?? graph.edges;
-  const force = isPlainObject(graph.force) ? graph.force : {};
+  const force = styleOf(graph.force);
   if (
     !Array.isArray(nodes) ||
     nodes.length === 0 ||
@@ -221,8 +221,8 @@ function nodeExtent(
         : undefined;
   const [width = 10, height = 10] = symbol(node.symbolSize) ?? symbol(graph.symbolSize) ?? [];
   const [x, y] = [width / 2, height / 2];
-  const own = isPlainObject(node.label) ? node.label : {};
-  const label = { ...(isPlainObject(graph.label) ? graph.label : {}), ...own };
+  const own = styleOf(node.label);
+  const label = { ...styleOf(graph.label), ...own };
   if (label.show !== true) return [x, x, y, y];
   const text = size.font(label).width(String(node.name ?? ""));
   // A line of text, half above and below the middle of the node beside it.
@@ -319,7 +319,7 @@ export function fitPlacedGraph(graph: JsonObject, area: Area, size: Size): void 
  * long as half the room each node has, with the repulsion that ECharts' defaults have to them.
  */
 export function spreadForce(graph: JsonObject, width: number, height: number): void {
-  const force = isPlainObject(graph.force) ? graph.force : {};
+  const force = styleOf(graph.force);
   if (force.edgeLength !== undefined || force.repulsion !== undefined) return;
   const nodes: unknown = graph.data ?? graph.nodes;
   const count = Array.isArray(nodes) ? Math.max(1, nodes.length) : 1;

@@ -9,6 +9,7 @@ import {
   MAX_READ_CATEGORIES,
   pixels,
   type Size,
+  styleOf,
   WORDS,
 } from "./echartsMeasure";
 import type { JsonObject } from "./echartsOption";
@@ -34,7 +35,7 @@ export function layOutPie(
   });
   const boxWidth = size.width - reserved.left - reserved.right - 16;
   const boxHeight = size.height - reserved.top - reserved.bottom - 16;
-  let label = isPlainObject(pie.label) ? pie.label : {};
+  let label = styleOf(pie.label);
   const hasLegend = asArray(base.legend).some((l) => l.show !== false);
   if (
     !labelsSet(pie) &&
@@ -63,7 +64,7 @@ export function layOutPie(
             : 50;
     pie.radius = `${radius}%`;
   }
-  const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
+  const line = styleOf(pie.labelLine);
   const outer = outerRadius(pie.radius, Math.min(boxWidth, boxHeight) / 2);
   // ECharts' parts of a label line.
   const [length, length2] = [line.length ?? 15, line.length2 ?? 30];
@@ -115,7 +116,7 @@ export function layOutPie(
       const room = rooms[index];
       if (room === undefined) return item;
       const own: JsonObject = isPlainObject(item) ? item : { value: item };
-      const itemLabel = isPlainObject(own.label) ? own.label : {};
+      const itemLabel = styleOf(own.label);
       // A word as much of it as fits, with its ellipsis and the punctuation after it, as the ":"
       // of "{b}: {d}%". The ellipsis is of dots, which ECharts measures as wide as the browser
       // draws them: it breaks a line again where those differ, and "…" it takes for a wide one.
@@ -175,9 +176,9 @@ function labelWidth(label: JsonObject, size: Size): (text: string) => number {
 
 /** Hides the labels of a pie's slices and their lines. Returns the label settings. */
 export function hidePieLabels(pie: JsonObject): JsonObject {
-  const label = { ...(isPlainObject(pie.label) ? pie.label : {}), show: false };
+  const label = { ...styleOf(pie.label), show: false };
   pie.label = label;
-  pie.labelLine = { ...(isPlainObject(pie.labelLine) ? pie.labelLine : {}), show: false };
+  pie.labelLine = { ...styleOf(pie.labelLine), show: false };
   return label;
 }
 
@@ -211,7 +212,7 @@ interface PieLabel {
 function pieLabels(pie: JsonObject, size: Size): PieLabel[] | undefined {
   const data: unknown[] = Array.isArray(pie.data) ? pie.data : [];
   if (data.length > MAX_READ_CATEGORIES) return undefined;
-  const label = isPlainObject(pie.label) ? pie.label : {};
+  const label = styleOf(pie.label);
   const width = labelWidth(label, size);
   // ECharts labels a slice by its name, and a template adds its text and its values, each about
   // as wide as "25.74".
@@ -270,7 +271,7 @@ export function pieLabelsFit(
   size: Size,
 ): boolean {
   const labels = pieLabels(pie, size);
-  const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
+  const line = styleOf(pie.labelLine);
   const half = Math.min(boxWidth, boxHeight) / 2;
   // Beside the radius that the option gives, or else as small as the panel makes a pie.
   const radius = pie.radius === undefined ? MIN_LABELED_PIE * half : outerRadius(pie.radius, half);

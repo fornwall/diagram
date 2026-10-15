@@ -3,7 +3,15 @@
 // the axes they control and visual maps below the chart.
 
 import { asArray, isPlainObject } from "../protocol";
-import { BOX_KEYS, compactLabel, has, type Insets, pixels, type Size } from "./echartsMeasure";
+import {
+  BOX_KEYS,
+  compactLabel,
+  has,
+  type Insets,
+  pixels,
+  type Size,
+  styleOf,
+} from "./echartsMeasure";
 import { type JsonObject, optionVariants } from "./echartsOption";
 
 /** Hides a chart title that repeats the panel header, keeping its subtitle. */
@@ -162,7 +170,7 @@ function toolboxSize(base: JsonObject): { width: number; height: number } {
   let height = 0;
   for (const toolbox of asArray(base.toolbox)) {
     if (toolbox.show === false || toolbox.orient === "vertical" || has(toolbox, BOX_KEYS)) continue;
-    const features = Object.entries(isPlainObject(toolbox.feature) ? toolbox.feature : {}).filter(
+    const features = Object.entries(styleOf(toolbox.feature)).filter(
       ([name, settings]) =>
         !Object.hasOwn(PASSING_TOOLS, name) &&
         !(isPlainObject(settings) && settings.show === false),

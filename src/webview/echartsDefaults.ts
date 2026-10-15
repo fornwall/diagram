@@ -7,7 +7,7 @@ import { asArray, isPlainObject } from "../protocol";
 import { escapeHtml } from "../text";
 import { type ThemeColors, toCss } from "./colors";
 import { cloneValue } from "./echartsClone";
-import { axisType, compactLabel } from "./echartsMeasure";
+import { axisType, compactLabel, styleOf } from "./echartsMeasure";
 import {
   allSeries,
   baseOption,
@@ -76,7 +76,7 @@ export function styleSeries(base: JsonObject, series: JsonObject[], colors: Them
       // when it sets no gap between them, as the bins of a histogram.
       const touching = Number.parseFloat(String(each.barCategoryGap)) === 0;
       if (each.barWidth !== undefined || touching) each.barMaxWidth ??= "100%";
-      const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
+      const itemStyle = styleOf(each.itemStyle);
       if (each.stack !== undefined || touching) {
         // A thin gap in the background color separates stacked segments, and bars that touch,
         // as the bins of a histogram.
@@ -115,7 +115,7 @@ export function styleSeries(base: JsonObject, series: JsonObject[], colors: Them
           const colorIndex = colorIndices.get(name) ?? colorIndices.size;
           colorIndices.set(name, colorIndex);
           const copy = cloneValue(node) as JsonObject;
-          const itemStyle = isPlainObject(copy.itemStyle) ? copy.itemStyle : {};
+          const itemStyle = styleOf(copy.itemStyle);
           itemStyle.color ??= toCss(
             colors.palette[colorIndex % colors.palette.length] ?? colors.blue,
           );
@@ -180,7 +180,7 @@ export function drawLargeSeries(option: JsonObject, series: JsonObject[]): void 
       // Sampling each series of a stack on its own would misalign them.
       if (each.stack === undefined && !marksStatistics(each)) each.sampling = "lttb";
     } else if (each.type === "scatter" && each.large === undefined) {
-      const itemStyle = isPlainObject(each.itemStyle) ? each.itemStyle : {};
+      const itemStyle = styleOf(each.itemStyle);
       const alike =
         !visualMaps &&
         typeof each.symbol !== "function" &&
@@ -253,9 +253,9 @@ export function compactAxisLabels(base: JsonObject): void {
         key === "parallelAxis"
           ? parallels[Number(axis.parallelIndex ?? 0)]?.parallelAxisDefault
           : undefined;
-      const shared = isPlainObject(defaults) ? defaults : {};
+      const shared = styleOf(defaults);
       const type = axisType({ ...shared, ...axis });
-      const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+      const label = styleOf(axis.axisLabel);
       const formatted = [label, shared.axisLabel].some(
         (each) => isPlainObject(each) && each.formatter !== undefined,
       );

@@ -30,7 +30,7 @@ import {
 } from "./echartsDefaults";
 import { layOutGrid } from "./echartsGrid";
 import { placeLegend } from "./echartsLegend";
-import { type Insets, type LayoutContext, layoutSize, type Size } from "./echartsMeasure";
+import { type Insets, type LayoutContext, layoutSize, type Size, styleOf } from "./echartsMeasure";
 import {
   allSeries,
   baseOption,
@@ -150,7 +150,7 @@ export function disableAnimation(option: JsonObject): void {
  */
 export function focusHighlighted(option: JsonObject): void {
   for (const series of allSeries(option)) {
-    const emphasis = isPlainObject(series.emphasis) ? series.emphasis : {};
+    const emphasis = styleOf(series.emphasis);
     emphasis.focus = "self";
     series.emphasis = emphasis;
   }

@@ -2,7 +2,7 @@
 // axes apart and readable: category labels turned, onto lines, told apart by what follows a start
 // they share, or cut short, and fewer value and time labels along a short or narrow axis.
 
-import { asArray, isPlainObject } from "../protocol";
+import { asArray } from "../protocol";
 import { facetPanels, layOutFacets } from "./echartsFacets";
 import {
   axisType,
@@ -78,7 +78,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
     return Math.max(40, available - 50);
   };
   for (const axis of asArray(base.xAxis)) {
-    const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+    const label = styleOf(axis.axisLabel);
     const count = Array.isArray(axis.data) ? axis.data.length : 0;
     if (count === 0 || label.rotate !== undefined) {
       continue;
@@ -157,7 +157,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
     }
   }
   for (const axis of asArray(base.yAxis)) {
-    const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+    const label = styleOf(axis.axisLabel);
     const maxWidth = Math.round(
       (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
     );
@@ -190,7 +190,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
     const end = location === undefined || location === "start" || location === "end";
     if (rest !== undefined && axis.name !== own && end) {
       // The name above the labels starts at the axis, rather than centered on it, beside them.
-      const style = isPlainObject(axis.nameTextStyle) ? axis.nameTextStyle : {};
+      const style = styleOf(axis.nameTextStyle);
       style.align ??= axis.position === "right" ? "right" : "left";
       axis.nameTextStyle = style;
     }
@@ -436,7 +436,7 @@ const MIN_TICK_GAP = 20;
  * as wide as "Feb 13" or "12:30".
  */
 export function fewerTimeTicks(axis: JsonObject, length: number, font: Font): void {
-  const label = isPlainObject(axis.axisLabel) ? axis.axisLabel : {};
+  const label = styleOf(axis.axisLabel);
   if (
     axisType(axis) !== "time" ||
     label.formatter !== undefined ||

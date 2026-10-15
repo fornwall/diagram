@@ -66,7 +66,7 @@ export function layoutSize(context: LayoutContext, base: JsonObject): Size {
   const chartStyle: JsonObject = {
     fontFamily: context.colors.fontFamily,
     fontSize: context.colors.fontSize,
-    ...(isPlainObject(base.textStyle) ? base.textStyle : {}),
+    ...styleOf(base.textStyle),
   };
   const font = (...styles: JsonObject[]): Font => {
     const part = (key: string) =>
@@ -109,7 +109,7 @@ export interface LayoutContext {
   drawnWidth(text: string, font: string): number;
 }
 
-/** The text style of an option's setting, as its "axisLabel", if it is one. */
+/** The settings of a part of an option, as its "axisLabel" or a series' "label", if it is an object, else none. */
 export const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? style : {});
 
 /**
