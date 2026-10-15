@@ -403,12 +403,17 @@ export class DiagramPanel implements vscode.Disposable {
 
   // The webview, and the requests waiting for its answers.
 
+  /**
+   * The tab closed: nothing is drawn, so what asks for the drawing, such as diagram_getImage or
+   * the ids of its nodes, opens the panel again and draws the diagram first.
+   */
   private closed(): void {
     this.pageRanCode = false;
     this.pageRefused = false;
     this.reloading?.cancel();
     this.cancelExport("The diagram panel was closed before export finished.");
     this.selection = [];
+    this.drawn = undefined;
     this.cancelPick("The user closed the diagram panel.");
     this.cancelRender("The diagram panel was closed before it finished rendering.");
     // Of a render that the page took up after the panel stopped waiting for it.

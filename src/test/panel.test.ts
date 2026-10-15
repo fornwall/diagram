@@ -278,6 +278,51 @@ suite("panel", function () {
     assert.doesNotMatch(panel.describeForModel() ?? "", /fails to render/);
   });
 
+  test("a closed panel knows no drawing, which asking for its ids opens it again to draw", async () => {
+    const { panel, webview } = await newFakePanel();
+    const drawn = (ids: string[]) => {
+      webview.answer = (message) =>
+        message.type === "render"
+          ? {
+              type: "rendered",
+              requestId: message.requestId,
+              diagramType: "flowchart",
+              nodeIds: ids,
+            }
+          : undefined;
+    };
+    drawn(["A", "B"]);
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    assert.deepStrictEqual(panel.drawnIds, ["A", "B"]);
+    webview.panel.dispose();
+    assert.strictEqual(panel.drawnIds, undefined);
+    assert.strictEqual(panel.itemNames, undefined);
+    assert.deepStrictEqual(panel.warnings, []);
+    // Opened again beside chat, without taking the focus, as diagram_getImage opens it.
+    const reopened = new FakeWebview();
+    let preserveFocus: boolean | undefined;
+    replace(vscode.window, "createWebviewPanel", (_type, _title, options) => {
+      preserveFocus = typeof options === "object" ? options.preserveFocus : undefined;
+      return reopened.panel;
+    });
+    reopened.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart",
+            nodeIds: ["A"],
+          }
+        : undefined;
+    const ids = panel.itemIds();
+    await reopened.receive({ type: "ready" });
+    assert.deepStrictEqual(await ids, ["A"]);
+    assert.strictEqual(preserveFocus, true);
+    assert.strictEqual(reopened.render.source, flowchart.source);
+    assert.strictEqual(panel.revision, 1);
+    reopened.panel.dispose();
+  });
+
   test("replacing a pending render ends it and replays only the latest diagram", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;
