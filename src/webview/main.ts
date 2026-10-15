@@ -528,11 +528,12 @@ function updateSelectionUi(): void {
   const { noun, itemNoun } = current?.renderer ?? { noun: "diagram", itemNoun: "node" };
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
   selectionLabel.textContent =
-    labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(itemNoun);
+    labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(active, itemNoun);
   // The source view hides a hint about clicking the drawing, as it does not show the drawing.
   selectionLabel.classList.toggle("hint", labels.length === 0);
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
-  highlightPathButton.hidden = !active?.supportsPaths || pick !== undefined || nothingToClick();
+  highlightPathButton.hidden =
+    !active?.supportsPaths || pick !== undefined || nothingToClick(active);
   const endpoints = Array.from(selection.values());
   highlightPathButton.disabled =
     endpoints.length !== 2 || endpoints.some((node) => node.relationship);
@@ -562,17 +563,18 @@ highlightPathButton.addEventListener("click", () => {
   );
 });
 
-function hint(noun: string): string {
+/** What the footer says about clicking the drawing of the renderer that shows one, if any. */
+function hint(renderer: Renderer | undefined, noun: string): string {
   if (pick) {
     return pick.multiple
       ? `Click ${noun}s to pick them, then press Done.`
       : `Click a ${noun} to pick it.`;
   }
   // Without a drawing, as before the first or after an error, there is nothing to click.
-  if (!active || nothingToClick()) return "";
+  if (!renderer || nothingToClick(renderer)) return "";
   const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
-  if (links.size > 0 || active.hasWebLinks) {
-    const open = active.hasWebLinks ? "open its link" : "open its code";
+  if (links.size > 0 || renderer.hasWebLinks) {
+    const open = renderer.hasWebLinks ? "open its link" : "open its code";
     return clickPrompt
       ? `Click a linked ${noun} to ${open}, any other to ask about it in chat ${orSelect}.`
       : `Click a linked ${noun} to ${open} ${orSelect}.`;
@@ -580,7 +582,7 @@ function hint(noun: string): string {
   if (clickPrompt) {
     return `Click a ${noun} to ask about it in chat ${orSelect}.`;
   }
-  const parts = active.drawnNodes?.().some((node) => node.relationship)
+  const parts = renderer.drawnNodes?.().some((node) => node.relationship)
     ? "nodes or relationships"
     : `${noun}s`;
   return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
@@ -593,21 +595,15 @@ function hint(noun: string): string {
  * such as a flowchart's taller one, makes room for it.
  */
 function prepareFooter(renderer: Renderer): void {
-  const shown = active;
-  // What the hint says goes by the renderer that shows the drawing.
-  active = renderer;
-  try {
-    selectionLabel.textContent = hint(renderer.itemNoun);
-    selectionLabel.classList.add("hint");
-    clearSelectionButton.hidden = true;
-    highlightPathButton.hidden = !renderer.supportsPaths || pick !== undefined || nothingToClick();
-  } finally {
-    active = shown;
-  }
+  selectionLabel.textContent = hint(renderer, renderer.itemNoun);
+  selectionLabel.classList.add("hint");
+  clearSelectionButton.hidden = true;
+  highlightPathButton.hidden =
+    !renderer.supportsPaths || pick !== undefined || nothingToClick(renderer);
 }
 
 /** Whether the drawing has no parts to click, as a flowchart without nodes, unlike a chart. */
-const nothingToClick = () => active?.drawnNodes?.().length === 0;
+const nothingToClick = (renderer: Renderer | undefined) => renderer?.drawnNodes?.().length === 0;
 
 function selectionChanged(): void {
   forgetDragImage();
