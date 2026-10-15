@@ -70,8 +70,8 @@ function parseDuration(text: string, durations = false): number | undefined {
   return sign === "-" || sign === "\u2212" ? -seconds : seconds;
 }
 
-/** A sign and a currency symbol, as in "-$5". */
-const PREFIX = `(${SIGN}?)(${CURRENCY}?)`;
+/** A sign and a currency symbol, as in "-$5", which may stand apart from the number: "€ 5". */
+const PREFIX = String.raw`(${SIGN}?)(${CURRENCY}?)[^\S\r\n]*`;
 
 /** A currency symbol before a sign, as in "$-5", which is read as "-$5" is. */
 const CURRENCY_SIGN = new RegExp(`^(${CURRENCY})(${SIGN})`);
@@ -127,7 +127,7 @@ interface NumberFormat {
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
 const GROUPS = new RegExp(
-  String.raw`^(${SIGN}?${CURRENCY}?)(\d{1,3}([ \u00A0\u2009\u202F'\u2019])\d{3}(?:\3\d{3})*)(?!\d)`,
+  String.raw`^(${SIGN}?${CURRENCY}?[^\S\r\n]*)(\d{1,3}([ \u00A0\u2009\u202F'\u2019])\d{3}(?:\3\d{3})*)(?!\d)`,
 );
 
 /** Leaves out the spaces or apostrophes that group the leading digits of `text` by thousands. */

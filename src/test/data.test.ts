@@ -397,6 +397,12 @@ suite("data", () => {
       ],
     });
     assert.deepStrictEqual(parse("item;price\nsoup;€4,50").rows, [["soup", 4.5]]);
+    // The symbol may stand apart from the number, as the Netherlands writes "€ 4,50".
+    assert.deepStrictEqual(parse('item;price\nsoup;€ 4,50\nbread;"€ 1 200,00"\ncake;$ 12').rows, [
+      ["soup", 4.5],
+      ["bread", 1200],
+      ["cake", 12],
+    ]);
     // Much of Europe writes the currency after the number.
     assert.deepStrictEqual(parse("Artikel;Preis\nSuppe;4,50 €\nBrot;1.200,00 €").rows, [
       ["Suppe", 4.5],
