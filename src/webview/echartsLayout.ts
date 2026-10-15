@@ -1362,6 +1362,8 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
       const name = own.name;
       const formatter =
         typeof name === "string" &&
+        // Of a template, rather than a function of the option's own, which formats it.
+        (label.formatter === undefined || typeof label.formatter === "string") &&
         template.includes("{b}") &&
         // Not of the markup of a template, which ECharts would read in the name.
         !/[{}]/.test(name) &&

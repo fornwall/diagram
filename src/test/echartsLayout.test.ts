@@ -482,6 +482,18 @@ suite("echartsLayout", () => {
         );
       }
     }
+    // A formatter of the option's own, as a function, labels each slice still, cut short whole.
+    const formatter = ({ name }: { name: string }) => `${name}!`;
+    const own = builtOption({ type: "pie", data: "unused", labelColumn: "component" }, table);
+    own.series[0].label = { formatter };
+    const size = { width: 300, height: 575 };
+    const labels = layout(own, size).series[0].data.map(({ label }: Option) => label);
+    assert.ok(
+      labels.some((label: Option) => label?.overflow === "truncate"),
+      JSON.stringify(labels),
+    );
+    assert.ok(labels.every((label: Option) => label?.formatter === undefined));
+    assert.match(svgOf(layout(own, size), size), />Parser!</);
   });
 
   test("makes room for a pie's legend by the names of its slices", () => {
