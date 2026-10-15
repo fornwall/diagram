@@ -769,6 +769,21 @@ suite("echartsChecks", function () {
     }
   });
 
+  test("turns category labels where the name of an inverse axis leaves too little width across", () => {
+    const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
+    // Named where the axis starts, after its labels on the right, beside the value labels left.
+    const option = {
+      xAxis: { type: "category", data: people, name: "Assigned engineer", inverse: true },
+      yAxis: {},
+      series: [{ type: "bar", data: people.map((_, index) => 5000 + index * 1000) }],
+    };
+    for (const width of [350, 370]) {
+      const size = { width, height: 500 };
+      assert.ok(layout(option, size).xAxis.axisLabel?.rotate > 0, `${width}`);
+      assert.deepStrictEqual(warningsOf(option, size), [], `${width}`);
+    }
+  });
+
   test("breaks the labels of a funnel onto lines where they are wider than the room beside it", () => {
     const regions = ["North America", "Europe", "Asia Pacific", "Latin America"];
     regions.push("Middle East and Africa");

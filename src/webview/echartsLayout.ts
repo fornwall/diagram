@@ -1061,7 +1061,11 @@ function besidePlot(base: JsonObject, size: Size, most: number): number {
     if (location !== undefined && location !== "end" && location !== "start") continue;
     const nameWidth = size.font(styleOf(axis.nameTextStyle), size.themed).width(name);
     const room = nameWidth + (typeof axis.nameGap === "number" ? axis.nameGap : 15);
-    const side = (location !== "start") !== (axis.inverse === true) ? "right" : "left";
+    // An inverse axis starts on the right, where the layout names it unless the option does.
+    const side =
+      location === undefined || (location === "start") === (axis.inverse === true)
+        ? "right"
+        : "left";
     sides[side] = Math.max(sides[side], room);
   }
   return sides.left + sides.right;
