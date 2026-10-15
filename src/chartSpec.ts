@@ -47,6 +47,8 @@ export type DataFormat = (typeof DATA_FORMATS)[number];
 
 const SORT_ORDERS = ["ascending", "descending"] as const;
 
+const FACET_SCALES = ["shared", "independent"] as const;
+
 /** How the rows of a group combine into one row; see {@link ChartSpec.aggregate}. */
 export const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
 
@@ -109,7 +111,7 @@ export type ChartSpec = ChartData & {
   /** Number of panels per row; inferred when omitted. */
   facetColumns?: number;
   /** Share axis domains across panels by default. */
-  facetScales?: "shared" | "independent";
+  facetScales?: (typeof FACET_SCALES)[number];
   /** Keep rows matching every predicate before grouping, binning, sorting or limiting. */
   filters?: ChartFilter[];
   /** An ECharts option object that is deep-merged into the generated option, for fine-tuning. */
@@ -149,6 +151,13 @@ function isOneOf(values: readonly string[], value: unknown): boolean {
   return (values as readonly unknown[]).includes(value);
 }
 
+/** The value among `values` that a model wrote, as "Bar" or "SUM", spelled as the values are. */
+function spelled(values: readonly string[], value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const written = value.trim().toLowerCase();
+  return values.find((each) => each.toLowerCase() === written) ?? value;
+}
+
 /** Whether a value names columns: a non-empty array of strings, as the column properties take. */
 function isColumnNames(value: unknown): boolean {
   return Array.isArray(value) && value.length > 0 && value.every((n) => typeof n === "string");
@@ -170,6 +179,15 @@ export function validateChartSpec(value: unknown): ChartSpec {
   // JSON data may be given as JSON rather than as text.
   if (Array.isArray(input.data) || isPlainObject(input.data)) {
     input.data = JSON.stringify(input.data);
+  }
+  for (const [key, values] of [
+    ["type", CHART_TYPES],
+    ["format", DATA_FORMATS],
+    ["aggregate", AGGREGATIONS],
+    ["sort", SORT_ORDERS],
+    ["facetScales", FACET_SCALES],
+  ] as const) {
+    if (input[key] !== undefined) input[key] = spelled(values, input[key]);
   }
   const problems: string[] = [];
   if (clickPrompt !== undefined && typeof clickPrompt !== "string") {
@@ -254,11 +272,7 @@ export function validateChartSpec(value: unknown): ChartSpec {
     typeof input.facetColumn === "string" && input.facetColumn.trim() !== "",
     "a non-empty column name",
   );
-  expect(
-    "facetScales",
-    isOneOf(["shared", "independent"], input.facetScales),
-    '"shared" or "independent"',
-  );
+  expect("facetScales", isOneOf(FACET_SCALES, input.facetScales), '"shared" or "independent"');
   expect(
     "filters",
     Array.isArray(input.filters) && input.filters.length <= 50,
@@ -290,6 +304,7 @@ function filterProblems(filter: unknown, at: string): string[] {
   if (unknown !== undefined) {
     problems.push(`${at}: ${unknown}`);
   }
+  if (filter.op !== undefined) filter.op = spelled(FILTER_OPERATORS, filter.op);
   const { column, op, value } = filter;
   if (typeof column !== "string" || column.trim() === "") {
     problems.push(`${at}.column is ${brief(column)}; it must be a column name.`);

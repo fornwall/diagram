@@ -98,6 +98,29 @@ suite("chartSpec", () => {
     }
   });
 
+  test("takes the choices of its settings in whatever case a model writes them", () => {
+    const written = {
+      type: "Horizontalbar",
+      data: "a,1",
+      format: "CSV",
+      aggregate: "SUM",
+      sort: " Descending",
+      facetColumn: "a",
+      facetScales: "Independent",
+      filters: [{ column: "a", op: "GTE", value: 1 }],
+    };
+    assert.deepStrictEqual(validateChartSpec(written), {
+      ...written,
+      type: "horizontalBar",
+      format: "csv",
+      aggregate: "sum",
+      sort: "descending",
+      facetScales: "independent",
+      filters: [{ column: "a", op: "gte", value: 1 }],
+    });
+    assert.throws(() => validateChartSpec({ type: "bars", data: "a,1" }), /"type" is "bars"/);
+  });
+
   test("says where a chart's data comes from", () => {
     assert.strictEqual(dataOrigin({ type: "pie", data: "a 1" }), "inline data");
     assert.strictEqual(dataOrigin({ type: "pie", file: "sales.csv" }), "file sales.csv");
