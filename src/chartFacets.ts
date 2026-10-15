@@ -140,6 +140,13 @@ export function buildFacetedChart(
     spec.facetColumns !== undefined && columns > spec.facetColumns
       ? ` in ${columns} columns, as "facetColumns": ${spec.facetColumns} would leave them too short to read,`
       : "";
+  // What every panel reads alike is said once, and what each panel's rows gave by panel.
+  const noted = panels.filter((panel) => panel.summary !== "");
+  const alike = noted.length === panels.length && new Set(noted.map((p) => p.summary)).size === 1;
+  const byPanel =
+    alike && panels.length > 1
+      ? ` Each panel: ${noted[0]?.summary}.`
+      : noted.map((panel) => ` ${JSON.stringify(panel.name)}: ${panel.summary}.`).join("");
   return {
     option: {
       title: titles,
@@ -155,7 +162,10 @@ export function buildFacetedChart(
       // Panels of one type have the same tooltip, such as a histogram's; the webview adds others.
       ...(panels[0]?.option.tooltip === undefined ? {} : { tooltip: panels[0].option.tooltip }),
     },
-    summary: `Faceted by ${JSON.stringify(facetName)} into ${plural(panels.length, "panel")}${layout} with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ${panels.map((panel) => `${JSON.stringify(panel.name)}: ${panel.summary}`).join(" ")}`,
+    summary:
+      `Faceted by ${JSON.stringify(facetName)} into ${plural(panels.length, "panel")}${layout} ` +
+      `with ${spec.facetScales === "independent" ? "independent" : "shared"} scales. ` +
+      `${panels[0]?.shared ?? ""}.${byPanel}`,
   };
 }
 

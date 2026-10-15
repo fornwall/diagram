@@ -210,8 +210,8 @@ suite("chartFacets", () => {
   test("a bar facet without a number says so, and fails the chart when every facet has none", () => {
     const data = "service,operation,ms\napi,read,2\nworker,write,\nworker,read,";
     const chart = buildChart({ type: "bar", data, facetColumn: "service" }, parseTable(data));
-    assert.match(chart.summary, /"worker": Charted "ms" by "operation"; no row has a number/);
-    assert.doesNotMatch(chart.summary, /"api": [^"]*no row/);
+    assert.match(chart.summary, /Charted "ms" by "operation"\. "worker": no row has a number/);
+    assert.doesNotMatch(chart.summary, /"api"/);
     // Numbers of "ms" only in rows that a filter leaves out of every facet's time axis.
     const undated = "service,date,ms\napi,2026-01-01,\napi,,3\nworker,2026-01-02,";
     assert.throws(
@@ -281,16 +281,35 @@ suite("chartFacets", () => {
     assert.deepStrictEqual(seriesData(option), [[1 / 1024], [4]]);
   });
 
-  test("keeps shared inference notes separate from each facet's row notes", () => {
+  test("says what every panel reads alike once, and each panel's own row notes by panel", () => {
     const data = "service,date,size\napi,2026-01-01,1 KiB\napi,,2 KiB\nworker,2026-01-02,4 MiB";
-    const chart = buildChart({ type: "line", data, facetColumn: "service" }, parseTable(data));
-    const [api, worker] = chart.summary.split('"worker":');
-    assert.match(api ?? "", /left out 1 row without a date/);
-    assert.doesNotMatch(worker ?? "", /without a date/);
-    for (const panel of [api, worker]) {
-      assert.match(panel ?? "", /read "date" as ISO dates/);
-      assert.match(panel ?? "", /showed sizes in MiB/);
-    }
+    const { summary } = buildChart(
+      { type: "line", data, facetColumn: "service" },
+      parseTable(data),
+    );
+    assert.strictEqual(
+      summary,
+      'Faceted by "service" into 2 panels with shared scales. Charted "size (MiB)" by "date"; ' +
+        'read "date" as ISO dates on a time axis; {"xAxis": {"type": "category"}} in "options" ' +
+        'reads them as labels instead; showed sizes in MiB. "api": left out 1 row without a date.',
+    );
+    // Panels whose rows gave the same notes are told of together.
+    const grouped = "service,k,n\napi,a,1\napi,a,2\nworker,b,3\nworker,b,4";
+    assert.strictEqual(
+      buildChart(
+        { type: "bar", data: grouped, facetColumn: "service", aggregate: "sum" },
+        parseTable(grouped),
+      ).summary,
+      'Faceted by "service" into 2 panels with shared scales. Charted "n" by "k". Each panel: ' +
+        'grouped 2 rows into 1 by "k", summing their values.',
+    );
+    const counts = "service,ms\napi,1\napi,x\nworker,2";
+    assert.strictEqual(
+      buildChart({ type: "histogram", data: counts, facetColumn: "service" }, parseTable(counts))
+        .summary,
+      'Faceted by "service" into 2 panels with shared scales. Charted "ms" in 2 histogram bins. ' +
+        '"api": 1 observation; skipped 1 row without a number. "worker": 1 observation.',
+    );
   });
 
   test("counts a single panel as one", () => {

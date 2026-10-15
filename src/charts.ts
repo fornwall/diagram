@@ -16,8 +16,13 @@ import { formatCount, plural, quoteAll } from "./text";
 export interface Chart {
   /** The ECharts option, as plain JSON that leaves colors, fonts and layout to the webview. */
   option: Record<string, unknown>;
-  /** Which columns and rows were charted, e.g. `Charted "size" by "dir".`, for a model. */
+  /**
+   * Which columns and rows were charted, e.g. `Charted "size" by "dir".`, for a model. A panel of
+   * a faceted chart has only the notes about its own rows here, or nothing, without a period.
+   */
   summary: string;
+  /** What every panel of a faceted chart reads alike, which the chart's summary says once. */
+  shared?: string;
   /** Why a facet has nothing to draw, which fails a chart whose every facet has nothing. */
   empty?: string;
 }
@@ -36,7 +41,7 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     const { type } = request;
     if (type === "histogram") {
       histogram ??= planHistogram(request, reference ?? data);
-      return buildHistogram(data, histogram);
+      return buildHistogram(data, histogram, reference !== undefined);
     }
     if (reference !== undefined) facetPlan ??= planChart(request, reference, true);
     return buildSingleChart(type, request, data, facetPlan);
@@ -75,7 +80,7 @@ function planChart(spec: ChartSpec, table: DataTable, faceted: boolean): ChartPl
   return {
     columns,
     notes,
-    multiples: faceted ? tableMultiples(table, columns.values) : undefined,
+    multiples: faceted ? tableMultiples(table, columns.values, notes) : undefined,
   };
 }
 
@@ -86,18 +91,22 @@ function buildSingleChart(
   type: RowChartType,
   spec: ChartSpec,
   table: DataTable,
-  plan = planChart(spec, table, false),
+  shared?: ChartPlan,
 ): Chart {
-  const { columns } = plan;
-  // Each panel adds its own omissions and aggregation notes.
-  const notes = [...plan.notes];
-  const { empty, ...rows } = readRows(spec, table, columns, notes, plan.multiples);
+  const { columns, multiples, notes: planNotes } = shared ?? planChart(spec, table, false);
+  // A panel's notes are about its own rows; the plan's are said once for every panel.
+  const notes = shared === undefined ? planNotes : [];
+  const { empty, ...rows } = readRows(spec, table, columns, notes, multiples);
   const reading: Reading = { spec, table, columns, notes, ...rows };
   const option = drawChart(type, reading);
   checkItems(type, spec, option);
+  const clauses = (notes: string[]) => notes.map((note) => `; ${note}`).join("");
+  const headline = summarize(reading);
   return {
     option,
-    summary: `${summarize(reading)}${notes.map((note) => `; ${note}`).join("")}.`,
+    ...(shared === undefined
+      ? { summary: `${headline}${clauses(notes)}.` }
+      : { summary: notes.join("; "), shared: `${headline}${clauses(planNotes)}` }),
     ...(empty === undefined ? {} : { empty }),
   };
 }

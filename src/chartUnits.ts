@@ -92,20 +92,27 @@ export function columnMultiple(
   return { name: nameIn(name, multiple, shown.size), ...shown };
 }
 
-/** The multiple of each unit for the columns of that unit among `values`, over a whole table. */
-export function tableMultiples(table: DataTable, values: number[]): Multiples {
+/**
+ * The multiple of each unit for the columns of that unit among `values`, over a whole table, noting
+ * which units are shown in one.
+ */
+export function tableMultiples(table: DataTable, values: number[], notes?: string[]): Multiples {
   const shared: Multiples = {};
   for (const [unit, { multiples }] of SCALES) {
     const columns = values.filter((column) => table.columns[column]?.unit === unit);
-    shared[unit] = multipleFor(multiples, largest(table.rows, columns));
+    const index = multipleFor(multiples, largest(table.rows, columns));
+    shared[unit] = index;
+    const { note } = multipleAt(unit, index);
+    if (columns.length > 0 && note !== undefined) notes?.push(note);
   }
   return shared;
 }
 
 /**
  * Shows the sizes and durations among the values of `columns` in the multiple of their unit that
- * suits the largest, or the `shared` one that facets must agree on, scaling the rows' values in
- * place. Returns the columns' names, which state the multiples, and the size of each multiple.
+ * suits the largest, or the `shared` one that facets must agree on, which was noted when chosen,
+ * scaling the rows' values in place. Returns the columns' names, which state the multiples, and
+ * the size of each multiple.
  */
 export function showInMultiples(
   table: DataTable,
@@ -130,7 +137,7 @@ export function showInMultiples(
       );
     const { multiple, size, note } = multipleAt(unit, index);
     if (note !== undefined) {
-      notes.push(note);
+      if (shared === undefined) notes.push(note);
       for (const { values } of rows) {
         for (const i of scaled) {
           const value = values[i];

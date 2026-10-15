@@ -226,9 +226,11 @@ function edgeFormat(edges: number[]): (edge: number) => string {
   return (edge) => String(Number(edge.toFixed(decimals)));
 }
 
+/** Counts the observations of a table into the bins of a plan; a facet says its counts alone. */
 export function buildHistogram(
   table: DataTable,
   { column, name, size, note, edges, names }: HistogramPlan,
+  faceted = false,
 ): Chart {
   const counts = Array<number>(names.length).fill(0);
   let count = 0;
@@ -249,7 +251,14 @@ export function buildHistogram(
     count++;
   }
   const skipped = table.rows.length - count;
+  const observations = plural(count, "observation");
+  const left = skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : "";
+  const bins = `${JSON.stringify(name)} in ${plural(counts.length, "histogram bin")}`;
+  const shown = note === undefined ? "" : `; ${note}`;
   return {
+    ...(faceted
+      ? { summary: `${observations}${left}`, shared: `Charted ${bins}${shown}` }
+      : { summary: `Charted ${observations} of ${bins}${left}${shown}.` }),
     option: {
       // The bin rather than an axis crosshair, which the webview gives bars.
       tooltip: { trigger: "item" },
@@ -262,10 +271,5 @@ export function buildHistogram(
       yAxis: { type: "value", name: "count", min: 0, minInterval: 1 },
       series: [{ type: "bar", name: "count", barCategoryGap: "0%", data: counts }],
     },
-    summary:
-      `Charted ${plural(count, "observation")} of ${JSON.stringify(name)} in ` +
-      `${plural(counts.length, "histogram bin")}` +
-      `${skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : ""}` +
-      `${note === undefined ? "" : `; ${note}`}.`,
   };
 }
