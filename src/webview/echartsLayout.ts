@@ -41,6 +41,11 @@ interface Size {
    * or else of the chart's text, as ECharts makes the font of a text.
    */
   font(...styles: JsonObject[]): Font;
+  /**
+   * The text style that the theme gives axis labels and names, legends and a radar's names, which
+   * ECharts takes over the option's text style: of the theme's font.
+   */
+  themed: JsonObject;
 }
 
 /** The text style of an option's setting, as its "axisLabel", if it is one. */
@@ -281,7 +286,8 @@ function layOutAround(
         .join(" ");
       return { css, width: (text) => context.textWidth(text, css) };
     };
-    const size = { width, height, compact, font };
+    const themed = { fontFamily: context.colors.fontFamily, fontSize: context.colors.fontSize };
+    const size = { width, height, compact, font, themed };
     const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
@@ -572,7 +578,7 @@ function placeLegend(
   }
   let side: Side;
   const placed = has(legend, BOX_KEYS);
-  const { width: textWidth } = size.font(styleOf(legend.textStyle));
+  const { width: textWidth } = size.font(styleOf(legend.textStyle), size.themed);
   if (
     legend.orient === "vertical" ||
     (legend.orient === undefined && !placed && !alongAxes && width >= 560)
@@ -843,7 +849,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       facetGrid === undefined
         ? Math.max(60, Math.round(height * 0.22))
         : Math.max(40, Math.round(facetGrid.height * 0.35));
-    const font = size.font(label);
+    const font = size.font(label, size.themed);
     let labelWidth = widestText(axis.data, font.width, Math.max(slot * 3, maxWidth));
     // ECharts shows each label across the axis where, a third wider, it fits in the width of its
     // category, and else leaves some out: the third is the gap between them.
@@ -883,7 +889,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
       const digits = [axis.min, axis.max].map((bound) =>
         typeof bound === "number" ? compactLabel(bound).length : 4,
       );
-      const font = size.font(styleOf(axis.axisLabel));
+      const font = size.font(styleOf(axis.axisLabel), size.themed);
       const label = font.width("0".repeat(Math.max(...digits) + 1));
       fewerTicks(axis, panel.width - 50, label + 16, faceted);
       fewerTimeTicks(axis, panel.width - 50, font);
@@ -904,7 +910,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
     const maxWidth = Math.round(
       (grids.length > 1 ? panelWidth(axis) : width) * (compact ? 0.3 : 0.22),
     );
-    const font = size.font(label);
+    const font = size.font(label, size.themed);
     if (label.width !== undefined || widestText(axis.data, font.width, maxWidth) <= maxWidth) {
       continue;
     }
@@ -1238,7 +1244,8 @@ function layOutFacets(
 function shortenFacetTitles(facets: Facet[], width: number, size: Size): void {
   const texts = facets.map(({ title }) => (typeof title.text === "string" ? title.text : ""));
   // In the theme's font of titles, but of chartFacets' size.
-  const font = size.font(styleOf(facets[0]?.title.textStyle), { fontSize: 13, fontWeight: 600 });
+  const title = { ...size.themed, fontSize: 13, fontWeight: 600 };
+  const font = size.font(styleOf(facets[0]?.title.textStyle), title);
   if (texts.every((text) => font.width(text) <= width)) return;
   const values = facets.map(({ grid }) => facetValue(grid.id));
   // chartFacets titles a facet "<column> = <value>", the value quoted when values would collide.
@@ -2286,7 +2293,9 @@ function layOutParallel(base: JsonObject, reserved: Insets, size: Size): void {
   // The width of each axis's name, in the font of its own or of all.
   const names = axes.map((axis) =>
     typeof axis.name === "string"
-      ? size.font(styleOf(axis.nameTextStyle), styleOf(shared.nameTextStyle)).width(axis.name)
+      ? size
+          .font(styleOf(axis.nameTextStyle), styleOf(shared.nameTextStyle), size.themed)
+          .width(axis.name)
       : 0,
   );
   const half = (index: number) => (names[index] ?? 0) / 2;
@@ -2322,7 +2331,7 @@ function layOutRadar(base: JsonObject, reserved: Insets, size: Size): void {
   const boxHeight = size.height - reserved.top - reserved.bottom;
   radar.center = [reserved.left + boxWidth / 2, reserved.top + boxHeight / 2];
   // Leave room beside the radar for the names of its indicators, of up to a fourth of the width.
-  const font = size.font(styleOf(radar.axisName));
+  const font = size.font(styleOf(radar.axisName), size.themed);
   const nameWidth = Math.min(widestText(radar.indicator, font.width, boxWidth / 4), boxWidth / 4);
   radar.radius = Math.max(40, Math.min(boxWidth - 2 * nameWidth - 40, boxHeight - 56) / 2);
 }
@@ -2392,7 +2401,7 @@ function layOutSingleAxis(
   }
   Object.assign(axis, { left: reserved.left + left, right: reserved.right + 24, top, bottom });
   const length = width - reserved.left - left - reserved.right - 24;
-  fewerTimeTicks(axis, length, size.font(styleOf(axis.axisLabel)));
+  fewerTimeTicks(axis, length, size.font(styleOf(axis.axisLabel), size.themed));
 }
 
 /**

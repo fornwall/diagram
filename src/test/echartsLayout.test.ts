@@ -570,6 +570,40 @@ suite("echartsLayout", () => {
     assert.ok(long > layout(pie("A", 123_456_789)).series[0].right, String(long));
   });
 
+  test("measures axis labels, legends and a radar's names in the theme's font, as ECharts draws them", () => {
+    // The theme sets the font of each, which ECharts takes over the text style of the option.
+    const big = { textStyle: { fontSize: 18, fontFamily: "monospace" } };
+    const pairs = (option: Option, read: (laidOut: Option) => unknown, width = 600) =>
+      [option, { ...option, ...big }].map((each) => read(layout(each, { width, height: 500 })));
+    const labels = ["Alpha one", "Bravo two", "Charlie 3", "Delta four", "Echo five", "Foxtrot 6"];
+    const columns = {
+      xAxis: { type: "category", data: labels },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2, 3, 4, 5, 6] }],
+    };
+    assert.deepStrictEqual(
+      pairs(columns, ({ xAxis }) => xAxis.axisLabel?.rotate),
+      [undefined, undefined],
+    );
+    const rows = { xAxis: {}, yAxis: { type: "category", data: labels }, series: columns.series };
+    assert.deepStrictEqual(
+      pairs(rows, ({ yAxis }) => yAxis.axisLabel?.width, 300),
+      [undefined, undefined],
+    );
+    const pie = {
+      legend: {},
+      series: [{ type: "pie", data: labels.map((name) => ({ name, value: 1 })) }],
+    };
+    const [right, bigRight] = pairs(pie, ({ series }) => series[0].right, 800);
+    assert.strictEqual(bigRight, right);
+    const radar = {
+      radar: { indicator: labels.map((name) => ({ name, max: 10 })) },
+      series: [{ type: "radar", data: [{ value: labels.map(() => 5) }] }],
+    };
+    const [radius, bigRadius] = pairs(radar, (laidOut) => laidOut.radar.radius, 360);
+    assert.strictEqual(bigRadius, radius);
+  });
+
   test("keeps explicit choices", () => {
     const option = layout(
       bars({ legend: { left: 0 }, grid: { left: 1 }, tooltip: { trigger: "item" }, aria: {} }),
