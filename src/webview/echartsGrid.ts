@@ -22,8 +22,11 @@ import {
 } from "./echartsMeasure";
 import type { JsonObject } from "./echartsOption";
 
-/** Fits a single grid, or the panels of facets, into the space left, and keeps axis labels apart. */
-export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
+/**
+ * Fits a single grid, or the panels of facets, into the space left, and keeps axis labels apart.
+ * Returns the height that turned category labels take below the plot beyond a row of them.
+ */
+export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): number {
   const { width, height, compact } = size;
   const grids = asArray(base.grid);
   /** The size of the plot of each grid, with its labels, where the layout places the grids. */
@@ -202,6 +205,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void
       axis.nameLocation = "start";
     }
   }
+  return Math.max(0, ...[...labelHeights.values()].map((height) => height - LABEL_HEIGHT));
 }
 
 /**

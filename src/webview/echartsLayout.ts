@@ -174,9 +174,8 @@ function layOut(
   // A chart along a single axis, as a theme river, has its legend where a grid's would be.
   placeLegend(base, series, cartesian || series.some(onSingleAxis), reserved, size);
   placeSliders(base, reserved, size, squeeze);
-  if (cartesian) {
-    layOutGrid(base, reserved, size);
-  }
+  // Turned category labels take the plot's height, as a row of them is counted on already.
+  const turned = cartesian ? layOutGrid(base, reserved, size) : 0;
   layOutSingleAxis(base, series, reserved, size);
   layOutCalendar(base, reserved, size);
   layOutParallel(base, reserved, size);
@@ -185,7 +184,7 @@ function layOut(
   labelTreeNodes(series, size);
   layOutBoxSeries(series, reserved, size, stepped);
   layOutRadar(base, reserved, size);
-  return size.height - reserved.top - reserved.bottom;
+  return size.height - reserved.top - reserved.bottom - turned;
 }
 
 /** The series of the base option that the steps of a timeline set something of, merged over it. */

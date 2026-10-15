@@ -709,12 +709,17 @@ suite("echartsLayout", () => {
   });
 
   test("gives up a zoom slider, a subtitle and a title in turn for a plot too short to read", () => {
-    const at = (height: number) => {
+    const at = (height: number, categories = ["A", "B"]) => {
       const option = layout(
         bars({
           title: { text: "Latency", subtext: "p50 and p99" },
           dataZoom: [{ type: "slider" }],
-          series: ["p50", "p99"].map((name) => ({ type: "bar", name, data: [1, 2] })),
+          xAxis: { type: "category", data: categories },
+          series: ["p50", "p99"].map((name) => ({
+            type: "bar",
+            name,
+            data: categories.map((_, index) => index),
+          })),
         }),
         { height },
       );
@@ -732,6 +737,13 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(at(190), { ...full, zoom: "inside", title: false });
     // Where nothing more can be given up, the legend stays.
     assert.deepStrictEqual(at(100), { ...full, zoom: "inside", title: false });
+    // Category labels turned to fit take the plot's height too.
+    const services =
+      "Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet Kilo Lima Mike November Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey Yankee"
+        .split(" ")
+        .map((word) => `${word} service`);
+    assert.deepStrictEqual(at(260), full);
+    assert.deepStrictEqual(at(260, services), { ...full, zoom: "inside", subtext: "" });
   });
 
   test("gives the value axis of a short or narrow plot fewer labels, which would pile up", () => {
