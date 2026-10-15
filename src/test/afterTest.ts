@@ -175,27 +175,45 @@ export function recordMessages(
 }
 
 /**
+ * How long the smaller size of a work takes at least, beside which the millisecond more that the
+ * bound allows does not let the larger take as long as quadratic time would.
+ */
+const MIN_TIMED_MS = 1;
+
+/** The time that the fastest of some runs of the work takes. */
+function fastestOf(work: () => unknown, runs: number): number {
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let run = 0; run < runs; run++) {
+    const start = performance.now();
+    work();
+    fastest = Math.min(fastest, performance.now() - start);
+  }
+  return fastest;
+}
+
+/**
  * Asserts that the work takes time linear in the size of its input rather than quadratic: four
  * times the size takes well under the sixteen times as long that quadratic time would. Each size is
  * timed by its fastest of a few runs, which a busy machine does not slow down as it may a single
  * one. `prepare` makes the input of a size, untimed, and gives the work to time, which it may run
- * several times.
+ * several times. A size that takes under a millisecond is timed at four times it instead: beside
+ * its time, the millisecond that the bound allows more would let quadratic time pass. Not larger
+ * still, where collecting the garbage of a work that keeps what it makes takes more than linear
+ * time.
  */
 export function assertLinearTime(prepare: (size: number) => () => unknown, size: number): void {
-  const sizes = [size, 4 * size];
-  const works = sizes.map(prepare);
-  const fastest = sizes.map(() => Number.POSITIVE_INFINITY);
+  const base = fastestOf(prepare(size), 3) < MIN_TIMED_MS ? 4 * size : size;
+  const works = [prepare(base), prepare(4 * base)];
+  const fastest = works.map(() => Number.POSITIVE_INFINITY);
   for (let round = 0; round < 5; round++) {
     for (const [index, work] of works.entries()) {
-      const start = performance.now();
-      work();
-      fastest[index] = Math.min(fastest[index] ?? 0, performance.now() - start);
+      fastest[index] = Math.min(fastest[index] ?? 0, fastestOf(work, 1));
     }
   }
   const [small = 0, large = 0] = fastest;
   // And a millisecond more, which a measure of under a millisecond is not exact to.
   assert.ok(
     large < 8 * small + 1,
-    `${small.toFixed(1)} ms for size ${size}, but ${large.toFixed(1)} ms for ${4 * size}`,
+    `${small.toFixed(1)} ms for size ${base}, but ${large.toFixed(1)} ms for ${4 * base}`,
   );
 }
