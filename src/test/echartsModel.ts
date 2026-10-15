@@ -6,6 +6,7 @@ import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
 import { type LayoutContext, layoutOption } from "../webview/echartsLayout";
+import { textWidth } from "../webview/echartsLibrary";
 import type { JsonObject } from "../webview/echartsOption";
 import { testColors } from "./themeColors";
 
@@ -62,6 +63,7 @@ export function layout(option: JsonObject, context: Partial<LayoutContext> = {})
     title: "",
     colors: testColors,
     reducedMotion: false,
+    textWidth,
     ...context,
   });
 }

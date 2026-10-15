@@ -536,7 +536,14 @@ export class EChartsRenderer implements Renderer {
       const colors = this.readColors();
       this.theme = { colors, echarts: buildEChartsTheme(colors) };
     }
-    const context = { width, height, title: this.title, colors: this.theme.colors, reducedMotion };
+    const context = {
+      width,
+      height,
+      title: this.title,
+      colors: this.theme.colors,
+      reducedMotion,
+      textWidth: echarts.textWidth,
+    };
     const layout = layoutOption(this.option ?? {}, context);
     // Many charts are laid out the same for another size, such as one that only fills the space,
     // or whose labels fit either way: resizing draws them as a layout would, keeping what the user

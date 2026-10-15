@@ -89,6 +89,22 @@ suite("extension", function () {
     assert.strictEqual(formatted, 0);
   });
 
+  test("ships the code of ECharts once, in its library, which the panel and saved charts load", async () => {
+    const dist = vscode.Uri.joinPath(diagramExtension().extensionUri, "dist");
+    const read = async (uri: vscode.Uri) =>
+      new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+    // As of the text measuring of zrender, which ECharts draws with.
+    const zrender = /asciiWidthMapTried/;
+    assert.match(await read(vscode.Uri.joinPath(dist, "echarts.js")), zrender);
+    const chunks = vscode.Uri.joinPath(dist, "chunks");
+    const scripts = (await vscode.workspace.fs.readDirectory(chunks))
+      .filter(([name]) => name.endsWith(".js"))
+      .map(([name]) => vscode.Uri.joinPath(chunks, name));
+    for (const script of [...scripts, vscode.Uri.joinPath(dist, "standalone.js")]) {
+      assert.doesNotMatch(await read(script), zrender, script.path);
+    }
+  });
+
   test("renders a diagram through the registered tool, which getState then describes", async () => {
     const text = await invoke("diagram_render", {
       source: "flowchart TD\n  A[Start] --> B{Valid?}\n  B -->|yes| C[Done]",

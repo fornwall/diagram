@@ -1,7 +1,6 @@
 // Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
-import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
 import { facetBoxes } from "../chartFacetLayout";
 import { asArray, isPlainObject } from "../protocol";
 import { escapeHtml } from "../text";
@@ -99,6 +98,11 @@ export interface LayoutContext {
   title: string;
   colors: ThemeColors;
   reducedMotion: boolean;
+  /**
+   * The width of a text in a CSS font as ECharts measures it to break it onto lines, of the
+   * library that draws the chart.
+   */
+  textWidth(text: string, font: string): number;
 }
 
 const needsCopy = (value: unknown) => Array.isArray(value) || isPlainObject(value);
@@ -255,9 +259,8 @@ function layOutAround(
       fontSize: context.colors.fontSize,
       ...(isPlainObject(base.textStyle) ? base.textStyle : {}),
     };
-    // As ECharts measures it to break it onto lines within a width: character by character, any
-    // but ASCII as wide as one of Chinese, in the font of the first style that sets each of its
-    // parts, or else the chart's.
+    // As ECharts measures it to break it onto lines within a width, in the font of the first style
+    // that sets each of its parts, or else the chart's.
     const textWidth = (text: string, ...styles: JsonObject[]) => {
       const part = (key: string) =>
         [...styles, chartStyle].map((style) => style[key]).find((value) => value != null);
@@ -265,16 +268,10 @@ function layOutAround(
       const fontSize = /^\d+(?:\.\d+)?(?:px)?$/.test(String(part("fontSize")).trim())
         ? Number.parseFloat(String(part("fontSize")))
         : context.colors.fontSize;
-      const font = ensureFontMeasureInfo(
-        [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
-          .filter((value) => value != null && value !== "")
-          .join(" "),
-      );
-      let sum = 0;
-      for (let index = 0; index < text.length; index++) {
-        sum += measureCharWidth(font, text.charCodeAt(index));
-      }
-      return sum;
+      const font = [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
+        .filter((value) => value != null && value !== "")
+        .join(" ");
+      return context.textWidth(text, font);
     };
     const size = { width, height, compact, charWidth, textWidth };
     const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));

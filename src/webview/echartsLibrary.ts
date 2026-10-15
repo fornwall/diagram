@@ -53,6 +53,7 @@ import {
 import { use } from "echarts/core";
 import { AxisBreak, LabelLayout, LegacyGridContainLabel, ScatterJitter } from "echarts/features";
 import { SVGRenderer } from "echarts/renderers";
+import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
 
 use([
   BarChart,
@@ -106,3 +107,17 @@ use([
 ]);
 
 export { init } from "echarts/core";
+
+/**
+ * The width of a text in a CSS font as ECharts measures it to break it onto lines: character by
+ * character, any but ASCII as wide as one of Chinese. Of the library's own measures, which it
+ * keeps for each font.
+ */
+export function textWidth(text: string, font: string): number {
+  const measures = ensureFontMeasureInfo(font);
+  let sum = 0;
+  for (let index = 0; index < text.length; index++) {
+    sum += measureCharWidth(measures, text.charCodeAt(index));
+  }
+  return sum;
+}
