@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request supersedes a run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
