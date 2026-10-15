@@ -765,7 +765,7 @@ suite("workspaceTools", function () {
       /outside the open workspace/,
     );
     for (const file of ["file:///one/a.ts#L4", "a.ts#L4", "/one/a.ts#L4-L8", "a.ts#L4-8"]) {
-      assert.throws(() => resolveWorkspaceFile(file, roots), /without a query or fragment/);
+      assert.throws(() => resolveWorkspaceFile(file, roots), /without a query, fragment or line/);
     }
   });
 
@@ -925,6 +925,13 @@ suite("workspaceTools", function () {
       await invoke(reader, { file: `${relative}/missing.ts` }),
       `Error: ${relative}/missing.ts does not exist.`,
     );
+    // Lines given as compilers and code links write them, rather than as startLine and endLine.
+    for (const suffix of [":10", ":10:5", ":10-20", "#L10", "#L10-L20"]) {
+      assert.strictEqual(
+        await invoke(reader, { file: `${relative}/code.ts${suffix}` }),
+        'Error: Give "file" without a query, fragment or line, such as "#L10" or ":10", and its lines as "startLine" and "endLine".',
+      );
+    }
     for (const range of [
       { startLine: 0 },
       { startLine: 4, endLine: 3 },

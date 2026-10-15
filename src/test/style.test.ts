@@ -118,6 +118,10 @@ suite("diagram_style input", () => {
     assert.match(problems(undefined), /must be given as an object/);
     assert.match(problems({ styles: [] }), /non-empty array/);
     assert.match(problems({ styles: "pay" }), /non-empty array/);
+    // One style without an array, as a model may send it.
+    assert.deepStrictEqual(validateStyleInput({ styles: { id: "a", stroke: "red" } }).styles, [
+      { id: "a", stroke: "red" },
+    ]);
     const many = Array.from({ length: 51 }, (_, i) => ({ id: `n${i}`, fill: "red" }));
     assert.match(problems({ styles: many }), /51 items, more than 50/);
     assert.match(problems({ styles: [{ id: "a", fill: "red" }], colour: 1 }), /"colour"/);

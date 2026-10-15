@@ -38,6 +38,8 @@ export function validateAnnotation(value: unknown): Annotation {
 
   const marks: DiagramMark[] = [];
   if (input.marks !== undefined) {
+    // One mark, as a model may send it without an array.
+    if (!Array.isArray(input.marks)) input.marks = [input.marks];
     if (!Array.isArray(input.marks)) {
       problems.push(
         `"marks" must be an array of objects, e.g. ${EXAMPLE}; leave it out to clear the marks.`,
@@ -99,7 +101,8 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return `${JSON.stringify(id)} is marked twice; give each node one mark.`;
   }
   marked.add(id);
-  const kind = mark.mark ?? "current";
+  // As a model may write it: "Problem".
+  const kind = typeof mark.mark === "string" ? mark.mark.toLowerCase() : (mark.mark ?? "current");
   if (!isMarkKind(kind)) {
     return `"mark" is ${brief(kind)}; it must be one of ${quoteAll(MARK_KINDS)}.`;
   }

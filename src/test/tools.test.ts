@@ -136,6 +136,12 @@ suite("tools", () => {
       String(message({ source: '{"series": []}', language: "mermaid" })),
       /^Rendering diagram/,
     );
+    // As a model may write the language.
+    assert.match(
+      String(message({ source: "flowchart LR", language: "Mermaid" })),
+      /^Rendering diagram/,
+    );
+    assert.match(String(message({ source: "{}", language: "ECharts" })), /^Rendering chart/);
   });
 
   test("diagram_render takes a source in a Markdown fence, with a longer closing marker", async () => {

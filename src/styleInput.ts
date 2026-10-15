@@ -66,6 +66,8 @@ export function validateStyleInput(value: unknown): StyleChange {
   }
 
   const styles: StyleRequest[] = [];
+  // One style, as a model may send it without an array.
+  if (isPlainObject(input.styles)) input.styles = [input.styles];
   if (!Array.isArray(input.styles) || input.styles.length === 0) {
     problems.push(`"styles" must be a non-empty array of objects, e.g. ${EXAMPLE}.`);
   } else if (input.styles.length > MAX_STYLES) {

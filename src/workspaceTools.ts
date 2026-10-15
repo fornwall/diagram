@@ -178,10 +178,11 @@ export function resolveWorkspaceFile(
     : /^[a-zA-Z][\w+.-]+:\//.test(file)
       ? vscode.Uri.parse(file, true)
       : vscode.Uri.joinPath(firstRoot.uri, file);
-  // A path may end with lines as code links give them, e.g. "src/a.ts#L10-L20".
-  if (uri.query || uri.fragment || /#L\d+(?:-L?\d+)?$/.test(file)) {
+  // A path may end with lines as code links or compilers give them, e.g. "src/a.ts#L10-L20" or
+  // "src/a.ts:10".
+  if (uri.query || uri.fragment || /#L\d+(?:-L?\d+)?$|:\d+(?:[-:]\d+)*$/.test(file)) {
     throw new Error(
-      'Give "file" without a query or fragment, such as "#L10", and its lines as "startLine" and "endLine".',
+      'Give "file" without a query, fragment or line, such as "#L10" or ":10", and its lines as "startLine" and "endLine".',
     );
   }
   if (!(roots.some((root) => contains(root.uri, uri)) || inWorkspace(uri, roots))) {

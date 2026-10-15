@@ -16,6 +16,8 @@ suite("annotations", () => {
           { id: "done", mark: "good" },
           // A model may name a node without saying how to mark it, as a bare id.
           "log",
+          // Or write the kind of mark as a word.
+          { id: "flag", mark: "Info" },
         ],
         caption: " Step 2 of 3: the request is retried ",
         dim: true,
@@ -26,11 +28,21 @@ suite("annotations", () => {
           { id: " retry ", kind: "current" },
           { id: "done", kind: "good" },
           { id: "log", kind: "current" },
+          { id: "flag", kind: "info" },
         ],
         caption: "Step 2 of 3: the request is retried",
         dim: true,
       },
     );
+  });
+
+  test("takes one mark without an array, as a model may send it", () => {
+    assert.deepStrictEqual(validateAnnotation({ marks: "pay" }).marks, [
+      { id: "pay", kind: "current" },
+    ]);
+    assert.deepStrictEqual(validateAnnotation({ marks: { id: "pay", mark: "good" } }).marks, [
+      { id: "pay", kind: "good" },
+    ]);
   });
 
   test("keeps names that differ only by surrounding spaces distinct", () => {
@@ -67,7 +79,7 @@ suite("annotations", () => {
     for (const value of [null, undefined, "pay", ["pay"], 42]) {
       assert.match(problems(value), /The marks must be given as an object/);
     }
-    assert.match(problems({ marks: "pay" }), /"marks" must be an array of objects/);
+    assert.match(problems({ marks: 42 }), /Mark 1: A mark must be an object/);
     assert.match(problems({ marks: [42] }), /Mark 1: A mark must be an object/);
     assert.match(problems({ marks: [{}] }), /Mark 1: "id" must be the id of a node/);
     assert.match(problems({ marks: [{ id: " " }] }), /Mark 1: "id" must be the id of a node/);

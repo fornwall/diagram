@@ -100,6 +100,8 @@ function parseRenderInput(
   }
   // Mermaid source never starts with "{", so a model that left out the language means ECharts.
   language ??= source.trimStart().startsWith("{") ? "echarts" : "mermaid";
+  // As a model may write it: "Mermaid", "ECharts".
+  if (typeof language === "string") language = language.toLowerCase();
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }
