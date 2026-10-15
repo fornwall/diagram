@@ -2750,12 +2750,29 @@ suite("data", () => {
     assert.throws(() => parseTable("  \n"), /^Error: The data is empty\. Give JSON, CSV/);
     assert.throws(() => parseTable('{"a": '), /^Error: The data is not valid JSON: .*\.$/);
     // Arrays that head cut short are JSON, not CSV of brackets and numbers.
-    for (const json of ['[\n  {"a": 1},\n  {"a": 2},', "[[1, 2],\n [3, 4],", '[ "a", "b"']) {
+    for (const json of [
+      '[\n  {"a": 1},\n  {"a": 2},',
+      "[[1, 2],\n [3, 4],",
+      '[ "a", "b"',
+      "[1,\n2,\n",
+      "[ -1.5e3, 2,",
+      "[true, false,",
+      "[null,",
+    ]) {
       assert.throws(() => parseTable(json), /^Error: The data is not valid JSON: /, json);
     }
+    // A number in brackets that no comma follows is text, as R and logs print it.
     assert.deepStrictEqual(parse("[INFO] started 1\n[INFO] done 2").rows, [
       ["[INFO]", "started", 1],
       ["[INFO]", "done", 2],
+    ]);
+    assert.deepStrictEqual(parse("[1] 0.5 0.3\n[2] 0.1 0.2").rows, [
+      ["[1]", 0.5, 0.3],
+      ["[2]", 0.1, 0.2],
+    ]);
+    assert.deepStrictEqual(parse("[12:00] cpu 5\n[12:01] cpu 6").rows, [
+      ["[12:00]", "cpu", 5],
+      ["[12:01]", "cpu", 6],
     ]);
     // Lines and columns are counted in the whole text, not from the start of the value.
     assert.throws(

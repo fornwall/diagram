@@ -276,7 +276,8 @@ const TERMINAL_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
  * The format is the first of these that fits, from the most specific to the most general:
  * 1. JSON, or a stream of JSON values, if the text starts with "{", or with "[" and either ends with
- *    "]" or has an array, object or string first, as JSON that head cut short does;
+ *    "]" or has an array, object, string, or a plain value and a comma first, as JSON that head cut
+ *    short does;
  * 2. the first Markdown table, if there is text or another table around it;
  * 3. ls -l or go test -bench output;
  * 4. TSV, if most lines have tabs, unless the first has none or an unclosed quote and CSV fits;
@@ -306,7 +307,7 @@ export function parseTable(text: string, format: DataFormat = "auto", si = false
     format === "json" ||
     (format === "auto" &&
       (trimmed.startsWith("{") ||
-        /^\[\s*[[{"]/.test(trimmed) ||
+        /^\[\s*(?:[[{"]|(?:-?\d[\d.eE+-]*|true|false|null)\s*,)/.test(trimmed) ||
         (trimmed.startsWith("[") && trimmed.endsWith("]"))));
   // Not trimmed, as leading spaces align the columns of command output.
   const table = tableFromRecords(json ? parseJson(content) : splitText(content, format), si);
