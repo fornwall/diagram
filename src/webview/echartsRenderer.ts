@@ -6,6 +6,7 @@ import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
 import { cloneOption, sameLayout } from "./echartsClone";
+import { minimumHeight } from "./echartsFacets";
 import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
@@ -15,13 +16,7 @@ import {
   openDataView,
   parseItemKey,
 } from "./echartsItems";
-import {
-  disableAnimation,
-  focusHighlighted,
-  layoutOption,
-  minimumHeight,
-  toolWarnings,
-} from "./echartsLayout";
+import { disableAnimation, focusHighlighted, layoutOption, toolWarnings } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
 import {

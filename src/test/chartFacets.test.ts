@@ -2,8 +2,8 @@ import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
+import { minimumHeight } from "../webview/echartsFacets";
 import { ChartItems } from "../webview/echartsItems";
-import { minimumHeight } from "../webview/echartsLayout";
 import {
   builtOption,
   itemsOf,
