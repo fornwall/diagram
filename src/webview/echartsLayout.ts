@@ -1382,7 +1382,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
         return kept > 0 ? `${word.slice(0, kept)}...` : undefined;
       };
       const name = own.name;
-      const words = typeof name === "string" ? name.split(/(\s+)/).map((part) => cut(part)) : [];
+      const words = typeof name === "string" ? (name.match(WORDS) ?? []).map(cut) : [];
       const formatter =
         typeof name === "string" &&
         // Of a template, rather than a function of the option's own, which formats it.
@@ -1416,6 +1416,13 @@ function labelTemplate(label: JsonObject): { template: string; values: number } 
 
 /** A value as wide as most that a label tells, as "25.74%". */
 const SHARE = "00.00%";
+
+/**
+ * The words of a text as ECharts breaks it onto lines between them: runs of letters of alphabets,
+ * which end at a space and at some punctuation, and each other character on its own, as one of
+ * Chinese, which it breaks between any two.
+ */
+const WORDS = /[!-%'-+\-.0-:<->@-\\^-\u024f\u0370-\u10ff\u1200-\u13ff\u1e00-\u206f]+|[\s\S]/g;
 
 /** The width of a text in the font of a label, of a size of its own or the chart's. */
 function labelWidth(label: JsonObject, { textWidth }: Size): (text: string) => number {
@@ -1475,7 +1482,7 @@ function pieLabels(pie: JsonObject, size: Size): PieLabel[] | undefined {
     // With the punctuation after it, as the ":" of "{b}: {d}%".
     const word = Math.max(
       values > 0 ? width(SHARE) : 0,
-      ...name.split(/\s+/).map((part) => width(`${part}:`)),
+      ...(name.match(WORDS) ?? []).map((part) => width(`${part}:`)),
     );
     const whole = width(
       template.replace(/\{[^{}|]*\}/g, (field) => (field === "{b}" ? name : SHARE.slice(0, -1))),

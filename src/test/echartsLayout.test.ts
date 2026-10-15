@@ -464,6 +464,28 @@ suite("echartsLayout", () => {
     assert.match(svgOf(option, size), />Parser: ?</);
   });
 
+  test("breaks the names of a pie's labels in Chinese onto lines rather than cutting them short", () => {
+    const table =
+      "component,bugs\n解析器与语法检查模块,42\n渲染器,31\n命令行界面工具集合,9\n文档,6\n安装脚本,5";
+    const names = table
+      .split("\n")
+      .slice(1)
+      .map((row) => row.split(",")[0] ?? "");
+    for (const width of [350, 396]) {
+      const size = { width, height: 575 };
+      const option = layout(
+        builtOption({ type: "pie", data: "unused", labelColumn: "component" }, table),
+        size,
+      );
+      // ECharts breaks text in Chinese between any two characters, as it reads.
+      const labels = [...svgOf(option, size).matchAll(/>([^<>]+)<\/text>/g)]
+        .map(([, text = ""]) => text.trim())
+        .join("");
+      for (const name of names) assert.ok(labels.includes(`${name}:`), `${name} of ${labels}`);
+      assert.doesNotMatch(labels, /…|\.\.\./);
+    }
+  });
+
   test("keeps the shares of diagram_chart's pie labels where a word of them does not fit", () => {
     const table =
       "component,bugs\nParser,42\nRenderer,31\nCommand line interface,9\nDocumentation,6\nInstallation scripts,5";
