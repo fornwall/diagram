@@ -117,10 +117,14 @@ function isIdName(name: string): boolean {
   );
 }
 
-/** Whether a column numbers the rows 1, 2, 3, … or 0, 1, 2, …. */
+/**
+ * Whether a column numbers the rows 1, 2, 3, … or 0, 1, 2, …, as the first column of a ranking or
+ * of cat -n does; a later column counting 1, 2, 3 is a count.
+ */
 function numbersRows(table: DataTable, column: number): boolean {
   const first = table.rows[0]?.[column];
   return (
+    column === 0 &&
     table.rows.length >= 3 &&
     (first === 0 || first === 1) &&
     table.rows.every((row, i) => row[column] === first + i)

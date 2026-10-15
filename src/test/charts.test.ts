@@ -1943,11 +1943,18 @@ suite("charts", () => {
       const option = build(chart("bar"), table.replace("id", name));
       assert.deepStrictEqual(seriesNames(option), ["score"], name);
     }
-    // A column numbering the rows 1, 2, 3, … is skipped when there are other numeric columns.
+    // A first column numbering the rows 1, 2, 3, … is skipped when there are other numeric
+    // columns; a later column counting 1, 2, 3 is a count.
     assert.deepStrictEqual(
       seriesNames(build(chart("bar"), "n,name,score\n1,a,10\n2,b,20\n3,c,30")),
       ["score"],
     );
+    assert.deepStrictEqual(
+      seriesNames(build(chart("bar"), "name,score,n\na,10,1\nb,20,2\nc,30,3")),
+      ["score", "n"],
+    );
+    const counts = "day,hour,n\nMon,9,1\nTue,10,2\nMon,10,3\nMon,9,4";
+    assert.deepStrictEqual(build(chart("heatmap"), counts).xAxis.data, ["hour", "n"]);
     // Kept when it is the only numeric column, or asked for.
     assert.strictEqual(build(chart("pie"), "name,id\na,1\nb,2\nc,3").series[0].name, "id");
     assert.deepStrictEqual(
