@@ -594,6 +594,32 @@ const GENERATED_CHART_FIXES =
   'rest as "Other"), or fewer "valueColumns" for fewer series. Change its styling, such as ' +
   `"grid" or "dataZoom", with ${EDIT_TOOL}, and its data, such as shorter names, with ${CHART_TOOL}.`;
 
+/**
+ * What a tool that edited the current diagram answers when the panel did not draw the edit: the
+ * render error, with the lines around it in the edited source, which the panel keeps shown with
+ * the error for a further edit to fix; or why the panel could not show it, which says nothing
+ * about the edit. `changed` says what the tool did to the diagram, e.g. "edited" or "colored".
+ */
+export function editFailure(
+  outcome: Extract<RenderOutcome, { ok: false }>,
+  noun: string,
+  changed: string,
+  edited: string,
+  previous: string,
+): [string, ...string[]] {
+  if (outcome.kind === "unavailable") {
+    return [
+      `The ${noun} was ${changed}, but the panel could not show it: ${outcome.error} This is not a problem with the change, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown.`,
+    ];
+  }
+  return [
+    `The ${changed} ${noun} failed to render with this error:`,
+    outcome.error,
+    errorContext(edited, outcome.error, previous),
+    `The panel shows it with this error. Fix it with ${EDIT_TOOL}.`,
+  ];
+}
+
 export function renderFailure(
   outcome: Extract<RenderOutcome, { ok: false }>,
   noun: string,

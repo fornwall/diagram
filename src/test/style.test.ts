@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { hexColor, parseColor, readableTextColor, sourceColor } from "../cssColors";
+import { EditDiagramTool } from "../editTool";
 import { findDiagramFences } from "../fences";
 import {
   applyStyles,
@@ -15,7 +16,7 @@ import {
 import { type StyleInput, validateStyleInput } from "../styleInput";
 import { StyleDiagramTool } from "../styleTool";
 import { quoteAll } from "../text";
-import { afterTest, cancellationSource, tempDir } from "./afterTest";
+import { afterTest, tempDir } from "./afterTest";
 import { newFakePanel, newPanel, within } from "./newPanel";
 import { invokeTool } from "./toolText";
 import { suitePage, UNTIL } from "./webviewHarness";
@@ -482,6 +483,47 @@ suite("diagram_style in the panel", () => {
     assert.match(panel.describeForModel() ?? "", /watch/);
   });
 
+  test("keeps a coloring that fails to render shown with its error and marks, for diagram_edit to fix", async () => {
+    const source = "flowchart TD\n  A --> B";
+    const { panel, webview } = await newFakePanel(
+      new Map<string, unknown>([
+        ["diagram.state", { language: "mermaid", source, title: "Flow", origin: "tool" }],
+      ]),
+    );
+    webview.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart-v2",
+            nodeIds: ["A", "B"],
+          }
+        : undefined;
+    await webview.receive({ type: "ready" });
+    await within(() => panel.drawnIds !== undefined);
+    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info", note: "watch" }], dim: false }).ok);
+    const error = 'Parse error on line 3, column 9: unexpected "fill".';
+    webview.failNextRender(error);
+    const colored = `${source}\n  style A fill:red,color:black`;
+    assert.strictEqual(
+      await invokeTool(new StyleDiagramTool(panel), { styles: [{ id: "A", fill: "red" }] }),
+      `The colored diagram failed to render with this error:\n\n${error}\n\nLines 1-3 of the source:\n1: flowchart TD\n2:   A --> B\n3:   style A fill:red,color:black\n\nThe panel shows it with this error. Fix it with diagram_edit.\n\nRevision: ${panel.revision}.`,
+    );
+    // As the panel shows the colored source, the quoted line is in it, for the fix to replace.
+    assert.strictEqual(panel.current?.source, colored);
+    assert.strictEqual(panel.current?.error, error);
+    assert.match(panel.describeForModel() ?? "", /watch/);
+    assert.match(
+      await invokeTool(new EditDiagramTool(panel), {
+        edits: [{ oldText: "\n  style A fill:red,color:black", newText: "" }],
+      }),
+      /^Edited the flowchart-v2 diagram with 1 edit/,
+    );
+    assert.strictEqual(panel.current?.source, source);
+    assert.strictEqual(panel.current?.error, undefined);
+    assert.match(panel.describeForModel() ?? "", /watch/);
+  });
+
   test("leaves an edge whose number in linkStyle lines the page does not tell, saying how to color it", async () => {
     const source = "flowchart TD\n  A --> B";
     const { panel, webview } = await newFakePanel(
@@ -746,28 +788,6 @@ suite("diagram_style in the webview", function () {
         "A selected again");
     })()`);
     assert.ok(await within(selected), "A stays selected");
-  });
-
-  test("keeps the diagram and its marks when the edit fails to render", async () => {
-    await draw({ source: flowchart });
-    const marked = page.panel.annotate({
-      marks: [{ id: "A", kind: "problem", note: "slow" }],
-      dim: false,
-    });
-    assert.ok(marked.ok);
-    const outcome = await page.panel.editSource(
-      `${flowchart}\n  A --> -->`,
-      page.panel.revision,
-      cancellationSource().token,
-    );
-    assert.ok(!outcome.ok && outcome.kind === "invalid", JSON.stringify(outcome));
-    assert.match(outcome.error, /The previous diagram is kept\.$/);
-    assert.strictEqual(source(), flowchart);
-    assert.strictEqual(page.panel.current?.error, undefined);
-    assert.match(page.panel.describeForModel() ?? "", /slow/);
-    // The kept diagram is drawn again, and still takes styles.
-    assert.match(await style({ styles: [{ id: "A", fill: "red" }] }), /^Styled "A"/);
-    assert.match(page.panel.describeForModel() ?? "", /slow/);
   });
 
   test("leaves a diagram opened from Markdown to Apply or Write to, as other agents' changes", async () => {

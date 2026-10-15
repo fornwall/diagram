@@ -33,6 +33,7 @@ import {
   type Answer,
   changeResult,
   drawnWarnings,
+  editFailure,
   idList,
   leftOutLinks,
   linksWithoutNodes,
@@ -288,25 +289,8 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       );
     }
     if (!outcome.ok) {
-      if (outcome.kind === "unavailable") {
-        return {
-          paragraphs: [
-            `The ${noun} was edited, but the panel could not show it: ${outcome.error} This is not a problem with the edit, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown.`,
-            ...notes,
-          ],
-          drawn: outcome.revision,
-        };
-      }
-      return {
-        paragraphs: [
-          `The edited ${noun} failed to render with this error:`,
-          outcome.error,
-          errorContext(edited.source, outcome.error, source),
-          `The panel shows it with this error. Fix it with ${EDIT_TOOL}.`,
-          ...notes,
-        ],
-        drawn: outcome.revision,
-      };
+      const failure = editFailure(outcome, noun, "edited", edited.source, source);
+      return { paragraphs: [...failure, ...notes], drawn: outcome.revision };
     }
 
     const sentences = [

@@ -1,7 +1,7 @@
 // diagram_style: colors the items of the Mermaid diagram in the panel by editing its style lines.
 
 import type * as vscode from "vscode";
-import { throwIfCancelled } from "./cancellation";
+import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { documentName } from "./documentDiagram";
 import { type Resolved, resolvedList, severalList } from "./itemNames";
 import {
@@ -24,7 +24,7 @@ import {
   validateStyleInput,
 } from "./styleInput";
 import { plural, quoteAll } from "./text";
-import { type Answer, changeResult, drawnWarnings, idList } from "./tools";
+import { type Answer, changeResult, drawnWarnings, editFailure, idList } from "./tools";
 
 /** Ids that name the panel rather than an item, unless the diagram has an item by that id. */
 const BACKGROUND_IDS = /^(?:background|bg|canvas|panel|page|diagram|chart|theme)$/i;
@@ -221,16 +221,13 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
       };
     }
 
-    const outcome = await this.panel.editSource(edited, revision, token);
+    const outcome = await unlessCancelled(
+      () => this.panel.editByAgent({ source: edited }, revision),
+      token,
+    );
     if (!outcome.ok) {
-      return {
-        paragraphs: [
-          outcome.kind === "invalid"
-            ? `Nothing was styled, as the colored diagram failed to render: ${outcome.error}`
-            : `Nothing was styled, as the panel could not show the colored diagram: ${outcome.error}`,
-          ...notes,
-        ],
-      };
+      const failure = editFailure(outcome, "diagram", "colored", edited, source);
+      return { paragraphs: [...failure, ...notes], drawn: outcome.revision };
     }
     const colored = changed.filter((style) => !style.removed && !style.unstyled);
     const removed = changed.filter((style) => style.removed).map(({ id }) => id);

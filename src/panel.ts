@@ -1042,58 +1042,16 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Replaces the Mermaid source of the current revision with an agent's edit that keeps its items,
-   * such as one that colors them, keeping their selection and marks, and the previous source if the
-   * edit fails to render or the token is cancelled. As after an agent's replacement, Apply and Write
-   * to ask before writing it to the document the diagram was opened from; the user's edits stay
-   * theirs.
-   */
-  async editSource(
-    source: string,
-    revision: number,
-    token: vscode.CancellationToken,
-  ): Promise<Drawn> {
-    throwIfCancelled(token);
-    const state = this.state;
-    if (state?.language !== "mermaid" || revision !== this.shownRevision) {
-      throw new Error(
-        `The diagram changed. Read ${GET_STATE_TOOL} and retry with its current revision.`,
-      );
-    }
-    if (this.pendingRender) {
-      throw new Error("The diagram is still being drawn. Wait for the current render and retry.");
-    }
-    this.webview.reveal(true);
-    const outcome = await this.showOrKeep(
-      {
-        ...state,
-        source,
-        error: undefined,
-        userEdit: source === state.source ? state.userEdit : undefined,
-        document: state.document && { ...state.document, replaced: true },
-        origin: "tool",
-      },
-      {
-        table: undefined,
-        keepMarks: true,
-        pickReason: "The diagram changed before the user picked.",
-        token,
-      },
-    );
-    throwIfCancelled(token);
-    return outcome;
-  }
-
-  /**
-   * Shows an agent's edit of the current revision's source, as diagram_edit makes it, with its
-   * title, links and chart styling: like the user's Apply, a revision of the diagram that stays
-   * shown with its error if it fails to render, as the agent fixes it with a further edit, and
-   * whose items that are still drawn keep their selection and marks. As after an agent's
-   * replacement, Apply and Write to ask before writing it to the document the diagram was opened
-   * from.
+   * Shows an agent's edit of the current revision's source, as diagram_edit and diagram_style make
+   * it, with its title, links and chart styling if given: like the user's Apply, a revision of the
+   * diagram that stays shown with its error if it fails to render, as the agent fixes it with a
+   * further edit, and whose items that are still drawn keep their selection and marks. As after an
+   * agent's replacement, Apply and Write to ask before writing it to the document the diagram was
+   * opened from.
    */
   async editByAgent(
-    edit: Pick<DiagramState, "source" | "title" | "links" | "chartPresentation">,
+    edit: Pick<DiagramState, "source"> &
+      Partial<Pick<DiagramState, "title" | "links" | "chartPresentation">>,
     revision: number,
   ): Promise<Drawn> {
     const state = this.state;
