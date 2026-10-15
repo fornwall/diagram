@@ -42,6 +42,8 @@ interface Data {
   getName(index: number): string;
   /** What draws the item, unless it is drawn together with others or not at all. */
   getItemGraphicEl(index: number): Element | null | undefined;
+  /** The settings of an item: its own, over those of its series. */
+  getItemModel(index: number): { get(path: string[]): unknown };
 }
 
 interface ComponentModel {
@@ -850,7 +852,8 @@ function hiddenLabels(model: Model, base: JsonObject): string[] {
     let example: string | undefined;
     for (let index = 0; index < data.count(); index++) {
       const label = data.getItemGraphicEl(index)?.getTextContent?.();
-      if (!label) continue;
+      // Not of an item whose label the option hides, as for emphasis only.
+      if (!label || data.getItemModel(index).get(["label", "show"]) === false) continue;
       labelled++;
       if (label.ignore) {
         hidden++;

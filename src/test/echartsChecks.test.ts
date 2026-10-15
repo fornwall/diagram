@@ -968,6 +968,13 @@ suite("echartsChecks", function () {
       'series[0] labels only 31 of its 60 slices, leaving out the labels of the others, such as "Slice number 4", for lack of room: show fewer slices, as the largest and an "Other" that sums up the rest.',
     ]);
     assert.deepStrictEqual(warningsOf({ series: [{ type: "pie", data: slices(12) }] }), []);
+    // Not of a slice or part whose label the option hides.
+    for (const type of ["pie", "funnel"]) {
+      const data = slices(6).map((slice, index) =>
+        index === 5 ? { ...slice, label: { show: false } } : slice,
+      );
+      assert.deepStrictEqual(warningsOf({ series: [{ type, data }] }), [], type);
+    }
   });
 
   test("tells of a legend that pages its entries, or that covers other texts", () => {
