@@ -301,7 +301,7 @@ export function parseTable(text: string, format: DataFormat = "auto", si = false
   // Not trimmed, as leading spaces align the columns of command output.
   const table = tableFromRecords(json ? parseJson(content) : splitText(content, format), si);
   if (table.columns.length === 0) {
-    throw new Error("The data holds no values.");
+    throw new Error("The data holds no values: every row is empty.");
   }
   if (table.rows.length === 0) {
     const names = table.columns.slice(0, 5).map((column) => quote(column.name));

@@ -436,7 +436,13 @@ export function parseJson(text: string): Records {
   } catch (error) {
     value = parseJsonLines(text) ?? parseJsonStream(text);
     if (value === undefined) {
-      throw new Error(`The data is not valid JSON: ${syntaxError(error, text, 0)}.`);
+      const reason = syntaxError(error, text, 0);
+      throw new Error(
+        reason === "Unexpected end of JSON input"
+          ? "The data is not valid JSON: it ends before its value is closed, as when head cuts " +
+              "it short. Give the whole value."
+          : `The data is not valid JSON: ${reason}.`,
+      );
     }
   }
   const unwrapped = unwrap(value);

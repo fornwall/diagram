@@ -2666,7 +2666,15 @@ suite("data", () => {
     );
     assert.throws(() => parseTable("[]"), /array is empty/);
     assert.throws(() => parseTable('{"data": []}'), /array is empty/);
-    assert.throws(() => parseTable("[{}]"), /holds no values/);
+    assert.throws(
+      () => parseTable("[{}]"),
+      /^Error: The data holds no values: every row is empty\.$/,
+    );
+    assert.throws(() => parseTable("---\n---"), /holds no values/);
+    assert.throws(
+      () => parseTable('[{"a": 1}, {"a": 2}, {"a":'),
+      /^Error: The data is not valid JSON: it ends before its value is closed, as when head cuts it short\. Give the whole value\.$/,
+    );
     assert.throws(
       () => parseTable("| a | b |\n|---|---|"),
       /^Error: The data has a header \("a", "b"\) but no rows below it\.$/,
