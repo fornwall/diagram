@@ -53,7 +53,7 @@ import {
 import { use } from "echarts/core";
 import { AxisBreak, LabelLayout, LegacyGridContainLabel, ScatterJitter } from "echarts/features";
 import { SVGRenderer } from "echarts/renderers";
-import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
+import { ensureFontMeasureInfo, getWidth, measureCharWidth } from "zrender/lib/contain/text.js";
 
 use([
   BarChart,
@@ -120,4 +120,12 @@ export function textWidth(text: string, font: string): number {
     sum += measureCharWidth(measures, text.charCodeAt(index));
   }
   return sum;
+}
+
+/**
+ * The width of a text in a CSS font as drawn, as ECharts measures it to place it: of the
+ * library's own measures, which it keeps for each font and text.
+ */
+export function drawnWidth(text: string, font: string): number {
+  return getWidth(text, font);
 }

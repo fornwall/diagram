@@ -543,6 +543,7 @@ export class EChartsRenderer implements Renderer {
       colors: this.theme.colors,
       reducedMotion,
       textWidth: echarts.textWidth,
+      drawnWidth: echarts.drawnWidth,
     };
     const layout = layoutOption(this.option ?? {}, context);
     // Many charts are laid out the same for another size, such as one that only fills the space,

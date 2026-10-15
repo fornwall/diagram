@@ -2,7 +2,7 @@ import * as assert from "node:assert";
 import { init as initECharts, registerAction } from "echarts";
 import type * as ECharts from "echarts/core";
 import { type ChartItems, modelOf } from "../webview/echartsItems";
-import { textWidth } from "../webview/echartsLibrary";
+import { drawnWidth, textWidth } from "../webview/echartsLibrary";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { afterTest } from "./afterTest";
 import { item, itemsOf, withChart } from "./echartsModel";
@@ -43,6 +43,7 @@ function drawnRenderer(option: Record<string, unknown>) {
         return chart;
       },
       textWidth,
+      drawnWidth,
     },
     container,
     option,
@@ -451,7 +452,7 @@ suite("echartsRenderer", () => {
     const [stuck, fresh] = [ssr(), ssr()];
     const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
     Object.assign(renderer, {
-      echarts: { textWidth },
+      echarts: { textWidth, drawnWidth },
       chart: stuck,
       createChart: () => fresh,
       container: { clientWidth: 400, clientHeight: 300 },

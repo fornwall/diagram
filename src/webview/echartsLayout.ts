@@ -27,8 +27,16 @@ type Insets = Record<Side, number>;
 interface Font {
   /** As CSS, as "bold 12px sans-serif". */
   css: string;
-  /** The width of a text, as ECharts measures it to break it onto lines. */
+  /**
+   * The width of a text as drawn, as ECharts measures it to place it, to tell whether labels fit
+   * across an axis or a text within a width.
+   */
   width(text: string): number;
+  /**
+   * The width of a text as ECharts measures it to break it onto lines, or to tell where to cut it
+   * short: character by character, any but ASCII as wide as one of Chinese.
+   */
+  breakWidth(text: string): number;
 }
 
 interface Size {
@@ -119,6 +127,8 @@ export interface LayoutContext {
    * library that draws the chart.
    */
   textWidth(text: string, font: string): number;
+  /** The width of a text in a CSS font as drawn, as the library that draws the chart measures it. */
+  drawnWidth(text: string, font: string): number;
 }
 
 const needsCopy = (value: unknown) => Array.isArray(value) || isPlainObject(value);
@@ -284,7 +294,11 @@ function layOutAround(
       const css = [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
         .filter((value) => value != null && value !== "")
         .join(" ");
-      return { css, width: (text) => context.textWidth(text, css) };
+      return {
+        css,
+        width: (text) => context.drawnWidth(text, css),
+        breakWidth: (text) => context.textWidth(text, css),
+      };
     };
     const themed = { fontFamily: context.colors.fontFamily, fontSize: context.colors.fontSize };
     const size = { width, height, compact, font, themed };
@@ -925,7 +939,7 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
             (axis.name ? AXIS_NAME_HEIGHT : 0)) /
           axis.data.length;
     const lines = Math.floor((rowHeight - 4) / LABEL_LINE_HEIGHT);
-    if (lines >= 2 && wrapsInto(axis.data, maxWidth, lines, font.width)) {
+    if (lines >= 2 && wrapsInto(axis.data, maxWidth, lines, font.breakWidth)) {
       axis.axisLabel = {
         width: maxWidth,
         overflow: "break",
@@ -1036,7 +1050,7 @@ function dropSharedStart(
     return undefined;
   }
   // As ECharts cuts them short, before an ellipsis.
-  const cut = (text: string) => startOf(text, room - font.width("…"), font.width);
+  const cut = (text: string) => startOf(text, room - font.width("…"), font.breakWidth);
   if (new Set(texts.map(cut)).size === new Set(texts).size) return undefined;
   let shared = texts[0] ?? "";
   for (const text of texts) {
@@ -1507,7 +1521,7 @@ function labelWidth(label: JsonObject, size: Size): (text: string) => number {
   const { template } = labelTemplate(label);
   const name = /\{(\w+)\|[^{}]*\{b\}/.exec(template)?.[1];
   const rich = isPlainObject(label.rich) && name !== undefined ? label.rich[name] : undefined;
-  return size.font(...(isPlainObject(rich) ? [rich, label] : [label])).width;
+  return size.font(...(isPlainObject(rich) ? [rich, label] : [label])).breakWidth;
 }
 
 /** Hides the labels of a pie's slices and their lines. Returns the label settings. */

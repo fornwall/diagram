@@ -702,6 +702,37 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("keeps category labels in Cyrillic across where the browser draws them narrow enough", async () => {
+    // ECharts measures these as wide as the browser draws them, apart from where it breaks them
+    // onto lines, which it measures each character of but ASCII as wide as one of Chinese.
+    const cities = ["Москва", "Казань", "Самара", "Пермь", "Уфа", "Омск"];
+    await renderChart({
+      xAxis: { type: "category", data: cities },
+      yAxis: {},
+      series: [{ type: "bar", data: [1, 2, 3, 4, 5, 6] }],
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${CHART_FITTED}
+        ${ROTATED}
+        const canvas = document.getElementById("canvas");
+        Object.assign(canvas.style, {width: "600px", flex: "none"});
+        try {
+          await chartFitted();
+          await settled();
+          const cities = new Set(${JSON.stringify(cities)});
+          const drawn = [...document.querySelectorAll("#chart svg text")].filter((text) =>
+            cities.has(text.textContent));
+          return {rotated: rotated(), drawn: drawn.length};
+        } finally {
+          Object.assign(canvas.style, {width: "", flex: ""});
+          await chartFitted();
+        }
+      })()`),
+      { rotated: false, drawn: 6 },
+    );
+  });
+
   test("lays a chart out for a new size at once after an image was taken while resizing", async () => {
     await draw({ language: "echarts", source: ROTATING_CHART });
     assert.strictEqual(
