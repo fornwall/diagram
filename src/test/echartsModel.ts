@@ -70,6 +70,10 @@ export function layout(option: JsonObject, context: Partial<LayoutContext> = {})
   });
 }
 
+/** The width of a text in the test colors' font, of its size or another, as ECharts measures it. */
+export const widthOf = (text: string, fontSize = testColors.fontSize) =>
+  textWidth(text, `${fontSize}px ${testColors.fontFamily}`);
+
 /** An item as ECharts' actions, such as highlight, name it. */
 export const item = (dataIndex: number, seriesIndex = 0, dataType?: string) => ({
   seriesIndex,
