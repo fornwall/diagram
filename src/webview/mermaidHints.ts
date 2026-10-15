@@ -229,23 +229,33 @@ const unquotedLabel: Rule = ({ type, line, column }) => {
   if (node) {
     const [opened, id, open] = node as unknown as [string, string, string];
     const from = node.index + opened.length;
-    if (!/<?--|==|-\.|~~~/.test(line.slice(from, column))) {
-      const closers = SHAPES.find(([shape]) => shape === open)?.[1] ?? [];
-      // The label ends with the closing bracket that balances the opening ones and those in it.
-      const last = closers[0]?.at(-1) ?? "";
-      let depth = 0;
-      let end = from - open.length;
-      for (; end < line.length; end++) {
-        if (line[end] === OPENING[last]) depth++;
-        else if (line[end] === last && --depth <= 0) break;
-      }
-      end -= (closers[0]?.length ?? 1) - 1;
-      const close = closers.find((closer) => line.startsWith(closer, end));
-      const label = close && end >= column ? line.slice(from, end) : undefined;
-      if (label && (block || SPECIAL.test(label)) && !/^\s*".*"\s*$/.test(label)) {
-        const quotes = label.includes('"') ? ", writing its quotes as #quot;" : "";
-        return `Put the label in double quotes${quotes}: ${id}${open}"${label.replace(/"/g, "#quot;")}"${close}.`;
-      }
+    const closers = SHAPES.find(([shape]) => shape === open)?.[1] ?? [];
+    // The label ends with the closing bracket that balances the opening ones and those in it,
+    // outside of quotes.
+    const last = closers[0]?.at(-1) ?? "";
+    let depth = 0;
+    let quoted = false;
+    let end = from - open.length;
+    for (; end < line.length; end++) {
+      if (line[end] === '"') quoted = !quoted;
+      else if (quoted) continue;
+      else if (line[end] === OPENING[last]) depth++;
+      else if (line[end] === last && --depth <= 0) break;
+    }
+    const linked = /<?--|==|-\.|~~~/.test(line.slice(from, column));
+    if (end >= line.length && column >= from) {
+      const text = line
+        .slice(from)
+        .replace(/\s*(?:<?--|==|-\.|~~~).*$/, "")
+        .trim();
+      return `The label of ${id} is not closed: close it with "${closers[0]}" after its text, as in ${id}${open}"${text}"${closers[0]}.`;
+    }
+    end -= (closers[0]?.length ?? 1) - 1;
+    const close = closers.find((closer) => line.startsWith(closer, end));
+    const label = close && end >= column && !linked ? line.slice(from, end) : undefined;
+    if (label && (block || SPECIAL.test(label)) && !/^\s*".*"\s*$/.test(label)) {
+      const quotes = label.includes('"') ? ", writing its quotes as #quot;" : "";
+      return `Put the label in double quotes${quotes}: ${id}${open}"${label.replace(/"/g, "#quot;")}"${close}.`;
     }
   }
   // An edge label between pipes.
@@ -262,6 +272,32 @@ const unquotedLabel: Rule = ({ type, line, column }) => {
     }
   }
   return undefined;
+};
+
+/** A link's label after the node it leads to, as a sequence message's text: "A --> B: yes". */
+const colonLabel: Rule = ({ type, line, column }) => {
+  const link = FLOWCHART.test(type)
+    ? /^(\s*\S.*?)\s*(<?-->|---|-\.->|-\.-|==>|===)\s*([\w-]+):\s*(\S.*)$/.exec(line)
+    : null;
+  if (!link || column < line.length - (link[4] as string).length) return undefined;
+  return `A link's label goes between pipes after the arrow: ${(link[1] as string).trim()} ${link[2]}|${link[4]}| ${link[3]}.`;
+};
+
+/** A link at the end of the diagram that leads to no node. */
+const danglingLink: Rule = ({ type, before, atEnd }) => {
+  const link =
+    FLOWCHART.test(type) && atEnd
+      ? /([\w-]+)\s*(<?-->|---|-\.->|-\.-|==>|===|~~~)\s*(?:\|[^|]*\|)?\s*$/.exec(before)
+      : null;
+  return link
+    ? `The link from ${link[1]} leads to no node: add the node it leads to after the ${link[2]}, or remove the link.`
+    : undefined;
+};
+
+/** A subgraph's direction with a colon. */
+const directionColon: Rule = ({ type, line }) => {
+  const direction = FLOWCHART.test(type) ? /^\s*direction\s*:\s*(\w+)/.exec(line) : null;
+  return direction ? `Write "direction ${direction[1]}", without a colon.` : undefined;
 };
 
 /** Something between an edge's label and the node it leads to, as in "-->|yes|> B". */
@@ -331,6 +367,26 @@ const sequenceColon: Rule = ({ type, line, expected }) => {
   const note = /^\s*(note\s+(?:left of|right of|over)\s+[^\s:]+)\s+(\S.*)$/i.exec(line);
   if (note) return `Put a colon before the note's text: ${note[1]}: ${note[2]}.`;
   return `A message takes a colon before its text: ${line.trim()}: text.`;
+};
+
+/** A note that names no side of a participant to go on, as in "Note A: text". */
+const notePlace: Rule = ({ type, line }) => {
+  const note =
+    type === "sequence"
+      ? /^\s*note\s+(?!over\b|left of\b|right of\b)([^\s:]+)\s*:\s*(.*)$/i.exec(line)
+      : null;
+  return note
+    ? `A note goes over, left of or right of a participant: Note right of ${note[1]}: ${note[2]}.`
+    : undefined;
+};
+
+/** A box of participants left open before the messages, which only participants can follow. */
+const openBox: Rule = ({ type, normalized, lineNumber, expected }) => {
+  if (type !== "sequence" || !expected?.includes("participant")) return undefined;
+  const open = openBlocks(normalized, blocksOf(type) as Blocks, lineNumber)?.at(-1);
+  return open !== undefined && /^\s*box\b/.test(normalized.split("\n")[open - 1] as string)
+    ? `The "box" on line ${open} is not closed: add a line "end" after its participants.`
+    : undefined;
 };
 
 /** An arrow of another language in a sequence diagram, such as => or <-. */
@@ -464,9 +520,15 @@ const ER_RIGHT = new Set(["||", "o|", "|{", "o{"]);
 /** A relationship of an ER diagram: its entities, cardinalities and label. */
 const ER_RELATIONSHIP = /^\s*("[^"]*"|[\w-]+)\s+(\S+?)(--|\.\.)(\S+)\s+("[^"]*"|[\w-]+)(\s*:.*)?$/;
 
-const erCardinality: Rule = ({ type, line, expected }) => {
-  const relation = ER_RELATIONSHIP.exec(line);
-  if (type !== "er" || !expected?.includes("ZERO_OR_MORE") || !relation) return undefined;
+/** A relationship of an ER diagram without cardinalities. */
+const ER_BARE_RELATIONSHIP = /^\s*("[^"]*"|[\w-]+)\s+()(--|\.\.)()\s+("[^"]*"|[\w-]+)(\s*:.*)?$/;
+
+const erCardinality: Rule = ({ type, line, expected, after }) => {
+  if (type !== "er") return undefined;
+  const relation =
+    (expected?.includes("ZERO_OR_MORE") ? ER_RELATIONSHIP.exec(line) : null) ??
+    (/^(?:--|\.\.)\s/.test(after) ? ER_BARE_RELATIONSHIP.exec(line) : null);
+  if (!relation) return undefined;
   const [, from, left = "", line_, right = "", to, label] = relation;
   const l = ER_LEFT.has(left) ? left : LEFT_CARDINALITY[left];
   const r = ER_RIGHT.has(right) ? right : RIGHT_CARDINALITY[right];
@@ -557,6 +619,115 @@ const sankeyQuote: Rule = ({ type, line, before, after }) => {
     : `Leave out the indentation of a line that starts with a quoted field: ${line.trim()}`;
 };
 
+/** A flow written with an arrow or a colon, rather than as source,target,value. */
+const sankeyFlow: Rule = ({ type, line }) => {
+  const flow =
+    type === "sankey"
+      ? /^\s*([^,:\n]+?)\s*(?:-+>|→|,)\s*([^,:\n]+?)\s*(?::|,)?\s*([-+]?[\d.]+)?\s*$/.exec(line)
+      : null;
+  if (!flow || line.split(",").length > 2) return undefined;
+  return `A sankey diagram lists its flows as source,target,value: ${flow[1]},${flow[2]},${flow[3] ?? 10}.`;
+};
+
+/** A packet field named without quotes. */
+const packetName: Rule = ({ type, line, after }) => {
+  const field =
+    type === "packet" ? /^\s*(\+?\d+(?:\s*-\s*\d+)?)\s*:\s*([^"\n]+?)\s*$/.exec(line) : null;
+  return field && after.startsWith(field[2] as string)
+    ? `Put the field's name in double quotes: ${field[1]}: "${field[2]}".`
+    : undefined;
+};
+
+/** A treemap section or leaf named without quotes. */
+const treemapName: Rule = ({ type, line, expected }) => {
+  const item =
+    type === "treemap" && expected?.includes("STRING2")
+      ? /^\s*([^":\n]+?)\s*(?::\s*(\S+))?\s*$/.exec(line)
+      : null;
+  return item
+    ? `Put the name in double quotes: "${item[1]}"${item[2] ? `: ${item[2]}` : ""}.`
+    : undefined;
+};
+
+/** A radar curve with its values in brackets, where its label goes. */
+const radarValues: Rule = ({ type, line, expected }) => {
+  const curve =
+    type === "radar" && expected?.includes("STRING")
+      ? /^\s*curve\s+(\w+(?:\s*\[\s*"[^"]*"\s*\])?)\s*\[\s*([-\d.,\s]*\d)\s*\]\s*$/.exec(line)
+      : null;
+  return curve ? `A curve's values go in braces: curve ${curve[1]}{${curve[2]}}.` : undefined;
+};
+
+/** A quadrant chart point with coordinates beyond 1, such as percentages. */
+const quadrantPoint: Rule = ({ type, line }) => {
+  const point = type === "quadrantChart" ? /^(\s*[^:\n]+:\s*)\[([^\]]*)\]/.exec(line) : null;
+  if (!point) return undefined;
+  const values = (point[2] as string).split(",").map((value) => value.trim());
+  // Percentages, with or without the sign: whole numbers up to 100.
+  const percent = (value: string) => value.endsWith("%") || Number(value) > 1;
+  const valid = (value: string) =>
+    percent(value)
+      ? /^\d+%?$/.test(value) && Number.parseInt(value) <= 100
+      : /^[\d.]+$/.test(value);
+  if (!values.some(percent) || !values.every(valid)) return undefined;
+  const fixed = values.map((value) =>
+    percent(value) ? String(Number.parseInt(value) / 100) : value,
+  );
+  return `Point coordinates go from 0 to 1, across and up the chart: ${(point[1] as string).trim()} [${fixed.join(", ")}].`;
+};
+
+/** Arrows of other diagrams, and parentheses around use case names, in a use case diagram. */
+const usecaseRelation: Rule = ({ type, line }) => {
+  if (type !== "usecase") return undefined;
+  const arrow = /(?<![-<.ox])(->|=>|<-)(?![->])/.exec(line);
+  if (arrow) {
+    const fixed = line.replace(arrow[0], arrow[0] === "<-" ? "<--" : "-->");
+    return `Write relationships as -->, <--, --, --o, --x, --|> or ..>: ${fixed.trim()}.`;
+  }
+  const parens = /\(\s*([^()]*?)\s*\)/.exec(line);
+  if (!parens || /^\s*(?:actor|usecase)\b/.test(line)) return undefined;
+  const name = /^[\w-]+$/.test(parens[1] as string) ? (parens[1] as string) : `"${parens[1]}"`;
+  return `A use case goes by its name, without parentheses: ${line.replace(parens[0], name).trim()}.`;
+};
+
+/** The statements of C4 diagrams, each a keyword and its arguments in parentheses. */
+const C4_STATEMENT =
+  /^[^\S\n]*((?:Person|System|Container|Component|Enterprise_Boundary|System_Boundary|Container_Boundary|Boundary|Deployment_Node|Node|Rel|BiRel)\w*)\(([^\n]*)$/gm;
+
+/**
+ * The first statement of a C4 diagram with an argument after its aliases that is not quoted,
+ * which Mermaid reads up to the next comma, the closing parenthesis and the lines after it
+ * included: where it is, and the statement with its labels in quotes.
+ */
+export function c4UnquotedArguments(normalized: string): { at: number; fixed: string } | undefined {
+  for (const { 1: keyword = "", 2: rest = "", index } of normalized.matchAll(C4_STATEMENT)) {
+    const aliases = /^(?:Rel|BiRel)/.test(keyword) ? 2 : 1;
+    const args = rest.replace(/\)\s*$/, "").split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+    const quoted = (arg: string, i: number) => i < aliases || /^\s*(?:["$]|$)/.test(arg);
+    if (args.every(quoted)) continue;
+    const fixed = args.map((arg, i) => (quoted(arg, i) ? arg.trim() : `"${arg.trim()}"`));
+    return { at: index, fixed: `${keyword}(${fixed.join(", ")})` };
+  }
+  return undefined;
+}
+
+/** A C4 label without quotes, which takes in the rest of the statement. */
+const c4Quotes: Rule = ({ type, normalized }) => {
+  const unquoted = type === "c4" ? c4UnquotedArguments(normalized) : undefined;
+  return unquoted ? `Put the labels in double quotes: ${unquoted.fixed}.` : undefined;
+};
+
+/** The range of an XY chart axis written without an arrow. */
+const xyAxisRange: Rule = ({ type, line, expected }) => {
+  const range =
+    type === "xychart" && expected?.includes("ARROW_DELIMITER")
+      ? /^(\s*[xy]-axis\b.*?[\d.])\s*(?:-+|to|\.\.+)\s*([\d.].*)$/.exec(line)
+      : null;
+  return range
+    ? `Write the range of an axis with an arrow: ${(range[1] as string).trim()} --> ${range[2]}.`
+    : undefined;
+};
+
 /** Git commands rather than those of a git graph. */
 const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   if (type !== "gitGraph") return undefined;
@@ -566,6 +737,11 @@ const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   }
   const git = /^\s*git\s+(\w.*)$/.exec(line);
   if (git) return `Leave out "git": ${git[1]}.`;
+  const message = /^\s*commit\b.*?\b(message)\s*:/.exec(line);
+  if (message && after.startsWith(message[1] as string)) {
+    const fixed = line.replace(/\s*\bmessage\s*:/, " id:").replace(/\s+/g, " ");
+    return `A commit shows its id, not a message: ${fixed.trim()}.`;
+  }
   if (/^--?[a-z]/.test(after)) {
     return `Leave out git's options: ${line.replace(/\s+--?[a-z][\w-]*(?:[= ]\S+)?/g, "").trim()}.`;
   }
@@ -584,13 +760,18 @@ const RULES: Rule[] = [
   flowchartDirection,
   keywordId,
   unquotedLabel,
+  colonLabel,
+  danglingLink,
+  directionColon,
   afterEdgeLabel,
   flowchartArrow,
   spacedId,
   sequenceKeyword,
   sequenceSemicolon,
+  notePlace,
   sequenceColon,
   sequenceArrow,
+  openBox,
   classGenerics,
   classCardinality,
   classArrow,
@@ -606,5 +787,13 @@ const RULES: Rule[] = [
   pieSlice,
   architectureEdge,
   sankeyQuote,
+  sankeyFlow,
+  packetName,
+  treemapName,
+  radarValues,
+  quadrantPoint,
+  usecaseRelation,
+  c4Quotes,
+  xyAxisRange,
   gitCommand,
 ];

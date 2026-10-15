@@ -2,7 +2,7 @@
 
 import { DIRECTIVE, frontMatterEnd } from "../mermaidSyntax";
 import { editDistance, joinWords, lineAndColumn, quote } from "../text";
-import { syntaxHint } from "./mermaidHints";
+import { c4UnquotedArguments, syntaxHint } from "./mermaidHints";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
 
@@ -623,7 +623,8 @@ const UNPLACED: [
       ];
     },
   ],
-  // A Gantt chart takes a line with a colon for a task, such as "title: Plan", and fails on its dates.
+  // A Gantt chart takes a line with a colon for a task, such as "title: Plan", and fails on its
+  // dates; a task of a duration alone starts where the task before it ends, and the first has none.
   [
     /^Cannot read properties of undefined \(reading 'endTime'\)$/,
     (_, normalized) => {
@@ -636,7 +637,23 @@ const UNPLACED: [
           : /^\s*(\w+)\s*:\s*(.*)/.exec(normalized.slice(at).split("\n")[0] ?? "");
       return statement
         ? [at, `"${statement[1]}" takes no colon: write "${statement[1]} ${statement[2]}".`]
-        : undefined;
+        : firstTaskWithoutStart(normalized);
+    },
+  ],
+  // The C4 lexer takes a label that is not quoted up to the next comma, the closing parenthesis
+  // and the lines after it included, which leaves the element out.
+  [
+    /^C4 rel "(.*?)" -> "(.*?)" references an unknown shape or boundary$/,
+    ([, from = "", to = ""], normalized) => {
+      const unquoted = c4UnquotedArguments(normalized);
+      if (unquoted) return [unquoted.at, `Put the labels in double quotes: ${unquoted.fixed}.`];
+      const declared = (alias: string) =>
+        find(normalized, `^[^\\S\\n]*\\w+\\([^\\S\\n]*${word(alias)}[^\\S\\n]*,`) !== undefined;
+      const missing = [from, to].find((alias) => !declared(alias)) ?? from;
+      return [
+        find(normalized, `^[^\\S\\n]*(?:Bi)?Rel\\w*\\([^\\n]*${word(missing)}`),
+        `"${missing}" is not an element or boundary of the diagram: declare it before the relationship, as in Person(${missing}, "Label").`,
+      ];
     },
   ],
   // A class diagram annotates a class declared before the annotation, and fails on another.
@@ -678,6 +695,33 @@ const UNPLACED: [
     },
   ],
 ];
+
+/** The tags of a Gantt task, before its data. */
+const TASK_TAGS = /^(?:\s*(?:active|done|crit|milestone|vert)\s*,)*/;
+
+/**
+ * The first task of a Gantt chart, if it has a duration or an end alone, with which Mermaid starts
+ * a task where the one before it ends: where it is, and the error for there being none before.
+ */
+function firstTaskWithoutStart(normalized: string): [number | undefined, string] | undefined {
+  // Keywords take no colon but accTitle and accDescr; a click's URL has one after "href".
+  const at = find(normalized, "^[^\\S\\n]*(?!accTitle|accDescr|click\\b)[^:\\n]*\\S[^\\S\\n]*:");
+  const task =
+    at === undefined ? null : /^\s*(.*?)\s*:(.*)$/.exec(normalized.slice(at).split("\n")[0] ?? "");
+  if (!task) return undefined;
+  const [, name = "", data = ""] = task;
+  const fields = data.replace(TASK_TAGS, "").split(",");
+  if (fields.length !== 1) return undefined;
+  const format = /^[^\S\n]*dateFormat[^\S\n]+(.*\S)/m.exec(normalized)?.[1] ?? "YYYY-MM-DD";
+  const example =
+    format === "YYYY-MM-DD"
+      ? `as in "${name} :2024-01-15, ${fields[0]?.trim()}"`
+      : `as the dateFormat says, ${format}, before its ${fields[0]?.trim()}`;
+  return [
+    at,
+    `Task ${quote(name, 40)} has no start date, and no task before it to start after: give it one, ${example}.`,
+  ];
+}
 
 /**
  * Where the first packet field is that does not start where the one before ends, ends before it

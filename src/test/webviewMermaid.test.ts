@@ -1428,7 +1428,7 @@ suite("Mermaid in the webview", function () {
         "Error on line 3: No such shape: nosuch.",
         'Error on line 4: A mind map has one root: indent "B" below it.',
         'Error on line 4: "Bob" is deactivated, but it is not active.',
-        'Error on line 3: C4 rel "u" -> "s" references an unknown shape or boundary',
+        'Error on line 3: "s" is not an element or boundary of the diagram: declare it before the relationship, as in Person(s, "Label").',
         'The cose-bilkent layout only lays out mind maps: set "layout" to "dagre" or "elk" instead.',
         'Error on line 6: Two time frames are numbered "01": give each its own number.',
         ...[5, 6].map(

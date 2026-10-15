@@ -502,6 +502,148 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
     fixed:
       'gitGraph\n  commit\n  commit id: "first"\n  branch dev\n  commit\n  checkout main\n  merge dev',
   },
+  {
+    broken: 'gitGraph\n  commit message: "init"',
+    error:
+      'Parse error on line 2, column 10: unexpected "message". A commit shows its id, not a message: commit id: "init".',
+    fixed: 'gitGraph\n  commit id: "init"',
+  },
+  // Flowchart labels left open, links labeled as messages, and links that lead nowhere.
+  {
+    broken: "flowchart TD\n  A[Start --> B[End]",
+    error:
+      'Parse error on line 2, column 16: unexpected "[". The label of A is not closed: close it with "]" after its text, as in A["Start"].',
+    fixed: 'flowchart TD\n  A["Start"] --> B[End]',
+  },
+  {
+    broken: "flowchart TD\n  A --> B(End",
+    error:
+      'Parse error on line 2, column 14: unexpected end of the diagram. The label of B is not closed: close it with ")" after its text, as in B("End").',
+    fixed: 'flowchart TD\n  A --> B("End")',
+  },
+  // A bracket in quotes does not open a label.
+  {
+    broken: 'flowchart TD\n  A["[x"] -> B',
+    error:
+      'Parse error on line 2, column 11: unexpected "-". Write links as -->, ---, -.->, ==> or ~~~: A["[x"] --> B.',
+    fixed: 'flowchart TD\n  A["[x"] --> B',
+  },
+  {
+    broken: "flowchart TD\n  A --> B: yes",
+    error:
+      'Parse error on line 2, column 12: unexpected "yes". A link\'s label goes between pipes after the arrow: A -->|yes| B.',
+    fixed: "flowchart TD\n  A -->|yes| B",
+  },
+  {
+    broken: "flowchart TD\n  A -->|x| B\n  B -->|yes|",
+    error:
+      "Parse error on line 3, column 13: unexpected end of the diagram. The link from B leads to no node: add the node it leads to after the -->, or remove the link.",
+    fixed: "flowchart TD\n  A -->|x| B\n  B -->|yes| C",
+  },
+  {
+    broken: "flowchart TD\n  subgraph S\n    direction: LR\n    A --> B\n  end",
+    error:
+      'Parse error on line 3, column 16: unexpected "LR". Write "direction LR", without a colon.',
+    fixed: "flowchart TD\n  subgraph S\n    direction LR\n    A --> B\n  end",
+  },
+  // Sequence diagram notes and boxes.
+  {
+    broken: "sequenceDiagram\n  A->>B: hi\n  Note A: hello",
+    error:
+      'Parse error on line 3, column 8: unexpected "A". A note goes over, left of or right of a participant: Note right of A: hello.',
+    fixed: "sequenceDiagram\n  A->>B: hi\n  Note right of A: hello",
+  },
+  {
+    broken: "sequenceDiagram\n  box Group\n    participant A\n  A->>B: hi",
+    error:
+      'Parse error on line 4, column 3: unexpected "A". The "box" on line 2 is not closed: add a line "end" after its participants.',
+    fixed: "sequenceDiagram\n  box Group\n    participant A\n  end\n  A->>B: hi",
+  },
+  // ER relationships without cardinalities.
+  {
+    broken: "erDiagram\n  A -- B : has",
+    error:
+      'Parse error on line 2, column 5: unexpected "--". Write cardinalities as ||, |o, }| or }o left of -- or .., and ||, o|, |{ or o{ right of it: A ||--o{ B : has.',
+    fixed: "erDiagram\n  A ||--o{ B : has",
+  },
+  // Sankey flows written otherwise than as source,target,value.
+  {
+    broken: "sankey-beta\n  Solar power,Grid,10\n  Grid --> Home: 5",
+    error:
+      "Parse error on line 3, column 19: unexpected end of the diagram. A sankey diagram lists its flows as source,target,value: Grid,Home,5.",
+    fixed: "sankey-beta\n  Solar power,Grid,10\n  Grid,Home,5",
+  },
+  // Names without quotes.
+  {
+    broken: "packet-beta\n  0-7: Source port",
+    error:
+      'Parse error on line 2, column 8: unexpected "Source". Put the field\'s name in double quotes: 0-7: "Source port".',
+    fixed: 'packet-beta\n  0-7: "Source port"',
+  },
+  {
+    broken: "treemap-beta\n  Root\n    Leaf: 10",
+    error:
+      'Parse error on line 2, column 3: unexpected "Root". Put the name in double quotes: "Root".\nParse error on line 3, column 5: unexpected "Leaf". Put the name in double quotes: "Leaf": 10.',
+    fixed: 'treemap-beta\n  "Root"\n    "Leaf": 10',
+  },
+  {
+    broken: "radar-beta\n  axis a, b, c\n  curve x [1, 2, 3]",
+    error:
+      'Parse error on line 3, column 12: unexpected "1". A curve\'s values go in braces: curve x{1, 2, 3}.',
+    fixed: "radar-beta\n  axis a, b, c\n  curve x{1, 2, 3}",
+  },
+  // Quadrant chart points in percentages.
+  {
+    broken: "quadrantChart\n  x-axis Low --> High\n  Thing: [30, 80%]",
+    error:
+      'Parse error on line 3, column 11: unexpected "3". Point coordinates go from 0 to 1, across and up the chart: Thing: [0.3, 0.8].',
+    fixed: "quadrantChart\n  x-axis Low --> High\n  Thing: [0.3, 0.8]",
+  },
+  // Use case relationships.
+  {
+    broken: "usecase-beta\n  actor A\n  A -> Login",
+    error:
+      'Parse error on line 3, column 3: unexpected "A". Write relationships as -->, <--, --, --o, --x, --|> or ..>: A --> Login.',
+    fixed: "usecase-beta\n  actor A\n  A --> Login",
+  },
+  {
+    broken: "usecase-beta\n  actor A\n  A --> (Place order)",
+    error:
+      'Parse error on line 3, column 9: unexpected "(". A use case goes by its name, without parentheses: A --> "Place order".',
+    fixed: 'usecase-beta\n  actor A\n  A --> "Place order"',
+  },
+  // C4 labels without quotes, which take in the rest of the statement.
+  {
+    broken: 'C4Context\n  Person(u, User, A user)\n  System(s, "Sys")\n  Rel(u, s, "uses")',
+    error: 'Error on line 2: Put the labels in double quotes: Person(u, "User", "A user").',
+    fixed: 'C4Context\n  Person(u, "User", "A user")\n  System(s, "Sys")\n  Rel(u, s, "uses")',
+  },
+  {
+    broken: 'C4Context\n  Person(u, "User")\n  System(s, "Sys")\n  Rel(u, s, uses)',
+    error:
+      'Parse error on line 4, column 18: unexpected end of the diagram. Put the labels in double quotes: Rel(u, s, "uses").',
+    fixed: 'C4Context\n  Person(u, "User")\n  System(s, "Sys")\n  Rel(u, s, "uses")',
+  },
+  // XY chart axis ranges.
+  {
+    broken: "xychart-beta\n  x-axis [jan, feb]\n  y-axis 0 - 100\n  bar [1, 2]",
+    error:
+      'Parse error on line 3, column 12: unexpected "-". Write the range of an axis with an arrow: y-axis 0 --> 100.',
+    fixed: "xychart-beta\n  x-axis [jan, feb]\n  y-axis 0 --> 100\n  bar [1, 2]",
+  },
+  // Gantt tasks that start where the task before ends, which the first cannot.
+  {
+    broken: "gantt\n  dateFormat YYYY-MM-DD\n  section S\n  Task :3d",
+    error:
+      'Error on line 4: Task "Task" has no start date, and no task before it to start after: give it one, as in "Task :2024-01-15, 3d".',
+    fixed: "gantt\n  dateFormat YYYY-MM-DD\n  section S\n  Task :2024-01-15, 3d",
+  },
+  {
+    broken: "gantt\n  dateFormat DD/MM/YYYY\n  section S\n  Task : milestone, 15/01/2024",
+    error:
+      'Error on line 4: Task "Task" has no start date, and no task before it to start after: give it one, as the dateFormat says, DD/MM/YYYY, before its 15/01/2024.',
+    fixed: "gantt\n  dateFormat DD/MM/YYYY\n  section S\n  Task : milestone, 15/01/2024, 0d",
+  },
 ];
 
 suite("Mermaid errors in the webview", function () {
