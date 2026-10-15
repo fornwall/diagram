@@ -431,6 +431,33 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("labels a pie by the legend alone where it adds one for want of room for the labels", () => {
+    const option = {
+      title: { text: "Bugs by component" },
+      series: [
+        {
+          type: "pie",
+          data: [
+            { name: "Authentication service", value: 182 },
+            { name: "Payment processing", value: 96 },
+            { name: "Notification delivery", value: 64 },
+            { name: "Search indexing", value: 31 },
+            { name: "Reporting", value: 20 },
+          ],
+        },
+      ],
+    };
+    // The legend takes the room of the labels below the pie, of which they would then seem to
+    // fit beside a smaller one.
+    for (let width = 240; width <= 560; width += 8) {
+      for (const height of [380, 440, 500, 575, 640]) {
+        const laidOut = layout(option, { width, height });
+        if (laidOut.legend === undefined) continue;
+        assert.strictEqual(laidOut.series[0].label?.show, false, `${width} × ${height}`);
+      }
+    }
+  });
+
   test("draws the labels of the guide's pie whole in a narrow panel", () => {
     const topic = GUIDE_TOPICS.find(({ name }) => name === "echarts-pie");
     const size = { width: 396, height: 575 };

@@ -538,6 +538,9 @@ function placeLegend(
     if (named || smallPie) {
       base.legend = {};
     }
+    // Only by the legend, as the room it takes below the pie would make them seem to fit beside a
+    // smaller one.
+    if (smallPie) hidePieLabels(pie);
   }
   const legend = asArray(base.legend).find((l) => l.show !== false);
   if (!legend) {
@@ -1297,8 +1300,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
     (boxHeight < 220 || !pieLabelsFit(pie, boxWidth, boxHeight, size))
   ) {
     // Too small for labels around the pie: the legend and tooltip name the slices.
-    label = pie.label = { ...label, show: false };
-    pie.labelLine = { ...(isPlainObject(pie.labelLine) ? pie.labelLine : {}), show: false };
+    label = hidePieLabels(pie);
   }
   const outsideLabels =
     label.show !== false &&
@@ -1428,6 +1430,14 @@ const WORDS = /[!-%'-+\-.0-:<->@-\\^-\u024f\u0370-\u10ff\u1200-\u13ff\u1e00-\u20
 function labelWidth(label: JsonObject, { textWidth }: Size): (text: string) => number {
   const fontSize = typeof label.fontSize === "number" ? label.fontSize : undefined;
   return (text) => textWidth(text, fontSize);
+}
+
+/** Hides the labels of a pie's slices and their lines. Returns the label settings. */
+function hidePieLabels(pie: JsonObject): JsonObject {
+  const label = { ...(isPlainObject(pie.label) ? pie.label : {}), show: false };
+  pie.label = label;
+  pie.labelLine = { ...(isPlainObject(pie.labelLine) ? pie.labelLine : {}), show: false };
+  return label;
 }
 
 /**
