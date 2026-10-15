@@ -338,6 +338,13 @@ export async function runCommand(
       if (output.trim() === "") {
         const status = failure && ` and ${failure}`;
         finish(new Error(`The command printed nothing to standard output${status}.${errorOutput}`));
+      } else if (output.includes("\0")) {
+        finish(
+          new Error(
+            "The command printed binary data, not text, as cat does for a spreadsheet or an " +
+              `image. Use a command that prints the data as text.${errorOutput}`,
+          ),
+        );
       } else if (failure === "") {
         finish({ output });
       } else {

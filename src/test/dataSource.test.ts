@@ -192,6 +192,14 @@ suite("dataSource", () => {
       await assert.rejects(runCommand("true", token), /printed nothing to standard output\.$/);
     });
 
+    test("refuses binary output, as of cat on a spreadsheet", async () => {
+      await assert.rejects(runCommand("printf 'PK\\003\\004\\000\\006'", token), {
+        message:
+          "The command printed binary data, not text, as cat does for a spreadsheet or an image. " +
+          "Use a command that prints the data as text.",
+      });
+    });
+
     test("stops a command that runs too long or prints too much", async () => {
       await assert.rejects(runCommand("sleep 5", token, 100), /timed out after 0.1 seconds/);
       await assert.rejects(runCommand("head -c 11000000 /dev/zero", token), /more than 10 MiB/);
