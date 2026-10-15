@@ -1,6 +1,11 @@
 import * as assert from "node:assert";
 import { lineAndColumn } from "../text";
-import { describeCallbackError, evaluateSource } from "../webview/optionSource";
+import {
+  describeCallbackError,
+  evaluateSource,
+  literalValue,
+  runsCode,
+} from "../webview/optionSource";
 import { thrown } from "./thrown";
 
 const errorOf = (source: string) => thrown(evaluateSource, source);
@@ -78,6 +83,54 @@ suite("optionSource", () => {
       withoutEval(() => errorOf("{a: 1,, }")),
       /^The ECharts option could not be parsed: Unexpected "," while expecting a property name/,
     );
+  });
+
+  test("reads the option out of the statements that the examples of ECharts wrap it in", () => {
+    const option = { series: [{ type: "pie", data: [1] }] };
+    const literal = JSON.stringify(option);
+    const wrapped = [
+      `option = ${literal};`,
+      `var option = ${literal}\nmyChart.setOption(option);`,
+      `const option: EChartsOption = ${literal};\n\nchart.setOption(option, true);`,
+      "var chartDom = document.getElementById('main');\nvar myChart = echarts.init(chartDom);\n" +
+        `var option;\n\noption = ${literal};\n\noption && myChart.setOption(option);\n`,
+      `let option = ${literal};\nthis.chart.setOption(option, {notMerge: true});`,
+    ];
+    for (const source of wrapped) {
+      assert.deepStrictEqual(
+        withoutEval(() => evaluateSource(source)),
+        option,
+        source,
+      );
+      assert.deepStrictEqual(literalValue(source), option, source);
+      assert.strictEqual(runsCode(source), false, source);
+    }
+    const code =
+      "option = {series: [{type: 'pie', data: [1], label: {formatter: (p) => p.name}}]};";
+    assert.strictEqual(runsCode(code), true);
+    assert.strictEqual(
+      typeof (evaluateSource(code) as { series: Record<string, unknown>[] }).series[0]?.label,
+      "object",
+    );
+    // Errors are located in the source as written, around the statements too.
+    const message = errorOf(
+      "var option = {\n  series: [{type: 'pie'}\n};\nmyChart.setOption(option);",
+    );
+    assert.match(
+      message,
+      /the array opened at line 2, column 11 must be closed with "\]" first \(line 3, column 1\)/,
+    );
+    assert.match(
+      errorOf("option = {\n  a: (p) => p.x.., b: 1\n}"),
+      /Unexpected token '\.' \(line 2, column 17\)/,
+    );
+    assert.match(errorOf("option = {a: 1}, {b: 2};"), /holds 2 top-level values separated by ","/);
+    // Other statements are not read around.
+    assert.match(
+      errorOf("option = {a: 1};\nconsole.log(option);"),
+      /Unexpected "console" after the end of the option/,
+    );
+    assert.match(errorOf("return {a: 1};"), /Unexpected "return": write the option object itself/);
   });
 
   test("refuses a source that holds more than one top-level value", () => {
@@ -338,7 +391,10 @@ suite("optionSource", () => {
       ['{"title": {"text": "A"}\n "series": []}', /Missing "," before this property \(line 2/],
       ['{"series": [{"type": "pie"}}', /the array opened at line 1, column 12 must be closed/],
       ['```json\n{"series": []}\n```', /^[^\n]*Remove the code fence/],
-      ["option = {}", /Unexpected "option": write the option object itself, as JSON or as a Java/],
+      [
+        "export const option = {}",
+        /Unexpected "export": write the option object itself, as JSON or as a Java/,
+      ],
       ['{"a": {}}, "b": 1}', /check for a "}" that closes it too early/],
       ['{"data": [1, 2, ...]}', /no placeholders/],
       ['{"show": True}', /use true, false or null/],

@@ -11,7 +11,8 @@ import { lineAndColumn } from "../text";
  * security policy allows only in a trusted workspace. The brackets make a leading "{" an object
  * literal rather than a block, and a top-level "," a list of values rather than a sequence
  * expression that would throw all but the last of them away; the line breaks keep a trailing "//"
- * comment from swallowing the closing bracket.
+ * comment from swallowing the closing bracket. The statements that the examples of ECharts wrap
+ * the option in, which a user may paste along with it, are left out.
  */
 export function evaluateSource(source: string): unknown {
   try {
@@ -19,25 +20,26 @@ export function evaluateSource(source: string): unknown {
   } catch {
     // Read as JavaScript instead.
   }
-  const scanned = scan(source);
+  const code = unwrapped(source);
+  const scanned = scan(code);
   let values: unknown[];
   if (Array.isArray(scanned)) {
     values = scanned;
   } else {
     let evaluate: () => unknown[];
     try {
-      evaluate = new Function(`"use strict"; return ([\n${source}\n]);`) as () => unknown[];
+      evaluate = new Function(`"use strict"; return ([\n${code}\n]);`) as () => unknown[];
     } catch (error) {
-      throw new Error(describeError(source, error, scanned));
+      throw new Error(describeError(source, code, error, scanned));
     }
-    rejectStrayBracket(source, scanned);
+    rejectStrayBracket(source, code, scanned);
     try {
       values = evaluate();
     } catch (error) {
       // A mistake the scanner found, such as a code fence or "True", may still compile as code.
       throw new Error(
         scanned instanceof SourceError
-          ? describeError(source, error, scanned)
+          ? describeError(source, code, error, scanned)
           : describeThrown(source, error),
       );
     }
@@ -61,14 +63,18 @@ export function evaluateSource(source: string): unknown {
  * which close with ")" instead, it does not compile, unlike a list of values. It is described as
  * a parenthesized expression, as which the engine names the "]" at fault.
  */
-function rejectStrayBracket(source: string, scanned: SourceError | Code | undefined): void {
+function rejectStrayBracket(
+  source: string,
+  code: string,
+  scanned: SourceError | Code | undefined,
+): void {
   try {
-    new Function(`return f(\n${source}\n);`);
+    new Function(`return f(\n${code}\n);`);
   } catch {
     try {
-      new Function(`"use strict"; return (\n${source}\n);`);
+      new Function(`"use strict"; return (\n${code}\n);`);
     } catch (error) {
-      throw new Error(describeError(source, error, scanned, "("));
+      throw new Error(describeError(source, code, error, scanned, "("));
     }
   }
 }
@@ -82,8 +88,32 @@ export function runsCode(source: string): boolean {
     JSON.parse(source);
     return false;
   } catch {
-    return !Array.isArray(scan(source));
+    return !Array.isArray(scan(unwrapped(source)));
   }
+}
+
+/**
+ * The statements that the examples of ECharts put before the option, which a user may paste along
+ * with it: the chart and the option declared, as "var myChart = echarts.init(chartDom);", and the
+ * option assigned, as "option = {".
+ */
+const BEFORE_OPTION =
+  /^(?:\s*(?:var|let|const)\s+[\w$]+(?:\s*=\s*(?:document\.getElementById|echarts\.init)\([^()]*\))?\s*;)*\s*(?:(?:var|let|const)\s+)?[\w$]+(?:\s*:\s*[\w$.]+)?\s*=(?![=>])/u;
+/**
+ * What may end the option in those examples: a ";", and the statement that sets it,
+ * "myChart.setOption(option);".
+ */
+const AFTER_OPTION =
+  /;?\s*(?:(?:[\w$]+\s*&&\s*)?[\w$]+(?:\.[\w$]+)*\.setOption\(\s*[\w$]+\s*(?:,[^()]*)?\)\s*;?)?\s*$/u;
+
+/**
+ * The source without the statements that assign the option to a variable and set it on a chart,
+ * as the examples of ECharts write it, blanked out: what is left is as long, and on the same
+ * lines, so that errors are still located in the source as written.
+ */
+function unwrapped(source: string): string {
+  const blank = (match: string) => match.replace(/[^\n\r\u2028\u2029]/g, " ");
+  return source.replace(BEFORE_OPTION, blank).replace(AFTER_OPTION, blank);
 }
 
 /** How long a line of values grows in an option formatted for editing before they go on the next. */
@@ -175,7 +205,7 @@ export function literalValue(source: string): unknown {
   try {
     return JSON.parse(source);
   } catch {
-    const scanned = scan(source);
+    const scanned = scan(unwrapped(source));
     return Array.isArray(scanned) && scanned.length === 1 ? scanned[0] : undefined;
   }
 }
@@ -247,9 +277,13 @@ export function describeCallbackError(
   );
 }
 
-/** Describes why a source neither parses as JSON nor compiles as JavaScript. */
+/**
+ * Describes why a source neither parses as JSON nor compiles as JavaScript: the text as written,
+ * where the error is shown, and the code it was compiled as, as long as the text.
+ */
 function describeError(
   text: string,
+  code: string,
   error: unknown,
   found: SourceError | Code | undefined,
   open = "([",
@@ -273,7 +307,7 @@ function describeError(
   const message = errorMessage(error);
   const position =
     found && error instanceof SyntaxError
-      ? syntaxErrorAt(text, open, found.position, message)
+      ? syntaxErrorAt(code, open, found.position, message)
       : undefined;
   const { at, excerpt } = located(text, position);
   return (
@@ -616,6 +650,11 @@ class Scanner {
       if (this.char() === "") break;
       if (this.char() !== ",") {
         this.operator();
+        // A statement after the option, which the ";" that ends it is not at fault for.
+        if (this.char() === ";") {
+          this.index++;
+          this.space();
+        }
         this.fail(
           `Unexpected ${this.found()} after the end of the option: only one top-level object is ` +
             'allowed, so check for a "}" that closes it too early',

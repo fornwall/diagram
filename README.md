@@ -99,7 +99,7 @@ VS Code asks before running a command, reading a data file outside the workspace
 
 Commands need a trusted, nonvirtual workspace. They run with `/bin/sh` (`cmd.exe` on Windows) in the first workspace folder, or in your home directory if no folder is open. Relative paths resolve from the first workspace folder.
 
-ECharts callbacks and other JavaScript require a trusted workspace; plain object literals work anywhere. Once a panel runs JavaScript, **Send to chat** and click prompts fill the chat input without submitting it. Writing to Markdown, rerunning a command and opening a web link require confirmation. Declining blocks such requests until the panel closes.
+ECharts callbacks and other JavaScript require a trusted workspace; plain object literals work anywhere. An option pasted from the ECharts examples, with `option = {…}` and `myChart.setOption(option)` around it, works as is. Once a panel runs JavaScript, **Send to chat** and click prompts fill the chat input without submitting it. Writing to Markdown, rerunning a command and opening a web link require confirmation. Declining blocks such requests until the panel closes.
 
 The panel loads images only from `data:` URLs, so a Mermaid image shape must embed its image.
 
