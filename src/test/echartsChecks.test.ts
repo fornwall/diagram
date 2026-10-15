@@ -810,6 +810,29 @@ suite("echartsChecks", function () {
     }
   });
 
+  test("keeps category labels across beside those that the option cuts to a width", () => {
+    const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
+    const shifts = ["Early morning shift on weekdays", "Late shift", "Night shift on weekends"];
+    for (const overflow of ["truncate", "break"]) {
+      const option = {
+        xAxis: { type: "category", data: people },
+        yAxis: { type: "category", data: shifts, axisLabel: { width: 50, overflow } },
+        visualMap: { show: false, min: 0, max: 10 },
+        series: [
+          {
+            type: "heatmap",
+            data: people.flatMap((_, x) => shifts.map((_, y) => [x, y, x + y])),
+          },
+        ],
+      };
+      for (const width of [300, 320]) {
+        const size = { width, height: 500 };
+        assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
+        assert.deepStrictEqual(warningsOf(option, size), [], `${overflow} ${width}`);
+      }
+    }
+  });
+
   test("turns category labels where the name of an inverse axis leaves too little width across", () => {
     const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
     // Named where the axis starts, after its labels on the right, beside the value labels left.

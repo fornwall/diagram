@@ -1030,7 +1030,18 @@ function besidePlot(base: JsonObject, size: Size, most: number): number {
       const { formatter } = label;
       let text = UNKNOWN_LABELS;
       if (type === "category") {
-        text = Math.min(widestText(axis.data, font.width, most), most);
+        // Of a width that the option sets, the layout leaves them as wide as it makes them: as
+        // wide as it, where it cuts them short or breaks them onto lines, or else whole.
+        const { width, overflow } = label;
+        const cut =
+          width === undefined
+            ? most
+            : typeof width === "number" &&
+                width > 0 &&
+                ["truncate", "break", "breakAll"].includes(String(overflow))
+              ? width
+              : Infinity;
+        text = Math.min(widestText(axis.data, font.width, cut), cut);
       } else if (formatter === undefined || typeof formatter === "string") {
         // As wide as the labels of its bounds, where the option sets them, or else as "-1500".
         const bounds = [axis.min, axis.max];
