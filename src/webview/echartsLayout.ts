@@ -1006,11 +1006,11 @@ function layOutGrid(base: JsonObject, reserved: Insets, size: Size): void {
 /**
  * The width that the axes of the first grid take beside its plot, as ECharts keeps their labels
  * and names within the grid. A vertical axis takes the margin and its widest label, or half its
- * name, centered on it above or below, where wider, on the side ECharts places it: the first left
- * and the next right, unless placed. A horizontal axis takes its name, after its end or before its
- * start, with the gap to it. The labels of a value axis are as wide as the panel labels its values,
- * compactly as "12.5K" (see {@link compactAxisLabels}), and those of a category axis as its widest,
- * but no wider than the most that the layout cuts them to.
+ * name, centered on it above or below, where wider, or its name along it beside them, on the side
+ * ECharts places it: the first left and the next right, unless placed. A horizontal axis takes its
+ * name, after its end or before its start, with the gap to it. The labels of a value axis are as
+ * wide as the panel labels its values, compactly as "12.5K" (see {@link compactAxisLabels}), and
+ * those of a category axis as its widest, but no wider than the most that the layout cuts them to.
  */
 function besidePlot(base: JsonObject, size: Size, most: number): number {
   const sides = { left: 0, right: 0 };
@@ -1043,13 +1043,15 @@ function besidePlot(base: JsonObject, size: Size, most: number): number {
       room = text + (typeof label.margin === "number" ? label.margin : 8);
     }
     const { name, nameLocation: location } = axis;
-    if (
-      typeof name === "string" &&
-      (location === undefined || location === "end" || location === "start") &&
-      axis.nameRotate === undefined
-    ) {
-      const nameWidth = size.font(styleOf(axis.nameTextStyle), size.themed).width(name);
-      room = Math.max(room, nameWidth / 2);
+    if (typeof name === "string" && name && axis.nameRotate === undefined) {
+      const nameFont = size.font(styleOf(axis.nameTextStyle), size.themed);
+      if (location === undefined || location === "end" || location === "start") {
+        room = Math.max(room, nameFont.width(name) / 2);
+      } else if (location === "middle" || location === "center") {
+        // Along the axis, its gap from it, or past its labels where they reach further.
+        const gap = typeof axis.nameGap === "number" ? axis.nameGap : 15;
+        room = Math.max(room + 8, gap) + nameFont.size + 8;
+      }
     }
     sides[side] += room + (typeof axis.offset === "number" ? axis.offset : 0);
   }

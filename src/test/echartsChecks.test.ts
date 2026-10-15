@@ -751,6 +751,24 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(named, wider), []);
   });
 
+  test("keeps category labels across in the width that a value axis named along its labels leaves", () => {
+    const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
+    // Named beside its labels, as far from the axis as its gap, or past the labels where wider.
+    const chart = (nameGap?: number) => ({
+      xAxis: { type: "category", data: people },
+      yAxis: { name: "Revenue (USD)", nameLocation: "middle", nameGap },
+      series: [{ type: "bar", data: people.map((_, index) => 5000 + index * 1000) }],
+    });
+    for (const nameGap of [undefined, 50]) {
+      const narrow = { width: 285, height: 500 };
+      assert.ok(layout(chart(nameGap), narrow).xAxis.axisLabel?.rotate > 0, `${nameGap}`);
+      assert.deepStrictEqual(warningsOf(chart(nameGap), narrow), [], `${nameGap}`);
+      const wide = { width: 340, height: 500 };
+      assert.strictEqual(layout(chart(nameGap), wide).xAxis.axisLabel?.rotate, undefined);
+      assert.deepStrictEqual(warningsOf(chart(nameGap), wide), [], `${nameGap}`);
+    }
+  });
+
   test("breaks the labels of a funnel onto lines where they are wider than the room beside it", () => {
     const regions = ["North America", "Europe", "Asia Pacific", "Latin America"];
     regions.push("Middle East and Africa");
