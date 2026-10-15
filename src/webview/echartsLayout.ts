@@ -1,6 +1,7 @@
 // Adapts an ECharts option written by a model to the panel: responsive layout, selection styles
 // and defaults. Only fills in what the option leaves unset, so explicit choices always win.
 
+import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
 import { facetBoxes } from "../chartFacetLayout";
 import { asArray, isPlainObject } from "../protocol";
 import { escapeHtml } from "../text";
@@ -30,6 +31,8 @@ interface Size {
   compact: boolean;
   /** The approximate width of a character of chart text. */
   charWidth: number;
+  /** The width of a text in the font of the chart, of its size or another. */
+  textWidth(text: string, fontSize?: number): number;
 }
 
 /**
@@ -242,8 +245,19 @@ function layOutAround(
   if (option.media === undefined) {
     const { width, height } = context;
     const compact = width < 560 || height < 340;
-    const charWidth = context.colors.fontSize * 0.6;
-    const size = { width, height, compact, charWidth };
+    const { fontFamily, fontSize } = context.colors;
+    const charWidth = fontSize * 0.6;
+    // As ECharts measures it to break it onto lines within a width: character by character, any
+    // but ASCII as wide as one of Chinese.
+    const textWidth = (text: string, size = fontSize) => {
+      const font = ensureFontMeasureInfo(`${size}px ${fontFamily}`);
+      let sum = 0;
+      for (let index = 0; index < text.length; index++) {
+        sum += measureCharWidth(font, text.charCodeAt(index));
+      }
+      return sum;
+    };
+    const size = { width, height, compact, charWidth, textWidth };
     const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
@@ -505,8 +519,9 @@ function placeLegend(
   series: JsonObject[],
   alongAxes: boolean,
   reserved: Insets,
-  { width, height, compact, charWidth }: Size,
+  size: Size,
 ): void {
+  const { width, height, compact, charWidth } = size;
   const pies = series.filter((s) => s.type === "pie");
   if (base.legend === undefined) {
     // Several named series: the identity of a series is never only color.
@@ -519,7 +534,7 @@ function placeLegend(
       pies.length === 1 &&
       !labelsSet(pie) &&
       (height - reserved.top < 260 ||
-        !pieLabelsFit(pie, width - 16, height - reserved.top - 16, charWidth));
+        !pieLabelsFit(pie, width - 16, height - reserved.top - 16, size));
     if (named || smallPie) {
       base.legend = {};
     }
@@ -1279,7 +1294,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   if (
     !labelsSet(pie) &&
     hasLegend &&
-    (boxHeight < 220 || !pieLabelsFit(pie, boxWidth, boxHeight, size.charWidth))
+    (boxHeight < 220 || !pieLabelsFit(pie, boxWidth, boxHeight, size))
   ) {
     // Too small for labels around the pie: the legend and tooltip name the slices.
     label = pie.label = { ...label, show: false };
@@ -1308,7 +1323,7 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   const outer = outerRadius(pie.radius, Math.min(boxWidth, boxHeight) / 2);
   // ECharts' parts of a label line.
   const [length, length2] = [line.length ?? 15, line.length2 ?? 30];
-  const labels = pieLabels(pie, size.charWidth);
+  const labels = pieLabels(pie, size);
   if (
     !outsideLabels ||
     (label.alignTo ?? "edge") !== "edge" ||
@@ -1351,15 +1366,23 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
   });
   if (lines && Array.isArray(pie.data) && rooms.some((room) => room !== undefined)) {
     const { template, values } = labelTemplate(label);
+    const width = labelWidth(label, size);
     pie.data = pie.data.map((item: unknown, index) => {
       const room = rooms[index];
       if (room === undefined) return item;
       const own: JsonObject = isPlainObject(item) ? item : { value: item };
       const itemLabel = isPlainObject(own.label) ? own.label : {};
-      // The characters of a word cut short, with its ellipsis and the punctuation after it, as the
-      // ":" of "{b}: {d}%", of letters wider than most, as of a word's capital.
-      const most = Math.floor(room / (size.charWidth * 1.15)) - 2;
+      // A word as much of it as fits, with its ellipsis and the punctuation after it, as the ":"
+      // of "{b}: {d}%". The ellipsis is of dots, which ECharts measures as wide as the browser
+      // draws them: it breaks a line again where those differ, and "…" it takes for a wide one.
+      const cut = (word: string) => {
+        if (width(`${word}:`) <= room) return word;
+        let kept = word.length - 1;
+        while (kept > 0 && width(`${word.slice(0, kept)}...:`) > room) kept--;
+        return kept > 0 ? `${word.slice(0, kept)}...` : undefined;
+      };
       const name = own.name;
+      const words = typeof name === "string" ? name.split(/(\s+)/).map((part) => cut(part)) : [];
       const formatter =
         typeof name === "string" &&
         // Of a template, rather than a function of the option's own, which formats it.
@@ -1367,14 +1390,10 @@ function layOutPie(base: JsonObject, series: JsonObject[], reserved: Insets, siz
         template.includes("{b}") &&
         // Not of the markup of a template, which ECharts would read in the name.
         !/[{}]/.test(name) &&
-        most >= 1 &&
+        words.every((word) => word !== undefined) &&
         // Nor beside a value that the room is too narrow for, as "25.74%".
-        room >= (values > 0 ? VALUE_WORD - 1 : 0) * size.charWidth
-          ? template.replaceAll("{b}", () =>
-              name.replace(/\S+/g, (word) =>
-                word.length > most + 1 ? `${word.slice(0, most)}…` : word,
-              ),
-            )
+        room >= (values > 0 ? width(SHARE) : 0)
+          ? template.replaceAll("{b}", () => words.join(""))
           : undefined;
       return {
         ...own,
@@ -1395,8 +1414,14 @@ function labelTemplate(label: JsonObject): { template: string; values: number } 
   return { template, values: template.match(/\{(?!b\})[^{}|]*\}/g)?.length ?? 0 };
 }
 
-/** The characters of the widest value that a label tells, as "25.74%", with the punctuation after it. */
-const VALUE_WORD = 7;
+/** A value as wide as most that a label tells, as "25.74%". */
+const SHARE = "00.00%";
+
+/** The width of a text in the font of a label, of a size of its own or the chart's. */
+function labelWidth(label: JsonObject, { textWidth }: Size): (text: string) => number {
+  const fontSize = typeof label.fontSize === "number" ? label.fontSize : undefined;
+  return (text) => textWidth(text, fontSize);
+}
 
 /**
  * Whether the option sets how to label the slices of a pie, as with a template that tells their
@@ -1425,14 +1450,14 @@ interface PieLabel {
  * unless told otherwise. Undefined for more slices than the layout reads, which have no room for
  * labels; none for the slices of a dataset.
  */
-function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
+function pieLabels(pie: JsonObject, size: Size): PieLabel[] | undefined {
   const data: unknown[] = Array.isArray(pie.data) ? pie.data : [];
   if (data.length > MAX_READ_CATEGORIES) return undefined;
   const label = isPlainObject(pie.label) ? pie.label : {};
-  // ECharts labels a slice by its name, and a template adds its text and, for each value, about
-  // 6 characters, as "25.74".
+  const width = labelWidth(label, size);
+  // ECharts labels a slice by its name, and a template adds its text and its values, each about
+  // as wide as "25.74".
   const { template, values } = labelTemplate(label);
-  const added = template.replace(/\{[^{}|]*\}/g, "").length + 6 * values;
   const named = template.includes("{b}");
   const value = (item: unknown) => {
     const number = Number(isPlainObject(item) ? item.value : item);
@@ -1449,15 +1474,17 @@ function pieLabels(pie: JsonObject, charWidth: number): PieLabel[] | undefined {
     const name = named ? String((isPlainObject(item) ? item.name : undefined) ?? "") : "";
     // With the punctuation after it, as the ":" of "{b}: {d}%".
     const word = Math.max(
-      values > 0 ? VALUE_WORD : 0,
-      ...name.split(/\s+/).map((part) => part.length + 1),
+      values > 0 ? width(SHARE) : 0,
+      ...name.split(/\s+/).map((part) => width(`${part}:`)),
     );
-    const chars = name.length + added;
+    const whole = width(
+      template.replace(/\{[^{}|]*\}/g, (field) => (field === "{b}" ? name : SHARE.slice(0, -1))),
+    );
     return {
       across: Math.abs(Math.cos(middle)),
-      whole: chars * charWidth,
-      least: Math.max(word, Math.ceil(chars / 3)) * charWidth,
-      word: word * charWidth,
+      whole,
+      least: Math.max(word, Math.ceil(whole / 3)),
+      word,
     };
   });
 }
@@ -1478,13 +1505,8 @@ function labeledRadius(labels: PieLabel[], boxWidth: number, length: number): nu
 }
 
 /** Whether a pie's labels fit beside it in a box, on lines from its edge, if need be. */
-function pieLabelsFit(
-  pie: JsonObject,
-  boxWidth: number,
-  boxHeight: number,
-  charWidth: number,
-): boolean {
-  const labels = pieLabels(pie, charWidth);
+function pieLabelsFit(pie: JsonObject, boxWidth: number, boxHeight: number, size: Size): boolean {
+  const labels = pieLabels(pie, size);
   const line = isPlainObject(pie.labelLine) ? pie.labelLine : {};
   const half = Math.min(boxWidth, boxHeight) / 2;
   // Beside the radius that the option gives, or else as small as the panel makes a pie.

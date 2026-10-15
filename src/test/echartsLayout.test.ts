@@ -400,11 +400,11 @@ suite("echartsLayout", () => {
     );
     assert.ok(drawn.length > 0);
     for (const word of drawn) {
-      assert.ok(words.has(word) || word.endsWith("…"), `${word} of ${drawn.join(" ")}`);
+      assert.ok(words.has(word) || /(?:…|\.\.\.):?$/.test(word), `${word} of ${drawn.join(" ")}`);
     }
     // Too narrow for them even so: a legend names the slices, unless the option sets how to
     // label them, as with a template that tells their shares.
-    const narrower = { width: 260, height: 575 };
+    const narrower = { width: 240, height: 575 };
     const named = layout(pie(null), narrower);
     assert.deepStrictEqual([named.legend.bottom, named.series[0].label.show], [6, false]);
     for (const label of [{ formatter: "{b}: {d}%" }, { show: true }, { fontSize: 11 }]) {
@@ -453,6 +453,17 @@ suite("echartsLayout", () => {
     }
   });
 
+  test("cuts short only the words of a pie's labels that their font draws wider than the room", () => {
+    const table = "component,bugs\nParser,42\nRenderer,31\nCommand line,9\nDocumentation,6";
+    // "Parser:" is narrower than its 7 characters at the average width of one.
+    const size = { width: 350, height: 575 };
+    const option = layout(
+      builtOption({ type: "doughnut", data: "unused", labelColumn: "component" }, table),
+      size,
+    );
+    assert.match(svgOf(option, size), />Parser: ?</);
+  });
+
   test("keeps the shares of diagram_chart's pie labels where a word of them does not fit", () => {
     const table =
       "component,bugs\nParser,42\nRenderer,31\nCommand line interface,9\nDocumentation,6\nInstallation scripts,5";
@@ -477,23 +488,23 @@ suite("echartsLayout", () => {
       for (const share of shares) assert.ok(drawn.includes(share), `${share} of ${drawn}`);
       for (const word of drawn.split(/\s+/).filter(Boolean)) {
         assert.ok(
-          words.has(word) || shares.includes(word) || /…:?$/.test(word),
+          words.has(word) || shares.includes(word) || /(?:…|\.\.\.):?$/.test(word),
           `${word} of ${drawn}`,
         );
       }
     }
     // A formatter of the option's own, as a function, labels each slice still, cut short whole.
     const formatter = ({ name }: { name: string }) => `${name}!`;
-    const own = builtOption({ type: "pie", data: "unused", labelColumn: "component" }, table);
+    const own = builtOption({ type: "doughnut", data: "unused", labelColumn: "component" }, table);
     own.series[0].label = { formatter };
-    const size = { width: 300, height: 575 };
+    const size = { width: 284, height: 575 };
     const labels = layout(own, size).series[0].data.map(({ label }: Option) => label);
     assert.ok(
       labels.some((label: Option) => label?.overflow === "truncate"),
       JSON.stringify(labels),
     );
     assert.ok(labels.every((label: Option) => label?.formatter === undefined));
-    assert.match(svgOf(layout(own, size), size), />Parser!</);
+    assert.match(svgOf(layout(own, size), size), />Renderer!</);
   });
 
   test("makes room for a pie's legend by the names of its slices", () => {
