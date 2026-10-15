@@ -6,7 +6,6 @@ import {
   errorClause,
   errorMessage,
   type FromWebview,
-  isPlainObject,
   type ToWebview,
 } from "../protocol";
 import { quoteAll } from "../text";
@@ -14,29 +13,22 @@ import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
 import { enableDragOut } from "./dragOut";
 import { loadECharts } from "./echartsLoader";
+import { keepFocusInContent } from "./focus";
 import { MODEL_TEXT_SIZE, pngDataUrl, pngScale } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { preloadLayout } from "./mermaidLayout";
+import { keepPageState, type StateApi } from "./pageState";
 import { enablePanning } from "./pan";
+import { showRenderError } from "./renderError";
 import { type Hit, type Renderer, UNMARKED, WARNINGS_CHANGED, withModifier } from "./renderer";
-import { type EditorState, SourceEditor } from "./sourceEditor";
+import { SourceEditor } from "./sourceEditor";
 import { enableSplitter } from "./splitter";
 import "./style.css";
 import { hrefOf } from "./svgImage";
 import { readThemeColors } from "./vscodeTheme";
+import { enableZoom } from "./zoom";
 
-interface State extends EditorState {
-  draft: string;
-  /** The source editor's share of the split view. */
-  sourceSize: number;
-}
-
-declare function acquireVsCodeApi(): {
-  postMessage(message: unknown): void;
-  /** What the page saved with setState, possibly a page of another version of the extension. */
-  getState(): unknown;
-  setState(state: State): void;
-};
+declare function acquireVsCodeApi(): StateApi & { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
 const post = (message: FromWebview) => vscode.postMessage(message);
@@ -201,53 +193,6 @@ canvas.addEventListener(WARNINGS_CHANGED, () => {
 /** The last diagram rendered, which its revisions are too. */
 let renderedDiagram: number | undefined;
 
-/** Where an error is, which its message names as "(line 3, column 5)", or as "on line 3". */
-const placeOf = (text: string) =>
-  /(?<=\()line (\d+), column (\d+)(?=\))/.exec(text) ??
-  /(?<=\bon )line (\d+)(?:, column (\d+))?/.exec(text);
-
-function showError(renderer: Renderer, message: string): void {
-  // The first line, and those after it that name places of further problems, as a Mermaid error
-  // does on several lines. Details after them, like an excerpt of the source with a caret, need a
-  // fixed font.
-  const lines = message.split("\n");
-  let problems = 1;
-  while (problems < lines.length && placeOf(lines[problems] as string)) problems++;
-  const details = lines.slice(problems);
-  errorElement.textContent = `This ${renderer.noun} failed to render: `;
-  for (const [i, problem] of lines.slice(0, problems).entries()) {
-    if (i > 0) errorElement.append(document.createElement("br"));
-    // A link to the place in the source, unless the editor holds edits of another diagram.
-    const place = editor.showsDiagram() ? placeOf(problem) : null;
-    if (!place) {
-      errorElement.append(problem);
-      continue;
-    }
-    const [text, line, column] = place;
-    const link = document.createElement("button");
-    link.className = "link";
-    link.textContent = text;
-    link.title = "Show this place in the source";
-    link.addEventListener("click", () =>
-      editor.reveal(Number(line), column === undefined ? undefined : Number(column)),
-    );
-    // With the punctuation around it, such as its parentheses, which a line would break off.
-    const end = place.index + text.length;
-    const start = problem.slice(0, place.index).search(/\S*$/);
-    const stop = end + problem.slice(end).search(/\s|$/);
-    const glued = document.createElement("span");
-    glued.className = "place";
-    glued.append(problem.slice(start, place.index), link, problem.slice(end, stop));
-    errorElement.append(problem.slice(0, start), glued, problem.slice(stop));
-  }
-  if (details.length > 0) {
-    const pre = document.createElement("pre");
-    pre.textContent = details.join("\n");
-    errorElement.append(pre);
-  }
-  errorElement.hidden = false;
-}
-
 type RenderMessage = Extract<ToWebview, { type: "render" }>;
 
 /** Sets up what clicks and the header's actions do for the diagram, or for none. */
@@ -356,7 +301,13 @@ async function render(message: RenderMessage): Promise<void> {
     active = undefined;
     warned = undefined;
     const text = errorMessage(error);
-    showError(renderer, text);
+    // The places it names link to the source, unless the editor holds edits of another diagram.
+    showRenderError(
+      errorElement,
+      renderer.noun,
+      text,
+      editor.showsDiagram() ? (line, column) => editor.reveal(line, column) : undefined,
+    );
     post({ type: "renderError", requestId, message: text });
   } finally {
     canvas.setAttribute("aria-busy", "false");
@@ -840,31 +791,7 @@ function focusContent(): void {
   editor.content(drawingFocus()).focus();
 }
 
-// VS Code focuses a panel by taking the focus out of the page and giving it back to the page alone,
-// a while later, which leaves nothing in it focused (see WebviewElement._doFocus): give the focus
-// back to what had it, such as the drawing that a pick revealing the panel just focused.
-let lastFocused: HTMLElement | SVGElement | undefined;
-document.addEventListener("focusin", ({ target }) => {
-  if (target instanceof HTMLElement || target instanceof SVGElement) lastFocused = target;
-});
-window.addEventListener("focus", () => {
-  if (document.activeElement !== document.body || !lastFocused) return;
-  lastFocused.focus({ preventScroll: true });
-  // What had the focus may have gone while the page had none, e.g. Clear for a new diagram.
-  if (document.activeElement === document.body) focusContent();
-});
-
-// A control that goes, or is hidden or disabled, while it has the focus, such as Clear or the zoom
-// buttons when another diagram comes, leaves the focus on the body, from where Tab starts over at
-// the top of the panel: move it to the content instead, unless something else took it meanwhile.
-// The drawing, which gets replaced, gives the focus back to its own items as it is drawn.
-document.addEventListener("focusout", ({ target, relatedTarget }) => {
-  if (relatedTarget || !(target instanceof HTMLElement) || canvas.contains(target)) return;
-  queueMicrotask(() => {
-    const gone = !target.isConnected || !target.checkVisibility() || target.matches(":disabled");
-    if (gone && document.activeElement === document.body && document.hasFocus()) focusContent();
-  });
-});
+keepFocusInContent(canvas, focusContent);
 
 pickDoneButton.addEventListener("click", () => {
   if (pick) {
@@ -898,63 +825,21 @@ clearSelectionButton.addEventListener("click", () => {
   }
 });
 
-// Keep drafts when the webview reloads, e.g. when moved to another window.
-/** The size in characters of a state saved at once, which takes about a millisecond to send. */
-const SAVE_AT_ONCE = 100_000;
-/** How long typing pauses before a larger state is saved. */
-const SAVE_DELAY = 500;
-let savedState: State | undefined;
-/** A larger state waiting for typing to pause. */
-let unsavedState: State | undefined;
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
+// Keep drafts when the webview reloads, e.g. when moved to another window: the message being
+// typed, the source editor's share of the split view, and the editor's view and unapplied edits.
+const state = keepPageState(vscode, () => ({
+  draft: askInput.value,
+  sourceSize: split.fraction,
+  ...editor.state(),
+}));
 function saveState(): void {
-  const next: State = { draft: askInput.value, sourceSize: split.fraction, ...editor.state() };
-  // setState serializes the whole draft and sends it to the host. View and render updates can
-  // reach here several times with the same state, including multi-megabyte source edits.
-  const last = unsavedState ?? savedState;
-  if (
-    last?.draft === next.draft &&
-    last.sourceSize === next.sourceSize &&
-    last.view === next.view &&
-    last.editor?.source === next.editor?.source &&
-    last.editor?.base === next.editor?.base
-  ) {
-    return;
-  }
-  unsavedState = next;
-  clearTimeout(saveTimer);
-  const size =
-    next.draft.length + (next.editor?.source.length ?? 0) + (next.editor?.base.length ?? 0);
-  // Sending a source of megabytes, twice with its base, on every key would slow typing down.
-  if (size <= SAVE_AT_ONCE) flushState();
-  else saveTimer = setTimeout(flushState, SAVE_DELAY);
+  state.save();
 }
-function flushState(): void {
-  clearTimeout(saveTimer);
-  if (!unsavedState) return;
-  vscode.setState(unsavedState);
-  savedState = unsavedState;
-  unsavedState = undefined;
-}
-// VS Code takes the last state the page saved when it reloads the page, without warning the page
-// first. What reloads it, such as Reload Window or dragging the tab to another window, takes the
-// focus out of the page or is a key the page sees first, and the state sent then arrives before.
-window.addEventListener("blur", flushState);
-window.addEventListener("pagehide", flushState);
-document.addEventListener("visibilitychange", flushState);
-window.addEventListener(
-  "keydown",
-  (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey || /^F\d+$/.test(event.key)) flushState();
-  },
-  { capture: true },
-);
-const restored = vscode.getState();
-const saved = isPlainObject(restored) ? restored : {};
-askInput.value = typeof saved.draft === "string" ? saved.draft : "";
+const { restored } = state;
+askInput.value = typeof restored.draft === "string" ? restored.draft : "";
 // Before the editor, which saves the state as it restores its edits.
-split.restore(saved.sourceSize);
-editor.restore(saved);
+split.restore(restored.sourceSize);
+editor.restore(restored);
 const updateAskSubmit = () => {
   askSubmit.disabled = askInput.value.trim().length === 0;
 };
@@ -1049,43 +934,9 @@ function transientHint(text: string): void {
   hintTimer = setTimeout(updateSelectionUi, 4000);
 }
 
-// Zoom (Mermaid only; charts fit the panel).
-
-const zoomIn = () => active?.zoomBy?.(1.25);
-const zoomOut = () => active?.zoomBy?.(1 / 1.25);
-const zoomReset = () => active?.zoomReset?.();
-zoomInButton.addEventListener("click", zoomIn);
-zoomOutButton.addEventListener("click", zoomOut);
-zoomResetButton.addEventListener("click", zoomReset);
-
-// Cmd (macOS) or Ctrl with +, - and 0, as in browsers, while the panel has the focus. VS Code sees
-// every key the page does, so the event stops in the capture phase, before VS Code's listener on
-// the window passes it on to zoom the window or focus the side bar as well.
-const ZOOM_KEYS: Partial<Record<string, () => void>> = {
-  "=": zoomIn,
-  "+": zoomIn,
-  "-": zoomOut,
-  "0": zoomReset,
-};
-const isMac = navigator.userAgent.includes("Mac");
-// The keys, which the buttons' titles name too, for screen readers to name with the buttons.
-const primaryKey = isMac ? "Meta" : "Control";
-zoomInButton.setAttribute("aria-keyshortcuts", `${primaryKey}+=`);
-zoomOutButton.setAttribute("aria-keyshortcuts", `${primaryKey}+-`);
-zoomResetButton.setAttribute("aria-keyshortcuts", `${primaryKey}+0`);
-window.addEventListener(
-  "keydown",
-  (event) => {
-    const zoom = ZOOM_KEYS[event.key];
-    const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-    // Not in the source view, which shows no drawing, nor the buttons, to zoom.
-    if (zoom && primary && !event.altKey && active?.zoomBy && editor.view !== "source") {
-      event.preventDefault();
-      event.stopPropagation();
-      zoom();
-    }
-  },
-  { capture: true },
+// Not in the source view, which shows no drawing, nor the buttons, to zoom.
+enableZoom({ in: zoomInButton, out: zoomOutButton, reset: zoomResetButton }, () =>
+  editor.view === "source" ? undefined : active,
 );
 
 post({ type: "ready" });
