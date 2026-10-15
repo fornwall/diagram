@@ -296,7 +296,11 @@ function layOutAround(
         .join(" ");
       return {
         css,
-        width: (text) => context.drawnWidth(text, css),
+        // A text of several lines as wide as its widest, as ECharts draws it.
+        width: (text) =>
+          text.includes("\n")
+            ? Math.max(...text.split("\n").map((line) => context.drawnWidth(line, css)))
+            : context.drawnWidth(text, css),
         breakWidth: (text) => context.textWidth(text, css),
       };
     };

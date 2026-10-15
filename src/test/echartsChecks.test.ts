@@ -682,6 +682,21 @@ suite("echartsChecks", function () {
     assert.strictEqual(layout(option, { width: 290, height: 500 }).xAxis.axisLabel?.rotate, 30);
   });
 
+  test("keeps category labels of several lines across where their widest line fits", () => {
+    const regions = ["North\nAmerica", "South\nAmerica", "Western\nEurope", "Eastern\nEurope"];
+    regions.push("Asia\nPacific", "Middle\nEast");
+    const option = {
+      xAxis: { type: "category", data: regions },
+      yAxis: {},
+      series: [{ type: "bar", data: [5, 8, 3, 6, 2, 7] }],
+    };
+    for (const width of [500, 700]) {
+      const size = { width, height: 500 };
+      assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
+      assert.deepStrictEqual(warningsOf(option, size), []);
+    }
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);
