@@ -411,6 +411,8 @@ export class DiagramPanel implements vscode.Disposable {
     this.selection = [];
     this.cancelPick("The user closed the diagram panel.");
     this.cancelRender("The diagram panel was closed before it finished rendering.");
+    // Of a render that the page took up after the panel stopped waiting for it.
+    clearTimeout(this.renderTimer);
   }
 
   /** Sends a message to the webview, ending the request it makes if it does not arrive. */
@@ -442,42 +444,22 @@ export class DiagramPanel implements vscode.Disposable {
     });
   }
 
-  /** Handles a message from the webview, returning any work it starts, for tests to await. */
+  /**
+   * Handles a message from the page, returning any work it starts, for tests to await. Messages
+   * about the source name the render that showed it: one about a source that the panel replaced
+   * since is answered with a warning or dropped.
+   */
   private onMessage(message: FromWebview): Promise<void> | undefined {
+    const requestId = "requestId" in message ? message.requestId : undefined;
+    const ofShown = requestId === this.sourceRequestId;
+    const ofDrawn = requestId === this.drawn?.requestId;
     switch (message.type) {
       case "ready":
-        this.cancelExport("The diagram panel reloaded before export finished. Try again.");
-        // The webview loaded, or lost its content and loaded again (e.g. when moved to another
-        // window). Keep the pending request id so its caller is answered.
-        this.selection = [];
-        this.drawing = undefined;
-        this.lastSent = undefined;
-        if (this.pendingRender) {
-          this.sendChartOptions();
-          this.post(this.pendingRender.message);
-          if (this.annotation) this.post({ type: "annotate", ...this.annotation });
-        } else if (this.state) {
-          void this.renderCurrent({ redraw: true, newPage: true });
-        }
-        if (this.pendingPick) {
-          this.post(this.pendingPick.message);
-        }
-        break;
+        this.pageReady();
+        return;
       case "rendered":
-        this.pageAnswered(message.requestId);
-        // The ids of what was drawn, for telling a model that a node it names is not there. A late
-        // answer to a replaced render says nothing about the diagram now shown.
-        if (this.isCurrentRender(message.requestId)) {
-          const relationships = message.relationships?.filter((node) => node.relationship);
-          this.drawn = { ...message, relationships };
-        }
-        this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
-        break;
-      case "warningsChanged":
-        if (this.drawn && message.requestId === this.drawn.requestId) {
-          this.drawn = { ...this.drawn, warnings: message.warnings };
-        }
-        break;
+        this.pageRendered(message);
+        return;
       case "renderError":
         this.pageAnswered(message.requestId);
         this.finishRender(message.requestId, {
@@ -485,21 +467,36 @@ export class DiagramPanel implements vscode.Disposable {
           kind: message.unavailable ? "unavailable" : "invalid",
           error: message.message,
         });
-        break;
+        return;
+      case "warningsChanged":
+        if (ofDrawn && this.drawn) this.drawn = { ...this.drawn, warnings: message.warnings };
+        return;
       case "selectionChanged":
-        if (message.requestId === this.sourceRequestId) this.selection = message.nodes;
-        break;
+        if (ofShown) this.selection = message.nodes;
+        return;
       case "sourceEdited":
-        if (message.requestId === this.sourceRequestId) {
-          return this.applyEdit(message.source);
-        }
-        void vscode.window.showWarningMessage(
-          "The diagram changed before your edit arrived. Your draft is kept in the source view; review it and apply again.",
-        );
-        break;
+        return ofShown
+          ? this.applyEdit(message.source)
+          : warn(
+              "The diagram changed before your edit arrived. Your draft is kept in the source view; review it and apply again.",
+            );
+      case "writeToDocument":
+        return ofShown
+          ? this.writeShownToDocument()
+          : warn("The diagram changed before it could be written. Review it and write it again.");
+      case "ask":
+        return this.askInChat(`${this.regarding(message.nodes)}${message.text}`, !ofShown);
+      case "clickNode":
+        return ofDrawn ? this.nodeClicked(message.node) : undefined;
+      case "openUrl":
+        return ofDrawn && this.state
+          ? openUrl(message.url, diagramNoun(this.state.language), this.pageRanCode, (ask) =>
+              this.confirmForPage(ask),
+            )
+          : undefined;
       case "closeChartOptions":
         this.chartOptionsVisible = false;
-        break;
+        return;
       case "applyChartOptions":
         return this.applyChartOptions(message);
       case "refresh":
@@ -508,54 +505,63 @@ export class DiagramPanel implements vscode.Disposable {
       case "exportTheme":
       case "exportError":
         this.finishExport(message);
-        break;
-      case "writeToDocument":
-        if (message.requestId === this.sourceRequestId) {
-          return this.writeShownToDocument();
-        }
-        void vscode.window.showWarningMessage(
-          "The diagram changed before it could be written. Review it and write it again.",
-        );
-        break;
-      case "ask":
-        return this.askInChat(
-          `${this.regarding(message.nodes)}${message.text}`,
-          message.requestId !== this.sourceRequestId,
-        );
-      case "clickNode": {
-        const { node } = message;
-        if (message.requestId !== this.drawn?.requestId) break;
-        // The message names the node; its location comes from the links validated here, so that
-        // the webview, which shows what a model wrote, cannot open a path of its own choosing.
-        const link = this.linkOf(node);
-        if (link) {
-          return openLink(link, node.label, this.webview.tab?.viewColumn, (ask) =>
-            this.confirmForPage(ask),
-          );
-        }
-        if (this.state?.clickPrompt) {
-          return this.askInChat(clickToAskQuery(this.state.clickPrompt, node.label));
-        }
-        break;
-      }
-      case "openUrl":
-        if (this.state && message.requestId === this.drawn?.requestId) {
-          return openUrl(message.url, diagramNoun(this.state.language), this.pageRanCode, (ask) =>
-            this.confirmForPage(ask),
-          );
-        }
-        break;
+        return;
       case "picked":
         this.finishPick(message.pickId, { picked: true, nodes: message.nodes });
-        break;
+        return;
       case "pickCancelled":
         this.finishPick(message.pickId, {
           picked: false,
           reason: "The user cancelled without picking a node.",
         });
-        break;
     }
     return undefined;
+  }
+
+  /**
+   * The page loaded, or lost its content and loaded again, as when its tab moved to another
+   * window: it gets the render it waits for again, under the same id, so that its caller is
+   * answered, or else the current diagram, and the pick it waits for.
+   */
+  private pageReady(): void {
+    this.cancelExport("The diagram panel reloaded before export finished. Try again.");
+    this.selection = [];
+    this.drawing = undefined;
+    this.lastSent = undefined;
+    if (this.pendingRender) {
+      this.sendChartOptions();
+      this.post(this.pendingRender.message);
+      if (this.annotation) this.post({ type: "annotate", ...this.annotation });
+    } else if (this.state) {
+      void this.renderCurrent({ redraw: true, newPage: true });
+    }
+    if (this.pendingPick) this.post(this.pendingPick.message);
+  }
+
+  /** Keeps what the page drew, for the items a model may name; a replaced render's says nothing. */
+  private pageRendered(message: Extract<FromWebview, { type: "rendered" }>): void {
+    this.pageAnswered(message.requestId);
+    if (this.isCurrentRender(message.requestId)) {
+      const relationships = message.relationships?.filter((node) => node.relationship);
+      this.drawn = { ...message, relationships };
+    }
+    this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
+  }
+
+  /**
+   * Opens what a plain click on a node of the drawing asks for: the code it links to, by the links
+   * validated here, so that the page, which shows what a model wrote, cannot open a path of its
+   * own choosing, or else the click prompt in chat.
+   */
+  private nodeClicked(node: DiagramNode): Promise<void> | undefined {
+    const link = this.linkOf(node);
+    if (link) {
+      return openLink(link, node.label, this.webview.tab?.viewColumn, (ask) =>
+        this.confirmForPage(ask),
+      );
+    }
+    const prompt = this.state?.clickPrompt;
+    return prompt ? this.askInChat(clickToAskQuery(prompt, node.label)) : undefined;
   }
 
   /**
@@ -993,10 +999,11 @@ export class DiagramPanel implements vscode.Disposable {
    */
   private followRenames(files: readonly { oldUri: vscode.Uri; newUri: vscode.Uri }[]): void {
     const renamed = (uri: string | undefined) => {
-      for (const { oldUri, newUri } of uri === undefined ? [] : files) {
-        const old = oldUri.toString();
-        if (uri === old || uri?.startsWith(old.endsWith("/") ? old : `${old}/`)) {
-          return newUri.toString().replace(/\/$/, "") + uri.slice(old.replace(/\/$/, "").length);
+      if (uri === undefined) return undefined;
+      for (const { oldUri, newUri } of files) {
+        const old = oldUri.toString().replace(/\/$/, "");
+        if (uri === old || uri.startsWith(`${old}/`)) {
+          return newUri.toString().replace(/\/$/, "") + uri.slice(old.length);
         }
       }
       return undefined;
@@ -1656,6 +1663,10 @@ function withRebuiltChart(
     },
     summary: rebuilt.summary,
   };
+}
+
+function warn(message: string): undefined {
+  void vscode.window.showWarningMessage(message);
 }
 
 /** The outcome of a render that the panel did not show, which says nothing about its source. */
