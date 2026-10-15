@@ -31,8 +31,11 @@ interface Size {
   compact: boolean;
   /** The approximate width of a character of chart text. */
   charWidth: number;
-  /** The width of a text in the font of the chart, of its size or another. */
-  textWidth(text: string, fontSize?: number): number;
+  /**
+   * The width of a text in the font of the first of some text styles that sets each part of it,
+   * as its size and weight, or else in the chart's.
+   */
+  textWidth(text: string, ...styles: JsonObject[]): number;
 }
 
 /**
@@ -245,12 +248,28 @@ function layOutAround(
   if (option.media === undefined) {
     const { width, height } = context;
     const compact = width < 560 || height < 340;
-    const { fontFamily, fontSize } = context.colors;
-    const charWidth = fontSize * 0.6;
+    const charWidth = context.colors.fontSize * 0.6;
+    // The text style of the chart: the option's, over the theme's.
+    const chartStyle: JsonObject = {
+      fontFamily: context.colors.fontFamily,
+      fontSize: context.colors.fontSize,
+      ...(isPlainObject(base.textStyle) ? base.textStyle : {}),
+    };
     // As ECharts measures it to break it onto lines within a width: character by character, any
-    // but ASCII as wide as one of Chinese.
-    const textWidth = (text: string, size = fontSize) => {
-      const font = ensureFontMeasureInfo(`${size}px ${fontFamily}`);
+    // but ASCII as wide as one of Chinese, in the font of the first style that sets each of its
+    // parts, or else the chart's.
+    const textWidth = (text: string, ...styles: JsonObject[]) => {
+      const part = (key: string) =>
+        [...styles, chartStyle].map((style) => style[key]).find((value) => value != null);
+      // Of pixels, as a number or as "14px".
+      const fontSize = /^\d+(?:\.\d+)?(?:px)?$/.test(String(part("fontSize")).trim())
+        ? Number.parseFloat(String(part("fontSize")))
+        : context.colors.fontSize;
+      const font = ensureFontMeasureInfo(
+        [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
+          .filter((value) => value != null && value !== "")
+          .join(" "),
+      );
       let sum = 0;
       for (let index = 0; index < text.length; index++) {
         sum += measureCharWidth(font, text.charCodeAt(index));
@@ -1426,10 +1445,17 @@ const SHARE = "00.00%";
  */
 const WORDS = /[!-%'-+\-.0-:<->@-\\^-\u024f\u0370-\u10ff\u1200-\u13ff\u1e00-\u206f]+|[\s\S]/g;
 
-/** The width of a text in the font of a label, of a size of its own or the chart's. */
+/**
+ * The width of a text in the font of the names of a pie's labels: of the rich text style that
+ * their template sets them in, as the "name" of "{name|{b}}", over the label's own, as ECharts
+ * makes a name's font, as its size or weight, and else the chart's.
+ */
 function labelWidth(label: JsonObject, { textWidth }: Size): (text: string) => number {
-  const fontSize = typeof label.fontSize === "number" ? label.fontSize : undefined;
-  return (text) => textWidth(text, fontSize);
+  const { template } = labelTemplate(label);
+  const name = /\{(\w+)\|[^{}]*\{b\}/.exec(template)?.[1];
+  const rich = isPlainObject(label.rich) && name !== undefined ? label.rich[name] : undefined;
+  const styles = isPlainObject(rich) ? [rich, label] : [label];
+  return (text) => textWidth(text, ...styles);
 }
 
 /** Hides the labels of a pie's slices and their lines. Returns the label settings. */

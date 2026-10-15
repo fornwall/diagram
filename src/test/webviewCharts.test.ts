@@ -1696,6 +1696,46 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("cuts the words of a pie's labels short as wide as their font draws them, bold too", async () => {
+    const data = [
+      { name: "Authentication", value: 182 },
+      { name: "Payments", value: 96 },
+      { name: "Notifications", value: 64 },
+      { name: "Search", value: 31 },
+    ];
+    for (const label of [
+      { formatter: "{b}: {d}%", fontWeight: "bold" },
+      { formatter: "{name|{b}}\n{d}%", rich: { name: { fontWeight: "bold" } } },
+      { formatter: "{name|{b}}: {d}%", rich: { name: { fontSize: 15 } } },
+    ]) {
+      await renderChart({ title: { text: "Bugs" }, series: [{ type: "pie", label, data }] });
+      const broken = await evaluate(`(async () => {
+        ${CHART_FITTED}
+        const canvas = document.getElementById("canvas");
+        const broken = [];
+        try {
+          for (const width of [310, 330]) {
+            Object.assign(canvas.style, {width: width + "px", flex: "none"});
+            await chartFitted();
+            // Laid out for the size once it settles.
+            await nextFrame(3);
+            await new Promise((resolve) => setTimeout(resolve, ${SETTLE_DELAY + 50}));
+            for (const text of document.querySelectorAll("#chart svg text")) {
+              // The ellipsis of a word cut short that ECharts broke onto a line of its own.
+              const line = text.textContent.trim();
+              if (/^\\.|[^.]\\.{1,2}$/.test(line)) broken.push(width + ": " + line);
+            }
+          }
+        } finally {
+          Object.assign(canvas.style, {width: "", flex: ""});
+          await chartFitted();
+        }
+        return broken;
+      })()`);
+      assert.deepStrictEqual(broken, [], JSON.stringify(label));
+    }
+  });
+
   test("draws a graph in the view coordinate system after a chart that failed", async () => {
     const invalid = await render({
       language: "echarts",
