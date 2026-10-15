@@ -3,7 +3,8 @@
 import { columnName, findColumn, findColumns } from "./chartColumns";
 import { timeOrder } from "./chartDates";
 import { facetBoxes } from "./chartFacetLayout";
-import { inLabelOrder, roundStep, stepsOf } from "./chartRows";
+import { roundStep, stepsOf } from "./chartNumbers";
+import { inLabelOrder } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { Cell, DataTable } from "./data";

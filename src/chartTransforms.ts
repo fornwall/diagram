@@ -7,7 +7,7 @@ import {
   findColumn,
   leaveOut,
 } from "./chartColumns";
-import { interpolate, roundStep, stepsOf } from "./chartRows";
+import { interpolate, roundStep, stepsOf } from "./chartNumbers";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
 import { columnMultiple } from "./chartUnits";

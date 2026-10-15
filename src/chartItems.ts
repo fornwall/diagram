@@ -1,6 +1,7 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
-import { label, noteRepeatedLabels, type Reading, Sum } from "./chartRows";
+import { Sum } from "./chartNumbers";
+import { label, noteRepeatedLabels, type Reading } from "./chartRows";
 import { formatCount, quoteAll } from "./text";
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {

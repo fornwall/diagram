@@ -2,15 +2,8 @@
 
 import { columnName } from "./chartColumns";
 import { timeValue } from "./chartDates";
-import {
-  inLabelOrder,
-  label,
-  noteRepeatedLabels,
-  quantile,
-  type Reading,
-  type Row,
-  Sum,
-} from "./chartRows";
+import { quantile, Sum } from "./chartNumbers";
+import { inLabelOrder, label, noteRepeatedLabels, type Reading, type Row } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
 import { formatCount, plural, quoteAll } from "./text";
 
