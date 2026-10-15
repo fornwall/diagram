@@ -5,8 +5,9 @@ import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { type DataTable, parseTable } from "../data";
 import { ChartItems } from "../webview/echartsItems";
-import { type LayoutContext, layoutOption } from "../webview/echartsLayout";
+import { layoutOption } from "../webview/echartsLayout";
 import { drawnWidth, textWidth } from "../webview/echartsLibrary";
+import type { LayoutContext } from "../webview/echartsMeasure";
 import type { JsonObject } from "../webview/echartsOption";
 import { testColors } from "./themeColors";
 
