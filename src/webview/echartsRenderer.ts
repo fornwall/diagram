@@ -4,6 +4,7 @@
 import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
+import { toolWarnings } from "./echartsAround";
 import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
 import { cloneOption, sameLayout } from "./echartsClone";
 import { minimumHeight } from "./echartsFacets";
@@ -16,7 +17,7 @@ import {
   openDataView,
   parseItemKey,
 } from "./echartsItems";
-import { disableAnimation, focusHighlighted, layoutOption, toolWarnings } from "./echartsLayout";
+import { disableAnimation, focusHighlighted, layoutOption } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
 import { loadECharts } from "./echartsLoader";
 import {

@@ -1,8 +1,9 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { GUIDE_TOPICS } from "../guideTopics";
+import { toolWarnings } from "../webview/echartsAround";
 import { modelOf } from "../webview/echartsItems";
-import { disableAnimation, toolWarnings } from "../webview/echartsLayout";
+import { disableAnimation } from "../webview/echartsLayout";
 import { drawnWidth, textWidth } from "../webview/echartsLibrary";
 import type { JsonObject } from "../webview/echartsOption";
 import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
