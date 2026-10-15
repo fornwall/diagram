@@ -468,6 +468,19 @@ suite("Mermaid in the webview", function () {
       before: { scrolled: false, hidden: true },
       after: { scrolled: true, inView: true, centered: true },
     });
+    // A sequence diagram draws the footers of its participants before their headers: a tall one
+    // starts at the top.
+    const messages = Array.from({ length: 40 }, (_, i) => `  A->>B: message ${i}`);
+    await draw({ source: `sequenceDiagram\n${messages.join("\n")}`, title: "Tall" });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const canvas = document.getElementById("canvas");
+        await until(() => canvas.scrollHeight > canvas.clientHeight, "the tall drawing shown");
+        return [canvas.scrollLeft, canvas.scrollTop];
+      })()`),
+      [0, 0],
+    );
   });
 
   test("shows Mermaid labels whole, in the boxes Mermaid measured for them", async () => {

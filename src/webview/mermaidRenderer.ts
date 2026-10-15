@@ -826,8 +826,13 @@ export class MermaidRenderer implements Renderer {
   private showStart(): void {
     if (!this.scrollToStart || this.contentSize().width <= 0) return;
     this.scrollToStart = false;
-    const first = this.diagram.querySelector(`.diagram-node:not(.diagram-relationship, ${GROUP})`);
-    const box = first?.getBoundingClientRect();
+    // As found, rather than as drawn: a sequence diagram draws the footers of its participants
+    // before their headers.
+    const shown = (node: DiagramNode) => this.drawn.elements.get(node.id)?.[0];
+    const first = this.drawn.nodes.find(
+      (node) => !node.relationship && !shown(node)?.matches(GROUP),
+    );
+    const box = first && shown(first)?.getBoundingClientRect();
     if (!box?.width) {
       this.canvas.scrollTo(0, 0);
       return;
