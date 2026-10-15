@@ -5,6 +5,7 @@ import type * as ECharts from "echarts/core";
 import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
+import { cloneOption, sameLayout } from "./echartsClone";
 import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
@@ -15,12 +16,10 @@ import {
   parseItemKey,
 } from "./echartsItems";
 import {
-  cloneOption,
   disableAnimation,
   focusHighlighted,
   layoutOption,
   minimumHeight,
-  sameLayout,
   toolWarnings,
 } from "./echartsLayout";
 import type * as EChartsLibrary from "./echartsLibrary";
