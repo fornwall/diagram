@@ -751,6 +751,27 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(named, wider), []);
   });
 
+  test("breaks the labels of a funnel onto lines where they are wider than the room beside it", () => {
+    const regions = ["North America", "Europe", "Asia Pacific", "Latin America"];
+    regions.push("Middle East and Africa");
+    const spec = { type: "funnel", data: "unused", labelColumn: "region" } as const;
+    const table = (names: string[], top: number) =>
+      `region,sales\n${names.map((name, index) => `${name},${top - index * 25}`).join("\n")}`;
+    const funnel = builtOption(spec, table(regions, 150));
+    for (const width of [300, 330, 420]) {
+      assert.deepStrictEqual(warningsOf(funnel, { width, height: 600 }), [], `${width}`);
+    }
+    // Cut short where they would not fit across the height of their stage on lines.
+    const stages = Array.from({ length: 30 }, (_, index) => `Middle East and Africa ${index}`);
+    const crowded = builtOption(spec, table(stages, 1000));
+    const size = { width: 330, height: 600 };
+    const overflows = layout(crowded, size).series[0].data.map(
+      (item: Option) => item.label?.overflow,
+    );
+    assert.ok(overflows.includes("truncate") && !overflows.includes("break"), String(overflows));
+    assert.deepStrictEqual(warningsOf(crowded, size), []);
+  });
+
   test("tells of category labels that ECharts leaves out, or cuts short alike", () => {
     const departments = (axis: "xAxis" | "yAxis", count = 20): Option => {
       const data = DEPARTMENTS.slice(0, count);

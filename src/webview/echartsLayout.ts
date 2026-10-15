@@ -1809,7 +1809,10 @@ function layOutBoxSeries(
     const side = type === "tree" ? Math.round(width * 0.12) : type === "funnel" ? 80 : 12;
     const [left, right] =
       type === "funnel"
-        ? funnelSides(each, side, size)
+        ? funnelSides(each, side, size, {
+            width: width - reserved.left - reserved.right,
+            height: height - reserved.top - reserved.bottom - 24,
+          })
         : type === "tree"
           ? treeSides(each, side, size)
           : // Room for the labels right of the last column of sankey nodes.
@@ -1828,9 +1831,17 @@ function layOutBoxSeries(
 /**
  * The room a funnel keeps on its left and right: the margin, and on the side of its labels, which
  * ECharts draws beside it on the right unless told otherwise, as much as they take, up to 40% of
- * the width: its widest part spans the box it is laid out in.
+ * the width. Its widest stage spans the box it is laid out in, and a narrower one starts its label
+ * further in (see {@link funnelInward}). A label wider than the room beside its stage goes onto
+ * lines in it, as ECharts breaks them between words, where the stage is tall enough for them, and
+ * else is cut short; the tooltip tells it whole.
  */
-function funnelSides(funnel: JsonObject, margin: number, size: Size): [number, number] {
+function funnelSides(
+  funnel: JsonObject,
+  margin: number,
+  size: Size,
+  area: { width: number; height: number },
+): [number, number] {
   const label = isPlainObject(funnel.label) ? funnel.label : {};
   const position = String(label.position ?? "outer");
   if (
@@ -1840,8 +1851,10 @@ function funnelSides(funnel: JsonObject, margin: number, size: Size): [number, n
   ) {
     return [margin, margin];
   }
+  const sides = (room: number): [number, number] =>
+    position.startsWith("left") ? [room, margin] : [margin, room];
   const most = Math.round(size.width * 0.4);
-  const { width } = size.font(label);
+  const { width, breakWidth } = size.font(label);
   // A template adds its text, and a value of about 6 characters for each other placeholder.
   const { formatter } = label;
   const added =
@@ -1854,9 +1867,102 @@ function funnelSides(funnel: JsonObject, margin: number, size: Size): [number, n
   const line = isPlainObject(funnel.labelLine) ? funnel.labelLine : {};
   // The label line, the gap after it, and a margin to the edge.
   const gap = (typeof line.length === "number" ? line.length : 20) + 13;
-  const text = widestText(funnel.data, width, most) + added;
-  const room = Math.max(margin, Math.min(most, Math.round(text + gap)));
-  return position.startsWith("left") ? [room, margin] : [margin, room];
+  const data: unknown[] = Array.isArray(funnel.data) ? funnel.data : [];
+  const inward =
+    data.length <= MAX_READ_CATEGORIES ? funnelInward(funnel, data, position) : undefined;
+  if (!inward) {
+    const text = widestText(funnel.data, width, most) + added;
+    return sides(Math.max(margin, Math.min(most, Math.round(text + gap))));
+  }
+  // The box spans the area but for the margin and the room on the side of the labels.
+  const free = area.width - margin;
+  const texts = data.map((item) => width(entryText(item)) + added);
+  const needed = texts.map((text, index) => {
+    const share = inward[index] ?? 0;
+    return (text + gap - free * share) / (1 - share);
+  });
+  const room = Math.max(margin, Math.min(most, Math.round(Math.max(0, ...needed))));
+  const template = formatter === undefined ? "{b}" : formatter;
+  if (
+    label.width !== undefined ||
+    label.overflow !== undefined ||
+    typeof template !== "string" ||
+    // Of rich text, whose styles the layout does not measure.
+    template.includes("|")
+  ) {
+    return sides(room);
+  }
+  const stage = area.height / Math.max(1, data.length);
+  funnel.data = data.map((item, index) => {
+    // Up to a couple of pixels from the edge, rather than the margin the room keeps.
+    const available = room + (free - room) * (inward[index] ?? 0) - gap + 6;
+    const own: JsonObject = isPlainObject(item) ? item : { value: item };
+    const itemLabel = styleOf(own.label);
+    if ((texts[index] ?? 0) <= available || has(itemLabel, ["width", "overflow"])) return item;
+    const name = entryText(item);
+    const shown = template.replace(/\{b\}/g, () => name).replace(/\{[^{}]*\}/g, "000.00");
+    const lineWidth = Math.max(40, Math.floor(available));
+    const lines = lineCount(shown, lineWidth, breakWidth);
+    const overflow = lines * LABEL_LINE_HEIGHT <= stage ? "break" : "truncate";
+    return { ...own, label: { width: lineWidth, overflow, ...itemLabel } };
+  });
+  return sides(room);
+}
+
+/**
+ * How far in from the side of its box ECharts starts the label of each stage of a funnel beside
+ * it, as a share of the box's width: from the middle of the stage's side, or its corner, where the
+ * stage is as wide as its value and the next stage's value make it, between its least and most
+ * size. Undefined where the layout cannot tell, as of a funnel aligned, sorted or sized otherwise.
+ */
+function funnelInward(funnel: JsonObject, data: unknown[], position: string): number[] | undefined {
+  const share = (size: unknown, fallback: number) =>
+    size === undefined
+      ? fallback
+      : typeof size === "string" && /^\d+(?:\.\d+)?%$/.test(size.trim())
+        ? Number.parseFloat(size) / 100
+        : undefined;
+  const [least, most] = [share(funnel.minSize, 0), share(funnel.maxSize, 1)];
+  const sort = funnel.sort ?? "descending";
+  if (
+    least === undefined ||
+    most === undefined ||
+    (funnel.funnelAlign ?? "center") !== "center" ||
+    !["descending", "ascending", "none"].includes(String(sort)) ||
+    !["outer", "right", "left", "rightTop", "rightBottom", "leftTop", "leftBottom"].includes(
+      position,
+    )
+  ) {
+    return undefined;
+  }
+  const values = data.map((item) => {
+    const value = Number(isPlainObject(item) ? item.value : item);
+    return Number.isFinite(value) ? value : 0;
+  });
+  // Ascending, ECharts draws the stages from the bottom up, each beside the same next one.
+  const order = values.map((_, index) => index);
+  if (sort !== "none") order.sort((a, b) => (values[b] ?? 0) - (values[a] ?? 0));
+  const low = typeof funnel.min === "number" ? funnel.min : Math.min(0, ...values);
+  const high = typeof funnel.max === "number" ? funnel.max : Math.max(...values);
+  const size = (value: number) =>
+    high > low
+      ? least + (most - least) * Math.min(1, Math.max(0, (value - low) / (high - low)))
+      : (least + most) / 2;
+  const inward = values.map(() => 0);
+  order.forEach((index, at) => {
+    const next = order[at + 1];
+    const [own, after] = [
+      size(values[index] ?? 0),
+      size(next === undefined ? 0 : (values[next] ?? 0)),
+    ];
+    const side = position.endsWith("Top")
+      ? own / 2
+      : position.endsWith("Bottom")
+        ? after / 2
+        : (own + after) / 4;
+    inward[index] = Math.max(0, 1 / 2 - side);
+  });
+  return inward;
 }
 
 /**

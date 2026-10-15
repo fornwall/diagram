@@ -1167,9 +1167,22 @@ suite("echartsLayout", () => {
     assert.deepStrictEqual(box("tree", { ...tree, ...right, layout: "radial" }), [44, 96, 96, 12]);
     assert.deepStrictEqual(box("funnel"), [44, 80, 80, 12]);
     // A funnel's labels beside it on the right, unless placed otherwise, as long as they are.
-    const stages = { data: [{ name: "Visited the product page", value: 3 }, { name: "Paid" }] };
+    const stages = {
+      data: [
+        { name: "Visited the product page", value: 3 },
+        { name: "Paid", value: 3 },
+      ],
+    };
     const room = Math.round(widthOf("Visited the product page") + 33);
     assert.deepStrictEqual(box("funnel", stages), [44, 80, room, 12]);
+    // Less, of a label beside a narrower stage, which ECharts starts further in.
+    const narrower = {
+      data: [
+        { name: "Paid", value: 3 },
+        { name: "Visited the product page", value: 1 },
+      ],
+    };
+    assert.ok(box("funnel", narrower)[2] < room);
     assert.deepStrictEqual(box("funnel", { ...stages, label: { position: "leftTop" } }), [
       44,
       room,
