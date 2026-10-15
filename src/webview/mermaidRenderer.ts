@@ -434,6 +434,14 @@ async function layOut(
       await drawParticipantFormulas(svg, await db());
     }
     if (diagramType === "gantt") thinAxisLabels(svg);
+    // Mermaid multiplies the flows of a sankey diagram into the background, which turns them
+    // black on a dark one: screen them onto it instead, which shows them as multiplying does
+    // on a light one.
+    if (diagramType === "sankey" && colors.dark) {
+      for (const flow of svg.querySelectorAll<SVGElement>("g.link")) {
+        flow.style.mixBlendMode = "screen";
+      }
+    }
     showAllText(svg);
   } catch (error) {
     svg.remove();

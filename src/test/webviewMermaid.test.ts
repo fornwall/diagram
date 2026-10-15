@@ -578,6 +578,21 @@ suite("Mermaid in the webview", function () {
     assert.strictEqual(ratios.length, 3);
   });
 
+  test("screens the flows of a sankey diagram onto a dark background, rather than multiply them into it", async () => {
+    await draw({ source: "sankey-beta\n  Coal,Power,30\n  Power,Homes,20" });
+    const blends = await evaluate(`(async () => {
+      ${IN_THEME}
+      const blend = () => [...document.querySelectorAll("#diagram svg g.link")].map((flow) => getComputedStyle(flow).mixBlendMode);
+      const light = await inTheme("vscode-light", "${LIGHT_MODERN}", blend);
+      const dark = await inTheme("vscode-dark", "${DARK_MODERN}", blend);
+      return {light, dark};
+    })()`);
+    assert.deepStrictEqual(blends, {
+      light: ["multiply", "multiply"],
+      dark: ["screen", "screen"],
+    });
+  });
+
   test("draws a diagram that chooses its own theme in that theme's colors alone", async () => {
     for (const source of [
       '%%{init: {"theme": "default"}}%%\nflowchart LR\n  A[Start] --> B[End]',
