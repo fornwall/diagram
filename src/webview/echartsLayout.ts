@@ -68,17 +68,30 @@ const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? style : 
 const entryText = (entry: unknown) =>
   String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
 
-/** The width of the widest category or legend entry (see {@link entryText}). */
+/**
+ * The width of the widest category or legend entry (see {@link entryText}): of more than a few
+ * hundred, the widest of an even sample of them, as ECharts reads the labels of a dense axis, and
+ * of the longest, as measuring each would take long.
+ */
 function widestText(entries: unknown, width: (text: string) => number, enough = Infinity): number {
   if (!Array.isArray(entries)) {
     return 0;
   }
   // Once the label exceeds every layout threshold, further entries cannot change the result.
   // Dense axes and long legends often reach that point with their very first entry.
+  const step = Math.ceil(entries.length / MAX_READ_CATEGORIES);
   let widest = 0;
-  for (const entry of entries) {
-    widest = Math.max(widest, width(entryText(entry)));
-    if (widest > enough) break;
+  for (let index = 0; index < entries.length; index += step) {
+    widest = Math.max(widest, width(entryText(entries[index])));
+    if (widest > enough) return widest;
+  }
+  if (step > 1) {
+    let longest = "";
+    for (const entry of entries) {
+      const text = entryText(entry);
+      if (text.length > longest.length) longest = text;
+    }
+    widest = Math.max(widest, width(longest));
   }
   return widest;
 }

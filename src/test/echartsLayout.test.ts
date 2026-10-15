@@ -3,7 +3,7 @@ import type { ChartSpec } from "../chartSpec";
 import { GUIDE_TOPICS } from "../guideTopics";
 import { modelOf } from "../webview/echartsItems";
 import { disableAnimation, toolWarnings } from "../webview/echartsLayout";
-import { textWidth } from "../webview/echartsLibrary";
+import { drawnWidth, textWidth } from "../webview/echartsLibrary";
 import type { JsonObject } from "../webview/echartsOption";
 import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 import { testColors as colors } from "./themeColors";
@@ -920,6 +920,20 @@ suite("echartsLayout", () => {
     const axis = { type: "category", data: labels };
     const option = layout(bars({ xAxis: axis, yAxis: axis, legend: { data: labels } }));
     assert.strictEqual(option.xAxis.axisLabel.rotate, 45);
+  });
+
+  test("measures a sample of the labels of a dense axis, and the longest", () => {
+    let measured = 0;
+    const counted = (text: string, font: string) => {
+      measured++;
+      return drawnWidth(text, font);
+    };
+    const data = Array.from({ length: 20_000 }, (_, index) => `Category ${index}`);
+    // Off the sample, which the panel cuts short all the same.
+    data[12_345] = "A category of a name much longer than any other";
+    const option = layout(bars({ xAxis: { type: "category", data } }), { drawnWidth: counted });
+    assert.ok(measured < 1000, `${measured} labels measured`);
+    assert.strictEqual(option.xAxis.axisLabel.overflow, "truncate");
   });
 
   test("stops measuring dense axes after rotation and truncation are decided", () => {
