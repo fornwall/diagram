@@ -431,6 +431,45 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(padded, { left: true, top: true, right: true, bottom: true });
   });
 
+  test("starts a drawing wider than the canvas at its first node, once the canvas is shown", async () => {
+    // Laid out top down, the start is at the top in the middle, far from the top left corner.
+    const options = Array.from(
+      { length: 30 },
+      (_, i) => `  Q -->|option ${i}| S${i}[Handle option ${i}]\n  S${i} --> Done([Done])`,
+    );
+    const wide = `flowchart TD\n  Start([Start]) --> Q{Which kind?}\n${options.join("\n")}`;
+    const START = `${UNTIL}
+      const canvas = document.getElementById("canvas");
+      const start = async () => {
+        await until(() => canvas.scrollWidth > canvas.clientWidth, "the wide drawing shown");
+        const box = document.querySelector('#diagram [data-diagram-id="Start"]').getBoundingClientRect();
+        const view = canvas.getBoundingClientRect();
+        const middle = view.left + canvas.clientLeft + canvas.clientWidth / 2;
+        return {scrolled: canvas.scrollLeft > 0, inView: box.left >= view.left && box.right <= view.right,
+          centered: Math.abs(box.left + box.width / 2 - middle) < 2};
+      };`;
+    // Another diagram, by its title, rather than a revision, which keeps the zoom and the place.
+    await draw({ source: wide, title: "Wide" });
+    assert.deepStrictEqual(await evaluate(`(async () => { ${START} return start(); })()`), {
+      scrolled: true,
+      inView: true,
+      centered: true,
+    });
+    // The canvas has no size in the Source view: the drawing starts there once it is shown.
+    await evaluate('document.getElementById("view-source").click()');
+    await draw({ source: `${wide}\n  Done --> End([End])`, title: "Wider" });
+    const shown = await evaluate(`(async () => {
+      ${START}
+      const before = {scrolled: canvas.scrollLeft > 0, hidden: canvas.clientWidth === 0};
+      document.getElementById("view-visual").click();
+      return {before, after: await start()};
+    })()`);
+    assert.deepStrictEqual(shown, {
+      before: { scrolled: false, hidden: true },
+      after: { scrolled: true, inView: true, centered: true },
+    });
+  });
+
   test("shows Mermaid labels whole, in the boxes Mermaid measured for them", async () => {
     // Mermaid measures labels outside the canvas (see layoutContainer), so styles that apply only
     // where the drawing is shown would make labels overflow the boxes laid out for them.

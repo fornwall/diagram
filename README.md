@@ -36,7 +36,7 @@ Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model tha
 | Export | Use the editor title bar, drawing's context menu or **Diagram: Export…** to save PNG, SVG or an offline interactive HTML chart. Exports default to the Markdown file's folder when writable, or the subfolder you last exported to. |
 | Drag an image | Drag the picture handle into another app for PNG; hold Shift as you start for SVG. A drawing too large for PNG drops as SVG. |
 | Open links | Click an underlined node to open its linked file or http, https or mailto URL. Sequence actors with several links offer a menu. VS Code asks before opening an untrusted website. |
-| Zoom and pan | For Mermaid, use the zoom buttons, Ctrl/Cmd with +, - or 0, Ctrl/Cmd+scroll, trackpad pinching or dragging. The percentage toggles fit/actual size. New diagrams fit the panel, but not so small that their text stops reading: wider ones scroll sideways. Revisions keep your zoom. Charts, and Mermaid Gantt, XY, quadrant, radar, sankey, packet, Venn and Cynefin diagrams that set no size, resize to fit. |
+| Zoom and pan | For Mermaid, use the zoom buttons, Ctrl/Cmd with +, - or 0, Ctrl/Cmd+scroll, trackpad pinching or dragging. The percentage toggles fit/actual size. New diagrams fit the panel, but not so small that their text stops reading: wider ones scroll sideways, starting at their first node. Revisions keep your zoom. Charts, and Mermaid Gantt, XY, quadrant, radar, sankey, packet, Venn and Cynefin diagrams that set no size, resize to fit. |
 
 Images keep the theme and omit links. Mermaid images also omit selection and marks. PNGs use up to twice the drawing's resolution, with size metadata for documents. Mermaid SVGs use inline styles for apps such as Figma and Office.
 

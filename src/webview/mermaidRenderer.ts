@@ -202,6 +202,8 @@ function centerTextLabels(svg: SVGSVGElement): void {
  * fills, so their labels lie on the background.
  */
 const FILLABLE = "g.node, g.cluster";
+/** The groups of nodes, which Mermaid draws before the nodes in them. */
+const GROUP = "g.cluster, g.statediagram-cluster";
 /** What a node or group may draw its fill with. */
 const SHAPE = "rect, path, polygon, circle, ellipse";
 /** What holds the text of a label, as HTML or as SVG text. */
@@ -510,13 +512,13 @@ export class MermaidRenderer implements Renderer {
   private tabStop: string | undefined;
   private readonly resizeObserver = new ResizeObserver(() => {
     if (this.displayedSource === undefined) return;
-    if (this.fitting) {
-      cancelAnimationFrame(this.fitFrame);
-      // The user may zoom by hand before the frame.
-      this.fitFrame = requestAnimationFrame(() => {
-        if (this.fitting && this.displayedSource !== undefined) this.fit();
-      });
-    }
+    cancelAnimationFrame(this.fitFrame);
+    // The user may zoom by hand before the frame.
+    this.fitFrame = requestAnimationFrame(() => {
+      if (this.displayedSource === undefined) return;
+      if (this.fitting) this.fit();
+      this.showStart();
+    });
     if (drawnAtWidth(this.diagramType, this.ownWidth)) {
       clearTimeout(this.relayoutTimer);
       this.relayoutTimer = setTimeout(() => this.enqueue(() => this.relayout()), RELAYOUT_DELAY);
@@ -781,16 +783,39 @@ export class MermaidRenderer implements Renderer {
 
   /**
    * Sizes the drawing for the zoom, or to fit the panel, keeping the zoom until fitting can measure
-   * the panel, e.g. while it is hidden. Scrolls a drawing of another diagram than the one shown
-   * before to its top left.
+   * the panel, e.g. while it is hidden, and scrolls a drawing of another diagram than the one shown
+   * before to where it starts.
    */
   private present(): void {
     this.setZoom(this.zoom);
     if (this.fitting) this.fit();
-    if (this.scrollToStart) {
-      this.scrollToStart = false;
+    this.showStart();
+  }
+
+  /**
+   * Scrolls the canvas to show where the drawing of another diagram starts: its first node in the
+   * middle, such as the root of a flowchart laid out top down, which is at the top in the middle,
+   * out of sight in a wide drawing scrolled to its top left corner. Waits for the canvas to have
+   * a size, which it has not while hidden: the resize observer scrolls once it has.
+   */
+  private showStart(): void {
+    if (!this.scrollToStart || this.contentSize().width <= 0) return;
+    this.scrollToStart = false;
+    const first = this.diagram.querySelector(`.diagram-node:not(.diagram-relationship, ${GROUP})`);
+    const box = first?.getBoundingClientRect();
+    if (!box?.width) {
       this.canvas.scrollTo(0, 0);
+      return;
     }
+    const view = this.canvas.getBoundingClientRect();
+    const [x, y] = [
+      view.left + this.canvas.clientLeft + this.canvas.clientWidth / 2,
+      view.top + this.canvas.clientTop + this.canvas.clientHeight / 2,
+    ];
+    this.canvas.scrollTo(
+      this.canvas.scrollLeft + box.left + box.width / 2 - x,
+      this.canvas.scrollTop + box.top + box.height / 2 - y,
+    );
   }
 
   /**
