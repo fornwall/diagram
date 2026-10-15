@@ -5,6 +5,10 @@ import { isPlainObject } from "../protocol";
 import { labelColorOn, legibleTints, mix, type ThemeColors, toCss } from "./colors";
 import type { JsonObject } from "./echartsOption";
 
+/** The gap between the entries of a legend, and the width of the icon of each, in pixels. */
+export const LEGEND_ITEM_GAP = 14;
+export const LEGEND_ITEM_WIDTH = 12;
+
 export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> {
   const foreground = toCss(colors.foreground);
   const muted = toCss(colors.muted);
@@ -61,8 +65,8 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       textStyle: { color: foreground, ...font },
       inactiveColor: disabled,
       inactiveBorderColor: disabled,
-      itemGap: 14,
-      itemWidth: 12,
+      itemGap: LEGEND_ITEM_GAP,
+      itemWidth: LEGEND_ITEM_WIDTH,
       itemHeight: 12,
       icon: "roundRect",
       pageTextStyle: { color: muted, ...font },

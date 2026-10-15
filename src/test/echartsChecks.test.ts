@@ -847,4 +847,18 @@ suite("echartsChecks", function () {
       ],
     );
   });
+
+  test("wraps a legend into the rows that ECharts draws it in, as far apart as the theme's", () => {
+    const names = ["Revenue", "Operating costs", "Net income", "Headcount"];
+    names.push("Customer acquisition cost", "Churn", "NPS");
+    const option = {
+      xAxis: { type: "category", data: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"] },
+      yAxis: {},
+      series: names.map((name) => ({ name, type: "line", data: [1, 2, 3, 4, 5, 6] })),
+    };
+    // Below the plot, and above it from 560 pixels wide, neither paged nor on the axis labels.
+    for (let width = 300; width <= 1000; width += 10) {
+      assert.deepStrictEqual(warningsOf(option, { width, height: 600 }), [], `${width}`);
+    }
+  });
 });

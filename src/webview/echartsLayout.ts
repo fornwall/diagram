@@ -14,7 +14,7 @@ import {
   seriesOf,
   seriesPlaces,
 } from "./echartsOption";
-import { colorLabelsOnItems } from "./echartsTheme";
+import { colorLabelsOnItems, LEGEND_ITEM_GAP, LEGEND_ITEM_WIDTH } from "./echartsTheme";
 
 const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
 const has = (object: JsonObject, keys: string[]) => keys.some((key) => object[key] !== undefined);
@@ -675,16 +675,19 @@ function legendRows(
         )
       : seriesEntries(series, MAX_WRAPPED_ENTRIES);
   if (entries.length > MAX_WRAPPED_ENTRIES) return 1;
+  // As far apart as the theme's, or the option's, entries.
+  const gap = typeof legend.itemGap === "number" ? legend.itemGap : LEGEND_ITEM_GAP;
+  const icon = typeof legend.itemWidth === "number" ? legend.itemWidth : LEGEND_ITEM_WIDTH;
   let rows = 1;
   let used = 0;
   for (const entry of entries) {
     // The icon and the gap after it, and the gap before the entry after another.
-    const size = 12 + 5 + textWidth(entryText(entry));
-    if (used > 0 && used + 10 + size > width) {
+    const size = icon + 5 + textWidth(entryText(entry));
+    if (used > 0 && used + gap + size > width) {
       rows++;
       used = size;
     } else {
-      used += (used > 0 ? 10 : 0) + size;
+      used += (used > 0 ? gap : 0) + size;
     }
   }
   return rows <= most ? rows : 1;
