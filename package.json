@@ -140,7 +140,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(edit)",
         "userDescription": "Change the current diagram or chart with exact replacements in its source",
-        "modelDescription": "Change the current Mermaid diagram or ECharts chart with exact text replacements in its source instead of sending it all again with diagram_render, keeping the rest of the source, node ids, the user's edits, the title, code links and click prompt. Copy each oldText exactly from the source that diagram_getState gives. If any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, nodes added or removed, or the render error with the lines around it, and the revision. On a chart made by diagram_chart, edit only styling; change its type, columns or data with diagram_updateChart or diagram_chart.",
+        "modelDescription": "Change the current Mermaid diagram or ECharts chart with exact text replacements in its source, keeping the rest, node ids, the user's edits, the title, code links and click prompt, rather than sending it all again with diagram_render. Copy each oldText exactly from the source that diagram_getState gives; if any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, or the render error with the lines around it. On a chart made by diagram_chart, edit only its styling: change its type, columns or data with diagram_updateChart or diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -981,7 +981,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(symbol-color)",
         "userDescription": "Set the fill, border and text colors of nodes, subgraphs, edges, classes, states or ER entities in the Mermaid diagram",
-        "modelDescription": "Color items of the current Mermaid diagram by editing only its style and linkStyle lines: flowchart nodes, subgraphs and edges, classes, states and ER entities. Use only when the user asks for colors. Sets fill, stroke (border) and text colors, an edge stroke (its line) and text (its label), keeping other style properties and items; the text color defaults to black or white, whichever reads best on an opaque fill. Call diagram_getState first for exact ids, and for the selection when the user says \"this\". The panel background follows the VS Code theme and cannot be changed. Returns what was styled, unknown ids and the revision.",
+        "modelDescription": "Color items of the current Mermaid diagram, only when the user asks for colors: flowchart nodes, subgraphs and edges, classes, states and ER entities, by their style and linkStyle lines, keeping the rest of the source. Sets fill, stroke (a border, or an edge's line) and text, which defaults to black or white, whichever reads on the fill. Take the ids from the source or the selection that diagram_getState gives. The panel background follows the VS Code theme and cannot be changed.",
         "tags": [
           "diagram",
           "mermaid",
