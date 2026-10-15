@@ -405,7 +405,7 @@ updateToolbar();
 
 function showRefresh(from: string | undefined): void {
   refreshButton.hidden = from === undefined;
-  refreshButton.title = `Load the data again from ${from}`;
+  if (from !== undefined) refreshButton.title = `Load the data again from ${from}`;
 }
 
 /** Shows the title of a chart that was not kept, and asks to draw it again. */

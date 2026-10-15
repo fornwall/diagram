@@ -1997,7 +1997,9 @@ suite("webview renderer loading", function () {
         await render(900011, "mermaid", "flowchart LR\\n A --> B");
         const failed = shown();
         document.getElementById("view-visual").click();
-        return {chart, apply, failed, applyAfter: document.getElementById("apply").title};
+        return {chart, apply, failed, applyAfter: document.getElementById("apply").title,
+          // Hidden, the Refresh button keeps its title rather than name a source of nothing.
+          refresh: document.getElementById("refresh").title};
       })()`),
       {
         chart: ["views", "refresh", "write-to", "editor", "click-to-ask"],
@@ -2005,6 +2007,7 @@ suite("webview renderer loading", function () {
         apply: "Render your version and write it into the code block in notes.md (Ctrl/Cmd+Enter)",
         failed: [],
         applyAfter: "Render your version (Ctrl/Cmd+Enter)",
+        refresh: "Load the data again from file pie.csv",
       },
     );
     const again = await panel.render(flowchart, "tool");
