@@ -323,6 +323,26 @@ suite("panel", function () {
     reopened.panel.dispose();
   });
 
+  test("a pick on a drawing that the page then fails to draw again ends as the render does", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    const picking = pick(panel);
+    // The page reloads, as when its tab moves to another window, and cannot draw the diagram now.
+    webview.failNextRender("Parse error");
+    webview.sent.length = 0;
+    await webview.receive({ type: "ready" });
+    const outcome = await picking;
+    assert.ok(
+      !outcome.picked && /fails to render, so there is nothing to pick from/.test(outcome.reason),
+    );
+    const types = webview.sent.map((message) => message.type);
+    assert.deepStrictEqual(
+      types.filter((type) => type !== "chartOptions"),
+      ["render", "startPick", "endPick"],
+    );
+    assert.ok(!(await pick(panel)).picked);
+  });
+
   test("replacing a pending render ends it and replays only the latest diagram", async () => {
     const { panel, webview } = await newFakePanel();
     webview.answer = undefined;
