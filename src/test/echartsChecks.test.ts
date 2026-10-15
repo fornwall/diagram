@@ -769,6 +769,47 @@ suite("echartsChecks", function () {
     }
   });
 
+  test("keeps category labels across beside value axes that share a side", () => {
+    const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
+    const values = (scale: number) => people.map((_, index) => (5 + index) * scale);
+    // Drawn over each other on the right.
+    const shared = {
+      xAxis: { type: "category", data: people },
+      yAxis: [
+        { type: "value", position: "right" },
+        { type: "value", position: "right" },
+      ],
+      series: [
+        { type: "bar", data: values(10) },
+        { type: "bar", yAxisIndex: 1, data: values(100) },
+      ],
+    };
+    // One offset past the other, as ECharts' example of three value axes.
+    const offset = {
+      xAxis: { type: "category", data: people },
+      yAxis: [
+        { type: "value", name: "Rain", position: "right" },
+        { type: "value", name: "Flow", position: "right", offset: 60 },
+        { type: "value", name: "Heat", position: "left" },
+      ],
+      series: [
+        { type: "bar", data: values(10) },
+        { type: "bar", yAxisIndex: 1, data: values(100) },
+        { type: "line", yAxisIndex: 2, data: values(3) },
+      ],
+    };
+    for (const [option, width] of [
+      [shared, 290],
+      [shared, 305],
+      [offset, 390],
+      [offset, 405],
+    ] as const) {
+      const size = { width, height: 500 };
+      assert.strictEqual(layout(option, size).xAxis.axisLabel?.rotate, undefined, `${width}`);
+      assert.deepStrictEqual(warningsOf(option, size), [], `${width}`);
+    }
+  });
+
   test("turns category labels where the name of an inverse axis leaves too little width across", () => {
     const people = ["Ann", "Bob", "Cid", "Dan", "Eve", "Fay", "Gus"];
     // Named where the axis starts, after its labels on the right, beside the value labels left.

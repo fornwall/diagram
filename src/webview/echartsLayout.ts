@@ -1053,7 +1053,9 @@ function besidePlot(base: JsonObject, size: Size, most: number): number {
         room = Math.max(room + 8, gap) + nameFont.size + 8;
       }
     }
-    sides[side] += room + (typeof axis.offset === "number" ? axis.offset : 0);
+    // Axes on the same side are drawn over each other, unless the option offsets one past another.
+    const offset = typeof axis.offset === "number" ? axis.offset : 0;
+    sides[side] = Math.max(sides[side], room + offset);
   }
   for (const axis of asArray(base.xAxis).filter(onGrid)) {
     const { name, nameLocation: location } = axis;
