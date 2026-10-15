@@ -119,11 +119,18 @@ function defaultFolder(document: vscode.Uri | undefined): vscode.Uri | undefined
 
 /** Says why the file could not be saved, without the "Error: " that VS Code puts before it. */
 function saveError(error: unknown, target: vscode.Uri): Error {
-  return new Error(
-    error instanceof vscode.FileSystemError && error.code === "NoPermissions"
-      ? `You do not have permission to save ${fileName(target)}. Choose another folder.`
-      : errorMessage(error).replace(/^Error: /, ""),
-  );
+  const code = error instanceof vscode.FileSystemError ? error.code : undefined;
+  const message = errorMessage(error).replace(/^Error: /, "");
+  if (code === "NoPermissions") {
+    return new Error(
+      `You do not have permission to save ${fileName(target)}. Choose another folder.`,
+    );
+  }
+  // VS Code passes on the Node.js error of a local folder as it is.
+  if (code === "FileIsADirectory" || message.startsWith("EISDIR:")) {
+    return new Error(`${fileName(target)} is a folder. Choose another name.`);
+  }
+  return new Error(message);
 }
 
 /**

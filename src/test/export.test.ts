@@ -352,7 +352,7 @@ suite("export", function () {
     assert.deepStrictEqual(
       errors,
       [
-        `Could not export the diagram: EISDIR: illegal operation on a directory, open '${folder}'`,
+        `Could not export the diagram: ${folder} is a folder. Choose another name.`,
         `Could not export the diagram: You do not have permission to save ${denied}. Choose another folder.`,
       ].slice(0, targets.length),
     );
