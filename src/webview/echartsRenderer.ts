@@ -30,7 +30,7 @@ import {
 import { keepUserState, modelState } from "./echartsState";
 import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage, ModelImage } from "./images";
-import { formatOption } from "./optionSource";
+import { describeCallbackError, formatOption } from "./optionSource";
 import {
   type ItemClickHandler,
   type Renderer,
@@ -100,6 +100,10 @@ export class EChartsRenderer implements Renderer {
   /** The current VS Code theme, read again after it changed. */
   private theme: { colors: ThemeColors; echarts: object } | undefined;
   private option: JsonObject | undefined;
+  /** The source of the option, which says where a callback that throws is. */
+  private source = "";
+  /** What the callbacks of the option threw once the chart was drawn, such as on hovering an item. */
+  private callbackWarnings: string[] = [];
   /** What the chart draws of its data other than its option meant, which no size changes. */
   private dataWarnings: string[] = [];
   /** What the chart lays out other than its option meant, at the size it was checked at. */
@@ -171,6 +175,9 @@ export class EChartsRenderer implements Renderer {
       if (this.chart) openDataView(this.chart)?.classList.add("chart-data-view");
     }).observe(this.drawing, { childList: true });
     this.reducedMotion.addEventListener("change", () => this.relayout());
+    // ECharts lets what a callback throws in a handler of its own, such as a tooltip's formatter
+    // on hovering an item, through to the page.
+    window.addEventListener("error", ({ error }) => this.reportCallbackError(error));
   }
 
   async render(source: string, title: string): Promise<string> {
@@ -179,6 +186,8 @@ export class EChartsRenderer implements Renderer {
     this.canvas.classList.add("chart-mode");
     this.container.hidden = false;
     this.option = option;
+    this.source = source;
+    this.callbackWarnings = [];
     this.title = title;
     this.container.setAttribute("aria-label", title.trim() || "Chart");
     this.selectedKeys = new Set();
@@ -188,7 +197,10 @@ export class EChartsRenderer implements Renderer {
     } catch (error) {
       // A failed setOption can leave the instance broken: start over.
       this.disposeChart();
-      throw new Error(`ECharts could not render this option: ${errorMessage(error)}`);
+      throw new Error(
+        describeCallbackError(source, error, "drawn") ??
+          `ECharts could not render this option: ${errorMessage(error)}`,
+      );
     }
     this.dataWarnings = this.checkData(option);
     this.layoutWarnings = this.checkLayout(option);
@@ -214,6 +226,8 @@ export class EChartsRenderer implements Renderer {
   hide(): void {
     this.disposeChart();
     this.option = undefined;
+    this.source = "";
+    this.callbackWarnings = [];
     this.dataWarnings = [];
     this.layoutWarnings = [];
     this.scrolls(undefined);
@@ -241,7 +255,16 @@ export class EChartsRenderer implements Renderer {
       ...(this.items()?.warnings ?? []),
       ...this.dataWarnings,
       ...this.layoutWarnings,
+      ...this.callbackWarnings,
     ]);
+  }
+
+  /** Tells of what a callback of the option threw once the chart was drawn, the first time. */
+  private reportCallbackError(error: unknown): void {
+    const warning = this.option && describeCallbackError(this.source, error, "used");
+    if (!warning || this.callbackWarnings.includes(warning)) return;
+    this.callbackWarnings.push(warning);
+    warningsMayChange(this.canvas);
   }
 
   /**
@@ -696,6 +719,7 @@ export class EChartsRenderer implements Renderer {
       action();
     } catch (error) {
       console.error(error);
+      this.reportCallbackError(error);
       if (!this.chart || !stuck(this.chart)) return;
       this.disposeChart();
       try {

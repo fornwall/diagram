@@ -200,6 +200,53 @@ function scan(text: string): unknown[] | SourceError | Code | undefined {
  */
 const LINES_BEFORE_SOURCE = 3;
 
+/**
+ * The innermost frame of an error's stack that is in the evaluated source, as V8 writes it: the
+ * function's name, after the type of what it was called on, what it was called as, and the line
+ * and column in the function compiled.
+ */
+const SOURCE_FRAME =
+  /^\s*at (?:new )?(?:[^\s(.]+\.)*([^\s(.]+)(?: \[as ([^\]]+)\])? \(eval at [^\n]*?, <anonymous>:(\d+):(\d+)\)/m;
+
+/**
+ * Where in the source an error was thrown while it ran as JavaScript, if it was thrown in its own
+ * code rather than the chart's, and the name of the callback it was thrown in, if that has one.
+ */
+function thrownInSource(
+  text: string,
+  error: unknown,
+): { position: number | undefined; name: string | undefined } | undefined {
+  const match = error instanceof Error ? SOURCE_FRAME.exec(error.stack ?? "") : null;
+  if (!match) return undefined;
+  const [, name = "", calledAs, line = "", column = ""] = match;
+  return {
+    position: offsetOf(text, Number(line) - LINES_BEFORE_SOURCE, Number(column)),
+    // The top level of the source is no callback, and V8 names a nameless function "eval", or
+    // "<anonymous>" where it is a method.
+    name: calledAs ?? (name === "eval" || name === "<anonymous>" ? undefined : name),
+  };
+}
+
+/**
+ * Describes what a callback of a JavaScript option threw once the chart was drawn, such as a
+ * formatter, and where in the source, if the error was thrown in the source's own code: else
+ * undefined, as for an error of ECharts' own.
+ */
+export function describeCallbackError(
+  text: string,
+  error: unknown,
+  when: "drawn" | "used",
+): string | undefined {
+  const thrown = thrownInSource(text, error);
+  if (!thrown) return undefined;
+  const { at, excerpt } = located(text, thrown.position);
+  const callback = thrown.name === undefined ? "a function" : `"${thrown.name}"`;
+  return (
+    `The ECharts option's ${callback} threw while the chart was ${when}: ${errorClause(error)}${at}. ` +
+    `Check what it reads of its arguments, or leave it out.${excerpt}`
+  );
+}
+
 /** Describes why a source neither parses as JSON nor compiles as JavaScript. */
 function describeError(
   text: string,
@@ -238,10 +285,7 @@ function describeError(
 
 /** Describes what a JavaScript option threw while it was evaluated, and where. */
 function describeThrown(text: string, error: unknown): string {
-  const match = error instanceof Error ? /<anonymous>:(\d+):(\d+)\)/.exec(error.stack ?? "") : null;
-  const position = match
-    ? offsetOf(text, Number(match[1]) - LINES_BEFORE_SOURCE, Number(match[2]))
-    : undefined;
+  const position = thrownInSource(text, error)?.position;
   const hint =
     error instanceof ReferenceError
       ? " The option is evaluated on its own, with no libraries or variables in scope: write " +

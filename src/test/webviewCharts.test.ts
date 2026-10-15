@@ -5,6 +5,7 @@ import { buildChart } from "../charts";
 import { parseTable } from "../data";
 import { SETTLE_DELAY } from "../webview/echartsRenderer";
 import { afterTest, cancellationSource, recordMessages, replace } from "./afterTest";
+import { within } from "./newPanel";
 import { DRAG_IMAGE, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -307,6 +308,32 @@ suite("ECharts in the webview", function () {
       }),
     });
     assert.deepStrictEqual(page.panel.warnings, []);
+  });
+
+  test("tells the extension of a callback that throws as the pointer hovers an item", async () => {
+    await draw({
+      language: "echarts",
+      source:
+        '{\n  animation: false,\n  xAxis: {type: "category", data: ["A"]},\n  yAxis: {},\n' +
+        '  tooltip: {trigger: "item", formatter: (p) => p.nope.x},\n' +
+        '  series: [{type: "bar", data: [1], itemStyle: {color: "#0000ff"}}],\n}',
+    });
+    assert.deepStrictEqual(page.panel.warnings, []);
+    await evaluate(`(() => {
+      const bar = document.querySelector('#chart svg path[fill="#0000ff"]');
+      const box = bar.getBoundingClientRect();
+      bar.dispatchEvent(new MouseEvent("mousemove",
+        {bubbles: true, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}));
+    })()`);
+    assert.ok(
+      await within(() => page.panel.warnings.length > 0),
+      "The extension hears of the warning.",
+    );
+    assert.deepStrictEqual(page.panel.warnings, [
+      'The ECharts option\'s "formatter" threw while the chart was used: Cannot read properties ' +
+        "of undefined (reading 'x') (line 5, column 55). Check what it reads of its arguments, " +
+        `or leave it out.\n5 |   tooltip: {trigger: "item", formatter: (p) => p.nope.x},\n  | ${" ".repeat(54)}^`,
+    ]);
   });
 
   test("selects and marks chart names with surrounding spaces without conflating them", async () => {

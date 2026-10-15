@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { lineAndColumn } from "../text";
-import { evaluateSource } from "../webview/optionSource";
+import { describeCallbackError, evaluateSource } from "../webview/optionSource";
 import { thrown } from "./thrown";
 
 const errorOf = (source: string) => thrown(evaluateSource, source);
@@ -256,6 +256,59 @@ suite("optionSource", () => {
       const { line, column } = lineAndColumn(source, source.indexOf("echarts"));
       assert.match(errorOf(source), new RegExp(`\\(line ${line}, column ${column}\\)\\.`));
     }
+  });
+
+  test("names the callback that throws once the chart is drawn, and where it is", () => {
+    const source =
+      "{\n  series: [{type: 'bar', data: [1], label: {formatter: (p) => p.data.x.y}}],\n" +
+      "  symbolSize: function size(v) { return v.foo.bar; },\n  list: [() => { throw new Error('In the list.'); }],\n}";
+    const callbacks = evaluateSource(source) as {
+      series: { label: { formatter(p: unknown): unknown } }[];
+      symbolSize(v: unknown): unknown;
+      list: (() => unknown)[];
+    };
+    /** What a call throws. */
+    const thrownBy = (call: () => unknown) => {
+      try {
+        call();
+      } catch (error) {
+        return error;
+      }
+      return assert.fail("Nothing thrown.");
+    };
+    assert.strictEqual(
+      describeCallbackError(
+        source,
+        thrownBy(() => callbacks.series[0]?.label.formatter({})),
+        "drawn",
+      ),
+      'The ECharts option\'s "formatter" threw while the chart was drawn: Cannot read properties ' +
+        "of undefined (reading 'x') (line 2, column 70). Check what it reads of its arguments, " +
+        "or leave it out.\n" +
+        "2 |   series: [{type: 'bar', data: [1], label: {formatter: (p) => p.data.x.y}}],\n" +
+        "  |                                                                      ^",
+    );
+    // Called as ECharts calls it, by the name of the setting, rather than its own name.
+    const bound = { symbolSize: callbacks.symbolSize };
+    assert.match(
+      describeCallbackError(
+        source,
+        thrownBy(() => bound.symbolSize({})),
+        "used",
+      ) ?? "",
+      /^The ECharts option's "symbolSize" threw while the chart was used: Cannot read properties of undefined \(reading 'bar'\) \(line 3, column 47\)\./,
+    );
+    assert.match(
+      describeCallbackError(
+        source,
+        thrownBy(() => callbacks.list[0]?.()),
+        "drawn",
+      ) ?? "",
+      /^The ECharts option's "list" threw while the chart was drawn: In the list \(line 4, column 24\)\./,
+    );
+    // An error of the chart's own code is none of the option's.
+    assert.strictEqual(describeCallbackError(source, new Error("Elsewhere"), "drawn"), undefined);
+    assert.strictEqual(describeCallbackError(source, "not an error", "drawn"), undefined);
   });
 
   test("blames the JavaScript error, not number forms that only JSON forbids", () => {

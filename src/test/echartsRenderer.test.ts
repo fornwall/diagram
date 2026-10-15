@@ -3,6 +3,7 @@ import { init as initECharts, registerAction } from "echarts";
 import type * as ECharts from "echarts/core";
 import { type ChartItems, modelOf } from "../webview/echartsItems";
 import { drawnWidth, textWidth } from "../webview/echartsLibrary";
+import { parseOption } from "../webview/echartsOption";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { afterTest } from "./afterTest";
 import { item, itemsOf, withChart } from "./echartsModel";
@@ -53,7 +54,7 @@ function drawnRenderer(option: Record<string, unknown>) {
     selectedKeys: new Set(),
     reducedMotion: { matches: true },
     tabHidden: () => false,
-    focus: { chartChanged: () => {}, chartDrawn: () => {} },
+    focus: { chartChanged: () => {}, chartDrawn: () => {}, hide: () => {} },
     laidOut: "",
   });
   const internals = renderer as unknown as {
@@ -399,6 +400,71 @@ suite("echartsRenderer", () => {
     assert.strictEqual(internals.chart.getWidth(), 380);
     assert.strictEqual(reads, 0);
     assert.deepStrictEqual(renderer.warnings(), warned);
+  });
+
+  test("names the callback of the option that throws, as the chart is drawn or used", async () => {
+    const { renderer, container } = drawnRenderer({
+      series: [{ type: "pie", data: [{ name: "A", value: 1 }] }],
+    });
+    Object.assign(container, { hidden: true, scrollTop: 0, setAttribute: () => {} });
+    let changes = 0;
+    Object.assign(renderer, {
+      canvas: { classList: { add: () => {} }, dispatchEvent: () => ++changes },
+      resizeObserver: { observe: () => {}, unobserve: () => {} },
+    });
+    // A failed render disposes of the chart, which cancels the frame of a resize. ECharts and the
+    // guard log what is thrown.
+    const { cancelAnimationFrame } = globalThis;
+    const { error } = console;
+    globalThis.cancelAnimationFrame ??= () => {};
+    console.error = () => {};
+    afterTest(() => {
+      globalThis.cancelAnimationFrame = cancelAnimationFrame;
+      console.error = error;
+    });
+    const bars = (series: string) =>
+      `{\n  xAxis: {type: "category", data: ["A"]},\n  yAxis: {},\n  series: [${series}],\n}`;
+    const labeled = '{type: "bar", data: [1], label: {show: true, formatter: (p) => p.data.x.y}}';
+    await assert.rejects(renderer.render(bars(labeled), ""), {
+      message:
+        'The ECharts option\'s "formatter" threw while the chart was drawn: Cannot read ' +
+        "properties of undefined (reading 'y') (line 4, column 84). Check what it reads of its " +
+        `arguments, or leave it out.\n4 |   series: [${labeled}],\n  | ${" ".repeat(83)}^`,
+    });
+    // An error of ECharts' own is reported as such.
+    await assert.rejects(
+      renderer.render(
+        '{series: [{type: "treemap", levels: 5, data: [{name: "a", value: 1}]}]}',
+        "",
+      ),
+      { message: /^ECharts could not render this option: Cannot create property '0' on number/ },
+    );
+    // What a callback throws once the chart is drawn, as in the handler of the tooltip, is a
+    // warning of the chart, told once.
+    const source = bars('{type: "bar", data: [1]}').replace(
+      "yAxis: {},",
+      "yAxis: {},\n  tooltip: {formatter: (p) => p.nope.x},",
+    );
+    await renderer.render(source, "");
+    const guard = (action: () => void) =>
+      (renderer as unknown as { guard(action: () => void): void }).guard(action);
+    const { formatter } = parseOption(source).tooltip as { formatter(p: unknown): unknown };
+    for (let repeat = 0; repeat < 2; repeat++) guard(() => formatter({}));
+    guard(() => {
+      throw new Error("Thrown by the chart");
+    });
+    assert.strictEqual(changes, 1);
+    assert.deepStrictEqual(
+      renderer.warnings().filter((warning) => warning.includes("threw")),
+      [
+        'The ECharts option\'s "formatter" threw while the chart was used: Cannot read properties ' +
+          "of undefined (reading 'x') (line 4, column 38). Check what it reads of its arguments, " +
+          `or leave it out.\n4 |   tooltip: {formatter: (p) => p.nope.x},\n  | ${" ".repeat(37)}^`,
+      ],
+    );
+    // Not of the next option.
+    await renderer.render(bars('{type: "bar", data: [1]}'), "");
+    assert.deepStrictEqual(renderer.warnings(), []);
   });
 
   test("checks a chart drawn for an image at a new size there, though its size has not settled", async () => {
