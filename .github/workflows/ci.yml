@@ -33,9 +33,11 @@ jobs:
           key: vscode-${{ runner.os }}-${{ hashFiles('.vscode-test.mjs') }}
       - name: Check types, lint, build, and package
         run: npm run vsix -- --out "diagram-${{ github.sha }}.vsix"
-      # Against the minified bundles just packaged, as npm test would test unminified ones.
+      # Against the minified bundles just packaged, as npm test would test unminified ones. On a
+      # screen of a desktop's size, as the default of 640x480 stacks the panel's panes and narrows
+      # what the tests draw.
       - name: Test in VS Code
-        run: npm run compile-tests && xvfb-run -a npx vscode-test
+        run: npm run compile-tests && xvfb-run -a --server-args="-screen 0 1920x1080x24" npx vscode-test
       - name: Upload VSIX
         uses: actions/upload-artifact@v7
         with:
