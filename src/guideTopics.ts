@@ -306,6 +306,7 @@ Layout: up to ~25 commits on a few branches read well; summarize long histories.
     language: "mermaid",
     example: `C4Context
   title Payments system
+  UpdateLayoutConfig($c4ShapeInRow="3")
   Person(customer, "Customer", "Pays online")
   System(pay, "Payments", "Handles card payments")
   System_Ext(bank, "Bank", "Card network")
