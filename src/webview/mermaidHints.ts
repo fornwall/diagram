@@ -667,11 +667,11 @@ const quadrantPoint: Rule = ({ type, line }) => {
   const percent = (value: string) => value.endsWith("%") || Number(value) > 1;
   const valid = (value: string) =>
     percent(value)
-      ? /^\d+%?$/.test(value) && Number.parseInt(value) <= 100
+      ? /^\d+%?$/.test(value) && Number.parseInt(value, 10) <= 100
       : /^[\d.]+$/.test(value);
   if (!values.some(percent) || !values.every(valid)) return undefined;
   const fixed = values.map((value) =>
-    percent(value) ? String(Number.parseInt(value) / 100) : value,
+    percent(value) ? String(Number.parseInt(value, 10) / 100) : value,
   );
   return `Point coordinates go from 0 to 1, across and up the chart: ${(point[1] as string).trim()} [${fixed.join(", ")}].`;
 };
