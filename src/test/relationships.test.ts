@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import type * as vscode from "vscode";
 import type { DiagramNode } from "../protocol";
+import { StyleDiagramTool } from "../styleTool";
 import { quoteAll } from "../text";
 import { AnnotateDiagramTool, GetDiagramImageTool } from "../tools";
 import { cancellationSource } from "./afterTest";
@@ -320,6 +321,22 @@ suite("relationships", function () {
     );
     assert.ok(await highlightPath("C", "D"));
     assert.match(await selectionLabel(), /No path/);
+  });
+
+  test("keeps the start and the destination of a path in the selection that a coloring keeps", async () => {
+    await draw({ source: "flowchart LR\n A --> B\n C --> A" });
+    await click(node("C"));
+    await click(node("A"), true);
+    // As the page selects them again in the new drawing.
+    selection = [];
+    assert.match(
+      await invokeTool(new StyleDiagramTool(page.panel), { styles: [{ id: "B", fill: "red" }] }),
+      /^Styled "B"/,
+    );
+    await within(() => selection.length === 2);
+    assert.deepStrictEqual(selectedIds(), ["C", "A"]);
+    await click("#highlight-path");
+    assert.deepStrictEqual(selectedIds(), ["C", "edge:L_C_A_0", "A"]);
   });
 
   /** The ids of the relationships drawn, by their labels. */

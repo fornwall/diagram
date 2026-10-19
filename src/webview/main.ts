@@ -327,11 +327,13 @@ async function render(message: RenderMessage): Promise<void> {
     }
     diagramReplaced();
     // A revision that keeps its items, such as one that colors them, keeps their selection.
+    // In the order selected, which tells the start of a path from its destination.
     const kept = message.selection && active?.drawnNodes?.();
-    if (kept) {
-      const ids = new Set(message.selection);
-      for (const node of kept) {
-        if (ids.has(node.id)) selection.set(node.id, node);
+    if (message.selection && kept) {
+      const byId = new Map(kept.map((node) => [node.id, node]));
+      for (const id of message.selection) {
+        const node = byId.get(id);
+        if (node) selection.set(node.id, node);
       }
       if (selection.size > 0) selectionChanged();
     }
