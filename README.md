@@ -41,7 +41,7 @@ Chart types: pie, doughnut, bar, stacked bar, line, area, scatter, histogram, tr
 
 ## Tools for other agents
 
-Any chat agent, not only `@diagram`, can use the extension's tools to render and edit diagrams, chart data, read the panel's selection, look at the drawing as an image, mark items and ask you to pick items. Reference them in chat with `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` and others listed in the tools picker.
+Any chat agent, not only `@diagram`, can use the extension's tools to render and edit diagrams, chart data, read the panel's selection, look at the drawing as an image, mark items and ask you to pick items. Reference them in chat with `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` and others listed in the tools picker. See [the tools reference](docs/tools.md) for what each one does.
 
 ## Security
 
@@ -50,6 +50,8 @@ VS Code asks before running a command, reading a data file outside the workspace
 ## Limits
 
 Data files and command output are limited to 10 MiB, commands to 60 seconds, tables to 1,000,000 cells and Mermaid sources to 50,000 characters. Summarize larger datasets before charting them.
+
+See [the full reference](docs/reference.md) for everything the panel, Markdown editing and chart data support, and for all limits.
 
 ## Feedback
 
