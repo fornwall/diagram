@@ -111,7 +111,7 @@ const savedPage = {
 // Chunk names are hashed, so start from scratch to not ship stale chunks.
 rmSync("dist", { recursive: true, force: true });
 
-// The targets are the runtimes of VS Code 1.140, the oldest that engines in package.json allows.
+// Keep the build targets compatible with the runtimes of the minimum supported VS Code version.
 const contexts = await Promise.all([
   esbuild.context({
     ...common,

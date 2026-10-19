@@ -11,7 +11,7 @@
     "url": "https://github.com/fornwall/diagram"
   },
   "engines": {
-    "vscode": "^1.140.0"
+    "vscode": "^1.142.0"
   },
   "capabilities": {
     "untrustedWorkspaces": {
