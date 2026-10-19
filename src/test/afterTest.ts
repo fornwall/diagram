@@ -73,7 +73,7 @@ export function suiteTempDir(prefix: string): string {
 
 /** This extension, which the tests run in. */
 export function diagramExtension(): vscode.Extension<unknown> {
-  const extension = vscode.extensions.getExtension("fornwall.diagram");
+  const extension = vscode.extensions.getExtension("fornwall.diagram-chat");
   assert.ok(extension);
   return extension;
 }

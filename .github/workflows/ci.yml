@@ -32,7 +32,7 @@ jobs:
           path: .vscode-test/vscode-*
           key: vscode-${{ runner.os }}-${{ hashFiles('.vscode-test.mjs') }}
       - name: Check types, lint, build, and package
-        run: npm run vsix -- --out "diagram-${{ github.sha }}.vsix"
+        run: npm run vsix -- --out "diagram-chat-${{ github.sha }}.vsix"
       # Against the minified bundles just packaged, as npm test would test unminified ones. On a
       # screen of a desktop's size, as the default of 640x480 stacks the panel's panes and narrows
       # what the tests draw.
@@ -41,7 +41,7 @@ jobs:
       - name: Upload VSIX
         uses: actions/upload-artifact@v7
         with:
-          path: diagram-${{ github.sha }}.vsix
+          path: diagram-chat-${{ github.sha }}.vsix
           if-no-files-found: error
           archive: false
           retention-days: 90
