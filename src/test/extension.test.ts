@@ -300,6 +300,7 @@ suite("extension", function () {
     );
     const marked = await invoke("diagram_annotate", {
       marks: [
+        // A note and a caption, as the panel showed them once, are left out.
         { id: "parse", mark: "current", note: "we are here" },
         { id: "Checker", mark: "problem" },
       ],
@@ -308,7 +309,7 @@ suite("extension", function () {
     });
     assert.match(marked, /^Marked 1 node: "parse" \(current\)\./);
     assert.match(marked, /Unmarked items are faded\./);
-    assert.match(marked, /Caption: "Step 1 of 2"\./);
+    assert.match(marked, /The panel shows no caption or notes: say them in your answer\./);
     // The label of a node is not its id, so there is nothing to mark for it.
     assert.match(
       marked,
@@ -317,7 +318,7 @@ suite("extension", function () {
 
     // The marks belong to the state a later request sees, and the diagram is still the one drawn.
     const state = await invoke("diagram_getState", {});
-    assert.match(state, /Marked nodes: "parse" \(current: "we are here"\)\./);
+    assert.match(state, /Marked nodes: "parse" \(current\)\./);
     assert.match(state, /flowchart LR/);
 
     assert.strictEqual(await invoke("diagram_annotate", {}), "Cleared the diagram's marks.");

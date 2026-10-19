@@ -35,14 +35,14 @@ suite("webview", function () {
         window.testRenderResults = [];
         receive({type: "render", requestId: 900001, language: "mermaid",
           source: "invalid obsolete diagram", title: "Obsolete"});
-        receive({type: "annotate", marks: [], dim: false, caption: "Obsolete annotation"});
+        receive({type: "annotate", marks: [{id: "A", kind: "problem"}], dim: false});
         receive({type: "render", requestId: 900002, language: "mermaid",
           source: "flowchart LR\\n C --> D", title: "Intermediate"});
         receive({type: "render", requestId: 900003, language: "mermaid",
           source: "flowchart LR\\n E --> F", title: "Latest"});
-        receive({type: "annotate", marks: [], dim: false, caption: "Latest annotation"});
+        receive({type: "annotate", marks: [{id: "E", kind: "info"}], dim: false});
         ${UNTIL}
-        await until(() => document.getElementById("annotation-caption").textContent === "Latest annotation",
+        await until(() => document.querySelector('#diagram [data-diagram-id="E"].diagram-marked'),
           "the latest diagram's annotation");
         return {results: window.testRenderResults,
           title: document.getElementById("title").textContent,
@@ -786,8 +786,8 @@ suite("webview", function () {
         pick("endPick", 90001);
         pick("startPick", 90002);
         pick("endPick", 90002);
-        receive({type: "annotate", marks: [], dim: false, caption: "Ended"});
-        await until(() => document.getElementById("annotation-caption").textContent === "Ended",
+        receive({type: "annotate", marks: [{id: "A", kind: "info"}], dim: false});
+        await until(() => document.querySelector('#diagram [data-diagram-id="A"].diagram-marked'),
           "the marks after the pick");
         return {focused, ended: banner.hidden};
       })()`),
@@ -1868,32 +1868,6 @@ suite("webview", function () {
       await draw({ language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}' });
     }
     assert.deepStrictEqual(await evaluate("window.testInert"), []);
-  });
-
-  test("keeps the annotation banner a live region, which takes no space without marks", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(async () => {
-        const banner = document.getElementById("annotation");
-        const shown = () => ({
-          live: banner.getAttribute("role") === "status" && getComputedStyle(banner).display !== "none",
-          height: banner.getBoundingClientRect().height > 0
-        });
-        ${UNTIL}
-        const annotate = async (caption) => {
-          receive({type: "annotate", marks: [], dim: false, caption});
-          await until(() => document.getElementById("annotation-caption").hidden === (caption === undefined),
-            "the caption " + caption);
-          return shown();
-        };
-        return [shown(), await annotate("Step 1"), await annotate(undefined)];
-      })()`),
-      [
-        { live: true, height: false },
-        { live: true, height: true },
-        { live: true, height: false },
-      ],
-    );
   });
 
   test("hides the drag handle and other hidden controls whatever their styles", async () => {

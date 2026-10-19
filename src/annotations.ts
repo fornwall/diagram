@@ -11,18 +11,16 @@ import { brief, givenProperties, quoteAll, unknownProperties } from "./text";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 export interface AnnotateInput {
-  marks?: { id: string; mark?: string; note?: string }[];
-  caption?: string;
+  marks?: { id: string; mark?: string }[];
   dim?: boolean;
 }
 
-const INPUT_KEYS = ["marks", "caption", "dim"] as const satisfies readonly (keyof AnnotateInput)[];
-const MARK_KEYS = ["id", "mark", "note"] as const;
+const INPUT_KEYS = ["marks", "dim"] as const satisfies readonly (keyof AnnotateInput)[];
+const MARK_KEYS = ["id", "mark"] as const;
 
 const MAX_MARKS = 50;
-const MAX_TEXT_LENGTH = 120;
 
-const EXAMPLE = '{"marks": [{"id": "pay", "mark": "problem", "note": "times out here"}]}';
+const EXAMPLE = '{"marks": [{"id": "pay", "mark": "problem"}]}';
 
 /** Each call replaces all marks. Reject malformed input with a list of problems. */
 export function validateAnnotation(value: unknown): Annotation {
@@ -30,6 +28,8 @@ export function validateAnnotation(value: unknown): Annotation {
     throw new Error(`The marks must be given as an object, e.g. ${EXAMPLE}.`);
   }
   const input = givenProperties(value);
+  // The panel showed a caption above the drawing once; the chat answer says it now.
+  delete input.caption;
   const problems: string[] = [];
   const unknown = unknownProperties(input, INPUT_KEYS);
   if (unknown !== undefined) {
@@ -62,15 +62,6 @@ export function validateAnnotation(value: unknown): Annotation {
     }
   }
 
-  let caption: string | undefined;
-  if (input.caption !== undefined) {
-    const problem = textProblem(input.caption, "caption");
-    if (problem) {
-      problems.push(problem);
-    } else {
-      caption = (input.caption as string).trim() || undefined;
-    }
-  }
   if (input.dim !== undefined && typeof input.dim !== "boolean") {
     problems.push('"dim" must be true or false.');
   }
@@ -78,7 +69,7 @@ export function validateAnnotation(value: unknown): Annotation {
   if (problems.length > 0) {
     throw new Error(`Invalid marks:\n- ${problems.join("\n- ")}`);
   }
-  return { marks, caption, dim: input.dim === true };
+  return { marks, dim: input.dim === true };
 }
 
 function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
@@ -88,6 +79,8 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return 'A mark must be an object, e.g. {"id": "pay", "mark": "problem"}.';
   }
   const mark = givenProperties(value);
+  // As the caption: the chat answer says what a mark is about.
+  delete mark.note;
   const unknown = unknownProperties(mark, MARK_KEYS);
   if (unknown !== undefined) {
     return unknown;
@@ -106,22 +99,16 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
   if (!isMarkKind(kind)) {
     return `"mark" is ${brief(kind)}; it must be one of ${quoteAll(MARK_KINDS)}.`;
   }
-  if (mark.note === undefined) {
-    return { id, kind };
-  }
-  const problem = textProblem(mark.note, "note");
-  if (problem) {
-    return problem;
-  }
-  const note = (mark.note as string).trim();
-  return note ? { id, kind, note } : { id, kind };
+  return { id, kind };
 }
 
-function textProblem(value: unknown, key: string): string | undefined {
-  if (typeof value !== "string") {
-    return `"${key}" must be a string.`;
-  }
-  return value.trim().length > MAX_TEXT_LENGTH
-    ? `"${key}" must be at most ${MAX_TEXT_LENGTH} characters, as the panel shows it on one line.`
-    : undefined;
+/**
+ * Whether the input has a caption or notes, as the panel showed them above the drawing once. It
+ * leaves them out, and the model should say them in its answer instead.
+ */
+export function hasText(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const text = (given: unknown) => typeof given === "string" && given.trim() !== "";
+  const marks: unknown[] = Array.isArray(value.marks) ? value.marks : [value.marks];
+  return text(value.caption) || marks.some((mark) => isPlainObject(mark) && text(mark.note));
 }

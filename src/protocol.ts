@@ -107,15 +107,11 @@ export function isMarkKind(value: unknown): value is MarkKind {
 export interface DiagramMark {
   id: string;
   kind: MarkKind;
-  /** A short note about this node, shown with the mark above the diagram. */
-  note?: string;
 }
 
 /** Replaces the previous marks without redrawing. Cleared when the diagram is replaced. */
 export interface Annotation {
   marks: DiagramMark[];
-  /** One line shown above the drawing, e.g. "Step 2 of 3: the request is retried here". */
-  caption?: string | undefined;
   /** Whether what is not marked is faded, so that the marked nodes stand out. */
   dim: boolean;
 }
@@ -220,7 +216,7 @@ export type ToWebview =
   /** The bound document's display name, as the document was renamed. */
   | { type: "writeTo"; writeTo: string }
   | { type: "clearSelection" }
-  /** Replace marks without redrawing; empty marks and no caption clears them. */
+  /** Replace marks without redrawing; empty marks clear them. */
   | ({ type: "annotate" } & Annotation)
   /** Asks the user to click nodes until the pick is answered or ended. */
   | { type: "startPick"; pickId: number; prompt: string; multiple: boolean }

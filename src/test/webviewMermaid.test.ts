@@ -1006,12 +1006,12 @@ suite("Mermaid in the webview", function () {
         };
         try {
           const first = await mark([{id: "A0", kind: "problem"}]);
-          const notesOnly = await mark([{id: "A0", kind: "problem", note: "More detail"}], true);
+          const fadedOnly = await mark([{id: "A0", kind: "problem"}], true);
           const replacement = await mark([{id: "A0", kind: "good"}, {id: "A1", kind: "info"}]);
           const node = diagram.querySelector('[data-diagram-id="A0"]');
           const replaced = node.classList.contains("diagram-mark-good") && !node.classList.contains("diagram-mark-problem");
           const cleared = await mark([]);
-          return {first, notesOnly, replacement, replaced, cleared, markVisits, remaining: diagram.querySelectorAll(".diagram-marked").length};
+          return {first, fadedOnly, replacement, replaced, cleared, markVisits, remaining: diagram.querySelectorAll(".diagram-marked").length};
         } finally {
           DOMTokenList.prototype.toggle = toggle;
           observer.disconnect();
@@ -1019,7 +1019,7 @@ suite("Mermaid in the webview", function () {
       })()`),
       {
         first: ["A0"],
-        notesOnly: [],
+        fadedOnly: [],
         replacement: ["A0", "A1"],
         replaced: true,
         cleared: ["A0", "A1"],
@@ -1548,10 +1548,9 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual([...(page.panel.drawnIds ?? [])].sort(), ["A", "B"]);
     const marked = page.panel.annotate({
       marks: [
-        { id: "A", kind: "problem", note: "fails here" },
+        { id: "A", kind: "problem" },
         { id: "B", kind: "good" },
       ],
-      caption: "Step 1 of 2",
       dim: true,
     });
     assert.ok(marked.ok);

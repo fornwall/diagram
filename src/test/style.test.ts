@@ -469,7 +469,7 @@ suite("diagram_style in the panel", () => {
     await webview.receive({ type: "ready" });
     await within(() => panel.drawnIds !== undefined);
     await webview.select([{ id: "A", label: "A" }]);
-    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info", note: "watch" }], dim: false }).ok);
+    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info" }], dim: false }).ok);
     const result = await invokeTool(new StyleDiagramTool(panel), {
       styles: [{ id: "A", fill: "red" }],
     });
@@ -480,7 +480,7 @@ suite("diagram_style in the panel", () => {
       panel.describeForModel() ?? "",
       /The user has selected these nodes in the panel: "A"/,
     );
-    assert.match(panel.describeForModel() ?? "", /watch/);
+    assert.match(panel.describeForModel() ?? "", /Marked nodes: "B" \(info\)\./);
   });
 
   test("keeps a coloring that fails to render shown with its error and marks, for diagram_edit to fix", async () => {
@@ -501,7 +501,7 @@ suite("diagram_style in the panel", () => {
         : undefined;
     await webview.receive({ type: "ready" });
     await within(() => panel.drawnIds !== undefined);
-    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info", note: "watch" }], dim: false }).ok);
+    assert.ok(panel.annotate({ marks: [{ id: "B", kind: "info" }], dim: false }).ok);
     const error = 'Parse error on line 3, column 9: unexpected "fill".';
     webview.failNextRender(error);
     const colored = `${source}\n  style A fill:red,color:black`;
@@ -512,7 +512,7 @@ suite("diagram_style in the panel", () => {
     // As the panel shows the colored source, the quoted line is in it, for the fix to replace.
     assert.strictEqual(panel.current?.source, colored);
     assert.strictEqual(panel.current?.error, error);
-    assert.match(panel.describeForModel() ?? "", /watch/);
+    assert.match(panel.describeForModel() ?? "", /Marked nodes: "B" \(info\)\./);
     assert.match(
       await invokeTool(new EditDiagramTool(panel), {
         edits: [{ oldText: "\n  style A fill:red,color:black", newText: "" }],
@@ -521,7 +521,7 @@ suite("diagram_style in the panel", () => {
     );
     assert.strictEqual(panel.current?.source, source);
     assert.strictEqual(panel.current?.error, undefined);
-    assert.match(panel.describeForModel() ?? "", /watch/);
+    assert.match(panel.describeForModel() ?? "", /Marked nodes: "B" \(info\)\./);
   });
 
   test("leaves an edge whose number in linkStyle lines the page does not tell, saying how to color it", async () => {

@@ -241,10 +241,6 @@ export class EChartsRenderer implements Renderer {
     this.scheduleSelection();
   }
 
-  labelOf(id: string): string | undefined {
-    return this.items()?.labelOf(id);
-  }
-
   repeatedNames(): RepeatedName[] {
     return this.items()?.repeatedNames() ?? [];
   }
@@ -324,7 +320,7 @@ export class EChartsRenderer implements Renderer {
       previousIds.size !== annotation.marks.length ||
       annotation.marks.some(({ id }) => !previousIds.has(id))
     ) {
-      // Notes, mark kinds and order live outside the chart. Re-highlighting unchanged items
+      // Mark kinds and order do not show on the chart. Re-highlighting unchanged items
       // would downplay every graphic, which is expensive with large series.
       this.guard(() => this.highlightMarks(previousIds));
     }
@@ -630,7 +626,7 @@ export class EChartsRenderer implements Renderer {
   /**
    * Marks items the way ECharts marks them itself: the marked ones highlighted, and the rest blurred
    * while the annotation dims the chart. The color a mark reads in cannot come along, as emphasis is
-   * styled per series rather than per item; the notes above the chart carry it instead.
+   * styled per series rather than per item; the agent's answer in chat says what each mark means.
    */
   private highlightMarks(previousIds?: ReadonlySet<string>): void {
     const chart = this.chart;

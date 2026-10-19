@@ -529,7 +529,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
         "userDescription": "Mark nodes, edges, sequence messages or chart items without drawing again",
-        "modelDescription": "Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it. Each call replaces the previous marks, caption and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
+        "modelDescription": "Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it; say in your answer what the marks show. Each call replaces the previous marks and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
         "tags": [
           "diagram",
           "mermaid",
@@ -558,11 +558,6 @@
                       "info"
                     ],
                     "description": "\"current\" (default) for the step being explained, \"problem\" for a failure, \"good\" for something working or a recommended path, \"info\" for a pointer."
-                  },
-                  "note": {
-                    "type": "string",
-                    "description": "Short note shown above the diagram after the item's label, e.g. \"times out after 30 s\".",
-                    "maxLength": 120
                   }
                 },
                 "required": [
@@ -572,11 +567,6 @@
               },
               "description": "Omit or pass [] to clear the marks.",
               "maxItems": 50
-            },
-            "caption": {
-              "type": "string",
-              "description": "One line shown above the diagram, only for context the marks and labels do not show, e.g. \"Step 2 of 3: the request is retried here\".",
-              "maxLength": 120
             },
             "dim": {
               "type": "boolean",

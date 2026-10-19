@@ -211,7 +211,7 @@ suite("describe", () => {
     });
     const annotation = {
       marks: [
-        { id: "edge:L_check_emit_0", kind: "problem" as const, note: "Slow" },
+        { id: "edge:L_check_emit_0", kind: "problem" as const },
         { id: "parse", kind: "current" as const },
       ],
       dim: false,
@@ -222,10 +222,7 @@ suite("describe", () => {
       /^Name an edge by its ends' ids, as in "parse --> check", for diagram_annotate and diagram_getImage\.$/m,
     );
     // Marks are named as the model names them.
-    assert.match(
-      described,
-      /^Marked items: "check --> emit" \(problem: "Slow"\), "parse" \(current\)\./m,
-    );
+    assert.match(described, /^Marked items: "check --> emit" \(problem\), "parse" \(current\)\./m);
     assert.doesNotMatch(described, /L_parse_check_0/);
     // As for /explain, which may view the diagram but not mark it, and a model without tools.
     assert.match(

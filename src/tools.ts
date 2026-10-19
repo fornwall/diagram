@@ -2,7 +2,7 @@
 // diagram_pickNodes and diagram_annotate.
 
 import * as vscode from "vscode";
-import { type AnnotateInput, validateAnnotation } from "./annotations";
+import { type AnnotateInput, hasText, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { nodeList, repeatedList } from "./describe";
@@ -466,7 +466,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     }
     const language = this.panel.current?.language ?? "mermaid";
     const noun = diagramNoun(language);
-    const { marks, caption, dim } = outcome.annotation;
+    const { marks, dim } = outcome.annotation;
     const { names, given, several } = outcome;
     const sentences: string[] = [];
     if (marks.length > 0) {
@@ -495,8 +495,8 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     } else {
       sentences.push(`Cleared the ${noun}'s marks.`);
     }
-    if (caption !== undefined) {
-      sentences.push(`Caption: ${JSON.stringify(caption)}.`);
+    if (hasText(options.input)) {
+      sentences.push("The panel shows no caption or notes: say them in your answer.");
     }
     const unknown =
       outcome.unknown.length > 0 && names
@@ -514,21 +514,18 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
   }
 }
 
-/** How marking reads in chat, e.g. `Marking "pay" in the diagram: Step 2 of 3`. */
-function markingMessage({ marks, caption }: Annotation, language: DiagramLanguage): string {
+/** How marking reads in chat, e.g. `Marking "pay" in the diagram`. */
+function markingMessage({ marks }: Annotation, language: DiagramLanguage): string {
   const noun = diagramNoun(language);
   if (marks.length === 0) {
-    return caption === undefined
-      ? `Clearing the marks in the ${noun}`
-      : `Marking the ${noun}: ${caption}`;
+    return `Clearing the marks in the ${noun}`;
   }
   // A few ids say more than their number; many of them would crowd the chat.
   const what =
     marks.length <= 3
       ? quoteAll(marks.map(({ id }) => id))
       : plural(marks.length, nodeNoun(language));
-  const where = `Marking ${what} in the ${noun}`;
-  return caption === undefined ? where : `${where}: ${caption}`;
+  return `Marking ${what} in the ${noun}`;
 }
 
 /**

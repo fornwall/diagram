@@ -1,7 +1,6 @@
 import {
   type Annotation,
   type DiagramLanguage,
-  type DiagramMark,
   type DiagramNode,
   errorClause,
   errorMessage,
@@ -64,8 +63,6 @@ const writeToButton = element<HTMLButtonElement>("write-to");
 const applyButton = element<HTMLButtonElement>("apply");
 const dragOutHandle = element("drag-out");
 const viewsGroup = element("views");
-const annotationCaption = element("annotation-caption");
-const annotationNotes = element("annotation-notes");
 const pickBanner = element("pick");
 const pickPrompt = element("pick-prompt");
 const pickDoneButton = element<HTMLButtonElement>("pick-done");
@@ -715,25 +712,6 @@ function showAnnotation(next: Annotation): void {
   active?.showMarks(next);
   // An image prepared for a drag was made without these marks; a chart draws them into its SVG.
   forgetDragImage();
-  const notes = next.marks.flatMap((mark) =>
-    mark.note === undefined ? [] : [noteRow(mark, mark.note)],
-  );
-  annotationCaption.textContent = next.caption ?? "";
-  annotationCaption.hidden = next.caption === undefined;
-  annotationNotes.replaceChildren(...notes);
-}
-
-function noteRow({ id, kind }: DiagramMark, note: string): HTMLLIElement {
-  const row = document.createElement("li");
-  row.className = `diagram-mark-${kind}`;
-  const dot = document.createElement("span");
-  dot.className = "mark-dot";
-  const name = document.createElement("b");
-  name.textContent = active?.labelOf(id) ?? id;
-  const text = document.createElement("span");
-  text.append(name, document.createTextNode(` ${note}`));
-  row.append(dot, text);
-  return row;
 }
 
 // Picking nodes on request of an agent.

@@ -282,49 +282,6 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   margin-left: auto;
 }
 
-/* The caption and notes an agent sent with its marks, above the drawing they are about. */
-#annotation {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 12px;
-  background: var(--vscode-editorWidget-background);
-  border-bottom: 1px solid var(--vscode-panel-border);
-}
-
-/* Without a caption or notes, a live region still, so that those that come are announced. */
-#annotation:not(:has(#annotation-caption:not([hidden]), li)) {
-  padding: 0;
-  border: 0;
-}
-
-#annotation-caption {
-  font-weight: 600;
-}
-
-#annotation-notes {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  /* Many notes scroll rather than push the drawing out of the panel. */
-  max-height: 7em;
-  overflow-y: auto;
-  list-style: none;
-}
-
-#annotation-notes li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  overflow-wrap: anywhere;
-}
-
-#annotation-notes li > span:last-child {
-  min-width: 0;
-}
-
 /* The colors marks read in, from the theme: the step being walked through, something wrong,
    something that works, and a plain pointer. The pointer is purple, as the charts' blue is the
    focus color's hue in most themes, which the step being walked through has. */
@@ -342,16 +299,6 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
 
 .diagram-mark-info {
   --mark-color: var(--vscode-charts-purple, var(--vscode-textLink-foreground));
-}
-
-.mark-dot {
-  flex: none;
-  align-self: flex-start;
-  margin-top: 0.35em;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--mark-color);
 }
 
 #error {
@@ -848,9 +795,5 @@ select:focus {
   #splitter:is(:hover, .dragging) {
     outline: 1px solid Highlight;
     outline-offset: -1px;
-  }
-
-  .mark-dot {
-    forced-color-adjust: none;
   }
 }

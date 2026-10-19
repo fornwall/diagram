@@ -121,11 +121,6 @@ suite("echartsItems", () => {
     assert.deepStrictEqual(items.repeatedNames(), [
       { name: "Yes", ids: ["Yes (q1)", "Yes (q2)"], count: 2 },
     ]);
-    // Notes name an item by its label, unless other items go by it too.
-    assert.strictEqual(items.labelOf("Yes (q2)"), "Yes (q2)");
-    assert.strictEqual(items.labelOf("Yes (q1) → Yes (q2)"), "Yes → Yes");
-    assert.strictEqual(items.labelOf("Q1"), "Q1");
-    assert.strictEqual(items.labelOf("No"), undefined);
   });
 
   test("tells apart repeated names without ids by their position", () => {
@@ -177,8 +172,6 @@ suite("echartsItems", () => {
     assert.deepStrictEqual(items.find("sales/Tue"), [item(1)]);
     assert.deepStrictEqual(items.find("Plan (series 3)/Mon (item 3)"), [item(2, 2)]);
     assert.deepStrictEqual(items.find("Mon (item 3)"), [item(2), item(2, 1), item(2, 2)]);
-    assert.strictEqual(items.labelOf("sales/Tue"), "sales/Tue");
-    assert.strictEqual(items.labelOf("Tue"), "Tue");
     const repeated = items.repeatedNames().map(({ name, count }) => [name, count]);
     assert.deepStrictEqual(repeated, [
       ["sales/Mon", 2],
@@ -223,8 +216,6 @@ suite("echartsItems", () => {
         ],
         type,
       );
-      assert.strictEqual(items.labelOf("src/a/index.ts"), "src/a/index.ts");
-      assert.strictEqual(items.labelOf("src/a"), "a");
     }
   });
 

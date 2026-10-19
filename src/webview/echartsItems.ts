@@ -337,16 +337,6 @@ export class ChartItems {
       : this.series.flatMap((series) => series.find(id));
   }
 
-  /** The label of the items with this id, or the id when other items go by that label too. */
-  labelOf(id: string): string | undefined {
-    const refs = this.find(id);
-    const [first] = refs;
-    const label = first && this.series[first.seriesIndex]?.item(first)?.label;
-    if (label === undefined || label === id) return label;
-    const keys = (refs: ItemRef[]) => refs.map(itemKey).join();
-    return keys(this.find(label)) === keys(refs) ? label : id;
-  }
-
   /** Names that more than one item of a series goes by, which a mark must not use. */
   repeatedNames(): RepeatedName[] {
     const repeated = new Set(this.series.flatMap((series) => [...series.repeated]));

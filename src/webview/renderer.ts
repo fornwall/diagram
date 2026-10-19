@@ -38,8 +38,6 @@ export interface Renderer {
   showMarks(annotation: Annotation): void;
   /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
-  /** The label of the node or chart item with this id, as a mark's note names it. */
-  labelOf(id: string): string | undefined;
   /** Names that several chart items go by, which marks must replace with the items' ids. */
   repeatedNames?(): RepeatedName[];
   /** What a model should know about parts of the source that the rendering leaves out. */

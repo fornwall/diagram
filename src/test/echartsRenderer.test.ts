@@ -131,7 +131,7 @@ suite("echartsRenderer", () => {
     actions.length = 0;
     renderer.showMarks({
       marks: [
-        { id: "B", kind: "problem", note: "Changed note" },
+        { id: "B", kind: "problem" },
         { id: "A", kind: "info" },
       ],
       dim: false,

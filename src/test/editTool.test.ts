@@ -381,8 +381,8 @@ suite("diagram_edit", function () {
     assert.ok(
       panel.annotate({
         marks: [
-          { id: "A", kind: "info", note: "reads" },
-          { id: "C", kind: "problem", note: "slow" },
+          { id: "A", kind: "info" },
+          { id: "C", kind: "problem" },
         ],
         dim: false,
       }).ok,
@@ -390,8 +390,7 @@ suite("diagram_edit", function () {
     assert.match(await editing({ edits: [{ oldText: "\n  B --> C", newText: "" }] }), /^Edited/);
     assert.deepStrictEqual(webview.render.selection, ["A"]);
     const described = panel.describeForModel() ?? "";
-    assert.match(described, /reads/);
-    assert.doesNotMatch(described, /slow/);
+    assert.match(described, /Marked nodes: "A" \(info\)\./);
     const marks = webview.sent.findLast((message) => message.type === "annotate");
     assert.deepStrictEqual(marks?.type === "annotate" && marks.marks.map(({ id }) => id), ["A"]);
   });

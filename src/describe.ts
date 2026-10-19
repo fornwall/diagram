@@ -300,28 +300,16 @@ function describeMarks(
   name: (id: string) => string,
   annotates: boolean,
 ): string | undefined {
-  if (!annotation || (annotation.marks.length === 0 && annotation.caption === undefined)) {
+  if (!annotation || annotation.marks.length === 0) {
     return undefined;
   }
-  const { marks, caption, dim } = annotation;
-  const lines: string[] = [];
-  if (caption !== undefined) {
-    lines.push(`Annotation caption: ${caption}`);
-  }
-  if (marks.length > 0) {
-    const listed = marks.map(
-      ({ id, kind, note }) =>
-        `${JSON.stringify(name(id))} (${kind}${note === undefined ? "" : `: ${JSON.stringify(note)}`})`,
-    );
-    lines.push(
-      `Marked ${parts}: ${listed.join(", ")}.` +
-        (dim ? " Everything else is faded." : "") +
-        (annotates
-          ? ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
-          : ""),
-    );
-  }
-  return lines.join("\n");
+  const { marks, dim } = annotation;
+  const listed = marks.map(({ id, kind }) => `${JSON.stringify(name(id))} (${kind})`);
+  return (
+    `Marked ${parts}: ${listed.join(", ")}.` +
+    (dim ? " Everything else is faded." : "") +
+    (annotates ? ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.` : "")
+  );
 }
 
 /**

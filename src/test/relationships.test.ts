@@ -75,7 +75,7 @@ suite("relationships", function () {
     assert.match(page.panel.describeForModel() ?? "", /"edge:first"; edge; from: "A_B"; to: "B_C"/);
     assert.ok(
       page.panel.annotate({
-        marks: [{ id: "edge:second", kind: "problem", note: "Timeout" }],
+        marks: [{ id: "edge:second", kind: "problem" }],
         dim: true,
       }).ok,
     );
@@ -351,7 +351,7 @@ suite("relationships", function () {
     ]);
     const result = await invokeTool(new AnnotateDiagramTool(page.panel), {
       marks: [
-        { id: "B -> B", mark: "problem", note: "Loops" },
+        { id: "B -> B", mark: "problem" },
         { id: "B --> S", mark: "good" },
         { id: "D → C", mark: "info" },
         "E --- D",
@@ -382,7 +382,7 @@ suite("relationships", function () {
       [ids["Peer — Plain"] ?? ""]: "diagram-mark-current",
       [ids["Start → Check: No"] ?? ""]: "diagram-mark-current",
     });
-    assert.match(page.panel.describeForModel() ?? "", /Marked items: .*"Loops"/);
+    assert.match(page.panel.describeForModel() ?? "", /Marked items: .*\(problem\)/);
 
     // The part around all edges between the ends.
     const image = await invokeTool(new GetDiagramImageTool(page.panel), {

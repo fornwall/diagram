@@ -985,8 +985,7 @@ export class MermaidRenderer implements Renderer {
 
   /**
    * Shows the next state of the nodes on the elements of those whose state changed, and returns
-   * it: a click changes just its old and new selection, and a note just the text above the
-   * drawing, however large the drawing is.
+   * it: a click changes just its old and new selection, however large the drawing is.
    */
   private update<T>(
     shown: ReadonlyMap<string, T>,
@@ -1028,11 +1027,6 @@ export class MermaidRenderer implements Renderer {
       this.measured &&
       tooWide(this.measured, { roomWidth, roomHeight, width: document.body.clientWidth });
     return wide ? [wide, ...this.readability] : this.readability;
-  }
-
-  labelOf(id: string): string | undefined {
-    const [element] = this.drawn.elements.get(id) ?? [];
-    return element && this.drawn.byElement.get(element)?.label;
   }
 
   get hasWebLinks(): boolean {

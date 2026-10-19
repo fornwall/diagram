@@ -27,7 +27,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 - **Chart Options** (the gear in the title bar) reconfigures a chart made from data; **Refresh** reloads its file or command.
 - **Export** PNG, SVG or an offline interactive HTML chart, or drag the picture handle into another app.
 
-Diagrams follow your VS Code theme, high contrast included. Agents can mark items with notes, for example to walk you through a diagram, and can ask you to pick items as an answer.
+Diagrams follow your VS Code theme, high contrast included. Agents can mark items, for example to walk you through a diagram, and can ask you to pick items as an answer.
 
 ## Diagrams in Markdown
 

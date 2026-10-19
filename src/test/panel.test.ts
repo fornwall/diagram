@@ -1190,8 +1190,7 @@ suite("panel", function () {
     assert.ok((await panel.render(flowchart, "tool")).ok);
     sent.length = 0;
     const outcome = panel.annotate({
-      marks: [{ id: "A", kind: "problem", note: "fails here" }],
-      caption: "Step 1 of 2",
+      marks: [{ id: "A", kind: "problem" }],
       dim: true,
     });
     assert.ok(outcome.ok && outcome.unknown.length === 0);
@@ -1201,8 +1200,7 @@ suite("panel", function () {
       ["annotate"],
     );
     const described = panel.describeForModel() ?? "";
-    assert.match(described, /Marked nodes: "A" \(problem: "fails here"\)\./);
-    assert.match(described, /Annotation caption: Step 1 of 2/);
+    assert.match(described, /Marked nodes: "A" \(problem\)\./);
     assert.match(described, /Everything else is faded\./);
 
     sent.length = 0;
