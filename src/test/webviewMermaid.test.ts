@@ -1708,7 +1708,7 @@ suite("Mermaid in the webview", function () {
           "Backend: Backend 46",
           "Frontend services of the shop/Other: Other 3",
           "Frontend services of the shop/Web: Web 6",
-          "Frontend services of the shop: Frontend serv... 9",
+          "Frontend services of the shop: Frontend… 9",
         ],
       ],
       [
@@ -1824,7 +1824,9 @@ suite("Mermaid in the webview", function () {
         }
         return [...texts].map(([id, drawn]) => id + ": " + drawn.join(" ")).sort();
       })()`);
-      assert.deepStrictEqual(found, items, source);
+      // Where Mermaid cuts a title short depends on how wide the letters of the font are.
+      const cut = (found as string[]).map((item) => item.replace(/ \w*\.\.\./, "…"));
+      assert.deepStrictEqual(cut, items, source);
     }
   });
 

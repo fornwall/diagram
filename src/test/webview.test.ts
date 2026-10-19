@@ -987,8 +987,7 @@ suite("webview", function () {
   test("keeps the middle of the drawing in place when toggling between fit and actual size", async () => {
     // Wider than the panel, and narrow enough that fitting shows its 16 px text at a size that reads.
     await draw({ source: chain("LR", 4), title: "Fit and actual size" });
-    assert.deepStrictEqual(
-      await evaluate(`(() => {
+    const { fitted, actual, refitted } = (await evaluate(`(() => {
         const canvas = document.getElementById("canvas");
         const reset = document.getElementById("zoom-reset");
         /** Where the middle of the canvas is in the drawing, as a fraction of its width. */
@@ -1002,8 +1001,12 @@ suite("webview", function () {
         const actual = [reset.textContent, middle()];
         reset.click();
         return {fitted, actual, refitted: [reset.textContent, middle()]};
-      })()`),
-      { fitted: ["62%", 0.5], actual: ["100%", 0.5], refitted: ["62%", 0.5] },
+      })()`)) as Record<"fitted" | "actual" | "refitted", [string, number]>;
+    // How far fitting zooms out depends on the size of the window.
+    assert.ok(Number.parseInt(fitted[0], 10) < 100, fitted[0]);
+    assert.deepStrictEqual(
+      { fitted: fitted[1], actual, refitted },
+      { fitted: 0.5, actual: ["100%", 0.5], refitted: fitted },
     );
   });
 
