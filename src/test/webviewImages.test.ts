@@ -394,13 +394,13 @@ suite("images in the webview", function () {
         const host = document.createElement("div");
         host.innerHTML = await dragImage();
         document.body.append(host);
-        /** The boxes in the drawing's units, rounded. */
-        const boxes = (svg, rects) => rects.map(rect => {
+        /** The edges of the boxes in the drawing's units. */
+        const edges = (svg, rects) => rects.flatMap(rect => {
           const outer = svg.getBoundingClientRect();
           const { x, y, width, height } = svg.viewBox.baseVal;
           return [rect.left, rect.top, rect.right, rect.bottom].map((at, i) => i % 2
-            ? Math.round(y + (at - outer.top) * height / outer.height)
-            : Math.round(x + (at - outer.left) * width / outer.width)).join();
+            ? y + (at - outer.top) * height / outer.height
+            : x + (at - outer.left) * width / outer.width);
         });
         const image = host.querySelector("svg");
         const panel = document.querySelector("#diagram svg");
@@ -415,10 +415,15 @@ suite("images in the webview", function () {
           }
         }
         const texts = [...image.querySelectorAll("g:not([class]) > text")];
+        const imageEdges = edges(image, texts.map(text => text.getBoundingClientRect()));
+        const panelEdges = edges(panel, shown);
         const result = {
           htmlLabels: image.querySelectorAll("foreignObject:not(:has(math))").length,
           lines: texts.map(text => text.textContent),
-          moved: boxes(image, texts.map(text => text.getBoundingClientRect())).join(" ") !== boxes(panel, shown).join(" "),
+          // Within half a unit, rather than rounded: edges on half units, as those of 19px lines
+          // are, round apart for the smallest difference in how the two are laid out.
+          moved: imageEdges.length !== panelEdges.length ||
+            imageEdges.some((at, i) => Math.abs(at - panelEdges[i]) >= 0.5),
         };
         host.remove();
         return result;
