@@ -1772,8 +1772,8 @@ suite("ECharts in the webview", function () {
         const canvas = document.getElementById("canvas");
         const broken = [];
         try {
-          for (const width of [310, 330]) {
-            Object.assign(canvas.style, {width: width + "px", flex: "none"});
+          for (const [width, height] of [[310, 0], [330, 0], [310, 240], [330, 240], [310, 500], [330, 500], [310, 800], [330, 800]]) {
+            Object.assign(canvas.style, {width: width + "px", height: height ? height + "px" : "", flex: "none"});
             await chartFitted();
             // Laid out for the size once it settles.
             await nextFrame(3);
@@ -1781,11 +1781,11 @@ suite("ECharts in the webview", function () {
             for (const text of document.querySelectorAll("#chart svg text")) {
               // The ellipsis of a word cut short that ECharts broke onto a line of its own.
               const line = text.textContent.trim();
-              if (/^\\.|[^.]\\.{1,2}$/.test(line)) broken.push(width + ": " + line);
+              if (/^\\.|[^.]\\.{1,2}$/.test(line)) broken.push(width + "×" + (height || "auto") + ": " + line);
             }
           }
         } finally {
-          Object.assign(canvas.style, {width: "", flex: ""});
+          Object.assign(canvas.style, {width: "", height: "", flex: ""});
           await chartFitted();
         }
         return broken;

@@ -32,7 +32,8 @@ const MOST_SERIES = 50;
 /** A series of a Cartesian chart: a value, or none, for each point along the label axis. */
 interface Series {
   name: string;
-  values: (number | null)[];
+  /** Undefined means no row at this point; null is an explicitly missing measurement. */
+  values: (number | null | undefined)[];
 }
 
 /**
@@ -59,7 +60,7 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
   const series = new Map(
     [...names].map((name) => [
       name,
-      { name, values: Array<number | null>(points.size).fill(null) },
+      { name, values: Array<number | null | undefined>(points.size).fill(undefined) },
     ]),
   );
   let added = 0;
@@ -69,11 +70,11 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
     const value = row.values[0] ?? null;
     const values = series.get(row.labels[1] ?? "")?.values;
     const point = points.get(label(row));
-    if (value === null || values === undefined || point === undefined) continue;
+    if (values === undefined || point === undefined) continue;
     const previous = values[point] ?? null;
     if (previous === null) {
       values[point] = value;
-    } else {
+    } else if (value !== null) {
       const key = JSON.stringify([row.labels[1] ?? "", point]);
       const sum = (sums.get(key) ?? new Sum().add(previous)).add(value);
       sums.set(key, sum);
@@ -144,7 +145,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
     // Put the first row at the top of a horizontal chart.
     ...(horizontal ? { inverse: true } : {}),
     // Keep labels at the edge when an axis through zero would cover negative values.
-    ...(series.some(({ values }) => values.some((value) => value !== null && value < 0))
+    ...(series.some(({ values }) => values.some((value) => value != null && value < 0))
       ? { axisLine: { onZero: false } }
       : {}),
   };
@@ -172,11 +173,13 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
       ...(series.length > 1 ? { emphasis: { focus: "series" } } : {}),
       data:
         times === undefined
-          ? values
+          ? pivot
+            ? values.map((value) => value ?? null)
+            : values
           : values.flatMap((value, index) => {
-              if (value === null && ownTimes) return [];
+              if (value === undefined && ownTimes) return [];
               const time = times[index];
-              return [horizontal ? [value, time] : [time, value]];
+              return [horizontal ? [value ?? null, time] : [time, value ?? null]];
             }),
     })),
   };

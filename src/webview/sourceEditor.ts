@@ -4,6 +4,8 @@ import { isPlainObject } from "../protocol";
 import type { Renderer } from "./renderer";
 
 const VIEW_MODES = ["visual", "split", "source"] as const;
+/** Textareas expose every line ending as LF, including source read from Windows files. */
+const editorText = (source: string) => source.replace(/\r\n?/g, "\n");
 
 export type ViewMode = (typeof VIEW_MODES)[number];
 
@@ -94,7 +96,7 @@ export class SourceEditor {
       typeof editor.base === "string"
     ) {
       this.elements.input.value = editor.source;
-      this.editedFrom = editor.base;
+      this.editedFrom = editorText(editor.base);
       this.updateActions();
     }
   }
@@ -134,7 +136,7 @@ export class SourceEditor {
         this.updateActions();
       }
       this.appliedSource = undefined;
-    } else if (!edited || input.value === source) {
+    } else if (!edited || input.value === editorText(source)) {
       this.load();
     } else {
       staleNote.hidden = this.formatted() === this.editedFrom;
@@ -201,7 +203,9 @@ export class SourceEditor {
   private formatted(): string {
     const { diagram } = this;
     if (!diagram) return "";
-    diagram.formatted ??= diagram.renderer.formatForEditing?.(diagram.source) ?? diagram.source;
+    diagram.formatted ??= editorText(
+      diagram.renderer.formatForEditing?.(diagram.source) ?? diagram.source,
+    );
     return diagram.formatted;
   }
 

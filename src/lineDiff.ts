@@ -16,6 +16,7 @@ type Line = { kind: " " | "-" | "+"; text: string };
  * no file headers, or undefined if they are too many to compare. Empty if the lines are the same.
  */
 export function lineDiff(before: string, after: string): string | undefined {
+  if (before === after) return "";
   const a = before.split("\n");
   const b = after.split("\n");
   let start = 0;
@@ -31,12 +32,13 @@ export function lineDiff(before: string, after: string): string | undefined {
   const removed = a.slice(start, a.length - end);
   const added = b.slice(start, b.length - end);
   if (removed.length * added.length > MAX_COMPARED) return undefined;
+  const offset = Math.max(0, start - CONTEXT);
   const lines: Line[] = [
-    ...a.slice(0, start).map((text): Line => ({ kind: " ", text })),
+    ...a.slice(offset, start).map((text): Line => ({ kind: " ", text })),
     ...changes(removed, added),
-    ...a.slice(a.length - end).map((text): Line => ({ kind: " ", text })),
+    ...a.slice(a.length - end, a.length - end + CONTEXT).map((text): Line => ({ kind: " ", text })),
   ];
-  return hunks(lines).join("\n");
+  return hunks(lines, offset).join("\n");
 }
 
 /** The lines of a shortest edit from `a` to `b`, by their longest common subsequence. */
@@ -73,16 +75,17 @@ function changes(a: readonly string[], b: readonly string[]): Line[] {
 }
 
 /** The hunks of changed lines with their context, each headed by where it is in either version. */
-function hunks(lines: readonly Line[]): string[] {
-  const changed = lines.flatMap((line, index) => (line.kind === " " ? [] : [index]));
+function hunks(lines: readonly Line[], offset: number): string[] {
+  const changed: number[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (line.kind !== " ") changed.push(index);
+  }
   const result: string[] = [];
-  const count = (kinds: string, of: readonly Line[]) =>
-    of.filter(({ kind }) => kinds.includes(kind)).length;
   // The lines of either version before the hunk, counted on from the hunk before, as counting
   // them anew for each hunk would take long for many hunks in a long source.
   let counted = 0;
-  let oldBefore = 0;
-  let newBefore = 0;
+  let oldBefore = offset;
+  let newBefore = offset;
   let next = 0;
   while (next < changed.length) {
     const first = changed[next] ?? 0;
@@ -99,15 +102,17 @@ function hunks(lines: readonly Line[]): string[] {
       if (kind !== "-") newBefore++;
     }
     const shown = lines.slice(from, to);
-    const oldCount = count(" -", shown);
-    const newCount = count(" +", shown);
+    let oldCount = 0;
+    let newCount = 0;
+    for (const { kind } of shown) {
+      if (kind !== "+") oldCount++;
+      if (kind !== "-") newCount++;
+    }
     // As in unified diffs, an empty range starts at the line before it.
     const oldStart = oldBefore + (oldCount > 0 ? 1 : 0);
     const newStart = newBefore + (newCount > 0 ? 1 : 0);
-    result.push(
-      `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
-      ...shown.map(({ kind, text }) => `${kind}${text}`),
-    );
+    result.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
+    for (const { kind, text } of shown) result.push(`${kind}${text}`);
   }
   return result;
 }

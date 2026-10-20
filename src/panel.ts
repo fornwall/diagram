@@ -1492,6 +1492,7 @@ export class DiagramPanel implements vscode.Disposable {
     ids: string[] = [],
   ): Promise<{ png: Uint8Array; view: ImageView | undefined } | string> {
     const state = this.state;
+    const revision = this.shownRevision;
     if (!state) {
       return "No diagram is shown.";
     }
@@ -1510,6 +1511,9 @@ export class DiagramPanel implements vscode.Disposable {
     if (!this.webview.tab || !this.drawn) {
       const opened = this.webview.reveal(true);
       await this.renderCurrent({ redraw: true, newPage: opened });
+    }
+    if (this.shownRevision !== revision) {
+      return "The diagram changed while it was drawn. Try again.";
     }
     const rendered = this.drawn?.requestId;
     if (!this.webview.isReady || rendered === undefined) {

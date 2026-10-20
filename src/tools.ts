@@ -310,6 +310,13 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     if (typeof ids === "string") {
       return textResult(`There is no image to view: ${ids}`);
     }
+    // Reopening the panel redraws its items, including the ids behind relationship names.
+    if (ids.length > 0) await unlessCancelled(() => this.panel.itemIds(), token);
+    if (this.panel.revision !== revision) {
+      return textResult(
+        "There is no image to view. The diagram changed while it was drawn. Try again.",
+      );
+    }
     const noun = diagramNoun(current.language);
     // A model is told the items of a Mermaid diagram, which the panel knows, and may name an edge
     // or message by its ends, all of those between them; the page tells of the items of others.

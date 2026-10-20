@@ -346,6 +346,19 @@ suite("describe", () => {
     assert.strictEqual(lineDiff(many("a").join("\n"), many("b").join("\n")), undefined);
   });
 
+  test("diffs large insertions and deletions without exceeding the call stack", () => {
+    const short = "start\nend";
+    const long = `start\n${"value\n".repeat(150_000)}end`;
+    assert.strictEqual(
+      lineDiff(short, long),
+      `@@ -1,2 +1,150002 @@\n start\n${"+value\n".repeat(150_000)} end`,
+    );
+    assert.strictEqual(
+      lineDiff(long, short),
+      `@@ -1,150002 +1,2 @@\n start\n${"-value\n".repeat(150_000)} end`,
+    );
+  });
+
   test("tells what the user changed since an agent drew the diagram, and not a stale edit", () => {
     const from = "flowchart TD\n  A --> B\n  B --> C";
     const to = "flowchart TD\n  A --> B\n  B -->|retry| A\n  B --> C";

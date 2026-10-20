@@ -416,6 +416,33 @@ suite("charts", () => {
     );
   });
 
+  test("pivoted time series keep explicit gaps and skip only other series' times", () => {
+    const data = [
+      "day,region,sales",
+      "2026-01-01,EU,5",
+      "2026-01-02,EU,",
+      "2026-01-03,US,7",
+      "2026-01-04,EU,",
+      "2026-01-04,EU,6",
+      // A missing duplicate must not replace a measurement, whichever row comes first.
+      "2026-01-01,EU,",
+      "2026-01-04,EU,",
+      "2026-01-04,EU,2",
+    ].join("\n");
+    for (const type of ["line", "area", "bar", "horizontalBar"] as const) {
+      const option = build(chart(type, { labelColumn: ["day", "region"] }), data);
+      const expected = [
+        ["2026-01-01", 5],
+        ["2026-01-02", null],
+        ["2026-01-04", 8],
+      ];
+      assert.deepStrictEqual(
+        option.series[0].data,
+        type === "horizontalBar" ? expected.map(([time, value]) => [value, time]) : expected,
+      );
+    }
+  });
+
   test("stacks the areas of a stacked area chart", () => {
     const option = build(chart("stackedArea"));
     assert.strictEqual(option.xAxis.boundaryGap, false);

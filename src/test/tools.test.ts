@@ -12,7 +12,7 @@ import {
 } from "../tools";
 import { formatOption } from "../webview/optionSource";
 import { afterTest, cancellationSource, replace } from "./afterTest";
-import { newFakePanel, newPanel, openWebviewPanelAlone, within } from "./newPanel";
+import { FakeWebview, newFakePanel, newPanel, openWebviewPanelAlone, within } from "./newPanel";
 import { invokeTool, toolText } from "./toolText";
 
 const flowchart: DiagramState = {
@@ -594,6 +594,46 @@ suite("tools", () => {
         ["Revision 1 of the chart:", "image/png: png 0"],
       ],
     );
+  });
+
+  test("diagram_getImage resolves relationship names after reopening the panel", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(flowchart.source !== undefined);
+    assert.ok((await panel.render({ ...flowchart, source: flowchart.source }, "tool")).ok);
+    webview.panel.dispose();
+    const reopened = new FakeWebview();
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    reopened.answer = (message) => {
+      if (message.type === "render") {
+        return {
+          type: "rendered",
+          requestId: message.requestId,
+          diagramType: "flowchart",
+          nodeIds: ["A", "B"],
+          relationships: [
+            {
+              id: "edge:L_A_B_0",
+              label: "Parser → Checker",
+              relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
+            },
+          ],
+        };
+      }
+      if (message.type === "export") {
+        return {
+          type: "exportImage",
+          requestId: message.requestId,
+          format: "png",
+          data: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+        };
+      }
+      return undefined;
+    };
+    const viewing = invokeTool(new GetDiagramImageTool(panel), { ids: ["A --> B"] });
+    await reopened.receive({ type: "ready" });
+    assert.match(await viewing, /^Revision 1 of the diagram:/);
+    const exported = reopened.sent.find((message) => message.type === "export");
+    assert.deepStrictEqual(exported?.ids, ["edge:L_A_B_0"]);
   });
 
   test("diagram_getImage says why there is no image to view", async () => {

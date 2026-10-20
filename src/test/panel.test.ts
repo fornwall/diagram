@@ -323,6 +323,31 @@ suite("panel", function () {
     reopened.panel.dispose();
   });
 
+  test("an image requested while reopening cannot capture a replacement diagram", async () => {
+    const storage = memento(new Map());
+    const { panel, webview } = await newFakePanel(storage);
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    webview.panel.dispose();
+
+    // A redraw shares an outstanding save, which can finish after another diagram renders.
+    const saved = Promise.withResolvers<void>();
+    const update = storage.update;
+    let writes = 0;
+    replace(storage, "update", (key, value) => {
+      const written = update(key, value);
+      return ++writes === 1 ? saved.promise : written;
+    });
+    panel.adopt(panel.revision);
+    const reopened = new FakeWebview();
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    const image = panel.captureImage({ maxSide: 100, maxPixels: 10_000 });
+    await reopened.receive({ type: "ready" });
+    assert.ok((await panel.render({ ...flowchart, source: "flowchart LR\n  C --> D" }, "tool")).ok);
+    saved.resolve();
+    assert.strictEqual(await image, "The diagram changed while it was drawn. Try again.");
+    assert.ok(!reopened.sent.some((message) => message.type === "export"));
+  });
+
   test("a pick on a drawing that the page then fails to draw again ends as the render does", async () => {
     const { panel, webview } = await newFakePanel();
     assert.ok((await panel.render(flowchart, "tool")).ok);

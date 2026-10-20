@@ -142,8 +142,10 @@ export function layOutPie(
           : undefined;
       return {
         ...own,
+        // Keep the width used to shorten words. ECharts otherwise narrows wrapped labels to
+        // their drawn width, which can split the ellipsis when it measures characters again.
         label: formatter
-          ? { formatter, ...itemLabel }
+          ? { formatter, width: room, ...itemLabel }
           : { overflow: "truncate", ellipsis: "…", ...itemLabel },
       };
     });

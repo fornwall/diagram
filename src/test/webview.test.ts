@@ -1275,6 +1275,41 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("opens CRLF source without inventing edits or stale drafts", async () => {
+    const cases = [
+      { language: "mermaid", source: "flowchart LR\r\n  A --> B" },
+      { language: "echarts", source: '{\r\n  "series": [{"type": "pie", "data": [1, 2]}]\r\n}' },
+    ] as const;
+    const state = `(() => {
+      const input = document.getElementById("source");
+      return {source: input.value, stale: !document.getElementById("stale-note").hidden,
+        disabled: ["apply", "revert"].map(id => document.getElementById(id).disabled)};
+    })()`;
+    try {
+      for (const diagram of cases) {
+        await draw(diagram);
+        await evaluate('document.getElementById("view-split").click()');
+        assert.deepStrictEqual(await evaluate(state), {
+          source: diagram.source.replace(/\r\n/g, "\n"),
+          stale: false,
+          disabled: [true, true],
+        });
+        const updated = diagram.source.replace("B", "C").replace("[1, 2]", "[2, 3]");
+        await draw({ ...diagram, source: updated });
+        assert.deepStrictEqual(await evaluate(state), {
+          source: updated.replace(/\r\n/g, "\n"),
+          stale: false,
+          disabled: [true, true],
+        });
+      }
+    } finally {
+      await evaluate(`(() => {
+        document.getElementById("revert").click();
+        document.getElementById("view-visual").click();
+      })()`);
+    }
+  });
+
   test("keeps the caret and the scroll position in the source when a diagram changes it", async () => {
     const lines = Array.from({ length: 80 }, (_, i) => `  N${i} --> N${i + 1}`).join("\n");
     await draw({ source: `flowchart LR\n${lines}` });
