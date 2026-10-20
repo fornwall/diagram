@@ -76,6 +76,32 @@ suite("data", () => {
     }
   });
 
+  test("keeps multiline quoted headers intact when they contain rules and a table", () => {
+    for (const [format, delimiter] of [
+      ["csv", ","],
+      ["csv", ";"],
+      ["tsv", "\t"],
+    ] as const) {
+      const header = `Sales by region\n---\na${delimiter}b\n---\nnotes`;
+      for (const first of [true, false]) {
+        const names = first ? [`"${header}"`, "value"] : ["value", `"${header}"`];
+        const text = `${names.join(delimiter)}\nfirst${delimiter}1\nsecond${delimiter}2`;
+        for (const selected of [format, "auto"] as const) {
+          const table = parseTable(text, selected);
+          assert.deepStrictEqual(
+            table.columns.map(({ name }) => name),
+            first ? [header, "value"] : ["value", header],
+          );
+          assert.deepStrictEqual(table.rows, [
+            ["first", 1],
+            ["second", 2],
+          ]);
+          assert.strictEqual(table.note, undefined);
+        }
+      }
+    }
+  });
+
   test("explicit CSV and TSV keep literal ellipsis rows and columns", () => {
     for (const [format, delimiter] of [
       ["csv", ","],
@@ -1364,6 +1390,24 @@ suite("data", () => {
         ["JSON", 5, 0, 0, 300],
       ],
     });
+    assert.deepStrictEqual(parse('"Sales by region"\n---\nname value\n---\nfirst 1\nsecond 2'), {
+      columns: ["name", "value"],
+      rows: [
+        ["first", 1],
+        ["second", 2],
+      ],
+    });
+    for (const title of ['"src" analysis report', 'Analysis report for "src']) {
+      const table = parseTable(`${title}\n---\nname value\n---\nfirst 1\nsecond 2`, "whitespace");
+      assert.deepStrictEqual(
+        table.columns.map(({ name }) => name),
+        ["name", "value"],
+      );
+      assert.deepStrictEqual(table.rows, [
+        ["first", 1],
+        ["second", 2],
+      ]);
+    }
     // A line between two rules with as many words as the line above is the first row.
     assert.deepStrictEqual(parse("name value\n----------\na 1\n----------\ntotal 1").rows, [
       ["a", 1],

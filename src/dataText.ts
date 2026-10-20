@@ -148,7 +148,7 @@ const TOP_SUMMARY = /^(?:top - |Processes: \d+ total)/;
  * that top prints above its header ("PID USER …"), or text above a header between two rules, as
  * cloc prints its version and speed, which has other numbers of words than the header.
  */
-function outputAbove(lines: string[]): number {
+function outputAbove(lines: string[], format: DataFormat): number {
   if (TOP_SUMMARY.test(lines[0] ?? "")) {
     return Math.max(
       lines.findIndex((line) => /^\s*PID\s/.test(line)),
@@ -161,7 +161,21 @@ function outputAbove(lines: string[]): number {
   if (header === undefined || below === undefined || !isRule(below, undefined)) return 0;
   const words = tokenize(header).length;
   const above = lines.slice(0, rule).filter((line) => !isBlank(line) && !TABLE_SIZE.test(line));
-  return above.length > 0 && above.every((line) => tokenize(line).length !== words) ? rule : 0;
+  if (above.length === 0 || above.some((line) => tokenize(line).length === words)) return 0;
+  // A quoted CSV/TSV record can contain rules and a table of its own. Leave it to the
+  // delimited parser rather than removing physical lines from the middle of the record.
+  const prefix = lines.slice(0, rule).join("\n");
+  if (format !== "whitespace" && prefix.includes('"')) {
+    for (const delimiter of [",", ";", "\t"]) {
+      try {
+        splitDelimited(prefix, delimiter);
+      } catch (error) {
+        if (error instanceof QuoteError) return 0;
+        throw error;
+      }
+    }
+  }
+  return rule;
 }
 
 /**
@@ -250,7 +264,7 @@ function splitShown(text: string, all: string[], format: Exclude<DataFormat, "js
       return output;
     }
   }
-  const preamble = outputAbove(all) || (format === "whitespace" ? 0 : preambleLength(all));
+  const preamble = outputAbove(all, format) || (format === "whitespace" ? 0 : preambleLength(all));
   if (preamble > 0) {
     // Left as empty lines, which are skipped, as errors count lines.
     const kept = all.map((line, i) => (i < preamble ? "" : line));
