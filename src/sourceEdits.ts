@@ -138,13 +138,20 @@ function notFound(source: string, text: string): string {
 
 /** Where the text occurs in the source with other whitespace between its words, if it does. */
 function looseMatch(source: string, text: string): { start: number; end: number } | undefined {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return undefined;
-  const pattern = new RegExp(
-    words.map((word) => word.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&")).join("\\s+"),
-  );
-  const match = pattern.exec(source);
-  return match ? { start: match.index, end: match.index + match[0].length } : undefined;
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (!normalized) return undefined;
+  let start = source.replace(/\s+/g, " ").indexOf(normalized);
+  if (start < 0) return undefined;
+  let end = start + normalized.length;
+  // Translate the normalized offsets back to the source. A regex made from the words retries
+  // each repeated prefix in a large chart's data and can block the extension for seconds.
+  for (const gap of source.matchAll(/\s+/g)) {
+    if (gap.index >= end) break;
+    const extra = gap[0].length - 1;
+    if (gap.index < start) start += extra;
+    end += extra;
+  }
+  return { start, end };
 }
 
 /**

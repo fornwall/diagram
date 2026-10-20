@@ -83,7 +83,7 @@ export class SourceEditor {
     const source = this.elements.input.value;
     return {
       view: this.view,
-      editor: source === this.editedFrom ? undefined : { source, base: this.editedFrom },
+      editor: this.differs() ? { source, base: this.editedFrom } : undefined,
     };
   }
 
@@ -97,6 +97,8 @@ export class SourceEditor {
     ) {
       this.elements.input.value = editor.source;
       this.editedFrom = editorText(editor.base);
+      // Keep the saved draft until the host supplies its diagram, even if Undo reached its base.
+      this.elements.staleNote.hidden = false;
       this.updateActions();
     }
   }
@@ -121,7 +123,7 @@ export class SourceEditor {
     input.setAttribute("aria-label", renderer.sourceName);
     // Restore the preferred view once source is available.
     this.setView(this.view);
-    const edited = input.value !== this.editedFrom;
+    const edited = this.differs();
     if (!this.sourceShown && !edited) {
       return;
     }
@@ -133,6 +135,7 @@ export class SourceEditor {
         this.load();
       } else {
         this.editedFrom = this.formatted();
+        staleNote.hidden = true;
         this.updateActions();
       }
       this.appliedSource = undefined;
@@ -178,7 +181,6 @@ export class SourceEditor {
   /** Hides the source while preserving the draft and preferred view for the next diagram. */
   diagramGone(): void {
     this.diagram = undefined;
-    this.elements.staleNote.hidden = true;
     this.setView(this.view);
   }
 
@@ -193,7 +195,7 @@ export class SourceEditor {
     this.elements.panes.className = `view-${shown}`;
     const opening = shown !== "visual" && !this.sourceShown;
     this.sourceShown = shown !== "visual";
-    if (opening && this.elements.input.value === this.editedFrom) {
+    if (opening && !this.differs()) {
       this.load();
     }
     this.onChange();
@@ -256,7 +258,6 @@ export class SourceEditor {
     }
     // The matching host response acknowledges this draft instead of marking it stale.
     this.appliedSource = source;
-    this.elements.staleNote.hidden = true;
     this.onApply(this.diagram.requestId, source);
   }
 }

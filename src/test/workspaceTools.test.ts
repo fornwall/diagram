@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -583,6 +584,36 @@ suite("workspaceTools", function () {
     assert.strictEqual(
       await invoke(reader, { file: huge }),
       "Error: The file exceeds the 16 MiB text limit.",
+    );
+  });
+
+  test("refuses local pipes and devices before attempting to read them", async function () {
+    if (process.platform === "win32") this.skip();
+    const pipe = path.join(dir, "input.pipe");
+    execFileSync("mkfifo", [pipe]);
+    afterTest(() => fs.rm(pipe, { force: true }));
+    replace(vscode.workspace, "workspaceFolders", folders(dir, "/dev"));
+    const readFile = vscode.workspace.fs.readFile;
+    const files = [pipe, "/dev/null"];
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: (uri) => {
+        assert.ok(!files.includes(uri.fsPath), "must reject special files before reading");
+        return readFile(uri);
+      },
+    });
+    for (const file of files) {
+      assert.match(await invoke(reader, { file }), /[Nn]ot a regular file/);
+    }
+    // A provider or file-search race may still return a special file as a candidate.
+    replace(vscode.workspace, "findFiles", async (include) =>
+      include instanceof vscode.RelativePattern && include.pattern === "input.pipe"
+        ? [vscode.Uri.file(pipe)]
+        : [],
+    );
+    assert.match(
+      await invoke(searcher, { glob: "input.pipe", query: "value" }),
+      /No matches \(searched 0 files; skipped 1 file: unreadable\)/,
     );
   });
 

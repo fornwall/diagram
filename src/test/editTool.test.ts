@@ -81,6 +81,22 @@ suite("source edits", () => {
     );
   });
 
+  test("locate whitespace-only differences in the original lines", () => {
+    const source = "header\r\n\r\n  first[]\r\n \tvalue(*)  \r\n  last?\r\nfooter";
+    assert.match(
+      problems(source, [edit("first[] value(*) last?", "")])[0] ?? "",
+      /differs from lines 3-5 only in whitespace.*\n3: {3}first\[\]\n4: {2}\tvalue\(\*\) {2}\n5: {3}last\?/,
+    );
+  });
+
+  test("handle unmatched edits in large runs of repeated chart values", () => {
+    const values = "1, ".repeat(20_000);
+    assert.match(
+      problems(`{\n  data: [${values}2]\n}`, [edit(`${values}3`, "")])[0] ?? "",
+      /oldText is not in the source.*The closest lines are:/,
+    );
+  });
+
   test("name the lines of text that occurs more than once", () => {
     assert.deepStrictEqual(problems(source, [edit("B -->", "B ==>")]), [
       'Edit 1: oldText occurs 2 times, on lines 3 and 4. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n3:   B --> C[Done]\n4:   B --> D[Retry]',

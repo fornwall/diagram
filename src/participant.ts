@@ -164,6 +164,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       );
     }
 
+    // Protect edits made while attachments load, as well as during every reply and repair.
+    const changesAtStart = panel.userChangeCount;
     try {
       const prompt = await unlessCancelled(
         () => promptMessages(request, context, explain, callsTools, current, token),
@@ -177,11 +179,17 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         stream.markdown(`${notice}\n\n`);
       }
       const toolUse: ToolUse = { rounds: 0, calls: 0, read: new Set() };
-      const converse = (required: readonly vscode.LanguageModelChatTool[]) =>
-        unlessCancelled(
+      const converse = async (required: readonly vscode.LanguageModelChatTool[]) => {
+        const diagram = await unlessCancelled(
           () => streamReply(request, messages, tools, required, stream, token, panel, toolUse),
           token,
         );
+        if (!diagram || panel.userChangeCount === changesAtStart) return diagram;
+        stream.markdown(
+          `\n\nI did not draw this ${diagramNoun(diagram.language)} over the change you made in the panel meanwhile. Ask again to draw it.`,
+        );
+        return undefined;
+      };
 
       let block = await converse(attached);
       if (explain) {
@@ -315,7 +323,6 @@ async function streamReply(
   panel: DiagramPanel,
   toolUse: ToolUse,
 ): Promise<DiagramBlock | undefined> {
-  const userChanges = panel.userChangeCount;
   let diagram: DiagramBlock | undefined;
   let drawnBeforeDiagram = toolUse.drawn;
   for (let round = 0; ; round++) {
@@ -363,21 +370,12 @@ async function streamReply(
       if (calls.length > 0) {
         stream.markdown(`\n\nStopped tool use because ${toolUse.notRun}.`);
       }
-      // What the user changed during the reply wins over its diagram block, as does a render of
-      // this request's tool calls after the block, and one before it that the panel still shows,
-      // which the block would lose code links, chart data and styling of. A block may still
-      // repair a failed render, and draws over what another request drew meanwhile.
+      // Keep this request's tool rendering if it followed the block or is still shown; replacing
+      // it would lose code links, chart data and styling. A block can repair a failed render or
+      // replace another request's drawing.
       const drewAfter = toolUse.drawn !== drawnBeforeDiagram;
       const shown = toolUse.drawn === panel.revision && !panel.current?.error;
-      if (!diagram || drewAfter || shown) return undefined;
-      if (panel.userChangeCount !== userChanges) {
-        const noun = diagramNoun(diagram.language);
-        stream.markdown(
-          `\n\nI did not draw this ${noun} over the change you made in the panel meanwhile. Ask again to draw it.`,
-        );
-        return undefined;
-      }
-      return diagram;
+      return drewAfter || shown ? undefined : diagram;
     }
     if (toolUse.rounds++ >= MAX_TOOL_ROUNDS) {
       toolUse.notRun ??= "this request reached its tool round limit";

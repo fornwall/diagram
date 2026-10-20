@@ -39,20 +39,16 @@ export function validateAnnotation(value: unknown): Annotation {
   const marks: DiagramMark[] = [];
   if (input.marks !== undefined) {
     // One mark, as a model may send it without an array.
-    if (!Array.isArray(input.marks)) input.marks = [input.marks];
-    if (!Array.isArray(input.marks)) {
+    const given = Array.isArray(input.marks) ? input.marks : [input.marks];
+    if (given.length > MAX_MARKS) {
       problems.push(
-        `"marks" must be an array of objects, e.g. ${EXAMPLE}; leave it out to clear the marks.`,
-      );
-    } else if (input.marks.length > MAX_MARKS) {
-      problems.push(
-        `"marks" has ${input.marks.length} marks, more than the ${MAX_MARKS} the panel shows; ` +
+        `"marks" has ${given.length} marks, more than the ${MAX_MARKS} the panel shows; ` +
           "mark only what the user should look at.",
       );
     } else {
       const marked = new Set<string>();
-      for (const [index, given] of input.marks.entries()) {
-        const mark = parseMark(given, marked);
+      for (const [index, item] of given.entries()) {
+        const mark = parseMark(item, marked);
         if (typeof mark === "string") {
           problems.push(`Mark ${index + 1}: ${mark}`);
         } else {

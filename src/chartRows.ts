@@ -371,7 +371,8 @@ export function readRows(
   }
   const beforeLimit = rows.length;
   const combineOther = type === "pie" || type === "doughnut";
-  if (spec.sort !== undefined) {
+  // Box plots sort their completed boxes by median, preserving input order for ties.
+  if (spec.sort !== undefined && type !== "boxplot") {
     // A stack shows the total of its row, and a series per label of a second label column draws
     // the rows of a first label together, so sort by the total of those rows.
     const key =

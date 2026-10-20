@@ -697,6 +697,22 @@ suite("participant", () => {
     }
   });
 
+  test("keeps user edits made while the request's attachments load", async () => {
+    const document = await vscode.workspace.openTextDocument({ content: "Attached source" });
+    const edited = "flowchart TD\n  Edited";
+    assert.ok((await panel.render({ ...flowchart, title: "Original" }, "tool")).ok);
+    replace(vscode.workspace, "openTextDocument", (async () => {
+      await webview.edit(edited);
+      return document;
+    }) as typeof vscode.workspace.openTextDocument);
+    const { result, shown } = await ask([[text(valid)]], {
+      references: [{ id: "file", value: document.uri }],
+    });
+    assert.strictEqual(result, undefined);
+    assert.strictEqual(panel.current?.source, edited);
+    assert.match(shown, /did not draw this diagram over the change you made/);
+  });
+
   test("tells the model what the user changed of its diagram, rather than repeat its version", async () => {
     const drawn = "flowchart TD\n  Cart --> Pay\n  Pay --> Done";
     const edited = "flowchart TD\n  Cart --> Pay\n  Pay -->|declined| Cart\n  Pay --> Done";

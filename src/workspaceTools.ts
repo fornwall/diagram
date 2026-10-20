@@ -614,6 +614,11 @@ async function readText(
   if (stat.type & vscode.FileType.Directory) {
     throw vscode.FileSystemError.FileIsADirectory(uri);
   }
+  // Local pipes and devices may block forever or produce unbounded output. Providers can
+  // report an unknown type for ordinary files, so only require this for local files.
+  if (uri.scheme === "file" && !(stat.type & vscode.FileType.File)) {
+    throw new vscode.FileSystemError("Not a regular file; devices and pipes cannot be read.");
+  }
   if (stat.size > maxBytes) return { bytes: 0, error: tooLarge };
   const content = await unlessCancelled(async () => vscode.workspace.fs.readFile(uri), token);
   const bytes = content.byteLength;

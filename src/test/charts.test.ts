@@ -934,6 +934,18 @@ suite("charts", () => {
     );
   });
 
+  test("boxplot sorting preserves group order when medians tie", () => {
+    const values = "group,value\na,2\na,3\nb,1\nb,4";
+    for (const sort of ["ascending", "descending"] as const) {
+      const option = build(chart("boxplot", { sort }), values);
+      assert.deepStrictEqual(option.xAxis.data, ["a", "b"]);
+      assert.deepStrictEqual(option.series[0].data, [
+        [2, 2.25, 2.5, 2.75, 3],
+        [1, 1.75, 2.5, 3.25, 4],
+      ]);
+    }
+  });
+
   test("boxplot without a label column draws a box per value column", () => {
     const measurements = "before,after\n5,10\n3,20\n9,30";
     const option = build(chart("boxplot"), measurements);

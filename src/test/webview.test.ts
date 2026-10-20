@@ -1275,6 +1275,54 @@ suite("webview", function () {
     await evaluate('document.getElementById("view-visual").click()');
   });
 
+  test("keeps an older source after Undo reaches its base, across views, reloads and renders", async () => {
+    const original = "flowchart LR\n A --> Original";
+    await draw({ source: original });
+    afterTest(() =>
+      evaluate(`(() => {
+        document.getElementById("revert").click();
+        document.getElementById("view-visual").click();
+      })()`),
+    );
+    await evaluate(`(() => {
+      document.getElementById("view-split").click();
+      const input = document.getElementById("source");
+      input.value += "\\n Original --> Draft";
+      input.dispatchEvent(new Event("input"));
+    })()`);
+    await draw({ source: "flowchart LR\n A --> Incoming" });
+    await evaluate(`(() => {
+      const input = document.getElementById("source");
+      input.value = ${JSON.stringify(original)};
+      input.dispatchEvent(new Event("input"));
+    })()`);
+    const state = `({source: document.getElementById("source").value,
+      stale: !document.getElementById("stale-note").hidden,
+      disabled: document.getElementById("apply").disabled,
+      saved: window.readTestState().editor})`;
+    const expected = {
+      source: original,
+      stale: true,
+      disabled: false,
+      saved: { source: original, base: original },
+    };
+    assert.deepStrictEqual(await evaluate(state), expected);
+    await evaluate(`(() => {
+      document.getElementById("view-visual").click();
+      document.getElementById("view-split").click();
+    })()`);
+    assert.deepStrictEqual(await evaluate(state), expected);
+    await nextRender(() => {
+      page.webview.html += "\n<!-- Reload to verify the older source is preserved. -->";
+    });
+    assert.deepStrictEqual(await evaluate(state), expected);
+    await draw({ source: "flowchart LR\n A --> Newer" });
+    assert.deepStrictEqual(await evaluate(state), expected);
+    await nextRender(() => evaluate('document.getElementById("apply").click()'));
+    assert.strictEqual(page.panel.current?.source, original);
+    assert.strictEqual(await evaluate("window.readTestState().editor ?? null"), null);
+  });
+
   test("opens CRLF source without inventing edits or stale drafts", async () => {
     const cases = [
       { language: "mermaid", source: "flowchart LR\r\n  A --> B" },
