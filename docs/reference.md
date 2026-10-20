@@ -4,7 +4,7 @@ The details of using `@diagram`. See the [README](../README.md) for an overview 
 
 ## Chat
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model for repair. A warning that the panel lacks room is fixed only by a layout that reads at any size, never by leaving out what you asked for, or else left for you to resize the panel.
+Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model so it can attempt a repair. For layout warnings, the model is instructed to rearrange the diagram while keeping the requested content. You may still need to resize the panel.
 
 Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model that accepts images. Images are sent only with the request they are attached to.
 
@@ -17,7 +17,7 @@ Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model tha
 | Highlight a path | Select a start and destination, then **Highlight Path** in a flowchart, swimlane, agent flow or state diagram. It selects a shortest path, follows arrows, traverses plain lines and double arrows both ways, skips invisible links and breaks ties by source order. |
 | Ask | Type a question or change and press **Send to chat**. The request includes your selection and goes to `@diagram`, or to chat without a mention if another agent drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
-| Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. Agents are told what you applied since they drew the diagram, to keep it. |
+| Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. Applied edits are included in the next chat request. |
 | Find | Ctrl/Cmd+F finds text in the drawing and the source. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
 | Chart Options | Use the title bar gear or **Diagram: Chart Options…** to configure a chart made from data. Enter applies. |

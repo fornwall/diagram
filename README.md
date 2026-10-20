@@ -15,13 +15,13 @@ Ask `@diagram` to draw, optionally attaching files with `#file` or images:
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
 - `@diagram turn this whiteboard photo into a flowchart`
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and layout problems go back to the model to fix.
+Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. The model receives render errors and layout warnings so it can attempt a repair.
 
 ## The panel
 
-- **Select** nodes, edges, sequence messages or chart items by clicking; Ctrl/Cmd+click or Shift+click adds to the selection. Everything also works from the keyboard.
+- **Select** nodes, edges, sequence messages or chart items by clicking; Ctrl/Cmd+click or Shift+click adds to the selection. For keyboard selection, Tab to the drawing, move with the arrow keys and press Enter or Space.
 - **Ask**: type a question or change and press **Send to chat**. The request includes your selection.
-- **Edit** the source in split view and press **Apply** (Ctrl/Cmd+Enter). The agent is told about your edits, so it keeps them.
+- **Edit** the source in split view and press **Apply** (Ctrl/Cmd+Enter). Applied edits are included in the next chat request.
 - **Highlight Path** between two selected nodes of a flowchart or state diagram.
 - **Find** text with Ctrl/Cmd+F, **zoom and pan** Mermaid diagrams, and open nodes linked to files or URLs.
 - **Chart Options** (the gear in the title bar) reconfigures a chart made from data; **Refresh** reloads its file or command.
@@ -46,6 +46,8 @@ Any chat agent, not only `@diagram`, can use the extension's tools to render and
 ## Security
 
 VS Code asks before running a command, reading a data file outside the workspace or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content.
+
+Chat requests send your prompt, attached content, diagram context and tool results to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 
 ## Limits
 
