@@ -31,7 +31,7 @@ import {
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { joinWords, plural } from "./text";
-import { revisionDrawn } from "./tools";
+import { revisionDrawn } from "./toolResults";
 import { resolveWorkspaceFile } from "./workspaceTools";
 
 export const PARTICIPANT_ID = "diagram.participant";

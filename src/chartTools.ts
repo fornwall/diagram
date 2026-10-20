@@ -16,8 +16,8 @@ import {
   RENDER_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { inWords, plural, quote, shorten, toolInput } from "./text";
-import { drawnResult, drawnWarnings, nonBlank, renderFailure, textResult } from "./tools";
+import { inWords, nonBlank, plural, quote, shorten, toolInput } from "./text";
+import { drawnResult, drawnWarnings, renderFailure, textResult } from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
 type ChartInput = ChartSpec & { clickPrompt?: string };

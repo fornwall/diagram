@@ -24,7 +24,7 @@ import {
   validateStyleInput,
 } from "./styleInput";
 import { plural, quoteAll } from "./text";
-import { type Answer, changeResult, drawnWarnings, editFailure, idList } from "./tools";
+import { type Answer, changeResult, drawnWarnings, editFailure, idList } from "./toolResults";
 
 /** Ids that name the panel rather than an item, unless the diagram has an item by that id. */
 const BACKGROUND_IDS = /^(?:background|bg|canvas|panel|page|diagram|chart|theme)$/i;

@@ -1,5 +1,4 @@
-// The zoom buttons and keys, for a renderer that does not fit the panel by itself (Mermaid; charts
-// fit the panel).
+// Zoom controls for renderers with manual zoom support (currently Mermaid).
 
 import type { Renderer } from "./renderer";
 
@@ -12,8 +11,7 @@ interface ZoomButtons {
 const STEP = 1.25;
 
 /**
- * Zooms the drawing that `shown` gives, if any, by the buttons, and by Cmd (macOS) or Ctrl with +,
- * - and 0, as in browsers, while the panel has the focus.
+ * Connects buttons and browser-style Cmd/Ctrl +, - and 0 shortcuts to the active renderer.
  */
 export function enableZoom(buttons: ZoomButtons, shown: () => Renderer | undefined): void {
   const zoomIn = () => shown()?.zoomBy?.(STEP);
@@ -30,13 +28,12 @@ export function enableZoom(buttons: ZoomButtons, shown: () => Renderer | undefin
     "0": zoomReset,
   };
   const isMac = navigator.userAgent.includes("Mac");
-  // The keys, which the buttons' titles name too, for screen readers to name with the buttons.
+  // Expose the shortcuts to screen readers as well as in button titles.
   const primaryKey = isMac ? "Meta" : "Control";
   buttons.in.setAttribute("aria-keyshortcuts", `${primaryKey}+=`);
   buttons.out.setAttribute("aria-keyshortcuts", `${primaryKey}+-`);
   buttons.reset.setAttribute("aria-keyshortcuts", `${primaryKey}+0`);
-  // VS Code sees every key the page does, so the event stops in the capture phase, before VS
-  // Code's listener on the window passes it on to zoom the window or focus the side bar as well.
+  // Capture before VS Code's listener forwards the shortcut to the host window.
   window.addEventListener(
     "keydown",
     (event) => {

@@ -28,7 +28,7 @@ import {
   linesAround,
   type SourceEdit,
 } from "./sourceEdits";
-import { formatCount, givenProperties, lineAndColumn, unknownProperties } from "./text";
+import { formatCount, givenProperties, lineAndColumn, nonBlank, unknownProperties } from "./text";
 import {
   type Answer,
   changeResult,
@@ -38,8 +38,7 @@ import {
   leftOutLinks,
   linksWithoutNodes,
   noDiagram,
-  nonBlank,
-} from "./tools";
+} from "./toolResults";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface EditInput {

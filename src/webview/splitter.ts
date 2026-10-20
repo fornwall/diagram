@@ -1,6 +1,6 @@
 // The handle between the source editor and the rendering in the split view.
 
-/** Keeps both panes of the split view usable, as a fraction of the panel. */
+/** Limits on the source editor's share of the split view. */
 const MIN_FRACTION = 0.15;
 const MAX_FRACTION = 0.85;
 /** How much an arrow key moves the handle. */
@@ -9,17 +9,16 @@ const DEFAULT_FRACTION = 0.4;
 
 const percent = (fraction: number) => String(Math.round(fraction * 100));
 
-/** The editor's share of the split view, to restore after a reload. */
+/** Split position persisted across reloads. */
 export interface Split {
   readonly fraction: number;
-  /** Restores a fraction that {@link fraction} gave, ignoring a value that is none. */
+  /** Ignores invalid saved values and clamps valid fractions. */
   restore(value: unknown): void;
 }
 
 /**
- * Lets the user drag, or arrow-key, the handle to give the source editor more or less of the panel,
- * as the `--source-size` of the editor. A narrow panel stacks the panes, so the handle moves along
- * whichever axis they are laid out on. Calls `onChange` when the user moved it, at the end of a drag.
+ * Resizes the editor with dragging, arrow keys, Home/End, or Enter to reset. Narrow panels stack
+ * the panes vertically. Calls onChange after each keyboard change or completed drag.
  */
 export function enableSplitter(
   splitter: HTMLElement,
@@ -29,7 +28,6 @@ export function enableSplitter(
 ): Split {
   let fraction = DEFAULT_FRACTION;
 
-  /** Whether the panes are stacked, which is the case in a narrow panel. */
   const stacked = () => getComputedStyle(panes).flexDirection === "column";
   const updateOrientation = () => {
     splitter.setAttribute("aria-orientation", stacked() ? "horizontal" : "vertical");
@@ -82,8 +80,8 @@ export function enableSplitter(
       return;
     }
     event.preventDefault();
-    // From where the editor is, which a short panel keeps lower than the handle, so that each key
-    // moves it.
+    // CSS minimum sizes can constrain the requested fraction. Start from the actual size so
+    // the first keypress still moves the handle.
     const shown = stacked()
       ? editor.offsetHeight / panes.clientHeight
       : editor.offsetWidth / panes.clientWidth;

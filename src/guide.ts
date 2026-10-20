@@ -6,7 +6,7 @@ import { throwIfCancelled } from "./cancellation";
 import { GUIDE_TOPICS, type GuideTopic } from "./guideTopics";
 import { CHART_TOOL, errorMessage, RENDER_TOOL } from "./protocol";
 import { editDistance, quote, toolInput } from "./text";
-import { textResult } from "./tools";
+import { textResult } from "./toolResults";
 
 interface GuideInput {
   topic?: string;

@@ -137,3 +137,7 @@ export function toolInput(value: unknown, known: readonly string[]): Record<stri
   }
   return input;
 }
+
+export function nonBlank(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}

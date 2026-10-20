@@ -5,7 +5,7 @@ import { EditDiagramTool } from "../editTool";
 import type { DiagramPanel } from "../panel";
 import { createParticipantHandler } from "../participant";
 import { StyleDiagramTool } from "../styleTool";
-import { drawnResult } from "../tools";
+import { drawnResult } from "../toolResults";
 import { afterTest, cancellationSource, replace, workspaceRoot } from "./afterTest";
 import { type FakeWebview, newFakePanel } from "./newPanel";
 

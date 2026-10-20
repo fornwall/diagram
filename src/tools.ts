@@ -8,27 +8,34 @@ import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { nodeList, repeatedList } from "./describe";
 import { isClosingFence, openingFence } from "./fences";
 import { type ItemNames, type Resolved, resolvedList, severalList } from "./itemNames";
-import { LINK_SYNTAX, validateLinks, withoutMissingFiles } from "./links";
-import type { Diagram, DiagramPanel, RenderOutcome } from "./panel";
+import { validateLinks, withoutMissingFiles } from "./links";
+import type { Diagram, DiagramPanel } from "./panel";
 import {
   ANNOTATE_TOOL,
   type Annotation,
-  CHART_TOOL,
   type DiagramLanguage,
   diagramNoun,
   EDIT_TOOL,
   errorMessage,
   GET_IMAGE_TOOL,
-  GET_STATE_TOOL,
   type ImageView,
   isDiagramLanguage,
   isPlainObject,
   nodeNoun,
   RENDER_TOOL,
-  UPDATE_CHART_TOOL,
 } from "./protocol";
 import { errorContext } from "./sourceEdits";
-import { formatCount, givenProperties, plural, quoteAll, unknownProperties } from "./text";
+import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
+import {
+  drawnResult,
+  drawnWarnings,
+  idList,
+  leftOutLinks,
+  linksWithoutNodes,
+  noDiagram,
+  renderFailure,
+  textResult,
+} from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
@@ -526,180 +533,4 @@ function markingMessage({ marks }: Annotation, language: DiagramLanguage): strin
       ? quoteAll(marks.map(({ id }) => id))
       : plural(marks.length, nodeNoun(language));
   return `Marking ${what} in the ${noun}`;
-}
-
-/**
- * Warn about links to absent nodes. Keep the links in case a later edit adds those nodes. A model
- * corrects them without sending the source again.
- */
-export function linksWithoutNodes(
-  ids: readonly string[],
-  drawn: readonly string[] | undefined,
-): string {
-  if (!drawn) {
-    return "";
-  }
-  const known = new Set(drawn);
-  const unknown = ids.filter((id) => !known.has(id));
-  if (unknown.length === 0) {
-    return "";
-  }
-  return (
-    `\n\nThese links name nodes the diagram does not have, so nothing opens from them: ${quoteAll(unknown)}. ` +
-    `Its node ids are ${idList(drawn)}. Correct them with "links" in ${EDIT_TOOL}, e.g. {"newId": "src/file.ts#L3", "oldId": null}.`
-  );
-}
-
-const MAX_LISTED_IDS = 40;
-
-export function idList(ids: readonly string[]): string {
-  const listed = quoteAll(ids.slice(0, MAX_LISTED_IDS));
-  const left = ids.length - MAX_LISTED_IDS;
-  return left > 0 ? `${listed} and ${formatCount(left)} more` : listed;
-}
-
-export function leftOutLinks(problems: readonly string[], language: DiagramLanguage): string {
-  if (problems.length === 0) {
-    return "";
-  }
-  // A chart takes no links, which no correction adds.
-  if (language === "echarts") {
-    return `\n\nThe links were left out. ${problems.join(" ")}`;
-  }
-  return (
-    `\n\nThese links were left out:\n- ${problems.join("\n- ")}\n` +
-    `A link is a path, absolute or relative to the first workspace folder, with an optional line: ` +
-    `${LINK_SYNTAX}. Correct them with "links" in ${EDIT_TOOL}.`
-  );
-}
-
-/**
- * What the panel warns of in what it drew, as paragraphs to follow what a drawing tool did. The
- * warnings name the fixes in the source, which of a chart that diagram_chart made its settings
- * rebuild: those settings that fix them follow.
- */
-export function drawnWarnings(panel: DiagramPanel): string[] {
-  const { warnings } = panel;
-  if (warnings.length === 0) return [];
-  return panel.current?.chart ? [...warnings, GENERATED_CHART_FIXES] : [...warnings];
-}
-
-const GENERATED_CHART_FIXES =
-  `As ${CHART_TOOL} made this chart, fix these by its settings with ${UPDATE_CHART_TOOL} where ` +
-  'they do it: "type": "horizontalBar" for category names too long for the width, "sort": ' +
-  '"descending" with a "limit" to show only the largest categories or slices (a pie sums up the ' +
-  'rest as "Other"), or fewer "valueColumns" for fewer series. Change its styling, such as ' +
-  `"grid" or "dataZoom", with ${EDIT_TOOL}, and its data, such as shorter names, with ${CHART_TOOL}.`;
-
-/**
- * What a tool that edited the current diagram answers when the panel did not draw the edit: the
- * render error, with the lines around it in the edited source, which the panel keeps shown with
- * the error for a further edit to fix; or why the panel could not show it, which says nothing
- * about the edit. `changed` says what the tool did to the diagram, e.g. "edited" or "colored".
- */
-export function editFailure(
-  outcome: Extract<RenderOutcome, { ok: false }>,
-  noun: string,
-  changed: string,
-  edited: string,
-  previous: string,
-): [string, ...string[]] {
-  if (outcome.kind === "unavailable") {
-    return [
-      `The ${noun} was ${changed}, but the panel could not show it: ${outcome.error} This is not a problem with the change, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown.`,
-    ];
-  }
-  return [
-    `The ${changed} ${noun} failed to render with this error:`,
-    outcome.error,
-    errorContext(edited, outcome.error, previous),
-    `The panel shows it with this error. Fix it with ${EDIT_TOOL}.`,
-  ];
-}
-
-export function renderFailure(
-  outcome: Extract<RenderOutcome, { ok: false }>,
-  noun: string,
-  tool: string,
-  fix: string,
-): string {
-  return outcome.kind === "invalid"
-    ? `The ${noun} failed to render with this error:\n\n${outcome.error}\n\n${fix}`
-    : `The ${noun} could not be shown: ${outcome.error} This is not a problem with the ${noun}, and the panel may still be drawing it: ${GET_STATE_TOOL} says whether it is shown. Call ${tool} again only to reopen a closed panel, if the user still wants to see it.`;
-}
-
-/** Why a tool that takes the current diagram did nothing: there is none. */
-export function noDiagram(action: string): string {
-  return `There is no diagram to ${action}. Render one with ${RENDER_TOOL} or ${CHART_TOOL} first.`;
-}
-
-export function nonBlank(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-export function textResult(text: string): vscode.LanguageModelToolResult {
-  return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
-}
-
-/**
- * The result of a tool call that drew in the panel, also if the drawing failed, ending with the
- * revision drawn: the model can pass it to the tools that take one, such as diagram_updateChart,
- * and @diagram tells by it the drawings of its own tool calls from those of other chat requests
- * meanwhile.
- */
-export function drawnResult(text: string, revision: number): vscode.LanguageModelToolResult {
-  return textResult(`${text}\n\nRevision: ${revision}.`);
-}
-
-/**
- * What a tool that changes the current diagram tells a model: paragraphs, the first saying what
- * happened, and the revision it drew, if it drew.
- */
-export interface Answer {
-  paragraphs: [string, ...string[]];
-  drawn?: number | undefined;
-}
-
-/**
- * Runs a tool that changes the current diagram, answering what it did, or why it did nothing: the
- * input that `parse` refuses, with what to fix and the tool to call again, or the reason that
- * `change` throws. Every answer gives the revision to pass next, but only a drawing ends with it,
- * which @diagram takes for one that it drew (see {@link revisionDrawn}).
- */
-export async function changeResult<T>(
-  panel: DiagramPanel,
-  token: vscode.CancellationToken,
-  nothing: string,
-  tool: string,
-  parse: () => T,
-  change: (input: T) => Promise<Answer>,
-): Promise<vscode.LanguageModelToolResult> {
-  throwIfCancelled(token);
-  let input: T;
-  try {
-    input = parse();
-  } catch (error) {
-    return textResult(
-      `${nothing}, as the input is invalid. Fix it and call ${tool} again. Revision: ${panel.revision}.\n\n${errorMessage(error)}`,
-    );
-  }
-  let answer: Answer;
-  try {
-    answer = await change(input);
-  } catch (error) {
-    if (error instanceof vscode.CancellationError) throw error;
-    answer = { paragraphs: [`${nothing}: ${errorMessage(error)}`] };
-  }
-  const [first, ...rest] = answer.paragraphs.filter(Boolean);
-  return answer.drawn === undefined
-    ? textResult([`${first} Revision: ${panel.revision}.`, ...rest].join("\n\n"))
-    : drawnResult([first, ...rest].join("\n\n"), answer.drawn);
-}
-
-/** The revision that a {@link drawnResult} says its tool call drew. */
-export function revisionDrawn(content: readonly unknown[]): number | undefined {
-  const [result] = content;
-  const match =
-    result instanceof vscode.LanguageModelTextPart && /\n\nRevision: (\d+)\.$/.exec(result.value);
-  return match ? Number(match[1]) : undefined;
 }

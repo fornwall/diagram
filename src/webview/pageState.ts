@@ -1,56 +1,57 @@
-// The state that VS Code gives back to the page when it loads it anew, as when the tab moves to
-// another window: drafts, the view and the size of the source pane.
+// Persist drafts and view settings across webview reloads.
 
 import { isPlainObject } from "../protocol";
+import type { EditorState } from "./sourceEditor";
 
-/** VS Code's API to the page, as far as its state goes. */
 export interface StateApi {
-  /** What the page saved with setState, possibly a page of another version of the extension. */
+  /** May contain state saved by an older extension version. */
   getState(): unknown;
   setState(state: unknown): void;
 }
 
 export interface PageState {
-  /** What the page saved before it was loaded anew: of any shape, as another version may have saved it. */
+  /** Callers validate individual fields when restoring them. */
   readonly restored: Record<string, unknown>;
-  /** Saves the state as it is now, unless that is saved already: at once, or once typing pauses for a large one. */
+  /** Saves changed state immediately, or after typing pauses for a large draft. */
   save(): void;
 }
 
-/** The size in characters of a state saved at once, which takes about a millisecond to send. */
-const SAVE_AT_ONCE = 100_000;
-/** How long typing pauses before a larger state is saved. */
-const SAVE_DELAY = 500;
-
-/** Whether the states hold the same values, as strings, numbers, booleans and objects of them. */
-function same(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (!isPlainObject(a) || !isPlainObject(b)) return false;
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (!same(a[key], b[key])) return false;
-  }
-  return true;
+interface SavedState extends EditorState {
+  draft: string;
+  sourceSize: number;
 }
 
-/** How many characters of text the state holds, which is about how long it takes to send. */
-function size(state: unknown): number {
-  if (typeof state === "string") return state.length;
-  if (!isPlainObject(state)) return 0;
-  let sum = 0;
-  for (const value of Object.values(state)) sum += size(value);
-  return sum;
+/** Serialize small drafts immediately; debounce larger ones to keep typing responsive. */
+const SAVE_AT_ONCE = 100_000;
+const SAVE_DELAY = 500;
+
+function same(a: SavedState, b: SavedState | undefined): boolean {
+  return (
+    b !== undefined &&
+    a.draft === b.draft &&
+    a.sourceSize === b.sourceSize &&
+    a.view === b.view &&
+    a.editor?.source === b.editor?.source &&
+    a.editor?.base === b.editor?.base
+  );
+}
+
+function size(state: SavedState): number {
+  return (
+    state.draft.length +
+    (state.view?.length ?? 0) +
+    (state.editor?.source.length ?? 0) +
+    (state.editor?.base.length ?? 0)
+  );
 }
 
 /**
- * Keeps the state that `read` gives saved with VS Code. setState serializes the whole state and
- * sends it to the host: view and render updates reach `save` several times with the same state,
- * which is saved once, and a source of megabytes, which typing changes on every key, once typing
- * pauses, rather than slow it down.
+ * Deduplicates saves because view and render updates can request them repeatedly. VS Code's
+ * setState serializes and sends the entire snapshot, so large drafts wait for a typing pause.
  */
-export function keepPageState(api: StateApi, read: () => Record<string, unknown>): PageState {
-  let saved: unknown;
-  /** A larger state waiting for typing to pause. */
-  let unsaved: Record<string, unknown> | undefined;
+export function keepPageState(api: StateApi, read: () => SavedState): PageState {
+  let saved: SavedState | undefined;
+  let unsaved: SavedState | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     clearTimeout(timer);
@@ -59,9 +60,8 @@ export function keepPageState(api: StateApi, read: () => Record<string, unknown>
     saved = unsaved;
     unsaved = undefined;
   };
-  // VS Code takes the last state the page saved when it reloads the page, without warning the page
-  // first. What reloads it, such as Reload Window or dragging the tab to another window, takes the
-  // focus out of the page or is a key the page sees first, and the state sent then arrives before.
+  // Reload Window and moving the tab may destroy the page without a final notification.
+  // Flush when focus leaves or a command key arrives, before the host can reload it.
   window.addEventListener("blur", flush);
   window.addEventListener("pagehide", flush);
   document.addEventListener("visibilitychange", flush);

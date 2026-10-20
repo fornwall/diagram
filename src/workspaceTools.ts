@@ -27,7 +27,7 @@ import {
 } from "./gitignore";
 import { errorMessage, FIND_FILES_TOOL, isPlainObject } from "./protocol";
 import { formatCount, plural, quote, toolInput } from "./text";
-import { textResult } from "./tools";
+import { textResult } from "./toolResults";
 
 const MIB = 1024 * 1024;
 /** Searches skip larger files, which are rarely source code. */

@@ -1,5 +1,4 @@
-// Moving the keyboard focus between the items of a drawing in the direction of an arrow key, the
-// same way in Mermaid diagrams and charts. Free of the DOM so that charts can be tested in Node.
+// Shared spatial keyboard navigation for Mermaid and ECharts, independent of the DOM.
 
 /** A position in pixels: x to the right, y down. */
 export type Point = readonly [x: number, y: number];
@@ -15,9 +14,8 @@ const DIRECTIONS: Partial<Record<string, Point>> = {
 export const arrowDirection = (key: string): Point | undefined => DIRECTIONS[key];
 
 /**
- * The candidate nearest to `from` in the direction, preferring one in line with it. Candidates at
- * the same place, such as repeated points of a scatter chart, follow each other in their order:
- * right and down lead to the next one, left and up to the previous one, and on past the last.
+ * Finds the nearest candidate in a direction, penalizing sideways distance. Coincident points
+ * follow iteration order: right/down moves forward, left/up moves backward.
  */
 export function nearestInDirection<T>(
   from: T,

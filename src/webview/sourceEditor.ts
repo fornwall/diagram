@@ -1,5 +1,4 @@
-// The views (drawing, split, source) and the source editor, which keeps unapplied edits across
-// view changes, incoming diagrams and webview reloads.
+// Source editing with drafts preserved across view changes, incoming diagrams and reloads.
 
 import { isPlainObject } from "../protocol";
 import type { Renderer } from "./renderer";
@@ -8,7 +7,7 @@ const VIEW_MODES = ["visual", "split", "source"] as const;
 
 export type ViewMode = (typeof VIEW_MODES)[number];
 
-/** What a reload of the webview restores. */
+/** Source editor state saved across webview reloads. */
 export interface EditorState {
   view?: ViewMode;
   /** Unapplied edits, and the source they started from. */
@@ -28,28 +27,28 @@ interface Diagram {
   renderer: Renderer;
   source: string;
   requestId: number;
-  /** The source as formatted for editing, once needed. */
+  /** Cached lazily, since a chart's JSON can be large. */
   formatted?: string;
 }
 
 export class SourceEditor {
-  /** The preferred view, shown once there is a diagram. */
+  /** Restored when a diagram becomes available. */
   view: ViewMode = "visual";
   private diagram: Diagram | undefined;
   private sourceShown = false;
-  /** The source the edits started from, for detecting unapplied edits. */
+  /** Source before the current edits. */
   private editedFrom = "";
-  /** A pending edit, recognized when the extension sends it back to render. */
+  /** Recognizes the host's response to Apply. */
   private appliedSource: string | undefined;
-  /** Edits of an older diagram that Revert discarded, which Undo brings back as such. */
+  /** Restores the stale warning when Undo brings back a reverted draft. */
   private reverted: { source: string; base: string } | undefined;
-  /** Whether the source to load is of another diagram, to show from its start. */
+  /** Reset the caret and scroll position when loading a different diagram. */
   private another = false;
 
   constructor(
     private readonly elements: Elements,
     private readonly onApply: (requestId: number, source: string) => void,
-    /** Called when the state to restore after a reload may have changed. */
+    /** Called when persisted state may have changed. */
     private readonly onChange: () => void,
   ) {
     const { input, apply, revert, viewButtons } = elements;
@@ -68,11 +67,11 @@ export class SourceEditor {
     });
     apply.addEventListener("click", () => this.apply());
     revert.addEventListener("click", () => {
-      // Edits of an older diagram, which Undo brings back, are still of that one, for the note.
+      // Undo must restore the draft's original base, including its stale warning.
       if (this.editedFrom !== this.formatted()) {
         this.reverted = { source: input.value, base: this.editedFrom };
       }
-      // First, as the edits that Revert discards stay in the editor's history, to undo it with.
+      // The undoable replacement requires the editor to have focus.
       input.focus();
       this.load(true);
     });
@@ -86,7 +85,7 @@ export class SourceEditor {
     };
   }
 
-  /** Restores what {@link state} saved, ignoring values that another version of the page saved. */
+  /** Ignores invalid or obsolete saved values. */
   restore({ view, editor }: Record<string, unknown>): void {
     if (VIEW_MODES.includes(view as ViewMode)) this.view = view as ViewMode;
     if (
@@ -100,32 +99,32 @@ export class SourceEditor {
     }
   }
 
-  /** The element that shows the content in the current view, for keyboard focus. */
+  /** The content to focus in the current view. */
   content(drawing: HTMLElement): HTMLElement {
     return this.view === "source" ? this.elements.input : drawing;
   }
 
   /**
-   * Takes a diagram the extension sent, keeping edits, and warns before they replace newer source.
-   * The source of another diagram, rather than of a revision, shows from its start once loaded.
+   * Accepts a render from the host, preserving drafts and marking them stale when their base
+   * differs. A new diagram resets the caret; a revision keeps the reading position.
    */
   diagramChanged(renderer: Renderer, source: string, requestId: number, another: boolean): void {
     this.diagram = { renderer, source, requestId };
     if (another) this.another = true;
     const { input, staleNote, viewButtons } = this.elements;
-    // The buttons show only icons, so their titles also name them.
+    // Icon-only buttons need accessible names.
     viewButtons.visual.title = `Show the ${renderer.noun}`;
     viewButtons.split.title = `Show the ${renderer.noun} and its source`;
     viewButtons.source.title = `Edit the ${renderer.sourceName}`;
     input.setAttribute("aria-label", renderer.sourceName);
-    // The first diagram makes the source available, and with it the view chosen before a reload.
+    // Restore the preferred view once source is available.
     this.setView(this.view);
     const edited = input.value !== this.editedFrom;
     if (!this.sourceShown && !edited) {
       return;
     }
     if (source === this.appliedSource) {
-      // The source shown, where the user stays, is this one.
+      // Applying an edit is a revision, even if the host treated it as a new diagram.
       this.another = false;
       // Keep edits made while waiting for Apply to render.
       if (input.value === this.appliedSource) {
@@ -143,14 +142,14 @@ export class SourceEditor {
     }
   }
 
-  /** Whether the editor shows the diagram's source, or edits of it, rather than edits of another. */
+  /** Whether error locations in the current diagram also apply to this draft. */
   showsDiagram(): boolean {
     return this.diagram !== undefined && this.elements.staleNote.hidden === true;
   }
 
   /**
-   * Selects a place in the source, from line and column 1, as an error names it: the character at
-   * the column, or the line without its indentation. The drawing alone gives way to the split view.
+   * Selects an error location using one-based lines and columns. Without a column, selects the
+   * line excluding indentation. Opens the split view if the source is hidden.
    */
   reveal(line: number, column: number | undefined): void {
     if (this.view === "visual") this.setView("split");
@@ -162,7 +161,8 @@ export class SourceEditor {
       if (start >= 0) start++;
     }
     if (start < 0) start = text.length;
-    const lineEnd = text.indexOf("\n", start) < 0 ? text.length : text.indexOf("\n", start);
+    const nextLine = text.indexOf("\n", start);
+    const lineEnd = nextLine < 0 ? text.length : nextLine;
     const from =
       column === undefined
         ? start + (/^\s*/.exec(text.slice(start, lineEnd))?.[0].length ?? 0)
@@ -173,7 +173,7 @@ export class SourceEditor {
     scrollToSelection(input);
   }
 
-  /** Shows the drawing alone, as before the first diagram, keeping unapplied edits for the next. */
+  /** Hides the source while preserving the draft and preferred view for the next diagram. */
   diagramGone(): void {
     this.diagram = undefined;
     this.elements.staleNote.hidden = true;
@@ -205,7 +205,7 @@ export class SourceEditor {
     return diagram.formatted;
   }
 
-  /** Shows the source of the diagram as rendered, as the starting point for edits. */
+  /** Replaces the draft with the rendered source. */
   private load(undoable = false): void {
     this.editedFrom = this.formatted();
     replaceText(this.elements.input, this.editedFrom, undoable, !this.another);
@@ -214,7 +214,7 @@ export class SourceEditor {
     this.updateActions();
   }
 
-  /** Tells edits of an older diagram, such as those that Undo brought back, from others. */
+  /** Reconciles edits and Undo/Redo with the draft's base. */
   private edited(): void {
     const { input, staleNote } = this.elements;
     if (this.diagram && input.value === this.formatted()) {
@@ -229,8 +229,7 @@ export class SourceEditor {
   }
 
   /**
-   * Whether the source shown is not the diagram's: edited, or, though the edits were undone, the
-   * source they started from, which the diagram changed from since.
+   * A stale draft still differs after all its edits are undone: its base is an older diagram.
    */
   private differs(): boolean {
     return this.elements.input.value !== this.editedFrom || !this.elements.staleNote.hidden;
@@ -238,11 +237,10 @@ export class SourceEditor {
 
   private updateActions(): void {
     const { apply, revert, input } = this.elements;
-    // Disabling the focused action, as the diagram that Apply sent comes back, would leave the
-    // focus on the page's body, from where Tab starts over: keep it in the source instead.
+    // Disabling a focused button moves focus to the body. Return it to the editor, unless the
+    // user has already switched to another part of VS Code.
     const actionFocused = document.activeElement === apply || document.activeElement === revert;
     apply.disabled = revert.disabled = !this.differs();
-    // Not from elsewhere in VS Code, where the user went meanwhile.
     if (actionFocused && apply.disabled && document.hasFocus()) input.focus();
     this.onChange();
   }
@@ -252,7 +250,7 @@ export class SourceEditor {
     if (!this.diagram || !this.differs()) {
       return;
     }
-    // The diagram that comes back is this edit, and not a change to warn about.
+    // The matching host response acknowledges this draft instead of marking it stale.
     this.appliedSource = source;
     this.elements.staleNote.hidden = true;
     this.onApply(this.diagram.requestId, source);
@@ -260,11 +258,9 @@ export class SourceEditor {
 }
 
 /**
- * The most characters that an undoable replacement removes and inserts, and the most lines it
- * inserts times the lines of the text, which take about a tenth of a second each: the editor
- * inserts text line by line, each in time that grows with the lines of the text, as long as 7
- * seconds for 400 lines in a text of 20,000. A larger one, such as of a chart's data, is not
- * undoable.
+ * Bound undoable replacements by changed characters and inserted lines × total lines.
+ * Chromium's line-by-line insertion can take seconds for large chart sources; above these
+ * limits, assign the value directly and sacrifice undo history to keep the editor responsive.
  */
 const UNDOABLE_CHANGE = 100_000;
 const UNDOABLE_LINES = 200_000;
@@ -272,10 +268,8 @@ const UNDOABLE_LINES = 200_000;
 const lineCount = (text: string) => (text.match(/\n/g)?.length ?? 0) + 1;
 
 /**
- * Replaces the text, keeping the caret, the selection and the scroll position where the text around
- * them stays: a diagram that changes where the user is not reading leaves the place they were at.
- * Else the text shows from its start. An undoable replacement, of the focused editor, is an edit
- * that Undo takes back.
+ * Replaces only the changed span when possible, so Revert can be undone. With keepPlace, adjusts
+ * the selection for the replacement and preserves scrolling; otherwise starts at the top.
  */
 function replaceText(
   input: HTMLTextAreaElement,
@@ -309,8 +303,7 @@ function replaceText(
     changed <= UNDOABLE_CHANGE &&
     lineCount(inserted) * lineCount(text) <= UNDOABLE_LINES
   ) {
-    // An edit of the change alone, which the commands make to the selection. Assigning the value
-    // would clear the history instead.
+    // execCommand preserves the textarea's undo history; assigning value clears it.
     input.setSelectionRange(prefix, old.length - suffix);
     document.execCommand(inserted ? "insertText" : "delete", false, inserted);
   }
@@ -325,9 +318,8 @@ function replaceText(
 }
 
 /**
- * Scrolls the selection into the middle of the editor, unless it shows already: neither selecting
- * nor focusing scrolls a textarea to its selection. Where the selection is, with lines wrapped as
- * the editor wraps them, is measured on a hidden copy of its text up to there.
+ * Textarea selection APIs do not scroll to the selection. Measure its wrapped position in a
+ * hidden copy, then center it if it is outside the visible area.
  */
 function scrollToSelection(input: HTMLTextAreaElement): void {
   const style = getComputedStyle(input);
