@@ -1,8 +1,49 @@
 import * as assert from "node:assert";
 import { GUIDE_TOPICS } from "../guideTopics";
-import { builtOption, layout, type Option, svgOf } from "./echartsModel";
+import { textWidth } from "../webview/echartsLibrary";
+import { builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 
 suite("echartsPie", () => {
+  test("measures labels with the same font cache keys that ECharts uses to wrap them", () => {
+    for (const style of [{}, { fontWeight: "bold" }, { fontStyle: "italic" }]) {
+      const measured = new Set<string>();
+      const option = layout(
+        {
+          series: [
+            {
+              type: "pie",
+              label: {
+                ...style,
+                formatter: "{name|{b}}: {d}%",
+                rich: { name: { fontSize: 15 } },
+              },
+              data: [
+                { name: "Authentication", value: 182 },
+                { name: "Notifications", value: 64 },
+              ],
+            },
+          ],
+        },
+        {
+          width: 310,
+          height: 500,
+          textWidth: (text, font) => {
+            measured.add(font);
+            return textWidth(text, font);
+          },
+        },
+      );
+      withChart(option, (chart) => {
+        const series = (chart as unknown as Option).getModel().getSeriesByIndex(0);
+        const label = series.getData().getItemGraphicEl(0).getTextContent();
+        const { font, fontStyle, fontWeight } = label.style.rich.name;
+        assert.ok(measured.has(font), `${font} was measured as ${[...measured].join(", ")}`);
+        assert.strictEqual(fontStyle, "fontStyle" in style ? style.fontStyle : "normal");
+        assert.strictEqual(fontWeight, "fontWeight" in style ? style.fontWeight : "normal");
+      });
+    }
+  });
+
   test("gives the labels of a narrow pie room on lines from the edge, or a legend instead", () => {
     // The example of the guide's echarts-pie topic.
     const pie = (label: Option | null = { formatter: "{b}: {d}%" }, own: Option = {}): Option => ({

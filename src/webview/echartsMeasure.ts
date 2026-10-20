@@ -64,6 +64,10 @@ export function layoutSize(context: LayoutContext, base: JsonObject): Size {
   const compact = width < 560 || height < 340;
   // The text style of the chart: the option's, over the theme's.
   const chartStyle: JsonObject = {
+    // Match ECharts' font string: ZRender's per-font caches may use different character
+    // approximations when measured under load, so equivalent CSS is not enough.
+    fontStyle: "normal",
+    fontWeight: "normal",
     fontFamily: context.colors.fontFamily,
     fontSize: context.colors.fontSize,
     ...styleOf(base.textStyle),

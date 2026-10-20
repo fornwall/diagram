@@ -506,15 +506,21 @@ function describeColumn(table: DataTable, column: number): string {
   // Sizes and durations were converted, as "Latency (ms)" to seconds, which filters compare.
   const kind = unit === undefined ? "numbers" : unit === "%" ? "percentages" : `in ${unit}`;
   // Charts leave out text cells in numeric columns.
-  const texts = table.rows.flatMap((row) => (typeof row[column] === "string" ? [row[column]] : []));
-  if (texts.length === 0) {
+  let texts = 0;
+  const examples: string[] = [];
+  for (const row of table.rows) {
+    const cell = row[column];
+    if (typeof cell !== "string") continue;
+    texts++;
+    if (examples.length < TEXT_EXAMPLES) examples.push(quote(cell));
+  }
+  if (texts === 0) {
     return kind;
   }
-  const examples = texts.slice(0, TEXT_EXAMPLES).map((text) => quote(String(text)));
-  if (texts.length > TEXT_EXAMPLES) {
+  if (texts > TEXT_EXAMPLES) {
     examples.push("…");
   }
-  return `${kind}, ${plural(texts.length, "text cell")}: ${examples.join(", ")}`;
+  return `${kind}, ${plural(texts, "text cell")}: ${examples.join(", ")}`;
 }
 
 /** E.g. `"dir" (text), "size" (in bytes)`. */

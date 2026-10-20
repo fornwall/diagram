@@ -1,5 +1,4 @@
-// Exact text replacements in a diagram's source, as diagram_edit makes them, and the numbered lines
-// that tell a model where an edit or an error is, to make the next edit with.
+// Exact source replacements and numbered diagnostic excerpts.
 
 import { formatCount, joinWords, lineAndColumn, plural, shorten } from "./text";
 
@@ -10,10 +9,7 @@ export interface SourceEdit {
   replaceAll: boolean;
 }
 
-/**
- * The source with the edits made in turn, each to the source the edits before it left, with the
- * number of occurrences that each replaced; or why some did not apply, in which case none is made.
- */
+/** Sequential edits and replacement counts, or problems with no edits committed. */
 type EditedSource =
   | { ok: true; source: string; replaced: number[] }
   | { ok: false; problems: string[] };
@@ -25,10 +21,7 @@ const MAX_LINE_LENGTH = 200;
 const MAX_LISTED = 5;
 /** How many characters of lines times lines of oldText the search for the closest lines compares. */
 const MAX_COMPARED = 2_000_000;
-/**
- * The line that stands for a run of lines of values left out of a long chart option shown to a
- * model, as describe.ts's withoutValueRuns writes it.
- */
+/** Placeholder inserted by describe.ts when omitting long runs of chart values. */
 const LEFT_OUT_VALUES = /^\s*… [\d,]+ more lines? of values …\s*$/;
 
 export function applySourceEdits(source: string, edits: readonly SourceEdit[]): EditedSource {
@@ -71,10 +64,7 @@ function occurrences(source: string, text: string): number[] {
   return found;
 }
 
-/**
- * The lines, counted from 1, that the offsets, in ascending order, are on, each once, in one pass
- * over the text: text that a large chart has thousands of, such as a quote, is on many.
- */
+/** Unique one-based line numbers for sorted offsets, found in one pass. */
 function linesOf(text: string, offsets: readonly number[]): number[] {
   const lines: number[] = [];
   let line = 1;
@@ -90,10 +80,7 @@ function linesOf(text: string, offsets: readonly number[]): number[] {
   return lines;
 }
 
-/**
- * Lines `from` to `to` of the text, counted from 1, as "12: text", cutting long lines short, which
- * an edit's oldText can still quote the start of.
- */
+/** One-based lines `from` through `to`, numbered and truncated for display. */
 function numberedLines(text: string, from: number, to: number): string {
   const lines = text.split(/\r\n?|\n/);
   const first = Math.max(1, from);
@@ -154,19 +141,15 @@ function looseMatch(source: string, text: string): { start: number; end: number 
   return { start, end };
 }
 
-/**
- * The lines of the source most like the lines of text, by how many pairs of adjacent characters
- * they share, with a line before and after them.
- */
+/** Closest source lines by shared adjacent characters, with surrounding context. */
 function closestLines(
   source: string,
   lines: readonly string[],
 ): { from: number; to: number } | undefined {
   const sourceLines = source.split(/\r\n?|\n/).map(pairsOf);
   // The lines of the text that tell most, unless comparing them all takes too long.
-  const compared = lines.map(pairsOf);
   const budget = Math.max(1, Math.floor(MAX_COMPARED / Math.max(1, source.length)));
-  const kept = compared.slice(0, budget);
+  const kept = lines.slice(0, budget).map(pairsOf);
   let best: { line: number; score: number } | undefined;
   for (let start = 0; start < sourceLines.length; start++) {
     let score = 0;
@@ -180,34 +163,35 @@ function closestLines(
   return { from: best.line - 1, to: best.line + Math.min(kept.length, 2 * CONTEXT_LINES) };
 }
 
-/** The pairs of adjacent characters in the line without its indentation, by how often each occurs. */
-function pairsOf(line: string): Map<string, number> {
+interface Pairs {
+  counts: ReadonlyMap<string, number>;
+  total: number;
+}
+
+/** Adjacent character counts, with the total cached for comparisons against many lines. */
+function pairsOf(line: string): Pairs {
   const trimmed = line.trim();
   const pairs = new Map<string, number>();
   for (let i = 0; i + 1 < trimmed.length; i++) {
     const pair = trimmed.slice(i, i + 2);
     pairs.set(pair, (pairs.get(pair) ?? 0) + 1);
   }
-  return pairs;
+  return { counts: pairs, total: Math.max(0, trimmed.length - 1) };
 }
 
 /** The Sørensen–Dice coefficient of the pairs: 1 for the same ones, 0 for none in common. */
-function similarity(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): number {
-  let size = 0;
+function similarity(a: Pairs, b: Pairs): number {
+  // A long replacement compared with many short data rows must not rescan all its pairs per row.
+  if (a.counts.size > b.counts.size) [a, b] = [b, a];
+  const size = a.total + b.total;
   let common = 0;
-  for (const [pair, count] of a) {
-    size += count;
-    common += Math.min(count, b.get(pair) ?? 0);
+  for (const [pair, count] of a.counts) {
+    common += Math.min(count, b.counts.get(pair) ?? 0);
   }
-  for (const count of b.values()) size += count;
   return size === 0 ? 0 : (2 * common) / size;
 }
 
-/**
- * The lines of the source around the place that a render error names, as "(line 3, column 5)" or
- * "on line 3" does, or else around the part that differs from the previous source, if given; for a
- * model to make the edit that fixes it.
- */
+/** Source excerpts around the reported error line, falling back to the changed lines. */
 export function errorContext(source: string, error: string, previous?: string): string {
   const place = /\(line (\d+), column \d+\)/.exec(error) ?? /\bon line (\d+)\b/.exec(error);
   if (place) {

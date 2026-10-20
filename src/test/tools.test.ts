@@ -78,6 +78,18 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_getState cancels while waiting for a token counter that does not respond", async () => {
+    const cancellation = cancellationSource();
+    const reading = invokeTool(new GetDiagramStateTool(panel), {}, cancellation.token, {
+      tokenBudget: 200,
+      countTokens: () => {
+        cancellation.cancel();
+        return new Promise<number>(() => {});
+      },
+    });
+    await assert.rejects(reading, vscode.CancellationError);
+  });
+
   test("diagram_getState gives the source of a diagram before a long list of its relationships", async () => {
     const { panel: shown, webview } = await newFakePanel();
     // Two edges between each pair of nodes, which only their ids tell apart.
@@ -192,12 +204,22 @@ suite("tools", () => {
     };
     const tool = new RenderDiagramTool(panel);
     const option = { title: { text: "Sales" }, series: [] };
-    await invokeTool(tool, { source: option });
+    for (const language of [undefined, "echarts", "ECharts"]) {
+      const input = { source: option, language };
+      assert.strictEqual(
+        tool.prepareInvocation({ input } as never).invocationMessage,
+        'Rendering chart "Sales"',
+      );
+      await invokeTool(tool, input);
+    }
     assert.match(
       await invokeTool(tool, { source: option, language: "mermaid" }),
       /Nothing was rendered: Give "source"/,
     );
-    assert.deepStrictEqual(rendered, [`echarts "Sales": ${JSON.stringify(option, null, 2)}`]);
+    assert.deepStrictEqual(
+      rendered,
+      Array(3).fill(`echarts "Sales": ${JSON.stringify(option, null, 2)}`),
+    );
   });
 
   test("diagram_render reports links it left out, and a panel that could not show the diagram", async () => {
@@ -343,6 +365,7 @@ suite("tools", () => {
       [new ChartTool(panel), { type: "bar", data: "A,1\nB,2" }],
       [new AnnotateDiagramTool(panel), { marks: ["A"] }],
       [new GetDiagramImageTool(panel), {}],
+      [new GetDiagramStateTool(panel), {}],
     ] as const) {
       await assert.rejects(
         () => invokeTool(tool, input, cancellation.token),

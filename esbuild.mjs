@@ -82,6 +82,7 @@ const mermaidElkPlugin = {
 const common = {
   bundle: true,
   minify: production,
+  charset: "utf8",
   sourcemap: !production,
   sourcesContent: false,
   metafile: true,

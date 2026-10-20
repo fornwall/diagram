@@ -35,6 +35,9 @@ const SIZE_WORDS = new Set(
 /** The words of column names that hold counts of inodes, as df -i prints them ("IFree"). */
 const INODE_WORDS = new Set(["inodes", "iused", "ifree"]);
 
+/** Final words of column names whose zero-padded integers identify things. */
+const IDENTIFIER_WORDS = new Set(["id", "code", "sku", "zip", "postcode", "postal"]);
+
 /** The words of column names that hold durations, as "Duration", "Elapsed" or kubectl's "AGE". */
 const DURATION_WORDS = new Set(
   "duration elapsed etime runtime took latency uptime age wall".split(" "),
@@ -123,6 +126,8 @@ interface NumberFormat {
    * them, so that the others ("24.0") are versions too.
    */
   versions?: boolean;
+  /** Zero-padded identifiers keep their digits, and other integers in their column stay text. */
+  identifiers?: boolean;
 }
 
 /** Leading digits grouped by thousands with spaces, including no-break and thin ones, or apostrophes. */
@@ -147,6 +152,7 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
 /** A number as most cells write it, which reads the same in every format but decimal commas. */
 const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
+const INTEGER = /^\s*\d+\s*$/;
 
 /** A digit, without which text is no number in any format, as most labels are not. */
 const DIGIT = /\d/;
@@ -171,7 +177,9 @@ export function parseNumber(
   text: string,
   format: NumberFormat = {},
 ): { value: number; unit?: Unit } | undefined {
-  if (format.versions || !DIGIT.test(text)) return undefined;
+  if (format.versions || !DIGIT.test(text) || (format.identifiers && INTEGER.test(text))) {
+    return undefined;
+  }
   if (PLAIN.test(text) && !(format.decimalComma && text.includes("."))) {
     const value = Number(text);
     return Number.isFinite(value) ? { value } : undefined;
@@ -304,7 +312,8 @@ export function statedUnit(
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is;
  * - in durations, if the column's name is of durations ("Elapsed", "AGE");
  * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
- *   others are plain ("24.0").
+ *   others are plain ("24.0");
+ * - as text identifiers, if an ID or code column has integers with leading zeros.
  */
 export function numberFormat(
   records: Cell[][],
@@ -331,11 +340,13 @@ export function numberFormat(
   let minus = false;
   let versions = false;
   let formatted = false;
+  let padded = false;
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string" || !DIGIT.test(cell)) continue;
     if (PLAIN.test(cell)) {
       minus ||= cell.trimStart().startsWith("-");
+      padded ||= /^\s*0\d+\s*$/.test(cell);
       continue;
     }
     let text = replaceMatch(cell.trim(), CURRENCY_SIGN, "$2$1");
@@ -376,5 +387,6 @@ export function numberFormat(
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
     durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
     versions: versions && !formatted,
+    identifiers: padded && IDENTIFIER_WORDS.has(words?.findLast(Boolean) ?? ""),
   };
 }

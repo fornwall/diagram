@@ -121,6 +121,22 @@ suite("chartTools", function () {
     assert.strictEqual(clipped.sample[0][0], clipped.columns[0].name);
   });
 
+  test("inspection bounds parser notes without losing the table schema or sample", () => {
+    const data = {
+      items: [{ value: 1 }],
+      ...Object.fromEntries(Array.from({ length: 3_000 }, (_, i) => [`metadata${i}`, i])),
+    };
+    const table = parseTable(JSON.stringify(data));
+    assert.ok((table.note?.length ?? 0) > 24_000);
+    const output = inspectTable(table, 1);
+    assert.ok(output.length <= 24_000);
+    const report = JSON.parse(output);
+    assert.ok(report.truncated);
+    assert.match(report.note, /…$/);
+    assert.strictEqual(report.columns[0].name, "value");
+    assert.deepStrictEqual(report.sample, [[1]]);
+  });
+
   test("inspection reads inline and loaded data without replacing the current chart", async () => {
     const { panel } = await harness();
     await draw(panel);

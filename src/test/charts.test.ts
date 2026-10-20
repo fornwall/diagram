@@ -1892,6 +1892,22 @@ suite("charts", () => {
     assert.match(summary(chart("bar"), daily.replace("13", "99")), /left out 1 row without a date/);
   });
 
+  test("zero-padded codes remain distinct chart labels and filter values", () => {
+    for (const table of [
+      "code,sales\n001,2\n1,3\n001,4",
+      '[{"code":"001","sales":2},{"code":1,"sales":3},{"code":"001","sales":4}]',
+    ]) {
+      const option = build(chart("bar", { aggregate: "sum" }), table);
+      assert.deepStrictEqual(option.xAxis.data, ["001", "1"]);
+      assert.deepStrictEqual(option.series[0].data, [6, 3]);
+      assert.deepStrictEqual(
+        build(chart("bar", { filters: [{ column: "code", op: "eq", value: "001" }] }), table)
+          .series[0].data,
+        [2, 4],
+      );
+    }
+  });
+
   test("default value columns skip identifier columns", () => {
     const table = "id,name,score\n7,a,10\n3,b,20";
     assert.deepStrictEqual(seriesNames(build(chart("bar"), table)), ["score"]);

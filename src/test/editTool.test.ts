@@ -11,7 +11,7 @@ import { applySourceEdits, errorContext, type SourceEdit } from "../sourceEdits"
 import { StyleDiagramTool } from "../styleTool";
 import { lineAndColumn } from "../text";
 import { RenderDiagramTool } from "../tools";
-import { afterTest, recordMessages, tempDir } from "./afterTest";
+import { afterTest, assertLinearTime, recordMessages, tempDir } from "./afterTest";
 import { type FakeWebview, newFakePanel, newPanel } from "./newPanel";
 import { invokeTool } from "./toolText";
 import { suitePage, UNTIL } from "./webviewHarness";
@@ -95,6 +95,20 @@ suite("source edits", () => {
       problems(`{\n  data: [${values}2]\n}`, [edit(`${values}3`, "")])[0] ?? "",
       /oldText is not in the source.*The closest lines are:/,
     );
+  });
+
+  test("compare long unmatched replacements with many short lines in linear time", () => {
+    assertLinearTime((count) => {
+      const source = "a b\n".repeat(count);
+      const labels = Array.from({ length: count }, (_, i) => String.fromCharCode(0x3400 + i)).join(
+        "",
+      );
+      const edits = [edit(`a b ${labels}`, "")];
+      return () =>
+        assert.deepStrictEqual(problems(source, edits), [
+          "Edit 1: oldText is not in the source. The closest lines are:\n1: a b\n2: a b",
+        ]);
+    }, 750);
   });
 
   test("name the lines of text that occurs more than once", () => {

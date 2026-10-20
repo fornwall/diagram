@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import { init } from "echarts";
 import type * as ECharts from "echarts/core";
-import { modelOf } from "../webview/echartsItems";
+import { modelOf, type SeriesModel } from "../webview/echartsItems";
 import { keepUserState, modelState } from "../webview/echartsState";
 import { bars, layout, type Option } from "./echartsModel";
 
@@ -58,6 +58,43 @@ suite("echartsState", () => {
     assert.strictEqual(option.series[1].zoom, 2.5);
     assert.strictEqual(option.series[2].center, undefined);
     assert.strictEqual(option.series[2].zoom, undefined);
+  });
+
+  test("preserves a dragged node when a large positioned graph is resized", () => {
+    const count = 150_000;
+    const nodes = Array.from({ length: count }, (_, index) => ({ x: index, y: index % 100 }));
+    // Exercise the model state without allocating 150,000 SVG nodes in ECharts.
+    const chart = (dragged: boolean): ECharts.ECharts => {
+      const data = {
+        count: () => count,
+        getId: String,
+        getRawDataItem: (index: number) => nodes[index],
+        getItemLayout: (index: number) => {
+          const node = nodes[index];
+          return dragged && index === 0 ? [count, 198] : [node?.x, node?.y];
+        },
+      };
+      const series = {
+        componentIndex: 0,
+        subType: "graph",
+        get: () => "none",
+        getRawData: () => data,
+        getData: () => data,
+      };
+      return {
+        getModel: () => ({
+          eachRawSeries: (read: (series: SeriesModel) => void) =>
+            read(series as unknown as SeriesModel),
+        }),
+      } as unknown as ECharts.ECharts;
+    };
+    const restore = modelState(chart(true));
+    for (const node of nodes) {
+      node.x *= 2;
+      node.y *= 3;
+    }
+    restore(chart(false));
+    assert.deepStrictEqual(nodes[0], { x: count * 2, y: 594 });
   });
 
   test("keeps the nodes of a placed graph where dragged through a new layout, all of them too", () => {

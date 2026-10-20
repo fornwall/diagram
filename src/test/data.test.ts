@@ -13,6 +13,59 @@ function parse(text: string, format?: DataFormat) {
 }
 
 suite("data", () => {
+  test("preserves zero-padded identifiers without changing numeric measurements", () => {
+    for (const name of ["id", "user_id", "userId", "PostalCode", "ZIP", "SKU", " ID "]) {
+      const table = parseTable(`${name},sales\n001,2\n1,3\n02108,4`);
+      assert.deepStrictEqual(table.rows, [
+        ["001", 2],
+        ["1", 3],
+        ["02108", 4],
+      ]);
+      assert.strictEqual(table.columns[0]?.numeric, false, name);
+    }
+    assert.deepStrictEqual(parse('[{"code":"001","value":2},{"code":"1","value":3}]').rows, [
+      ["001", 2],
+      ["1", 3],
+    ]);
+    const mixed = parseTable('[{"code":"001","sales":2},{"code":1,"sales":3}]');
+    assert.deepStrictEqual(mixed.rows, [
+      ["001", 2],
+      ["1", 3],
+    ]);
+    assert.strictEqual(mixed.columns[0]?.numeric, false);
+    assert.deepStrictEqual(parse("id\n001\n002"), {
+      columns: ["id"],
+      rows: [["001"], ["002"]],
+    });
+    assert.deepStrictEqual(parse("id,code\n001,010\n002,020"), {
+      columns: ["id", "code"],
+      rows: [
+        ["001", "010"],
+        ["002", "020"],
+      ],
+    });
+    for (const name of ["size", "Code size", "ID count", "ZIP size", "idCount", "zip_size"]) {
+      const table = parseTable(`name,${name}\na,001\nb,020`);
+      assert.deepStrictEqual(table.rows, [
+        ["a", 1],
+        ["b", 20],
+      ]);
+      assert.strictEqual(table.columns[1]?.numeric, true, name);
+    }
+    assert.deepStrictEqual(parse("001 src/a\n020 src/b").rows, [
+      [1, "src/a"],
+      [20, "src/b"],
+    ]);
+    assert.deepStrictEqual(parse("id,value\n001.5,0.01\n002.5,0.02").rows, [
+      [1.5, 0.01],
+      [2.5, 0.02],
+    ]);
+    assert.deepStrictEqual(parse("id,value\n1,2\n2,3").rows, [
+      [1, 2],
+      [2, 3],
+    ]);
+  });
+
   test("unquoted delimiters preserve the quoted parser's rows, rules and empty fields", () => {
     for (const [format, delimiter] of [
       ["csv", ","],

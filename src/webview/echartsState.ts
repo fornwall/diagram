@@ -91,16 +91,21 @@ function placedAt(item: unknown): [number, number] | undefined {
 
 /** The bounds of where the nodes are placed, but those of some ids, if any are. */
 function placedBounds(nodes: Nodes, skipped: (id: string) => boolean = () => false) {
-  const points: [number, number][] = [];
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
   for (let index = 0, count = nodes.count(); index < count; index++) {
     const at = placedAt(nodes.getRawDataItem(index));
-    if (at && !skipped(nodes.getId(index))) points.push(at);
+    if (!at || skipped(nodes.getId(index))) continue;
+    left = Math.min(left, at[0]);
+    top = Math.min(top, at[1]);
+    right = Math.max(right, at[0]);
+    bottom = Math.max(bottom, at[1]);
   }
-  if (points.length === 0) return undefined;
-  const xs = points.map(([x]) => x);
-  const ys = points.map(([, y]) => y);
-  const [x, y] = [Math.min(...xs), Math.min(...ys)];
-  return { x, y, width: Math.max(...xs) - x || 1, height: Math.max(...ys) - y || 1 };
+  return left === Infinity
+    ? undefined
+    : { x: left, y: top, width: right - left || 1, height: bottom - top || 1 };
 }
 
 /**
@@ -128,13 +133,14 @@ function draggedNodes(series: SeriesModel): Drags | undefined {
     const at = where.has(id) ? where.get(id) : placed;
     const [x, y] = Array.isArray(at) ? at.map(Number) : [];
     if (!placed || x === undefined || y === undefined || !Number.isFinite(x + y)) continue;
-    points.set(id, [x, y]);
     if (Math.abs(x - placed[0]) + Math.abs(y - placed[1]) > 1e-9) ids.add(id);
+    if (ids.has(id)) points.set(id, [x, y]);
   }
+  if (ids.size === 0) return undefined;
   // Of the nodes not dragged, where those handed over are placed as they were: else where all
   // were placed before those were placed where dragged.
   const box = placedBounds(nodes, (id) => ids.has(id)) ?? handed?.bounds ?? placedBounds(nodes);
-  if (!box || ids.size === 0) return undefined;
+  if (!box) return undefined;
   const drags: Drags = new Map();
   for (const id of ids) {
     const [x, y] = points.get(id) ?? [];

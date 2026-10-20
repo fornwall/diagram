@@ -83,16 +83,18 @@ function parseRenderInput(
 ): { diagram: Diagram; problems: string[]; ignored: string[] } | string {
   // Some models send null for the properties they leave out.
   const input = isPlainObject(value) ? givenProperties(value) : {};
+  // As a model may write it: "Mermaid", "ECharts".
+  let language = input.language;
+  if (typeof language === "string") language = language.toLowerCase();
   // Models sometimes send an ECharts option as an object despite the schema. Sending it again as a
   // string would cost as much.
-  if (isPlainObject(input.source) && (input.language ?? "echarts") === "echarts") {
+  if (isPlainObject(input.source) && (language ?? "echarts") === "echarts") {
     input.source = formatOption(JSON.stringify(input.source));
   }
   if (typeof input.source !== "string") {
     return 'Give "source", the complete diagram, as a string.';
   }
   let source = input.source;
-  let language = input.language;
   // Models sometimes include a Markdown fence despite the schema. Use the same rules as chat.
   const trimmed = source.trim();
   const firstNewline = trimmed.indexOf("\n");
@@ -107,8 +109,6 @@ function parseRenderInput(
   }
   // Mermaid source never starts with "{", so a model that left out the language means ECharts.
   language ??= source.trimStart().startsWith("{") ? "echarts" : "mermaid";
-  // As a model may write it: "Mermaid", "ECharts".
-  if (typeof language === "string") language = language.toLowerCase();
   if (!isDiagramLanguage(language)) {
     return `Unknown language ${JSON.stringify(language)}: use "mermaid" for Mermaid source or "echarts" for an ECharts option as JSON or JavaScript.`;
   }
@@ -216,6 +216,7 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
     options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
+    throwIfCancelled(token);
     // A source too long to repeat in every chat request is given in full here, as a model has to
     // read it to change it, unless it does not fit, as the caller would cut it short.
     const full = this.panel.describeForModel({ detail: "full" });
@@ -258,7 +259,7 @@ async function fits(
   // A token takes at least a byte of UTF-8, which takes at most 3 for each UTF-16 code unit.
   if (text.length * 3 <= tokenBudget) return true;
   if (text.length > tokenBudget * MAX_CHARS_PER_TOKEN) return false;
-  return (await countTokens(text, token)) <= tokenBudget;
+  return (await unlessCancelled(async () => countTokens(text, token), token)) <= tokenBudget;
 }
 
 interface ImageInput {

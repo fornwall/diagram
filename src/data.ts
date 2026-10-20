@@ -210,13 +210,24 @@ function tableFromRecords(
           statedUnits[column]?.explicit.add(row);
         }
         cell = number?.value ?? (field.trim() || null);
+      } else if (
+        typeof field === "number" &&
+        formats[column]?.identifiers &&
+        Number.isInteger(field) &&
+        field >= 0
+      ) {
+        // JSON may mix padded string codes with unpadded integer codes in the same column.
+        cell = String(field);
       }
       record[column] = cell;
       const count = counts[column];
       if (row > 0 && count !== undefined) countCell(count, cell);
     }
   }
-  const named = header ?? hasHeader(records, counts, csv);
+  // Identifier formats require a column name, and retain text that would otherwise establish
+  // a header by being numeric. A table consisting only of codes still has that header.
+  const named =
+    header ?? (formats.some((format) => format.identifiers) || hasHeader(records, counts, csv));
   const rows = named ? records.slice(1) : records;
   const columns = columnNames(named ? first : [], width).map((name, column) => {
     const count = counts[column] ?? { numbers: 0, others: 0, missing: false };

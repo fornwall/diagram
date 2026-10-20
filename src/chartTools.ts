@@ -141,12 +141,13 @@ export function inspectTable(table: DataTable, sampleRows: number): string {
     .map((row) =>
       row.slice(0, columns.length).map((cell) => (typeof cell === "string" ? clip(cell) : cell)),
     );
+  const note = table.note === undefined ? undefined : clip(table.note);
   const report = () =>
     JSON.stringify({
       rowCount: table.rows.length,
       columnCount: table.columns.length,
       header: table.header,
-      note: table.note,
+      note,
       columns,
       sample,
       sampleRowsOmitted: table.rows.length - sample.length,

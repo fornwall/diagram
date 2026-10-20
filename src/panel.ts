@@ -1364,31 +1364,27 @@ export class DiagramPanel implements vscode.Disposable {
   /**
    * Shows a revision of the current diagram, such as a chart rebuilt from the table, keeping the
    * current one if it fails to render or the token is cancelled, in which case the outcome's error
-   * says so. A revision that keeps the items, such as their colors, keeps their marks too.
+   * says so. Rebuilding a chart clears its selection and marks.
    */
   private async showOrKeep(
     next: DiagramState,
     {
       table,
-      keepMarks = false,
       pickReason,
       token,
     }: {
       table: DataTable | undefined;
-      keepMarks?: boolean;
       pickReason: string;
       token?: vscode.CancellationToken | undefined;
     },
   ): Promise<Drawn> {
-    const { state, chartTable, annotation, selection } = this;
+    const { state, chartTable, annotation } = this;
     const tab = this.webview.tab;
     const noun = diagramNoun(next.language);
     this.state = next;
     this.chartTable = table;
-    if (!keepMarks) {
-      this.selection = [];
-      this.annotation = undefined;
-    }
+    this.selection = [];
+    this.annotation = undefined;
     this.cancelPick(pickReason);
     const version = this.renderVersion + 1;
     const cancellation = token?.onCancellationRequested(() => {
@@ -1396,7 +1392,7 @@ export class DiagramPanel implements vscode.Disposable {
     });
     let outcome: Drawn;
     try {
-      outcome = await this.renderCurrent({ keepSelection: keepMarks });
+      outcome = await this.renderCurrent();
     } finally {
       cancellation?.dispose();
     }
@@ -1405,12 +1401,11 @@ export class DiagramPanel implements vscode.Disposable {
     this.state = state;
     this.chartTable = chartTable;
     this.annotation = annotation;
-    if (keepMarks) this.selection = selection;
     await this.store.save(state, this.shownRevision);
     if (this.renderVersion === version && tab && this.webview.tab === tab) {
       // Draw the kept chart again, also after a page that stopped responding, which may still draw
       // the abandoned chart. Only a chart that failed to render waits for the kept one.
-      const restoring = this.renderCurrent({ keepSelection: keepMarks });
+      const restoring = this.renderCurrent();
       if (!cancelled && !outcome.ok && outcome.kind === "invalid") {
         await (token ? unlessCancelled(() => restoring, token) : restoring);
       }
