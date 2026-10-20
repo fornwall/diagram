@@ -598,6 +598,18 @@ suite("echartsOption", () => {
         network("sankey", [{ name: "a" }], [{ source: "a", target: "a", value: 1 }]),
         'series[0] has links that go around in a cycle, "a" → "a", which a sankey cannot draw',
       ],
+      [
+        network(
+          "sankey",
+          ["a", "b", "c", "d"].map((name) => ({ name })),
+          [
+            { source: "a", target: "b", value: 1 },
+            { source: "c", target: "d", value: 1 },
+            { source: "d", target: "c", value: 1 },
+          ],
+        ),
+        'series[0] has links that go around in a cycle, "c" → "d" → "c", which a sankey cannot draw',
+      ],
     ];
     for (const [source, message] of cases) {
       assert.ok(errorOf(source).startsWith(message), errorOf(source));
@@ -620,6 +632,79 @@ suite("echartsOption", () => {
       ),
     ]) {
       drawn(parseOption(source));
+    }
+  });
+
+  test("checks long sankey chains and wide branches without recursive or quadratic traversal", () => {
+    const count = 12_000;
+    const data = Array.from({ length: count }, (_, index) => ({ name: String(index) }));
+    const links = Array.from({ length: count - 1 }, (_, index) => ({
+      source: index,
+      target: index + 1,
+      value: 1,
+    }));
+    const source = () => JSON.stringify({ series: [{ type: "sankey", data, links }] });
+    assert.doesNotThrow(() => parseOption(source()));
+    links.push({ source: count - 1, target: count - 2, value: 1 });
+    assert.match(errorOf(source()), /"11998" → "11999" → "11998"/);
+    links.pop();
+    for (const link of links) link.source = 0;
+    assert.doesNotThrow(() => parseOption(source()));
+  });
+
+  test("does not treat links to missing nodes as sankey cycles", () => {
+    const data = [{ name: "a" }, { name: "2" }];
+    for (const missing of ["missing", 2, 0.5]) {
+      const option = parseOption(
+        JSON.stringify({
+          series: [
+            {
+              type: "sankey",
+              data,
+              links: [
+                { source: "a", target: "2", value: 1 },
+                { source: "2", target: missing, value: 1 },
+                { source: missing, target: "a", value: 1 },
+              ],
+            },
+          ],
+        }),
+      );
+      drawn(option);
+      assert.match(optionWarnings(option).join("\n"), /2 links to nodes.*does not have/);
+    }
+  });
+
+  test("resolves unnamed network nodes by their default index ids", () => {
+    const links = [{ source: "0", target: "1", value: 1 }];
+    for (const type of ["graph", "sankey", "chord"]) {
+      for (const data of [
+        [{}, {}],
+        [1, 2],
+      ]) {
+        const option = parseOption(
+          JSON.stringify({ series: [{ type, layout: "circular", data, links }] }),
+        );
+        drawn(option);
+        assert.deepStrictEqual(optionWarnings(option), []);
+      }
+      for (const data of [
+        [{}, { id: "0" }],
+        [{ name: "1" }, {}],
+      ]) {
+        const option = { series: [{ type, layout: "circular", data }] };
+        assert.match(errorOf(JSON.stringify(option)), /have the same id, "[01]"/);
+        assert.ok(drawingThrows(option));
+      }
+    }
+    for (const target of ["0", 0]) {
+      const option = {
+        series: [
+          { type: "sankey", data: [{}, {}], links: [...links, { source: "1", target, value: 1 }] },
+        ],
+      };
+      assert.match(errorOf(JSON.stringify(option)), /"0" → "1" → "0"/);
+      assert.ok(drawingThrows(option));
     }
   });
 

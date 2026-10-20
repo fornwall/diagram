@@ -81,7 +81,9 @@ const DRAWING_TOOLS = new Set([RENDER_TOOL, EDIT_TOOL, CHART_TOOL, UPDATE_CHART_
 interface ToolUse {
   rounds: number;
   calls: number;
-  /** A decline or exhausted budget applies to every subsequent round and repair. */
+  /** User changes made before the request began; later changes must not be overwritten. */
+  userChanges: number;
+  /** A declined call, exhausted budget or user edit ends tool use for this request. */
   notRun?: string;
   /** The revision that the last of the request's tool calls that drew in the panel drew. */
   drawn?: number;
@@ -178,7 +180,12 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (notice) {
         stream.markdown(`${notice}\n\n`);
       }
-      const toolUse: ToolUse = { rounds: 0, calls: 0, read: new Set() };
+      const toolUse: ToolUse = {
+        rounds: 0,
+        calls: 0,
+        userChanges: changesAtStart,
+        read: new Set(),
+      };
       const converse = async (required: readonly vscode.LanguageModelChatTool[]) => {
         const diagram = await unlessCancelled(
           () => streamReply(request, messages, tools, required, stream, token, panel, toolUse),
@@ -399,14 +406,18 @@ async function streamReply(
     for (const call of calls) {
       throwIfCancelled(token);
       let content: unknown[];
+      if (DRAWING_TOOLS.has(call.name) && panel.userChangeCount !== toolUse.userChanges) {
+        toolUse.notRun ??= "the diagram was changed in the panel during this request";
+      }
       if (toolUse.calls >= MAX_TOOL_CALLS) {
         toolUse.notRun ??= "this request reached its tool call limit";
       }
       if (toolUse.notRun) {
-        // A diagram block is drawn still.
+        // A code block can still draw unless a user change made this request stale.
         const draw =
           diagram === undefined &&
           toolUse.drawn === undefined &&
+          panel.userChangeCount === toolUse.userChanges &&
           tools.some((tool) => DRAWING_TOOLS.has(tool.name));
         content = text(
           `Not run, as ${toolUse.notRun}. Answer without tools${draw ? ", and to draw, reply with the complete diagram in a mermaid or echarts code block" : ""}.`,

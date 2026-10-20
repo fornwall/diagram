@@ -153,6 +153,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     options: vscode.LanguageModelToolInvocationOptions<RenderInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
+    const changes = this.panel.userChangeCount;
     const parsed = parseRenderInput(options.input);
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
@@ -164,6 +165,11 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       const existing = await unlessCancelled(() => withoutMissingFiles(links), token);
       diagram.links = existing.links;
       problems.push(...existing.problems);
+    }
+    if (this.panel.userChangeCount !== changes) {
+      return textResult(
+        "Nothing was rendered because the diagram changed in the panel while its code links were checked. Read diagram_getState before making further changes.",
+      );
     }
     const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool"), token);
     const noun = diagramNoun(diagram.language);

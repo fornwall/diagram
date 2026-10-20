@@ -144,6 +144,29 @@ suite("tools", () => {
     assert.match(String(message({ source: "{}", language: "ECharts" })), /^Rendering chart/);
   });
 
+  test("diagram_render keeps user edits made while checking code links", async () => {
+    const { panel: shown, webview } = await newFakePanel();
+    await shown.render(
+      { language: "mermaid", source: "flowchart TD\n  Original", title: "A" },
+      "tool",
+    );
+    const edited = "flowchart TD\n  Edited";
+    const stat = vscode.workspace.fs.stat;
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      stat: async (uri) => {
+        await webview.edit(edited);
+        return stat(uri);
+      },
+    });
+    const result = await invokeTool(new RenderDiagramTool(shown), {
+      source: "flowchart TD\n  Replacement",
+      links: { Replacement: "sizes.tsv" },
+    });
+    assert.strictEqual(shown.current?.source, edited);
+    assert.match(result, /Nothing was rendered because the diagram changed in the panel/);
+  });
+
   test("diagram_render takes a source in a Markdown fence, with a longer closing marker", async () => {
     const rendered: string[] = [];
     panel.render = async (diagram) => {

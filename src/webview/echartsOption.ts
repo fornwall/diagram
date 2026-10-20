@@ -421,10 +421,10 @@ const networkOf = (series: JsonObject) => {
   };
 };
 
-/** What links name a node by: its id, or else its name. A node that is no object has none. */
-function nodeKey(node: unknown): string | undefined {
+/** ECharts names nodes by id, then name, then their index, each compared as text. */
+function nodeKey(node: unknown, index: number): string {
   const key = isPlainObject(node) ? (node.id ?? node.name) : undefined;
-  return typeof key === "string" || typeof key === "number" ? String(key) : undefined;
+  return String(key ?? index);
 }
 
 /**
@@ -436,14 +436,13 @@ function checkNodes(series: JsonObject, path: string, type: string): void {
   const { nodes, nodesKey, links } = networkOf(series);
   const seen = new Map<string, number>();
   nodes.forEach((node, index) => {
-    const key = nodeKey(node);
-    if (key === undefined) return;
+    const key = nodeKey(node, index);
     const first = seen.get(key);
     if (first === undefined) {
       seen.set(key, index);
       return;
     }
-    const by = isPlainObject(node) && node.id != null ? "id" : "name";
+    const by = isPlainObject(node) && node.id == null && node.name != null ? "name" : "id";
     const stages =
       type === "sankey" ? ', as "Other (2024)" and "Other (2025)" for a node in two stages' : "";
     throw new Error(
@@ -453,38 +452,49 @@ function checkNodes(series: JsonObject, path: string, type: string): void {
     );
   });
   if (type !== "sankey") return;
-  // Where each node's links go, by node key or index, and a search for a way back to a node.
+  // Resolve both names and indices to node indices, leaving out the links ECharts leaves out.
   const ends = (end: unknown) =>
-    typeof end === "number" ? (nodeKey(nodes[end]) ?? String(end)) : String(end);
-  const next = new Map<string, string[]>();
+    typeof end === "number"
+      ? Number.isInteger(end) && end >= 0 && end < nodes.length
+        ? end
+        : undefined
+      : seen.get(String(end));
+  const next = new Map<number, number[]>();
   for (const link of links) {
     if (!isPlainObject(link)) continue;
     const from = ends(link.source);
-    next.set(from, [...(next.get(from) ?? []), ends(link.target)]);
+    const to = ends(link.target);
+    if (from === undefined || to === undefined) continue;
+    const targets = next.get(from);
+    if (targets) targets.push(to);
+    else next.set(from, [to]);
   }
-  const done = new Set<string>();
-  const way: string[] = [];
-  const cycleFrom = (node: string): string[] | undefined => {
-    const at = way.indexOf(node);
-    if (at >= 0) return [...way.slice(at), node];
-    if (done.has(node)) return undefined;
-    way.push(node);
-    for (const target of next.get(node) ?? []) {
-      const cycle = cycleFrom(target);
-      if (cycle) return cycle;
-    }
-    way.pop();
-    done.add(node);
-    return undefined;
-  };
+  // Iterative depth-first search: long chains must not exhaust the call stack, and a node with
+  // many outgoing links must take linear time. 1 is on the current path; 2 is fully checked.
+  const state = new Uint8Array(nodes.length);
   for (const node of next.keys()) {
-    const cycle = cycleFrom(node);
-    if (cycle) {
-      throw new Error(
-        `${path} has links that go around in a cycle, ${cycle.map((each) => JSON.stringify(each)).join(" → ")}, ` +
-          "which a sankey cannot draw, as its flows go one way: leave out a link of the cycle, or " +
-          'draw a "graph" with "layout": "force" instead.',
-      );
+    if (state[node] === 2) continue;
+    const way = [{ node, edge: 0 }];
+    state[node] = 1;
+    while (way.length > 0) {
+      const current = way[way.length - 1] as { node: number; edge: number };
+      const target = next.get(current.node)?.[current.edge++];
+      if (target === undefined) {
+        state[current.node] = 2;
+        way.pop();
+      } else if (state[target] === 1) {
+        const at = way.findIndex((step) => step.node === target);
+        const cycle = [...way.slice(at).map((step) => step.node), target];
+        const names = cycle.map((index) => JSON.stringify(nodeKey(nodes[index], index)));
+        throw new Error(
+          `${path} has links that go around in a cycle, ${names.join(" → ")}, ` +
+            "which a sankey cannot draw, as its flows go one way: leave out a link of the cycle, or " +
+            'draw a "graph" with "layout": "force" instead.',
+        );
+      } else if (state[target] !== 2) {
+        state[target] = 1;
+        way.push({ node: target, edge: 0 });
+      }
     }
   }
 }
@@ -873,7 +883,9 @@ function looseLinks(series: JsonObject, path: string): string[] {
   const { nodes, nodesKey, links, linksKey } = networkOf(series);
   const keys = new Set(nodes.map(nodeKey));
   const missing = (end: unknown) =>
-    typeof end === "number" ? !(end >= 0 && end < nodes.length) : !keys.has(String(end));
+    typeof end === "number"
+      ? !(Number.isInteger(end) && end >= 0 && end < nodes.length)
+      : !keys.has(String(end));
   const loose = links.filter(
     (link) => isPlainObject(link) && (missing(link.source) || missing(link.target)),
   ) as JsonObject[];

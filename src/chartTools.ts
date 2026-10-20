@@ -41,11 +41,17 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     options: vscode.LanguageModelToolInvocationOptions<ChartInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
+    const changes = this.panel.userChangeCount;
     let description: string | undefined;
     let chart: { spec: ChartSpec; table: DataTable; report: string; diagram: Diagram };
     try {
       const spec = validateChartSpec(options.input);
       const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
+      if (this.panel.userChangeCount !== changes) {
+        return textResult(
+          "No chart was rendered because the diagram changed in the panel while the data loaded. Read diagram_getState before making further changes.",
+        );
+      }
       description = `The data was read as: ${describeTable(table)}`;
       // The styling baseline comes from the option itself, rather than from parsing the source
       // again, which takes long for a large chart.

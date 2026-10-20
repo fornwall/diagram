@@ -756,7 +756,7 @@ async function readImage(
       (reference
         ? imageKeys.has(reference.toString())
         : !(source instanceof vscode.Uri) &&
-          imageKeys.has(await Promise.resolve(source()).then(contentKey, () => "")));
+          imageKeys.has(await Promise.try(source).then(contentKey, () => "")));
     return attachedNow
       ? undefined
       : { name, error: "images are only given with the request they are attached to" };

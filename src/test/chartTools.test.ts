@@ -29,6 +29,23 @@ function draw(panel: DiagramPanel, chart: ChartSpec = { type: "bar", data }) {
 suite("chartTools", function () {
   this.timeout(10_000);
 
+  test("keeps user edits made while chart data loads", async () => {
+    const { panel, webview } = await harness();
+    await draw(panel);
+    const edited = '{"series": [{"type": "pie", "data": [7]}]}';
+    const readFile = vscode.workspace.fs.readFile;
+    replace(vscode.workspace, "fs", {
+      ...vscode.workspace.fs,
+      readFile: async (uri) => {
+        await webview.edit(edited);
+        return readFile(uri);
+      },
+    });
+    const result = await invokeTool(new ChartTool(panel), { type: "bar", file: "sizes.tsv" });
+    assert.strictEqual(panel.current?.source, edited);
+    assert.match(result, /No chart was rendered because the diagram changed in the panel/);
+  });
+
   test("analysis updates reuse the full cached table and retain the prior chart on invalid filters", async () => {
     const { panel, values } = await harness();
     const samples = "service,latency\na,1\na,2\nb,10\nb,20";

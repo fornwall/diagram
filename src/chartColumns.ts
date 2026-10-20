@@ -146,26 +146,6 @@ function groupsRows(table: DataTable, column: number): boolean {
   return new Set(table.rows.map((row) => row[column])).size * 2 <= table.rows.length;
 }
 
-/**
- * Prefer distinct text labels, then any text, then a leading identifier or year column. A box
- * plot needs groups of rows instead: a box per row would summarize a single value.
- */
-function defaultLabelColumn(table: DataTable, type: ChartType): number | undefined {
-  const text = textColumns(table);
-  const first = columnName(table, 0);
-  const leading =
-    text.length === 0 &&
-    type !== "scatter" &&
-    table.columns.length > 1 &&
-    (isIdName(first) || table.rows.every((row) => isYear(row[0])))
-      ? [0]
-      : [];
-  if (type === "boxplot") {
-    return [...text, ...leading].find((i) => groupsRows(table, i));
-  }
-  return text.find((i) => namesRows(table, i)) ?? text[0] ?? leading[0];
-}
-
 /** The most text columns read as the levels of a hierarchy, the stages of a flow or a pivot. */
 const MOST_LEVELS = 3;
 
@@ -180,7 +160,19 @@ function defaultLabelColumns(table: DataTable, type: ChartType): number[] {
   if (most > 1 && !isCartesian(type) && text.length >= 2 && text.length <= MOST_LEVELS) {
     return text.slice(0, most);
   }
-  const single = defaultLabelColumn(table, type);
+  // Prefer distinct text labels, then any text, then a leading identifier or year column.
+  const leading =
+    text.length === 0 &&
+    type !== "scatter" &&
+    table.columns.length > 1 &&
+    (isIdName(columnName(table, 0)) || table.rows.every((row) => isYear(row[0])))
+      ? [0]
+      : [];
+  // A box plot needs groups: a box per row would summarize a single value.
+  const single =
+    type === "boxplot"
+      ? [...text, ...leading].find((i) => groupsRows(table, i))
+      : (text.find((i) => namesRows(table, i)) ?? text[0] ?? leading[0]);
   return single === undefined ? [] : [single];
 }
 

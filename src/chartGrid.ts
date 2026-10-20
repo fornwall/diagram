@@ -114,7 +114,9 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
     if (type === "stackedArea") {
       // A label without a row at a point adds nothing to the stack there, rather than leaving a
       // hole in its area that the areas above it sink into.
-      for (const each of series) each.values = each.values.map((value) => value ?? 0);
+      for (const each of series) {
+        each.values = each.values.map((value) => (value === undefined ? 0 : value));
+      }
     }
   } else {
     if (names.length > MOST_SERIES) {

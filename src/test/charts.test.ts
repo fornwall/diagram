@@ -443,6 +443,31 @@ suite("charts", () => {
     }
   });
 
+  test("stacked areas fill absent series rows without inventing missing measurements", () => {
+    for (const days of [
+      ["Mon", "Tue", "Wed"],
+      ["2026-01-01", "2026-01-02", "2026-01-03"],
+    ]) {
+      const data = [
+        "day,region,sales",
+        `${days[0]},EU,5`,
+        `${days[1]},EU,`,
+        `${days[2]},US,7`,
+      ].join("\n");
+      const option = build(chart("stackedArea", { labelColumn: ["day", "region"] }), data);
+      const values = [
+        [5, null, 0],
+        [0, 0, 7],
+      ];
+      assert.deepStrictEqual(
+        option.series.map((series: Option) => series.data),
+        option.xAxis.type === "time"
+          ? values.map((series) => series.map((value, index) => [days[index], value]))
+          : values,
+      );
+    }
+  });
+
   test("stacks the areas of a stacked area chart", () => {
     const option = build(chart("stackedArea"));
     assert.strictEqual(option.xAxis.boundaryGap, false);

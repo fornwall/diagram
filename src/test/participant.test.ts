@@ -713,6 +713,50 @@ suite("participant", () => {
     assert.match(shown, /did not draw this diagram over the change you made/);
   });
 
+  test("skips drawing tools after the user changes the panel during a reply", async () => {
+    const calls = countToolCalls();
+    await panel.render({ ...flowchart, title: "Original" }, "tool");
+    for (const name of [
+      "diagram_render",
+      "diagram_chart",
+      "diagram_edit",
+      "diagram_style",
+      "diagram_updateChart",
+    ]) {
+      const source = `flowchart TD\n  ${name}`;
+      const { result, sent } = await ask([
+        async () => {
+          await webview.edit(source);
+          return [new vscode.LanguageModelToolCallPart("1", name, {})];
+        },
+        [text("Your changes are kept.")],
+      ]);
+      assert.strictEqual(calls.count, 0, name);
+      assert.strictEqual(panel.current?.source, source);
+      assert.strictEqual(result, undefined);
+      const response = messageText(sent[1]?.messages.at(-1));
+      assert.match(response, /Not run, as the diagram was changed in the panel/);
+      assert.doesNotMatch(response, /reply with the complete diagram/);
+    }
+  });
+
+  test("checks for user changes between tool calls in the same reply", async () => {
+    await panel.render({ ...flowchart, title: "Original" }, "tool");
+    const edited = "flowchart TD\n  Edited";
+    const calls: string[] = [];
+    replace(vscode.lm, "invokeTool", async (name) => {
+      calls.push(name);
+      await webview.edit(edited);
+      return new vscode.LanguageModelToolResult([text("Read")]);
+    });
+    await ask([
+      [getState(), new vscode.LanguageModelToolCallPart("2", "diagram_render", {})],
+      [text("Your changes are kept.")],
+    ]);
+    assert.deepStrictEqual(calls, ["diagram_getState"]);
+    assert.strictEqual(panel.current?.source, edited);
+  });
+
   test("tells the model what the user changed of its diagram, rather than repeat its version", async () => {
     const drawn = "flowchart TD\n  Cart --> Pay\n  Pay --> Done";
     const edited = "flowchart TD\n  Cart --> Pay\n  Pay -->|declined| Cart\n  Pay --> Done";
@@ -1524,6 +1568,33 @@ suite("participant", () => {
       "Attached by the user: again.png[image/png]",
       "Attached by the user: image[image/png]",
     ]);
+  });
+
+  test("keeps chatting when an earlier image cannot be read again", async () => {
+    for (const data of [
+      () => {
+        throw new Error("Image is no longer available");
+      },
+      () => Promise.reject(new Error("Image is no longer available")),
+    ]) {
+      const history = exchange(
+        "Draw this",
+        "Drawn.",
+        {},
+        {
+          references: [{ id: "pasted", value: { mimeType: "image/png", data } }],
+        },
+      );
+      const { sent, shown } = await ask([[text("Updated.")]], {
+        history,
+        references: [pasted("image/png", new Uint8Array([1, 2]))],
+      });
+      assert.strictEqual(shown, "Updated.");
+      assert.deepStrictEqual(attachments(sent[0]?.messages), [
+        "Attached by the user: image, which could not be read: images are only given with the request they are attached to",
+        "Attached by the user: image[image/png]",
+      ]);
+    }
   });
 
   test("gives the model earlier turns, with their diagrams and attachments", async () => {
