@@ -64,3 +64,8 @@ npm run vsix         # production build packaged as a .vsix
 Install the package with **Extensions: Install from VSIX…**.
 
 CI tests and packages every push and pull request, running the rendering tests against the minified production bundles. Download `diagram-chat-<commit SHA>.vsix` from the **CI** run's artifacts within 90 days. Packages contain minified bundles, without source maps, and the licenses of the bundled packages in `dist/THIRD_PARTY_NOTICES.txt`.
+
+To publish a release, upload the `.vsix` as an update to the existing extension on each registry:
+
+- [Visual Studio Marketplace](https://marketplace.visualstudio.com/manage/publishers/fornwall)
+- [Open VSX](https://open-vsx.org/user-settings/extensions)
