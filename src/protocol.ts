@@ -168,6 +168,11 @@ export type ExportResult = Extract<
   { type: "exportImage" | "exportTheme" | "exportError" }
 >;
 
+export interface SourceRepair {
+  source: string;
+  description: string;
+}
+
 export type ToWebview =
   | {
       type: "export";
@@ -197,6 +202,8 @@ export type ToWebview =
       language: DiagramLanguage;
       source: string;
       title: string;
+      /** Try one diagnostic-based Mermaid label correction for diagram_render. */
+      repairMermaid?: boolean | undefined;
       /** When set, a plain click on a node asks this in chat instead of selecting the node. */
       clickPrompt?: string | undefined;
       /** Tooltip text by node id. The host holds the actual locations and opens them. */
@@ -239,6 +246,7 @@ export type FromWebview =
       type: "rendered";
       requestId: number;
       diagramType: string;
+      repair?: SourceRepair | undefined;
       /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
       nodeIds?: string[] | undefined;
       /** Selectable edges or sequence messages, with their endpoints as drawn. */
@@ -373,6 +381,9 @@ const FROM_WEBVIEW_FIELDS: {
   rendered: {
     requestId: isId,
     diagramType: isString,
+    repair: optional(
+      (value) => isPlainObject(value) && isString(value.source) && isString(value.description),
+    ),
     nodeIds: optional(isStrings),
     relationships: optional(isNodes),
     repeatedNames: optional(isRepeatedNames),

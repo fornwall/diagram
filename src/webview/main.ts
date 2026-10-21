@@ -16,6 +16,7 @@ import { keepFocusInContent } from "./focus";
 import { MODEL_TEXT_SIZE, pngDataUrl, pngScale } from "./images";
 import { closeLinkMenu, showLinkMenu } from "./linkMenu";
 import { preloadLayout } from "./mermaidLayout";
+import { renderWithRecovery } from "./mermaidRecovery";
 import { keepPageState, type StateApi } from "./pageState";
 import { enablePanning } from "./pan";
 import { showRenderError } from "./renderError";
@@ -281,7 +282,14 @@ async function render(message: RenderMessage): Promise<void> {
   let answer: Extract<FromWebview, { type: "rendered" }> | undefined;
   try {
     if (message.notDrawn !== undefined) throw new Error(message.notDrawn);
-    const diagramType = await inertUntil(renderer.render(source, message.title));
+    const { diagramType, repair } = await inertUntil(
+      renderWithRecovery(
+        source,
+        (text) => renderer.render(text, message.title),
+        language === "mermaid" && message.repairMermaid === true,
+      ),
+    );
+    if (repair) editor.diagramChanged(renderer, repair.source, requestId, false);
     active = renderer;
     renderer.showLinks?.(links);
     const drawn = renderer.drawnNodes?.();
@@ -291,6 +299,7 @@ async function render(message: RenderMessage): Promise<void> {
       type: "rendered",
       requestId,
       diagramType,
+      repair,
       nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
       relationships: drawn?.filter((node) => node.relationship),
       repeatedNames: renderer.repeatedNames?.(),

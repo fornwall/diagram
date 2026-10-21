@@ -4,6 +4,7 @@
 
 import { frontMatterEnd } from "../mermaidSyntax";
 import { joinWords } from "../text";
+import type { LabelRepair } from "./mermaidRecovery";
 
 /** Where a parser stopped. */
 export interface Stop {
@@ -32,7 +33,7 @@ interface At extends Stop {
 }
 
 /** A hint that tells how to fix the syntax error at the stop, if a common mistake explains it. */
-export function syntaxHint(stop: Stop): string | undefined {
+export function syntaxHint(stop: Stop, repair?: (edit: LabelRepair) => void): string | undefined {
   const { normalized, start } = stop;
   const lineStart = normalized.lastIndexOf("\n", start - 1) + 1;
   const lineEnd = normalized.indexOf("\n", start);
@@ -49,12 +50,16 @@ export function syntaxHint(stop: Stop): string | undefined {
   };
   for (const rule of RULES) {
     const hint = rule(at);
-    if (hint) return hint;
+    if (typeof hint === "string") return hint;
+    if (hint) {
+      if (hint.repair) repair?.(hint.repair);
+      return hint.message;
+    }
   }
   return undefined;
 }
 
-type Rule = (at: At) => string | undefined;
+type Rule = (at: At) => string | { message: string; repair?: LabelRepair } | undefined;
 
 const FLOWCHART = /^flowchart/;
 
@@ -216,7 +221,7 @@ const SPECIAL = /[()[\]{}|"]/;
  * A label with brackets, parentheses, braces, pipes or quotes, which must be quoted, or any label of
  * a block diagram.
  */
-const unquotedLabel: Rule = ({ type, line, column }) => {
+const unquotedLabel: Rule = ({ type, line, lineNumber, column }) => {
   // Block diagrams take no label unquoted; mind maps take labels as flowcharts do.
   const block = type === "block";
   if (!FLOWCHART.test(type) && type !== "mindmap" && !block) return undefined;
@@ -254,7 +259,11 @@ const unquotedLabel: Rule = ({ type, line, column }) => {
     const label = close && end >= column && !linked ? line.slice(from, end) : undefined;
     if (label && (block || SPECIAL.test(label)) && !/^\s*".*"\s*$/.test(label)) {
       const quotes = label.includes('"') ? ", writing its quotes as #quot;" : "";
-      return `Put the label in double quotes${quotes}: ${id}${open}"${label.replace(/"/g, "#quot;")}"${close}.`;
+      const text = `"${label.replace(/"/g, "#quot;")}"`;
+      return {
+        message: `Put the label in double quotes${quotes}: ${id}${open}${text}${close}.`,
+        ...(FLOWCHART.test(type) ? { repair: { line: lineNumber, start: from, end, text } } : {}),
+      };
     }
   }
   // An edge label between pipes.
@@ -267,7 +276,11 @@ const unquotedLabel: Rule = ({ type, line, column }) => {
     const label = line.slice(pipe.index + pipe[0].length - (pipe[1] as string).length, closing);
     if (SPECIAL.test(label) && !/^\s*".*"\s*$/.test(label)) {
       const arrow = pipe[0].slice(0, -(pipe[1] as string).length - 1);
-      return `Put the label in double quotes: ${arrow}|"${label.replace(/"/g, "#quot;")}"|.`;
+      const text = `"${label.replace(/"/g, "#quot;")}"`;
+      return {
+        message: `Put the label in double quotes: ${arrow}|${text}|.`,
+        repair: { line: lineNumber, start: closing - label.length, end: closing, text },
+      };
     }
   }
   return undefined;

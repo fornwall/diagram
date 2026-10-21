@@ -11,6 +11,7 @@ import { editDistance, joinWords, lineAndColumn, quote } from "../text";
 import { c4UnquotedArguments, syntaxHint } from "./mermaidHints";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
+import { type LabelRepair, RepairableMermaidError, repairLabel } from "./mermaidRecovery";
 
 export { parsableSource } from "../mermaidSyntax";
 
@@ -442,24 +443,30 @@ export function describeError(error: unknown, source: string, type: () => string
     if (!normalized.slice(start).trim()) start = normalized.trimEnd().length;
     const { line, column } = lineAndColumn(normalized, start);
     const { expected } = problem;
+    let repair: LabelRepair | undefined;
     const hint =
       problem.message === undefined
-        ? syntaxHint({ type: diagramType, normalized, start, end, expected })
+        ? syntaxHint({ type: diagramType, normalized, start, end, expected }, (edit) => {
+            repair = edit;
+          })
         : undefined;
     // A hint says what to write better than the names of the tokens that the parser expected.
     const message = problem.message
       ? `Error on line ${line}, column ${column}: ${problem.message}`
       : `Parse error on line ${line}, column ${column}: ${describe(normalized, start, end, hint ? undefined : expected)}${hint ? ` ${hint}` : ""}`;
-    return { line, column, message };
+    return { line, column, message, repair };
   });
   // The first problem on each line: the others are usually its consequences.
   const messages = problems
     .sort((a, b) => a.line - b.line || a.column - b.column)
     .filter((problem, i) => problems[i - 1]?.line !== problem.line)
     .map(({ message }) => message);
-  return messages.length > 0
-    ? new Error(messages.join("\n"))
-    : (unplacedError(error.message, normalized) ?? error);
+  const repair = problems.length === 1 && problems[0]?.repair;
+  return repair
+    ? new RepairableMermaidError(messages.join("\n"), repairLabel(source, repair))
+    : messages.length > 0
+      ? new Error(messages.join("\n"))
+      : (unplacedError(error.message, normalized) ?? error);
 }
 
 /** A pattern for the text as a word of its own. */

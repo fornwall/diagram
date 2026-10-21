@@ -187,7 +187,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       );
     }
     const outcome = await unlessCancelled(
-      () => this.panel.render(diagram, "tool", undefined, replacement),
+      () => this.panel.render(diagram, "tool", undefined, { ...replacement, repairMermaid: true }),
       token,
     );
     const noun = diagramNoun(diagram.language);
@@ -195,6 +195,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       return drawnResult(
         [
           `Rendered the ${outcome.diagramType} ${noun} in the diagram panel next to the chat.`,
+          ...(outcome.repair ? [`Automatic repair: ${outcome.repair.description}`] : []),
           ...drawnWarnings(this.panel),
         ].join("\n\n") +
           leftOutLinks(problems, diagram.language) +

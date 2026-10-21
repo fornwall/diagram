@@ -33,7 +33,7 @@ You can also attach files with `#file` or images, or chart a command's output:
 - `histogram of request latency in #file:requests.csv, one panel per service`
 - `turn this whiteboard photo into a flowchart`
 
-Ask to change the current diagram, start a new one, or explain it without changes. **Diagram: Show Panel** reopens the panel. Tools return render errors and layout warnings so the agent can repair them.
+Ask to change the current diagram, start a new one, or explain it without changes. **Diagram: Show Panel** reopens the panel. Tools return render errors and layout warnings so the agent can repair them. `diagram_render` retries once when Mermaid identifies an unquoted flowchart label, reports a successful correction, and keeps the original source if the retry fails.
 
 If you used earlier versions, choose **Diagram** or use ordinary agent chat in place of the retired `@diagram` participant and its slash commands.
 

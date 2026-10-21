@@ -8,6 +8,13 @@ suite("protocol", () => {
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
     assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
     assert.ok(isFromWebview({ type: "warningsChanged", requestId: 2, warnings: ["Too wide"] }));
+    const rendered = { type: "rendered", requestId: 2, diagramType: "flowchart-v2" };
+    assert.ok(
+      isFromWebview({
+        ...rendered,
+        repair: { source: 'graph LR; A["foo(x)"]', description: "Quoted A" },
+      }),
+    );
     const options = { type: "applyChartOptions", revision: 1, controls: { type: "bar" } };
     assert.ok(isFromWebview({ ...options, replaceSource: false }));
     // Without controls, a reset of the chart's styling.
@@ -23,6 +30,9 @@ suite("protocol", () => {
       { type: "exportTheme", requestId: 1 },
       { type: "warningsChanged", requestId: 2 },
       { type: "warningsChanged", requestId: 2, warnings: [1] },
+      { ...rendered, repair: {} },
+      { ...rendered, repair: { source: 1, description: "Quoted A" } },
+      { ...rendered, repair: { source: "graph LR", description: false } },
       // A saved chart needs every color to draw in.
       { type: "exportTheme", requestId: 1, colors: { ...testColors, palette: [] } },
       { type: "exportTheme", requestId: 1, colors: { ...testColors, focus: { r: 0, g: 0, b: 0 } } },

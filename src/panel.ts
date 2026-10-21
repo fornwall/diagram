@@ -43,6 +43,7 @@ import {
   type ImageView,
   RENDER_TOOL,
   type RepeatedName,
+  type SourceRepair,
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
@@ -53,7 +54,7 @@ type DiagramOrigin = "tool" | "document";
 
 /** "invalid" means a source error; "unavailable" means the panel closed or stopped responding. */
 export type RenderOutcome =
-  | { ok: true; diagramType: string }
+  | { ok: true; diagramType: string; repair?: SourceRepair }
   | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
 /** Identifies the revision attempted, including failed renders and concurrent requests. */
@@ -281,7 +282,10 @@ export class DiagramPanel implements vscode.Disposable {
     diagram: Diagram,
     origin: DiagramOrigin,
     chartTable?: DataTable,
-    { newDiagram = false }: { newDiagram?: boolean } = {},
+    {
+      newDiagram = false,
+      repairMermaid = false,
+    }: { newDiagram?: boolean; repairMermaid?: boolean } = {},
   ): Promise<Drawn> {
     // Keep document bindings and export locations across same-language revisions.
     // Writing an agent replacement back to its document requires confirmation.
@@ -309,7 +313,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.cancelPick("The diagram was replaced before the user picked.");
     if (origin === "document") this.userChanges++;
     this.webview.reveal(origin !== "document");
-    return this.renderCurrent();
+    return this.renderCurrent({ repairMermaid });
   }
 
   /** Shows and focuses the panel unless a background update asks to preserve focus. */
@@ -477,12 +481,23 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Keeps item identities only for the current render. */
   private pageRendered(message: Extract<FromWebview, { type: "rendered" }>): void {
+    const request = this.pendingRender?.message ?? this.drawing;
+    const repair =
+      request?.requestId === message.requestId &&
+      request.language === "mermaid" &&
+      request.repairMermaid
+        ? message.repair
+        : undefined;
     this.pageAnswered(message.requestId);
     if (this.isCurrentRender(message.requestId)) {
       const relationships = message.relationships?.filter((node) => node.relationship);
       this.drawn = { ...message, relationships };
     }
-    this.finishRender(message.requestId, { ok: true, diagramType: message.diagramType });
+    this.finishRender(message.requestId, {
+      ok: true,
+      diagramType: message.diagramType,
+      ...(repair ? { repair } : {}),
+    });
   }
 
   /**
@@ -508,6 +523,7 @@ export class DiagramPanel implements vscode.Disposable {
     redraw = false,
     newPage = false,
     keepSelection = false,
+    repairMermaid = false,
   } = {}): Promise<Drawn> {
     const state = this.state;
     const tab = this.webview.tab;
@@ -549,6 +565,7 @@ export class DiagramPanel implements vscode.Disposable {
       language: state.language,
       source,
       title,
+      repairMermaid,
       clickPrompt: state.clickPrompt,
       links: state.links && linkTexts(state.links),
       refreshFrom,
@@ -651,8 +668,9 @@ export class DiagramPanel implements vscode.Disposable {
       if (result.kind === "unavailable") return undefined;
     }
     const error = result.ok ? undefined : result.error;
-    if (state.error === error) return undefined;
-    this.state = { ...state, error };
+    const source = result.ok && result.repair ? result.repair.source : state.source;
+    if (state.error === error && state.source === source) return undefined;
+    this.state = { ...state, source, error };
     return this.store.save(this.state, this.shownRevision);
   }
 
