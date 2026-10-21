@@ -2,7 +2,7 @@
   "name": "diagram-chat",
   "displayName": "@diagram",
   "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: ask @diagram to draw, chart CSV, JSON or command output, and edit diagrams in Markdown.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "fornwall",
   "icon": "images/icon.png",
   "license": "Apache-2.0",
