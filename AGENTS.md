@@ -1,0 +1,3 @@
+- Be brief and to the point - in code, comments, documentation and commit title and body.
+- Never add a "Co-Authored-By" line to commits.
+- Do not describe validation steps in commit body or pull requests descriptions.
