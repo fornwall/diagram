@@ -1,0 +1,44 @@
+name: Marketplace identity
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  identity:
+    # Retrieves the identity and checks its publisher access; never publishes.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Sign in with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Get Marketplace identity ID
+        shell: bash
+        run: |
+          marketplace_id=$(az rest \
+            --method get \
+            --url https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query id --output tsv)
+          printf 'Marketplace identity ID: %s\n\n' "$marketplace_id" | tee -a "$GITHUB_STEP_SUMMARY"
+          printf 'Add this ID as a **Contributor** at https://marketplace.visualstudio.com/manage/publishers/fornwall.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify publisher access
+        run: npx --no-install vsce verify-pat fornwall --azure-credential

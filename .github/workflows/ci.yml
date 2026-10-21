@@ -7,10 +7,10 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or pull request supersedes a run still going.
+# A newer push supersedes branch/PR checks, but must not interrupt a release upload.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   test:
@@ -25,6 +25,17 @@ jobs:
         with:
           node-version: 26
           cache: npm
+      - name: Validate release tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { version } = require('./package.json');
+          const tag = process.env.GITHUB_REF_NAME;
+          if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag) || tag !== `v${version}`) {
+            throw new Error(`Release tag ${tag} must be v${version}, matching package.json (no prerelease suffix).`);
+          }
+          NODE
       - run: npm ci
       # The VS Code that the tests run in, downloaded again only when .vscode-test.mjs changes it.
       - uses: actions/cache@v6
@@ -45,3 +56,37 @@ jobs:
           if-no-files-found: error
           archive: false
           retention-days: 90
+
+  publish:
+    name: Publish to Visual Studio Marketplace
+    needs: test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: Download tested VSIX
+        uses: actions/download-artifact@v8
+        with:
+          name: diagram-chat-${{ github.sha }}.vsix
+          # A VSIX is itself a ZIP; keep the original file intact.
+          skip-decompress: true
+      - name: Sign in with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+      - name: Publish tested VSIX
+        run: npx --no-install vsce publish --azure-credential --packagePath "diagram-chat-${{ github.sha }}.vsix"
