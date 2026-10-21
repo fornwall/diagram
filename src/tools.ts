@@ -2,7 +2,7 @@
 // diagram_pickNodes and diagram_annotate.
 
 import * as vscode from "vscode";
-import { type AnnotateInput, hasText, validateAnnotation } from "./annotations";
+import { type AnnotateInput, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { nodeList, repeatedList } from "./describe";
@@ -577,9 +577,6 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
       sentences.push(`Nothing was marked; the ${noun}'s previous marks are cleared.`);
     } else {
       sentences.push(`Cleared the ${noun}'s marks.`);
-    }
-    if (hasText(options.input)) {
-      sentences.push("The panel shows no caption or notes: say them in your answer.");
     }
     const unknown =
       outcome.unknown.length > 0 && names

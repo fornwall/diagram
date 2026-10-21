@@ -6,13 +6,12 @@ const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
 const analyze = process.argv.includes("--analyze");
 
-/** The builds running, of the four below, which start and finish independently. */
+/** Number of builds currently running. */
 let building = 0;
 
 /**
- * Prints errors and warnings with the location on the following line, as the problem matcher in
- * .vscode/tasks.json expects, and marks when watching the start of the first build and the end of
- * the last one, so that the extension launches only once all the files are written.
+ * Format diagnostics for .vscode/tasks.json. In watch mode, signal completion only after all
+ * active builds finish so the development host launches with every bundle available.
  * @type {import("esbuild").Plugin}
  */
 const problemMatcherPlugin = {
@@ -38,8 +37,7 @@ const problemMatcherPlugin = {
 };
 
 /**
- * Starts each script with the licenses of the packages it includes, as a saved chart's page carries
- * them without the notices file.
+ * Prepend third-party licenses so exported HTML carries them without a separate notices file.
  * @type {import("esbuild").Plugin}
  */
 const noticesPlugin = {
@@ -93,12 +91,11 @@ const common = {
 };
 
 /**
- * ECharts as a classic script that defines a global (see src/webview/echartsLoader.ts), and the
- * script of a saved chart's page, which src/savedChart.ts both inlines into the HTML the user saves.
- * Always minified and without a source map, as they are shipped inside those files, and for the
- * browsers they may be opened in rather than for VS Code's.
+ * Classic scripts for the panel's lazy-loaded ECharts library and the exported chart page.
+ * Exported HTML embeds standalone.js and loads ECharts from a CDN. Target browsers outside
+ * VS Code too, and always minify to keep exports small.
  */
-const savedPage = {
+const classicScript = {
   ...common,
   format: "iife",
   platform: "browser",
@@ -136,11 +133,11 @@ const contexts = await Promise.all([
     plugins: [mermaidElkPlugin, problemMatcherPlugin],
   }),
   esbuild.context({
-    ...savedPage,
+    ...classicScript,
     entryPoints: { echarts: "src/webview/echartsLibrary.ts" },
     globalName: "DiagramECharts",
   }),
-  esbuild.context({ ...savedPage, entryPoints: { standalone: "src/webview/standalone.ts" } }),
+  esbuild.context({ ...classicScript, entryPoints: { standalone: "src/webview/standalone.ts" } }),
 ]);
 
 if (watch) {

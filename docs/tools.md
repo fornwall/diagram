@@ -43,17 +43,34 @@ For example, find an axis setting without reading a large chart's data:
 
 ## Tool behavior
 
+### Render, edit and update
+
 `diagram_render` and `diagram_chart` accept `revision` to reject a stale replacement before checking links, loading files or running commands. They also preserve a newer drawing made while those operations run. The revision is an invocation guard and is not stored in a chart's settings.
 
-`diagram_exportHtml` accepts a `.html` or `.htm` destination, absolute or relative to the first workspace folder; the parent folder must exist. It asks for confirmation before writing; existing files are preserved unless `"overwrite":true`, and unsaved editor changes are always preserved. Pass `revision` to reject an export of a diagram that has changed. Source, data and theme are embedded in the file; renderer JavaScript loads from a CDN. The panel's **Export** command offers PNG, SVG and the same HTML export for diagrams and charts.
+Both rendering tools accept a `clickPrompt`, e.g. `"Explain {label} in more detail"`. Mermaid also accepts code links such as `{"parse": "src/parser.ts#L42"}`; missing workspace files are omitted. Links take priority over click prompts.
 
 `diagram_edit` applies replacements in order, for example `{"edits": [{"oldText": "A --> B", "newText": "A --> C --> B"}]}`. Each `oldText` must occur exactly once unless `"replaceAll": true`. If any replacement cannot be applied, none is made; the result quotes nearby source to help correct it. Render errors leave the edited source in the panel for repair. `links` merges code links (`null` removes one); `revision` rejects stale edits. For generated charts, styling survives **Refresh** and `diagram_updateChart`; edits to data or structure are refused. Writing to Markdown requires confirmation.
 
 `diagram_updateChart` keeps omitted settings unless the new chart type cannot use them; `null` clears a nullable setting. Pass the revision from `diagram_getState` to reject stale updates. Incompatible manual source edits block the update.
 
-`diagram_inspectData` without a source inspects the current chart's loaded data and reports its revision; restart paging if that revision changes. A given source is read anew, rerunning a command on each call. It returns up to 60 columns and 5 sample rows by default. `startColumn` and `startRow` are 1-based positions in the parsed table, excluding the header; `maxColumns` (1–60) and `sampleRows` (0–20) control the page size. Use returned `nextColumn` or `nextRow` to continue, for example `{"startColumn":61,"maxColumns":20,"sampleRows":0}` for more schema, or `{"startRow":21,"sampleRows":20}` for later data. Column names are exact identifiers for chart settings; long sample strings and parser notes may be shortened. The JSON report fits within 24,000 characters and the caller’s token budget by returning fewer whole rows or columns, keeping valid JSON and accurate continuation positions. If even one column cannot fit the caller’s budget, the tool returns a short diagnostic without partial JSON. If a single column name cannot fit, the error identifies its index so you can shorten the header or skip to later columns.
-
 `diagram_style` accepts CSS colors, e.g. `{"styles": [{"id": "pay", "fill": "green"}]}`. It supports flowchart nodes, subgraphs and edges, classes, noncomposite states and ER entities. Name an edge by its ends, e.g. `"A --> B"`; `stroke` colors its line and `text` its label. Opaque fills get contrasting black or white text unless overridden; translucent fills use theme text. Omitted colors stay, `null` removes one, and `"clear": true` removes the item's style. Changes appear in source and exports; writing to Markdown requires confirmation. The panel background follows the VS Code theme.
+
+### Inspect chart data
+
+`diagram_inspectData` without a source inspects the current chart's loaded data and reports its revision; restart paging if that revision changes. A given source is read anew, rerunning a command on each call.
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `startColumn` | 1 | First column to return, counted from 1. |
+| `maxColumns` | 60 | Columns per page, from 1 to 60. |
+| `startRow` | 1 | First sample row, counted from 1 after the header. |
+| `sampleRows` | 5 | Sample rows per page, from 0 to 20. Use 0 to inspect only the schema. |
+
+Use returned `nextColumn` or `nextRow` to continue, for example `{"startColumn":61,"maxColumns":20,"sampleRows":0}` for more schema, or `{"startRow":21,"sampleRows":20}` for later data. Column names are exact identifiers for chart settings; long sample strings and parser notes may be shortened.
+
+The JSON report fits within 24,000 characters and the caller's token budget by returning fewer whole rows or columns, keeping valid JSON and accurate continuation positions. If even one column cannot fit the caller's budget, the tool returns a short diagnostic without partial JSON. If a single column name cannot fit, the error identifies its index so you can shorten the header or skip to later columns.
+
+### Images and annotations
 
 `diagram_getImage` returns a PNG in the panel's theme, without selection highlights or marks, reopening the panel if needed. Pass `ids` to crop around items. Images fit within 1568 pixels per side and 1.15 megapixels, targeting text about 16 pixels high. The result reports dimensions, scale, readability and panel zoom. `@diagram` omits this tool for models that do not accept images.
 
@@ -61,4 +78,6 @@ For example, find an axis setting without reading a large chart's data:
 
 `diagram_annotate` reopens a closed panel before resolving item names. If a drawing is still rendering or changes while reopening, it leaves the marks unchanged and asks the agent to retry against the current state.
 
-Both rendering tools accept a `clickPrompt`, e.g. `"Explain {label} in more detail"`. Mermaid also accepts code links such as `{"parse": "src/parser.ts#L42"}`; missing workspace files are omitted. Links take priority over click prompts.
+### HTML export
+
+`diagram_exportHtml` accepts a `.html` or `.htm` destination, absolute or relative to the first workspace folder; the parent folder must exist. It asks for confirmation before writing; existing files are preserved unless `"overwrite":true`, and unsaved editor changes are always preserved. Pass `revision` to reject an export of a diagram that has changed. Source, data and theme are embedded in the file; renderer JavaScript loads from a CDN. The panel's **Export** command offers PNG, SVG and the same HTML export for diagrams and charts.

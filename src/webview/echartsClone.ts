@@ -1,35 +1,28 @@
-// Copies of a chart option for a layout to fill in, which share its data, and whether two such
-// layouts are the same.
+// Copy mutable layout settings while sharing chart data, then compare layouts cheaply.
 
 import { isPlainObject } from "../protocol";
 import type { JsonObject } from "./echartsOption";
 
 const needsCopy = (value: unknown) => Array.isArray(value) || isPlainObject(value);
 
-/** The data of a chart, which a layout reads without changing: styling a sankey copies its nodes. */
+/** Layout treats these payloads as immutable. Writers such as sankey styling copy them first. */
 const DATA_KEYS = new Set(["data", "nodes", "links", "edges", "source"]);
 
 /**
- * Copies option settings, so that the layout can fill in what it needs while leaving the option
- * it was given untouched: the renderer keeps that one and lays it out again on a resize. Not
- * structuredClone, which throws on the functions of an option written as JavaScript, such as a
- * custom series' renderItem or a formatter.
+ * Copy settings that layout may change, preserving the source for subsequent resizes.
+ * structuredClone cannot handle callbacks such as formatters and custom renderItem functions.
  *
- * What isPlainObject accepts is copied, as every writer here reaches its targets through it, so
- * that no object the layout writes to is still the caller's. Functions and data payloads are
- * carried over by reference: copying every point, dataset row or hierarchy node would make each
- * resize allocate the whole dataset again. Other arrays are copied only when they hold objects or
- * arrays; none is written in place.
+ * Copy every object accepted by isPlainObject, matching the guards used by layout writers.
+ * Share callbacks, data payloads and arrays of primitives; layout never mutates them in place.
+ * This avoids allocating the whole dataset on every resize.
  */
 export function cloneOption(option: JsonObject): JsonObject {
   const copy: JsonObject = {};
-  // for...in rather than Object.entries, to copy what the option inherits as well: a series
-  // written with a prototype of its own keeps its type and its styles that way.
+  // JavaScript options may inherit settings, so include enumerable prototype properties.
   for (const key in option) {
     const value = DATA_KEYS.has(key) ? option[key] : cloneValue(option[key]);
     if (key === "__proto__") {
-      // An own "__proto__" key, which JSON.parse does produce, has to be defined rather than
-      // assigned: assigning it would reach the prototype setter and change the copy instead.
+      // JSON can contain an own __proto__ key. Assignment would invoke the prototype setter.
       Object.defineProperty(copy, key, {
         value,
         writable: true,
@@ -43,28 +36,25 @@ export function cloneOption(option: JsonObject): JsonObject {
   return copy;
 }
 
-/** A copy of a value of an option, as {@link cloneOption} makes them. */
+/** Copy a setting using the same sharing rules as {@link cloneOption}. */
 export function cloneValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.some(needsCopy) ? value.map(cloneValue) : value;
   }
   if (!isPlainObject(value)) {
-    // A function or a primitive: never written to, and a function cannot be copied at all.
     return value;
   }
   if (value instanceof Date) {
-    // A date is a value in the data of a time axis, not a record of properties to copy.
+    // Dates may appear on time axes and must retain their value.
     return new Date(value.getTime());
   }
-  // The data of a large chart can be a typed array, which copying properties would turn into an
-  // object of its indices; the layout only reads data.
+  // Keep typed data arrays intact instead of turning their indices into object properties.
   return ArrayBuffer.isView(value) ? value : cloneOption(value);
 }
 
 /**
- * Whether two layouts of the same option are the same, as for many charts at another size: a
- * treemap, or axes whose labels fit either way. Their data is the option's own, which they share,
- * so this compares the settings around it.
+ * Compare layouts of the same option. Shared data is checked by identity, leaving only the
+ * settings to traverse. Equal layouts need a chart resize, not a fresh setOption call.
  */
 export function sameLayout(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
@@ -73,7 +63,7 @@ export function sameLayout(a: unknown, b: unknown): boolean {
     return a.length === b.length && a.every((item, index) => sameLayout(item, b[index]));
   }
   if (!isPlainObject(a) || !isPlainObject(b)) return false;
-  // Not typed arrays, which a layout carries over rather than copies, nor values of other classes.
+  // Distinct typed arrays and objects with different prototypes are not equivalent settings.
   if (ArrayBuffer.isView(a) || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
   const keys = Object.keys(a);
   return (

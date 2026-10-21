@@ -103,7 +103,7 @@ suite("extension", function () {
     assert.strictEqual(formatted, 0);
   });
 
-  test("ships the code of ECharts once, in its library, which the panel and saved charts load", async () => {
+  test("bundles ECharts only in the panel's lazy-loaded library", async () => {
     const dist = vscode.Uri.joinPath(diagramExtension().extensionUri, "dist");
     const read = async (uri: vscode.Uri) =>
       new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
@@ -355,16 +355,13 @@ suite("extension", function () {
     );
     const marked = await invoke("diagram_annotate", {
       marks: [
-        // A note and a caption, as the panel showed them once, are left out.
-        { id: "parse", mark: "current", note: "we are here" },
+        { id: "parse", mark: "current" },
         { id: "Checker", mark: "problem" },
       ],
-      caption: "Step 1 of 2",
       dim: true,
     });
     assert.match(marked, /^Marked 1 node: "parse" \(current\)\./);
     assert.match(marked, /Unmarked items are faded\./);
-    assert.match(marked, /The panel shows no caption or notes: say them in your answer\./);
     // The label of a node is not its id, so there is nothing to mark for it.
     assert.match(
       marked,

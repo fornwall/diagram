@@ -217,6 +217,32 @@ suite("echartsDefaults", () => {
     assert.strictEqual(drawn({ ...scatter, coordinateSystem: "polar" }).large, undefined);
   });
 
+  test("counts dataset points along the configured series orientation", () => {
+    const points = Array.from({ length: 2500 }, (_, index) => index);
+    const sampling = (dataset: Option, series: Option = {}) =>
+      layout({
+        xAxis: {},
+        yAxis: {},
+        dataset,
+        series: [{ type: "line", ...series }],
+      }).series[0].sampling;
+    const rows = { source: [points, points], sourceHeader: false };
+    assert.strictEqual(sampling(rows, { seriesLayoutBy: "row" }), "lttb");
+    assert.strictEqual(sampling({ ...rows, seriesLayoutBy: "row" }), "lttb");
+    assert.strictEqual(sampling(rows), undefined);
+    assert.strictEqual(
+      sampling({ ...rows, seriesLayoutBy: "row" }, { seriesLayoutBy: "column" }),
+      undefined,
+    );
+    // Many dimensions with only two points must not be mistaken for a long series.
+    assert.strictEqual(
+      sampling({ source: points.map((point) => [point, point]), seriesLayoutBy: "row" }),
+      undefined,
+    );
+    // seriesLayoutBy applies to datasets, not a series' own data.
+    assert.strictEqual(sampling(rows, { data: points, seriesLayoutBy: "row" }), "lttb");
+  });
+
   test("draws the axis lines that the theme hides on value axes outside a grid", () => {
     const option = layout({
       polar: {},

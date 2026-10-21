@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { hasText, validateAnnotation } from "../annotations";
+import { validateAnnotation } from "../annotations";
 import { thrown } from "./thrown";
 
 /** What validateAnnotation refuses, for an input that can only be corrected by the model. */
@@ -34,23 +34,6 @@ suite("annotations", () => {
     );
   });
 
-  test("leaves out a caption and notes, which the chat answer says instead", () => {
-    const input = {
-      marks: [{ id: "pay", mark: "problem", note: "times out after 30 s" }],
-      caption: 42,
-    };
-    assert.deepStrictEqual(validateAnnotation(input), {
-      marks: [{ id: "pay", kind: "problem" }],
-      dim: false,
-    });
-    assert.ok(hasText(input));
-    assert.ok(hasText({ caption: "Step 2 of 3" }));
-    assert.ok(hasText({ marks: { id: "pay", note: "slow" } }));
-    assert.ok(!hasText({ marks: [{ id: "pay", note: " " }], caption: null }));
-    assert.ok(!hasText({ marks: ["pay"] }));
-    assert.ok(!hasText("pay"));
-  });
-
   test("takes one mark without an array, as a model may send it", () => {
     assert.deepStrictEqual(validateAnnotation({ marks: "pay" }).marks, [
       { id: "pay", kind: "current" },
@@ -72,13 +55,11 @@ suite("annotations", () => {
     assert.deepStrictEqual(validateAnnotation({}), cleared);
     assert.deepStrictEqual(validateAnnotation({ marks: [] }), cleared);
     // Models send null for the properties they leave out.
-    assert.deepStrictEqual(validateAnnotation({ marks: null, caption: null, dim: null }), cleared);
-    assert.deepStrictEqual(validateAnnotation({ marks: [{ id: "a", mark: null, note: null }] }), {
+    assert.deepStrictEqual(validateAnnotation({ marks: null, dim: null }), cleared);
+    assert.deepStrictEqual(validateAnnotation({ marks: [{ id: "a", mark: null }] }), {
       ...cleared,
       marks: [{ id: "a", kind: "current" }],
     });
-    // A caption alone leaves nothing marked.
-    assert.deepStrictEqual(validateAnnotation({ caption: "Look here" }), cleared);
   });
 
   test("refuses an input that the model has to correct", () => {
@@ -111,6 +92,14 @@ suite("annotations", () => {
     assert.match(
       problems({ clear: true }),
       /Unknown property "clear"; the properties are "marks", "dim"\./,
+    );
+    assert.match(
+      problems({ caption: "Look here" }),
+      /Unknown property "caption"; the properties are "marks", "dim"\./,
+    );
+    assert.match(
+      problems({ marks: [{ id: "pay", note: "times out after 30 s" }] }),
+      /Mark 1: Unknown property "note"; the properties are "id", "mark"\./,
     );
     // Too many marks to tell apart, and every problem is reported at once.
     const many = Array.from({ length: 51 }, (_, index) => ({ id: `n${index}` }));

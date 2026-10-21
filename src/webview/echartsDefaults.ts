@@ -34,8 +34,8 @@ function hasNegativeValues(data: unknown, dataset = false): boolean {
   });
 }
 
-/** The source of the dataset that a series without data of its own draws from. */
-function datasetSource(series: JsonObject, datasets: JsonObject[]): unknown {
+/** Resolve the source dataset, following transform inputs without looping through cycles. */
+function sourceDataset(series: JsonObject, datasets: JsonObject[]): JsonObject | undefined {
   const find = (id: unknown, index: unknown) =>
     id == null ? datasets[Number(index ?? 0)] : datasets.find((dataset) => dataset.id === id);
   let dataset = find(series.datasetId, series.datasetIndex);
@@ -43,7 +43,7 @@ function datasetSource(series: JsonObject, datasets: JsonObject[]): unknown {
   for (let hops = 0; dataset && dataset.source === undefined && hops < datasets.length; hops++) {
     dataset = find(dataset.fromDatasetId, dataset.fromDatasetIndex);
   }
-  return dataset?.source;
+  return dataset;
 }
 
 /**
@@ -88,7 +88,7 @@ export function styleSeries(base: JsonObject, series: JsonObject[], colors: Them
         // The corners of a polar bar's sector go in another order, and by angle and radius.
         isCartesian(each) &&
         !(each.data == null
-          ? hasNegativeValues(datasetSource(each, datasets), true)
+          ? hasNegativeValues(sourceDataset(each, datasets)?.source, true)
           : hasNegativeValues(each.data))
       ) {
         // Rounded data ends, square at the baseline. ECharts draws bars from the axis of
@@ -142,10 +142,15 @@ export function styleSeries(base: JsonObject, series: JsonObject[], colors: Them
  */
 const LARGE_POINTS = 2000;
 
-/** The number of points of a series: of its data, or of the rows or columns of its dataset. */
+/** Approximate point count for choosing rendering optimizations; headers may add one. */
 function pointCount(series: JsonObject, datasets: JsonObject[]): number {
-  const data = series.data ?? datasetSource(series, datasets);
-  if (Array.isArray(data)) return data.length;
+  const dataset = series.data == null ? sourceDataset(series, datasets) : undefined;
+  const data = series.data ?? dataset?.source;
+  if (Array.isArray(data)) {
+    // In row-oriented datasets, each row is a dimension and its columns are points.
+    const byRow = dataset && (series.seriesLayoutBy ?? dataset.seriesLayoutBy) === "row";
+    return byRow ? (Array.isArray(data[0]) ? data[0].length : 0) : data.length;
+  }
   // A typed array holds the values of its points one after the other: at least one each.
   if (ArrayBuffer.isView(data)) return "length" in data ? Number(data.length) : 0;
   const column = isPlainObject(data) ? Object.values(data).find(Array.isArray) : undefined;

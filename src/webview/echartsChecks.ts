@@ -98,7 +98,7 @@ export function dataWarnings(chart: ECharts.ECharts, option: JsonObject): string
   const given = Array.isArray(base.series) ? base.series : [base.series];
   const findings: Finding[] = [];
   model.eachRawSeries((series) => {
-    const path = seriesPath(base, series.componentIndex);
+    const path = componentPath(base, "series", series.componentIndex);
     const own = given[series.componentIndex];
     findings.push(
       ...unreadableValues(series, path),
@@ -204,10 +204,6 @@ export function itemCount(chart: ECharts.ECharts): number {
   });
   return count;
 }
-
-/** The path of a series in the option, as "series" for its only one, or "series[1]". */
-const seriesPath = (base: JsonObject, index: number) =>
-  Array.isArray(base.series) || index > 0 ? `series[${index}]` : "series";
 
 /** The path of a component in the option, as "xAxis" for its only one, or "xAxis[1]". */
 const componentPath = (base: JsonObject, mainType: string, index: number) =>
@@ -699,9 +695,7 @@ function drawnTexts(views: Views): Text[] {
 
 /** The path of what draws a text, such as "series[1]" or "xAxis". */
 const ownerPath = (base: JsonObject, owner: NonNullable<Text["owner"]>) =>
-  owner.mainType === "series"
-    ? seriesPath(base, owner.index)
-    : componentPath(base, owner.mainType, owner.index);
+  componentPath(base, owner.mainType, owner.index);
 
 /**
  * Category labels that read as names, which a reader needs every one of: not as a sequence, such
@@ -936,7 +930,7 @@ function hiddenLabels(model: Model, base: JsonObject): string[] {
     if (hidden === 0) return;
     const parts = series.subType === "pie" ? "slices" : "parts";
     warnings.push(
-      `${seriesPath(base, series.componentIndex)} labels only ${labelled - hidden} of its ` +
+      `${componentPath(base, "series", series.componentIndex)} labels only ${labelled - hidden} of its ` +
         `${labelled} ${parts}, leaving out the labels of the others, such as ${quote(example ?? "")}, ` +
         `for lack of room: show fewer ${parts}, as the largest and an "Other" that sums up the rest.`,
     );

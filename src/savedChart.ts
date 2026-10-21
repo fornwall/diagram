@@ -1,4 +1,4 @@
-// HTML export with the chart and theme inlined, and an offline or CDN renderer.
+// HTML export with embedded chart data and theme, and ECharts loaded from a CDN.
 
 import * as vscode from "vscode";
 import { SAVED_CHART, type SavedChart } from "./protocol";
@@ -26,35 +26,30 @@ export function fontStack(colors: ThemeColors): string {
 }
 
 /**
- * Chart page with the renderer inlined by default; a CDN module can replace only that library.
- * CSP blocks other resource loads and form submissions, but JavaScript options still execute
- * and can navigate the page. A link in a tooltip's HTML is left to the browser, as a link on any
- * page is: unlike in the panel, there is no
- * extension behind the page whose checks it could bypass, and the policy blocks javascript: URLs.
+ * Embed the panel's chart renderer and load ECharts from the pinned CDN module.
+ * CSP blocks other resource loads and form submissions. JavaScript options can still execute
+ * and navigate the page; tooltip links open normally in the browser.
  */
 export async function savedChartHtml(
   chart: SavedChart,
   extensionUri: vscode.Uri,
-  cdnModule?: string,
+  cdnModule: string,
 ): Promise<string> {
-  const [echarts, script, style] = await Promise.all(
-    ["echarts.js", "standalone.js", "standalone.css"].map(async (name) =>
-      name === "echarts.js" && cdnModule
-        ? ""
-        : new TextDecoder().decode(
-            await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
-          ),
+  const [script, style] = await Promise.all(
+    ["standalone.js", "standalone.css"].map(async (name) =>
+      new TextDecoder().decode(
+        await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
+      ),
     ),
   );
   const { colors } = chart;
   const title = chart.title.trim();
   const nonce = crypto.randomUUID();
   // ECharts styles its tooltips inline, hence 'unsafe-inline' for styles, and an option written as
-  // JavaScript is compiled with new Function, hence 'unsafe-eval', as in the panel. Only a CDN
-  // export loads external code; the default offline export embeds everything.
+  // JavaScript is compiled with new Function, hence 'unsafe-eval', as in the panel.
   const csp = [
     "default-src 'none'",
-    `script-src 'nonce-${nonce}' 'unsafe-eval'${cdnModule ? " https://cdn.jsdelivr.net" : ""}`,
+    `script-src 'nonce-${nonce}' 'unsafe-eval' https://cdn.jsdelivr.net`,
     "style-src 'unsafe-inline'",
     "img-src data:",
     // Spelled out because neither falls back to default-src. The HTML of a chart's tooltip could
@@ -93,9 +88,7 @@ ${style}</style>
 ${title ? `<h1>${escapeHtml(title)}</h1>\n` : ""}<p id="error" role="alert" hidden></p>
 <div id="canvas"></div>
 <script nonce="${nonce}">window.${SAVED_CHART} = ${embedJson(chart)};</script>
-${
-  cdnModule
-    ? `<script type="module" nonce="${nonce}">
+<script type="module" nonce="${nonce}">
 try {
   const echarts = await import(${embedJson(cdnModule)});
   // The panel uses two text measures from its bundled ECharts adapter. The public CDN build
@@ -117,9 +110,7 @@ try {
   element.textContent = "Could not load the chart. This HTML needs internet access to load ECharts from jsDelivr. " + (error?.message ?? String(error));
   element.hidden = false;
 }
-</script>`
-    : `<script nonce="${nonce}">${echarts}</script>\n<script nonce="${nonce}">${script}</script>`
-}
+</script>
 </body>
 </html>
 `;

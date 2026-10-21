@@ -59,10 +59,7 @@ export type RenderOutcome =
   | { ok: true; diagramType: string }
   | { ok: false; kind: "invalid" | "unavailable"; error: string };
 
-/**
- * A render's outcome and the revision it drew, which the panel shows until its next change, also
- * when the render failed, and which tells it from a render for another request meanwhile.
- */
+/** Identifies the revision attempted, including failed renders and concurrent requests. */
 export type Drawn = RenderOutcome & { revision: number };
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
@@ -71,13 +68,13 @@ type AnnotateOutcome =
   | {
       ok: true;
       annotation: Annotation;
-      /** The names that name no item, and why, if they name the ends of a relationship. */
+      /** Unmatched names, with reasons for unresolved relationship endpoints. */
       unknown: Resolved[];
       /** Names that several chart items go by, which were not marked. */
       repeated: RepeatedName[];
-      /** Ends that several edges or messages go between, which were not marked. */
+      /** Ambiguous relationship endpoints, which were not marked. */
       several: Resolved[];
-      /** The ends that named the edges or messages marked, by their ids. */
+      /** Original relationship names, keyed by the resolved item ids. */
       given: ReadonlyMap<string, string>;
       /** The items the marks were checked against, or undefined when the panel does not know them. */
       names: ItemNames | undefined;
@@ -106,10 +103,7 @@ export interface Diagram {
   chartPresentation?: ChartPresentation | undefined;
   /** Original Markdown block; Apply writes user edits back to it. */
   document?: DocumentBinding | undefined;
-  /**
-   * The read-only document that the diagram was opened from without a binding, as
-   * vscode.Uri.toString(), beside which it is exported as one with a binding is.
-   */
+  /** Read-only source document URI; used to place exports beside it. */
   openedFrom?: string | undefined;
 }
 
@@ -122,10 +116,7 @@ export interface DiagramState extends Omit<Diagram, "source"> {
   origin: DiagramOrigin;
   /** Set when the user changed the source in the panel after it was last rendered by an agent. */
   editedByUser: boolean;
-  /**
-   * The source of an agent's drawing, `from`, and the user's edit of it, `to`, which tells a model
-   * what the user changed while the source is still that edit, until an agent changes it.
-   */
+  /** Cumulative user edits since the last agent change, used to show the model a diff. */
   userEdit?: { from: string; to: string } | undefined;
   /** The last render error, if the current source fails to render. */
   error?: string | undefined;
@@ -134,9 +125,8 @@ export interface DiagramState extends Omit<Diagram, "source"> {
 const RENDER_TIMEOUT_MS = 15_000;
 
 /**
- * The error of a source that the page did not finish drawing, until it does. It may hang the page,
- * which neither reloading its HTML nor reopening the panel recovers, as the webviews of a window
- * share a process; so that VS Code does not hang again once restarted, a new page does not draw it.
+ * Prevents automatic retries of potentially hung source after a reload. Webviews share a
+ * process, so reopening the panel may not recover it; only an explicit edit or render retries it.
  */
 const UNFINISHED =
   "The panel did not finish drawing it, so it is not drawn again on its own, as it may hang the panel. Edit and apply it, or render it again, to draw it anyway.";
@@ -153,36 +143,24 @@ export class DiagramPanel implements vscode.Disposable {
   private nextRequestId = 1;
   /** Counts renders, to detect intervening ones. */
   private renderVersion = 0;
-  /**
-   * Counts changes to the diagram shown, which tools and Chart Options see as its revision. Drawing
-   * the same diagram again, as when the page reloads or VS Code restarts, is no change.
-   */
+  /** Revision exposed to tools and Chart Options; unchanged by redraws or reloads. */
   private shownRevision: number;
   /** Counts the changes that the user or a document started, such as an Apply or a Refresh. */
   private userChanges = 0;
   /** Pending renders and picks are replayed when the webview reloads. */
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
-  /** How to answer each export request that the page has yet to answer, by its id. */
   private readonly pendingExports = new Map<number, (result: ExportResult) => void>();
   /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
-  /**
-   * The render that the page is drawing, which it took up as soon as it got it or once done with
-   * the one before, and the last render sent to the page, until it answers that. The page skips
-   * the renders sent between them.
-   */
+  /** The page draws this request, then lastSent, skipping any requests between them. */
   private drawing: RenderMessage | undefined;
   private lastSent: RenderMessage | undefined;
-  /**
-   * Why the last render did not finish, if the panel closed or stopped responding, which leaves
-   * nothing {@link drawn}.
-   */
+  /** Panel failure, separate from a source error. A late render may still succeed. */
   private unavailable: string | undefined;
   /**
-   * Whether the page was sent a chart option with JavaScript code, which can post any message as
-   * if the user had acted, and stays in the page. Reset only when the tab closes, as messages the
-   * old page sent before a reload may still arrive after it.
+   * Chart code can forge user messages. Reset only when the tab closes: messages from before
+   * a reload may still arrive afterward.
    */
   private pageRanCode = false;
   /** Whether a confirmation that the page asked for is open; see {@link confirmForPage}. */
@@ -190,10 +168,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Whether the user declined what the page asked for while it held chart code. */
   private pageRefused = false;
   /**
-   * What the page drew of the current diagram, once it has. Its request is what an export captures
-   * and what a click on the drawing names. One that fails to render has no drawing, and a click on
-   * the drawing of an earlier render, sent just before the page drew the next, was on the diagram
-   * it replaced.
+   * Last successful render of the current source. Its request id ties exports and clicks to
+   * that drawing, so messages from a replaced drawing can be ignored.
    */
   private drawn: Extract<FromWebview, { type: "rendered" }> | undefined;
   /** The names of the items {@link drawn}, made when first asked for. */
@@ -201,8 +177,8 @@ export class DiagramPanel implements vscode.Disposable {
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
   /**
-   * Counts the diagrams shown, as opposed to revisions of one, which edits and follow-ups make: one
-   * opened from a document, in another language or under another title, and the first of /new.
+   * Identifies diagrams for viewport resets. Edits keep it; /new, document opens, and changes
+   * of language or title advance it.
    */
   private diagrams = 0;
   /** Whether the next diagram rendered is a new one, as during a request with /new. */
@@ -211,18 +187,12 @@ export class DiagramPanel implements vscode.Disposable {
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
   private refreshing = false;
-  /**
-   * Ends the data load of a refresh or reset, as the panel closes, the diagram changes or another
-   * load starts.
-   */
+  /** Cancelled on panel close, diagram change, or a newer data load. */
   private reloading: vscode.CancellationTokenSource | undefined;
   private exporting = false;
   /** The last write to a document, which the next one waits for. */
   private writing: Promise<void> | undefined;
-  /**
-   * Where a binding moved once its block was written or its document renamed, as the panel follows
-   * the block.
-   */
+  /** Tracks bindings across block writes and file renames, including pending writes. */
   private readonly movedBindings = new WeakMap<DocumentBinding, DocumentBinding>();
   private readonly renames = vscode.workspace.onDidRenameFiles(({ files }) =>
     this.followRenames(files),
@@ -251,26 +221,19 @@ export class DiagramPanel implements vscode.Disposable {
     return this.shownRevision;
   }
 
-  /**
-   * How many changes to the diagram the user or a document has started, which a chat reply that
-   * sees this change while it streams must not draw over.
-   */
+  /** Chat requests capture this counter to avoid overwriting later user or document changes. */
   get userChangeCount(): number {
     return this.userChanges;
   }
 
   /**
-   * The ids of the nodes the panel has drawn, when it knows them, so that a model can be told that
-   * a node it named is not there. A chart reports none: its items are its data, not a list of ids.
+   * Known Mermaid node ids. Charts identify their items through their data instead.
    */
   get drawnIds(): readonly string[] | undefined {
     return this.drawn?.nodeIds;
   }
 
-  /**
-   * The nodes and relationships the panel has drawn, when it knows them, by the names that the
-   * tools that take item ids take for them.
-   */
+  /** Resolves tool-supplied node and relationship names against the current drawing. */
   get itemNames(): ItemNames | undefined {
     const drawn = this.drawn;
     if (!drawn?.nodeIds) return undefined;
@@ -293,9 +256,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `detail` says how much of a long source and relationship list to give. The model is told to
-   * call only the `tools` it has, if not all, and is not told the revision without
-   * diagram_updateChart, diagram_style or diagram_edit, which alone take it.
+   * `detail` limits long source and relationship lists; `tools` limits the suggested follow-ups.
    */
   describeForModel({
     detail = "brief",
@@ -334,8 +295,7 @@ export class DiagramPanel implements vscode.Disposable {
     // Keep document bindings and export locations across same-language revisions, but not /new.
     // Writing an agent replacement back to its document requires confirmation.
     const previous = origin === "document" || this.startsNew ? undefined : this.state;
-    // A revision that an agent titled anew is fitted to the panel again too, rather than draw
-    // another diagram of an agent that never asks for /new at the zoom of this one.
+    // A changed title also resets the viewport: agents can start a new diagram without /new.
     if (!previous || previous.language !== diagram.language || previous.title !== diagram.title) {
       this.diagrams++;
     }
@@ -362,10 +322,7 @@ export class DiagramPanel implements vscode.Disposable {
     return this.renderCurrent();
   }
 
-  /**
-   * Takes the diagram that the participant's tool call drew, at `revision`, as the participant's,
-   * unless something changed it since.
-   */
+  /** Routes a tool-rendered diagram's follow-ups to the participant if it is still current. */
   adopt(revision: number | undefined): Readonly<DiagramState> | undefined {
     if (!this.state || revision !== this.shownRevision) {
       return undefined;
@@ -403,10 +360,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   // The webview, and the requests waiting for its answers.
 
-  /**
-   * The tab closed: nothing is drawn, so what asks for the drawing, such as diagram_getImage or
-   * the ids of its nodes, opens the panel again and draws the diagram first.
-   */
+  /** Closing invalidates the drawing; later image or item requests must reopen and redraw. */
   private closed(): void {
     this.pageRanCode = false;
     this.pageRefused = false;
@@ -416,7 +370,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.drawn = undefined;
     this.cancelPick("The user closed the diagram panel.");
     this.cancelRender("The diagram panel was closed before it finished rendering.");
-    // Of a render that the page took up after the panel stopped waiting for it.
+    // A timed-out render may have started drawing after its caller stopped waiting.
     clearTimeout(this.renderTimer);
   }
 
@@ -450,9 +404,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Handles a message from the page, returning any work it starts, for tests to await. Messages
-   * about the source name the render that showed it: one about a source that the panel replaced
-   * since is answered with a warning or dropped.
+   * Rejects messages about replaced source or drawings. Returns asynchronous work for callers
+   * and tests to await.
    */
   private onMessage(message: FromWebview): Promise<void> | undefined {
     const requestId = "requestId" in message ? message.requestId : undefined;
@@ -524,9 +477,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * The page loaded, or lost its content and loaded again, as when its tab moved to another
-   * window: it gets the render it waits for again, under the same id, so that its caller is
-   * answered, or else the current diagram, and the pick it waits for.
+   * Replays pending renders and picks after a page reload. Keeping their ids lets the original
+   * callers receive the answers.
    */
   private pageReady(): void {
     this.cancelExport("The diagram panel reloaded before export finished. Try again.");
@@ -543,7 +495,7 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.pendingPick) this.post(this.pendingPick.message);
   }
 
-  /** Keeps what the page drew, for the items a model may name; a replaced render's says nothing. */
+  /** Keeps item identities only for the current render. */
   private pageRendered(message: Extract<FromWebview, { type: "rendered" }>): void {
     this.pageAnswered(message.requestId);
     if (this.isCurrentRender(message.requestId)) {
@@ -554,9 +506,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Opens what a plain click on a node of the drawing asks for: the code it links to, by the links
-   * validated here, so that the page, which shows what a model wrote, cannot open a path of its
-   * own choosing, or else the click prompt in chat.
+   * Resolves clicks against host-validated links, never a path supplied by the webview.
+   * Nodes without links use the click prompt, if set.
    */
   private nodeClicked(node: DiagramNode): Promise<void> | undefined {
     const link = this.linkOf(node);
@@ -570,10 +521,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Shows the current diagram in the webview, and keeps its render error, if any, for later
-   * requests. A redraw shows the diagram shown before, in the same revision; to a new page, it
-   * shows a diagram that the page did not finish drawing as failing instead. A revision that keeps
-   * the items, such as their colors, keeps their selection too.
+   * Renders and persists the current source and any error. Redraws keep the revision; a new page
+   * does not retry a source marked UNFINISHED. Style edits can preserve the selection.
    */
   private async renderCurrent({
     redraw = false,
@@ -594,7 +543,6 @@ export class DiagramPanel implements vscode.Disposable {
       };
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
-    // What was drawn before says nothing about the rendering being drawn now.
     this.drawn = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
@@ -649,9 +597,7 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Whether the page's answer is to the render the panel waits for, or else to the render of the
-   * current source that the panel stopped waiting for, which a page busy with a large drawing can
-   * still finish.
+   * Accepts answers to pending renders and late answers for the current source after a timeout.
    */
   private isCurrentRender(requestId: number): boolean {
     return this.pendingRender
@@ -660,9 +606,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Ends the render if it is pending, as the page did not answer it in time. The current source
-   * may hang the page if the page is drawing it, also after its render ended so, but not if the
-   * page is busy with another source or is not ready yet.
+   * Marks source as potentially hung only if the page is actually drawing it, not while it is
+   * loading or drawing an earlier request. A late answer clears the error.
    */
   private renderTimedOut(message: RenderMessage): void {
     const { state, drawing } = this;
@@ -673,7 +618,6 @@ export class DiagramPanel implements vscode.Disposable {
       drawing?.language === state.language &&
       drawing.source === state.source
     ) {
-      // A late answer replaces the error.
       this.state = { ...state, error: UNFINISHED };
       void this.store.save(this.state, this.shownRevision);
     }
@@ -692,9 +636,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Notes that the page answered a render: once it answers the last one, it is done with all. Done
-   * with the one it was drawing, it skips the renders sent meanwhile but the last, which it takes
-   * up now, with the full time for it, even if the panel stopped waiting for it.
+   * The page skips queued renders except the latest. Give that render a fresh timeout when the
+   * preceding one finishes, even if its caller has already stopped waiting.
    */
   private pageAnswered(requestId: number): void {
     if (requestId === this.lastSent?.requestId) this.lastSent = undefined;
@@ -716,8 +659,7 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Keeps the render error of the current source, if any, for later requests, and saves it if it
-   * changed. An unavailable panel says nothing about the source.
+   * Persists source errors separately from panel availability failures.
    */
   private keepOutcome(result: RenderOutcome): Promise<void> | undefined {
     const state = this.state;
@@ -880,23 +822,20 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state) {
       return;
     }
-    // A title taken from the source, rather than given by a model or the chart's settings, follows
-    // it, as when the user writes a title into it. The page still takes it for the same diagram.
+    // Update inferred titles with the source; keep explicit titles and the current viewport.
     const title =
       !state.chart &&
       state.source !== undefined &&
       state.title === guessTitle({ language: state.language, source: state.source })
         ? guessTitle({ language: state.language, source })
         : state.title;
-    // What the user changed of an agent's drawing, over all their edits since; a generated chart
-    // keeps them as its manual styling.
+    // Keep the original agent source across successive user edits.
     const { userEdit } = state;
     const from = userEdit && userEdit.to === state.source ? userEdit.from : state.source;
     const drawnByAgent = state.origin !== "document" && !state.chart;
     this.state = {
       ...state,
       source,
-      // The error of the source before, which says nothing of this one while the page draws it.
       error: undefined,
       title,
       editedByUser: true,
@@ -928,7 +867,6 @@ export class DiagramPanel implements vscode.Disposable {
   /** Writes the current diagram without requiring a source edit first. */
   private async writeShownToDocument(): Promise<void> {
     const state = this.state;
-    // Write names the request of a drawn source, and writeFence refuses an empty one.
     if (!state?.document || state.source === undefined) {
       return;
     }
@@ -970,8 +908,7 @@ export class DiagramPanel implements vscode.Disposable {
       );
       return;
     }
-    // One write at a time, so that e.g. a second click on Write finds the block where the first
-    // write left it.
+    // Serialize writes so each one uses the block's position after the preceding write.
     const previous = this.writing;
     const writing = (async () => {
       await previous;
@@ -987,8 +924,8 @@ export class DiagramPanel implements vscode.Disposable {
       this.movedBindings.set(current, moved);
       const state = this.state;
       const bound = state?.document;
-      // An agent's change that came while VS Code applied the write copied the binding, with the
-      // block as it was before, to ask before writing that change: it follows the block too.
+      // Agent edits can copy this binding during the write. Move those copies too, preserving
+      // their confirmation requirement.
       if (bound && bound.uri === current.uri && bound.fence === current.fence) {
         const followed = bound === current ? moved : { ...bound, fence: outcome.fence };
         if (bound !== current) this.movedBindings.set(bound, followed);
@@ -1006,10 +943,7 @@ export class DiagramPanel implements vscode.Disposable {
     return moved ? this.movedBinding(moved) : binding;
   }
 
-  /**
-   * Follows the document that the diagram was opened from to its new name, also as its folder is
-   * renamed in VS Code, for Apply and Write to to write to it, and exports to go beside it.
-   */
+  /** Follows file and folder renames for document writes and export locations. */
   private followRenames(files: readonly { oldUri: vscode.Uri; newUri: vscode.Uri }[]): void {
     const renamed = (uri: string | undefined) => {
       if (uri === undefined) return undefined;
@@ -1041,10 +975,7 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
-  /**
-   * The ids of the nodes the panel has drawn, drawing the diagram again first if the panel does not
-   * know them, as when it was closed. The revision stays the same.
-   */
+  /** Reopens and redraws if needed to resolve item ids, keeping the current revision. */
   async itemIds(): Promise<readonly string[] | undefined> {
     const state = this.state;
     if (state && !this.drawn && !this.pendingRender && !state.error) {
@@ -1055,12 +986,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Shows an agent's edit of the current revision's source, as diagram_edit and diagram_style make
-   * it, with its title, links and chart styling if given: like the user's Apply, a revision of the
-   * diagram that stays shown with its error if it fails to render, as the agent fixes it with a
-   * further edit, and whose items that are still drawn keep their selection and marks. As after an
-   * agent's replacement, Apply and Write to ask before writing it to the document the diagram was
-   * opened from.
+   * Applies an agent edit, retaining invalid source so the agent can repair it. Surviving items
+   * keep their selection and marks. Writing an agent edit back to a document needs confirmation.
    */
   async editByAgent(
     edit: Pick<DiagramState, "source"> &
@@ -1080,7 +1007,7 @@ export class DiagramPanel implements vscode.Disposable {
       ...state,
       ...edit,
       error: undefined,
-      // What the user changed of the source before, which the agent changed since.
+      // An agent source edit ends the user diff; metadata-only edits keep it.
       userEdit: edit.source === state.source ? state.userEdit : undefined,
       document: state.document && { ...state.document, replaced: true },
       origin: "tool",
@@ -1088,8 +1015,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.cancelPick("The diagram changed before the user picked.");
     this.webview.reveal(true);
     const outcome = await this.renderCurrent({ keepSelection: true });
-    // The marks and the selection of items that the edit removed would name nothing. The page
-    // selects the others again, and says nothing when none is left.
+    // Remove stale identities; the page only reports selection when some items remain.
     const { annotation, itemNames: known } = this;
     if (outcome.ok && known) {
       this.selection = this.selection.filter(({ id }) => known.has(id));
@@ -1308,9 +1234,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Loads the chart's data again, asking first, as its first load did, before reading a data file
-   * outside the workspace, and, once chart code could have pressed Refresh, before rerunning its
-   * command.
+   * Reloads data, confirming file reads when needed and command reruns when chart code could
+   * have forged the Refresh request.
    *
    * @returns undefined if the user declined or cancelled.
    */
@@ -1368,9 +1293,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Asks the user to confirm what a message from the page requests, one question at a time. Once
-   * the user declines one while the page holds chart code, the rest are declined unasked, as the
-   * code could otherwise post messages that open modal dialogs without end.
+   * Allows one confirmation at a time. After a refusal on a page that ran chart code, suppress
+   * further requests so that code cannot flood the user with modal dialogs.
    */
   private async confirmForPage(ask: () => Thenable<boolean>): Promise<boolean> {
     if (this.confirming || this.pageRefused) return false;
@@ -1388,9 +1312,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Shows a revision of the current diagram, such as a chart rebuilt from the table, keeping the
-   * current one if it fails to render or the token is cancelled, in which case the outcome's error
-   * says so. Rebuilding a chart clears its selection and marks.
+   * Tries a chart update and restores the previous state on failure or cancellation, unless
+   * another update has intervened. Chart updates clear selection and marks.
    */
   private async showOrKeep(
     next: DiagramState,
@@ -1504,9 +1427,8 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * A PNG of the drawing as the panel shows it, within the limits, for a model to check its layout
-   * with, and what it shows, or why there is none: all of it, or the part around the items with
-   * the ids, as far as they are drawn.
+   * Captures a bounded PNG for the model, optionally focused on item ids. Returns an error
+   * string when capture fails.
    */
   async captureImage(
     limits: { maxSide: number; maxPixels: number },
@@ -1520,7 +1442,7 @@ export class DiagramPanel implements vscode.Disposable {
       : "The diagram panel returned an invalid PNG image.";
   }
 
-  /** The current drawing's theme, also for a standalone Mermaid HTML export. */
+  /** Captures the current drawing's theme for HTML export. */
   async captureTheme(): Promise<Extract<ExportResult, { type: "exportTheme" }> | string> {
     const result = await this.captureDrawing({ format: "html", forModel: false });
     return typeof result === "string" || result.type === "exportTheme"
@@ -1546,8 +1468,7 @@ export class DiagramPanel implements vscode.Disposable {
     if (state.error) {
       return `The ${noun} fails to render. Render a working ${noun} first. The error is: ${state.error}`;
     }
-    // Closed by the user, or not drawn since the window reloaded: open it beside chat again,
-    // without taking the focus, and draw it, as a model views what the user sees.
+    // Reopen without taking focus so the model captures the same drawing the user sees.
     if (!this.webview.tab || !this.drawn) {
       const opened = this.webview.reveal(true);
       await this.renderCurrent({ redraw: true, newPage: opened });
@@ -1647,8 +1568,8 @@ export class DiagramPanel implements vscode.Disposable {
 }
 
 /**
- * The state with the chart rebuilt from the table, keeping the manual styling of presentation. A
- * title made from the chart's settings, as diagram_chart makes one, follows them.
+ * Rebuilds a chart while preserving manual styling. Automatically generated titles follow
+ * the new settings; explicit titles are kept.
  */
 function withRebuiltChart(
   state: DiagramState,

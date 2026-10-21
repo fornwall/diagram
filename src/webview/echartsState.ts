@@ -1,23 +1,22 @@
-// What the user changed in a shown chart, such as a legend's selection or a drill-down, carried
-// over to a new layout of its option, which would otherwise start over. ECharts keeps some of it in
-// the option it shows, and some only in its model.
+// Preserve chart interactions across relayouts. ECharts keeps some state in its current option
+// and the rest, such as dragged nodes and drill-down roots, in its internal model.
 
 import type * as ECharts from "echarts/core";
 import { asArray, isPlainObject } from "../protocol";
 import { modelOf, type SeriesModel } from "./echartsItems";
 import { baseOption, type JsonObject } from "./echartsOption";
 
-/** What the user can change in a shown chart, by component: besides the zoom ranges. */
+/** Option fields changed by user interaction. Zoom ranges are handled separately. */
 const USER_STATE: Record<string, string[]> = {
   legend: ["selected", "scrollDataIndex"],
   timeline: ["currentIndex"],
   visualMap: ["range", "selected"],
 };
 
-/** The series that keep the center and zoom that the user pans and zooms them to in their option. */
+/** Series whose pan and zoom state is stored in their options. */
 const ROAM_SERIES = ["graph", "tree", "sankey"];
 
-/** Carries what the user changed in the shown option, such as a legend's selection, over to a new layout of it. */
+/** Restore option state after laying out the same chart at a new size. */
 export function keepUserState(option: JsonObject, shown: JsonObject): void {
   const base = baseOption(option);
   const shownSeries = asArray(shown.series);
@@ -50,24 +49,23 @@ export function keepUserState(option: JsonObject, shown: JsonObject): void {
   });
 }
 
-/** The nodes of a graph as ECharts holds them. */
+/** The part of ECharts' node data used to preserve drag positions. */
 interface Nodes {
   count(): number;
   getId(index: number): string;
-  /** The node's option, of the model's own, with where it is placed. */
+  /** The model's copy of the node option, including its original position. */
   getRawDataItem(index: number): unknown;
-  /** Where the node is, which a drag moves it from where it is placed. */
+  /** The current position, including user drags. */
   getItemLayout(index: number): unknown;
 }
 
 /**
- * Where the user dragged the nodes of a graph, by id: across and down the bounds of where the
- * nodes not dragged are placed, or else all nodes, from 0 at their left or top to 1 at their right
- * or bottom.
+ * Drag positions by node id, normalized against the bounds of undragged nodes (or all nodes
+ * when every node was dragged). Coordinates run from 0 at the top/left to 1 at the bottom/right.
  */
 type Drags = Map<string, [number, number]>;
 
-/** The bounds of where nodes are placed, of a unit where they are all in a line. */
+/** Node bounds; a zero width or height becomes one to avoid division by zero. */
 interface Bounds {
   x: number;
   y: number;
@@ -76,12 +74,12 @@ interface Bounds {
 }
 
 /**
- * The nodes dragged in the graphs that a model was handed them for, and the bounds of where all
- * its nodes are placed, which placing the dragged ones where dragged leaves its model without.
+ * State restored into each model. Keep the original bounds because restoring a drag overwrites
+ * its node's coordinates; the next relayout still needs the original reference frame.
  */
 const handedDrags = new WeakMap<object, { drags: Drags; bounds: Bounds }>();
 
-/** Where a node is placed, if it is. */
+/** Read finite coordinates from a node option. */
 function placedAt(item: unknown): [number, number] | undefined {
   const [x, y] = isPlainObject(item) ? [Number(item.x), Number(item.y)] : [];
   return x !== undefined && y !== undefined && Number.isFinite(x) && Number.isFinite(y)
@@ -89,7 +87,7 @@ function placedAt(item: unknown): [number, number] | undefined {
     : undefined;
 }
 
-/** The bounds of where the nodes are placed, but those of some ids, if any are. */
+/** Bounds of node options, excluding any ids matched by skipped. */
 function placedBounds(nodes: Nodes, skipped: (id: string) => boolean = () => false) {
   let left = Infinity;
   let top = Infinity;
@@ -109,14 +107,12 @@ function placedBounds(nodes: Nodes, skipped: (id: string) => boolean = () => fal
 }
 
 /**
- * Where the user dragged the nodes of a graph of placed nodes, as the panel places those of a
- * force layout, also those dragged before a new layout and not since. ECharts moves a dragged node
- * from where it is placed, which a new layout, as for another size, would place it again.
+ * Capture drags in positioned graphs, including force graphs positioned by the panel. Compare
+ * each node's current layout with its option coordinates, retaining previously restored drags.
  */
 function draggedNodes(series: SeriesModel): Drags | undefined {
   if (series.subType !== "graph" || series.get("layout") !== "none") return undefined;
-  // All the nodes, also those of categories that the legend hides, which the data drawn leaves
-  // out, and where those drawn are.
+  // Raw data includes legend-hidden nodes; only visible nodes have current layout coordinates.
   const nodes = series.getRawData() as unknown as Nodes;
   const drawn = (series as unknown as { getData(): Nodes }).getData();
   const where = new Map<string, unknown>();
@@ -137,8 +133,7 @@ function draggedNodes(series: SeriesModel): Drags | undefined {
     if (ids.has(id)) points.set(id, [x, y]);
   }
   if (ids.size === 0) return undefined;
-  // Of the nodes not dragged, where those handed over are placed as they were: else where all
-  // were placed before those were placed where dragged.
+  // Undragged nodes define the frame. If none remain, use the bounds saved before restoration.
   const box = placedBounds(nodes, (id) => ids.has(id)) ?? handed?.bounds ?? placedBounds(nodes);
   if (!box) return undefined;
   const drags: Drags = new Map();
@@ -152,8 +147,8 @@ function draggedNodes(series: SeriesModel): Drags | undefined {
 }
 
 /**
- * Places the dragged nodes of a graph where the user dragged them, of the bounds of where the
- * others are placed now, or else all, as for another size.
+ * Restore normalized drags relative to the new positions of undragged nodes, or all nodes if
+ * every node was dragged.
  */
 function placeDragged(series: SeriesModel, drags: Drags): void {
   if (series.subType !== "graph" || series.get("layout") !== "none") return;
@@ -163,7 +158,7 @@ function placeDragged(series: SeriesModel, drags: Drags): void {
   if (!box || !bounds) return;
   for (let index = 0, count = nodes.count(); index < count; index++) {
     const drag = drags.get(nodes.getId(index));
-    // The model's own copy of the node, which ECharts made of the option.
+    // Mutate ECharts' model copy, leaving the source option untouched.
     const item = nodes.getRawDataItem(index);
     if (drag && isPlainObject(item)) {
       item.x = box.x + drag[0] * box.width;
@@ -174,11 +169,8 @@ function placeDragged(series: SeriesModel, drags: Drags): void {
 }
 
 /**
- * What the user changed in a shown chart that ECharts keeps in its model rather than its option,
- * and a new option would start over from: where the force layout of a graph left its nodes, which
- * it would place anew at random, where the user dragged the nodes of a graph of placed nodes, the
- * node a treemap or sunburst is drilled down to, and the nodes of a tree that are expanded.
- * Returns how to hand it to the model of the same option laid out anew, before that is laid out.
+ * Capture model-only state: force positions, dragged nodes, drill-down roots and expanded tree
+ * nodes. Call the returned function on the new model before ECharts lays it out.
  */
 export function modelState(chart: ECharts.ECharts): (chart: ECharts.ECharts) => void {
   const restores: ((series: SeriesModel) => void)[] = [];

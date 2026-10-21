@@ -28,8 +28,6 @@ export function validateAnnotation(value: unknown): Annotation {
     throw new Error(`The marks must be given as an object, e.g. ${EXAMPLE}.`);
   }
   const input = givenProperties(value);
-  // The panel showed a caption above the drawing once; the chat answer says it now.
-  delete input.caption;
   const problems: string[] = [];
   const unknown = unknownProperties(input, INPUT_KEYS);
   if (unknown !== undefined) {
@@ -75,8 +73,6 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return 'A mark must be an object, e.g. {"id": "pay", "mark": "problem"}.';
   }
   const mark = givenProperties(value);
-  // As the caption: the chat answer says what a mark is about.
-  delete mark.note;
   const unknown = unknownProperties(mark, MARK_KEYS);
   if (unknown !== undefined) {
     return unknown;
@@ -96,15 +92,4 @@ function parseMark(given: unknown, marked: Set<string>): DiagramMark | string {
     return `"mark" is ${brief(kind)}; it must be one of ${quoteAll(MARK_KINDS)}.`;
   }
   return { id, kind };
-}
-
-/**
- * Whether the input has a caption or notes, as the panel showed them above the drawing once. It
- * leaves them out, and the model should say them in its answer instead.
- */
-export function hasText(value: unknown): boolean {
-  if (!isPlainObject(value)) return false;
-  const text = (given: unknown) => typeof given === "string" && given.trim() !== "";
-  const marks: unknown[] = Array.isArray(value.marks) ? value.marks : [value.marks];
-  return text(value.caption) || marks.some((mark) => isPlainObject(mark) && text(mark.note));
 }

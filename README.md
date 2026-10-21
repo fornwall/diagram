@@ -4,9 +4,19 @@ Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](htt
 
 Requires VS Code 1.142 or later. Chat features need a chat provider, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
 
+## Install
+
+Install [@diagram from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fornwall.diagram-chat), or run:
+
+```sh
+code --install-extension fornwall.diagram-chat
+```
+
+To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Get started
 
-Ask `@diagram` to draw, optionally attaching files with `#file` or images:
+Open VS Code's Chat view and ask `@diagram` to draw, optionally attaching files with `#file` or images:
 
 - `@diagram sequence diagram of the OAuth login flow in #file:src/auth.ts`
 - `@diagram add a retry path after the payment step`
@@ -31,7 +41,18 @@ Diagrams follow your VS Code theme, high contrast included. Agents can mark item
 
 ## Diagrams in Markdown
 
-Click **Open in Diagram** above a `mermaid` or `echarts` code block, or run **Diagram: Open Diagram at Cursor**. **Apply** renders your edits and writes them back to the block as an unsaved, undoable change, keeping the surrounding text. Changes made by an agent need your confirmation before they are written. Set `diagram.codeLens.enabled` to `false` to hide the links above blocks.
+To try the panel without chat, paste this into a Markdown file:
+
+````markdown
+```mermaid
+flowchart LR
+    Request --> Validate
+    Validate -->|valid| Process
+    Validate -->|invalid| Reject
+```
+````
+
+Click **Open in Diagram** above the block, or run **Diagram: Open Diagram at Cursor**. Both `mermaid` and `echarts` blocks are supported. **Apply** renders your edits and writes them back to the block as an unsaved, undoable change, keeping the surrounding text. Changes made by an agent need your confirmation before they are written. Set `diagram.codeLens.enabled` to `false` to hide the links above blocks.
 
 ## Charts from data
 
@@ -47,7 +68,7 @@ See [the tools reference](docs/tools.md) for details. Agents can read `diagram_g
 
 ## Security
 
-VS Code asks before running a command, reading a data file outside the workspace, exporting HTML through a tool or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened.
+VS Code asks before running a command, reading a data file outside the workspace or exporting HTML through a tool. File links outside the workspace require confirmation; website links follow VS Code's trusted-domain settings. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened.
 
 Chat requests send your prompt, attached content, diagram context and tool results to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 
@@ -60,3 +81,5 @@ See [the full reference](docs/reference.md) for everything the panel, Markdown e
 ## Feedback
 
 Report issues and contribute on [GitHub](https://github.com/fornwall/diagram). See [CONTRIBUTING.md](CONTRIBUTING.md) to build and test the extension.
+
+Licensed under [Apache-2.0](LICENSE).

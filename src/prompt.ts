@@ -1,5 +1,4 @@
-// What the @diagram participant sends a language model: its instructions, the conversation so far
-// and the user's attachments, as much as fits.
+// Assemble instructions, diagram context, attachments and history within the model's token budget.
 
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
@@ -90,22 +89,17 @@ const EXPLAIN_INSTRUCTIONS = `You are @diagram in VS Code. Explain the current d
 const RESERVED_SHARE = 1 / 4;
 /** About the most tokens a message takes besides its text. */
 const MESSAGE_TOKENS = 4;
-/**
- * The model's token counts of the texts in a request's messages, which each tool round adds to
- * and counts again.
- */
+/** Cache exact token counts across tool rounds for one request. */
 const exactCounts = new WeakMap<
   readonly vscode.LanguageModelChatMessage[],
   Map<string, Promise<number>>
 >();
 
-/**
- * The current diagram as described to the model, its source, and the source of the agent's drawing
- * that the user edited, if the description gives the diff of the user's changes to it.
- */
+/** Current diagram context, used to avoid repeating its source in conversation history. */
 interface Shown {
   description: string;
   source: string | undefined;
+  /** Source before the user's edits, when the description includes a diff. */
   edited?: string | undefined;
 }
 
@@ -115,7 +109,7 @@ interface Exchange {
   /** The attachments' text, as given to the model. */
   attachments: string[];
   reply: string;
-  /** The diagram that the reply drew, as the chat does not show it, or how a tool drew it. */
+  /** Diagram source or chart parameters omitted from the visible chat reply. */
   diagram: string;
 }
 
@@ -128,8 +122,9 @@ type Attachment = { name: string } & (
       keys: [string, ...string[]];
     }
   | {
-      /** Why it was not read: words that follow its name, or a sentence that names it if `named`. */
+      /** Reason the attachment could not be read. */
       error: string;
+      /** The error already includes the attachment's name. */
       named?: boolean;
       /** The model can still explore it with tools. */
       explorable?: boolean;
@@ -267,10 +262,7 @@ export async function promptMessages(
   return { messages, notice: leftOutNotice(attachments) };
 }
 
-/**
- * A request's message after its command, which the message leaves out, such as /new, which asks
- * for a new diagram also in the history. Some models reject empty messages.
- */
+/** Restore slash commands (absent from request.prompt) and avoid empty model messages. */
 function promptText({ prompt, command }: vscode.ChatRequest | vscode.ChatRequestTurn): string {
   const text = prompt.trim();
   return command ? `/${command}${text ? ` ${text}` : ""}` : text || "(No message.)";
@@ -290,10 +282,7 @@ function leftOutNotice(attachments: Attachment[]): string | undefined {
   return reasons.length > 0 ? reasons.join(" ") : undefined;
 }
 
-/**
- * Text, such as a file name, to show as is within a line of Markdown. Unlike
- * `MarkdownString.appendText`, this keeps spaces, as chat history gives the model the Markdown.
- */
+/** Escape inline Markdown without encoding spaces, since the model reads the raw chat history. */
 export function escapeMarkdown(text: string): string {
   return text.replace(/[\\`*_~[\]<>&$]/g, "\\$&");
 }
@@ -368,10 +357,7 @@ export async function fitToolResults(
   }
 }
 
-/**
- * The tokens that a round's tool results may take, to tell the tools, which may then fit their
- * results to it rather than have them shortened or left out.
- */
+/** Let tools fit their own results to the available budget before generic truncation. */
 export async function toolResultBudget(
   model: vscode.LanguageModelChat,
   messages: readonly vscode.LanguageModelChatMessage[],
@@ -380,10 +366,7 @@ export async function toolResultBudget(
   return (await toolResultRoom(model, messages, [], [], token)).room;
 }
 
-/**
- * The tokens left for the text of tool results after the messages and all images, and a counter
- * for the results' `texts`.
- */
+/** Remaining text budget after messages and images, plus a token counter for new results. */
 async function toolResultRoom(
   model: vscode.LanguageModelChat,
   messages: readonly vscode.LanguageModelChatMessage[],
@@ -410,7 +393,7 @@ function partTexts(parts: readonly unknown[]): string[] {
   );
 }
 
-/** The text a part is counted by, or undefined for an image or an unknown kind of part. */
+/** Text used for token counting; images are budgeted separately. */
 function partText(part: unknown): string | undefined {
   if (part instanceof vscode.LanguageModelTextPart) {
     return part.value;
@@ -418,7 +401,7 @@ function partText(part: unknown): string | undefined {
   if (part instanceof vscode.LanguageModelToolCallPart) {
     return JSON.stringify(part.input);
   }
-  // Its JSON is more than the text it renders to, and so a conservative estimate.
+  // Serialized prompt-tsx is a conservative estimate of its rendered text.
   if (part instanceof vscode.LanguageModelPromptTsxPart) {
     return JSON.stringify(part.value);
   }
@@ -428,7 +411,7 @@ function partText(part: unknown): string | undefined {
   return new TextDecoder().decode(part.data);
 }
 
-/** What a part that can't be shortened as text is, e.g. "application/pdf data". */
+/** Description of a part that must be kept whole or omitted, e.g. "application/pdf data". */
 function wholePart(part: unknown): string | undefined {
   if (part instanceof vscode.LanguageModelPromptTsxPart) {
     return "a prompt-tsx part";
@@ -517,10 +500,7 @@ function sum(numbers: number[]): number {
   return numbers.reduce((total, n) => total + n, 0);
 }
 
-/**
- * A reply that drew the `shown` diagram need not repeat it, if the request's description of it gives
- * its source, or the model can read it with diagram_getState, as one that calls tools can.
- */
+/** Reconstruct history, omitting diagram source already available in `shown` or through tools. */
 async function pastExchanges(
   history: vscode.ChatContext["history"],
   documents: Map<string, Thenable<vscode.TextDocument>>,
@@ -579,9 +559,8 @@ async function pastExchanges(
 }
 
 /**
- * Deduplicate attachments in prompt order, images by their content. Images are given to the
- * `model` that the request is sent to. Without a model, for an earlier request, they are described
- * as left out, unless attached again as identified by `imageKeys`.
+ * Deduplicate attachments in prompt order, using content hashes for images.
+ * Without `model`, this is a history turn: report omitted images unless attached again now.
  */
 async function readAttachments(
   { references }: vscode.ChatRequest | vscode.ChatRequestTurn,
@@ -687,18 +666,15 @@ async function readAttachment(
   }
 }
 
-/**
- * The lines of a selection, e.g. "12-30", so that a model can link to the lines in it. A selection
- * that ends at the start of a line leaves that line out.
- */
+/** One-based line range for code links, excluding an end line selected only at column zero. */
 function lineRange({ start, end }: vscode.Range): string {
   const last = end.character === 0 && end.line > start.line ? end.line : end.line + 1;
   return last > start.line + 1 ? `${start.line + 1}-${last}` : `${start.line + 1}`;
 }
 
 /**
- * Chat gives pasted, dropped and screenshot images as a `ChatReferenceBinaryData`, which is not
- * part of the stable API, though given to all participants.
+ * Chat supplies pasted, dropped and screenshot images as ChatReferenceBinaryData.
+ * Its type is not in the stable API, so check the required fields at runtime.
  */
 function imageData(
   value: unknown,
@@ -719,18 +695,15 @@ function imageData(
   };
 }
 
-/**
- * Models say whether they accept images in `capabilities.supportsImageToText`, which is not part of
- * the stable API.
- */
+/** Read the proposed image capability; assume support when a provider does not declare it. */
 export function acceptsImages(model: vscode.LanguageModelChat): boolean {
   const { capabilities } = model as { capabilities?: { supportsImageToText?: boolean } };
   return capabilities?.supportsImageToText !== false;
 }
 
 /**
- * Give the model an image, unless it is too large or the model does not accept images. Without a
- * model, for an earlier request, it is left out, unnoted if `imageKeys` identifies it.
+ * Read a supported image within the size limit. For history turns (no model), return an omission
+ * notice unless the image is attached again in the current request.
  */
 async function readImage(
   name: string,
@@ -806,10 +779,7 @@ function contentKey(data: Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-/**
- * A folder, as attached with #folder, has no text, but the workspace tools can explore it, when the
- * model calls tools.
- */
+/** Turn a #folder attachment into a workspace search hint when the model can call tools. */
 async function readFolder(
   name: string,
   uri: vscode.Uri,

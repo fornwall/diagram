@@ -1,6 +1,5 @@
-// ECharts is built on its own, as dist/echarts.js: a classic script that defines DiagramECharts,
-// which the panel loads on its first chart and a saved chart's page inlines ahead of its own script,
-// so that the extension ships the library once.
+// The panel loads dist/echarts.js on its first chart. Exported HTML sets the same DiagramECharts
+// global from a CDN module before starting the renderer.
 
 import type * as EChartsLibrary from "./echartsLibrary";
 

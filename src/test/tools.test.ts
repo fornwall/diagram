@@ -552,6 +552,26 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_annotate rejects unsupported fields without clearing existing marks", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(
+      (await panel.render({ ...flowchart, source: flowchart.source as string }, "tool")).ok,
+    );
+    const tool = new AnnotateDiagramTool(panel);
+    assert.match(await invokeTool(tool, { marks: [{ id: "A", mark: "problem" }] }), /^Marked/);
+    const before = panel.describeForModel();
+    webview.sent.length = 0;
+
+    assert.match(await invokeTool(tool, { caption: "Look here" }), /Unknown property "caption"/);
+    assert.match(
+      await invokeTool(tool, { marks: [{ id: "A", note: "Slow" }] }),
+      /Unknown property "note"/,
+    );
+
+    assert.strictEqual(panel.describeForModel(), before);
+    assert.ok(!webview.sent.some((message) => message.type === "annotate"));
+  });
+
   test("diagram_annotate resolves relationship names after reopening the panel", async () => {
     const { panel, webview } = await newFakePanel();
     assert.ok(

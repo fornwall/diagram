@@ -1,4 +1,5 @@
 import * as assert from "node:assert";
+import { CDN_MODULES } from "../cdnDiagram";
 import { SAVED_CHART, type SavedChart } from "../protocol";
 import { savedChartHtml } from "../savedChart";
 import { diagramExtension } from "./afterTest";
@@ -11,11 +12,11 @@ function chart(overrides: Partial<SavedChart> = {}): SavedChart {
 }
 
 function build(overrides: Partial<SavedChart> = {}): Promise<string> {
-  return savedChartHtml(chart(overrides), diagramExtension().extensionUri);
+  return savedChartHtml(chart(overrides), diagramExtension().extensionUri, CDN_MODULES.echarts);
 }
 
 suite("savedChart", () => {
-  test("writes a page that draws the chart with everything it needs inlined", async () => {
+  test("embeds the chart and theme, loading ECharts from the CDN", async () => {
     const html = await build();
     assert.ok(html.startsWith("<!DOCTYPE html>"));
     assert.ok(html.includes("<title>Commits per author</title>"));
@@ -28,27 +29,22 @@ suite("savedChart", () => {
     assert.ok(html.includes("color-scheme: dark;"));
     // The styles of the chart's focus ring, as in the panel.
     assert.ok(html.includes("#chart-focus{position:absolute;"));
-    // Nothing is loaded from outside: the chart, ECharts and the page's script are inline, the
-    // markup links nothing, and the content security policy allows no source anyway.
     const scripts = html.match(/<script[^>]*>/g) ?? [];
     assert.deepStrictEqual(
       scripts.map((tag) => tag.replace(/nonce="[^"]+"/, "nonce")),
-      ["<script nonce>", "<script nonce>", "<script nonce>"],
+      ["<script nonce>", '<script type="module" nonce>'],
     );
-    // ECharts defines the global the page's script draws with before that script runs.
-    assert.ok(
-      html.indexOf("var DiagramECharts=") < html.indexOf("This file is missing its chart."),
-    );
+    assert.ok(html.includes(`await import(${JSON.stringify(CDN_MODULES.echarts)})`));
+    assert.ok(html.includes("This file is missing its chart."));
     // Neither inlined script can end its element early or put the parser in an escaped state.
     const body = html.slice(html.indexOf("<script"));
-    assert.strictEqual(body.match(/<\/script/gi)?.length, 3);
+    assert.strictEqual(body.match(/<\/script/gi)?.length, 2);
     assert.ok(!body.includes("<!--"));
     assert.ok(!/\s(?:src|href)=/.test(html.slice(0, html.indexOf("<script"))));
     assert.ok(html.includes("default-src 'none'"));
     // Neither falls back to default-src.
     assert.ok(html.includes("base-uri 'none'"));
     assert.ok(html.includes("form-action 'none'"));
-    assert.ok(html.length > 500_000, `only ${html.length} bytes, without the chart script?`);
   });
 
   test("leaves out the heading when the chart has no title", async () => {
