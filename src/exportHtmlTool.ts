@@ -169,8 +169,7 @@ export class ExportDiagramHtmlTool implements vscode.LanguageModelTool<ExportHtm
       }
       return textResult(
         `Exported revision ${revision} of the ${diagramNoun(state.language)} to ${target.toString(true)}. ` +
-          "This single HTML file embeds the source and data and loads its version-pinned renderer from jsDelivr. " +
-          "Internet access is required when opening it. Chart data commands are not rerun; panel selections, marks, chat actions and workspace code links are not exported.",
+          "Source and data are embedded. Opening the file needs internet access to load the pinned renderer from jsDelivr.",
       );
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;

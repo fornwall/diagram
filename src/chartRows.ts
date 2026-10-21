@@ -284,7 +284,6 @@ export function readRows(
       `left out the last row, ${JSON.stringify(table.rows.at(-1)?.[labelIndex])}, a total of the others`,
     );
   }
-  const nested = readsLevels(type);
   let rows: Row[] = tableRows.map((row, i) => ({
     labels: rowLabels(row, i, columns, type),
     values: valueIndices.map((index) => {
@@ -292,13 +291,15 @@ export function readRows(
       return typeof cell === "number" ? cell : null;
     }),
   }));
-  if (nested) {
-    if (rows.some(({ labels }) => labels.length > MAX_LEVELS)) {
-      throw new Error(
-        `A ${type} chart supports at most ${MAX_LEVELS} hierarchy levels per row. ` +
-          "Select fewer label columns or shorten the paths before charting them.",
-      );
-    }
+  if (readsLevels(type) && rows.some(({ labels }) => labels.length > MAX_LEVELS)) {
+    throw new Error(
+      `A ${type} chart supports at most ${MAX_LEVELS} hierarchy levels per row. ` +
+        "Select fewer label columns or shorten the paths before charting them.",
+    );
+  }
+  // Explicit Sankey stages describe observations that may finish at any stage. A shorter
+  // observation is not a total of the longer ones that follow the same path.
+  if (type === "treemap" || type === "sunburst" || columns.separator !== undefined) {
     const nests = rows.length;
     rows = withoutNests(rows);
     const left = nests - rows.length;

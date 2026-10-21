@@ -222,8 +222,9 @@ export function defaultValueColumns(
   labelIndices: number[],
   needed: number,
 ): number[] {
+  const labels = new Set(labelIndices);
   const numeric = table.columns.flatMap((column, i) =>
-    column.numeric && !labelIndices.includes(i) ? [i] : [],
+    column.numeric && !labels.has(i) ? [i] : [],
   );
   const nonIdentifiers = preferring(numeric, needed, (i) => !isIdName(columnName(table, i)));
   const values = preferring(nonIdentifiers, needed, (i) => !numbersRows(table, i));
@@ -440,11 +441,13 @@ export function readColumns(spec: ChartSpec, table: DataTable, notes: string[]):
   if (given === undefined && values.length < most) {
     // Inference left out numeric columns that the chart could have shown, which a model that
     // expected them to be charted is to name.
-    const left = table.columns.flatMap((column, i) =>
-      column.numeric && !labels.includes(i) && !values.includes(i) ? [i] : [],
-    );
-    const identifiers = left.filter((i) => isIdName(name(i)) || numbersRows(table, i));
-    const units = left.filter((i) => !identifiers.includes(i));
+    const selected = new Set([...labels, ...values]);
+    const identifiers: number[] = [];
+    const units: number[] = [];
+    for (const [i, column] of table.columns.entries()) {
+      if (!column.numeric || selected.has(i)) continue;
+      (isIdName(column.name) || numbersRows(table, i) ? identifiers : units).push(i);
+    }
     if (identifiers.length > 0) {
       notes.push(
         `left out ${quoteAll(identifiers.map(name))}, read as ${identifiers.length === 1 ? "an identifier" : "identifiers"}`,

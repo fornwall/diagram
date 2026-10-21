@@ -9,13 +9,7 @@ import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { Diagram, DiagramPanel } from "./panel";
-import {
-  CHART_TOOL,
-  errorMessage,
-  isPlainObject,
-  RENDER_TOOL,
-  UPDATE_CHART_TOOL,
-} from "./protocol";
+import { CHART_TOOL, errorMessage, isPlainObject, RENDER_TOOL } from "./protocol";
 import { renderRevision } from "./renderRevision";
 import { inWords, nonBlank, plural, quote, shorten, toolInput } from "./text";
 import { drawnResult, drawnWarnings, renderFailure, textResult } from "./toolResults";
@@ -92,7 +86,6 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
         [
           `Rendered the ${inWords(spec.type)} chart of ${dataOrigin(spec)} in the diagram panel next to the chat. ${report}`,
           ...drawnWarnings(this.panel),
-          `If columns were misread, choose "labelColumn" or "valueColumns" with ${UPDATE_CHART_TOOL}, or call ${CHART_TOOL} again with a "format".`,
         ].join("\n\n"),
         outcome.revision,
       );

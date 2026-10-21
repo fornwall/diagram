@@ -146,17 +146,22 @@ function closestLines(
   source: string,
   lines: readonly string[],
 ): { from: number; to: number } | undefined {
-  const sourceLines = source.split(/\r\n?|\n/).map(pairsOf);
+  const sourceLines = source.split(/\r\n?|\n/);
   // The lines of the text that tell most, unless comparing them all takes too long.
   const budget = Math.max(1, Math.floor(MAX_COMPARED / Math.max(1, source.length)));
   const kept = lines.slice(0, budget).map(pairsOf);
-  let best: { line: number; score: number } | undefined;
-  for (let start = 0; start < sourceLines.length; start++) {
-    let score = 0;
-    for (const [offset, pairs] of kept.entries()) {
-      const line = sourceLines[start + offset];
-      if (line) score += similarity(pairs, line);
+  // Each source line contributes to the matches that include it. Keep only their scores,
+  // rather than retaining a character-pair map for every row of a large chart.
+  const scores = new Float64Array(sourceLines.length);
+  for (const [index, line] of sourceLines.entries()) {
+    const pairs = pairsOf(line);
+    for (let offset = 0; offset < kept.length && offset <= index; offset++) {
+      const start = index - offset;
+      scores[start] = (scores[start] as number) + similarity(kept[offset] as Pairs, pairs);
     }
+  }
+  let best: { line: number; score: number } | undefined;
+  for (const [start, score] of scores.entries()) {
     if (!best || score > best.score) best = { line: start + 1, score };
   }
   if (!best || best.score === 0) return undefined;

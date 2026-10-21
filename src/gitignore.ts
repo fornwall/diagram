@@ -45,7 +45,12 @@ function ignoreRule(line: string): IgnoreRule | undefined {
   const anchored = text.includes("/");
   text = text.replace(/^\//, "");
   if (!text) return undefined;
-  const segments = text.split("/");
+  const segments = text.split("/").map((segment, index, all) => {
+    // Git accepts an escaped separator inside a path, and three or more stars as "**".
+    if (index < all.length - 1) segment = segment.replace(/(^|[^\\])((?:\\\\)*)\\$/, "$1$2");
+    if (!segment) throw new Error("Empty path segment");
+    return /^\*{2,}$/.test(segment) ? "**" : segment;
+  });
   let source = anchored ? "" : "(?:.*/)?";
   let last = { source: ".*", literal: undefined as string | undefined };
   for (const [index, segment] of segments.entries()) {
@@ -55,7 +60,7 @@ function ignoreRule(line: string): IgnoreRule | undefined {
       source += index < segments.length - 1 ? "(?:.*/)?" : ".*";
       last = { source: ".*", literal: undefined };
     } else {
-      last = segmentSource(segment);
+      last = segmentSource(segment, index);
       source += last.source;
     }
   }
@@ -73,21 +78,33 @@ function ignoreRule(line: string): IgnoreRule | undefined {
 }
 
 /** A regular expression for a name in a pattern, and the name, if the pattern gives it literally. */
-function segmentSource(segment: string): { source: string; literal: string | undefined } {
+function segmentSource(
+  segment: string,
+  segmentIndex: number,
+): { source: string; literal: string | undefined } {
   const chars = [...segment];
   let source = "";
+  const chunks: string[] = [];
   let literal: string | undefined = "";
   for (let index = 0; index < chars.length; index++) {
     const char = chars[index] ?? "";
-    if (char === "\\" && index + 1 < chars.length) {
+    if (char === "\\") {
+      if (index + 1 === chars.length) throw new Error("Trailing escape");
       index++;
       const quoted = chars[index] ?? "";
       source += RegExp.escape(quoted);
       if (literal !== undefined) literal += quoted;
       continue;
     }
-    if (char === "*" || char === "?") {
-      source += char === "*" ? "[^/]*" : "[^/]";
+    if (char === "*") {
+      while (chars[index + 1] === "*") index++;
+      chunks.push(source);
+      source = "";
+      literal = undefined;
+      continue;
+    }
+    if (char === "?") {
+      source += "[^/]";
       literal = undefined;
       continue;
     }
@@ -99,9 +116,21 @@ function segmentSource(segment: string): { source: string; literal: string | und
         index = end;
         continue;
       }
+      throw new Error("Unclosed character class");
     }
     source += RegExp.escape(char);
     if (literal !== undefined) literal += char;
+  }
+  if (chunks.length === 0) return { source, literal };
+  chunks.push(source);
+  source = chunks[0] ?? "";
+  for (let index = 1; index < chunks.length; index++) {
+    const chunk = chunks[index] ?? "";
+    // Commit each intermediate wildcard to its earliest match. Backtracking over repeated
+    // stars otherwise takes exponential time for patterns such as "*a*a*a*a*a*b".
+    const name = `star${segmentIndex}_${index}`;
+    source +=
+      index === chunks.length - 1 ? `[^/]*${chunk}` : `(?=(?<${name}>[^/]*?${chunk}))\\k<${name}>`;
   }
   return { source, literal };
 }

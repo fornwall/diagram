@@ -31,6 +31,8 @@ export function parseItemKey(key: string): ItemRef {
 /** The repeated names, and the ids of each, reported to the extension host. */
 const MAX_REPEATED_NAMES = 50;
 const MAX_REPEATED_IDS = 20;
+/** The positional suffix that tells repeated item names apart. */
+const INDEXED_NAME = / \((item|edge) ([1-9]\d*)\)$/;
 
 // ECharts' public API cannot list the items of a chart: `getOption()` copies the whole option and
 // leaves out how datasets, encodings, categories, graph links and trees name items, and which items
@@ -273,7 +275,7 @@ export class ChartItems {
       // Series that share a name, such as a measure in each panel of a faceted chart, go by their
       // own ids when they have them.
       if ((names.get(series.name) ?? 0) > 1 && !series.id.startsWith("\u0000")) name = series.id;
-      if (prefixes.has(name)) name = `${name} (series ${index + 1})`;
+      while (prefixes.has(name)) name += ` (series ${index + 1})`;
       prefixes.add(name);
       const items = new SeriesItems(index, this.prefixed ? `${name}/` : "", series);
       this.series[index] = items;
@@ -407,6 +409,8 @@ function typedData(series: SeriesModel): TypedData[] {
 class SeriesItems {
   /** The ids and labels that several items go by. */
   readonly repeated = new Set<string>();
+  /** Names that could collide with an id qualified by position. */
+  private readonly indexedNames = new Set<string>();
   private datas: TypedData[];
   /** How many trees a tree series has in its data, of which ECharts lays out and draws the first. */
   readonly trees: number;
@@ -436,6 +440,7 @@ class SeriesItems {
       const size = seen.size;
       seen.add(name);
       if (seen.size === size) this.repeated.add(name);
+      if (INDEXED_NAME.test(name)) this.indexedNames.add(name);
     };
     this.each(({ label, id }) => {
       count(id);
@@ -483,13 +488,16 @@ class SeriesItems {
   /** The item's id, told apart by its index from another item of the same name. */
   idOf({ ref, id }: Item): string {
     if (!this.repeated.has(id)) return `${this.prefix}${id}`;
-    return `${this.prefix}${id} (${ref.dataType === "edge" ? "edge" : "item"} ${ref.dataIndex + 1})`;
+    const suffix = ` (${ref.dataType === "edge" ? "edge" : "item"} ${ref.dataIndex + 1})`;
+    do id += suffix;
+    while (this.indexedNames.has(id));
+    return `${this.prefix}${id}`;
   }
 
   find(name: string): ItemRef[] {
-    const indexed = /^(.*) \((item|edge) ([1-9]\d*)\)$/.exec(name);
+    const indexed = INDEXED_NAME.exec(name);
     if (indexed) {
-      const [, id = "", kind, position] = indexed;
+      const [, kind, position] = indexed;
       const data = this.datas.find(({ dataType }) => (dataType === "edge") === (kind === "edge"));
       const ref = {
         seriesIndex: this.seriesIndex,
@@ -497,7 +505,9 @@ class SeriesItems {
         dataIndex: Number(position) - 1,
       };
       const item = this.item(ref);
-      if (item?.id === id && this.repeated.has(id)) return [ref];
+      if (item && this.repeated.has(item.id) && this.idOf(item) === `${this.prefix}${name}`) {
+        return [ref];
+      }
     }
     if (!this.byName) {
       const byName = new Map<string, ItemRef[]>();

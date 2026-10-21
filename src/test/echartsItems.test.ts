@@ -181,6 +181,66 @@ suite("echartsItems", () => {
     ]);
   });
 
+  test("keeps generated item ids distinct from literal names and ids", () => {
+    const names = ["A", "A", "A (item 1)", "A (item 1) (item 1)"];
+    for (const key of ["name", "id"]) {
+      const items = itemsOf({
+        series: [
+          { type: "pie", data: names.map((name, index) => ({ [key]: name, value: index + 1 })) },
+        ],
+      });
+      const ids = names.map((_, index) => items.node(itemKey(item(index)))?.id);
+      assert.deepStrictEqual(ids, [
+        "A (item 1) (item 1) (item 1)",
+        "A (item 2)",
+        "A (item 1)",
+        "A (item 1) (item 1)",
+      ]);
+      ids.forEach((id, index) => {
+        assert.ok(id);
+        assert.deepStrictEqual(items.find(id), [item(index)], key);
+      });
+      assert.deepStrictEqual(items.find("A"), [item(0), item(1)]);
+      assert.deepStrictEqual(items.repeatedNames(), [
+        { name: "A", ids: ids.slice(0, 2), count: 2 },
+      ]);
+    }
+  });
+
+  test("keeps generated series prefixes distinct from literal series names", () => {
+    const names = ["Plan", "Plan (series 3)", "Plan", "Plan (series 3) (series 3)"];
+    const items = itemsOf({
+      series: names.map((name) => ({ type: "pie", name, data: [{ name: "A", value: 1 }] })),
+    });
+    const ids = names.map((_, series) => items.node(itemKey(item(0, series)))?.id);
+    assert.strictEqual(new Set(ids).size, names.length);
+    ids.forEach((id, series) => {
+      assert.ok(id);
+      assert.deepStrictEqual(items.find(id), [item(0, series)]);
+    });
+  });
+
+  test("keeps a generated edge id distinct from a node's name", () => {
+    const items = itemsOf({
+      series: [
+        {
+          type: "graph",
+          layout: "circular",
+          data: ["A", "B", "A → B (edge 1)"].map((name) => ({ name })),
+          links: [
+            { source: "A", target: "B" },
+            { source: "A", target: "B" },
+          ],
+        },
+      ],
+    });
+    const edge = item(0, 0, "edge");
+    const id = items.node(itemKey(edge))?.id;
+    assert.strictEqual(id, "A → B (edge 1) (edge 1)");
+    assert.deepStrictEqual(items.find(id), [edge]);
+    assert.deepStrictEqual(items.find("A → B (edge 1)"), [item(2, 0, "node")]);
+  });
+
   test("names the nodes of a tree by their path", () => {
     const tree = [
       {

@@ -657,6 +657,20 @@ suite("charts", () => {
     assert.match(summary(chart("sankey"), DU), /as flows between the levels of "Column 2"/);
   });
 
+  test("sankey retains observations that finish before the final stage", () => {
+    const stages = "from,middle,last,value\nstart,paid,,10\nstart,paid,shipped,5";
+    const spec = chart("sankey", { labelColumn: ["from", "middle", "last"] });
+    assert.deepStrictEqual(build(spec, stages).series[0].links, [
+      { source: "start", target: "paid", value: 15 },
+      { source: "paid", target: "shipped", value: 5 },
+    ]);
+    assert.doesNotMatch(summary(spec, stages), /left out/);
+    assert.deepStrictEqual(build({ ...spec, aggregate: "count" }, stages).series[0].links, [
+      { source: "start", target: "paid", value: 2 },
+      { source: "paid", target: "shipped", value: 1 },
+    ]);
+  });
+
   test("sankey flows from one label column to a node per value column", () => {
     const budget = "department,salaries,equipment\nops,50,10\ndev,80,20";
     const [series] = build(chart("sankey"), budget).series;

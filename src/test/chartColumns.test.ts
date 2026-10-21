@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { describeTable, findColumn, findColumns } from "../chartColumns";
+import { defaultValueColumns, describeTable, findColumn, findColumns } from "../chartColumns";
 import { parseTable } from "../data";
 
 suite("chartColumns", () => {
@@ -47,6 +47,29 @@ suite("chartColumns", () => {
       () => findColumns(table, ["missing"], "labelColumn"),
       /Unknown label column "missing"/,
     );
+  });
+
+  test("infers values without repeatedly scanning a wide selection of label columns", () => {
+    const columns = Array.from({ length: 1000 }, (_, i) => ({
+      name: `field ${i}`,
+      numeric: true,
+    }));
+    const table = { columns, rows: [columns.map((_, i) => i)], header: true };
+    let reads = 0;
+    const labels = new Proxy(
+      [...columns.keys()].filter((i) => i % 2 === 0),
+      {
+        get(target, key, receiver) {
+          if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+          return Reflect.get(target, key, receiver);
+        },
+      },
+    );
+    assert.deepStrictEqual(
+      defaultValueColumns(table, labels, 1),
+      [...columns.keys()].filter((i) => i % 2 !== 0),
+    );
+    assert.ok(reads <= labels.length * 2, `${reads} reads of ${labels.length} label columns`);
   });
 
   test("describes a table by its columns and first rows", () => {

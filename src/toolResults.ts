@@ -69,11 +69,9 @@ export function drawnWarnings(panel: DiagramPanel): string[] {
 }
 
 const GENERATED_CHART_FIXES =
-  `As ${CHART_TOOL} made this chart, fix these by its settings with ${UPDATE_CHART_TOOL} where ` +
-  'they do it: "type": "horizontalBar" for category names too long for the width. Change its ' +
-  `styling, such as "grid", "dataZoom" or label wrapping, with ${EDIT_TOOL}. Preserve all ` +
-  'requested categories and series; use a "limit", fewer "valueColumns" or aggregated data ' +
-  "only when the user wants that subset or summary, not just to fit the panel.";
+  `Use ${UPDATE_CHART_TOOL} for chart settings (e.g. "type": "horizontalBar" for long labels), ` +
+  `and ${EDIT_TOOL} for layout and styling. Keep all requested categories and series; ` +
+  'use "limit", fewer "valueColumns" or aggregation only when the user requests that subset or summary.';
 
 /**
  * Distinguishes invalid source from a panel failure. Invalid edits remain in the panel, so include

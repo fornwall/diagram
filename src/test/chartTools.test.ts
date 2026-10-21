@@ -742,7 +742,7 @@ suite("chartTools", function () {
         : answer;
     };
     const fixes =
-      'As diagram_chart made this chart, fix these by its settings with diagram_updateChart where they do it: "type": "horizontalBar" for category names too long for the width. Change its styling, such as "grid", "dataZoom" or label wrapping, with diagram_edit. Preserve all requested categories and series; use a "limit", fewer "valueColumns" or aggregated data only when the user wants that subset or summary, not just to fit the panel.';
+      'Use diagram_updateChart for chart settings (e.g. "type": "horizontalBar" for long labels), and diagram_edit for layout and styling. Keep all requested categories and series; use "limit", fewer "valueColumns" or aggregation only when the user requests that subset or summary.';
     const told = (result: string, ...paragraphs: string[]) =>
       assert.ok(result.includes(`\n\n${paragraphs.join("\n\n")}`), result);
 
@@ -750,7 +750,7 @@ suite("chartTools", function () {
       await invokeTool(new ChartTool(panel), { type: "bar", data }),
       warning,
       fixes,
-      "If columns",
+      `Revision: ${panel.revision}.`,
     );
     told(
       await invokeTool(new UpdateChartTool(panel), { sort: "descending" }),

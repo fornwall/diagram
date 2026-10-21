@@ -99,6 +99,44 @@ suite("gitignore", () => {
     );
   });
 
+  test("leaves malformed character classes and trailing escapes unmatched", () => {
+    for (const pattern of ["a[", "[a", "[!]", "[]", "a\\"]) {
+      assert.deepStrictEqual(ignoreRules(pattern), [], pattern);
+    }
+    assert.deepStrictEqual(ignoredOf({ "": "a\\[\n\\[a\na\\\\\n" }, ["a[", "[a", "a\\", "a"]), [
+      "a[",
+      "[a",
+      "a\\",
+    ]);
+  });
+
+  test("matches escaped path separators and recursive runs of stars as git does", () => {
+    assert.deepStrictEqual(
+      ignoredOf({ "": "a\\/b\nc/***/d\n" }, [
+        "a/b",
+        "a/b/file",
+        "a\\/b",
+        "c/d",
+        "c/x/d",
+        "c/x/y/d",
+        "c/x/y/e",
+      ]),
+      ["a/b", "a/b/file", "c/d", "c/x/d", "c/x/y/d"],
+    );
+  });
+
+  test("matches repeated wildcards without exponential backtracking", () => {
+    const pattern = `${"*a".repeat(12)}b`;
+    const name = "a".repeat(200);
+    assert.deepStrictEqual(ignoredOf({ "": pattern }, [name, `${name}b`, `${"a".repeat(11)}b`]), [
+      `${name}b`,
+    ]);
+    assert.deepStrictEqual(
+      ignoredOf({ "": "*a*b/*a?b*c" }, ["aaab/aabc", "aaab/aabxbc", "aaab/abc"]),
+      ["aaab/aabc", "aaab/aabxbc"],
+    );
+  });
+
   test("excludes what no ! pattern could include again, relative to each folder", () => {
     assert.deepStrictEqual(
       ignoredGlobs(
