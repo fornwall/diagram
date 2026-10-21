@@ -282,12 +282,10 @@ async function render(message: RenderMessage): Promise<void> {
   let answer: Extract<FromWebview, { type: "rendered" }> | undefined;
   try {
     if (message.notDrawn !== undefined) throw new Error(message.notDrawn);
-    const { diagramType, repair } = await inertUntil(
-      renderWithRecovery(
-        source,
-        (text) => renderer.render(text, message.title),
-        language === "mermaid" && message.repairMermaid === true,
-      ),
+    const { diagramType, repair } = await renderWithRecovery(
+      source,
+      (text) => inertUntil(renderer.render(text, message.title)),
+      language === "mermaid" && message.repairMermaid === true,
     );
     if (repair) editor.diagramChanged(renderer, repair.source, requestId, false);
     active = renderer;

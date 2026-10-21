@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import { RenderDiagramTool } from "../tools";
+import { afterTest } from "./afterTest";
 import { invokeTool } from "./toolText";
 import { suitePage } from "./webviewHarness";
 
@@ -42,6 +43,7 @@ suite("Mermaid recovery in diagram_render", function () {
   });
 
   test("maps diagnostics through front matter and comments without changing line endings", async () => {
+    afterTest(() => page.evaluate('document.getElementById("view-visual").click()'));
     for (const newline of ["\n", "\r\n", "\r"]) {
       const source = [
         "---",
@@ -67,6 +69,7 @@ suite("Mermaid recovery in diagram_render", function () {
   });
 
   test("keeps the original source when one correction cannot make it render", async () => {
+    afterTest(() => page.evaluate('document.getElementById("view-visual").click()'));
     const source = "flowchart TD\n  A[Call foo(x)] --> B[Call bar(y)]";
     const result = await invokeTool(new RenderDiagramTool(page.panel), { source });
     assert.match(result, /^The diagram failed to render/);
