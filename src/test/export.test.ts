@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as zlib from "node:zlib";
 import * as vscode from "vscode";
+import { CDN_MODULES } from "../cdnDiagram";
 import type { Diagram, DiagramPanel } from "../panel";
 import type { ExportFormat, ToWebview } from "../protocol";
 import { fileSystem, interceptCommand, recordMessages, replace, tempDir } from "./afterTest";
@@ -14,6 +15,7 @@ import {
   webviewTabs,
   within,
 } from "./newPanel";
+import { testColors } from "./themeColors";
 
 const diagram: Diagram = {
   language: "mermaid",
@@ -83,9 +85,7 @@ suite("export", function () {
     suiteTeardown(() => panel.dispose());
 
     for (const drawing of [diagram, chart]) {
-      for (const format of (drawing.language === "echarts"
-        ? ["png", "svg", "html"]
-        : ["png", "svg"]) as ExportFormat[]) {
+      for (const format of ["png", "svg", "html"] as const) {
         test(`exports ${drawing.language} as ${format}`, async () => {
           assert.ok((await panel.render(drawing, "tool")).ok);
           chosen = format;
@@ -93,7 +93,7 @@ suite("export", function () {
           assert.deepStrictEqual(errors, []);
           assert.deepStrictEqual(
             offered.map((item) => item.format),
-            drawing.language === "echarts" ? ["png", "svg", "html"] : ["png", "svg"],
+            ["png", "svg", "html"],
           );
           assert.strictEqual(dialogs.length, 1);
           assert.strictEqual(
@@ -121,6 +121,11 @@ suite("export", function () {
           } else {
             assert.match(bytes.toString(), /Export[\s\S]*label/);
             assert.match(bytes.toString(), format === "svg" ? /<svg/ : /<!doctype html>/i);
+            if (format === "html") {
+              assert.ok(bytes.toString().includes(CDN_MODULES[drawing.language]));
+              assert.ok(bytes.toString().includes(JSON.stringify(drawing.source)));
+              assert.deepStrictEqual(dialogs[0]?.filters, { "HTML page": ["html"] });
+            }
           }
         });
       }
@@ -142,20 +147,22 @@ suite("export", function () {
   });
 
   /**
-   * A fake page that draws everything, and exports the image given, by default the source it shows
-   * as an SVG image.
+   * A fake page that draws everything, and exports the theme for HTML or the image given, by
+   * default the source it shows as an SVG image.
    */
   async function exportingPanel(image?: { format: "png" | "svg"; data: string }) {
     const fake = await newFakePanel();
     const draw = fake.webview.answer;
-    fake.webview.answer = (message) =>
-      message.type === "export"
-        ? {
+    fake.webview.answer = (message) => {
+      if (message.type !== "export") return draw?.(message);
+      return message.format === "html"
+        ? { type: "exportTheme", requestId: message.requestId, colors: testColors }
+        : {
             type: "exportImage",
             requestId: message.requestId,
             ...(image ?? { format: "svg", data: `<svg>${fake.webview.render.source}</svg>` }),
-          }
-        : draw?.(message);
+          };
+    };
     return fake;
   }
 
@@ -282,6 +289,25 @@ suite("export", function () {
     assert.deepStrictEqual(errors, []);
   });
 
+  test("opens an exported HTML diagram in the browser if asked", async () => {
+    const { panel } = await exportingPanel();
+    const opened = Promise.withResolvers<vscode.Uri>();
+    replace(vscode.env, "openExternal", async (uri) => {
+      opened.resolve(uri);
+      return true;
+    });
+    const saved = recordMessages("showInformationMessage", (_, action) => action);
+    assert.ok((await panel.render(diagram, "tool")).ok);
+    chosen = "html";
+    await panel.exportDiagram();
+    assert.deepStrictEqual(saved, ["Saved the diagram to export.html."]);
+    assert.strictEqual(
+      (await opened.promise).toString(),
+      vscode.Uri.file(path.join(directory, "export.html")).toString(),
+    );
+    assert.deepStrictEqual(errors, []);
+  });
+
   test("says whether it exports a diagram or a chart, and names an untitled one so", async () => {
     const { panel } = await exportingPanel();
     for (const drawing of [diagram, chart]) {
@@ -320,20 +346,27 @@ suite("export", function () {
     assert.match(errors[0] ?? "", /changed.*choosing a format/);
   });
 
-  test("keeps the captured image when the diagram changes during the save dialog", async () => {
-    const { panel } = await exportingPanel();
-    assert.ok((await panel.render(diagram, "tool")).ok);
-    replace(vscode.window, "showSaveDialog", async () => {
-      assert.ok((await panel.render(chart, "tool")).ok);
-      return vscode.Uri.file(path.join(directory, "snapshot.svg"));
+  for (const format of ["svg", "html"] as const) {
+    test(`keeps the captured ${format} when the diagram changes during the save dialog`, async () => {
+      const { panel } = await exportingPanel();
+      assert.ok((await panel.render(diagram, "tool")).ok);
+      chosen = format;
+      replace(vscode.window, "showSaveDialog", async () => {
+        assert.ok((await panel.render(chart, "tool")).ok);
+        return vscode.Uri.file(path.join(directory, `snapshot.${format}`));
+      });
+      await panel.exportDiagram();
+      assert.deepStrictEqual(errors, []);
+      const saved = fs.readFileSync(path.join(directory, `snapshot.${format}`), "utf8");
+      if (format === "svg") {
+        assert.strictEqual(saved, `<svg>${diagram.source}</svg>`);
+      } else {
+        assert.ok(saved.includes(JSON.stringify(diagram.source)));
+        assert.ok(!saved.includes(JSON.stringify(chart.source)));
+        assert.ok(saved.includes("background: #1f1f1f;"));
+      }
     });
-    await panel.exportDiagram();
-    assert.deepStrictEqual(errors, []);
-    assert.strictEqual(
-      fs.readFileSync(path.join(directory, "snapshot.svg"), "utf8"),
-      `<svg>${diagram.source}</svg>`,
-    );
-  });
+  }
 
   test("says why it could not save the export", async () => {
     const { panel } = await exportingPanel();

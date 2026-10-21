@@ -564,7 +564,7 @@ suite("panel", function () {
       const target = vscode.Uri.file(path.join(tempDir("diagram-save-test-"), "chart.html"));
       const reported = Promise.withResolvers<string>();
       replace(vscode.window, "showQuickPick", (async () => ({
-        label: "Interactive HTML",
+        label: "HTML page",
         format: "html",
       })) as unknown as typeof vscode.window.showQuickPick);
       replace(vscode.window, "showSaveDialog", async () => target);
@@ -579,7 +579,7 @@ suite("panel", function () {
       });
       await panel.exportDiagram();
       const message = await reported.promise;
-      assert.ok(fs.statSync(target.fsPath).size > 500_000);
+      assert.match(fs.readFileSync(target.fsPath, "utf8"), /^<!DOCTYPE html>/);
       assert.match(message, /Could not open the saved chart/);
       assert.ok(message.includes(target.fsPath));
       assert.match(message, rejected ? /Browser unavailable/ : /No application accepted/);

@@ -1,7 +1,8 @@
-// Export the drawing shown in the panel as PNG, SVG or offline interactive HTML.
+// Export the drawing shown in the panel as PNG, SVG or HTML with embedded source and data.
 
 import * as os from "node:os";
 import * as vscode from "vscode";
+import { cdnDiagramHtml } from "./cdnDiagram";
 import { baseName, contains, fileName } from "./files";
 import {
   type DiagramLanguage,
@@ -12,7 +13,6 @@ import {
   errorMessage,
   safeFileName,
 } from "./protocol";
-import { savedChartHtml } from "./savedChart";
 
 const PNG_DATA_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
 
@@ -45,14 +45,12 @@ export async function exportDrawing(
     const formats: (vscode.QuickPickItem & { format: ExportFormat })[] = [
       { label: "PNG image", description: ".png", format: "png" },
       { label: "SVG image", description: ".svg", format: "svg" },
-    ];
-    if (drawing.language === "echarts") {
-      formats.push({
-        label: "Interactive HTML",
-        description: ".html · Works offline",
+      {
+        label: "HTML page",
+        description: ".html · Requires internet to view",
         format: "html",
-      });
-    }
+      },
+    ];
     const choice = await vscode.window.showQuickPick(formats, {
       title: noun === "chart" ? "Export Chart" : "Export Diagram",
       placeHolder: "Choose an export format",
@@ -64,8 +62,7 @@ export async function exportDrawing(
     if (result.type === "exportError") {
       throw new Error(result.message);
     } else if (format === "html" && result.type === "exportTheme") {
-      const { title, source } = drawing;
-      const html = await savedChartHtml({ title, source, colors: result.colors }, extensionUri);
+      const html = await cdnDiagramHtml(drawing, result.colors, extensionUri);
       bytes = new TextEncoder().encode(html);
     } else if (result.type === "exportImage" && result.format === format) {
       if (format === "png") {

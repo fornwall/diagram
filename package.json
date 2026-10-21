@@ -1144,7 +1144,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(export)",
         "userDescription": "Save the current diagram or chart as a named HTML file with its renderer loaded from a CDN",
-        "modelDescription": "Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and offline ECharts HTML.",
+        "modelDescription": "Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and the same HTML export.",
         "tags": [
           "diagram",
           "mermaid",

@@ -25,7 +25,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 - Right-click for **Highlight Path** when two selected nodes have a path between them in a flowchart or state diagram, **Clear Selection** to remove selections and agent highlights, or **Help** for a brief guide.
 - **Find** text with Ctrl/Cmd+F, **zoom and pan** Mermaid diagrams, and open nodes linked to files or URLs.
 - **Chart Options** (the gear in the title bar) reconfigures a chart made from data; **Refresh** reloads its file or command.
-- **Export** PNG, SVG or an offline interactive HTML chart, or drag the picture handle into another app.
+- **Export** PNG, SVG or an HTML page with embedded source and data (viewing HTML requires internet access), or drag the picture handle into another app.
 
 Diagrams follow your VS Code theme, high contrast included. Agents can mark items, for example to walk you through a diagram, and can ask you to pick items as an answer.
 
@@ -47,7 +47,7 @@ See [the tools reference](docs/tools.md) for details. Agents can read `diagram_g
 
 ## Security
 
-VS Code asks before running a command, reading a data file outside the workspace, exporting HTML through a tool or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; HTML files made by `diagram_exportHtml` load their renderer from a CDN when opened.
+VS Code asks before running a command, reading a data file outside the workspace, exporting HTML through a tool or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened.
 
 Chat requests send your prompt, attached content, diagram context and tool results to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 
