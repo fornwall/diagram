@@ -51,7 +51,7 @@ suite("tools", () => {
     assert.ok((await state(200_000)).includes(source));
     assert.strictEqual(counted, 1);
     assert.doesNotMatch(await state(1_000), /A --> B/);
-    assert.strictEqual(counted, 1);
+    assert.strictEqual(counted, 2);
     const summary = await state(10_000);
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(
@@ -169,7 +169,10 @@ suite("tools", () => {
     panel = newPanel(values);
     const result = await invokeTool(new GetDiagramStateTool(panel), { detail: "summary" });
     assert.match(result, /Revision: 0\.[\s\S]*Current Mermaid diagram: "Flow"/);
-    assert.match(result, /omitted by request[\s\S]*Parse error[\s\S]*The user edited this source/);
+    assert.match(
+      result,
+      /omitted from this response[\s\S]*Parse error[\s\S]*The user edited this source/,
+    );
     assert.doesNotMatch(result, /A\[Parser\]|Before|```diff/);
   });
 
@@ -194,23 +197,69 @@ suite("tools", () => {
     }
   });
 
-  test("diagram_getState reports oversized summary metadata without truncating it", async () => {
+  test("diagram_getState reports oversized metadata for full and summary reads without truncation", async () => {
     values.set("diagram.state", { ...flowchart, title: "Large title ".repeat(500) });
     panel.dispose();
     panel = newPanel(values);
-    const result = await invokeTool(
-      new GetDiagramStateTool(panel),
-      { detail: "summary" },
-      undefined,
-      {
+    for (const input of [{}, { detail: "summary" }]) {
+      const result = await invokeTool(new GetDiagramStateTool(panel), input, undefined, {
         tokenBudget: 400,
         countTokens: async (text) => text.length / 4,
-      },
-    );
+      });
+      assert.match(result, /^Revision: 0\. The diagram's metadata does not fit/);
+      assert.match(result, /larger tool result budget or a new chat/);
+      assert.match(result, /diagram_getState with "startLine" and "endLine"/);
+      assert.doesNotMatch(result, /Large title|A\[Parser\]/);
+      assert.ok(result.length <= 400 * 4);
+    }
+  });
+
+  test("diagram_getState bounds fallback metadata without a caller token budget", async () => {
+    values.set("diagram.state", { ...flowchart, title: "Large title ".repeat(10_000) });
+    panel.dispose();
+    panel = newPanel(values);
+    const result = await invokeTool(new GetDiagramStateTool(panel), {});
     assert.match(result, /^Revision: 0\. The diagram's metadata does not fit/);
-    assert.match(result, /larger tool result budget or a new chat/);
-    assert.doesNotMatch(result, /Large title|A\[Parser\]/);
-    assert.ok(result.length <= 400 * 4);
+    assert.doesNotMatch(result, /Large title/);
+    assert.match(result, /diagram_getState with "startLine" and "endLine"/);
+  });
+
+  test("diagram_getState falls back to metadata when even an elided option exceeds the budget", async () => {
+    const { panel: shown } = await newFakePanel();
+    const source = formatOption(
+      JSON.stringify({
+        title: { text: "Large caption ".repeat(400) },
+        series: [{ type: "line", data: Array(2_000).fill(1) }],
+      }),
+    );
+    await shown.render({ language: "echarts", source, title: "Original" }, "tool");
+    const revision = shown.revision;
+    const budget = 1_000;
+    const summary = shown.describeForModel({ detail: "summary" }) ?? assert.fail("No summary");
+    assert.match(summary, /long runs of lines of values left out/);
+    assert.ok(summary.length / 4 > budget);
+    let changed = false;
+    const result = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, {
+      tokenBudget: budget,
+      countTokens: async (text) => {
+        if (!changed) {
+          changed = true;
+          await shown.render(
+            { language: "mermaid", source: "flowchart TD\n  Replacement", title: "New" },
+            "tool",
+          );
+        }
+        return text.length / 4;
+      },
+    });
+    assert.ok(changed, "Token counting must yield while considering an earlier candidate");
+    assert.match(result, new RegExp(`^Revision: ${revision}\\.`));
+    assert.match(result, /Current ECharts chart: "Original"/);
+    assert.match(result, /omitted from this response/);
+    assert.match(result, /"startLine": 1, "endLine": 200/);
+    assert.doesNotMatch(result, /Large caption|Replacement|"New"/);
+    assert.ok(result.length / 4 <= budget, result);
+    assert.notStrictEqual(shown.revision, revision);
   });
 
   test("diagram_getState keeps one snapshot while asynchronous token counting yields", async () => {
@@ -459,7 +508,7 @@ suite("tools", () => {
     assert.deepStrictEqual(rendered, [undefined]);
     assert.match(
       result,
-      /\n\nUnknown property "clickprompt"; the properties are "source", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
+      /\n\nUnknown property "clickprompt"; the properties are "source", "revision", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
     );
   });
 

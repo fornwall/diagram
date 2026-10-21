@@ -331,7 +331,7 @@ function describeSource(
   const length = `The source is ${formatCount(source.length)} characters long`;
   const readRange = `${GET_STATE_TOOL} with {"detail": "source", "startLine": 1, "endLine": 200} reads exact source lines; use its revision for edits`;
   if (detail === "metadata") {
-    return `(${length}; omitted by request.${has(GET_STATE_TOOL) ? ` ${readRange}.` : ""})`;
+    return `(${length}; omitted from this response.${has(GET_STATE_TOOL) ? ` ${readRange}.` : ""})`;
   }
   if (detail === "summary") {
     const elided = language === "echarts" ? withoutValueRuns(source) : undefined;

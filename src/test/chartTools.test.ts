@@ -117,8 +117,90 @@ suite("chartTools", function () {
         1,
       ),
     );
-    assert.strictEqual(clipped.columns[0].name, `${"x".repeat(254)}…`);
-    assert.strictEqual(clipped.sample[0][0], clipped.columns[0].name);
+    assert.strictEqual(clipped.columns[0].name, unicode);
+    assert.strictEqual(clipped.sample[0][0], `${"x".repeat(254)}…`);
+  });
+
+  test("inspection pages through every column with exact usable names and aligned sample cells", async () => {
+    const names = Array.from({ length: 125 }, (_, i) => `column ${i + 1}`);
+    names[70] = `${"long header ".repeat(30)}😀`;
+    const rows = Array.from({ length: 25 }, (_, row) => names.map((_, col) => row * 1000 + col));
+    const table = parseTable(JSON.stringify([names, ...rows]));
+    const found: string[] = [];
+    let startColumn: number | undefined = 1;
+    while (startColumn !== undefined) {
+      const page = JSON.parse(inspectTable(table, 2, { startColumn, startRow: 21 }));
+      assert.strictEqual(page.startColumn, startColumn);
+      assert.strictEqual(page.startRow, 21);
+      assert.strictEqual(page.nextRow, 23);
+      for (const [i, column] of page.columns.entries()) {
+        assert.strictEqual(column.index, startColumn + i);
+        assert.strictEqual(page.sample[0][i], 20_000 + column.index - 1);
+        assert.strictEqual(column.nullCount, 0);
+        found.push(column.name);
+      }
+      startColumn = page.nextColumn;
+    }
+    assert.deepStrictEqual(found, names);
+
+    const { panel } = await harness();
+    const input = JSON.stringify([names, ...rows]);
+    const result = await invokeTool(new ChartTool(panel), {
+      type: "bar",
+      data: input,
+      valueColumns: [found[70]],
+      limit: 2,
+    });
+    assert.match(result, /Rendered the bar chart/);
+    assert.deepStrictEqual(panel.current?.chart?.valueColumns, [names[70]]);
+  });
+
+  test("inspection bounds escaped exact names and reports continuation after the actual page", () => {
+    const table = {
+      columns: Array.from({ length: 20 }, (_, i) => ({
+        name: `${i}${"\u0000".repeat(1000)}`,
+        numeric: false,
+      })),
+      rows: [Array.from({ length: 20 }, () => "sample")],
+      header: true,
+    };
+    const names: string[] = [];
+    let startColumn: number | undefined = 1;
+    while (startColumn !== undefined) {
+      const output = inspectTable(table, 1, { startColumn });
+      assert.ok(output.length <= 24_000);
+      const page = JSON.parse(output);
+      assert.ok(page.columns.length > 0);
+      assert.strictEqual(page.columnsOmitted, 20 - page.columns.length);
+      names.push(...page.columns.map((column: { name: string }) => column.name));
+      if (page.nextColumn !== undefined) assert.ok(page.nextColumn > startColumn);
+      startColumn = page.nextColumn;
+    }
+    assert.deepStrictEqual(
+      names,
+      table.columns.map(({ name }) => name),
+    );
+    const samples = JSON.parse(inspectTable(table, 1, { startColumn: 5, maxColumns: 1 }));
+    assert.deepStrictEqual(samples.sample, [["sample"]]);
+    assert.strictEqual(samples.columns[0].index, 5);
+  });
+
+  test("inspection never silently clips an identifier too large to return", () => {
+    const table = {
+      columns: [
+        { name: "x".repeat(24_000), numeric: false },
+        { name: "usable", numeric: true },
+      ],
+      rows: [["sample", 12]],
+      header: true,
+    };
+    assert.throws(
+      () => inspectTable(table, 0),
+      /Column 1's exact name exceeds.+Shorten its header.+"startColumn": 2/,
+    );
+    const skipped = JSON.parse(inspectTable(table, 1, { startColumn: 2 }));
+    assert.strictEqual(skipped.columns[0].name, "usable");
+    assert.deepStrictEqual(skipped.sample, [[12]]);
   });
 
   test("inspection bounds parser notes without losing the table schema or sample", () => {
@@ -145,15 +227,41 @@ suite("chartTools", function () {
     const inline = await invokeTool(tool, { data, sampleRows: 0 });
     assert.match(inline, /"rowCount":3/);
     assert.match(inline, /"sample":\[\]/);
+    assert.doesNotMatch(inline, /Current chart data, revision/);
     // Some models send null for the properties they leave out.
     assert.match(
       await invokeTool(tool, { data, file: null, sampleRows: null }),
       /"sample":\[\["a",1\]/,
     );
     const cached = await invokeTool(tool, {});
+    assert.ok(cached.startsWith(`Current chart data, revision ${panel.revision}.\n`));
     assert.match(cached, /"rowCount":3/);
+    const page = await invokeTool(tool, {
+      startColumn: 2,
+      maxColumns: 1,
+      startRow: 2,
+      sampleRows: 1,
+    });
+    assert.match(page, /"columns":\[\{"name":"amount","numeric":true,"index":2,"nullCount":0\}\]/);
+    assert.match(page, /"sample":\[\[2\]\],"nextRow":3/);
+    assert.ok(page.startsWith(`Current chart data, revision ${panel.revision}.\n`));
+    assert.doesNotMatch(page, /"nextColumn"/);
     assert.strictEqual(panel.current, before);
-    for (const input of [{ sampleRows: 21 }, { data, file: "x" }, { type: "bar", data }]) {
+    for (const input of [
+      { sampleRows: 21 },
+      { data, file: "x" },
+      { type: "bar", data },
+      { startColumn: 0 },
+      { startColumn: 3 },
+      { startColumn: "2" },
+      { startRow: 0 },
+      { startRow: 4 },
+      { startRow: 1.5 },
+      { startRow: Number.MAX_SAFE_INTEGER + 1 },
+      { maxColumns: 0 },
+      { maxColumns: 61 },
+      { maxColumns: 1.5 },
+    ]) {
       assert.match(await invokeTool(tool, input), /could not be inspected/);
     }
   });
@@ -180,7 +288,7 @@ suite("chartTools", function () {
     assert.strictEqual(panel.current, undefined);
     assert.strictEqual(
       await invokeTool(tool, file),
-      'Data could not be inspected: The input must be an object with the properties "data", "file", "command", "format", "sampleRows".',
+      'Data could not be inspected: The input must be an object with the properties "data", "file", "command", "format", "sampleRows", "startRow", "startColumn", "maxColumns".',
     );
   });
 
@@ -491,7 +599,7 @@ suite("chartTools", function () {
         : answer;
     };
     const fixes =
-      'As diagram_chart made this chart, fix these by its settings with diagram_updateChart where they do it: "type": "horizontalBar" for category names too long for the width, "sort": "descending" with a "limit" to show only the largest categories or slices (a pie sums up the rest as "Other"), or fewer "valueColumns" for fewer series. Change its styling, such as "grid" or "dataZoom", with diagram_edit, and its data, such as shorter names, with diagram_chart.';
+      'As diagram_chart made this chart, fix these by its settings with diagram_updateChart where they do it: "type": "horizontalBar" for category names too long for the width. Change its styling, such as "grid", "dataZoom" or label wrapping, with diagram_edit. Preserve all requested categories and series; use a "limit", fewer "valueColumns" or aggregated data only when the user wants that subset or summary, not just to fit the panel.';
     const told = (result: string, ...paragraphs: string[]) =>
       assert.ok(result.includes(`\n\n${paragraphs.join("\n\n")}`), result);
 

@@ -62,7 +62,7 @@ export const ROOM_FIXES =
 
 const TOOL_USE = `Use ${CHART_TOOL} for files, command output or pasted tables. If columns or units are unclear, inspect them with ${INSPECT_DATA_TOOL} first. Reconfigure a generated chart with ${UPDATE_CHART_TOOL}, which reuses its loaded data.
 
-Use ${RENDER_TOOL} with complete source for a new diagram or a substantial rewrite. Change the current diagram with ${EDIT_TOOL}: exact replacements that preserve code links and user edits. After a tool draws, explain briefly without a diagram block, which would be ignored.
+Use ${RENDER_TOOL} with complete source for a new diagram or a substantial rewrite. Change the current diagram with ${EDIT_TOOL}: exact replacements that preserve code links and user edits. Pass the current revision to ${RENDER_TOOL} and ${CHART_TOOL} when replacing an existing drawing. Await each drawing change before starting the next. After a tool draws, explain briefly without a diagram block, which would be ignored.
 Before diagramming code, explore it with ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} and ${READ_FILE_TOOL}, following imports and definitions as needed. Link nodes only to paths and lines you read.
 ${GET_STATE_TOOL} reads the current diagram and selection: call it only for what the description leaves out, or for changes since. Use detail "summary" for selection and metadata, or "source" with startLine/endLine for exact source ranges. Pass the revision you read to edit, style and update tools; on a conflict, reread before retrying. Use ${PICK_NODES_TOOL} when the user needs to choose items, ${ANNOTATE_TOOL} to point at items, and ${STYLE_TOOL} for requested Mermaid colors.
 ${RENDER_TOOL} and ${EDIT_TOOL} set code links. A diagram block loses them; warn if using one.

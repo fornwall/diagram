@@ -88,7 +88,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart.",
+        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
         "tags": [
           "diagram",
           "mermaid",
@@ -125,6 +125,11 @@
                 "type": "string"
               },
               "description": "Mermaid node ids mapped to code locations that clicking them opens, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\"}. Link only code you have read."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState or the last drawing result. Pass it when replacing an existing diagram to reject a stale replacement before reading files or running commands. On conflict, reread state and adapt; keep the revision guard."
             }
           },
           "required": [
@@ -215,7 +220,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file or command, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render.",
+        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file or command, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
         "tags": [
           "chart",
           "echarts",
@@ -408,6 +413,11 @@
                 "additionalProperties": false
               },
               "description": "Keep rows matching all filters, before anything else. Compares parsed cells: eq/neq need the exact value and type (null matches missing cells); lt/lte/gt/gte need numeric cells and a number; contains matches text case-sensitively."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState or the last drawing result. Pass it when replacing an existing diagram to reject a stale replacement before reading files or running commands. On conflict, reread state and adapt; keep the revision guard."
             }
           },
           "required": [
@@ -714,7 +724,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(table)",
         "userDescription": "Inspect columns and sample rows from the current chart or another data source",
-        "modelDescription": "Report a data source's columns, inferred types, row count and sample rows without drawing. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart, which reads it again to chart it.",
+        "modelDescription": "Report a data source's exact column names, inferred types, row count and sample rows without drawing. Page through wide tables with startColumn/maxColumns and later rows with startRow; nextColumn and nextRow say where to continue. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart. Each explicit source is read again, including commands.",
         "tags": [
           "diagram"
         ],
@@ -748,7 +758,23 @@
               "type": "integer",
               "minimum": 0,
               "maximum": 20,
-              "description": "Defaults to 5."
+              "description": "Maximum sample rows to return, starting at startRow; defaults to 5. Zero returns schema only. Whole rows may be omitted to fit the output limit."
+            },
+            "startRow": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First parsed data row to sample, 1-based, excluding the header; defaults to 1. Use nextRow from the previous result to continue."
+            },
+            "startColumn": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First parsed column to inspect, 1-based; defaults to 1. Use nextColumn from the previous result to continue. Exact names in the result can be used in chart settings."
+            },
+            "maxColumns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60,
+              "description": "Maximum columns to return, including their sample cells; defaults to 60. Fewer may fit when names are long. Lower this to leave room for samples."
             }
           },
           "additionalProperties": false

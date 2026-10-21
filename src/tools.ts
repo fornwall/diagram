@@ -24,6 +24,7 @@ import {
   nodeNoun,
   RENDER_TOOL,
 } from "./protocol";
+import { renderRevision } from "./renderRevision";
 import { errorContext } from "./sourceEdits";
 import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
 import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
@@ -42,6 +43,7 @@ import { formatOption } from "./webview/optionSource";
 /** As declared in package.json, but a model may not follow the schema exactly. */
 interface RenderInput {
   source: string;
+  revision?: number;
   language?: string;
   title?: string;
   clickPrompt?: string;
@@ -69,6 +71,7 @@ function parsePickInput(value: unknown): { prompt: string; multiple: boolean } |
 
 const RENDER_KEYS = [
   "source",
+  "revision",
   "language",
   "title",
   "clickPrompt",
@@ -154,7 +157,14 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
     options: vscode.LanguageModelToolInvocationOptions<RenderInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
+    throwIfCancelled(token);
     const changes = this.panel.userChangeCount;
+    let revision: number;
+    try {
+      revision = renderRevision(options.input, this.panel.revision);
+    } catch (error) {
+      return textResult(`Nothing was rendered: ${errorMessage(error)}`);
+    }
     const parsed = parseRenderInput(options.input);
     if (typeof parsed === "string") {
       return textResult(`Nothing was rendered: ${parsed}`);
@@ -167,7 +177,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       diagram.links = existing.links;
       problems.push(...existing.problems);
     }
-    if (this.panel.userChangeCount !== changes) {
+    if (this.panel.userChangeCount !== changes || this.panel.revision !== revision) {
       return textResult(
         "Nothing was rendered because the diagram changed in the panel while its code links were checked. Read diagram_getState before making further changes.",
       );
@@ -231,6 +241,9 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     const room = options.tokenizationOptions;
     const fitting = async (text: string) =>
       room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    const metadataTooLarge =
+      `Revision: ${revision}. The diagram's metadata does not fit the available result budget. ` +
+      'Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".';
     if (input.detail === "source") {
       return textResult(
         exactSource === undefined
@@ -242,11 +255,7 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     // not mix one revision's full description with another revision's fallback source.
     if (input.detail === "summary") {
       const summary = this.panel.describeForModel({ detail: "metadata" }) ?? noDiagram("read");
-      return textResult(
-        (await fitting(summary))
-          ? summary
-          : `Revision: ${revision}. The diagram's metadata does not fit the available result budget. Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".`,
-      );
+      return textResult((await fitting(summary)) ? summary : metadataTooLarge);
     }
     // A source too long to repeat in every chat request is given in full here, as a model has to
     // read it to change it, unless it does not fit, as the caller would cut it short.
@@ -256,12 +265,19 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     }
     const source = this.panel.describeForModel({ detail: "source" });
     const summary = this.panel.describeForModel({ detail: "summary" });
+    const metadata = this.panel.describeForModel({ detail: "metadata" });
     if (await fitting(full)) return textResult(full);
     // The source, which a model needs to change the diagram, before a long list of relationships.
     if (source !== undefined && source !== full && (await fitting(source))) {
       return textResult(source);
     }
-    return textResult(summary ?? full);
+    if (summary !== undefined && (await fitting(summary))) return textResult(summary);
+    // An elided chart option can still be large. Keep the selection, errors and other context
+    // without source when those fit; never hand an oversized fallback to the caller to truncate.
+    if (metadata !== undefined && metadata !== summary && (await fitting(metadata))) {
+      return textResult(metadata);
+    }
+    return textResult(metadataTooLarge);
   }
 }
 
