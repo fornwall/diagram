@@ -433,7 +433,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, or detail \"source\" with startLine/endLine for exact source to copy into diagram_edit. Long results may be shortened to fit the caller's token budget; source ranges report how to continue.",
+        "modelDescription": "Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, or \"search\" with query to locate labels or chart settings in a large source. Source ranges and search return whole, copyable excerpts for diagram_edit and continuation positions, fitted to the caller's token budget.",
         "tags": [
           "diagram",
           "mermaid",
@@ -449,9 +449,10 @@
               "enum": [
                 "full",
                 "summary",
-                "source"
+                "source",
+                "search"
               ],
-              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads only exact source and revision. Line bounds imply \"source\" and cannot be combined with \"full\" or \"summary\"."
+              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads exact source lines, \"search\" finds literal text with context. Line bounds imply \"source\"; query implies \"search\". Do not combine line bounds with search or other detail modes."
             },
             "startLine": {
               "type": "integer",
@@ -462,6 +463,29 @@
               "type": "integer",
               "minimum": 1,
               "description": "Last source line to read, inclusive; defaults to startLine + 199. Read at most 500 lines per call. The result may return fewer whole lines to fit the token budget."
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000,
+              "description": "Literal, case-sensitive text on one line, such as a node id, label or ECharts property. Required for search; implies detail \"search\". Returns each matching line once, with exact surrounding source and revision. No regular expressions."
+            },
+            "startMatch": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First matching line to return, 1-based; defaults to 1. Continue at the position the search reports, keeping the query. Restart if the revision changes. Search only."
+            },
+            "maxMatches": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Matching lines per search page; defaults to 20. May return fewer whole excerpts to fit the result budget."
+            },
+            "contextLines": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10,
+              "description": "Lines before and after each matching source line; defaults to 2. Use 0 for minimal results or a larger value to find unique oldText for diagram_edit. Search only."
             }
           },
           "additionalProperties": false

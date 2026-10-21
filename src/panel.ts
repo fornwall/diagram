@@ -799,7 +799,16 @@ export class DiagramPanel implements vscode.Disposable {
     if (nothing) {
       return { ok: false, reason: nothing };
     }
-    // The items of the diagram as it is drawn now: opening the panel below draws it again.
+    if (!this.drawn) {
+      return {
+        ok: false,
+        reason:
+          this.unavailable ??
+          `The panel is still drawing the ${diagramNoun(this.state?.language ?? "mermaid")}. Wait for the current render and retry.`,
+      };
+    }
+    // The tool reopens the panel before marking, so relationship aliases and repeated chart
+    // names can be resolved against the completed drawing.
     const drawn = this.drawn;
     const names = this.itemNames;
     const claimed = new Set(annotation.marks.map((mark) => mark.id));
@@ -842,8 +851,7 @@ export class DiagramPanel implements vscode.Disposable {
       }
     }
     this.annotation = { ...annotation, marks };
-    // Showing the panel may have to open it, which renders the diagram again; the marks follow on
-    // the webview's ready message either way.
+    // Reveal a hidden panel without taking the focus from chat.
     this.show(true);
     this.post({ type: "annotate", ...this.annotation });
     return { ok: true, annotation: this.annotation, unknown, repeated, several, given, names };

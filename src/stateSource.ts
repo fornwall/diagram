@@ -5,21 +5,67 @@ import type { DiagramLanguage } from "./protocol";
 import { formatCount, toolInput } from "./text";
 
 export interface StateInput {
-  detail?: "full" | "summary" | "source";
+  detail?: "full" | "summary" | "source" | "search";
   startLine?: number;
   endLine?: number;
+  query?: string;
+  startMatch?: number;
+  maxMatches?: number;
+  contextLines?: number;
 }
 
 const DEFAULT_LINES = 200;
 const MAX_LINES = 500;
 
 export function parseStateInput(value: unknown): StateInput {
-  const input = toolInput(value ?? {}, ["detail", "startLine", "endLine"]);
+  const input = toolInput(value ?? {}, [
+    "detail",
+    "startLine",
+    "endLine",
+    "query",
+    "startMatch",
+    "maxMatches",
+    "contextLines",
+  ]);
   if (
     input.detail !== undefined &&
-    (typeof input.detail !== "string" || !["full", "summary", "source"].includes(input.detail))
+    (typeof input.detail !== "string" ||
+      !["full", "summary", "source", "search"].includes(input.detail))
   ) {
-    throw new Error('"detail" must be "full", "summary" or "source".');
+    throw new Error('"detail" must be "full", "summary", "source" or "search".');
+  }
+  const search =
+    input.detail === "search" ||
+    ["query", "startMatch", "maxMatches", "contextLines"].some((key) => input[key] !== undefined);
+  if (search) {
+    if (input.detail !== undefined && input.detail !== "search") {
+      throw new Error('Use search parameters with "detail": "search", or omit "detail".');
+    }
+    if (input.startLine !== undefined || input.endLine !== undefined) {
+      throw new Error('Search cannot be combined with "startLine" or "endLine".');
+    }
+    if (
+      typeof input.query !== "string" ||
+      input.query.length === 0 ||
+      input.query.length > 1000 ||
+      /[\r\n]/.test(input.query)
+    ) {
+      throw new Error('Give "query" as 1–1,000 characters of literal text on one line.');
+    }
+    for (const [key, min, max] of [
+      ["startMatch", 1, Number.MAX_SAFE_INTEGER],
+      ["maxMatches", 1, 50],
+      ["contextLines", 0, 10],
+    ] as const) {
+      const value = input[key];
+      if (
+        value !== undefined &&
+        (!Number.isSafeInteger(value) || Number(value) < min || Number(value) > max)
+      ) {
+        throw new Error(`"${key}" must be an integer from ${min} to ${max}.`);
+      }
+    }
+    return { ...(input as StateInput), detail: "search" };
   }
   for (const key of ["startLine", "endLine"] as const) {
     if (input[key] !== undefined && (!Number.isSafeInteger(input[key]) || Number(input[key]) < 1)) {

@@ -43,7 +43,7 @@ Chart types: pie, doughnut, bar, stacked bar, line, area, scatter, histogram, tr
 
 Any chat agent, not only `@diagram`, can use the extension's tools to render and edit diagrams, chart data, read the panel's selection, look at the drawing as an image, mark items and ask you to pick items. Reference them in chat with `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` and others listed in the tools picker. See [the tools reference](docs/tools.md) for what each one does.
 
-Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification. State reads support summaries and exact source ranges, so large diagrams can be inspected and edited without repeating the whole source. Replacements and edits accept revision guards to preserve newer changes. Data inspection supports paging through columns and sample rows, with exact column names for chart settings. `#diagramExport` saves either Mermaid or ECharts to a named HTML file with embedded source/data and a CDN renderer; viewing it requires internet access.
+Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification. State reads support summaries, exact source ranges and literal source search, so agents can locate labels or chart settings and edit large drawings without repeating the whole source. Replacements and edits accept revision guards to preserve newer changes. Data inspection supports paging through columns and sample rows, with exact column names for chart settings. `#diagramExport` saves either Mermaid or ECharts to a named HTML file with embedded source/data and a CDN renderer; viewing it requires internet access.
 
 ## Security
 

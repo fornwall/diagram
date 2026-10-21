@@ -18,6 +18,7 @@ import {
   EDIT_TOOL,
   errorMessage,
   GET_IMAGE_TOOL,
+  GET_STATE_TOOL,
   type ImageView,
   isDiagramLanguage,
   isPlainObject,
@@ -26,6 +27,7 @@ import {
 } from "./protocol";
 import { renderRevision } from "./renderRevision";
 import { errorContext } from "./sourceEdits";
+import { searchSource } from "./stateSearch";
 import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
 import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
 import {
@@ -244,11 +246,17 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     const metadataTooLarge =
       `Revision: ${revision}. The diagram's metadata does not fit the available result budget. ` +
       'Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".';
-    if (input.detail === "source") {
+    if (input.detail === "source" || input.detail === "search") {
       return textResult(
         exactSource === undefined
           ? `Revision: ${revision}. The source was not kept when VS Code closed. The user can press Refresh to load the chart's data again.`
-          : await sourcePage(exactSource, language, revision, input, fitting),
+          : await (input.detail === "search" ? searchSource : sourcePage)(
+              exactSource,
+              language,
+              revision,
+              input,
+              fitting,
+            ),
       );
     }
     // Snapshot every candidate before token counting yields: an edit during a slow count must
@@ -512,10 +520,10 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     }
   }
 
-  invoke(
+  async invoke(
     options: vscode.LanguageModelToolInvocationOptions<AnnotateInput>,
     token: vscode.CancellationToken,
-  ): vscode.LanguageModelToolResult {
+  ): Promise<vscode.LanguageModelToolResult> {
     throwIfCancelled(token);
     let annotation: Annotation;
     try {
@@ -523,6 +531,16 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     } catch (error) {
       return textResult(
         `Nothing was marked: ${errorMessage(error)}\n\nFix the input and call ${ANNOTATE_TOOL} again.`,
+      );
+    }
+    // Closing or reloading the panel forgets its item identities. Resolve aliases only after
+    // drawing them again, and never apply these marks to a replacement that arrived meanwhile.
+    const revision = this.panel.revision;
+    await unlessCancelled(() => this.panel.itemIds(), token);
+    throwIfCancelled(token);
+    if (revision !== this.panel.revision) {
+      return textResult(
+        `Nothing was marked: the diagram changed while it was drawn. Read ${GET_STATE_TOOL} and retry for the current diagram.`,
       );
     }
     const outcome = this.panel.annotate(annotation);

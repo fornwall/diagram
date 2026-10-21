@@ -168,6 +168,27 @@ suite("extension", function () {
     assert.match(await invoke("diagram_edit", input), /changed|revision/i);
   });
 
+  test("lets an agent search for a label and copy the result into a guarded edit", async () => {
+    assert.match(
+      await invoke("diagram_render", {
+        source: 'flowchart TD\n  A["parse(input)"] --> B[Finish]',
+      }),
+      /^Rendered/,
+    );
+    const found = await invoke("diagram_getState", { query: "parse(input)", contextLines: 0 });
+    const revision = Number(/^Revision: (\d+)/.exec(found)?.[1]);
+    const oldText = /```mermaid\n([\s\S]*?)\n```/.exec(found)?.[1];
+    assert.strictEqual(oldText, '  A["parse(input)"] --> B[Finish]');
+    assert.match(
+      await invoke("diagram_edit", {
+        revision,
+        edits: [{ oldText, newText: '  A["parse(input)"] --> C[Validate] --> B[Finish]' }],
+      }),
+      /Edited the/,
+    );
+    assert.match(await invoke("diagram_getState", { query: "Validate" }), /C\[Validate\]/);
+  });
+
   test("tells the agent that a tree series draws only the first of its trees", async () => {
     const tree = (...names: string[]) =>
       invoke("diagram_render", {

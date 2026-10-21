@@ -266,6 +266,149 @@ suite("chartTools", function () {
     }
   });
 
+  test("inspection fits complete schema pages to the caller's token budget", async () => {
+    const names = Array.from(
+      { length: 35 },
+      (_, index) => `column ${index}: ${"exact ".repeat(20)}end`,
+    );
+    const input = JSON.stringify([names, names.map((_, index) => index)]);
+    const { panel } = await harness();
+    const tool = new InspectDataTool(panel);
+    const found: string[] = [];
+    let startColumn: number | undefined = 1;
+    while (startColumn !== undefined) {
+      let counted = 0;
+      const text = await invokeTool(tool, { data: input, startColumn, sampleRows: 0 }, undefined, {
+        tokenBudget: 1_000,
+        countTokens: async (value) => {
+          counted++;
+          return value.length;
+        },
+      });
+      assert.ok(text.length <= 1_000, text);
+      assert.ok(counted <= 10, `Too many token counts: ${counted}`);
+      const report = JSON.parse(text.slice(text.indexOf("\n{") + 1));
+      assert.strictEqual(report.startColumn, startColumn);
+      assert.ok(report.columns.length > 0);
+      assert.strictEqual(report.columnsOmitted, names.length - report.columns.length);
+      assert.deepStrictEqual(report.sample, []);
+      found.push(...report.columns.map((column: { name: string }) => column.name));
+      if (report.nextColumn !== undefined) {
+        assert.strictEqual(report.nextColumn, startColumn + report.columns.length);
+      }
+      startColumn = report.nextColumn;
+    }
+    assert.deepStrictEqual(found, names);
+  });
+
+  test("inspection reduces whole sample rows and reports the exact next row", async () => {
+    const rows = Array.from({ length: 25 }, (_, index) => [
+      `${index}: ${"sample ".repeat(20)}end`,
+      index,
+    ]);
+    const { panel } = await harness();
+    const text = await invokeTool(
+      new InspectDataTool(panel),
+      { data: JSON.stringify([["name", "value"], ...rows]), startRow: 3, sampleRows: 20 },
+      undefined,
+      { tokenBudget: 1_500, countTokens: async (value) => value.length },
+    );
+    assert.ok(text.length <= 1_500, text);
+    const report = JSON.parse(text.slice(text.indexOf("\n{") + 1));
+    assert.strictEqual(report.columns.length, 2);
+    assert.ok(report.sample.length > 0 && report.sample.length < 20);
+    assert.deepStrictEqual(report.sample, rows.slice(2, 2 + report.sample.length));
+    assert.strictEqual(report.nextRow, 3 + report.sample.length);
+    assert.strictEqual(report.sampleRowsOmitted, 25 - report.sample.length);
+    assert.strictEqual(report.truncated, true);
+  });
+
+  test("inspection keeps the widest page when a small sample fits better than its omission note", async () => {
+    const { panel } = await harness();
+    const tool = new InspectDataTool(panel);
+    const input = { data: "a,b,c,d\n1,2,3,4", sampleRows: 1 };
+    const expected = await invokeTool(tool, { ...input, maxColumns: 2 });
+    const text = await invokeTool(tool, input, undefined, {
+      tokenBudget: expected.length,
+      countTokens: async (value) => value.length,
+    });
+    assert.strictEqual(text, expected);
+    const report = JSON.parse(text.slice(text.indexOf("\n{") + 1));
+    assert.strictEqual(report.columns.length, 2);
+    assert.strictEqual(report.nextColumn, 3);
+    assert.deepStrictEqual(report.sample, [[1, 2]]);
+  });
+
+  test("inspection suggests a larger budget when sample rows cannot fit", async () => {
+    const { panel } = await harness();
+    const text = await invokeTool(
+      new InspectDataTool(panel),
+      { data: JSON.stringify([{ value: "x".repeat(256) }]), sampleRows: 1 },
+      undefined,
+      { tokenBudget: 500, countTokens: async (value) => value.length },
+    );
+    assert.ok(text.length <= 500, text);
+    const report = JSON.parse(text.slice(text.indexOf("\n{") + 1));
+    assert.deepStrictEqual(report.sample, []);
+    assert.match(report.sampleNote, /larger tool result budget/);
+  });
+
+  test("inspection keeps one table and revision when token counting yields to a new chart", async () => {
+    const { panel } = await harness();
+    const rows = Array.from({ length: 25 }, (_, index) => [
+      `old ${"sample ".repeat(20)}end`,
+      index,
+    ]);
+    const original = JSON.stringify([["old name", "old value"], ...rows]);
+    await drawChart(panel, { type: "bar", data: original }, original);
+    const revision = panel.revision;
+    let counted = 0;
+    const text = await invokeTool(new InspectDataTool(panel), { sampleRows: 20 }, undefined, {
+      tokenBudget: 1_500,
+      countTokens: async (value) => {
+        if (counted++ === 0) await draw(panel);
+        return value.length;
+      },
+    });
+    assert.ok(counted > 1);
+    assert.notStrictEqual(panel.revision, revision);
+    assert.ok(text.startsWith(`Current chart data, revision ${revision}.\n`));
+    assert.ok(text.length <= 1_500, text);
+    const report = JSON.parse(text.slice(text.indexOf("\n{") + 1));
+    assert.strictEqual(report.rowCount, 25);
+    assert.deepStrictEqual(
+      report.columns.map((column: { name: string }) => column.name),
+      ["old name", "old value"],
+    );
+    assert.deepStrictEqual(report.sample, rows.slice(0, report.sample.length));
+  });
+
+  test("inspection explains an exact column or metadata that cannot fit without partial JSON", async () => {
+    const { panel } = await harness();
+    const tool = new InspectDataTool(panel);
+    const input = {
+      data: JSON.stringify([
+        ["long ".repeat(400), "usable"],
+        [1, 2],
+      ]),
+    };
+    const text = await invokeTool(tool, input, undefined, {
+      tokenBudget: 500,
+      countTokens: async (value) => value.length,
+    });
+    assert.ok(text.length <= 500, text);
+    assert.match(text, /Column 1's exact name and metadata do not fit the tool result budget/);
+    assert.match(text, /"startColumn": 2/);
+    assert.match(text, /No partial JSON was returned/);
+    assert.strictEqual(
+      await invokeTool(tool, { data }, undefined, {
+        tokenBudget: 1,
+        countTokens: async (value) => value.length,
+      }),
+      "Data inspection needs a larger tool result budget.",
+    );
+  });
+
   test("inspection confirms external files and commands, and reads a file without rendering", async () => {
     const file = path.join(tempDir("diagram-inspect-"), "data.csv");
     fs.writeFileSync(file, data);

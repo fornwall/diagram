@@ -552,6 +552,135 @@ suite("tools", () => {
     );
   });
 
+  test("diagram_annotate resolves relationship names after reopening the panel", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(
+      (await panel.render({ ...flowchart, source: flowchart.source as string }, "tool")).ok,
+    );
+    webview.panel.dispose();
+    const reopened = new FakeWebview();
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    reopened.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "flowchart",
+            nodeIds: ["A", "B"],
+            relationships: [
+              {
+                id: "edge:L_A_B_0",
+                label: "Parser → Checker",
+                relationship: { kind: "edge", source: "A", target: "B", direction: "forward" },
+              },
+            ],
+          }
+        : undefined;
+    const marking = invokeTool(new AnnotateDiagramTool(panel), {
+      marks: [{ id: "A --> B", mark: "problem" }],
+      dim: true,
+    });
+    await reopened.receive({ type: "ready" });
+    assert.match(await marking, /^Marked 1 item: "A --> B" \(problem\)\./);
+    assert.deepStrictEqual(
+      reopened.sent.filter((message) => message.type === "annotate"),
+      [{ type: "annotate", marks: [{ id: "edge:L_A_B_0", kind: "problem" }], dim: true }],
+    );
+    assert.strictEqual(panel.revision, 1);
+  });
+
+  test("diagram_annotate disambiguates repeated chart names after reopening the panel", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(
+      (
+        await panel.render(
+          { language: "echarts", source: '{"series": []}', title: "Survey" },
+          "tool",
+        )
+      ).ok,
+    );
+    webview.panel.dispose();
+    const reopened = new FakeWebview();
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    reopened.answer = (message) =>
+      message.type === "render"
+        ? {
+            type: "rendered",
+            requestId: message.requestId,
+            diagramType: "sankey",
+            repeatedNames: [{ name: "Yes", ids: ["Yes (q1)", "Yes (q2)"], count: 2 }],
+          }
+        : undefined;
+    const marking = invokeTool(new AnnotateDiagramTool(panel), {
+      marks: [{ id: "Yes", mark: "good" }],
+      dim: true,
+    });
+    await reopened.receive({ type: "ready" });
+    assert.match(await marking, /"Yes" \(ids: "Yes \(q1\)", "Yes \(q2\)"\)/);
+    assert.deepStrictEqual(
+      reopened.sent.filter((message) => message.type === "annotate"),
+      [{ type: "annotate", marks: [], dim: true }],
+    );
+  });
+
+  test("diagram_annotate refuses unverified marks during an in-flight render", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const drawing = panel.render({ ...flowchart, source: flowchart.source as string }, "tool");
+    const result = await invokeTool(new AnnotateDiagramTool(panel), {
+      marks: [{ id: "A --> B", mark: "problem" }],
+      dim: true,
+    });
+    assert.match(result, /^Nothing was marked: .*still drawing.*Wait for the current render/);
+    assert.ok(!webview.sent.some((message) => message.type === "annotate"));
+    await webview.finishRender();
+    assert.ok((await drawing).ok);
+  });
+
+  test("diagram_annotate cannot mark a replacement while reopening the panel", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(
+      (await panel.render({ ...flowchart, source: flowchart.source as string }, "tool")).ok,
+    );
+    webview.panel.dispose();
+    const reopened = new FakeWebview();
+    reopened.answer = undefined;
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    const marking = invokeTool(new AnnotateDiagramTool(panel), { marks: ["A"] });
+    await reopened.receive({ type: "ready" });
+    const replacement = panel.render(
+      { language: "mermaid", source: "flowchart LR\n  A[Another node] --> C", title: "Other" },
+      "tool",
+    );
+    assert.match(await marking, /^Nothing was marked: the diagram changed.*diagram_getState/);
+    assert.ok(!reopened.sent.some((message) => message.type === "annotate"));
+    await reopened.finishRender();
+    assert.ok((await replacement).ok);
+  });
+
+  test("diagram_annotate cancellation during reopening leaves marks untouched", async () => {
+    const { panel, webview } = await newFakePanel();
+    assert.ok(
+      (await panel.render({ ...flowchart, source: flowchart.source as string }, "tool")).ok,
+    );
+    webview.panel.dispose();
+    const reopened = new FakeWebview();
+    reopened.answer = undefined;
+    replace(vscode.window, "createWebviewPanel", () => reopened.panel);
+    const cancellation = cancellationSource();
+    const marking = invokeTool(
+      new AnnotateDiagramTool(panel),
+      { marks: ["A"] },
+      cancellation.token,
+    );
+    await reopened.receive({ type: "ready" });
+    cancellation.cancel();
+    await assert.rejects(marking, vscode.CancellationError);
+    await reopened.finishRender();
+    assert.ok(!reopened.sent.some((message) => message.type === "annotate"));
+    assert.doesNotMatch(panel.describeForModel() ?? "", /Marked nodes/);
+  });
+
   test("tools report malformed input without throwing during preparation", async () => {
     for (const tool of [
       new RenderDiagramTool(panel),
