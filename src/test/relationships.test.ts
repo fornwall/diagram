@@ -51,8 +51,14 @@ suite("relationships", function () {
   const highlightPath = async (from: string, to: string) => {
     await click(node(from));
     await click(node(to), true);
-    if (await evaluate('document.querySelector("#highlight-path").hidden')) return false;
-    await click("#highlight-path");
+    if (
+      !(await evaluate(
+        'JSON.parse(document.body.dataset.vscodeContext)["diagram.canHighlightPath"]',
+      ))
+    )
+      return false;
+    page.panel.highlightPath();
+    await evaluate("0");
     return true;
   };
 
@@ -207,22 +213,24 @@ suite("relationships", function () {
     assert.deepStrictEqual(selectedIds(), [id]);
   });
 
-  test("highlights the shortest path from the first selected node to the second, or says there is none", async () => {
+  test("highlights the shortest path from the first selected node to the second, only when one exists", async () => {
     await draw({
       source:
         "flowchart LR\n A first@--> B\n A second@--> C\n B third@--> D\n C fourth@--> D\n B cycle@--> A\n E[Isolated]",
     });
     await click(node("A"));
     await click(node("D"), true);
-    assert.strictEqual(await evaluate('document.querySelector("#highlight-path").disabled'), false);
-    await click("#highlight-path");
+    assert.strictEqual(
+      await evaluate('JSON.parse(document.body.dataset.vscodeContext)["diagram.canHighlightPath"]'),
+      true,
+    );
+    page.panel.highlightPath();
+    await evaluate("0");
     assert.deepStrictEqual(selectedIds(), ["A", "edge:first", "B", "edge:third", "D"]);
     assert.match(await selectionLabel(), /shortest path.*2 edges/);
-    assert.ok(await highlightPath("D", "A"));
+    assert.strictEqual(await highlightPath("D", "A"), false);
     assert.deepStrictEqual(selectedIds(), ["D", "A"]);
-    assert.match(await selectionLabel(), /No path from D to A/);
-    assert.ok(await highlightPath("A", "E"));
-    assert.match(await selectionLabel(), /No path/);
+    assert.strictEqual(await highlightPath("A", "E"), false);
   });
 
   test("highlights paths in swimlane, agent flow, ELK flowchart and state diagrams, but not in class diagrams", async () => {
@@ -319,8 +327,7 @@ suite("relationships", function () {
       await evaluate('document.querySelectorAll(".diagram-relationship[tabindex]").length'),
       2,
     );
-    assert.ok(await highlightPath("C", "D"));
-    assert.match(await selectionLabel(), /No path/);
+    assert.strictEqual(await highlightPath("C", "D"), false);
   });
 
   test("keeps the start and the destination of a path in the selection that a coloring keeps", async () => {
@@ -335,7 +342,8 @@ suite("relationships", function () {
     );
     await within(() => selection.length === 2);
     assert.deepStrictEqual(selectedIds(), ["C", "A"]);
-    await click("#highlight-path");
+    page.panel.highlightPath();
+    await evaluate("0");
     assert.deepStrictEqual(selectedIds(), ["C", "edge:L_C_A_0", "A"]);
   });
 

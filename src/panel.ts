@@ -1151,6 +1151,20 @@ export class DiagramPanel implements vscode.Disposable {
     return { ...outcome, summary };
   }
 
+  /** Highlights the shortest path between the two nodes selected in the page, if any. */
+  highlightPath(): void {
+    this.post({ type: "highlightPath" });
+  }
+
+  /** Clears the user's selection and any marks or dimming an agent added. */
+  clearSelection(): void {
+    if (this.pendingPick) return;
+    this.selection = [];
+    this.annotation = undefined;
+    this.post({ type: "clearSelection" });
+    this.post({ type: "annotate", marks: [], dim: false });
+  }
+
   /** Shows or hides Chart Options. Opening them never reads a file or runs a command. */
   toggleChartOptions(): void {
     if (!this.state?.chart) {

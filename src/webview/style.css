@@ -349,17 +349,6 @@ body:has(#panes.view-source) :is(#zoom, #drag-out) {
   overflow: hidden;
 }
 
-/* A short panel leaves out the hint about clicking the drawing, for the drawing's sake. */
-@media (max-height: 300px) {
-  #selection-label.hint {
-    display: none;
-  }
-
-  #selection {
-    min-height: 0;
-  }
-}
-
 #editor {
   display: flex;
   flex-direction: column;
@@ -626,7 +615,8 @@ select:focus {
   opacity: 0.35;
 }
 
-/* The actions go below a hint or selection too long to share its line with them. */
+/* Reserve one status line so selections and export messages do not resize the drawing. The clear
+   action goes below a selection too long to share its line. */
 #selection {
   display: flex;
   flex-wrap: wrap;
@@ -641,12 +631,6 @@ select:focus {
   max-height: 4.5em;
   overflow: auto;
   overflow-wrap: anywhere;
-}
-
-/* The source view shows no drawing to click, which the hint is about, and so to select the ends of
-   a path in. Still taking their space, so that the footer keeps its height across views. */
-#panes.view-source ~ footer :is(#selection-label.hint, #selection-label.hint ~ #highlight-path) {
-  visibility: hidden;
 }
 
 /* The selection's actions keep to one line each. */

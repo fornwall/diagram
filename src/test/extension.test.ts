@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
-import { diagramExtension } from "./afterTest";
+import { diagramExtension, recordMessages } from "./afterTest";
 import { toolText } from "./toolText";
 
 async function invoke(name: string, input: object): Promise<string> {
@@ -66,6 +66,20 @@ suite("extension", function () {
     for (const { command } of Object.values(menus).flat()) {
       assert.ok(declared.includes(command), command);
     }
+  });
+
+  test("opens Help as a brief modal guide", async () => {
+    let options: unknown;
+    const messages = recordMessages("showInformationMessage", (_message, given) => {
+      options = given;
+    });
+    await vscode.commands.executeCommand("diagram.help");
+    assert.deepStrictEqual(messages, ["@diagram Help"]);
+    assert.ok(options && typeof options === "object" && "modal" in options && options.modal);
+    assert.ok("detail" in options && typeof options.detail === "string");
+    assert.match(options.detail, /Ctrl\/Cmd\/Shift\+click/);
+    assert.match(options.detail, /Highlight Path/);
+    assert.match(options.detail, /Clear Selection.*agent highlights/);
   });
 
   test("loads without formatting a number, which first loads locale data", () => {

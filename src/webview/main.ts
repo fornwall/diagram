@@ -48,8 +48,8 @@ const panes = element("panes");
 const splitter = element("splitter");
 const canvas = element("canvas");
 const diagram = element("diagram");
+const selectionStatus = element("selection");
 const selectionLabel = element("selection-label");
-const highlightPathButton = element<HTMLButtonElement>("highlight-path");
 const clearSelectionButton = element<HTMLButtonElement>("clear-selection");
 const askForm = element<HTMLFormElement>("ask-form");
 const askInput = element<HTMLInputElement>("ask-input");
@@ -119,6 +119,7 @@ let clickPrompt: string | undefined;
 /** Code links by node id. */
 let links = new Map<string, string>();
 let pick: { id: number; multiple: boolean } | undefined;
+let hasMarks = false;
 
 // Rendering.
 
@@ -260,15 +261,18 @@ async function render(message: RenderMessage): Promise<void> {
   const focused = canvas.contains(document.activeElement)
     ? (document.activeElement as HTMLElement | SVGElement)
     : undefined;
+  const focusedSelection = selectionStatus.contains(document.activeElement);
   if (active !== renderer) {
     active?.hide();
     active = undefined;
   }
   // Before rendering, which measures the canvas: the first diagram shows the views, which make the
-  // header taller, and the footer of a chart can be lower than that of the diagram before it.
+  // header taller, and the new drawing starts without a selection in the footer.
   updateToolbar();
-  prepareFooter(renderer);
+  selectionLabel.textContent = "";
+  clearSelectionButton.hidden = true;
   canvas.setAttribute("aria-busy", "true");
+  updateMenuContext();
   errorElement.hidden = true;
   // Only for a slow render, over the top of the drawing: a quick one would flash it.
   const statusTimer = setTimeout(() => {
@@ -319,7 +323,9 @@ async function render(message: RenderMessage): Promise<void> {
     // only for Mermaid; it also has it from a control that the new drawing hid, such as a zoom
     // button.
     const lost = document.activeElement === document.body || document.activeElement === canvas;
-    if ((focused || document.activeElement === canvas) && lost && document.hasFocus()) {
+    if (focusedSelection && lost && document.hasFocus()) {
+      focusContent();
+    } else if ((focused || document.activeElement === canvas) && lost && document.hasFocus()) {
       const id = focused?.getAttribute("data-diagram-id");
       const node =
         id && canvas.querySelector<SVGElement>(`[data-diagram-id="${CSS.escape(id)}"][tabindex]`);
@@ -478,6 +484,9 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
     case "clearSelection":
       clearSelection();
       break;
+    case "highlightPath":
+      highlightPath();
+      break;
     case "annotate": {
       // In the render queue, so that marks sent right after a diagram land on that diagram.
       const revision = renderRevision;
@@ -524,35 +533,36 @@ themeObserver.observe(document.documentElement, { attributes: true, attributeFil
 
 function updateSelectionUi(): void {
   active?.showSelection(new Set(selection.keys()));
-  const { noun, itemNoun } = current?.renderer ?? { noun: "diagram", itemNoun: "node" };
+  const noun = current?.renderer.noun ?? "diagram";
   const labels = Array.from(selection.values(), (node) => `“${node.label}”`);
-  selectionLabel.textContent =
-    labels.length > 0 ? `Selected: ${labels.join(", ")}` : hint(active, itemNoun);
-  // The source view hides a hint about clicking the drawing, as it does not show the drawing.
-  selectionLabel.classList.toggle("hint", labels.length === 0);
+  selectionLabel.textContent = labels.length > 0 ? `Selected: ${labels.join(", ")}` : "";
   clearSelectionButton.hidden = labels.length === 0 || pick !== undefined;
-  highlightPathButton.hidden =
-    !active?.supportsPaths || pick !== undefined || nothingToClick(active);
-  const endpoints = Array.from(selection.values());
-  highlightPathButton.disabled =
-    endpoints.length !== 2 || endpoints.some((node) => node.relationship);
-  highlightPathButton.title = highlightPathButton.disabled
-    ? "Select two nodes, first the start and then the destination"
-    : `Highlight the shortest path from ${endpoints[0]?.label} to ${endpoints[1]?.label}`;
+  updateMenuContext();
   pickDoneButton.disabled = labels.length === 0;
   askInput.placeholder =
     labels.length > 0 ? "Ask about or change the selection…" : `Ask about or change the ${noun}…`;
 }
 
-highlightPathButton.addEventListener("click", () => {
-  // Enabled only for two selected nodes.
+/** The path action is available only for two nodes connected in selection order. */
+function selectedPath(): DiagramNode[] | undefined {
+  if (canvas.getAttribute("aria-busy") === "true") return;
   const [from, to] = selection.values();
-  if (!from || !to) return;
-  const path = active?.findPath?.(from.id, to.id);
-  if (!path) {
-    transientHint(`No path from ${from.label} to ${to.label} following the arrows.`);
-    return;
-  }
+  if (pick || selection.size !== 2 || !from || !to || from.relationship || to.relationship) return;
+  return active?.supportsPaths ? active.findPath?.(from.id, to.id) : undefined;
+}
+
+function updateMenuContext(): void {
+  document.body.dataset.vscodeContext = JSON.stringify({
+    "diagram.canHighlightPath": selectedPath() !== undefined,
+    "diagram.canClearSelection": !pick && (selection.size > 0 || hasMarks),
+  });
+}
+
+function highlightPath(): void {
+  // Check again: the selection or drawing may have changed since the menu opened.
+  const path = selectedPath();
+  const [from, to] = selection.values();
+  if (!from || !to || !path) return;
   selection.clear();
   for (const node of path) selection.set(node.id, node);
   selectionChanged();
@@ -560,49 +570,7 @@ highlightPathButton.addEventListener("click", () => {
   transientHint(
     `Highlighted the shortest path from ${from.label} to ${to.label} (${path.filter((node) => node.relationship).length} edges).`,
   );
-});
-
-/** What the footer says about clicking the drawing of the renderer that shows one, if any. */
-function hint(renderer: Renderer | undefined, noun: string): string {
-  if (pick) {
-    return pick.multiple
-      ? `Click ${noun}s to pick them, then press Done.`
-      : `Click a ${noun} to pick it.`;
-  }
-  // Without a drawing, as before the first or after an error, there is nothing to click.
-  if (!renderer || nothingToClick(renderer)) return "";
-  const orSelect = `(Ctrl/Cmd/Shift+click to select ${noun}s)`;
-  if (links.size > 0 || renderer.hasWebLinks) {
-    const open = renderer.hasWebLinks ? "open its link" : "open its code";
-    return clickPrompt
-      ? `Click a linked ${noun} to ${open}, any other to ask about it in chat ${orSelect}.`
-      : `Click a linked ${noun} to ${open} ${orSelect}.`;
-  }
-  if (clickPrompt) {
-    return `Click a ${noun} to ask about it in chat ${orSelect}.`;
-  }
-  const parts = renderer.drawnNodes?.().some((node) => node.relationship)
-    ? "nodes or relationships"
-    : `${noun}s`;
-  return `Click ${parts} to select them (Ctrl/Cmd/Shift+click for several).`;
 }
-
-/**
- * Lays the footer out as it will be for the renderer's next drawing, which is drawn without a
- * selection, before the renderer draws it: a chart lays itself out for the height it has, and
- * would be laid out again, and checked again, once the footer that the drawing before it had,
- * such as a flowchart's taller one, makes room for it.
- */
-function prepareFooter(renderer: Renderer): void {
-  selectionLabel.textContent = hint(renderer, renderer.itemNoun);
-  selectionLabel.classList.add("hint");
-  clearSelectionButton.hidden = true;
-  highlightPathButton.hidden =
-    !renderer.supportsPaths || pick !== undefined || nothingToClick(renderer);
-}
-
-/** Whether the drawing has no parts to click, as a flowchart without nodes, unlike a chart. */
-const nothingToClick = (renderer: Renderer | undefined) => renderer?.drawnNodes?.().length === 0;
 
 function selectionChanged(): void {
   forgetDragImage();
@@ -712,6 +680,8 @@ for (const type of ["click", "auxclick"] as const) {
 
 function showAnnotation(next: Annotation): void {
   active?.showMarks(next);
+  hasMarks = next.marks.length > 0 || next.dim;
+  updateMenuContext();
   // An image prepared for a drag was made without these marks; a chart draws them into its SVG.
   forgetDragImage();
 }
@@ -905,7 +875,6 @@ function imageBackground(): string {
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 function transientHint(text: string): void {
   selectionLabel.textContent = text;
-  selectionLabel.classList.remove("hint");
   clearTimeout(hintTimer);
   hintTimer = setTimeout(updateSelectionUi, 4000);
 }

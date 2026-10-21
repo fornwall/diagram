@@ -1915,7 +1915,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     })()`);
     assert.deepStrictEqual(shown, {
       tooltips: ["Open https://example.com/docs?page=2", "Open mailto:docs@example.com", null],
-      hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
+      hint: "",
       selected: ["A", "B"],
       picked: true,
     });
@@ -2024,7 +2024,7 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
         // Without a serial comma, as other lists of words.
         "Open Wiki, Repo or Docs",
       ],
-      hint: "Click a linked node to open its link (Ctrl/Cmd/Shift+click to select nodes).",
+      hint: "",
       selected: ["Bob"],
       menuAfterSelecting: false,
       menu: {

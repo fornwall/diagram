@@ -14,7 +14,9 @@ Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model tha
 | --- | --- |
 | Select | Click a node, edge, sequence message or chart item. Ctrl/Cmd+click or Shift+click toggles it in the selection. A plain click follows an item's link or click prompt, if set, and zooms into treemap and sunburst items. |
 | Keyboard | Tab to the drawing; arrows move, Home/End move to first/last, and Enter/Space clicks. Ctrl/Cmd or Shift toggles selection. H hides the focused series or pie slice; Shift+H restores all. Escape closes menus, Chart Options and the data view. |
-| Highlight a path | Select a start and destination, then **Highlight Path** in a flowchart, swimlane, agent flow or state diagram. It selects a shortest path, follows arrows, traverses plain lines and double arrows both ways, skips invisible links and breaks ties by source order. |
+| Highlight a path | Select a start and destination, then right-click and choose **Highlight Path** in a flowchart, swimlane, agent flow or state diagram. Available when a path connects the two nodes. It selects a shortest path, follows arrows, traverses plain lines and double arrows both ways, skips invisible links and breaks ties by source order. |
+| Clear selections and highlights | Right-click and choose **Clear Selection** to remove selected items, agent highlights and dimming. |
+| Help | Right-click and choose **Help** for a brief guide to the extension. |
 | Ask | Type a question or change and press **Send to chat**. The request includes your selection and goes to `@diagram`, or to chat without a mention if another agent drew the diagram. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
 | Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. Applied edits are included in the next chat request. |

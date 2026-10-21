@@ -216,6 +216,7 @@ export type ToWebview =
   /** The bound document's display name, as the document was renamed. */
   | { type: "writeTo"; writeTo: string }
   | { type: "clearSelection" }
+  | { type: "highlightPath" }
   /** Replace marks without redrawing; empty marks clear them. */
   | ({ type: "annotate" } & Annotation)
   /** Asks the user to click nodes until the pick is answered or ended. */

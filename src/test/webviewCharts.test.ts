@@ -462,11 +462,7 @@ suite("ECharts in the webview", function () {
         // As far as ECharts takes for a click, and further, which it does not.
         return [await click(3), await click(4), await click(10)];
       })()`),
-      [
-        "Selected: “A”",
-        "Selected: “A”",
-        "Click chart items to select them (Ctrl/Cmd/Shift+click for several).",
-      ],
+      ["Selected: “A”", "Selected: “A”", ""],
     );
   });
 
@@ -552,7 +548,7 @@ suite("ECharts in the webview", function () {
       })()`);
     }
     const selected = "Selected: “A”";
-    const empty = "Click chart items to select them (Ctrl/Cmd/Shift+click for several).";
+    const empty = "";
     assert.deepStrictEqual(shown, {
       treemap: { selected, breadcrumb: selected, root: selected, empty },
       sunburst: { selected, root: selected, drilledUp: true, empty },
@@ -1197,7 +1193,7 @@ suite("ECharts in the webview", function () {
       {
         fitted: [true, true],
         moved: ["", "", false],
-        selected: "Click chart items to select them (Ctrl/Cmd/Shift+click for several).",
+        selected: "",
         closed: true,
         handled: true,
         focused: true,

@@ -103,7 +103,6 @@ export function loadWebview(webview: vscode.Webview, extensionUri: vscode.Uri): 
   <footer>
     <div id="selection">
       <span id="selection-label" role="status"></span>
-      <button id="highlight-path" class="link" hidden>Highlight Path</button>
       <button id="clear-selection" class="link" hidden>Clear</button>
     </div>
     <form id="ask-form">

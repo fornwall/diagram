@@ -22,7 +22,7 @@ Follow-ups change the current diagram. `/new` starts another, `/explain` discuss
 - **Select** nodes, edges, sequence messages or chart items by clicking; Ctrl/Cmd+click or Shift+click adds to the selection. For keyboard selection, Tab to the drawing, move with the arrow keys and press Enter or Space.
 - **Ask**: type a question or change and press **Send to chat**. The request includes your selection.
 - **Edit** the source in split view and press **Apply** (Ctrl/Cmd+Enter). Applied edits are included in the next chat request.
-- **Highlight Path** between two selected nodes of a flowchart or state diagram.
+- Right-click for **Highlight Path** when two selected nodes have a path between them in a flowchart or state diagram, **Clear Selection** to remove selections and agent highlights, or **Help** for a brief guide.
 - **Find** text with Ctrl/Cmd+F, **zoom and pan** Mermaid diagrams, and open nodes linked to files or URLs.
 - **Chart Options** (the gear in the title bar) reconfigures a chart made from data; **Refresh** reloads its file or command.
 - **Export** PNG, SVG or an offline interactive HTML chart, or drag the picture handle into another app.

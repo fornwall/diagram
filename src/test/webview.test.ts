@@ -181,41 +181,22 @@ suite("webview", function () {
     await draw({ source: MERMAID["flowchart-v2"] });
   });
 
-  test("hints at clicking the drawing only while one is shown", async () => {
-    assert.ok(!(await render({ source: "flowchart LR\n A -->" })).ok);
-    const failed = await evaluate(`document.getElementById("selection-label").textContent`);
-    await draw({ source: MERMAID["flowchart-v2"] });
-    assert.deepStrictEqual(
-      await evaluate(`(() => {
-        const shown = (id) => getComputedStyle(document.getElementById(id)).visibility === "visible";
-        const footer = document.querySelector("footer");
-        const state = () => ({hint: shown("selection-label"), path: shown("highlight-path"),
-          height: footer.getBoundingClientRect().height});
-        const drawn = state();
-        document.getElementById("view-source").click();
-        const source = state();
-        document.getElementById("view-split").click();
-        const split = state();
-        document.getElementById("view-visual").click();
-        return {hinted: document.getElementById("selection-label").textContent.startsWith("Click"),
-          drawn: {hint: drawn.hint, path: drawn.path}, split: {hint: split.hint, path: split.path},
-          source: {hint: source.hint, path: source.path, sameHeight: source.height === drawn.height}};
-      })()`),
-      {
-        hinted: true,
-        drawn: { hint: true, path: true },
-        split: { hint: true, path: true },
-        source: { hint: false, path: false, sameHeight: true },
-      },
-    );
-    assert.strictEqual(failed, "");
-    // Nor for a drawing without nodes, which has nothing to click.
-    await draw({ source: "flowchart TD" });
-    assert.deepStrictEqual(
-      await evaluate(`({hint: document.getElementById("selection-label").textContent,
-        path: document.getElementById("highlight-path").hidden})`),
-      { hint: "", path: true },
-    );
+  test("leaves out idle instructions and path controls in every view", async () => {
+    for (const source of ["flowchart LR\n A -->", MERMAID["flowchart-v2"], "flowchart TD"]) {
+      await render({ source });
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          const states = ["visual", "source", "split"].map(view => {
+            document.getElementById("view-" + view).click();
+            return document.getElementById("selection-label").textContent === "" &&
+              !document.getElementById("highlight-path");
+          });
+          document.getElementById("view-visual").click();
+          return states;
+        })()`),
+        [true, true, true],
+      );
+    }
   });
 
   test("hides the drawing's actions in the source view, keeping the header's layout", async () => {
@@ -264,24 +245,35 @@ suite("webview", function () {
     );
   });
 
-  test("shows why an action is disabled on hover, for each kind of diagram that has it", async () => {
+  test("offers path highlighting only for two connected nodes, outside agent picks", async () => {
     for (const source of [
-      MERMAID["flowchart-v2"],
-      "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Busy",
+      "flowchart LR\n A --> B\n C[Isolated]",
+      "stateDiagram-v2\n A --> B\n B --> C",
+      "classDiagram\n A --> B\n class C",
     ]) {
       await draw({ source });
       assert.deepStrictEqual(
-        await evaluate(`(() => {
-          const button = document.getElementById("highlight-path");
-          return {shown: !button.hidden, disabled: button.disabled, title: button.title,
-            hoverable: getComputedStyle(button).pointerEvents !== "none"};
+        await evaluate(`(async () => {
+          ${UNTIL}
+          const available = () => JSON.parse(document.body.dataset.vscodeContext)["diagram.canHighlightPath"];
+          const click = id => {
+            const node = document.querySelector('[data-diagram-id="' + id + '"][tabindex]');
+            if (!node) throw new Error("Missing node " + id + " in " + ${JSON.stringify(source)});
+            node.dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}));
+          };
+          const states = [available()];
+          click("A"); states.push(available());
+          click("B"); states.push(available());
+          click("C"); states.push(available());
+          click("C");
+          receive({type: "startPick", pickId: 90001, prompt: "Pick nodes", multiple: true});
+          await until(() => !document.getElementById("pick").hidden, "the pick");
+          click("A"); click("B"); states.push(available());
+          receive({type: "endPick", pickId: 90001});
+          await until(() => document.getElementById("pick").hidden, "the end of the pick");
+          return states;
         })()`),
-        {
-          shown: true,
-          disabled: true,
-          title: "Select two nodes, first the start and then the destination",
-          hoverable: true,
-        },
+        [false, false, !source.startsWith("classDiagram"), false, false],
         source,
       );
     }
@@ -465,12 +457,17 @@ suite("webview", function () {
     );
   });
 
-  test("keeps the selection's actions on one line, below the hint in a narrow panel", async () => {
-    await draw({ source: MERMAID["flowchart-v2"] });
+  test("keeps the clear action on one line below a long selection in a narrow panel", async () => {
+    await draw({
+      source:
+        "flowchart LR\n A[A long selected node label that will not fit beside the clear action] --> B",
+    });
     assert.deepStrictEqual(
       await evaluate(`(() => {
         const footer = document.querySelector("footer");
-        const button = document.getElementById("highlight-path");
+        document.querySelector("#diagram .diagram-node[tabindex]")
+          .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        const button = document.getElementById("clear-selection");
         const height = () => button.getBoundingClientRect().height;
         const wide = height();
         footer.style.width = "320px";
@@ -527,6 +524,45 @@ suite("webview", function () {
       chat.requests.map((request) => request.query),
       ["Regarding the diagram: From the button", "Regarding the diagram: From Enter"],
     );
+  });
+
+  test("clears selections and agent highlights from the context menu, including host state", async () => {
+    for (const diagram of [
+      { source: "flowchart LR\n A --> B" },
+      {
+        language: "echarts" as const,
+        source:
+          '{"series":[{"type":"pie","data":[{"name":"A","value":1},{"name":"B","value":2}]}]}',
+      },
+    ]) {
+      await draw(diagram);
+      const available =
+        'JSON.parse(document.body.dataset.vscodeContext)["diagram.canClearSelection"]';
+      assert.strictEqual(await evaluate(available), false);
+      assert.ok(page.panel.annotate({ marks: [{ id: "A", kind: "current" }], dim: true }).ok);
+      await evaluate(`(async () => {
+        ${UNTIL}
+        await until(() => ${available}, "the clear action for agent highlights");
+        document.querySelector('#diagram [data-diagram-id="B"][tabindex]')
+          ?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      })()`);
+      page.panel.clearSelection();
+      await evaluate(`(async () => {
+        ${UNTIL}
+        await until(() => !(${available}), "cleared highlights and selection");
+      })()`);
+      assert.deepStrictEqual(
+        await evaluate(`({
+          selected: !!document.querySelector(".diagram-selected"),
+          marked: !!document.querySelector(".diagram-marked, .dim-unmarked"),
+          footerEmpty: document.getElementById("selection-label").textContent === "",
+        })`),
+        { selected: false, marked: false, footerEmpty: true },
+      );
+      const described = page.panel.describeForModel() ?? "";
+      assert.doesNotMatch(described, /Marked (nodes|items):/);
+      assert.match(described, /The user has no .* selected in the panel\./);
+    }
   });
 
   test("returns keyboard focus to visible content after clearing the selection", async () => {
@@ -603,9 +639,7 @@ suite("webview", function () {
             .dispatchEvent(new MouseEvent("click", {bubbles: true, ctrlKey: true}));
         }
         document.getElementById("view-source").click();
-        const button = document.getElementById("highlight-path");
-        button.focus();
-        button.click();
+        receive({type: "highlightPath"});
         try {
           return document.activeElement.id;
         } finally {

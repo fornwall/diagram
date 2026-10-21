@@ -1072,6 +1072,21 @@
         "category": "Diagram",
         "icon": "$(gear)",
         "enablement": "diagram.chartOptionsAvailable"
+      },
+      {
+        "command": "diagram.highlightPath",
+        "title": "Highlight Path",
+        "category": "Diagram"
+      },
+      {
+        "command": "diagram.clearSelection",
+        "title": "Clear Selection",
+        "category": "Diagram"
+      },
+      {
+        "command": "diagram.help",
+        "title": "Help",
+        "category": "Diagram"
       }
     ],
     "menus": {
@@ -1083,6 +1098,14 @@
         {
           "command": "diagram.export",
           "when": "diagram.hasDiagram"
+        },
+        {
+          "command": "diagram.highlightPath",
+          "when": "false"
+        },
+        {
+          "command": "diagram.clearSelection",
+          "when": "false"
         }
       ],
       "editor/context": [
@@ -1106,9 +1129,24 @@
       ],
       "webview/context": [
         {
+          "command": "diagram.highlightPath",
+          "when": "webviewId == diagram.panel && webviewSection == drawing && diagram.canHighlightPath",
+          "group": "0_selection@1"
+        },
+        {
+          "command": "diagram.clearSelection",
+          "when": "webviewId == diagram.panel && diagram.canClearSelection",
+          "group": "0_selection@2"
+        },
+        {
           "command": "diagram.export",
           "when": "webviewId == diagram.panel && webviewSection == drawing && diagram.hasDiagram",
           "group": "1_export"
+        },
+        {
+          "command": "diagram.help",
+          "when": "webviewId == diagram.panel",
+          "group": "9_help"
         }
       ]
     },
