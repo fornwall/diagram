@@ -1,6 +1,8 @@
 # Tools for agents
 
-Any chat agent can use these tools. `@diagram` includes them when its model supports tool calls; attach a `#` reference to call that tool first. `/explain` permits only tools that read the diagram, workspace or guide.
+These tools are available to chat agents in VS Code. `@diagram` includes them when its model supports tool calls; attach a `#` reference to call that tool first. `/explain` permits only tools that read the diagram, workspace or guide.
+
+Complete input schemas are declared in [`package.json`](../package.json) under `contributes.languageModelTools`.
 
 | Tool | Reference | Purpose |
 | --- | --- | --- |

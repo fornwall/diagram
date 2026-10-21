@@ -249,16 +249,6 @@ function inspectionReport(
   return { rows: sample.length, columns: columns.length, startColumn, render };
 }
 
-/** Bounded, structured evidence about parsing; string values are data, never instructions. */
-export function inspectTable(
-  table: DataTable,
-  sampleRows: number,
-  page: InspectionPage = {},
-): string {
-  const report = boundedInspection(table, sampleRows, page);
-  return report.render(report.rows, report.columns);
-}
-
 function boundedInspection(
   table: DataTable,
   sampleRows: number,

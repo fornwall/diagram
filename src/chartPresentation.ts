@@ -16,18 +16,15 @@ interface Edit {
   append?: boolean;
 }
 
-/** What an edit was made to, which tells whether it applies to another chart. */
+/** Identifies the component an edit belongs to across chart rebuilds. */
 interface EditTarget {
-  /** Its component in the chart it was made to: an array of panels, an object, or none. */
+  /** The component's original representation. */
   shape: "array" | "object" | "none";
-  /** The series or panel it was made to, by its id or name and its type, or by their number. */
+  /** Match by id or name when available; otherwise require the same item count. */
   item?: { key?: "id" | "name"; value?: unknown; type?: string; count: number } | undefined;
 }
 
-/**
- * An edit that did not apply to a chart it was carried to, kept for one it applies to again, or
- * that the chart shows already, kept for one that does not.
- */
+/** Preserve unapplied edits, including those already satisfied by the generated chart. */
 type KeptEdit = Edit & EditTarget & { shown?: boolean };
 
 /** Serializable, data-free baseline and manual styling changes, kept with the diagram. */
@@ -37,13 +34,12 @@ export interface ChartPresentation {
   edits: Edit[];
   blocked?: string | undefined;
   /**
-   * The type of each series of the baseline, which its styling may follow to a series of another
-   * type only if that is drawn alike. Styling saved without them follows any series of its name.
+   * Original series types restrict styling transfers to compatible types. Older saved state
+   * without this field matches series by name alone.
    */
   seriesTypes?: string[] | undefined;
   /**
-   * Edits that did not apply to the chart, as the color of a bar series to a pie, which come back
-   * when a chart has what they were made to again.
+   * Restore these when their targets return, such as switching from a pie back to a bar chart.
    */
   kept?: KeptEdit[] | undefined;
 }
@@ -65,10 +61,7 @@ const DATA_KEYS = new Set([
 ]);
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-/**
- * Whether a saved value is a presentation whose edits name properties, by keys that capturing one
- * allows, and array items.
- */
+/** Validate persisted presentation state before applying its edits. */
 export function isChartPresentation(value: unknown): value is ChartPresentation {
   return (
     isPlainObject(value) &&
@@ -96,7 +89,7 @@ export function isChartPresentation(value: unknown): value is ChartPresentation 
   );
 }
 
-/** Whether a saved edit names properties by keys that capturing one allows, and array items. */
+/** Edit paths may contain safe property names and nonnegative array indices. */
 function isEdit(edit: unknown): edit is Edit & ObjectOption {
   return (
     isPlainObject(edit) &&
@@ -128,16 +121,17 @@ function sorted(value: unknown): unknown {
 }
 
 /**
- * A value that is neither an array nor an object as JSON has it: -0 is 0, and infinities, NaN and
- * undefined are null. An option captured as an object, as a generated one is, then compares equal to
- * the same option captured from its source, rather than differing by edits that were never made.
+ * Normalize primitives as JSON does, so generated options compare equal to their parsed source.
+ * Object properties with undefined values are omitted separately in snapshot().
  */
 function jsonLeaf(value: unknown): unknown {
   if (typeof value === "number") return Number.isFinite(value) ? value + 0 : null;
   return value === undefined ? null : value;
 }
 
-function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: string } {
+function snapshot(
+  option: ObjectOption,
+): Pick<ChartPresentation, "baseline" | "dataHash" | "seriesTypes"> {
   const data: Record<string, unknown> = {};
   function visit(value: unknown, path: Path): unknown {
     if (Array.isArray(value)) {
@@ -188,10 +182,9 @@ function snapshot(option: ObjectOption): { baseline: ObjectOption; dataHash: str
   };
 }
 
-/** The series types drawn as one color each along axes, whose styling suits one another. */
+/** Series types that can share styling without changing the meaning of their colors. */
 const AXIS_SERIES = new Set(["bar", "line", "scatter", "effectScatter", "pictorialBar"]);
 
-/** Whether styling of a series of one type suits a series of another, as a bar's color a line. */
 function drawnAlike(before: string, after: unknown): boolean {
   return before === after || (AXIS_SERIES.has(before) && AXIS_SERIES.has(String(after)));
 }
@@ -289,10 +282,9 @@ function componentItems(option: ObjectOption, component: string): ObjectOption[]
 
 const SKIP = Symbol("skip");
 
-/** The components of facets, whose panels are told apart by id, and series by name too. */
+/** Facet components matched by id, with series names as a fallback. */
 const PANEL_COMPONENTS = ["series", "xAxis", "yAxis", "grid", "title"];
 
-/** What an edit of the baseline was made to. */
 function targetOf({ path }: Edit, presentation: ChartPresentation): EditTarget {
   const component = String(path[0]);
   const { baseline } = presentation;
@@ -318,10 +310,9 @@ function targetOf({ path }: Edit, presentation: ChartPresentation): EditTarget {
 }
 
 /**
- * A component as a user's object of it, which the baseline did not generate, joins what the chart
- * now generates: its properties add to a generated object, a title adds to the titles of facets,
- * and other panels are left as they are, as a single grid or axis would lay them over each other.
- * Undefined if the edit is to be applied as any other.
+ * Merge user-added components into newly generated ones. Titles append to facet titles;
+ * other objects cannot replace facet arrays, since that would overlap their axes or grids.
+ * Return undefined to use normal edit placement, or SKIP to preserve the edit for later.
  */
 function addedComponent(
   option: ObjectOption,
@@ -353,7 +344,7 @@ function merged(target: ObjectOption, value: ObjectOption): ObjectOption {
   return result;
 }
 
-/** Where in an option an edit applies, as its panel may have moved, or SKIP if it does not. */
+/** Locate a possibly moved component, or return SKIP if its target no longer matches. */
 function placed(option: ObjectOption, path: Path, { shape, item }: EditTarget): Path | typeof SKIP {
   const component = String(path[0]);
   // Type/facet changes can remove a component or switch between a single object and panels.
@@ -383,8 +374,8 @@ function placed(option: ObjectOption, path: Path, { shape, item }: EditTarget): 
 }
 
 /**
- * Applies the edits that were kept from earlier charts, and then the edits of the baseline, to a
- * generated option. Returns the edits that apply to neither, with what they were made to.
+ * Apply retained edits first, then current edits, to a generated option.
+ * Keep edits that cannot apply or are already satisfied by the generated values.
  */
 function applyEdits(
   option: ObjectOption,
@@ -438,10 +429,10 @@ function applyEdits(
   return { option: result, kept: newest(kept) };
 }
 
-/** The most edits kept for a chart that can use them, as of series that may never return. */
+/** Bound retained edits for components that may never return. */
 const MOST_KEPT = 100;
 
-/** The newest kept edit of each property of each target, and the newest of them all. */
+/** Keep the newest edit per target and property, up to MOST_KEPT. */
 function newest(kept: KeptEdit[]): KeptEdit[] {
   const seen = new Set<string>();
   const result: KeptEdit[] = [];
@@ -456,10 +447,9 @@ function newest(kept: KeptEdit[]): KeptEdit[] {
 }
 
 /**
- * Whether an edit would leave an option as it is, which the edits of the next baseline could not
- * tell: "shown" if the option is as the edit leaves it, removing what it does not have or setting
- * what it has already, or "waits" if the edit styles a component that it does not generate, as a
- * legend that the webview leaves out where it has nothing to tell. False if the edit changes it.
+ * "shown": the generated value already satisfies the edit; "waits": its component is absent.
+ * Both must be retained because the next baseline would otherwise lose the user's choice.
+ * Return false when the edit changes the option.
  */
 function changesNothing(option: ObjectOption, path: Path, edit: Edit): "shown" | "waits" | false {
   if (!edit.remove && path.length > 1 && option[String(path[0])] === undefined) return "waits";

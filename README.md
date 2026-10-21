@@ -16,10 +16,17 @@ To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Get started
 
-Open VS Code's Chat view and ask `@diagram` to draw, optionally attaching files with `#file` or images:
+Open VS Code's Chat view and try:
+
+```text
+@diagram draw a flowchart: request → validate → process; reject invalid requests
+```
+
+Select a node in the panel, then ask `@diagram /explain what could go wrong at this step?` The selection is included in the request.
+
+You can also attach files with `#file` or images, or chart a command's output:
 
 - `@diagram sequence diagram of the OAuth login flow in #file:src/auth.ts`
-- `@diagram add a retry path after the payment step`
 - `@diagram bar chart of commits per author from git shortlog -sn HEAD`
 - `@diagram treemap of du -ah src`
 - `@diagram histogram of request latency in #file:requests.csv, one panel per service`
@@ -56,9 +63,9 @@ Click **Open in Diagram** above the block, or run **Diagram: Open Diagram at Cur
 
 ## Charts from data
 
-`@diagram` can chart inline data, a file or a command's output. It reads CSV, TSV, JSON, JSON Lines, Markdown tables, database client output such as `psql` and `sqlite3`, and whitespace-separated output such as `du`, `ls -l`, `docker ps` or `kubectl`. It understands abbreviations such as `1.5K`, sizes such as `20 MiB` and durations such as `1h2m3s`.
+`@diagram` can chart inline data, a file or a command's output. It reads CSV, TSV, JSON, JSON Lines, Markdown tables and common terminal tables, including sizes such as `20 MiB` and durations such as `1h2m3s`.
 
-Chart types: pie, doughnut, bar, stacked bar, line, area, scatter, histogram, treemap, sunburst, sankey, heatmap, radar, box plot, gauge and funnel. Charts can filter, aggregate, sort and limit rows, and split into a panel per value of a column. For anything else, the model can write an ECharts option directly.
+Charts can filter, aggregate, sort and limit rows, and split into a panel per value of a column. See [chart data](docs/reference.md#chart-data) for formats, chart types and settings. For custom charts, the model can write an ECharts option directly.
 
 ## Tools for other agents
 

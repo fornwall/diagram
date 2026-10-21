@@ -1,5 +1,4 @@
-// What a chart's layout measures with: the size of the panel and the fonts of the chart's texts,
-// as ECharts measures them, and how the texts of an option are read.
+// Panel dimensions and text measurements used by chart layout.
 
 import { isPlainObject } from "../protocol";
 import type { ThemeColors } from "./colors";
@@ -23,21 +22,15 @@ export interface Area {
   height: number;
 }
 
-/** A font of chart text, and how wide it draws a text, as ECharts measures it. */
+/** ECharts uses different measurements for positioning text and wrapping it. */
 export interface Font {
-  /** As CSS, as "bold 12px sans-serif". */
+  /** CSS font, e.g. "bold 12px sans-serif". */
   css: string;
-  /** Its size in pixels, as tall as ECharts measures a line of it. */
+  /** Font size in pixels. */
   size: number;
-  /**
-   * The width of a text as drawn, as ECharts measures it to place it, to tell whether labels fit
-   * across an axis or a text within a width.
-   */
+  /** Drawn width; for multiline text, the width of the widest line. */
   width(text: string): number;
-  /**
-   * The width of a text as ECharts measures it to break it onto lines, or to tell where to cut it
-   * short: character by character, any but ASCII as wide as one of Chinese.
-   */
+  /** Wrapping width, using ECharts' per-character approximations. */
   breakWidth(text: string): number;
 }
 
@@ -46,19 +39,12 @@ export interface Size {
   height: number;
   /** Too small for a legend above the grid. */
   compact: boolean;
-  /**
-   * The font of the first of some text styles that sets each part of it, as its size and weight,
-   * or else of the chart's text, as ECharts makes the font of a text.
-   */
+  /** Resolve each font property from the first style that sets it, then the chart defaults. */
   font(...styles: JsonObject[]): Font;
-  /**
-   * The text style that the theme gives axis labels and names, legends and a radar's names, which
-   * ECharts takes over the option's text style: of the theme's font.
-   */
+  /** Component text defaults, which ECharts prefers over the option's global text style. */
   themed: JsonObject;
 }
 
-/** The size of the panel and the fonts of the chart's texts, for a layout to measure with. */
 export function layoutSize(context: LayoutContext, base: JsonObject): Size {
   const { width, height } = context;
   const compact = width < 560 || height < 340;
@@ -75,9 +61,10 @@ export function layoutSize(context: LayoutContext, base: JsonObject): Size {
   const font = (...styles: JsonObject[]): Font => {
     const part = (key: string) =>
       [...styles, chartStyle].map((style) => style[key]).find((value) => value != null);
-    // Of pixels, as a number or as "14px".
-    const fontSize = /^\d+(?:\.\d+)?(?:px)?$/.test(String(part("fontSize")).trim())
-      ? Number.parseFloat(String(part("fontSize")))
+    const specifiedSize = String(part("fontSize"));
+    // Accept numeric pixels and CSS pixel lengths, e.g. 14 or "14px".
+    const fontSize = /^\d+(?:\.\d+)?(?:px)?$/.test(specifiedSize.trim())
+      ? Number.parseFloat(specifiedSize)
       : context.colors.fontSize;
     const css = [part("fontStyle"), part("fontWeight"), `${fontSize}px`, part("fontFamily")]
       .filter((value) => value != null && value !== "")
@@ -85,7 +72,6 @@ export function layoutSize(context: LayoutContext, base: JsonObject): Size {
     return {
       css,
       size: fontSize,
-      // A text of several lines as wide as its widest, as ECharts draws it.
       width: (text) =>
         text.includes("\n")
           ? Math.max(...text.split("\n").map((line) => context.drawnWidth(line, css)))
@@ -104,16 +90,13 @@ export interface LayoutContext {
   title: string;
   colors: ThemeColors;
   reducedMotion: boolean;
-  /**
-   * The width of a text in a CSS font as ECharts measures it to break it onto lines, of the
-   * library that draws the chart.
-   */
+  /** ECharts' per-character width approximation for wrapping. */
   textWidth(text: string, font: string): number;
-  /** The width of a text in a CSS font as drawn, as the library that draws the chart measures it. */
+  /** ECharts' drawn width for positioning text. */
   drawnWidth(text: string, font: string): number;
 }
 
-/** The settings of a part of an option, as its "axisLabel" or a series' "label", if it is an object, else none. */
+/** Read a nested option such as axisLabel or label, falling back to an empty style. */
 export const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? style : {});
 
 /**
@@ -123,13 +106,12 @@ export const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? s
 export const entryText = (entry: unknown) =>
   String((isPlainObject(entry) ? (entry.name ?? entry.value) : entry) ?? "");
 
-/** The categories of an axis beyond which the layout reads only as many as it must. */
+/** Sample category labels when their count exceeds this threshold. */
 export const MAX_READ_CATEGORIES = 200;
 
 /**
- * The width of the widest category or legend entry (see {@link entryText}): of more than a few
- * hundred, the widest of an even sample of them, as ECharts reads the labels of a dense axis, and
- * of the longest, as measuring each would take long.
+ * Estimate the widest entry. For large datasets, measure an even sample plus the longest text
+ * to limit font measurements. Stop early once an entry exceeds every layout threshold.
  */
 export function widestText(
   entries: unknown,
@@ -139,8 +121,6 @@ export function widestText(
   if (!Array.isArray(entries)) {
     return 0;
   }
-  // Once the label exceeds every layout threshold, further entries cannot change the result.
-  // Dense axes and long legends often reach that point with their very first entry.
   const step = Math.ceil(entries.length / MAX_READ_CATEGORIES);
   let widest = 0;
   for (let index = 0; index < entries.length; index += step) {
@@ -170,29 +150,26 @@ export const pixels = (value: unknown, width: number): number | undefined =>
 export const axisType = (axis: JsonObject | undefined) =>
   axis?.type ?? (axis?.data ? "category" : "value");
 
-export const plainNumber = new Intl.NumberFormat("en-US", {
+const plainNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 20,
   useGrouping: false,
 });
 
-export const compactNumber = new Intl.NumberFormat("en-US", {
+const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 20,
 });
 
-/**
- * A number in full below 10,000, so that a year reads as "2015", and exactly in thousands,
- * millions, … from there, as "12.5K".
- */
+/** Keep numbers below 10,000 intact (including years); abbreviate larger values, e.g. "12.5K". */
 export const compactLabel = (value: unknown) =>
   typeof value !== "number"
     ? String(value)
     : (Math.abs(value) < 10_000 ? plainNumber : compactNumber).format(value);
 
-/** The height of a line of an axis label that goes onto several. */
+/** Line height for wrapped axis labels, in pixels. */
 export const LABEL_LINE_HEIGHT = 17;
 
-/** The texts of the categories of an axis, if strings and no more than a few hundred. */
+/** Return string category labels only when they fit within the measurement limit. */
 export function categoryTexts(data: unknown): string[] | undefined {
   if (!Array.isArray(data) || data.length > MAX_READ_CATEGORIES) return undefined;
   const texts = data.map((entry: unknown) => (isPlainObject(entry) ? entry.value : entry));
@@ -200,17 +177,13 @@ export function categoryTexts(data: unknown): string[] | undefined {
 }
 
 /**
- * The words of a text as ECharts breaks it onto lines between them: runs of letters of alphabets,
- * which end at a space and at some punctuation, and each other character on its own, as one of
- * Chinese, which it breaks between any two.
+ * Match ECharts' wrapping boundaries: supported alphabetic runs, then individual characters.
+ * This lets scripts such as Chinese wrap between any two characters.
  */
 export const WORDS =
   /[!-%'-+\-.0-:<->@-\\^-\u024f\u0370-\u10ff\u1200-\u13ff\u1e00-\u206f]+|[\s\S]/g;
 
-/**
- * The lines that ECharts breaks a text onto in a width, in a font: those it starts, and within
- * each, word by word, a word wider than a line across lines.
- */
+/** Count wrapped lines, splitting words that exceed the available width. */
 export function lineCount(text: string, room: number, width: (text: string) => number): number {
   let count = 0;
   for (const line of text.split("\n")) {
@@ -230,7 +203,7 @@ export function lineCount(text: string, room: number, width: (text: string) => n
   return count;
 }
 
-/** As much of the start of a text as fits in a width, in a font, but at least a character. */
+/** Return the prefix that fits, keeping at least one character for nonempty text. */
 export function startOf(text: string, room: number, width: (text: string) => number): string {
   let used = 0;
   for (let end = 0; end < text.length; end++) {

@@ -760,7 +760,7 @@ suite("tools", () => {
     const view = async () => {
       const result = await new GetDiagramImageTool(panel).invoke(
         { input: {}, toolInvocationToken: undefined },
-        new vscode.CancellationTokenSource().token,
+        cancellationSource().token,
       );
       const image = result.content[1];
       assert.ok(image instanceof vscode.LanguageModelDataPart, toolText(result));
@@ -977,7 +977,7 @@ suite("tools", () => {
     assert.ok((await panel.render({ language: "echarts", source: pie, title: "Pie" }, "tool")).ok);
     webview.answer = undefined;
     const tool = new GetDiagramImageTool(panel);
-    const token = new vscode.CancellationTokenSource().token;
+    const token = cancellationSource().token;
     const viewing = [1, 2].map(() =>
       tool.invoke({ input: {}, toolInvocationToken: undefined }, token),
     );

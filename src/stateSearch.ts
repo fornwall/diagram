@@ -2,7 +2,7 @@
 
 import { codeFence } from "./blocks";
 import type { DiagramLanguage } from "./protocol";
-import type { StateInput } from "./stateSource";
+import { fitSourceResponse, type StateInput } from "./stateSource";
 import { formatCount } from "./text";
 
 /**
@@ -83,23 +83,8 @@ export async function searchSource(
         : "End of matches.";
     return `${heading}\n\n${excerpts.join("\n\n")}\n\n${continuation} If the revision changes, restart the search before editing. Copy exact text from a block for diagram_edit.`;
   };
-  const complete = response(matches.length);
-  if (await fits(complete)) return complete;
-  let low = 1;
-  let high = matches.length - 1;
-  let fitting: string | undefined;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const text = response(middle);
-    if (await fits(text)) {
-      fitting = text;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
   return (
-    fitting ??
+    (await fitSourceResponse(1, matches.length, response, fits)) ??
     (await diagnostic(
       `Match ${start} at line ${matches[0]} does not fit the available result budget; no source was returned. ${context > 0 ? 'Retry with "contextLines": 0, or ' : "Use "}a larger tool result budget. Read a specific range with detail:"source" and startLine/endLine.`,
       `Match ${start} at line ${matches[0]} needs a larger result budget.`,

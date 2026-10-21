@@ -1,7 +1,7 @@
-// Loaded on the first chart. SVG supports sharp text and vector export, but not the canvas
-// renderer's progressive/large-data optimizations. Maps (no map data), the canvas renderer and
-// universal transitions are omitted to keep the bundle smaller, and the brush component, which
-// would add the toolbox's brush back to the chart that echartsLayout.ts takes it out of.
+// Loaded on the first chart. SVG gives sharp text and vector export but lacks canvas's
+// progressive/large-data optimizations. Omit maps (no map data), canvas and universal transitions
+// to reduce bundle size. Registering BrushComponent would restore the toolbox brush removed by
+// the panel's layout, so leave it out too.
 
 import {
   BarChart,
@@ -53,7 +53,7 @@ import {
 import { use } from "echarts/core";
 import { AxisBreak, LabelLayout, LegacyGridContainLabel, ScatterJitter } from "echarts/features";
 import { SVGRenderer } from "echarts/renderers";
-import { ensureFontMeasureInfo, getWidth, measureCharWidth } from "zrender/lib/contain/text.js";
+import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
 
 use([
   BarChart,
@@ -107,11 +107,12 @@ use([
 ]);
 
 export { init } from "echarts/core";
+/** ZRender's cached drawn-text measurement, used for positioning. */
+export { getWidth as drawnWidth } from "zrender/lib/contain/text.js";
 
 /**
- * The width of a text in a CSS font as ECharts measures it to break it onto lines: character by
- * character, any but ASCII as wide as one of Chinese. Of the library's own measures, which it
- * keeps for each font.
+ * Match ECharts' wrapping measurement, which approximates non-ASCII character widths.
+ * Use ZRender's per-font cache so layout and rendering agree.
  */
 export function textWidth(text: string, font: string): number {
   const measures = ensureFontMeasureInfo(font);
@@ -120,12 +121,4 @@ export function textWidth(text: string, font: string): number {
     sum += measureCharWidth(measures, text.charCodeAt(index));
   }
   return sum;
-}
-
-/**
- * The width of a text in a CSS font as drawn, as ECharts measures it to place it: of the
- * library's own measures, which it keeps for each font and text.
- */
-export function drawnWidth(text: string, font: string): number {
-  return getWidth(text, font);
 }

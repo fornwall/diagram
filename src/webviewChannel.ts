@@ -1,5 +1,4 @@
-// The diagram panel's webview tab: opening or taking it over, loading its page, and passing
-// messages between the page and the extension.
+// Owns the webview tab and validates messages sent to the extension host.
 
 import * as vscode from "vscode";
 import { errorMessage, type FromWebview, isFromWebview, type ToWebview } from "./protocol";
@@ -10,17 +9,13 @@ export class WebviewChannel implements vscode.Disposable {
 
   private panel: vscode.WebviewPanel | undefined;
   /**
-   * Messages sent before the page's "ready" are dropped, as the panel sends what the page needs
-   * once it is ready. Each load of the page is a new generation, also one that VS Code makes
-   * itself, as when the tab moves to another window, which only the page's "ready" tells.
+   * The panel replays state on "ready", so earlier messages can be dropped. Track generations
+   * to ignore delivery failures from old pages. VS Code can also reload a page itself, such as
+   * when its tab moves to another window; "ready" is the only notification in that case.
    */
   private ready = false;
   private generation = 0;
 
-  /**
-   * onMessage handles the validated messages of the page, and returns any work it starts;
-   * onClose runs when the tab closes.
-   */
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly onMessage: (message: FromWebview) => Promise<void> | undefined,
@@ -45,10 +40,8 @@ export class WebviewChannel implements vscode.Disposable {
       }
       return false;
     }
-    // After a window reload, VS Code restores a panel in a background tab only once the tab is
-    // shown. Replace such a tab rather than open a second one. Its view type is ours with a prefix,
-    // or, as the API says it should be and a later VS Code may give, ours alone; not one that only
-    // ends the same, such as "a.diagram.panel".
+    // VS Code restores background tabs lazily after a window reload. Replace an unrestored tab
+    // to avoid duplicates. Accept both the API's view type and VS Code's internal prefix.
     const viewTypes = [WebviewChannel.viewType, `mainThreadWebview-${WebviewChannel.viewType}`];
     const leftovers = vscode.window.tabGroups.all
       .flatMap((group) => group.tabs)
@@ -63,13 +56,11 @@ export class WebviewChannel implements vscode.Disposable {
         viewColumn: leftovers[0]?.group.viewColumn ?? vscode.ViewColumn.Beside,
         preserveFocus,
       },
-      // Keeps the webview while hidden behind another tab, so that it can still render and be
-      // asked to pick, and keeps its zoom and source editor. Ctrl/Cmd+F finds text in the drawing,
-      // SVG labels too, and the source.
+      // Hidden tabs must still answer render and pick requests, and retain zoom and source edits.
       { retainContextWhenHidden: true, enableFindWidget: true },
     );
     this.attach(panel);
-    // A tab that cannot be closed is only left over, as before.
+    // Failure to close an old tab does not prevent using the new one.
     vscode.window.tabGroups.close(leftovers, true).then(undefined, () => {});
     return true;
   }
@@ -95,15 +86,14 @@ export class WebviewChannel implements vscode.Disposable {
       if (message.type === "ready") {
         this.ready = true;
         this.generation++;
-        // Before what the panel sends the page on its ready, such as a render.
+        // Set visibility before onMessage replays the diagram.
         if (!panel.visible) this.postVisibility(panel);
       }
       return this.onMessage(message);
     });
-    // The page cannot tell that its tab is hidden: it keeps running, at the size of an empty frame.
+    // A hidden webview keeps running but has no usable viewport size.
     const viewStateListener = panel.onDidChangeViewState(() => this.postVisibility(panel));
-    // The page of an untrusted workspace cannot run JavaScript in chart options; reload it, to
-    // draw the current chart again, now with its code.
+    // Reload with the updated CSP so chart callbacks can run after the user grants trust.
     const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => this.load(panel));
     panel.onDidDispose(() => {
       messageListener.dispose();
@@ -126,9 +116,8 @@ export class WebviewChannel implements vscode.Disposable {
   }
 
   /**
-   * Sends the message to the page if it is ready, and resolves to why it did not arrive, unless
-   * the page was replaced or reloaded meanwhile: a reload replays requests with the same ids,
-   * which an older delivery must not cancel.
+   * Return a delivery error only if the same page is still active. Reloads replay requests with
+   * the same ids, so a stale failure must not cancel the new attempt.
    */
   async post(message: ToWebview): Promise<string | undefined> {
     const panel = this.panel;

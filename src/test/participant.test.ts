@@ -114,7 +114,7 @@ async function ask(
     history = [],
     maxInputTokens = 100_000,
     capabilities = {},
-    token = new vscode.CancellationTokenSource().token,
+    token = cancellationSource().token,
     ...overrides
   }: Partial<
     vscode.ChatRequest &
@@ -1102,9 +1102,7 @@ suite("participant", () => {
       ["diagram_updateChart", new UpdateChartTool(panel)],
     ]);
     replace(vscode.lm, "invokeTool", async (name, options, token) => {
-      const result = await tools
-        .get(name)
-        ?.invoke(options, token ?? new vscode.CancellationTokenSource().token);
+      const result = await tools.get(name)?.invoke(options, token ?? cancellationSource().token);
       return result ?? assert.fail(`Unexpected tool ${name}`);
     });
     const invocation = { input: chart, toolInvocationToken: undefined };
@@ -1139,7 +1137,7 @@ suite("participant", () => {
       assert.strictEqual(name, "diagram_style");
       return tool.invoke(
         options as vscode.LanguageModelToolInvocationOptions<never>,
-        token ?? new vscode.CancellationTokenSource().token,
+        token ?? cancellationSource().token,
       );
     });
     const source = "flowchart TD\n  A --> B";
@@ -1171,7 +1169,7 @@ suite("participant", () => {
       assert.strictEqual(name, "diagram_edit");
       return tool.invoke(
         options as vscode.LanguageModelToolInvocationOptions<never>,
-        token ?? new vscode.CancellationTokenSource().token,
+        token ?? cancellationSource().token,
       );
     });
     const links = { A: { file: "sizes.tsv", line: 1 } };

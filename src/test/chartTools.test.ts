@@ -3,8 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
-import { ChartTool, InspectDataTool, inspectTable, UpdateChartTool } from "../chartTools";
-import { parseTable } from "../data";
+import { ChartTool, InspectDataTool, UpdateChartTool } from "../chartTools";
+import { type DataTable, parseTable } from "../data";
 import { EditDiagramTool } from "../editTool";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
 import { StyleDiagramTool } from "../styleTool";
@@ -24,6 +24,17 @@ async function harness() {
 
 function draw(panel: DiagramPanel, chart: ChartSpec = { type: "bar", data }) {
   return drawChart(panel, chart, data);
+}
+
+async function inspectTable(
+  table: DataTable,
+  sampleRows: number,
+  page: { startRow?: number; startColumn?: number; maxColumns?: number } = {},
+): Promise<string> {
+  const panel = { revision: 0, loadedChartData: table } as DiagramPanel;
+  const result = await invokeTool(new InspectDataTool(panel), { sampleRows, ...page });
+  const jsonStart = result.indexOf("\n{");
+  return jsonStart === -1 ? result : result.slice(jsonStart + 1);
 }
 
 suite("chartTools", function () {
@@ -90,9 +101,9 @@ suite("chartTools", function () {
     assert.strictEqual(panel.loadedChartData, table);
   });
 
-  test("inspection reports inferred schema, nulls and bounded samples", () => {
+  test("inspection reports inferred schema, nulls and bounded samples", async () => {
     const table = parseTable("name,amount\na,1\nb,NULL\nc,3");
-    const report = JSON.parse(inspectTable(table, 2));
+    const report = JSON.parse(await inspectTable(table, 2));
     assert.strictEqual(report.rowCount, 3);
     assert.strictEqual(report.header, true);
     assert.strictEqual(report.columns[1].numeric, true);
@@ -107,12 +118,12 @@ suite("chartTools", function () {
       rows: Array.from({ length: 20 }, () => Array(100).fill("x".repeat(1000))),
       header: true,
     };
-    const bounded = inspectTable(wide, 20);
+    const bounded = await inspectTable(wide, 20);
     assert.ok(bounded.length <= 24_000);
     assert.ok(JSON.parse(bounded).truncated);
     const unicode = `${"x".repeat(254)}😀end`;
     const clipped = JSON.parse(
-      inspectTable(
+      await inspectTable(
         { columns: [{ name: unicode, numeric: false }], rows: [[unicode]], header: true },
         1,
       ),
@@ -129,7 +140,7 @@ suite("chartTools", function () {
     const found: string[] = [];
     let startColumn: number | undefined = 1;
     while (startColumn !== undefined) {
-      const page = JSON.parse(inspectTable(table, 2, { startColumn, startRow: 21 }));
+      const page = JSON.parse(await inspectTable(table, 2, { startColumn, startRow: 21 }));
       assert.strictEqual(page.startColumn, startColumn);
       assert.strictEqual(page.startRow, 21);
       assert.strictEqual(page.nextRow, 23);
@@ -155,7 +166,7 @@ suite("chartTools", function () {
     assert.deepStrictEqual(panel.current?.chart?.valueColumns, [names[70]]);
   });
 
-  test("inspection bounds escaped exact names and reports continuation after the actual page", () => {
+  test("inspection bounds escaped exact names and reports continuation after the actual page", async () => {
     const table = {
       columns: Array.from({ length: 20 }, (_, i) => ({
         name: `${i}${"\u0000".repeat(1000)}`,
@@ -167,7 +178,7 @@ suite("chartTools", function () {
     const names: string[] = [];
     let startColumn: number | undefined = 1;
     while (startColumn !== undefined) {
-      const output = inspectTable(table, 1, { startColumn });
+      const output = await inspectTable(table, 1, { startColumn });
       assert.ok(output.length <= 24_000);
       const page = JSON.parse(output);
       assert.ok(page.columns.length > 0);
@@ -180,12 +191,12 @@ suite("chartTools", function () {
       names,
       table.columns.map(({ name }) => name),
     );
-    const samples = JSON.parse(inspectTable(table, 1, { startColumn: 5, maxColumns: 1 }));
+    const samples = JSON.parse(await inspectTable(table, 1, { startColumn: 5, maxColumns: 1 }));
     assert.deepStrictEqual(samples.sample, [["sample"]]);
     assert.strictEqual(samples.columns[0].index, 5);
   });
 
-  test("inspection never silently clips an identifier too large to return", () => {
+  test("inspection never silently clips an identifier too large to return", async () => {
     const table = {
       columns: [
         { name: "x".repeat(24_000), numeric: false },
@@ -194,23 +205,23 @@ suite("chartTools", function () {
       rows: [["sample", 12]],
       header: true,
     };
-    assert.throws(
-      () => inspectTable(table, 0),
+    assert.match(
+      await inspectTable(table, 0),
       /Column 1's exact name exceeds.+Shorten its header.+"startColumn": 2/,
     );
-    const skipped = JSON.parse(inspectTable(table, 1, { startColumn: 2 }));
+    const skipped = JSON.parse(await inspectTable(table, 1, { startColumn: 2 }));
     assert.strictEqual(skipped.columns[0].name, "usable");
     assert.deepStrictEqual(skipped.sample, [[12]]);
   });
 
-  test("inspection bounds parser notes without losing the table schema or sample", () => {
+  test("inspection bounds parser notes without losing the table schema or sample", async () => {
     const data = {
       items: [{ value: 1 }],
       ...Object.fromEntries(Array.from({ length: 3_000 }, (_, i) => [`metadata${i}`, i])),
     };
     const table = parseTable(JSON.stringify(data));
     assert.ok((table.note?.length ?? 0) > 24_000);
-    const output = inspectTable(table, 1);
+    const output = await inspectTable(table, 1);
     assert.ok(output.length <= 24_000);
     const report = JSON.parse(output);
     assert.ok(report.truncated);

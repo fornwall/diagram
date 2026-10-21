@@ -462,11 +462,8 @@ export function describeError(error: unknown, source: string, type: () => string
     : (unplacedError(error.message, normalized) ?? error);
 }
 
-/** A pattern for the text. */
-const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /** A pattern for the text as a word of its own. */
-const word = (text: string) => `(?<![\\w-])${literal(text)}(?![\\w-])`;
+const word = (text: string) => `(?<![\\w-])${RegExp.escape(text)}(?![\\w-])`;
 
 /** The offset of the first match of the pattern in the source, after the front matter. */
 function find(normalized: string, pattern: string): number | undefined {
@@ -488,7 +485,7 @@ const errorAt = (normalized: string, at: number | undefined, message: string) =>
 function deactivation(normalized: string, name: string): number | undefined {
   const arrow = "[^\\S\\n]*<?<?-{1,2}(?:>>|>|x|\\))";
   const statements = new RegExp(
-    `^[^\\S\\n]*(?:(de)?activate[^\\S\\n]+${word(name)}|${literal(name)}${arrow}(-)|.*?${arrow}(\\+)[^\\S\\n]*${word(name)})`,
+    `^[^\\S\\n]*(?:(de)?activate[^\\S\\n]+${word(name)}|${RegExp.escape(name)}${arrow}(-)|.*?${arrow}(\\+)[^\\S\\n]*${word(name)})`,
     "gm",
   );
   let active = 0;
@@ -864,11 +861,11 @@ export function duplicateEdgeError(
     const named = [other, edge].find(({ isUserDefinedId }) => isUserDefinedId);
     if (named) {
       const generated = named === edge ? other : edge;
-      const line = lineAt(find(normalized, `${literal(named.id)}@`));
+      const line = lineAt(find(normalized, `${RegExp.escape(named.id)}@`));
       const fixed = statement(line).replace(`${named.id}@`, `e${free}@`);
       return errorAt(
         normalized,
-        find(normalized, `${literal(named.id)}@`),
+        find(normalized, `${RegExp.escape(named.id)}@`),
         `The link's id "${named.id}" is also the id that Mermaid gives the link from "${generated.start}" to "${generated.end}", and it cannot draw both: give the link another id, as in ${fixed}.`,
       );
     }
@@ -923,7 +920,7 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   if (task !== undefined) {
     return errorAt(
       normalized,
-      find(normalized, `^[^\\S\\n]*${literal(task)}[^\\S\\n]*:`),
+      find(normalized, `^[^\\S\\n]*${RegExp.escape(task)}[^\\S\\n]*:`),
       `The score of "${task}" is not a number: score each task from 1 to 5, as in "Make tea: 5: Me".`,
     );
   }
@@ -931,7 +928,7 @@ export function numberError(db: DiagramDb | undefined, source: string): Error | 
   const flow = flows.find(({ value }) => Number.isNaN(value));
   if (flow === undefined) return undefined;
   // The value is the last field, which Mermaid reads the number at the start of.
-  const ends = [flow.source, flow.target].map((end) => `(?=.*${literal(end)})`).join("");
+  const ends = [flow.source, flow.target].map((end) => `(?=.*${RegExp.escape(end)})`).join("");
   const at = find(normalized, `^${ends}.*,(?![^\\S\\n]*"?[^\\S\\n]*[-+]?\\.?\\d)[^,\\n]*$`);
   // A first line of words is a header, as of a CSV file, whose names no flow links.
   const header =

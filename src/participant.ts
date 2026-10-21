@@ -37,24 +37,14 @@ import { resolveWorkspaceFile } from "./workspaceTools";
 
 export const PARTICIPANT_ID = "diagram.participant";
 
-/** How many times to ask the model to fix a diagram that fails to render. */
+/** Maximum repair attempts for a diagram returned in a code block. */
 const MAX_REPAIR_ATTEMPTS = 2;
-/**
- * Rounds of tool calls to read the diagram and explore the workspace: find files, search them,
- * read them, then follow their imports and definitions, a hop a round.
- */
+/** Allow several rounds to find files and follow imports before drawing. */
 const EXPLORE_ROUNDS = 10;
-/**
- * Rounds of tool calls to draw: render, view the image, fix what it or the render reports as many
- * times as a diagram block may be repaired, then mark items or have the user pick.
- */
+/** Reserve rounds for rendering, image inspection, repairs, and selection or annotation. */
 const DRAW_ROUNDS = 3 + MAX_REPAIR_ATTEMPTS;
-/** How many rounds of tool calls a single reply may take. */
 const MAX_TOOL_ROUNDS = EXPLORE_ROUNDS + DRAW_ROUNDS;
-/**
- * Shared across exploration and render repairs, including parallel call batches: a few a round, as
- * when reading the files that a search found, and one for each round of drawing.
- */
+/** A separate call limit bounds batches that request several tools in one round. */
 const MAX_TOOL_CALLS = 3 * MAX_TOOL_ROUNDS;
 
 const READ_ONLY_TOOLS = new Set([
@@ -79,7 +69,7 @@ const DEFAULT_TOOLS = new Set([
 ]);
 const DRAWING_TOOLS = new Set([RENDER_TOOL, EDIT_TOOL, CHART_TOOL, UPDATE_CHART_TOOL, STYLE_TOOL]);
 
-/** What the tool calls of a request used and did, across its rounds and repairs. */
+/** Tool budget and results shared across a request's replies and repairs. */
 interface ToolUse {
   rounds: number;
   calls: number;
@@ -87,9 +77,9 @@ interface ToolUse {
   userChanges: number;
   /** A declined call, exhausted budget or user edit ends tool use for this request. */
   notRun?: string;
-  /** The revision that the last of the request's tool calls that drew in the panel drew. */
+  /** Revision last rendered by this request, including failed renders. */
   drawn?: number;
-  /** The workspace files that the request's tool calls read, which chat lists as references. */
+  /** File URIs already shown as chat references. */
   read: Set<string>;
 }
 
@@ -111,9 +101,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
 
     const explain = request.command === "explain";
 
-    // A model says whether it calls tools in capabilities, which is not part of the stable API.
-    // One that does not call tools may reject a request with tools; it draws with a diagram block
-    // instead. One that does not view images may reject a request with an image.
+    // Capabilities are not in the stable API. Omit unsupported tools to avoid provider errors;
+    // models without tool support can still draw through code blocks.
     const { capabilities } = request.model as { capabilities?: { supportsToolCalling?: boolean } };
     const callsTools = capabilities?.supportsToolCalling !== false;
     const viewsImages = acceptsImages(request.model);
@@ -206,7 +195,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       }
 
       let failure: { block: DiagramBlock; error: string } | undefined;
-      /** A block that rendered with warnings, which stays drawn unless a fix of them renders. */
+      /** Keep this working diagram if a repair fails. */
       let warned: DiagramBlock | undefined;
       const draw = (drawing: DiagramBlock) =>
         unlessCancelled(
@@ -220,12 +209,11 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         if (token.isCancellationRequested) {
           return;
         }
-        // Once, as a model may not be able to fix all, which it may say instead.
+        // Ask about warnings once; the model may explain why it cannot fix them.
         const warnings =
           outcome.ok && !warned && attempt < MAX_REPAIR_ATTEMPTS ? panel.warnings : [];
         if (warnings.length > 0) {
           warned = block;
-          // It repaired any render error before it, and is what the reply drew unless fixed.
           failure = undefined;
           stream.progress("Fixing rendering warnings…");
           stream.markdown("\n\n---\n\n");
@@ -258,8 +246,8 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
         block = await converse([]);
       }
 
-      // A tool, such as the chart tool, may have drawn the diagram. Remember it for later requests'
-      // history, by how it was drawn if it charts a file or command, as its data may be large.
+      // Save tool-rendered diagrams in chat history. For generated charts, keep the request
+      // parameters instead of copying potentially large datasets.
       const drawn = panel.adopt(toolUse.drawn);
       if (drawn) {
         showButton(stream, drawn.language);
@@ -269,8 +257,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
             : { language: drawn.language, source: drawn.source },
         };
       }
-      // A reply that left the warnings, or whose fix failed to render, keeps the block that had
-      // them, unless the user changed the diagram meanwhile.
+      // Restore the working diagram after a failed repair, unless another edit replaced it.
       const shows = (shown: DiagramBlock) =>
         panel.current?.language === shown.language && panel.current.source === shown.source;
       if (warned && !failure && shows(warned)) {
@@ -290,8 +277,7 @@ export function createParticipantHandler(panel: DiagramPanel): vscode.ChatReques
       if (!failure) {
         return;
       }
-      // As in the panel: details after the first line, like a source excerpt with a caret, in a
-      // fixed font.
+      // Preserve alignment in multiline errors, such as source excerpts with a caret.
       const [summary = "", ...details] = failure.error.split("\n");
       const excerpt = details.length > 0 ? `\n\n${codeFence(details.join("\n"))}` : "";
       stream.markdown(
@@ -336,9 +322,8 @@ async function streamReply(
   let drawnBeforeDiagram = toolUse.drawn;
   for (let round = 0; ; round++) {
     throwIfCancelled(token);
-    // Some models only support a single tool when a tool call is required. The tools are passed
-    // even when calls are no longer run, as some models reject requests whose messages contain
-    // tool calls but no tools.
+    // Some providers require a single tool in Required mode. Keep tool definitions on the final
+    // reply too: providers may reject tool-call history without them.
     const finalReply = toolUse.notRun !== undefined;
     const requiredTool = finalReply ? undefined : required[round];
     const options: vscode.LanguageModelChatRequestOptions = requiredTool
@@ -398,8 +383,7 @@ async function streamReply(
     );
     const text = (value: string) => [new vscode.LanguageModelTextPart(value)];
     const results: vscode.LanguageModelToolResultPart[] = [];
-    // Tools that can, such as those with prompt-tsx results, fit their results to a share of the
-    // room left.
+    // Let tools that support token budgets fit their results before generic truncation.
     const share = (await toolResultBudget(request.model, messages, token)) / calls.length;
     const tokenizationOptions: vscode.LanguageModelToolTokenizationOptions = {
       tokenBudget: Math.max(1, Math.floor(share)),
@@ -452,8 +436,8 @@ async function streamReply(
           if (token.isCancellationRequested) {
             throw error;
           }
-          // The user declined the tool call, e.g. to run a command: a CancellationError, though
-          // not always an instance of one. Don't let the model ask again.
+          // VS Code may serialize a declined tool call as a plain Error with a cancellation
+          // name. Stop tool use so the model does not ask for the same approval again.
           if (
             error instanceof Error &&
             ["Canceled", "CancellationError", "AbortError"].includes(error.name)
@@ -469,7 +453,7 @@ async function streamReply(
       }
       results.push(new vscode.LanguageModelToolResultPart(call.callId, content));
     }
-    // In a tool result, which any model accepts after its calls, unlike other text.
+    // Append budget advice to a tool result to preserve the tool-call/result message sequence.
     const left = diagram === undefined ? budgetLeft(toolUse, tools) : undefined;
     const last = results.at(-1);
     if (left && last) {
@@ -487,10 +471,7 @@ async function streamReply(
   }
 }
 
-/**
- * Tells a model that has not drawn yet that the tool rounds or calls left are down to those that
- * drawing takes, so that it draws with what it has rather than explore until none are left.
- */
+/** Prompt the model to draw before exploration consumes the remaining tool budget. */
 function budgetLeft(
   { rounds, calls, notRun, drawn }: ToolUse,
   tools: readonly vscode.LanguageModelChatTool[],
@@ -501,7 +482,6 @@ function budgetLeft(
   if (roundsLeft > DRAW_ROUNDS && callsLeft > DRAW_ROUNDS) return undefined;
   const draws = tools.some((tool) => DRAWING_TOOLS.has(tool.name));
   if (roundsLeft <= 0 || callsLeft <= 0) {
-    // Its diagram block is drawn still.
     return `No tool calls are left in this request: ${draws ? "reply with the complete diagram in a mermaid or echarts code block" : "answer with what you have"}.`;
   }
   const left = `This request has ${plural(roundsLeft, "round")} and ${plural(callsLeft, "call")} of tools left`;

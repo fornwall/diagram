@@ -1,9 +1,5 @@
-// Adapts an ECharts option written by a model to the panel: lays it out for the panel's size,
-// placing the components around the plot (echartsAround.ts, echartsLegend.ts) and fitting the
-// plot into the space left (echartsGrid.ts, echartsPie.ts, echartsBoxSeries.ts,
-// echartsCoordinates.ts), giving up what is around the plot step by step where it is too short,
-// and then fills in the panel's defaults (echartsDefaults.ts). Only fills in what the option leaves
-// unset, so explicit choices always win.
+// Fit charts to the panel: reserve space for surrounding controls, lay out the plot, then apply
+// display and interaction defaults. Hide optional controls and titles when space is too limited.
 
 import { asArray, isPlainObject } from "../protocol";
 import {
@@ -48,12 +44,9 @@ import { layOutPie } from "./echartsPie";
 import { colorLabelsOnItems } from "./echartsTheme";
 
 /**
- * Gives the base option the series that the chart starts with but that only the current timeline
- * step or the default media option defines, as copies, for the layout to place, style and keep
- * them as any other: what the step or query sets is still merged in over them. Series that only
- * later steps add stay there, so as not to be shown from the start, as do series with an "id",
- * which the series of other steps, with ids of their own, would no longer merge into. Likewise
- * the titles they set, as a step's year often is, for the layout to make room for.
+ * Copy initial-step and default-media series into the base so layout can place and style them.
+ * Leave later-step series alone. Also leave series with explicit ids in their patches: adopting
+ * them would change how subsequent steps merge. Include initial titles to reserve their space.
  */
 function adoptStartingStep(option: JsonObject, base: JsonObject): void {
   const steps: unknown[] = Array.isArray(option.options) ? option.options : [];
@@ -81,11 +74,8 @@ function adoptStartingStep(option: JsonObject, base: JsonObject): void {
 }
 
 /**
- * How far a chart too short for its plot to be read gives up what is around the plot, step by
- * step, each giving up what the one before did as well: a visual map below the chart, which then
- * only colors the items, whose values the tooltip gives; a zoom slider below it, for zooming
- * with the wheel and panning with the pointer inside the plot instead; a subtitle; and a title,
- * which the panel's header goes with. A legend stays, which tells the series apart.
+ * If the plot is too short, progressively hide the visual map, zoom slider, subtitle and title.
+ * Tooltips, wheel zoom and the panel header retain their functions; keep the legend visible.
  */
 const SQUEEZES = 4;
 
@@ -96,10 +86,7 @@ export function layoutOption(source: JsonObject, context: LayoutContext): JsonOb
   }
 }
 
-/**
- * The option laid out for the context, giving up as much as the squeeze says around the plot,
- * unless that leaves the plot too short to read and a further squeeze could help.
- */
+/** Return a laid-out copy, or undefined when another squeeze could make the plot tall enough. */
 function layOutAround(
   source: JsonObject,
   context: LayoutContext,
@@ -120,7 +107,7 @@ function layOutAround(
     const room = layOut(base, series, cartesian, size, squeeze, steppedSeries(option, base));
     if (room < MIN_PLOT_HEIGHT && squeeze < SQUEEZES) return undefined;
   }
-  // A legend that the layout did not wrap into rows pages through its entries, if they take more.
+  // Scroll legends that layout has not already wrapped into rows.
   for (const legend of asArray(base.legend)) {
     if (legend.show !== false) {
       legend.type ??= "scroll";
@@ -148,9 +135,8 @@ export function disableAnimation(option: JsonObject): void {
 }
 
 /**
- * Makes a highlighted item fade the rest of the chart, which is how an agent's marks stand out with
- * everything else receding: ECharts blurs a chart around a highlighted item only when its series
- * focuses on it. Replaces a focus of the option's own for as long as the marks dim the chart.
+ * ECharts needs emphasis.focus to dim other items around a highlight. Override the option's
+ * focus setting while agent annotations are active.
  */
 export function focusHighlighted(option: JsonObject): void {
   for (const series of allSeries(option)) {
@@ -160,10 +146,7 @@ export function focusHighlighted(option: JsonObject): void {
   }
 }
 
-/**
- * Places the components around the plot, giving up as much as the squeeze says (see
- * {@link SQUEEZES}), and fits the grid and series into the space left, whose height it returns.
- */
+/** Reserve space for components, fit the plot into what remains, and return its height. */
 function layOut(
   base: JsonObject,
   series: JsonObject[],
@@ -175,10 +158,10 @@ function layOut(
   const reserved: Insets = { top: 0, bottom: 0, left: 0, right: 0 };
   placeTitles(base, reserved, size, squeeze);
   placeTimeline(base, reserved);
-  // A chart along a single axis, as a theme river, has its legend where a grid's would be.
+  // Single-axis charts such as theme rivers use the same legend placement as grids.
   placeLegend(base, series, cartesian || series.some(onSingleAxis), reserved, size);
   placeSliders(base, reserved, size, squeeze);
-  // Turned category labels take the plot's height, as a row of them is counted on already.
+  // Rotated category labels need extra height beyond the reserved label row.
   const turned = cartesian ? layOutGrid(base, reserved, size) : 0;
   layOutSingleAxis(base, series, reserved, size);
   layOutCalendar(base, reserved, size);
@@ -191,7 +174,7 @@ function layOut(
   return size.height - reserved.top - reserved.bottom - turned;
 }
 
-/** The series of the base option that the steps of a timeline set something of, merged over it. */
+/** Base series overridden by at least one timeline step. */
 function steppedSeries(option: JsonObject, base: JsonObject): Set<unknown> {
   const series = seriesOf(base);
   const stepped = new Set<unknown>();
@@ -204,5 +187,5 @@ function steppedSeries(option: JsonObject, base: JsonObject): Set<unknown> {
   return stepped;
 }
 
-/** The height in pixels below which a plot, with the labels of its axes, can hardly be read. */
+/** Minimum readable plot height, including axis labels, in pixels. */
 const MIN_PLOT_HEIGHT = 140;

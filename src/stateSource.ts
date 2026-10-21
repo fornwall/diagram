@@ -111,12 +111,23 @@ export async function sourcePage(
         : "\n\nEnd of source.";
     return `${heading}\n\nSource lines ${start}-${last} (exact text, without line numbers; copy from the block for diagram_edit):\n${codeFence(excerpt, language)}${next}`;
   };
-  const complete = response(end);
+  return (
+    (await fitSourceResponse(start, end, response, fits)) ??
+    `${heading}\n\nSource line ${start} does not fit the available result budget; no source was returned. Use a larger tool result budget or a new chat. A smaller line range cannot make this line fit.`
+  );
+}
+
+/** Fit whole lines or search matches, using binary search to bound token-counting calls. */
+export async function fitSourceResponse(
+  first: number,
+  last: number,
+  response: (end: number) => string,
+  fits: (text: string) => Promise<boolean>,
+): Promise<string | undefined> {
+  const complete = response(last);
   if (await fits(complete)) return complete;
-  // Binary search keeps tokenizer calls bounded for a 500-line request. Never return half a line
-  // as if it were complete source that an agent can copy into an exact replacement.
-  let low = start;
-  let high = end - 1;
+  let low = first;
+  let high = last - 1;
   let fitting: string | undefined;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
@@ -128,8 +139,5 @@ export async function sourcePage(
       high = middle - 1;
     }
   }
-  return (
-    fitting ??
-    `${heading}\n\nSource line ${start} does not fit the available result budget; no source was returned. Use a larger tool result budget or a new chat. A smaller line range cannot make this line fit.`
-  );
+  return fitting;
 }

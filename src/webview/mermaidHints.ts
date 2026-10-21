@@ -202,10 +202,9 @@ const SHAPES: [string, string[]][] = [
   ["{", ["}"]],
   [">", ["]"]],
 ];
-const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** A node with its id and the bracket that opens its label. */
 const NODE = new RegExp(
-  `(?<![\\w.-])([A-Za-z0-9_](?:[\\w.-]*\\w)?)(${SHAPES.map(([open]) => literal(open)).join("|")})`,
+  `(?<![\\w.-])([A-Za-z0-9_](?:[\\w.-]*\\w)?)(${SHAPES.map(([open]) => RegExp.escape(open)).join("|")})`,
   "g",
 );
 /** The opening bracket of each closing one. */
@@ -326,7 +325,7 @@ const spacedId: Rule = ({ type, normalized, before, after }) => {
   if (!first || !more) return undefined;
   const name = `${first[1]} ${more}`;
   const id = idOf(name);
-  const subgraph = new RegExp(`^\\s*subgraph\\s+${literal(name)}\\s*$`, "m");
+  const subgraph = new RegExp(`^\\s*subgraph\\s+${RegExp.escape(name)}\\s*$`, "m");
   return subgraph.test(normalized)
     ? `Give the subgraph an id to link to it: "subgraph ${id} [${name}]", and link to ${id}.`
     : `Ids have no spaces: write the node as ${id}["${name}"], and link to ${id}.`;

@@ -120,7 +120,7 @@ function markedEnd({ type, source, db }: DrawingFacts): string | undefined {
     const mark = END_MARKS[arrowTypeEnd];
     const meant = `${mark}${end}`;
     if (!mark || !ids.has(meant)) continue;
-    const written = new RegExp(`([-=.]{2,})${literal(meant)}(?![\\w-])`).exec(source);
+    const written = new RegExp(`([-=.]{2,})${RegExp.escape(meant)}(?![\\w-])`).exec(source);
     if (!written) continue;
     const line = source.slice(0, written.index).split("\n").length;
     const statement = source.split("\n")[line - 1]?.trim() ?? "";
@@ -132,9 +132,6 @@ function markedEnd({ type, source, db }: DrawingFacts): string | undefined {
   }
   return undefined;
 }
-
-/** A pattern for the text. */
-const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The first Gantt task that starts after, or ends at, a task id that no task has, which Mermaid

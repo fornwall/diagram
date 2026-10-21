@@ -5,6 +5,8 @@
 Use Node.js 26 and VS Code 1.142 or later, matching the versions in CI and `package.json`.
 
 ```sh
+git clone https://github.com/fornwall/diagram.git
+cd diagram
 npm ci
 npm run compile
 ```
@@ -38,6 +40,10 @@ xvfb-run -a --server-args="-screen 0 1920x1080x24" npm test
 If tests hang when launched from VS Code's integrated terminal, run them from an external terminal. Inherited `ELECTRON_RUN_AS_NODE` or `VSCODE_*` environment variables can interfere with the test instance.
 
 For a bug fix, include a small input that reproduces the failure and a regression test in the relevant suite. For panel changes, check the development host in light and dark themes and with keyboard navigation. Describe the changed behavior and the checks you ran in the pull request.
+
+## Reporting bugs
+
+Include the extension and VS Code versions, the steps to reproduce, and what you expected to happen. For rendering or parsing problems, include the Mermaid/ECharts source or a small data sample; a screenshot alone usually isn't enough to reproduce them. For chat problems, also include the model name and prompt.
 
 ## Source map
 
