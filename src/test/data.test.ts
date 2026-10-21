@@ -66,6 +66,32 @@ suite("data", () => {
     ]);
   });
 
+  test("preserves integer identifiers beyond the safe numeric range", () => {
+    const ids = ["9007199254740992", "9007199254740993", "-9223372036854775808", "+1", "2"];
+    for (const name of ["id", "userId", "account_code"]) {
+      for (const data of [
+        `${name},value\n${ids.map((id, i) => `${id},${i}`).join("\n")}`,
+        JSON.stringify(ids.map((id, i) => ({ [name]: id, value: i }))),
+      ]) {
+        const table = parseTable(data);
+        assert.deepStrictEqual(
+          table.rows,
+          ids.map((id, i) => [id, i]),
+        );
+        assert.strictEqual(table.columns[0]?.numeric, false);
+      }
+    }
+    assert.deepStrictEqual(
+      parse('[{"id":"9223372036854775807","value":1},{"id":-2,"value":2}]').rows,
+      [
+        ["9223372036854775807", 1],
+        ["-2", 2],
+      ],
+    );
+    // Large measurements still become numbers; their names do not identify records.
+    assert.strictEqual(parseTable("size\n9007199254740993").columns[0]?.numeric, true);
+  });
+
   test("unquoted delimiters preserve the quoted parser's rows, rules and empty fields", () => {
     for (const [format, delimiter] of [
       ["csv", ","],

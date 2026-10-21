@@ -39,6 +39,8 @@ const MAX_REPEATED_IDS = 20;
 export interface ItemData {
   dataType?: string;
   count(): number;
+  /** Whether every coordinate dimension has a value, rather than a gap such as null or "-". */
+  hasValue(index: number): boolean;
   getRawIndex(index: number): number;
   getName(index: number): string;
   getRawDataItem(index: number): unknown;

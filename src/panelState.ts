@@ -117,7 +117,7 @@ function restoredState(saved: unknown): DiagramState | undefined {
   if (isNodeLinks(saved.links)) state.links = saved.links;
   const document = documentBinding(saved.document, state.source);
   if (document) state.document = document;
-  if (typeof saved.openedFrom === "string") state.openedFrom = saved.openedFrom;
+  if (isSavedUri(saved.openedFrom)) state.openedFrom = saved.openedFrom;
   const chart = language === "echarts" ? chartSpec(saved.chart) : undefined;
   const presentation = isChartPresentation(saved.chartPresentation)
     ? saved.chartPresentation
@@ -169,9 +169,19 @@ function validLine(value: unknown): value is number {
  * Older versions saved fences with other properties, which a write to the document cannot use.
  */
 function documentBinding(value: unknown, source: string | undefined): DocumentBinding | undefined {
-  if (!isPlainObject(value) || typeof value.uri !== "string" || !isPlainObject(value.fence)) {
+  if (!isPlainObject(value) || !isSavedUri(value.uri) || !isPlainObject(value.fence)) {
     return undefined;
   }
   const fence = { source, ...value.fence };
   return isDiagramFence(fence) ? ({ ...value, fence } as DocumentBinding) : undefined;
+}
+
+function isSavedUri(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    vscode.Uri.parse(value, true);
+    return true;
+  } catch {
+    return false;
+  }
 }

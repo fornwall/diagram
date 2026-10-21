@@ -35,7 +35,7 @@ const SIZE_WORDS = new Set(
 /** The words of column names that hold counts of inodes, as df -i prints them ("IFree"). */
 const INODE_WORDS = new Set(["inodes", "iused", "ifree"]);
 
-/** Final words of column names whose zero-padded integers identify things. */
+/** Final words of column names that identify records. */
 const IDENTIFIER_WORDS = new Set(["id", "code", "sku", "zip", "postcode", "postal"]);
 
 /** The words of column names that hold durations, as "Duration", "Elapsed" or kubectl's "AGE". */
@@ -126,7 +126,7 @@ interface NumberFormat {
    * them, so that the others ("24.0") are versions too.
    */
   versions?: boolean;
-  /** Zero-padded identifiers keep their digits, and other integers in their column stay text. */
+  /** Padded or unsafe integer identifiers keep their digits, as do other integers in the column. */
   identifiers?: boolean;
 }
 
@@ -152,7 +152,7 @@ const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
 /** A number as most cells write it, which reads the same in every format but decimal commas. */
 const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
-const INTEGER = /^\s*\d+\s*$/;
+const INTEGER = /^\s*[-+]?\d+\s*$/;
 
 /** A digit, without which text is no number in any format, as most labels are not. */
 const DIGIT = /\d/;
@@ -313,7 +313,7 @@ export function statedUnit(
  * - in durations, if the column's name is of durations ("Elapsed", "AGE");
  * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
  *   others are plain ("24.0");
- * - as text identifiers, if an ID or code column has integers with leading zeros.
+ * - as text identifiers, if an ID or code column has padded or unsafe integers.
  */
 export function numberFormat(
   records: Cell[][],
@@ -327,6 +327,7 @@ export function numberFormat(
       ? name.split(/[^a-zA-Z]+|(?<=[a-z])(?=[A-Z])/).map((word) => word.toLowerCase())
       : undefined;
   const counts = words?.some((w) => INODE_WORDS.has(w)) === true;
+  const identifierColumn = IDENTIFIER_WORDS.has(words?.findLast(Boolean) ?? "");
   let sizes =
     !counts &&
     (given.sizes === true || words === undefined || words.some((w) => SIZE_WORDS.has(w)));
@@ -340,13 +341,15 @@ export function numberFormat(
   let minus = false;
   let versions = false;
   let formatted = false;
-  let padded = false;
+  let identifiers = false;
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string" || !DIGIT.test(cell)) continue;
+    if (identifierColumn && INTEGER.test(cell)) {
+      identifiers ||= /^\s*[-+]?0\d/.test(cell) || !Number.isSafeInteger(Number(cell));
+    }
     if (PLAIN.test(cell)) {
       minus ||= cell.trimStart().startsWith("-");
-      padded ||= /^\s*0\d+\s*$/.test(cell);
       continue;
     }
     let text = replaceMatch(cell.trim(), CURRENCY_SIGN, "$2$1");
@@ -387,6 +390,6 @@ export function numberFormat(
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
     durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
     versions: versions && !formatted,
-    identifiers: padded && IDENTIFIER_WORDS.has(words?.findLast(Boolean) ?? ""),
+    identifiers,
   };
 }

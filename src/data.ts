@@ -213,10 +213,9 @@ function tableFromRecords(
       } else if (
         typeof field === "number" &&
         formats[column]?.identifiers &&
-        Number.isInteger(field) &&
-        field >= 0
+        Number.isInteger(field)
       ) {
-        // JSON may mix padded string codes with unpadded integer codes in the same column.
+        // JSON may mix string identifiers with integer identifiers in the same column.
         cell = String(field);
       }
       record[column] = cell;

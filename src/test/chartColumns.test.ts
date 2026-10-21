@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { describeTable, findColumn } from "../chartColumns";
+import { describeTable, findColumn, findColumns } from "../chartColumns";
 import { parseTable } from "../data";
 
 suite("chartColumns", () => {
@@ -10,6 +10,42 @@ suite("chartColumns", () => {
     assert.throws(
       () => findColumn(table, "missing", "facet"),
       /Unknown facet column.*Value.*value/,
+    );
+  });
+
+  test("resolves wide selections with exact names before loose matches and rejects duplicates", () => {
+    let reads = 0;
+    const columns = Array.from({ length: 3000 }, (_, i) => ({
+      get name() {
+        reads++;
+        return `field ${i}`;
+      },
+      numeric: true,
+    }));
+    columns.push({ name: "FIELD 0", numeric: true });
+    const table = { columns, rows: [columns.map((_, i) => i)], header: true };
+    const names = columns.map(({ name }) => name).reverse();
+    reads = 0;
+    assert.deepStrictEqual(
+      findColumns(table, names, "valueColumns"),
+      [...columns.keys()].reverse(),
+    );
+    assert.ok(
+      reads <= columns.length * 4,
+      `${reads} column names read for ${names.length} selections`,
+    );
+    assert.deepStrictEqual(findColumns(table, ["FIELD 0", " field 1 "], "labelColumn"), [3000, 1]);
+    reads = 0;
+    assert.deepStrictEqual(findColumns(table, [], "labelColumn"), []);
+    assert.deepStrictEqual(findColumns(table, ["field 0"], "labelColumn"), [0]);
+    assert.strictEqual(reads, 1);
+    assert.throws(
+      () => findColumns(table, ["field 0", " field 0 "], "valueColumns"),
+      /"valueColumns" names the column "field 0" twice/,
+    );
+    assert.throws(
+      () => findColumns(table, ["missing"], "labelColumn"),
+      /Unknown label column "missing"/,
     );
   });
 

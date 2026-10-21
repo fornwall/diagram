@@ -160,6 +160,29 @@ suite("panelState", () => {
     }
   });
 
+  test("drops malformed saved document URIs without losing the diagram", () => {
+    const fence = {
+      language: "mermaid",
+      source: state.source,
+      openingLine: 0,
+      lastLine: 2,
+      prefix: "",
+    };
+    for (const uri of ["", "notes.md", "invalid scheme:/notes.md", 1]) {
+      assert.deepStrictEqual(
+        load({ ...state, document: { uri, fence }, openedFrom: uri }),
+        state,
+        String(uri),
+      );
+    }
+    const uri = "vscode-remote://ssh-remote+host/workspace/notes.md";
+    assert.deepStrictEqual(load({ ...state, document: { uri, fence }, openedFrom: uri }), {
+      ...state,
+      document: { uri, fence },
+      openedFrom: uri,
+    });
+  });
+
   test("discards saved links with invalid line ranges or empty paths", () => {
     for (const link of [
       { file: " " },

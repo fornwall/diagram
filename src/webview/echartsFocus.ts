@@ -185,12 +185,13 @@ export class ChartNavigation {
     return { seriesIndex, dataType, dataIndex: data.getRawIndex(index) };
   }
 
-  /** Whether the item is shown: a tree shows only the nodes that are expanded and in view. */
+  /** Trees need a visible node; other items need a graphic or valid coordinates. */
   private has(track: Track, index: number): boolean {
     return (
       index >= track.first &&
       index < track.data.count() &&
-      (!track.data.tree || Boolean(track.data.getItemGraphicEl(index)))
+      (Boolean(track.data.getItemGraphicEl(index)) ||
+        (!track.data.tree && track.data.hasValue(index)))
     );
   }
 
@@ -262,7 +263,16 @@ export class ChartNavigation {
    */
   private inSeries({ track, index }: Spot, [dx, dy]: Point): Spot | undefined {
     const steps = dx * track.along[0] + dy * track.along[1];
-    if (steps !== 0) return this.at(track, index + steps);
+    if (steps !== 0) {
+      for (
+        let next = index + steps;
+        next >= track.first && next < track.data.count();
+        next += steps
+      ) {
+        if (this.has(track, next)) return { track, index: next };
+      }
+      return undefined;
+    }
     // Right and down lead to the next series, left and up to the previous one.
     const delta = dx + dy;
     const rawIndex = track.data.getRawIndex(index);

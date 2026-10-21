@@ -71,15 +71,27 @@ export function findColumns(
   key: "labelColumn" | "valueColumns",
 ): number[] {
   const role = key === "labelColumn" ? "label" : "value";
-  const indices = names.map((name) => findColumn(table, name, role));
-  const repeated = indices.find((index, i) => indices.indexOf(index) !== i);
-  if (repeated !== undefined) {
-    throw new Error(
-      `"${key}" names the column ${JSON.stringify(columnName(table, repeated))} twice. Give each ` +
-        "column once.",
-    );
+  if (names.length < 2) return names.map((name) => findColumn(table, name, role));
+  const exact = new Map<string, number>();
+  const loose = new Map<string, number>();
+  for (const [index, { name }] of table.columns.entries()) {
+    if (!exact.has(name)) exact.set(name, index);
+    const normalized = name.trim().toLowerCase();
+    if (!loose.has(normalized)) loose.set(normalized, index);
   }
-  return indices;
+  const seen = new Set<number>();
+  return names.map((name) => {
+    const index =
+      exact.get(name) ?? loose.get(name.trim().toLowerCase()) ?? findColumn(table, name, role);
+    if (seen.has(index)) {
+      throw new Error(
+        `"${key}" names the column ${JSON.stringify(columnName(table, index))} twice. Give each ` +
+          "column once.",
+      );
+    }
+    seen.add(index);
+    return index;
+  });
 }
 
 /** Whether a label names a row of totals, as wc and cloc print last. */

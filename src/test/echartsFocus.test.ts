@@ -73,6 +73,116 @@ suite("echartsFocus", () => {
     assert.strictEqual(walk(option, "Right Right Down Up"), "0::1 0::2 2::1 0::1");
   });
 
+  test("skips missing values at the ends and within a series", () => {
+    for (const type of ["bar", "line"]) {
+      const series = { type, showSymbol: false, data: [null, 0, "-", 3, null] };
+      const option = {
+        xAxis: { type: "category", data: ["a", "b", "c", "d", "e"] },
+        yAxis: {},
+        series: [series],
+      };
+      assert.strictEqual(
+        walk(option, "Home Right End Left Left"),
+        "0::1 0::3 0::3 0::1 0::1",
+        type,
+      );
+      series.data = [null, null];
+      assert.strictEqual(walk(option, "Home End Right"), "none none none", type);
+    }
+  });
+
+  test("keeps graph nodes without numeric values keyboard accessible", () => {
+    assert.strictEqual(
+      walk(
+        {
+          series: [
+            {
+              type: "graph",
+              data: [
+                { name: "A", x: 0, y: 0 },
+                { name: "B", x: 100, y: 0 },
+              ],
+            },
+          ],
+        },
+        "Home Right End Left",
+      ),
+      "0:node:0 0:node:1 0:node:1 0:node:0",
+    );
+  });
+
+  test("skips gaps in scatter and heatmap data without renumbering items", () => {
+    for (const type of ["scatter", "heatmap"]) {
+      const option = {
+        xAxis: type === "heatmap" ? { type: "category", data: ["a", "b", "c", "d", "e"] } : {},
+        yAxis: type === "heatmap" ? { type: "category", data: ["row"] } : {},
+        visualMap: { min: 0, max: 5 },
+        series: [
+          {
+            type,
+            data:
+              type === "heatmap"
+                ? [
+                    [0, 0, null],
+                    [1, 0, 0],
+                    [2, 0, null],
+                    [3, 0, 3],
+                    [4, 0, null],
+                  ]
+                : [
+                    [null, 0],
+                    [1, 0],
+                    [2, null],
+                    [3, 0],
+                    [null, 0],
+                  ],
+          },
+        ],
+      };
+      assert.strictEqual(walk(option, "Home Right End Left"), "0::1 0::3 0::3 0::1", type);
+    }
+  });
+
+  test("keeps original dataset indices when skipping gaps inside a zoomed series", () => {
+    const option = {
+      dataset: {
+        dimensions: ["day", "amount"],
+        source: [
+          ["a", 1],
+          ["b", null],
+          ["c", 0],
+          ["d", null],
+          ["e", 4],
+          ["f", 5],
+        ],
+      },
+      xAxis: { type: "category" },
+      yAxis: {},
+      dataZoom: { startValue: "b", endValue: "e" },
+      series: [{ type: "line", showSymbol: false }],
+    };
+    assert.strictEqual(walk(option, "Home Right End Left"), "0::2 0::4 0::4 0::2");
+  });
+
+  test("keeps original typed-array indices when skipping missing scatter points", () => {
+    for (const large of [false, true]) {
+      const option = {
+        xAxis: {},
+        yAxis: {},
+        series: [
+          {
+            type: "scatter",
+            large,
+            largeThreshold: 0,
+            dimensions: ["x", "y"],
+            data: new Float64Array([NaN, 0, 0, 0, 1, NaN, 2, 0, NaN, 0]),
+          },
+        ],
+      };
+      assert.strictEqual(walk(option, "Home Right End Left"), "0::1 0::3 0::3 0::1", String(large));
+    }
+  });
+
   test("moves round a polar chart with the right arrow key, clockwise or not", () => {
     for (const clockwise of [true, false]) {
       const option = {

@@ -1139,7 +1139,11 @@ export class DiagramPanel implements vscode.Disposable {
     const { state: next, summary } = withRebuiltChart(state, chart, table, state.chartPresentation);
     this.webview.reveal(true);
     const outcome = await this.showOrKeep(
-      { ...next, origin: "tool" },
+      {
+        ...next,
+        origin: "tool",
+        document: state.document && { ...state.document, replaced: true },
+      },
       { table, pickReason: "The chart changed before the user picked.", token },
     );
     throwIfCancelled(token);

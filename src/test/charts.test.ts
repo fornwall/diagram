@@ -1908,6 +1908,19 @@ suite("charts", () => {
     }
   });
 
+  test("large integer identifiers stay distinct when grouping and filtering", () => {
+    const data = "id,value\n9007199254740992,2\n9007199254740993,3";
+    const grouped = build(chart("bar", { aggregate: "sum" }), data);
+    assert.deepStrictEqual(grouped.xAxis.data, ["9007199254740992", "9007199254740993"]);
+    assert.deepStrictEqual(grouped.series[0].data, [2, 3]);
+    const filtered = build(
+      chart("bar", { filters: [{ column: "id", op: "eq", value: "9007199254740993" }] }),
+      data,
+    );
+    assert.deepStrictEqual(filtered.xAxis.data, ["9007199254740993"]);
+    assert.deepStrictEqual(filtered.series[0].data, [3]);
+  });
+
   test("default value columns skip identifier columns", () => {
     const table = "id,name,score\n7,a,10\n3,b,20";
     assert.deepStrictEqual(seriesNames(build(chart("bar"), table)), ["score"]);

@@ -5,8 +5,15 @@ import * as vscode from "vscode";
 import { type DocumentBinding, documentName, writeFence } from "../documentDiagram";
 import { findDiagramFences } from "../fences";
 import type { DiagramState } from "../panel";
-import { afterTest, recordMessages, replace, setting, suiteTempDir } from "./afterTest";
-import { type FakeWebview, newFakePanel, within } from "./newPanel";
+import {
+  afterTest,
+  cancellationSource,
+  recordMessages,
+  replace,
+  setting,
+  suiteTempDir,
+} from "./afterTest";
+import { drawChart, type FakeWebview, newFakePanel, within } from "./newPanel";
 
 suite("documentDiagram", function () {
   // A panel that an agent renders in loads the webview, which can take a while.
@@ -642,6 +649,32 @@ suite("documentDiagram", function () {
     assert.strictEqual(panel.current?.document?.uri, read.uri);
     assert.ok(panel.current?.document?.replaced);
     assert.match(panel.describeForModel() ?? "", /Opened from a code block in notes-\d+\.md/);
+  });
+
+  test("an agent's chart update asks again before writing a previously approved chart", async () => {
+    const document = await markdown("```echarts\n{}\n```\n");
+    const { panel, webview } = await restored(openedState(binding(document)));
+    await drawChart(panel, { type: "bar", data: "name,value\nA,1\nB,2" }, "name,value\nA,1\nB,2");
+    let approve = true;
+    const asked = recordMessages("showWarningMessage", () => (approve ? "Write" : undefined));
+    await writeShown(webview);
+    assert.strictEqual(asked.length, 1);
+    assert.ok(!panel.current?.document?.replaced);
+    const before = document.getText();
+
+    assert.ok((await panel.updateChart({ type: "line" }, cancellationSource().token)).ok);
+    assert.strictEqual(document.getText(), before);
+    assert.ok(panel.current?.document?.replaced);
+    approve = false;
+    await writeShown(webview);
+    assert.strictEqual(asked.length, 2);
+    assert.strictEqual(document.getText(), before);
+
+    approve = true;
+    await writeShown(webview);
+    assert.strictEqual(asked.length, 3);
+    assert.notStrictEqual(document.getText(), before);
+    assert.strictEqual(binding(document).fence.source, panel.current?.source);
   });
 
   test("an agent's change while an Apply is written keeps the block that it wrote", async () => {
