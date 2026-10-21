@@ -1504,6 +1504,25 @@ export class DiagramPanel implements vscode.Disposable {
     limits: { maxSide: number; maxPixels: number },
     ids: string[] = [],
   ): Promise<{ png: Uint8Array; view: ImageView | undefined } | string> {
+    const result = await this.captureDrawing({ format: "png", forModel: true, ...limits, ids });
+    if (typeof result === "string") return result;
+    const png = result.type === "exportImage" && result.format === "png" && pngBytes(result.data);
+    return png
+      ? { png, view: result.type === "exportImage" ? result.view : undefined }
+      : "The diagram panel returned an invalid PNG image.";
+  }
+
+  /** The current drawing's theme, also for a standalone Mermaid HTML export. */
+  async captureTheme(): Promise<Extract<ExportResult, { type: "exportTheme" }> | string> {
+    const result = await this.captureDrawing({ format: "html", forModel: false });
+    return typeof result === "string" || result.type === "exportTheme"
+      ? result
+      : "The diagram panel returned no theme for the export.";
+  }
+
+  private async captureDrawing(
+    request: Omit<Extract<ToWebview, { type: "export" }>, "type" | "requestId" | "renderRequestId">,
+  ): Promise<ExportResult | string> {
     const state = this.state;
     const revision = this.shownRevision;
     if (!state) {
@@ -1533,16 +1552,13 @@ export class DiagramPanel implements vscode.Disposable {
       return this.unavailable ?? `The diagram panel is not showing the ${noun} yet.`;
     }
     const result = await this.requestExport(
-      { format: "png", renderRequestId: rendered, forModel: true, ...limits, ids },
+      { ...request, renderRequestId: rendered },
       `The diagram panel did not finish the image within ${RENDER_TIMEOUT_MS / 1000} seconds.`,
     );
     if (result.type === "exportError") {
       return result.message;
     }
-    const png = result.type === "exportImage" && result.format === "png" && pngBytes(result.data);
-    return png
-      ? { png, view: result.type === "exportImage" ? result.view : undefined }
-      : "The diagram panel returned an invalid PNG image.";
+    return result;
   }
 
   /** Asks the page for the drawing, answering with timedOut if it does not answer in time. */

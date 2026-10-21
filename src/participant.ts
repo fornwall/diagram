@@ -17,6 +17,7 @@ import {
   type DiagramLanguage,
   diagramNoun,
   EDIT_TOOL,
+  EXPORT_HTML_TOOL,
   errorMessage,
   FIND_FILES_TOOL,
   GET_IMAGE_TOOL,
@@ -74,6 +75,7 @@ const DEFAULT_TOOLS = new Set([
   INSPECT_DATA_TOOL,
   UPDATE_CHART_TOOL,
   STYLE_TOOL,
+  EXPORT_HTML_TOOL,
 ]);
 const DRAWING_TOOLS = new Set([RENDER_TOOL, EDIT_TOOL, CHART_TOOL, UPDATE_CHART_TOOL, STYLE_TOOL]);
 

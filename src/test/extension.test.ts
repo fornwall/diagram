@@ -148,6 +148,26 @@ suite("extension", function () {
     assert.strictEqual(Buffer.from(image.data).subarray(1, 4).toString(), "PNG");
   });
 
+  test("lets an agent read a source range and edit it with the returned revision", async () => {
+    assert.match(
+      await invoke("diagram_render", { source: "flowchart TD\n  A[Start] --> B[Finish]" }),
+      /^Rendered/,
+    );
+    const page = await invoke("diagram_getState", { startLine: 2, endLine: 2 });
+    const revision = Number(/^Revision: (\d+)/.exec(page)?.[1]);
+    const oldText = /```mermaid\n([\s\S]*?)\n```/.exec(page)?.[1];
+    assert.ok(Number.isInteger(revision), page);
+    assert.strictEqual(oldText, "  A[Start] --> B[Finish]");
+    const input = {
+      revision,
+      edits: [{ oldText, newText: "  A[Start] --> C[Review] --> B[Finish]" }],
+    };
+    const edited = await invoke("diagram_edit", input);
+    assert.match(edited, /Revision: /);
+    assert.match(await invoke("diagram_getState", { startLine: 2 }), /C\[Review\]/);
+    assert.match(await invoke("diagram_edit", input), /changed|revision/i);
+  });
+
   test("tells the agent that a tree series draws only the first of its trees", async () => {
     const tree = (...names: string[]) =>
       invoke("diagram_render", {

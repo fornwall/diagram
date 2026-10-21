@@ -170,7 +170,7 @@ suite("describe", () => {
     );
     assert.match(
       describeDiagram(oneLine, { detail: "summary" }),
-      /\(The source, [\d,]+ characters long, is left out, as the room left in your input is too small for it\.\)/,
+      /\(The source, [\d,]+ characters long, is left out, as the room left in your input is too small for it\. diagram_getState with[\s\S]*reads exact source lines/,
     );
     assert.strictEqual(
       withoutValueRuns(`{\n${"  1,\n".repeat(20)}  2\n}`),

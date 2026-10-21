@@ -827,8 +827,6 @@ async function exportDrawing(message: Extract<ToWebview, { type: "export" }>): P
       throw new Error("The diagram changed before it could be exported. Try again.");
     }
     if (format === "html") {
-      if (current.language !== "echarts")
-        throw new Error("Interactive HTML is only available for charts.");
       post({ type: "exportTheme", requestId, colors: readThemeColors() });
       return;
     }

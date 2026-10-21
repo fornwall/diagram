@@ -30,6 +30,7 @@ const defaultTools = [
   "diagram_annotate",
   "diagram_chart",
   "diagram_edit",
+  "diagram_exportHtml",
   "diagram_findFiles",
   "diagram_getImage",
   "diagram_getState",

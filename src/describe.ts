@@ -33,9 +33,10 @@ import { formatOption } from "./webview/optionSource";
  * How much of a long source and list of relationships to give: "brief" leaves them out of every
  * chat request, "full" gives them, as {@link GET_STATE_TOOL} does, "source" gives the source but
  * not a long list, when the full description has no room in the model's input, and "summary"
- * leaves out even a short source, when that has none either.
+ * leaves out even a short source, when that has none either. "metadata" omits the source and
+ * user-edit diff on request, while keeping the selection, errors and other panel context.
  */
-export type Detail = "brief" | "full" | "source" | "summary";
+export type Detail = "brief" | "full" | "source" | "summary" | "metadata";
 
 /** Longer diagram sources are left out of the description, unless it is asked for in full. */
 const MAX_SOURCE_LENGTH = 30_000;
@@ -156,7 +157,7 @@ export function describeDiagram(
   if (state.error) {
     lines.push(`It currently fails to render with this error: ${state.error}`);
   }
-  const changes = detail === "summary" ? undefined : userChanges(state);
+  const changes = detail === "summary" || detail === "metadata" ? undefined : userChanges(state);
   if (changes) {
     lines.push(
       `The user changed the source since an agent drew it, as this diff from the agent's version shows. Preserve their changes unless asked otherwise.\n${codeFence(changes.diff, "diff")}`,
@@ -286,7 +287,7 @@ function describeRelationships(
     return `${naming}. Name by id these, which their ends and labels do not tell apart: ${listed}.`;
   }
   const these = `${plural(unnamed.length, one.replace(/^an? /, ""), many)}, which their ends and labels do not tell apart`;
-  return detail === "summary" || detail === "source"
+  return detail === "summary" || detail === "metadata" || detail === "source"
     ? `${naming}. It has ${these}, too many to list their ids in the room left in your input.`
     : has(GET_STATE_TOOL)
       ? `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`
@@ -328,16 +329,22 @@ function describeSource(
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
   const length = `The source is ${formatCount(source.length)} characters long`;
+  const readRange = `${GET_STATE_TOOL} with {"detail": "source", "startLine": 1, "endLine": 200} reads exact source lines; use its revision for edits`;
+  if (detail === "metadata") {
+    return `(${length}; omitted by request.${has(GET_STATE_TOOL) ? ` ${readRange}.` : ""})`;
+  }
   if (detail === "summary") {
     const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
     if (elided !== undefined && elided.length <= MAX_SUMMARY_SOURCE_LENGTH) {
       return elidedSource(`${length}, too long for the room left in your input`, elided, has);
     }
-    // Part of a source would be of no use to change it.
+    // Direct the caller to bounded, exact ranges rather than a silently truncated source.
     const leftOut = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
-    return chart
-      ? `(${leftOut})`
-      : `(${leftOut} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
+    return has(GET_STATE_TOOL)
+      ? `(${leftOut} ${readRange}.)`
+      : chart
+        ? `(${leftOut})`
+        : `(${leftOut} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
   }
   if (source.length <= MAX_SOURCE_LENGTH || detail === "full" || detail === "source") {
     return codeFence(source, language);
@@ -354,7 +361,10 @@ function describeSource(
 /** An option without its long runs of lines of values, saying why and which lines stand for them. */
 function elidedSource(why: string, elided: string, has: (tool: string) => boolean): string {
   const edits = has(EDIT_TOOL) ? `, which ${EDIT_TOOL}'s oldText must not include` : "";
-  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…"${edits}:\n${codeFence(elided, "echarts")}`;
+  const read = has(GET_STATE_TOOL)
+    ? `\n${GET_STATE_TOOL} with "startLine" and "endLine" reads exact source ranges when you need the omitted values.`
+    : "";
+  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…"${edits}:\n${codeFence(elided, "echarts")}${read}`;
 }
 
 /** The values of a JSON array, its brackets and commas, of which a line of values consists. */

@@ -1,4 +1,4 @@
-// Offline HTML export with the chart, theme and renderer inlined.
+// HTML export with the chart and theme inlined, and an offline or CDN renderer.
 
 import * as vscode from "vscode";
 import { SAVED_CHART, type SavedChart } from "./protocol";
@@ -9,14 +9,14 @@ import { type ThemeColors, toCss } from "./webview/colors";
  * JSON to embed in a script element: an escaped "<" can neither end the element early nor start a
  * comment, whatever the chart's titles and labels contain.
  */
-const embedJson = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
+export const embedJson = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
 /**
  * Preserve international font names without allowing CSS or HTML injection. Font names have no
  * parentheses, and an unclosed one or an unclosed quote would take the rest of the stylesheet
  * into the declaration.
  */
-function fontStack(colors: ThemeColors): string {
+export function fontStack(colors: ThemeColors): string {
   return (
     colors.fontFamily
       .replace(/[^\p{L}\p{M}\p{N}_\s,.'"-]/gu, "")
@@ -26,28 +26,35 @@ function fontStack(colors: ThemeColors): string {
 }
 
 /**
- * Offline chart page with the renderer and theme inlined. CSP blocks resource loads and form
- * submissions, but JavaScript options still execute and can navigate the page. A link in a
- * tooltip's HTML is left to the browser, as a link on any page is: unlike in the panel, there is no
+ * Chart page with the renderer inlined by default; a CDN module can replace only that library.
+ * CSP blocks other resource loads and form submissions, but JavaScript options still execute
+ * and can navigate the page. A link in a tooltip's HTML is left to the browser, as a link on any
+ * page is: unlike in the panel, there is no
  * extension behind the page whose checks it could bypass, and the policy blocks javascript: URLs.
  */
-export async function savedChartHtml(chart: SavedChart, extensionUri: vscode.Uri): Promise<string> {
+export async function savedChartHtml(
+  chart: SavedChart,
+  extensionUri: vscode.Uri,
+  cdnModule?: string,
+): Promise<string> {
   const [echarts, script, style] = await Promise.all(
     ["echarts.js", "standalone.js", "standalone.css"].map(async (name) =>
-      new TextDecoder().decode(
-        await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
-      ),
+      name === "echarts.js" && cdnModule
+        ? ""
+        : new TextDecoder().decode(
+            await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, "dist", name)),
+          ),
     ),
   );
   const { colors } = chart;
   const title = chart.title.trim();
   const nonce = crypto.randomUUID();
   // ECharts styles its tooltips inline, hence 'unsafe-inline' for styles, and an option written as
-  // JavaScript is compiled with new Function, hence 'unsafe-eval', as in the panel. Nothing is
-  // loaded: everything the page needs is in it.
+  // JavaScript is compiled with new Function, hence 'unsafe-eval', as in the panel. Only a CDN
+  // export loads external code; the default offline export embeds everything.
   const csp = [
     "default-src 'none'",
-    `script-src 'nonce-${nonce}' 'unsafe-eval'`,
+    `script-src 'nonce-${nonce}' 'unsafe-eval'${cdnModule ? " https://cdn.jsdelivr.net" : ""}`,
     "style-src 'unsafe-inline'",
     "img-src data:",
     // Spelled out because neither falls back to default-src. The HTML of a chart's tooltip could
@@ -86,8 +93,33 @@ ${style}</style>
 ${title ? `<h1>${escapeHtml(title)}</h1>\n` : ""}<p id="error" role="alert" hidden></p>
 <div id="canvas"></div>
 <script nonce="${nonce}">window.${SAVED_CHART} = ${embedJson(chart)};</script>
-<script nonce="${nonce}">${echarts}</script>
-<script nonce="${nonce}">${script}</script>
+${
+  cdnModule
+    ? `<script type="module" nonce="${nonce}">
+try {
+  const echarts = await import(${embedJson(cdnModule)});
+  // The panel uses two text measures from its bundled ECharts adapter. The public CDN build
+  // exposes the same font measurement through format.getTextRect.
+  const width = (text, font) => echarts.format.getTextRect(text, font).width;
+  globalThis.DiagramECharts = {
+    init: echarts.init,
+    drawnWidth: width,
+    textWidth: (text, font) => {
+      let measured = 0;
+      // ECharts breaks text by UTF-16 code units, treating every non-ASCII unit as full-width.
+      for (let i = 0; i < text.length; i++) measured += width(text.charCodeAt(i) > 127 ? "国" : text[i], font);
+      return measured;
+    },
+  };
+  ${script}
+} catch (error) {
+  const element = document.getElementById("error");
+  element.textContent = "Could not load the chart. This HTML needs internet access to load ECharts from jsDelivr. " + (error?.message ?? String(error));
+  element.hidden = false;
+}
+</script>`
+    : `<script nonce="${nonce}">${echarts}</script>\n<script nonce="${nonce}">${script}</script>`
+}
 </body>
 </html>
 `;

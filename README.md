@@ -43,9 +43,11 @@ Chart types: pie, doughnut, bar, stacked bar, line, area, scatter, histogram, tr
 
 Any chat agent, not only `@diagram`, can use the extension's tools to render and edit diagrams, chart data, read the panel's selection, look at the drawing as an image, mark items and ask you to pick items. Reference them in chat with `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` and others listed in the tools picker. See [the tools reference](docs/tools.md) for what each one does.
 
+Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification. State reads support summaries and exact source ranges, so large diagrams can be inspected and edited without repeating the whole source. `#diagramExport` saves either Mermaid or ECharts to a named HTML file with embedded source/data and a CDN renderer; viewing it requires internet access.
+
 ## Security
 
-VS Code asks before running a command, reading a data file outside the workspace or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content.
+VS Code asks before running a command, reading a data file outside the workspace, exporting HTML through a tool or opening an external link. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; HTML files made by `diagram_exportHtml` load their renderer from a CDN when opened.
 
 Chat requests send your prompt, attached content, diagram context and tool results to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 

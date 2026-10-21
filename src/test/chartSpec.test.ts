@@ -85,8 +85,16 @@ suite("chartSpec", () => {
     assert.ok(revision);
     for (const [key, schema] of Object.entries(update)) {
       const { description: _, ...given } = chart[key] ?? {};
+      const { description, ...constraints } = schema;
+      // Agents can receive the update tool without the chart tool: each field explains itself,
+      // while its accepted values match the creation schema apart from nullable resets.
+      assert.ok(typeof description === "string" && description.trim(), key);
       const nullable = { anyOf: [...(given.anyOf ?? [given]), { type: "null" }] };
-      assert.deepStrictEqual(schema, key === "type" || key === "title" ? given : nullable, key);
+      assert.deepStrictEqual(
+        constraints,
+        key === "type" || key === "title" ? given : nullable,
+        key,
+      );
     }
   });
 

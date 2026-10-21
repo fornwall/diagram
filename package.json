@@ -321,12 +321,12 @@
                 "ascending",
                 "descending"
               ],
-              "description": "After grouping, by the first value column, or by the total in stacked charts or with a series per label of a second label column."
+              "description": "After grouping, sort by the first value, totals for stacked charts or series split by a second label column, or medians for boxplots. Time axes stay chronological; sort then only affects which rows a limit keeps. Unsupported for histograms."
             },
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Keep the first rows after sorting; pie/doughnut combine the other positive rows as \"Other\"."
+              "description": "Keep the first rows after sorting; pie/doughnut combine remaining positive values as \"Other\". Unsupported for histograms, boxplots and bar/line/area charts split into series by a second label column."
             },
             "options": {
               "type": "object",
@@ -340,7 +340,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 200,
-              "description": "Number of equal-width bins; by default about √n of a round width."
+              "description": "Number of equal-width bins; by default about \u221an of a round width."
             },
             "facetColumn": {
               "type": "string",
@@ -369,7 +369,8 @@
                 "properties": {
                   "column": {
                     "type": "string",
-                    "minLength": 1
+                    "minLength": 1,
+                    "description": "Exact parsed column name from diagram_inspectData."
                   },
                   "op": {
                     "type": "string",
@@ -381,7 +382,8 @@
                       "gt",
                       "gte",
                       "contains"
-                    ]
+                    ],
+                    "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
                   },
                   "value": {
                     "anyOf": [
@@ -394,7 +396,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
                   }
                 },
                 "required": [
@@ -420,7 +423,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the panel's current diagram or chart: source, revision, chart parameters, code links, render error, user edits, marks, selected items, and the ids of same-named chart items and of edges or sequence messages between the same nodes. Use before changing a diagram you have not seen, or when the user refers to \"this\", \"these\" or the selection.",
+        "modelDescription": "Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, or detail \"source\" with startLine/endLine for exact source to copy into diagram_edit. Long results may be shortened to fit the caller's token budget; source ranges report how to continue.",
         "tags": [
           "diagram",
           "mermaid",
@@ -430,7 +433,27 @@
         ],
         "inputSchema": {
           "type": "object",
-          "properties": {},
+          "properties": {
+            "detail": {
+              "type": "string",
+              "enum": [
+                "full",
+                "summary",
+                "source"
+              ],
+              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads only exact source and revision. Line bounds imply \"source\" and cannot be combined with \"full\" or \"summary\"."
+            },
+            "startLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First source line to read, 1-based; defaults to 1."
+            },
+            "endLine": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Last source line to read, inclusive; defaults to startLine + 199. Read at most 500 lines per call. The result may return fewer whole lines to fit the token budget."
+            }
+          },
           "additionalProperties": false
         }
       },
@@ -470,7 +493,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(book)",
         "userDescription": "Look up how to draw a kind of Mermaid diagram or ECharts chart well",
-        "modelDescription": "Return a guide to a Mermaid 12 diagram type or ECharts 6 chart kind: an example that renders in the panel, the syntax rules models get wrong, layout tips and what the panel does already. Without a topic, lists the topics. Use before drawing a type you are unsure of, or after a render error you can't fix.",
+        "modelDescription": "Read topic \"workflow\" for tool selection and the inspect, render, edit, verify and export workflow. Diagram-type topics give Mermaid 12 or ECharts 6 examples that render, common syntax mistakes, layout tips and panel behavior. Omit topic to list them. Use a type topic before unfamiliar syntax or after a render error you cannot fix.",
         "tags": [
           "diagram",
           "mermaid",
@@ -483,7 +506,7 @@
           "properties": {
             "topic": {
               "type": "string",
-              "description": "A diagram type such as \"flowchart\", \"sequence\", \"architecture\" or \"gantt\", or an ECharts topic such as \"echarts\", \"echarts-bar\" or \"echarts-time\"; omit for the list."
+              "description": "\"workflow\" for choosing and combining tools; a Mermaid type such as \"flowchart\", \"sequence\", \"architecture\" or \"gantt\"; or an ECharts topic such as \"echarts\", \"echarts-bar\" or \"echarts-time\". Omit for the index."
             }
           },
           "additionalProperties": false
@@ -766,10 +789,12 @@
                 "boxplot",
                 "gauge",
                 "funnel"
-              ]
+              ],
+              "description": "New chart type; omit to keep it. Incompatible controls are cleared where required; settings such as max may remain unused until switching back. Use diagram_render for an arbitrary ECharts option."
             },
             "title": {
-              "type": "string"
+              "type": "string",
+              "description": "New panel title; omit to keep it."
             },
             "labelColumn": {
               "anyOf": [
@@ -786,7 +811,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Column name, or names outermost first. Several give hierarchy levels, sankey endpoints, heatmap rows/columns, or category and series labels for bar/line/area charts. null restores inference. Omit for histograms."
             },
             "valueColumns": {
               "anyOf": [
@@ -800,7 +826,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Numeric column names for the series: two for XY scatter, one when dates supply x; pie/treemap/gauge use the first, boxplot and histogram use raw values. null restores inference."
             },
             "max": {
               "anyOf": [
@@ -810,7 +837,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Top of a gauge scale or every radar axis, in parsed units (bytes for sizes, seconds for durations). null restores automatic bounds."
             },
             "aggregate": {
               "anyOf": [
@@ -828,7 +856,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Combine rows with the same labels before sorting and limiting. \"count\" counts rows without a value column. Boxplot and histogram need raw rows. null removes grouping."
             },
             "sort": {
               "anyOf": [
@@ -842,7 +871,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Sort by the first value, totals for stacked charts or series split by a second label column, or medians for boxplots. Time axes stay chronological. null removes explicit value sorting. Unsupported for histograms."
             },
             "limit": {
               "anyOf": [
@@ -853,7 +883,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Keep this many rows after sorting; pie/doughnut combine remaining positive values as \"Other\". null removes the limit. Unsupported for histograms, boxplots and bar/line/area charts split into series by a second label column."
             },
             "revision": {
               "type": "integer",
@@ -870,7 +901,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Number of equal-width histogram bins, from 1 to 200. null restores automatic binning."
             },
             "facetColumn": {
               "anyOf": [
@@ -881,7 +913,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Split bar/line/area/scatter/histogram charts into a panel per value of this column (at most 12), after filtering. Aggregate, sort and limit apply per panel. null removes facets."
             },
             "facetColumns": {
               "anyOf": [
@@ -893,7 +926,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Facet panels per row, from 1 to 4; layout may increase this to keep panels readable. null restores automatic layout."
             },
             "facetScales": {
               "anyOf": [
@@ -907,7 +941,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "\"shared\" compares facet panels on the same axis ranges; \"independent\" fits each panel separately. null restores shared scales."
             },
             "filters": {
               "anyOf": [
@@ -919,7 +954,8 @@
                     "properties": {
                       "column": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "description": "Exact parsed column name from diagram_inspectData."
                       },
                       "op": {
                         "type": "string",
@@ -931,7 +967,8 @@
                           "gt",
                           "gte",
                           "contains"
-                        ]
+                        ],
+                        "description": "eq/neq compare exact values and types; lt/lte/gt/gte compare numeric cells; contains matches text case-sensitively."
                       },
                       "value": {
                         "anyOf": [
@@ -944,7 +981,8 @@
                           {
                             "type": "null"
                           }
-                        ]
+                        ],
+                        "description": "Comparison value: a number in parsed units, a string, or null to match missing cells with eq/neq."
                       }
                     },
                     "required": [
@@ -958,7 +996,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Keep rows matching all filters before grouping, sorting and limiting. This replaces the entire filter list; null or [] clears it. Numeric comparisons use parsed units (bytes or seconds)."
             }
           },
           "additionalProperties": false
@@ -1047,6 +1086,46 @@
           ],
           "additionalProperties": false
         }
+      },
+      {
+        "name": "diagram_exportHtml",
+        "displayName": "Export Diagram as HTML",
+        "toolReferenceName": "diagramExport",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(export)",
+        "userDescription": "Save the current diagram or chart as a named HTML file with its renderer loaded from a CDN",
+        "modelDescription": "Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and offline ECharts HTML.",
+        "tags": [
+          "diagram",
+          "mermaid",
+          "echarts",
+          "chart",
+          "export"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "Destination ending in .html or .htm, absolute or relative to the first workspace folder, e.g. \"docs/architecture.html\". The parent folder must exist."
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Revision from diagram_getState or the rendering tool result; refuses to export if the diagram has changed."
+            },
+            "overwrite": {
+              "type": "boolean",
+              "description": "Defaults to false, preserving existing files. Set true only when the user wants to replace the destination. Files with unsaved editor changes are always preserved."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
       }
     ],
     "commands": [
@@ -1062,13 +1141,13 @@
       },
       {
         "command": "diagram.export",
-        "title": "Export…",
+        "title": "Export\u2026",
         "category": "Diagram",
         "icon": "$(export)"
       },
       {
         "command": "diagram.chartOptions",
-        "title": "Chart Options…",
+        "title": "Chart Options\u2026",
         "category": "Diagram",
         "icon": "$(gear)",
         "enablement": "diagram.chartOptionsAvailable"

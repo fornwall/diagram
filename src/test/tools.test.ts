@@ -56,9 +56,187 @@ suite("tools", () => {
     assert.doesNotMatch(summary, /A --> B/);
     assert.match(
       summary,
-      /\(The source, 40,013 characters long, is left out, as the room left in your input is too small for it\. Without it, you cannot change the diagram: tell the user/,
+      /\(The source, 40,013 characters long, is left out, as the room left in your input is too small for it\. diagram_getState with \{"detail": "source", "startLine": 1, "endLine": 200\} reads exact source lines/,
     );
     assert.match(summary, /"Flow"[\s\S]*The user edited this source/);
+  });
+
+  test("diagram_getState reads exact source ranges with indentation and original line endings", async () => {
+    const source = "flowchart TD\r\n  A --> B\r  B --> C\n  C --> D";
+    values.set("diagram.state", { ...flowchart, source });
+    panel.dispose();
+    panel = newPanel(values);
+    const text = await invokeTool(new GetDiagramStateTool(panel), { startLine: 2, endLine: 3 });
+    assert.match(text, /^Revision: 0\. mermaid source: 4 lines/);
+    assert.match(text, /Source lines 2-3/);
+    assert.ok(text.includes("```mermaid\n  A --> B\r  B --> C\n\n```"), text);
+    assert.doesNotMatch(text, /flowchart TD|C --> D/);
+    assert.match(text, /"startLine": 4/);
+    assert.match(text, /if it changes, reread the relevant lines/);
+    assert.match(
+      await invokeTool(new GetDiagramStateTool(panel), { startLine: 4 }),
+      /Source lines 4-4[\s\S]*End of source\./,
+    );
+  });
+
+  test("diagram_getState bounds source pages, with defaults and an end-of-source diagnostic", async () => {
+    const source = Array.from({ length: 700 }, (_, index) => `  n${index}`).join("\n");
+    values.set("diagram.state", { ...flowchart, source });
+    panel.dispose();
+    panel = newPanel(values);
+    const tool = new GetDiagramStateTool(panel);
+    const first = await invokeTool(tool, { detail: "source" });
+    assert.match(first, /Source lines 1-200/);
+    assert.match(first, /"startLine": 201/);
+    assert.doesNotMatch(first, /n200\b/);
+    const capped = await invokeTool(tool, { startLine: 10, endLine: 700 });
+    assert.match(capped, /Source lines 10-509/);
+    assert.doesNotMatch(capped, /n509\b/);
+    assert.match(await invokeTool(tool, { startLine: 701 }), /Line 701 is past the end/);
+  });
+
+  test("diagram_getState fits source pages to the token budget without truncating lines", async () => {
+    const lines = Array.from(
+      { length: 400 },
+      (_, index) => `  n${index}[${"Long label ".repeat(5)}]`,
+    );
+    const source = lines.join("\n");
+    values.set("diagram.state", { ...flowchart, source });
+    panel.dispose();
+    panel = newPanel(values);
+    const budget = { tokenBudget: 400, countTokens: async (text: string) => text.length / 4 };
+    const result = await invokeTool(
+      new GetDiagramStateTool(panel),
+      { detail: "source" },
+      undefined,
+      budget,
+    );
+    assert.ok(result.length <= budget.tokenBudget * 4, result);
+    const end = Number(/Source lines 1-(\d+)/.exec(result)?.[1]);
+    assert.ok(end > 0 && end < 200, result);
+    assert.ok(result.includes(`${lines[end - 1]}\n\n\x60\x60\x60`), result);
+    assert.match(result, new RegExp(`"startLine": ${end + 1}`));
+    const next = await invokeTool(new GetDiagramStateTool(panel), {
+      startLine: end + 1,
+      endLine: end + 1,
+    });
+    assert.ok(next.includes(lines[end] ?? assert.fail("missing next line")));
+  });
+
+  test("diagram_getState can shrink to the same one-line page as an explicit range", async () => {
+    values.set("diagram.state", { ...flowchart, source: "  A --> B\n".repeat(300).trimEnd() });
+    panel.dispose();
+    panel = newPanel(values);
+    const tool = new GetDiagramStateTool(panel);
+    const oneLine = await invokeTool(tool, { endLine: 1 });
+    const result = await invokeTool(tool, { detail: "source" }, undefined, {
+      tokenBudget: oneLine.length,
+      countTokens: async (text) => text.length,
+    });
+    assert.strictEqual(result, oneLine);
+  });
+
+  test("diagram_getState explains when a whole source line cannot fit", async () => {
+    values.set("diagram.state", {
+      ...flowchart,
+      source: `flowchart TD; ${"A --> B; ".repeat(1_000)}`,
+    });
+    panel.dispose();
+    panel = newPanel(values);
+    const result = await invokeTool(
+      new GetDiagramStateTool(panel),
+      { detail: "source" },
+      undefined,
+      {
+        tokenBudget: 400,
+        countTokens: async (text) => text.length / 4,
+      },
+    );
+    assert.match(
+      result,
+      /Source line 1 does not fit[\s\S]*larger tool result budget or a new chat/,
+    );
+    assert.doesNotMatch(result, /A --> B/);
+  });
+
+  test("diagram_getState summary keeps context but omits source and user-edit diffs", async () => {
+    values.set("diagram.state", {
+      ...flowchart,
+      error: "Parse error",
+      userEdit: { from: "flowchart TD\n  Before", to: flowchart.source },
+    });
+    panel.dispose();
+    panel = newPanel(values);
+    const result = await invokeTool(new GetDiagramStateTool(panel), { detail: "summary" });
+    assert.match(result, /Revision: 0\.[\s\S]*Current Mermaid diagram: "Flow"/);
+    assert.match(result, /omitted by request[\s\S]*Parse error[\s\S]*The user edited this source/);
+    assert.doesNotMatch(result, /A\[Parser\]|Before|```diff/);
+  });
+
+  test("diagram_getState validates detail and source ranges instead of silently ignoring them", async () => {
+    const tool = new GetDiagramStateTool(panel);
+    for (const input of [
+      { detail: "unknown" },
+      { detail: ["source"] },
+      { startLine: 0 },
+      { startLine: "1" },
+      { endLine: 1.5 },
+      { startLine: 5, endLine: 3 },
+      { detail: "summary", startLine: 1 },
+      { detail: "full", endLine: 1 },
+      { start: 1 },
+    ]) {
+      assert.match(
+        await invokeTool(tool, input),
+        /^The diagram was not read:/,
+        JSON.stringify(input),
+      );
+    }
+  });
+
+  test("diagram_getState reports oversized summary metadata without truncating it", async () => {
+    values.set("diagram.state", { ...flowchart, title: "Large title ".repeat(500) });
+    panel.dispose();
+    panel = newPanel(values);
+    const result = await invokeTool(
+      new GetDiagramStateTool(panel),
+      { detail: "summary" },
+      undefined,
+      {
+        tokenBudget: 400,
+        countTokens: async (text) => text.length / 4,
+      },
+    );
+    assert.match(result, /^Revision: 0\. The diagram's metadata does not fit/);
+    assert.match(result, /larger tool result budget or a new chat/);
+    assert.doesNotMatch(result, /Large title|A\[Parser\]/);
+    assert.ok(result.length <= 400 * 4);
+  });
+
+  test("diagram_getState keeps one snapshot while asynchronous token counting yields", async () => {
+    const { panel: shown } = await newFakePanel();
+    const source = `flowchart TD\n${"  Original --> Kept\n".repeat(1_500)}`;
+    await shown.render({ language: "mermaid", source, title: "Original" }, "tool");
+    const revision = shown.revision;
+    let changed = false;
+    const result = await invokeTool(new GetDiagramStateTool(shown), {}, undefined, {
+      tokenBudget: 4_000,
+      countTokens: async (text) => {
+        if (!changed) {
+          changed = true;
+          await shown.render(
+            { language: "mermaid", source: "flowchart TD\n  Replacement", title: "New" },
+            "tool",
+          );
+        }
+        return text.length / 4;
+      },
+    });
+    assert.ok(changed);
+    assert.match(result, new RegExp(`^Revision: ${revision}\\.`));
+    assert.match(result, /Current Mermaid diagram: "Original"/);
+    assert.doesNotMatch(result, /Replacement|"New"/);
+    assert.notStrictEqual(shown.revision, revision);
   });
 
   test("diagram_getState gives a caller without a token budget a large chart without its data", async () => {

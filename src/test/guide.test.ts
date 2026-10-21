@@ -33,6 +33,25 @@ suite("diagram_guide", () => {
     assert.strictEqual(new Set(keys).size, keys.length);
   });
 
+  test("exposes a concise workflow separately from the drawing examples", async () => {
+    const text = await invokeTool(new DiagramGuideTool(), { topic: "workflow" });
+    assert.match(guideIndex(), /^- workflow: .+$/m);
+    assert.match(text, /^workflow: /);
+    assert.ok(text.length <= MAX_TOPIC_LENGTH, `workflow: ${text.length} characters`);
+    assert.strictEqual(findTopic("workflow"), undefined);
+    for (const topic of ["tools", "getting-started", "Agent workflow", "WORKFLOW"]) {
+      assert.strictEqual(await invokeTool(new DiagramGuideTool(), { topic }), text, topic);
+      assert.strictEqual(findTopic(topic), undefined, topic);
+    }
+    assert.match(text, /oldText copied exactly from current source/);
+    assert.match(text, /revision conflict, reread and adapt; keep the revision guard/);
+    assert.match(text, /inspection and charting execute a command separately/);
+    assert.match(text, /Images omit selection and marks/);
+    assert.match(text, /only to paths and lines you read/);
+    assert.match(text, /diagram_exportHtml.*file:"report.html"/);
+    assert.match(text, /opening needs internet for the CDN renderer/);
+  });
+
   test("has a topic for every type of diagram that Mermaid draws", () => {
     for (const type of DIAGRAM_TYPES.filter((type) => type !== "info")) {
       assert.strictEqual(findTopic(type)?.language, "mermaid", type);
@@ -61,6 +80,7 @@ suite("diagram_guide", () => {
       /^There is no topic "a flowchart with subgraphs"; the closest is "flowchart"\./,
     );
     assert.match(guideText({ topic: "echarts-bars" }), /the closest is "echarts-bar"\./);
+    assert.match(guideText({ topic: "workflw" }), /the closest is "workflow"\./);
   });
 
   test("answers a malformed input with the index and what to fix", () => {
@@ -82,6 +102,10 @@ suite("diagram_guide", () => {
     const message = (input: unknown) =>
       tool.prepareInvocation({ input: input as never }).invocationMessage;
     assert.strictEqual(message({ topic: "erDiagram" }), "Reading the guide to er");
+    assert.strictEqual(
+      message({ topic: "getting started" }),
+      "Reading the guide to the diagram workflow",
+    );
     assert.strictEqual(message({}), "Reading the guide to diagram types");
     assert.strictEqual(message({ topic: 3 }), "Reading the guide to diagram types");
   });

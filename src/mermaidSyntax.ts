@@ -7,6 +7,25 @@
 export const DIRECTIVE =
   /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
 
+/**
+ * Blank lines and comments directly after these diagram types confuse their indentation parsers.
+ * The panel and exported HTML render the same normalization of the original source.
+ */
+export const BLANK_LINES_AFTER_TYPE =
+  /^((?:[^\S\n]*(?:%%[^\n]*)?\n)*?[^\S\n]*(?:mindmap|kanban|ishikawa(?:-beta)?)\b[^\n]*\n)(?:[^\S\n]*(?:%%(?!\{)[^\n]*)?\n)+/gi;
+
+/** Removes from text after the front matter what Mermaid would parse but fail on. */
+export function withoutBlankLinesAfterType(text: string): string {
+  return text.replace(BLANK_LINES_AFTER_TYPE, "$1");
+}
+
+/** The source as Mermaid can parse it, while retaining the original source for editing. */
+export function parsableSource(source: string): string {
+  const normalized = source.replace(/\r\n?/g, "\n");
+  const start = frontMatterEnd(normalized);
+  return normalized.slice(0, start) + withoutBlankLinesAfterType(normalized.slice(start));
+}
+
 /** Where the front matter ends, as Mermaid's matchFrontMatter finds it, or 0 without front matter. */
 export function frontMatterEnd(text: string): number {
   const indent = /^[^\S\n]*/.exec(text)?.[0] ?? "";

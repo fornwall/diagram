@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ChartTool, InspectDataTool, UpdateChartTool } from "./chartTools";
 import { EditDiagramTool } from "./editTool";
+import { ExportDiagramHtmlTool } from "./exportHtmlTool";
 import { DiagramGuideTool } from "./guide";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
@@ -9,6 +10,7 @@ import {
   ANNOTATE_TOOL,
   CHART_TOOL,
   EDIT_TOOL,
+  EXPORT_HTML_TOOL,
   FIND_FILES_TOOL,
   GET_IMAGE_TOOL,
   GET_STATE_TOOL,
@@ -54,6 +56,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(CHART_TOOL, new ChartTool(panel)),
     vscode.lm.registerTool(GET_STATE_TOOL, new GetDiagramStateTool(panel)),
     vscode.lm.registerTool(GET_IMAGE_TOOL, new GetDiagramImageTool(panel)),
+    vscode.lm.registerTool(
+      EXPORT_HTML_TOOL,
+      new ExportDiagramHtmlTool(panel, context.extensionUri),
+    ),
     vscode.lm.registerTool(PICK_NODES_TOOL, new PickDiagramNodesTool(panel)),
     vscode.lm.registerTool(ANNOTATE_TOOL, new AnnotateDiagramTool(panel)),
     vscode.lm.registerTool(FIND_FILES_TOOL, new FindWorkspaceFilesTool()),

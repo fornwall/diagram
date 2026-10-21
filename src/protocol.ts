@@ -8,6 +8,7 @@ export const EDIT_TOOL = "diagram_edit";
 export const CHART_TOOL = "diagram_chart";
 export const GET_STATE_TOOL = "diagram_getState";
 export const GET_IMAGE_TOOL = "diagram_getImage";
+export const EXPORT_HTML_TOOL = "diagram_exportHtml";
 export const GUIDE_TOOL = "diagram_guide";
 export const PICK_NODES_TOOL = "diagram_pickNodes";
 export const ANNOTATE_TOOL = "diagram_annotate";

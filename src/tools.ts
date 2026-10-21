@@ -25,6 +25,7 @@ import {
   RENDER_TOOL,
 } from "./protocol";
 import { errorContext } from "./sourceEdits";
+import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
 import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
 import {
   drawnResult,
@@ -205,7 +206,7 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
   }
 }
 
-export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<string, never>> {
+export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput> {
   constructor(private readonly panel: DiagramPanel) {}
 
   prepareInvocation(): vscode.PreparedToolInvocation {
@@ -213,27 +214,54 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<Record<stri
   }
 
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<Record<string, never>>,
+    options: vscode.LanguageModelToolInvocationOptions<StateInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.LanguageModelToolResult> {
     throwIfCancelled(token);
+    let input: StateInput;
+    try {
+      input = parseStateInput(options.input);
+    } catch (error) {
+      return textResult(`The diagram was not read: ${errorMessage(error)}`);
+    }
+    const current = this.panel.current;
+    if (!current) return textResult(noDiagram("read"));
+    const { source: exactSource, language } = current;
+    const revision = this.panel.revision;
+    const room = options.tokenizationOptions;
+    const fitting = async (text: string) =>
+      room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    if (input.detail === "source") {
+      return textResult(
+        exactSource === undefined
+          ? `Revision: ${revision}. The source was not kept when VS Code closed. The user can press Refresh to load the chart's data again.`
+          : await sourcePage(exactSource, language, revision, input, fitting),
+      );
+    }
+    // Snapshot every candidate before token counting yields: an edit during a slow count must
+    // not mix one revision's full description with another revision's fallback source.
+    if (input.detail === "summary") {
+      const summary = this.panel.describeForModel({ detail: "metadata" }) ?? noDiagram("read");
+      return textResult(
+        (await fitting(summary))
+          ? summary
+          : `Revision: ${revision}. The diagram's metadata does not fit the available result budget. Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".`,
+      );
+    }
     // A source too long to repeat in every chat request is given in full here, as a model has to
     // read it to change it, unless it does not fit, as the caller would cut it short.
     const full = this.panel.describeForModel({ detail: "full" });
     if (full === undefined) {
       return textResult(noDiagram("read"));
     }
-    // A caller that gives no budget gets no more than a large Mermaid diagram's description takes.
-    const room = options.tokenizationOptions;
-    const fitting = async (text: string) =>
-      room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    const source = this.panel.describeForModel({ detail: "source" });
+    const summary = this.panel.describeForModel({ detail: "summary" });
     if (await fitting(full)) return textResult(full);
     // The source, which a model needs to change the diagram, before a long list of relationships.
-    const source = this.panel.describeForModel({ detail: "source" });
     if (source !== undefined && source !== full && (await fitting(source))) {
       return textResult(source);
     }
-    return textResult(this.panel.describeForModel({ detail: "summary" }) ?? full);
+    return textResult(summary ?? full);
   }
 }
 
