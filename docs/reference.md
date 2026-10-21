@@ -1,12 +1,12 @@
 # Reference
 
-The details of using `@diagram`. See the [README](../README.md) for an overview and [tools.md](tools.md) for the tools that agents use.
+The details of using Diagram. See the [README](../README.md) for an overview and [tools.md](tools.md) for the tools that agents use.
 
 ## Chat
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. Render errors and warnings go back to the model so it can attempt a repair. For layout warnings, the model is instructed to rearrange the diagram while keeping the requested content. You may still need to resize the panel.
+Use the Diagram tools in ordinary agent chat, or select **Diagram** from the agent dropdown for a focused session. Ask to change the current diagram, start a separate one, or explain it without changes. **Diagram: Show Panel** reopens the panel. Render errors and warnings go back to the agent so it can attempt a repair while keeping the requested content. You may still need to resize the panel.
 
-Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model that accepts images. Images are sent only with the request they are attached to.
+Attach files or images through VS Code chat. Attachment formats and limits depend on the chat provider and selected model.
 
 ## The panel
 
@@ -17,9 +17,9 @@ Attach or paste PNG, JPEG, GIF or WebP images up to 3 MiB when using a model tha
 | Highlight a path | Select a start and destination, then right-click and choose **Highlight Path** in a flowchart, swimlane, agent flow or state diagram. Available when a path connects the two nodes. It selects a shortest path, follows arrows, traverses plain lines and double arrows both ways, skips invisible links and breaks ties by source order. |
 | Clear selections and highlights | Right-click and choose **Clear Selection** to remove selected items, agent highlights and dimming. |
 | Help | Right-click and choose **Help** for a brief guide to the extension. |
-| Ask | Type a question or change and press **Send to chat**. The request includes your selection and goes to `@diagram`, or to chat without a mention if another agent drew the diagram. |
+| Ask | Type a question or change and press **Send to chat**. The request includes your selection and opens chat without changing the selected agent. Selection stays available to the diagram state tool until you change or clear it. |
 | Answer a pick | When an agent asks you to pick, click your answer (or several items, then **Done**). **Cancel** or Escape declines. |
-| Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. Applied edits are included in the next chat request. |
+| Edit | Show source with the view buttons. **Apply** (Ctrl/Cmd+Enter) renders edits; **Revert** discards them. Drafts survive view changes and incoming diagrams. Errors link to their source location. Inferred titles follow your edits. Agents read applied edits through the diagram state tool. |
 | Find | Ctrl/Cmd+F finds text in the drawing and the source. |
 | Resize | Drag the divider in split view, or focus it and use the arrow keys. Home/End set the limits; Enter or double-click resets it. |
 | Chart Options | Use the title bar gear or **Diagram: Chart Options…** to configure a chart made from data. Enter applies. |
@@ -45,7 +45,7 @@ Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram
 
 **Apply** renders edits and updates the block, preserving fences, indentation, quote markers and surrounding text, also after the file is renamed in VS Code. Changes are undoable and remain unsaved, in a background tab that VS Code opens if no editor shows the file. If rendering fails or the block has changed, the file stays untouched. Copy your edits from the warning or reopen the block.
 
-**Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before either action writes them. `/new` and switching between Mermaid and ECharts detach the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
+**Write to** writes the displayed diagram to its Markdown block. Agent changes require confirmation before either action writes them. Starting a separate diagram with the tools’ `newDiagram` option, or switching between Mermaid and ECharts, detaches the panel from the block. Read-only files, including Git revisions, can be viewed and edited in the panel without writing back.
 
 ## Chart data
 
@@ -101,8 +101,6 @@ The panel loads images only from `data:` URLs, so a Mermaid image shape must emb
 - Pie, doughnut, funnel and radar charts: 1,000 items. Box plots and sunbursts: 10,000. Heatmaps: 100,000 cells.
 - Bar, line and area charts: 50 series.
 - Mermaid sources: 50,000 characters.
-- Attachments to `@diagram`: 50,000 characters each, and less if the model's context requires it.
-- Tool use by `@diagram`: 15 rounds of calls and 45 calls per request. Near the limit, the model is told to draw with what it has.
 - Workspace tools: reads of files up to 16 MiB, 500 lines at a time. A search skips files over 1 MiB and scans at most 1,000 files and 16 MiB. Results are capped at 40,000 characters and say what they leave out.
 - A chart of a file or command with a very large option is not kept when VS Code restarts; press **Refresh** to draw it again.
 - When VS Code restarts, a diagram that the panel did not finish drawing within 15 seconds is not drawn again, in case it hangs the panel; edit and apply it, or have it rendered again.

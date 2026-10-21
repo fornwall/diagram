@@ -84,6 +84,7 @@ suite("panelState", () => {
     // The first versions drew only Mermaid, and saved no language.
     const { language: _, ...first } = state;
     assert.deepStrictEqual(load(first), state);
+    assert.deepStrictEqual(load({ ...state, origin: "participant" }), state);
     // Fences were saved with an indentation where they now have a prefix.
     const fence = { language: "mermaid", source: state.source, openingLine: 2, lastLine: 4 };
     assert.deepStrictEqual(

@@ -1,5 +1,6 @@
 **
 !dist/**
+!agents/*.agent.md
 !images/icon.png
 !package.json
 !README.md

@@ -508,7 +508,7 @@ suite("tools", () => {
     assert.deepStrictEqual(rendered, [undefined]);
     assert.match(
       result,
-      /\n\nUnknown property "clickprompt"; the properties are "source", "revision", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
+      /\n\nUnknown property "clickprompt"; the properties are "source", "revision", "newDiagram", "language", "title", "clickPrompt", "links"\. Unknown properties are ignored\.\n\nRevision: 1\.$/,
     );
   });
 

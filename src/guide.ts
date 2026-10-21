@@ -1,5 +1,5 @@
 // The diagram_guide tool: an agent workflow and examples for drawing each kind of diagram well,
-// so that the tool descriptions and the prompt can stay short.
+// shared by ordinary chat and the Diagram agent.
 
 import type * as vscode from "vscode";
 import { throwIfCancelled } from "./cancellation";
@@ -41,15 +41,15 @@ const WORKFLOW = {
 
 1. Choose tools. Use ${RENDER_TOOL} with complete source for a new diagram or substantial rewrite: Mermaid for structure and flow, ECharts for quantitative data. For files, command output or tables, use ${CHART_TOOL}. Read a ${GUIDE_TOOL} topic for unfamiliar syntax. The panel supplies theme and sizing; omit colors and fonts unless requested.
 
-2. Revise. ${GET_STATE_TOOL} reads detail:"summary" for metadata, "source" with startLine/endLine for source, or "full" for relationships. Use detail:"search", query:"label" to find literal, case-sensitive text and exact context; continue at startMatch, restarting if the revision changes. Use ${EDIT_TOOL} with unique oldText copied exactly from current source; all replacements must apply. Preserve ids, links and unrelated edits. Pass revision to edit, update, style and replacement calls. On a revision conflict, reread and adapt; keep the revision guard. Await each drawing change before the next.
+2. Revise. Read state before follow-ups to see user edits and selections. ${GET_STATE_TOOL} reads "summary" for metadata, "source" with startLine/endLine for source, or "full" for relationships. Use detail:"search", query:"label" to find exact text; page with startMatch. Use ${EDIT_TOOL} with unique oldText copied exactly from current source; all replacements must apply. Preserve ids, links and unrelated edits. Pass revision to edit, update, style and replacement calls. On a revision conflict, reread and adapt; keep the revision guard. Await each drawing change before the next. For a separate drawing, pass newDiagram:true to ${RENDER_TOOL} or ${CHART_TOOL}, detaching the Markdown block and inherited export location.
 
-3. Inspect unfamiliar data. ${INSPECT_DATA_TOOL} reports columns, types, row count and samples. Give exactly one of data, file or command; omit all three for the current chart's loaded data. ${CHART_TOOL} reads its source again, so inspection and charting execute a command separately. Use ${UPDATE_CHART_TOOL} for type, columns, grouping, filters or title: it reuses loaded data. Omitted settings stay where compatible; null clears a nullable setting. Use ${EDIT_TOOL} only for generated-chart styling, ${CHART_TOOL} to reload/change data, and ${RENDER_TOOL} for callbacks or full option control.
+3. Inspect unfamiliar data. ${INSPECT_DATA_TOOL} reports columns, types and samples. Give exactly one of data, file or command; omit all three for the current chart's loaded data. ${CHART_TOOL} reads its source again, so inspection and charting execute a command separately. Use ${UPDATE_CHART_TOOL} for type, columns, grouping, filters or title: it reuses loaded data. Use ${EDIT_TOOL} only for generated-chart styling, ${CHART_TOOL} to reload/change data, and ${RENDER_TOOL} for callbacks or full option control.
 
 4. Check results. Repair render errors and warnings. Failed syntax can remain in the panel: use returned error context or current source. For an unavailable panel, inspect state before changing syntax. If you can view images, use ${GET_IMAGE_TOOL} for dense drawings; inspect overlap, clipping and labels. If text is too small, request ids of nearby items. Fix layout and check again; preserve requested content.
 
-5. Explain and select. ${GET_STATE_TOOL} identifies selected items and disambiguates repeated names and relationships. ${PICK_NODES_TOOL} waits for a user choice; use it when needed. ${ANNOTATE_TOOL} adds temporary marks; each call replaces all marks, and {} clears them. Explain marks in chat. Images omit selection and marks. Use ${STYLE_TOOL} for requested Mermaid colors.
+5. Explain and select. Explain without changing the drawing. ${GET_STATE_TOOL} identifies selections, repeated names and relationships. ${PICK_NODES_TOOL} waits for a user choice. ${ANNOTATE_TOOL} adds temporary marks; each call replaces all marks, and {} clears them. Explain marks in chat. Images omit selection and marks. Use ${STYLE_TOOL} for requested Mermaid colors.
 
-6. Ground code diagrams. Use ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} (literal text) and ${READ_FILE_TOOL}; follow definitions and imports. Link Mermaid node ids only to paths and lines you read. Panel edits do not write the originating Markdown file; the user can Apply or Write to.
+6. Ground code diagrams. Use ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} (literal text) and ${READ_FILE_TOOL}; follow definitions and imports. Link nodes only to paths and lines you read. Panel edits do not write the originating Markdown file; the user can Apply or Write to.
 
 7. Share. ${EXPORT_HTML_TOOL} saves the current drawing to file:"report.html". Pass revision; overwrite defaults to false. Source/data are embedded; opening needs internet for the CDN renderer. Explain results briefly without repeating source.`,
 } as const;

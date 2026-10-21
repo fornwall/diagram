@@ -2,6 +2,7 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { guessTitle } from "../blocks";
 import type { Diagram, DiagramPanel, RenderOutcome } from "../panel";
+import { GetDiagramStateTool } from "../tools";
 import { EChartsRenderer } from "../webview/echartsRenderer";
 import { afterTest, diagramExtension } from "./afterTest";
 import {
@@ -12,6 +13,7 @@ import {
   within,
   withoutRevision,
 } from "./newPanel";
+import { invokeTool } from "./toolText";
 import { instrumentWebview, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 /** A one-line chart option as the source view shows it. */
@@ -918,9 +920,11 @@ suite("webview", function () {
     await draw({ source, title: "Another" });
     assert.strictEqual(await zoom(), "100%", "A diagram under another title fits the panel.");
     await press("+");
-    // As /new starts one, also under the same title, as untitled diagrams of a type have.
-    page.panel.startsNew = true;
-    await draw({ source, title: "Another" });
+    await nextRender(() =>
+      page.panel.render({ language: "mermaid", source, title: "Another" }, "tool", undefined, {
+        newDiagram: true,
+      }),
+    );
     assert.strictEqual(await zoom(), "100%", "A new diagram fits the panel.");
   });
 
@@ -2011,6 +2015,42 @@ suite("webview", function () {
         }
       })()`),
       true,
+    );
+  });
+});
+
+suite("webview chat", function () {
+  this.timeout(20_000);
+
+  test("keeps selected nodes available to chat tools after sending a follow-up", async () => {
+    const panel = newPanel();
+    afterTest(() => panel.dispose());
+    const { evaluate } = instrumentWebview(panel);
+    const outcome = await panel.render(
+      { language: "mermaid", source: "flowchart LR\n A[Parser] --> B[Checker]", title: "Flow" },
+      "tool",
+    );
+    assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
+    const chat = recordChat();
+    await evaluate(`(() => {
+      document.querySelector('#diagram [data-diagram-id="A"][tabindex]')
+        .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+      const input = document.getElementById("ask-input");
+      input.value = "Explain this";
+      input.dispatchEvent(new Event("input"));
+      document.getElementById("ask-submit").click();
+    })()`);
+    assert.ok(await within(() => chat.requests.length === 1));
+    assert.deepStrictEqual(chat.requests, [
+      { query: 'Regarding "Parser" in the diagram: Explain this', isPartialQuery: false },
+    ]);
+    assert.match(
+      await invokeTool(new GetDiagramStateTool(panel), {}),
+      /selected these nodes in the panel: "Parser"/,
+    );
+    assert.strictEqual(
+      await evaluate('document.getElementById("selection-label").textContent'),
+      "Selected: “Parser”",
     );
   });
 });

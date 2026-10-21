@@ -10,17 +10,17 @@ import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
 import type { Diagram, DiagramPanel } from "./panel";
 import { CHART_TOOL, errorMessage, isPlainObject, RENDER_TOOL } from "./protocol";
-import { renderRevision } from "./renderRevision";
+import { renderOptions } from "./renderOptions";
 import { inWords, nonBlank, plural, quote, shorten, toolInput } from "./text";
 import { drawnResult, drawnWarnings, renderFailure, textResult } from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
-type ChartInput = ChartSpec & { clickPrompt?: string; revision?: number };
+type ChartInput = ChartSpec & { clickPrompt?: string; revision?: number; newDiagram?: boolean };
 
-/** The concurrency guard belongs to this invocation, not the saved chart settings. */
+/** Replacement options belong to this invocation, not the saved chart settings. */
 function replacementSpec(value: unknown): ChartSpec {
   if (!isPlainObject(value)) return validateChartSpec(value);
-  const { revision: _revision, ...spec } = value;
+  const { revision: _revision, newDiagram: _newDiagram, ...spec } = value;
   return validateChartSpec(spec);
 }
 
@@ -45,13 +45,14 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
   ): Promise<vscode.LanguageModelToolResult> {
     const changes = this.panel.userChangeCount;
     let description: string | undefined;
+    let replacement: ReturnType<typeof renderOptions>;
     let chart: { spec: ChartSpec; table: DataTable; report: string; diagram: Diagram };
     try {
       throwIfCancelled(token);
-      const revision = renderRevision(options.input, this.panel.revision);
+      replacement = renderOptions(options.input, this.panel.revision);
       const spec = replacementSpec(options.input);
       const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
-      if (this.panel.userChangeCount !== changes || this.panel.revision !== revision) {
+      if (this.panel.userChangeCount !== changes || this.panel.revision !== replacement.revision) {
         return textResult(
           "No chart was rendered because the diagram changed in the panel while the data loaded. Read diagram_getState before making further changes.",
         );
@@ -80,7 +81,10 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     }
 
     const { spec, table, report, diagram } = chart;
-    const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool", table), token);
+    const outcome = await unlessCancelled(
+      () => this.panel.render(diagram, "tool", table, replacement),
+      token,
+    );
     if (outcome.ok) {
       return drawnResult(
         [

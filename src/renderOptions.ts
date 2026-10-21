@@ -3,8 +3,15 @@
 
 import { GET_STATE_TOOL, isPlainObject } from "./protocol";
 
-export function renderRevision(input: unknown, current: number): number {
+export function renderOptions(
+  input: unknown,
+  current: number,
+): { revision: number; newDiagram: boolean } {
   const revision = isPlainObject(input) ? input.revision : undefined;
+  const newDiagram = isPlainObject(input) ? input.newDiagram : undefined;
+  if (newDiagram != null && typeof newDiagram !== "boolean") {
+    throw new Error('"newDiagram" must be true or false.');
+  }
   // As for optional properties of the other tools, null means omitted.
   if (revision !== undefined && revision !== null) {
     if (!Number.isSafeInteger(revision) || Number(revision) < 0) {
@@ -16,5 +23,5 @@ export function renderRevision(input: unknown, current: number): number {
       );
     }
   }
-  return current;
+  return { revision: current, newDiagram: newDiagram === true };
 }

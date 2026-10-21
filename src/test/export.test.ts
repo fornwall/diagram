@@ -225,7 +225,7 @@ suite("export", function () {
     assert.strictEqual(suggested(), path.join(directory, "read-only"));
     // Also once an agent replaced it, as it does one that the panel writes to.
     const fixed = { ...diagram, source: `${diagram.source}\n B --> C` };
-    assert.ok((await panel.render(fixed, "participant")).ok);
+    assert.ok((await panel.render(fixed, "tool")).ok);
     await panel.exportDiagram();
     assert.strictEqual(suggested(), path.join(directory, "read-only"));
     // Not beside one on a file system that cannot be written, such as a Git revision.

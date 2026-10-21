@@ -15,7 +15,6 @@ import {
   type Annotation,
   CHART_TOOL,
   type DiagramNode,
-  diagramNoun,
   EDIT_TOOL,
   GET_IMAGE_TOOL,
   GET_STATE_TOOL,
@@ -26,7 +25,7 @@ import {
   type RepeatedName,
   UPDATE_CHART_TOOL,
 } from "./protocol";
-import { formatCount, inWords, joinWords, plural, quoteAll } from "./text";
+import { formatCount, inWords, plural, quoteAll } from "./text";
 import { formatOption } from "./webview/optionSource";
 
 /**
@@ -73,8 +72,6 @@ interface Drawing {
    */
   chartTable?: DataTable | undefined;
   detail?: Detail;
-  /** The tools that the model may call, if not all of them: it is told to call only these. */
-  tools?: ReadonlySet<string> | undefined;
 }
 
 /** Describes a diagram, its marks and the user's interactions with it, for a language model. */
@@ -88,25 +85,21 @@ export function describeDiagram(
     warnings = [],
     chartTable,
     detail = "brief",
-    tools,
   }: Drawing = {},
 ): string {
-  const has = (tool: string) => !tools || tools.has(tool);
   const what = state.language === "echarts" ? "ECharts chart" : "Mermaid diagram";
   const lines = [
     `Current ${what}: ${JSON.stringify(state.title)}`,
     "",
-    describeSource(state, detail, has),
+    describeSource(state, detail),
     "",
   ];
   const refresh = state.chart?.file !== undefined || state.chart?.command !== undefined;
   if (state.chart) {
     lines.push(
-      `${has(CHART_TOOL) ? CHART_TOOL : "Chart"} parameters: ${describeChartParameters(state.chart)}.` +
+      `${CHART_TOOL} parameters: ${describeChartParameters(state.chart)}.` +
         (refresh ? " Refresh reloads the data." : "") +
-        (chartTable && has(INSPECT_DATA_TOOL)
-          ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.`
-          : ""),
+        (chartTable ? ` ${INSPECT_DATA_TOOL} shows its columns and sample rows.` : ""),
     );
     const units = chartTable && describeUnits(chartTable);
     if (units) lines.push(units);
@@ -116,13 +109,10 @@ export function describeDiagram(
   const edits = (!presentation?.blocked && presentation?.edits) || [];
   if (edits.length > 0) {
     lines.push(
-      has(UPDATE_CHART_TOOL)
-        ? `Manual styling of the generated option, which ${UPDATE_CHART_TOOL} keeps: ${editList(edits)}. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must make these changes again.`
-        : `Manual styling of the generated option: ${editList(edits)}.`,
+      `Manual styling of the generated option, which ${UPDATE_CHART_TOOL} keeps: ${editList(edits)}. Replacing the chart with ${CHART_TOOL} or ${RENDER_TOOL} must make these changes again.`,
     );
   }
-  // A model that cannot update a generated chart can still change its option as a whole.
-  if (state.chart && has(UPDATE_CHART_TOOL)) {
+  if (state.chart) {
     if (presentation?.blocked) {
       lines.push(presentation.blocked);
     }
@@ -142,11 +132,7 @@ export function describeDiagram(
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
   if (links.length > 0) {
     lines.push(
-      `Code links: ${links.join(", ")}.` +
-        (has(EDIT_TOOL) ? ` ${EDIT_TOOL} keeps them.` : "") +
-        (has(RENDER_TOOL)
-          ? ` Pass them to ${RENDER_TOOL} when ${has(EDIT_TOOL) ? "replacing" : "changing"} the diagram.`
-          : ""),
+      `Code links: ${links.join(", ")}. ${EDIT_TOOL} keeps them. Pass them to ${RENDER_TOOL} when replacing the diagram.`,
     );
   }
   if (state.document) {
@@ -166,11 +152,11 @@ export function describeDiagram(
     lines.push("The user edited this source. Preserve their edits unless asked otherwise.");
   }
   lines.push(...warnings);
-  const named = items && describeRelationships(items, detail, has);
+  const named = items && describeRelationships(items, detail);
   if (named) {
     lines.push(named);
   }
-  if (repeatedNames.length > 0 && has(ANNOTATE_TOOL)) {
+  if (repeatedNames.length > 0) {
     lines.push(
       `Chart items that share a name (mark them by these exact ids with ${ANNOTATE_TOOL}): ${repeatedList(repeatedNames)}.`,
     );
@@ -182,7 +168,6 @@ export function describeDiagram(
     annotation,
     marksRelationships ? "items" : nodes,
     (id) => items?.name(id) ?? id,
-    has(ANNOTATE_TOOL),
   );
   if (marked) {
     lines.push(marked);
@@ -200,7 +185,7 @@ export function describeDiagram(
  * is the user's edit. A diff longer than a source that is not small tells less than the source:
  * the user rewrote the diagram rather than edit it.
  */
-export function userChanges({
+function userChanges({
   userEdit,
   source,
   language,
@@ -255,14 +240,9 @@ export function describeChartParameters(chart: unknown): string {
  * same nodes as others, and by their ids those that their labels do not tell apart either, in a
  * list that a long one leaves out.
  */
-function describeRelationships(
-  items: ItemNames,
-  detail: Detail,
-  has: (tool: string) => boolean,
-): string | undefined {
+function describeRelationships(items: ItemNames, detail: Detail): string | undefined {
   const { relationships } = items.drawn;
-  const tools = [ANNOTATE_TOOL, GET_IMAGE_TOOL].filter(has);
-  if (relationships.length === 0 || tools.length === 0) return undefined;
+  if (relationships.length === 0) return undefined;
   const kinds = new Set(relationships.map(({ relationship }) => relationship?.kind));
   const [one, many] =
     kinds.size > 1
@@ -279,7 +259,7 @@ function describeRelationships(
     (labeled
       ? `, and one of several between the same nodes with its label, as in ${JSON.stringify(labeled)}`
       : "") +
-    `, for ${joinWords(tools, "and")}`;
+    `, for ${ANNOTATE_TOOL} and ${GET_IMAGE_TOOL}`;
   const unnamed = relationships.filter((_, index) => !named[index]);
   if (unnamed.length === 0) return `${naming}.`;
   const listed = relationshipList(unnamed);
@@ -289,9 +269,7 @@ function describeRelationships(
   const these = `${plural(unnamed.length, one.replace(/^an? /, ""), many)}, which their ends and labels do not tell apart`;
   return detail === "summary" || detail === "metadata" || detail === "source"
     ? `${naming}. It has ${these}, too many to list their ids in the room left in your input.`
-    : has(GET_STATE_TOOL)
-      ? `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`
-      : `${naming}.`;
+    : `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`;
 }
 
 /** What the user is looking at on the diagram, as the last call to the annotate tool left it. */
@@ -299,7 +277,6 @@ function describeMarks(
   annotation: Annotation | undefined,
   parts: string,
   name: (id: string) => string,
-  annotates: boolean,
 ): string | undefined {
   if (!annotation || annotation.marks.length === 0) {
     return undefined;
@@ -309,7 +286,7 @@ function describeMarks(
   return (
     `Marked ${parts}: ${listed.join(", ")}.` +
     (dim ? " Everything else is faded." : "") +
-    (annotates ? ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.` : "")
+    ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
   );
 }
 
@@ -317,54 +294,39 @@ function describeMarks(
  * A long source is left out of every chat request, but given in full when asked for, as a model has
  * to read a source to change it, unless the room left in its input is too small for it. A long
  * ECharts option, such as a chart of much data, is given without its long runs of lines of values,
- * which shows a model what to change of the rest. A model without {@link GET_STATE_TOOL} is not
- * told to read it with that.
+ * which shows a model what to change of the rest.
  */
-function describeSource(
-  { source, language, chart }: DiagramState,
-  detail: Detail,
-  has: (tool: string) => boolean,
-): string {
+function describeSource({ source, language }: DiagramState, detail: Detail): string {
   if (source === undefined) {
     return "(Not drawn: the option was too large to keep when VS Code closed. The panel asks the user to press Refresh.)";
   }
   const length = `The source is ${formatCount(source.length)} characters long`;
   const readRange = `${GET_STATE_TOOL} with {"detail": "source", "startLine": 1, "endLine": 200} reads exact source lines; use its revision for edits`;
   if (detail === "metadata") {
-    return `(${length}; omitted from this response.${has(GET_STATE_TOOL) ? ` ${readRange}.` : ""})`;
+    return `(${length}; omitted from this response. ${readRange}.)`;
   }
   if (detail === "summary") {
     const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
     if (elided !== undefined && elided.length <= MAX_SUMMARY_SOURCE_LENGTH) {
-      return elidedSource(`${length}, too long for the room left in your input`, elided, has);
+      return elidedSource(`${length}, too long for the room left in your input`, elided);
     }
     // Direct the caller to bounded, exact ranges rather than a silently truncated source.
     const leftOut = `The source, ${formatCount(source.length)} characters long, is left out, as the room left in your input is too small for it.`;
-    return has(GET_STATE_TOOL)
-      ? `(${leftOut} ${readRange}.)`
-      : chart
-        ? `(${leftOut})`
-        : `(${leftOut} Without it, you cannot change the ${diagramNoun(language)}: tell the user, who can edit it in the source view of the diagram panel, or continue in a new chat.)`;
+    return `(${leftOut} ${readRange}.)`;
   }
   if (source.length <= MAX_SOURCE_LENGTH || detail === "full" || detail === "source") {
     return codeFence(source, language);
   }
-  const why = has(GET_STATE_TOOL)
-    ? `${length}, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full`
-    : `${length}, too long to show here`;
+  const why = `${length}, too long to repeat in every request; ${GET_STATE_TOOL} gives it in full`;
   const elided = language === "echarts" ? withoutValueRuns(source) : undefined;
   return elided !== undefined && elided.length <= MAX_SOURCE_LENGTH
-    ? elidedSource(why, elided, has)
+    ? elidedSource(why, elided)
     : `(${why}.)`;
 }
 
 /** An option without its long runs of lines of values, saying why and which lines stand for them. */
-function elidedSource(why: string, elided: string, has: (tool: string) => boolean): string {
-  const edits = has(EDIT_TOOL) ? `, which ${EDIT_TOOL}'s oldText must not include` : "";
-  const read = has(GET_STATE_TOOL)
-    ? `\n${GET_STATE_TOOL} with "startLine" and "endLine" reads exact source ranges when you need the omitted values.`
-    : "";
-  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…"${edits}:\n${codeFence(elided, "echarts")}${read}`;
+function elidedSource(why: string, elided: string): string {
+  return `${why}. Here it is with long runs of lines of values left out, each marked by a line of "…", which ${EDIT_TOOL}'s oldText must not include:\n${codeFence(elided, "echarts")}\n${GET_STATE_TOOL} with "startLine" and "endLine" reads exact source ranges when you need the omitted values.`;
 }
 
 /** The values of a JSON array, its brackets and commas, of which a line of values consists. */

@@ -21,6 +21,7 @@ suite("replacement tools", () => {
       type: "bar",
       command: "printf 'name,value\\nA,1'",
       revision: panel.revision + 1,
+      newDiagram: true,
     };
     const prepared = tool.prepareInvocation({ input: input as never });
     assert.ok(prepared.confirmationMessages);
@@ -30,6 +31,59 @@ suite("replacement tools", () => {
   });
 
   for (const name of ["diagram_render", "diagram_chart"] as const) {
+    test(`${name} starts a separate diagram only when requested`, async () => {
+      const { panel } = await newFakePanel();
+      const openedFrom = vscode.Uri.file("/tmp/original-diagram.html").toString();
+      const drawing =
+        name === "diagram_render"
+          ? { ...initial, openedFrom }
+          : { language: "echarts" as const, source: "{}", title: "Original", openedFrom };
+      const tool = name === "diagram_render" ? new RenderDiagramTool(panel) : new ChartTool(panel);
+      const input =
+        name === "diagram_render"
+          ? { source: initial.source, title: initial.title }
+          : { type: "bar", data, title: initial.title };
+      for (const newDiagram of [undefined, null, false, true]) {
+        await panel.render(drawing, "document");
+        const result = await invokeTool(tool, {
+          ...input,
+          newDiagram,
+          revision: panel.revision,
+        });
+        assert.match(result, /^Rendered/);
+        assert.deepStrictEqual(panel.current?.openedFrom, newDiagram ? undefined : openedFrom);
+        if (panel.current?.chart) {
+          assert.ok(!Object.hasOwn(panel.current.chart, "newDiagram"));
+        }
+      }
+    });
+
+    test(`${name} validates newDiagram and still rejects stale replacements`, async () => {
+      const { panel } = await newFakePanel();
+      await panel.render(initial, "tool");
+      const before = panel.current;
+      const tool = name === "diagram_render" ? new RenderDiagramTool(panel) : new ChartTool(panel);
+      const input =
+        name === "diagram_render"
+          ? { source: "flowchart TD\n  Replacement" }
+          : { type: "bar", file: "sizes.tsv" };
+      replace(vscode.workspace, "fs", {
+        ...vscode.workspace.fs,
+        readFile: async () => assert.fail("An invalid replacement must not load chart data"),
+      });
+      for (const newDiagram of ["true", 1, {}, []]) {
+        assert.match(
+          await invokeTool(tool, { ...input, newDiagram }),
+          /"newDiagram" must be true or false/,
+        );
+      }
+      assert.match(
+        await invokeTool(tool, { ...input, newDiagram: true, revision: panel.revision - 1 }),
+        /changed since revision/,
+      );
+      assert.strictEqual(panel.current, before);
+    });
+
     test(`${name} rejects stale and malformed revisions before reading files`, async () => {
       const { panel } = await newFakePanel();
       await panel.render(initial, "tool");

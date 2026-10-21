@@ -84,11 +84,6 @@ suite("describe", () => {
       description,
     );
     assert.doesNotMatch(description, /The user edited/);
-    // As for /explain, which may read the chart but not update it.
-    assert.match(
-      describeDiagram(styled, { tools: new Set(["diagram_getState"]) }),
-      /^Manual styling of the generated option: title\.text = "Q3", .*…\.$/m,
-    );
     const many = Array.from({ length: 25 }, (_, i) => ({ path: [`k${i}`], value: i }));
     assert.match(
       describeDiagram({
@@ -165,10 +160,6 @@ suite("describe", () => {
       /too long to repeat in every request; diagram_getState gives it in full\.\)/,
     );
     assert.match(
-      describeDiagram(oneLine, { tools: new Set() }),
-      /^\(The source is [\d,]+ characters long, too long to show here\.\)$/m,
-    );
-    assert.match(
       describeDiagram(oneLine, { detail: "summary" }),
       /\(The source, [\d,]+ characters long, is left out, as the room left in your input is too small for it\. diagram_getState with[\s\S]*reads exact source lines/,
     );
@@ -224,12 +215,6 @@ suite("describe", () => {
     // Marks are named as the model names them.
     assert.match(described, /^Marked items: "check --> emit" \(problem\), "parse" \(current\)\./m);
     assert.doesNotMatch(described, /L_parse_check_0/);
-    // As for /explain, which may view the diagram but not mark it, and a model without tools.
-    assert.match(
-      describeDiagram(flow, { items, tools: new Set(["diagram_getImage"]) }),
-      /^Name an edge by its ends' ids, as in "parse --> check", for diagram_getImage\.$/m,
-    );
-    assert.doesNotMatch(describeDiagram(flow, { items, tools: new Set() }), /ends/);
 
     const sequence = flowchart("sequenceDiagram\n  C->>S: Login\n  S-->>C: Token\n  C->>S: Fetch");
     const messages = new ItemNames({
@@ -272,29 +257,21 @@ suite("describe", () => {
       describeDiagram(state, { items: fewer }),
       /\. Name by id these, which their ends and labels do not tell apart: .*"edge:L_A_B_89"\)\.$/m,
     );
-    const long = flowchart(`flowchart LR\n%% ${"x".repeat(40_000)}`);
-    assert.match(
-      describeDiagram(long, { tools: new Set(["diagram_getState"]) }),
-      /too long to repeat in every request; diagram_getState gives it in full/,
-    );
-    assert.match(describeDiagram(long, { tools: new Set() }), /too long to show here/);
   });
 
-  test("a model that calls no tools is told of the drawing, but of no tool", () => {
+  test("describes chart settings, duplicate names, links and marks", () => {
     const drawing = {
       repeatedNames: [{ name: "Sales", ids: ["Sales", "Sales/1"], count: 2 }],
       annotation: { marks: [{ id: "A", kind: "problem" as const }], dim: false },
     };
     const state = { ...chart, links: { A: { file: "src/a.ts", line: 3 } } };
-    assert.match(describeDiagram(state, drawing), /diagram_annotate.*\n.*diagram_annotate/);
-    const described = describeDiagram(state, { ...drawing, tools: new Set<string>() });
-    assert.doesNotMatch(described, /diagram_/);
-    assert.match(described, /Chart parameters: \{"type":"pie","file":"sales\.csv"\}\. Refresh/);
-    // As for /explain, which may read the chart but not update it.
-    const readOnly = describeDiagram(state, { ...drawing, tools: new Set(["diagram_getState"]) });
-    assert.match(readOnly, /^Chart parameters: \{"type":"pie","file":"sales\.csv"\}\./m);
-    assert.doesNotMatch(readOnly, /diagram_(updateChart|chart|render|inspectData)/);
-    assert.match(described, /Code links: A → src\/a\.ts#L3\.\n/);
+    const described = describeDiagram(state, drawing);
+    assert.match(described, /diagram_annotate.*\n.*diagram_annotate/);
+    assert.match(
+      described,
+      /diagram_chart parameters: \{"type":"pie","file":"sales\.csv"\}\. Refresh/,
+    );
+    assert.match(described, /Code links: A → src\/a\.ts#L3\. diagram_edit keeps them\./);
     assert.match(described, /Marked chart items: "A" \(problem\)\./);
   });
 

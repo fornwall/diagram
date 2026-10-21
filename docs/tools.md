@@ -1,6 +1,6 @@
 # Tools for agents
 
-These tools are available to chat agents in VS Code. `@diagram` includes them when its model supports tool calls; attach a `#` reference to call that tool first. `/explain` permits only tools that read the diagram, workspace or guide.
+These tools are available to ordinary chat agents and the bundled **Diagram** agent in VS Code. Enable them under **Chat: Open Customizations → Tools** (or **Configure Tools** in Local chat), or attach a `#` reference. The agent manages conversation context and tool calls; diagram state and selections are read through the tools. Tool descriptions include the API names below; Copilot may expose the shorter reference names as callable tools.
 
 Complete input schemas are declared in [`package.json`](../package.json) under `contributes.languageModelTools`.
 
@@ -27,7 +27,7 @@ Workspace tools stay within open workspace folders. Find and search respect `fil
 ## An agent workflow
 
 1. For a new diagram, choose Mermaid for structure or ECharts for quantitative data. Read an unfamiliar type's `diagram_guide` topic; `{"topic":"workflow"}` explains how to combine the tools. Ground code diagrams in files you have read.
-2. For changes, use the current context if available. `diagram_getState` with `{"detail":"summary"}` reads selection, errors and metadata without repeating the source. To inspect a large source, use `{"detail":"source","startLine":1,"endLine":100}`; ranges include exact source lines and the revision. Continue at the next line reported by the tool. To locate a label or setting, use `{"detail":"search","query":"label"}` and copy exact text from the returned blocks into edits.
+2. Before a follow-up, read the current state: the user may have edited the source or selection. `diagram_getState` with `{"detail":"summary"}` reads selection, errors and metadata without repeating the source. To inspect a large source, use `{"detail":"source","startLine":1,"endLine":100}`; ranges include exact source lines and the revision. Continue at the next line reported by the tool. To locate a label or setting, use `{"detail":"search","query":"label"}` and copy exact text from the returned blocks into edits.
 3. Use `diagram_edit` for exact replacements, `diagram_style` for requested Mermaid colors, or `diagram_updateChart` for generated chart settings. Pass the revision you read, including when replacing the drawing with `diagram_render` or `diagram_chart`. If it conflicts, reread the relevant state and reapply the intended change to that version. Await each drawing change before the next.
 4. For tables, inspect uncertain columns and units with `diagram_inspectData`, then render with `diagram_chart`. Changing settings with `diagram_updateChart` reuses the data; inspecting or charting an explicit source reads it again and may rerun its command.
 5. Check the render result for errors and warnings. For a dense diagram or chart, inspect `diagram_getImage` if the model supports images; crop with `ids` when text is too small. Fix and check again before reporting success. Use marks to explain items or `diagram_pickNodes` when the user needs to choose them.
@@ -47,7 +47,7 @@ For example, find an axis setting without reading a large chart's data:
 
 ### Render, edit and update
 
-`diagram_render` and `diagram_chart` accept `revision` to reject a stale replacement before checking links, loading files or running commands. They also preserve a newer drawing made while those operations run. The revision is an invocation guard and is not stored in a chart's settings.
+`diagram_render` and `diagram_chart` accept `revision` to reject a stale replacement before checking links, loading files or running commands. They also preserve a newer drawing made while those operations run. Pass `newDiagram: true` when the user asks for a separate drawing: it detaches the current Markdown block and inherited export location, even with the same title and language. Keep the revision guard. These options apply only to that call and are not stored in chart settings.
 
 Both rendering tools accept a `clickPrompt`, e.g. `"Explain {label} in more detail"`. Mermaid also accepts code links such as `{"parse": "src/parser.ts#L42"}`; missing workspace files are omitted. Links take priority over click prompts.
 
@@ -74,7 +74,7 @@ The JSON report fits within 24,000 characters and the caller's token budget by r
 
 ### Images and annotations
 
-`diagram_getImage` returns a PNG in the panel's theme, without selection highlights or marks, reopening the panel if needed. Pass `ids` to crop around items. Images fit within 1568 pixels per side and 1.15 megapixels, targeting text about 16 pixels high. The result reports dimensions, scale, readability and panel zoom. `@diagram` omits this tool for models that do not accept images.
+`diagram_getImage` returns a PNG in the panel's theme, without selection highlights or marks, reopening the panel if needed. Pass `ids` to crop around items. Images fit within 1568 pixels per side and 1.15 megapixels, targeting text about 16 pixels high. The result reports dimensions, scale, readability and panel zoom. Use this tool with a model that accepts image results.
 
 `diagram_annotate` and `diagram_getImage` accept edges and sequence messages by endpoint ids, e.g. `"A --> B"`. Unicode and Mermaid arrows work too; bidirectional and undirected edges accept either order. Add a label to distinguish parallel edges: `"A --> B: Yes"`, `"A -->|Yes| B"` or `"A -- Yes --> B"`. If several items match, `diagram_getImage` shows all of them; `diagram_annotate` instead lists exact ids to use. `diagram_getState` supplies these ids and disambiguates chart items with duplicate names. Relationship ids survive redraws but may change when the source changes.
 

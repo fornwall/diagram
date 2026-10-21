@@ -101,7 +101,7 @@ function restoredState(saved: unknown): DiagramState | undefined {
   const state: DiagramState = {
     language,
     title: saved.title,
-    origin: origin === "participant" || origin === "document" ? origin : "tool",
+    origin: origin === "document" ? origin : "tool",
     editedByUser: saved.editedByUser === true,
   };
   if (typeof source === "string") state.source = source;

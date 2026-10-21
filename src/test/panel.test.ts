@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { linkTexts } from "../links";
 import { clickToAskQuery, type Diagram, type DiagramPanel, type DiagramState } from "../panel";
 import type { ToWebview } from "../protocol";
-import { AnnotateDiagramTool, RenderDiagramTool } from "../tools";
+import { AnnotateDiagramTool, GetDiagramStateTool, RenderDiagramTool } from "../tools";
 import { WebviewChannel } from "../webviewChannel";
 import {
   afterTest,
@@ -219,6 +219,30 @@ suite("panel", function () {
     assert.strictEqual(panel.current?.source, flowchart.source, "failed diagrams remain editable");
   });
 
+  test("a new diagram drops inherited document bindings and resets its viewport", async () => {
+    const { panel, webview } = await newFakePanel();
+    const openedFrom = "file:///diagrams.md";
+    const document = {
+      uri: openedFrom,
+      fence: { ...flowchart, openingLine: 0, lastLine: 3, prefix: "" },
+    };
+    assert.ok((await panel.render({ ...flowchart, document, openedFrom }, "document")).ok);
+    const first = webview.render.diagram;
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    assert.strictEqual(webview.render.diagram, first);
+    assert.deepStrictEqual(panel.current?.document, { ...document, replaced: true });
+    assert.strictEqual(panel.current?.openedFrom, openedFrom);
+
+    assert.ok((await panel.render(flowchart, "tool", undefined, { newDiagram: true })).ok);
+    assert.notStrictEqual(webview.render.diagram, first);
+    assert.strictEqual(panel.current?.document, undefined);
+    assert.strictEqual(panel.current?.openedFrom, undefined);
+
+    const second = webview.render.diagram;
+    assert.ok((await panel.render(flowchart, "tool")).ok);
+    assert.strictEqual(webview.render.diagram, second, "only the requested render starts anew");
+  });
+
   test("leaves the focus in the editor as an agent draws and marks, and takes it when shown", async () => {
     // Earlier suites dispose their panels asynchronously. Finish closing their tabs before this
     // test opens an editor, so a disappearing group cannot move it into the panel's column.
@@ -326,9 +350,6 @@ suite("panel", function () {
   test("an image requested while reopening cannot capture a replacement diagram", async () => {
     const storage = memento(new Map());
     const { panel, webview } = await newFakePanel(storage);
-    assert.ok((await panel.render(flowchart, "tool")).ok);
-    webview.panel.dispose();
-
     // A redraw shares an outstanding save, which can finish after another diagram renders.
     const saved = Promise.withResolvers<void>();
     const update = storage.update;
@@ -337,13 +358,16 @@ suite("panel", function () {
       const written = update(key, value);
       return ++writes === 1 ? saved.promise : written;
     });
-    panel.adopt(panel.revision);
+    const rendering = panel.render(flowchart, "tool");
+    await webview.finishRender();
+    webview.panel.dispose();
     const reopened = new FakeWebview();
     replace(vscode.window, "createWebviewPanel", () => reopened.panel);
     const image = panel.captureImage({ maxSide: 100, maxPixels: 10_000 });
     await reopened.receive({ type: "ready" });
     assert.ok((await panel.render({ ...flowchart, source: "flowchart LR\n  C --> D" }, "tool")).ok);
     saved.resolve();
+    await rendering;
     assert.strictEqual(await image, "The diagram changed while it was drawn. Try again.");
     assert.ok(!reopened.sent.some((message) => message.type === "export"));
   });
@@ -625,7 +649,7 @@ suite("panel", function () {
     });
   });
 
-  test("opening chat clears only the selection that sent the request", async () => {
+  test("opening chat keeps the current selection available to tools", async () => {
     const { panel, webview } = await newFakePanel();
     assert.ok((await panel.render(flowchart, "tool")).ok);
     let opened = Promise.withResolvers<void>();
@@ -648,10 +672,12 @@ suite("panel", function () {
       }
       opened.resolve();
       await asking;
-      assert.deepStrictEqual(webview.sent, changed ? [] : [{ type: "clearSelection" }]);
+      assert.deepStrictEqual(webview.sent, []);
       assert.match(
-        panel.describeForModel() ?? "",
-        changed ? /selected these nodes in the panel: "Checker"/ : /no nodes selected/,
+        await invokeTool(new GetDiagramStateTool(panel), {}),
+        changed
+          ? /selected these nodes in the panel: "Checker"/
+          : /selected these nodes in the panel: "Parser"/,
       );
     }
   });
@@ -1397,18 +1423,18 @@ suite("panel", function () {
     ]);
   });
 
-  test("asks @diagram about the diagrams it drew, and keeps the selection if chat fails", async () => {
+  test("sends follow-ups to the current chat without changing agents", async () => {
     const { panel, webview } = await newFakePanel();
     const chat = recordChat();
     const errors = recordMessages("showErrorMessage");
     const ask = () => webview.ask("Why?");
-    for (const origin of ["tool", "participant"] as const) {
+    for (const origin of ["tool", "document"] as const) {
       assert.ok((await panel.render(flowchart, origin)).ok);
       await ask();
     }
     assert.deepStrictEqual(
-      chat.requests.map((request) => request.query),
-      ["Regarding the diagram: Why?", "@diagram Regarding the diagram: Why?"],
+      chat.requests,
+      Array(2).fill({ query: "Regarding the diagram: Why?", isPartialQuery: false }),
     );
     const nodes = [{ id: "A", label: "Parser" }];
     await webview.select(nodes);

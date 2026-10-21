@@ -25,7 +25,7 @@ import {
   nodeNoun,
   RENDER_TOOL,
 } from "./protocol";
-import { renderRevision } from "./renderRevision";
+import { renderOptions } from "./renderOptions";
 import { errorContext } from "./sourceEdits";
 import { searchSource } from "./stateSearch";
 import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
@@ -46,6 +46,7 @@ import { formatOption } from "./webview/optionSource";
 interface RenderInput {
   source: string;
   revision?: number;
+  newDiagram?: boolean;
   language?: string;
   title?: string;
   clickPrompt?: string;
@@ -74,6 +75,7 @@ function parsePickInput(value: unknown): { prompt: string; multiple: boolean } |
 const RENDER_KEYS = [
   "source",
   "revision",
+  "newDiagram",
   "language",
   "title",
   "clickPrompt",
@@ -161,9 +163,9 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
   ): Promise<vscode.LanguageModelToolResult> {
     throwIfCancelled(token);
     const changes = this.panel.userChangeCount;
-    let revision: number;
+    let replacement: ReturnType<typeof renderOptions>;
     try {
-      revision = renderRevision(options.input, this.panel.revision);
+      replacement = renderOptions(options.input, this.panel.revision);
     } catch (error) {
       return textResult(`Nothing was rendered: ${errorMessage(error)}`);
     }
@@ -179,12 +181,15 @@ export class RenderDiagramTool implements vscode.LanguageModelTool<RenderInput> 
       diagram.links = existing.links;
       problems.push(...existing.problems);
     }
-    if (this.panel.userChangeCount !== changes || this.panel.revision !== revision) {
+    if (this.panel.userChangeCount !== changes || this.panel.revision !== replacement.revision) {
       return textResult(
         "Nothing was rendered because the diagram changed in the panel while its code links were checked. Read diagram_getState before making further changes.",
       );
     }
-    const outcome = await unlessCancelled(() => this.panel.render(diagram, "tool"), token);
+    const outcome = await unlessCancelled(
+      () => this.panel.render(diagram, "tool", undefined, replacement),
+      token,
+    );
     const noun = diagramNoun(diagram.language);
     if (outcome.ok) {
       return drawnResult(

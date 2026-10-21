@@ -116,10 +116,7 @@ export function textResult(text: string): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
 }
 
-/**
- * Append the revision for subsequent edits. The participant also reads this suffix to identify
- * its own renders, including failed ones, among concurrent requests (see {@link revisionDrawn}).
- */
+/** Append the revision for subsequent edits. */
 export function drawnResult(text: string, revision: number): vscode.LanguageModelToolResult {
   return textResult(`${text}\n\nRevision: ${revision}.`);
 }
@@ -132,7 +129,7 @@ export interface Answer {
 
 /**
  * Validate and apply a change, turning failures into tool responses while propagating cancellation.
- * Every response includes a revision, but only renders use the suffix recognized by revisionDrawn.
+ * Every response includes the current revision.
  */
 export async function changeResult<T>(
   panel: DiagramPanel,
@@ -162,12 +159,4 @@ export async function changeResult<T>(
   return answer.drawn === undefined
     ? textResult([`${first} Revision: ${panel.revision}.`, ...rest].join("\n\n"))
     : drawnResult([first, ...rest].join("\n\n"), answer.drawn);
-}
-
-/** The revision that a {@link drawnResult} says its tool call drew. */
-export function revisionDrawn(content: readonly unknown[]): number | undefined {
-  const [result] = content;
-  const match =
-    result instanceof vscode.LanguageModelTextPart && /\n\nRevision: (\d+)\.$/.exec(result.value);
-  return match ? Number(match[1]) : undefined;
 }

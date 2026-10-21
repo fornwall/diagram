@@ -2,7 +2,7 @@
 
 ## Development
 
-Use Node.js 26 and VS Code 1.142 or later.
+Use Node.js 26 and VS Code 1.143 or later.
 
 ```sh
 git clone https://github.com/fornwall/diagram.git
@@ -28,9 +28,11 @@ On headless Linux:
 xvfb-run -a --server-args="-screen 0 1920x1080x24" npm test
 ```
 
-If tests hang in VS Code's terminal, try an external terminal. For bug fixes, add a regression test in `src/test`. Check panel changes in light and dark themes and with keyboard navigation. Include the checks you ran in your pull request.
+If tests hang in VS Code's terminal, try an external terminal. For bug fixes, add a regression test in `src/test`. Check panel changes in light and dark themes and with keyboard navigation.
 
-The extension host lives in `src/`, the browser UI in `src/webview/`, and their shared messages in `src/protocol.ts`.
+The extension host lives in `src/`, the browser UI in `src/webview/`, and their shared messages in `src/protocol.ts`. `agents/diagram.agent.md` contributes the Diagram agent; `diagram_guide` supplies the shared workflow.
+
+For a chat smoke test, enable Diagram tools in ordinary agent chat and ask for a flowchart. Select an item in the panel and send a follow-up, then edit its source and ask for another change. Repeat with **Diagram** selected in the agent dropdown. Check that both paths use the same panel, keep selections available, and preserve your edits. Try an invalid diagram and confirm the tool returns an error the agent can repair. This requires a signed-in chat provider; the integration suite checks tool calls, agent discovery and panel interactions without one.
 
 ## Reporting bugs
 

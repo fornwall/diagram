@@ -16,6 +16,41 @@ suite("extension", function () {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
 
+  test("discovers the Diagram agent and its tools for ordinary conversations", async () => {
+    const extension = diagramExtension();
+    const { chatAgents, chatParticipants, languageModelTools } = extension.packageJSON.contributes;
+    assert.strictEqual(chatParticipants, undefined);
+    assert.strictEqual(chatAgents.length, 1);
+    const uri = vscode.Uri.joinPath(extension.extensionUri, chatAgents[0].path);
+    const agents = await vscode.commands.executeCommand<
+      { uri: { path: string }; type: string; extensionId: string }[]
+    >("_listExtensionPromptFiles");
+    assert.ok(
+      agents.some(
+        (agent) =>
+          agent.type === "agent" &&
+          agent.extensionId === extension.id &&
+          agent.uri.path === uri.path,
+      ),
+      "VS Code must discover the bundled agent",
+    );
+    const source = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+    assert.match(source, /^---\n\s*name: Diagram\n/);
+    const tools = /^tools: (\[.*\])$/m.exec(source)?.[1];
+    assert.ok(tools, "The agent must declare its tools");
+    const declared = languageModelTools as { name: string; toolReferenceName: string }[];
+    assert.deepStrictEqual(
+      JSON.parse(tools).sort(),
+      declared.map(({ toolReferenceName }) => toolReferenceName).sort(),
+    );
+    for (const { name } of declared) {
+      assert.ok(
+        vscode.lm.tools.some((tool) => tool.name === name),
+        name,
+      );
+    }
+  });
+
   test("registers the language model tools, described on one line each", () => {
     const declared: {
       name: string;
@@ -47,6 +82,7 @@ suite("extension", function () {
       for (const description of [modelDescription, userDescription]) {
         assert.match(description, /^\S.*\S$/, name);
       }
+      assert.ok(modelDescription.startsWith(`${name}: `), name);
       assert.strictEqual(inputSchema.type, "object", name);
       assert.ok(inputSchema.properties, name);
       checkSchema(inputSchema, name);
@@ -74,9 +110,11 @@ suite("extension", function () {
       options = given;
     });
     await vscode.commands.executeCommand("diagram.help");
-    assert.deepStrictEqual(messages, ["@diagram Help"]);
+    assert.deepStrictEqual(messages, ["Diagram Help"]);
     assert.ok(options && typeof options === "object" && "modal" in options && options.modal);
     assert.ok("detail" in options && typeof options.detail === "string");
+    assert.match(options.detail, /your chat agent/);
+    assert.match(options.detail, /select the Diagram agent/);
     assert.match(options.detail, /Ctrl\/Cmd\/Shift\+click/);
     assert.match(options.detail, /Highlight Path/);
     assert.match(options.detail, /Clear Selection.*agent highlights/);

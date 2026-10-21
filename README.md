@@ -1,12 +1,12 @@
-# @diagram
+# Diagram
 
-Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Ask `@diagram` to draw, select items in the panel, edit the source and ask follow-up questions about what you selected.
+Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Ask your chat agent to draw, select items in the panel, edit the source and ask follow-up questions about what you selected. Choose the **Diagram** agent for a conversation focused on diagrams and charts.
 
-Requires VS Code 1.142 or later. Chat features need a chat provider, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
+Requires VS Code 1.143 or later. Chat features need an agent that supports extension tools, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
 
 ## Install
 
-Install [@diagram from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fornwall.diagram-chat), or run:
+Install [Diagram from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fornwall.diagram-chat), or run:
 
 ```sh
 code --install-extension fornwall.diagram-chat
@@ -16,29 +16,33 @@ To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Get started
 
-Open VS Code's Chat view and try:
+Open VS Code's Chat view and enable Diagram tools under **Chat: Open Customizations → Tools** (or **Configure Tools** in Local chat). Try:
 
 ```text
-@diagram draw a flowchart: request → validate → process; reject invalid requests
+Draw a flowchart in the diagram panel: request → validate → process; reject invalid requests
 ```
 
-Select a node in the panel, then ask `@diagram /explain what could go wrong at this step?` The selection is included in the request.
+Select a node in the panel, type “What could go wrong at this step?” in its message field, and press **Send to chat**. The request includes your selection and continues in chat.
+
+For a focused session, select **Diagram** from the chat agent dropdown. It uses the same tools and panel, with instructions for drawing, checking and explaining diagrams. Both entry points come with the extension.
 
 You can also attach files with `#file` or images, or chart a command's output:
 
-- `@diagram sequence diagram of the OAuth login flow in #file:src/auth.ts`
-- `@diagram bar chart of commits per author from git shortlog -sn HEAD`
-- `@diagram treemap of du -ah src`
-- `@diagram histogram of request latency in #file:requests.csv, one panel per service`
-- `@diagram turn this whiteboard photo into a flowchart`
+- `sequence diagram of the OAuth login flow in #file:src/auth.ts`
+- `bar chart of commits per author from git shortlog -sn HEAD`
+- `treemap of du -ah src`
+- `histogram of request latency in #file:requests.csv, one panel per service`
+- `turn this whiteboard photo into a flowchart`
 
-Follow-ups change the current diagram. `/new` starts another, `/explain` discusses it without changing it, and `/show` reopens the panel. The model receives render errors and layout warnings so it can attempt a repair.
+Ask to change the current diagram, start a new one, or explain it without changes. **Diagram: Show Panel** reopens the panel. Tools return render errors and layout warnings so the agent can repair them.
+
+If you used earlier versions, choose **Diagram** or use ordinary agent chat in place of the retired `@diagram` participant and its slash commands.
 
 ## The panel
 
 - **Select** nodes, edges, sequence messages or chart items by clicking; Ctrl/Cmd+click or Shift+click adds to the selection. For keyboard selection, Tab to the drawing, move with the arrow keys and press Enter or Space.
 - **Ask**: type a question or change and press **Send to chat**. The request includes your selection.
-- **Edit** the source in split view and press **Apply** (Ctrl/Cmd+Enter). Applied edits are included in the next chat request.
+- **Edit** the source in split view and press **Apply** (Ctrl/Cmd+Enter). The agent can read your applied edits through the diagram state tool.
 - Right-click for **Highlight Path** when two selected nodes have a path between them in a flowchart or state diagram, **Clear Selection** to remove selections and agent highlights, or **Help** for a brief guide.
 - **Find** text with Ctrl/Cmd+F, **zoom and pan** Mermaid diagrams, and open nodes linked to files or URLs.
 - **Chart Options** (the gear in the title bar) reconfigures a chart made from data; **Refresh** reloads its file or command.
@@ -63,13 +67,13 @@ Click **Open in Diagram** above the block, or run **Diagram: Open Diagram at Cur
 
 ## Charts from data
 
-`@diagram` can chart inline data, a file or a command's output. It reads CSV, TSV, JSON, JSON Lines, Markdown tables and common terminal tables, including sizes such as `20 MiB` and durations such as `1h2m3s`.
+Diagram can chart inline data, a file or a command's output. It reads CSV, TSV, JSON, JSON Lines, Markdown tables and common terminal tables, including sizes such as `20 MiB` and durations such as `1h2m3s`.
 
 Charts can filter, aggregate, sort and limit rows, and split into a panel per value of a column. See [chart data](docs/reference.md#chart-data) for formats, chart types and settings. For custom charts, the model can write an ECharts option directly.
 
-## Tools for other agents
+## Chat tools
 
-Other chat agents can use the same tools. Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage` or `#diagramPick` in chat. Tools support source search, paged data inspection and revision checks that protect newer edits. `#diagramExport` saves a named HTML file with embedded source and data; opening it requires internet access.
+The Diagram agent and ordinary chat conversations use the same tools. Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage` or `#diagramPick` in chat. Tools support source search, paged data inspection and revision checks that protect newer edits. `#diagramExport` saves a named HTML file with embedded source and data; opening it requires internet access.
 
 See [the tools reference](docs/tools.md) for details. Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification.
 
@@ -77,7 +81,7 @@ See [the tools reference](docs/tools.md) for details. Agents can read `diagram_g
 
 VS Code asks before running a command, reading a data file outside the workspace or exporting HTML through a tool. File links outside the workspace require confirmation; website links follow VS Code's trusted-domain settings. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened.
 
-Chat requests send your prompt, attached content, diagram context and tool results to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
+Chat sends your prompt, attachments and tool results, including diagram context read by the agent, to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 
 ## Limits
 

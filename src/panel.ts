@@ -36,7 +36,6 @@ import {
   type DiagramLanguage,
   type DiagramNode,
   diagramNoun,
-  EDIT_TOOL,
   type ExportResult,
   errorMessage,
   type FromWebview,
@@ -44,15 +43,13 @@ import {
   type ImageView,
   RENDER_TOOL,
   type RepeatedName,
-  STYLE_TOOL,
   type ToWebview,
   UPDATE_CHART_TOOL,
 } from "./protocol";
 import { formatOption, runsCode } from "./webview/optionSource";
 import { WebviewChannel } from "./webviewChannel";
 
-/** Routes follow-up questions to the participant or the agent that invoked a tool. */
-type DiagramOrigin = "participant" | "tool" | "document";
+type DiagramOrigin = "tool" | "document";
 
 /** "invalid" means a source error; "unavailable" means the panel closed or stopped responding. */
 export type RenderOutcome =
@@ -131,7 +128,7 @@ const RENDER_TIMEOUT_MS = 15_000;
 const UNFINISHED =
   "The panel did not finish drawing it, so it is not drawn again on its own, as it may hang the panel. Edit and apply it, or render it again, to draw it anyway.";
 
-/** The panel shared by the chat participant and language model tools. */
+/** The panel shared by document previews and language model tools. */
 export class DiagramPanel implements vscode.Disposable {
   private readonly store: StateStore;
   private state: DiagramState | undefined;
@@ -177,12 +174,10 @@ export class DiagramPanel implements vscode.Disposable {
   /** Identifies the editable source even when its render fails. */
   private sourceRequestId: number | undefined;
   /**
-   * Identifies diagrams for viewport resets. Edits keep it; /new, document opens, and changes
+   * Identifies diagrams for viewport resets. Edits keep it; new diagrams, document opens and changes
    * of language or title advance it.
    */
   private diagrams = 0;
-  /** Whether the next diagram rendered is a new one, as during a request with /new. */
-  startsNew = false;
 
   private chartTable: DataTable | undefined;
   private chartOptionsVisible = false;
@@ -221,7 +216,7 @@ export class DiagramPanel implements vscode.Disposable {
     return this.shownRevision;
   }
 
-  /** Chat requests capture this counter to avoid overwriting later user or document changes. */
+  /** Tools capture this counter to avoid overwriting later user or document changes. */
   get userChangeCount(): number {
     return this.userChanges;
   }
@@ -256,15 +251,9 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Describes the current diagram and the user's interactions with it, for a language model.
-   * `detail` limits long source and relationship lists; `tools` limits the suggested follow-ups.
+   * `detail` limits long source and relationship lists.
    */
-  describeForModel({
-    detail = "brief",
-    tools,
-  }: {
-    detail?: Detail;
-    tools?: ReadonlySet<string>;
-  } = {}): string | undefined {
+  describeForModel({ detail = "brief" }: { detail?: Detail } = {}): string | undefined {
     if (!this.state) return undefined;
     let chartTable: DataTable | undefined;
     try {
@@ -283,23 +272,24 @@ export class DiagramPanel implements vscode.Disposable {
         : this.warnings,
       chartTable,
       detail,
-      tools,
     });
-    return !tools || tools.has(UPDATE_CHART_TOOL) || tools.has(STYLE_TOOL) || tools.has(EDIT_TOOL)
-      ? `Revision: ${this.shownRevision}.\n\n${description}`
-      : description;
+    return `Revision: ${this.shownRevision}.\n\n${description}`;
   }
 
   /** Opens and renders a diagram. */
-  async render(diagram: Diagram, origin: DiagramOrigin, chartTable?: DataTable): Promise<Drawn> {
-    // Keep document bindings and export locations across same-language revisions, but not /new.
+  async render(
+    diagram: Diagram,
+    origin: DiagramOrigin,
+    chartTable?: DataTable,
+    { newDiagram = false }: { newDiagram?: boolean } = {},
+  ): Promise<Drawn> {
+    // Keep document bindings and export locations across same-language revisions.
     // Writing an agent replacement back to its document requires confirmation.
-    const previous = origin === "document" || this.startsNew ? undefined : this.state;
-    // A changed title also resets the viewport: agents can start a new diagram without /new.
+    const previous = origin === "document" || newDiagram ? undefined : this.state;
+    // A changed title also resets the viewport for a new diagram.
     if (!previous || previous.language !== diagram.language || previous.title !== diagram.title) {
       this.diagrams++;
     }
-    this.startsNew = false;
     const kept = previous?.language === diagram.language ? previous : undefined;
     this.state = {
       ...diagram,
@@ -320,16 +310,6 @@ export class DiagramPanel implements vscode.Disposable {
     if (origin === "document") this.userChanges++;
     this.webview.reveal(origin !== "document");
     return this.renderCurrent();
-  }
-
-  /** Routes a tool-rendered diagram's follow-ups to the participant if it is still current. */
-  adopt(revision: number | undefined): Readonly<DiagramState> | undefined {
-    if (!this.state || revision !== this.shownRevision) {
-      return undefined;
-    }
-    this.state = { ...this.state, origin: "participant" };
-    void this.store.save(this.state, this.shownRevision);
-    return this.state;
   }
 
   /** Shows and focuses the panel unless a background update asks to preserve focus. */
@@ -1541,28 +1521,19 @@ export class DiagramPanel implements vscode.Disposable {
   }
 
   /**
-   * Sends a request about the diagram to chat, routed to whoever produced the diagram. Once chart
-   * code could have sent it, or to review, it only fills in the chat input, for the user to send.
+   * Sends to the current chat, keeping selection available to its tools. Requests from chart code
+   * or an old drawing only fill in the input for the user to review and send.
    */
   private async askInChat(text: string, review = false): Promise<void> {
-    const query = this.state?.origin === "tool" ? text : `@diagram ${text}`;
-    const selection = this.selection;
     try {
       await vscode.commands.executeCommand("workbench.action.chat.open", {
-        query,
+        query: text,
         isPartialQuery: review || this.pageRanCode,
       });
     } catch (error) {
-      // E.g. chat is disabled. The selection is kept, to try again.
       void vscode.window.showErrorMessage(
         `Could not send the request to chat: ${errorMessage(error)}`,
       );
-      return;
-    }
-    // Opening chat can take time; keep any selection made while it was opening.
-    if (this.selection === selection) {
-      this.selection = [];
-      this.post({ type: "clearSelection" });
     }
   }
 }

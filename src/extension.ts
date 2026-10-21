@@ -5,7 +5,6 @@ import { ExportDiagramHtmlTool } from "./exportHtmlTool";
 import { DiagramGuideTool } from "./guide";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
-import { createParticipantHandler, PARTICIPANT_ID } from "./participant";
 import {
   ANNOTATE_TOOL,
   CHART_TOOL,
@@ -42,15 +41,8 @@ import {
 export function activate(context: vscode.ExtensionContext): void {
   const panel = new DiagramPanel(context);
 
-  const participant = vscode.chat.createChatParticipant(
-    PARTICIPANT_ID,
-    createParticipantHandler(panel),
-  );
-  participant.iconPath = new vscode.ThemeIcon("type-hierarchy");
-
   context.subscriptions.push(
     panel,
-    participant,
     vscode.lm.registerTool(RENDER_TOOL, new RenderDiagramTool(panel)),
     vscode.lm.registerTool(EDIT_TOOL, new EditDiagramTool(panel)),
     vscode.lm.registerTool(CHART_TOOL, new ChartTool(panel)),
@@ -76,10 +68,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("diagram.highlightPath", () => panel.highlightPath()),
     vscode.commands.registerCommand("diagram.clearSelection", () => panel.clearSelection()),
     vscode.commands.registerCommand("diagram.help", () =>
-      vscode.window.showInformationMessage("@diagram Help", {
+      vscode.window.showInformationMessage("Diagram Help", {
         modal: true,
         detail:
-          "Ask @diagram in chat to draw or change diagrams and charts, or open a diagram from Markdown.\n\n" +
+          "Ask your chat agent to draw or change diagrams and charts, select the Diagram agent for a focused session, or open a diagram from Markdown.\n\n" +
           "Click a linked node to open its code or URL. Other items select on click, or ask about the item in chat when the diagram enables it. Ctrl/Cmd/Shift+click always selects and lets you select several items.\n\n" +
           "Right-click for Highlight Path when two selected nodes have a path from the first to the second. Clear Selection removes selections and agent highlights.\n\n" +
           "Use the message field to ask about your selection, the view buttons to edit the source, and Export to save the drawing. Tab to the drawing, use arrow keys to move, and Enter or Space to select.",

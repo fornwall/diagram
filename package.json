@@ -1,7 +1,7 @@
 {
   "name": "diagram-chat",
-  "displayName": "@diagram",
-  "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: ask @diagram to draw, chart CSV, JSON or command output, and edit diagrams in Markdown.",
+  "displayName": "Diagram",
+  "description": "Interactive Mermaid diagrams and Apache ECharts charts beside VS Code chat: draw with your chat agent, chart CSV, JSON or command output, and edit diagrams in Markdown.",
   "version": "0.0.6",
   "publisher": "fornwall",
   "icon": "images/icon.png",
@@ -11,7 +11,7 @@
     "url": "https://github.com/fornwall/diagram"
   },
   "engines": {
-    "vscode": "^1.142.0"
+    "vscode": "^1.143.0"
   },
   "capabilities": {
     "untrustedWorkspaces": {
@@ -34,50 +34,9 @@
     "onLanguage:markdown"
   ],
   "contributes": {
-    "chatParticipants": [
+    "chatAgents": [
       {
-        "id": "diagram.participant",
-        "name": "diagram",
-        "fullName": "Diagram",
-        "description": "Draw, change and explain diagrams and charts",
-        "isSticky": true,
-        "commands": [
-          {
-            "name": "new",
-            "description": "Start a new diagram or chart instead of changing the current one"
-          },
-          {
-            "name": "explain",
-            "description": "Explain the current diagram or chart, or the selected parts"
-          },
-          {
-            "name": "show",
-            "description": "Show the diagram panel"
-          }
-        ],
-        "disambiguation": [
-          {
-            "category": "diagram",
-            "description": "The user wants to draw, visualize, update or explain a diagram, such as a flowchart, sequence diagram, class diagram, state machine, entity relationship diagram, architecture overview, mind map, timeline or Gantt chart.",
-            "examples": [
-              "Draw a sequence diagram of the login flow",
-              "Visualize the class hierarchy in this file",
-              "Make a flowchart of this algorithm",
-              "Add error handling to the diagram"
-            ]
-          },
-          {
-            "category": "chart",
-            "description": "The user wants to visualize data as a chart, such as a pie chart, bar chart, line chart, scatter plot, treemap, sankey, heatmap, radar chart, box plot, gauge or funnel, with the data given inline, in a file or as the output of a shell command.",
-            "examples": [
-              "Render this data as a pie chart",
-              "Bar chart of the lines of code per folder",
-              "Plot the CSV file as a line chart",
-              "Show the disk usage of these directories as a pie chart",
-              "Treemap of the file sizes under src"
-            ]
-          }
-        ]
+        "path": "./agents/diagram.agent.md"
       }
     ],
     "languageModelTools": [
@@ -88,7 +47,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(type-hierarchy)",
         "userDescription": "Show a Mermaid diagram or an ECharts chart in an interactive panel",
-        "modelDescription": "Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
+        "modelDescription": "diagram_render: Show a Mermaid 12 diagram (flowchart, sequence, class, state, ER, Gantt, mind map, architecture-beta, etc.) or an Apache ECharts 6 option (no maps) in the panel beside chat, replacing the current one, where the user can select items and send follow-ups. Returns the diagram type or the render error to fix. To change the current diagram, use diagram_edit; to chart a file, command output or table, use diagram_chart. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
         "tags": [
           "diagram",
           "mermaid",
@@ -126,6 +85,10 @@
               },
               "description": "Mermaid node ids mapped to code locations that clicking them opens, absolute or relative to the first workspace folder, with optional lines: {\"parse\": \"src/parser.ts#L42\", \"check\": \"src/checker.ts#L10-L30\"}. Link only code you have read."
             },
+            "newDiagram": {
+              "type": "boolean",
+              "description": "Start a separate diagram, clearing the current Markdown binding and inherited export location. Defaults to false. Pass revision even when starting another diagram."
+            },
             "revision": {
               "type": "integer",
               "minimum": 0,
@@ -145,7 +108,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(edit)",
         "userDescription": "Change the current diagram or chart with exact replacements in its source",
-        "modelDescription": "Change the current Mermaid diagram or ECharts chart with exact text replacements in its source, keeping the rest, node ids, the user's edits, the title, code links and click prompt, rather than sending it all again with diagram_render. Copy each oldText exactly from the source that diagram_getState gives; if any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, or the render error with the lines around it. On a chart made by diagram_chart, edit only its styling: change its type, columns or data with diagram_updateChart or diagram_chart.",
+        "modelDescription": "diagram_edit: Change the current Mermaid diagram or ECharts chart with exact text replacements in its source, keeping the rest, node ids, the user's edits, the title, code links and click prompt, rather than sending it all again with diagram_render. Copy each oldText exactly from the source that diagram_getState gives; if any edit does not apply, nothing changes and the result quotes the closest lines. Returns what changed, or the render error with the lines around it. On a chart made by diagram_chart, edit only its styling: change its type, columns or data with diagram_updateChart or diagram_chart.",
         "tags": [
           "diagram",
           "mermaid",
@@ -220,7 +183,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Chart data given inline, in a file or as a command's output",
-        "modelDescription": "Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file or command, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
+        "modelDescription": "diagram_chart: Chart tabular data with Apache ECharts in the panel beside chat, replacing the current diagram. Give exactly one of data, file or command, e.g. a treemap of `du -ah src`. Reports how it read the columns. Sizes and durations are read as bytes and seconds, the units of max and filter values. For callbacks such as renderItem or full control of the option, use diagram_render. Pass the current revision when replacing an existing diagram; await the result before another drawing change.",
         "tags": [
           "chart",
           "echarts",
@@ -414,6 +377,10 @@
               },
               "description": "Keep rows matching all filters, before anything else. Compares parsed cells: eq/neq need the exact value and type (null matches missing cells); lt/lte/gt/gte need numeric cells and a number; contains matches text case-sensitively."
             },
+            "newDiagram": {
+              "type": "boolean",
+              "description": "Start a separate diagram, clearing the current Markdown binding and inherited export location. Defaults to false. Pass revision even when starting another diagram."
+            },
             "revision": {
               "type": "integer",
               "minimum": 0,
@@ -433,7 +400,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, or \"search\" with query to locate labels or chart settings in a large source. Source ranges and search return whole, copyable excerpts for diagram_edit and continuation positions, fitted to the caller's token budget.",
+        "modelDescription": "diagram_getState: Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, or \"search\" with query to locate labels or chart settings in a large source. Source ranges and search return whole, copyable excerpts for diagram_edit and continuation positions, fitted to the caller's token budget.",
         "tags": [
           "diagram",
           "mermaid",
@@ -498,7 +465,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(file-media)",
         "userDescription": "Show the model an image of the diagram or chart in the diagram panel",
-        "modelDescription": "Return a PNG of the current diagram or chart as the panel draws it, in the user's theme but without selection or marks, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. The result says what the image shows at what scale, and when its text is too small to read: then give \"ids\" to see the part around those items larger. Call only if you can view images.",
+        "modelDescription": "diagram_getImage: Return a PNG of the current diagram or chart as the panel draws it, in the user's theme but without selection or marks, to check its layout, such as overlapping, cut-off or unreadable labels, and fix it. The result says what the image shows at what scale, and when its text is too small to read: then give \"ids\" to see the part around those items larger. Call only if you can view images.",
         "tags": [
           "diagram",
           "mermaid",
@@ -527,7 +494,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(book)",
         "userDescription": "Look up how to draw a kind of Mermaid diagram or ECharts chart well",
-        "modelDescription": "Read topic \"workflow\" for tool selection and the inspect, render, edit, verify and export workflow. Diagram-type topics give Mermaid 12 or ECharts 6 examples that render, common syntax mistakes, layout tips and panel behavior. Omit topic to list them. Use a type topic before unfamiliar syntax or after a render error you cannot fix.",
+        "modelDescription": "diagram_guide: Read topic \"workflow\" for tool selection and the inspect, render, edit, verify and export workflow. Diagram-type topics give Mermaid 12 or ECharts 6 examples that render, common syntax mistakes, layout tips and panel behavior. Omit topic to list them. Use a type topic before unfamiliar syntax or after a render error you cannot fix.",
         "tags": [
           "diagram",
           "mermaid",
@@ -553,7 +520,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(target)",
         "userDescription": "Ask you to select nodes, relationships or chart items in the diagram panel",
-        "modelDescription": "Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for edges and sequence messages, or why nothing was picked.",
+        "modelDescription": "diagram_pickNodes: Ask the user a question and wait until they click their answer in the current diagram or chart, e.g. \"Which step is failing?\". Returns the picked labels and ids, with endpoints for edges and sequence messages, or why nothing was picked.",
         "tags": [
           "diagram",
           "mermaid",
@@ -586,7 +553,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(pin)",
         "userDescription": "Mark nodes, edges, sequence messages or chart items without drawing again",
-        "modelDescription": "Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it; say in your answer what the marks show. Each call replaces the previous marks and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
+        "modelDescription": "diagram_annotate: Mark items of the current diagram or chart for a walkthrough, a problem or a path, without redrawing it; say in your answer what the marks show. Each call replaces the previous marks and fading; omit marks to clear them. Marks are not part of the source and clear when a new diagram is drawn. Returns which ids were marked and which are unknown.",
         "tags": [
           "diagram",
           "mermaid",
@@ -640,7 +607,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
         "userDescription": "Find workspace files by glob",
-        "modelDescription": "Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Skips .git, node_modules and what files.exclude, search.exclude and .gitignore files exclude.",
+        "modelDescription": "diagram_findFiles: Find files in all workspace folders by glob. Returns one path per line, usable as diagram_readFile's file and in code links. Skips .git, node_modules and what files.exclude, search.exclude and .gitignore files exclude.",
         "tags": [
           "diagram"
         ],
@@ -669,7 +636,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(search)",
         "userDescription": "Search workspace files for text",
-        "modelDescription": "Search workspace text files, including unsaved editor changes, for a literal string, in the files that diagram_findFiles lists. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
+        "modelDescription": "diagram_searchText: Search workspace text files, including unsaved editor changes, for a literal string, in the files that diagram_findFiles lists. Returns matching lines with their numbers, grouped by file path. Scans at most 1000 files and 16 MiB per call; narrow the glob when it reports incomplete results.",
         "tags": [
           "diagram"
         ],
@@ -711,7 +678,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(file-code)",
         "userDescription": "Read lines from a workspace file",
-        "modelDescription": "Read numbered lines from a text file in an open workspace folder, including unsaved editor changes. Use the line numbers in code links.",
+        "modelDescription": "diagram_readFile: Read numbered lines from a text file in an open workspace folder, including unsaved editor changes. Use the line numbers in code links.",
         "tags": [
           "diagram"
         ],
@@ -748,7 +715,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(table)",
         "userDescription": "Inspect columns and sample rows from the current chart or another data source",
-        "modelDescription": "Report a data source's exact column names, inferred types, row count and sample rows without drawing. Page through wide tables with startColumn/maxColumns and later rows with startRow; nextColumn and nextRow say where to continue. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart. Each explicit source is read again, including commands.",
+        "modelDescription": "diagram_inspectData: Report a data source's exact column names, inferred types, row count and sample rows without drawing. Page through wide tables with startColumn/maxColumns and later rows with startRow; nextColumn and nextRow say where to continue. Omit the source to inspect the current chart's loaded data, or give exactly one of data, file or command as for diagram_chart. Each explicit source is read again, including commands.",
         "tags": [
           "diagram"
         ],
@@ -811,7 +778,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(graph)",
         "userDescription": "Change the current chart's settings without reloading its data",
-        "modelDescription": "Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept, except those a new type cannot use, and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
+        "modelDescription": "diagram_updateChart: Change the current chart made by diagram_chart, reusing its loaded data without rereading files or rerunning commands. Settings mean the same as in diagram_chart; omitted ones are kept, except those a new type cannot use, and null clears one. Keeps supported manual styling, and refuses changes that would lose unsupported manual source edits. To change the data source, use diagram_chart.",
         "tags": [
           "diagram"
         ],
@@ -1060,7 +1027,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(symbol-color)",
         "userDescription": "Set the fill, border and text colors of nodes, subgraphs, edges, classes, states or ER entities in the Mermaid diagram",
-        "modelDescription": "Color items of the current Mermaid diagram, only when the user asks for colors: flowchart nodes, subgraphs and edges, classes, states and ER entities, by their style and linkStyle lines, keeping the rest of the source. Sets fill, stroke (a border, or an edge's line) and text, which defaults to black or white, whichever reads on the fill. Take the ids from the source or the selection that diagram_getState gives. The panel background follows the VS Code theme and cannot be changed.",
+        "modelDescription": "diagram_style: Color items of the current Mermaid diagram, only when the user asks for colors: flowchart nodes, subgraphs and edges, classes, states and ER entities, by their style and linkStyle lines, keeping the rest of the source. Sets fill, stroke (a border, or an edge's line) and text, which defaults to black or white, whichever reads on the fill. Take the ids from the source or the selection that diagram_getState gives. The panel background follows the VS Code theme and cannot be changed.",
         "tags": [
           "diagram",
           "mermaid",
@@ -1144,7 +1111,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(export)",
         "userDescription": "Save the current diagram or chart as a named HTML file with its renderer loaded from a CDN",
-        "modelDescription": "Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and the same HTML export.",
+        "modelDescription": "diagram_exportHtml: Save the current Mermaid diagram or ECharts chart to a named HTML file. Embeds its current source, data and theme, and loads a pinned renderer from a CDN, so viewing needs internet access. Does not reread data files or rerun commands. Use after rendering and checking the result; pass its revision to avoid exporting a changed diagram. Asks confirmation before writing and refuses existing files unless overwrite is true. Returns the saved path and revision. The panel Export command also offers PNG, SVG and the same HTML export.",
         "tags": [
           "diagram",
           "mermaid",
