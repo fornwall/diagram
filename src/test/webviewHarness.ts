@@ -220,7 +220,7 @@ export function suitePage(): Page {
     render,
     draw: async (diagram) => {
       const outcome = await render(diagram);
-      assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+      assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
     },
   };
 }

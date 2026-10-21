@@ -1273,9 +1273,9 @@
     "vsix": "vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.2",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.5",
     "@types/vscode": "~1.140.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
@@ -1283,14 +1283,14 @@
     "echarts": "^6.1.0",
     "esbuild": "^0.28.2",
     "katex": "0.19.0",
-    "mermaid": "^12.1.0",
+    "mermaid": "^12.2.0",
     "typescript": "^7.0.2"
   },
   "overrides": {
     "katex": "$katex",
     "mocha": {
-      "diff": "^8.0.3",
-      "serialize-javascript": "^7.0.5"
+      "diff": "^9.0.0",
+      "serialize-javascript": "^7.1.2"
     }
   },
   "allowScripts": {

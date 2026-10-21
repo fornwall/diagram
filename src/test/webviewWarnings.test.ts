@@ -86,7 +86,7 @@ suite("Warnings of a drawing in the webview as the panel changes size", function
     })`);
     afterTest(() => evaluate("delete document.body.clientWidth"));
     const outcome = await page.render({ source: TIMELINE });
-    assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+    assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
     assert.deepStrictEqual(page.panel.warnings, []);
   });
 });

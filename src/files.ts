@@ -171,7 +171,7 @@ export async function staysInside(file: string, roots: readonly LocalRoot[]): Pr
 export type LocalRoot = readonly [file: string, real: string | Error];
 
 /** The names in a path, without "." and empty ones, by the rules `p` of its system. */
-function names(file: string, p: path.PlatformPath = path): string[] {
+function names(file: string, p: typeof path.posix = path): string[] {
   return file.split(p.sep === "/" ? "/" : /[\\/]/).filter((name) => name && name !== ".");
 }
 
@@ -185,7 +185,7 @@ function names(file: string, p: path.PlatformPath = path): string[] {
 export function linkTarget(
   target: string,
   dir: string,
-  p: path.PlatformPath = path,
+  p: typeof path.posix = path,
 ): { start?: string; names: string[] } | { path: string } | undefined {
   let { root } = p.parse(target);
   const parts = names(target.slice(root.length), p);

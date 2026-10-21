@@ -215,9 +215,9 @@ suite("Mermaid readability in the webview", function () {
       /^Too wide: the panel's (\d+) px show the [\d,]+ px wide drawing at \d+%, where its 16 px text is 9 px, and only \d+% of its width at a time; the user scrolls sideways for the rest\. Widen the panel to at least (\d+) px or split it into several diagrams\.$/.exec(
         narrow ?? "",
       );
-    assert.ok(wider, narrow);
+    assert.ok(wider, narrow ?? "");
     const [room, width] = [Number(wider[1]), Number(wider[2])];
-    assert.ok(room < 350 && width > 350 && width <= 525, narrow);
+    assert.ok(room < 350 && width > 350 && width <= 525, narrow ?? "");
     assert.deepStrictEqual(await warnings(TIMELINE, width), []);
   });
 
@@ -309,7 +309,7 @@ suite("Mermaid readability in the webview", function () {
       ]);
       // The fix links the node meant, as the only node besides db.
       assert.deepStrictEqual(await warnings(source(fixed as string)), []);
-      assert.strictEqual(page.panel.drawnIds?.length, 3, fixed);
+      assert.strictEqual(page.panel.drawnIds?.length, 3, fixed ?? "");
     }
     // Links meant to end in a circle or cross, also without spaces.
     assert.deepStrictEqual(

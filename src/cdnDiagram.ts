@@ -9,7 +9,7 @@ import { mix, type ThemeColors, toCss } from "./webview/colors";
 
 // Match the versions used to render the source in the panel; never use a moving CDN alias.
 export const CDN_MODULES = {
-  mermaid: "https://cdn.jsdelivr.net/npm/mermaid@12.1.0/dist/mermaid.esm.min.mjs",
+  mermaid: "https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.esm.min.mjs",
   echarts: "https://cdn.jsdelivr.net/npm/echarts@6.1.0/dist/echarts.esm.min.mjs",
 } as const;
 

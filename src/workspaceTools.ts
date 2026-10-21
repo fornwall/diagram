@@ -989,7 +989,7 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     // Count every line, but allocate text only for the requested page. A large file may
     // contain hundreds of thousands of short lines while a read returns at most 500.
     for (;;) {
-      const lineEnd = lf < cr ? lf : cr;
+      const lineEnd = Math.min(lf, cr);
       totalLines++;
       if (totalLines === lastLine + 1 && totalLines <= end) {
         const cut = lineEnd - lineStart > MAX_LINE_CHARS;

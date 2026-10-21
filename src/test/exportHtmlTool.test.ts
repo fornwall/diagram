@@ -46,7 +46,7 @@ suite("exportHtmlTool", () => {
     assert.ok(answer.includes(vscode.Uri.file(path.join(directory, "report.html")).toString(true)));
     const html = fs.readFileSync(path.join(directory, "report.html"), "utf8");
     assert.match(html, /^<!DOCTYPE html>/);
-    assert.match(html, /mermaid@12\.1\.0/);
+    assert.match(html, /mermaid@12\.2\.0/);
     assert.ok(html.includes(JSON.stringify(panel.current?.source)));
     assert.strictEqual(panel.revision, before);
   });

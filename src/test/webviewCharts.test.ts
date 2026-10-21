@@ -128,7 +128,7 @@ suite("ECharts in the webview", function () {
         await settle();
         return {marked, left: faded()};
       })()`);
-      assert.deepStrictEqual(dimmed, { marked: true, left: true }, chart.series[0]?.type);
+      assert.deepStrictEqual(dimmed, { marked: true, left: true }, chart.series[0]?.type ?? "");
     }
   });
 

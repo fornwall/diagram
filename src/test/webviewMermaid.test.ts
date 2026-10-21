@@ -505,7 +505,7 @@ suite("Mermaid in the webview", function () {
         }
         return [...new Set(problems)];
       })()`);
-      assert.deepStrictEqual(overflows, [], source.split("\\n")[0]);
+      assert.deepStrictEqual(overflows, [], source.split("\\n")[0] ?? "");
     }
   });
 

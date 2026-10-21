@@ -523,7 +523,7 @@ suite("images in the webview", function () {
           text: parsed.documentElement.textContent.includes(${JSON.stringify(text)}),
         };
       })()`);
-      assert.deepStrictEqual(image, { error: null, text: true }, drawing.source);
+      assert.deepStrictEqual(image, { error: null, text: true }, drawing.source ?? "");
     }
   });
 

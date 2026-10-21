@@ -2111,7 +2111,7 @@ suite("webview renderer loading", function () {
       { language: "echarts", source: '{"series": [{"type": "pie", "data": [1]}]}', title: "Pie" },
       "tool",
     );
-    assert.ok(chart.ok, chart.ok ? undefined : chart.error);
+    assert.ok(chart.ok, chart.ok ? "" : chart.error);
     // Nor do the actions, views and source of the chart stay for the diagram that did not load.
     assert.deepStrictEqual(
       await evaluate(`(async () => {
@@ -2216,7 +2216,7 @@ suite("webview renderer loading", function () {
 
     await evaluate(`document.getElementById("decoy").remove()`);
     const again = await panel.render(pie, "tool");
-    assert.ok(again.ok, again.ok ? undefined : again.error);
+    assert.ok(again.ok, again.ok ? "" : again.error);
   });
 
   test("loads Mermaid's elk layout alongside Mermaid for a flowchart, and not for a sequence diagram", async () => {
@@ -2234,7 +2234,7 @@ suite("webview renderer loading", function () {
       );
     const draw = async (source: string) => {
       const outcome = await panel.render({ language: "mermaid", source, title: "Test" }, "tool");
-      assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+      assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
     };
 
     await draw(MERMAID.sequence);

@@ -124,7 +124,7 @@ suite("diagram_guide examples in the webview", function () {
         source: topic.example,
         title: topic.name,
       });
-      assert.ok(outcome.ok, outcome.ok ? undefined : outcome.error);
+      assert.ok(outcome.ok, outcome.ok ? "" : outcome.error);
       assert.deepStrictEqual(page.panel.warnings, []);
     });
   }

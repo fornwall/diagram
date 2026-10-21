@@ -4,23 +4,23 @@ These tools are available to ordinary chat agents and the bundled **Diagram** ag
 
 Complete input schemas are declared in [`package.json`](../package.json) under `contributes.languageModelTools`.
 
-| Tool | Reference | Purpose |
-| --- | --- | --- |
-| `diagram_render` | `#diagram` | Render Mermaid or an ECharts option as JSON or JavaScript. Reports syntax errors and layout problems, with fixes where available. |
-| `diagram_edit` | `#diagramEdit` | Change the current diagram or chart with exact text replacements in its source, keeping the rest, its title, code links and click prompt. |
-| `diagram_chart` | `#chart` | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data. |
-| `diagram_getState` | `#diagramState` | Read full context, a summary, exact source ranges or literal search results, with the revision. Includes errors, selection, marks and relationship ids. |
-| `diagram_getImage` | `#diagramImage` | View the drawing or selected items as an image to check layout. Requires a model that accepts images. |
-| `diagram_exportHtml` | `#diagramExport` | Save the current diagram or chart as a named HTML file with embedded source/data and a CDN renderer. Viewing requires internet access. |
-| `diagram_guide` | `#diagramGuide` | Read the `workflow` topic for tool selection and verification, or a diagram/chart topic for examples, syntax and layout tips. |
-| `diagram_pickNodes` | `#diagramPick` | Ask a question and wait for the user to pick nodes, relationships or chart items. |
-| `diagram_annotate` | `#diagramAnnotate` | Mark items and fade the rest, without redrawing. Omit marks to clear them. |
-| `diagram_findFiles` | `#diagramFiles` | Find workspace files by glob, in all open folders. |
-| `diagram_searchText` | `#diagramSearch` | Search workspace files for literal text; returns matching lines and their locations. |
-| `diagram_readFile` | `#diagramRead` | Read a range of numbered lines from a workspace file, including unsaved edits. |
-| `diagram_inspectData` | `#diagramData` | Inspect exact column names, inferred types and up to 20 sample rows; page through wide tables or later rows without charting them. |
-| `diagram_updateChart` | `#diagramUpdate` | Change the current chart's settings using its loaded data, keeping supported styling. |
-| `diagram_style` | `#diagramStyle` | Set Mermaid item colors through `style` and `linkStyle` lines. |
+| Tool                  | Reference          | Purpose                                                                                                                                                 |
+| --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `diagram_render`      | `#diagram`         | Render Mermaid or an ECharts option as JSON or JavaScript. Reports syntax errors and layout problems, with fixes where available.                       |
+| `diagram_edit`        | `#diagramEdit`     | Change the current diagram or chart with exact text replacements in its source, keeping the rest, its title, code links and click prompt.               |
+| `diagram_chart`       | `#chart`           | Chart inline data, a file or a command's output. Infers columns and dates, and reports how it read the data.                                            |
+| `diagram_getState`    | `#diagramState`    | Read full context, a summary, exact source ranges or literal search results, with the revision. Includes errors, selection, marks and relationship ids. |
+| `diagram_getImage`    | `#diagramImage`    | View the drawing or selected items as an image to check layout. Requires a model that accepts images.                                                   |
+| `diagram_exportHtml`  | `#diagramExport`   | Save the current diagram or chart as a named HTML file with embedded source/data and a CDN renderer. Viewing requires internet access.                  |
+| `diagram_guide`       | `#diagramGuide`    | Read the `workflow` topic for tool selection and verification, or a diagram/chart topic for examples, syntax and layout tips.                           |
+| `diagram_pickNodes`   | `#diagramPick`     | Ask a question and wait for the user to pick nodes, relationships or chart items.                                                                       |
+| `diagram_annotate`    | `#diagramAnnotate` | Mark items and fade the rest, without redrawing. Omit marks to clear them.                                                                              |
+| `diagram_findFiles`   | `#diagramFiles`    | Find workspace files by glob, in all open folders.                                                                                                      |
+| `diagram_searchText`  | `#diagramSearch`   | Search workspace files for literal text; returns matching lines and their locations.                                                                    |
+| `diagram_readFile`    | `#diagramRead`     | Read a range of numbered lines from a workspace file, including unsaved edits.                                                                          |
+| `diagram_inspectData` | `#diagramData`     | Inspect exact column names, inferred types and up to 20 sample rows; page through wide tables or later rows without charting them.                      |
+| `diagram_updateChart` | `#diagramUpdate`   | Change the current chart's settings using its loaded data, keeping supported styling.                                                                   |
+| `diagram_style`       | `#diagramStyle`    | Set Mermaid item colors through `style` and `linkStyle` lines.                                                                                          |
 
 Workspace tools stay within open workspace folders. Find and search respect `files.exclude`, `search.exclude` and `search.useIgnoreFiles`, and always exclude `.git` and `node_modules`.
 
@@ -40,7 +40,7 @@ Source search is literal and case-sensitive; a `query` alone implies `"detail":"
 For example, find an axis setting without reading a large chart's data:
 
 ```json
-{"query":"\"yAxis\"","contextLines":4,"maxMatches":2}
+{ "query": "\"yAxis\"", "contextLines": 4, "maxMatches": 2 }
 ```
 
 ## Tool behavior
@@ -61,12 +61,12 @@ Both rendering tools accept a `clickPrompt`, e.g. `"Explain {label} in more deta
 
 `diagram_inspectData` without a source inspects the current chart's loaded data and reports its revision; restart paging if that revision changes. A given source is read anew, rerunning a command on each call.
 
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `startColumn` | 1 | First column to return, counted from 1. |
-| `maxColumns` | 60 | Columns per page, from 1 to 60. |
-| `startRow` | 1 | First sample row, counted from 1 after the header. |
-| `sampleRows` | 5 | Sample rows per page, from 0 to 20. Use 0 to inspect only the schema. |
+| Parameter     | Default | Meaning                                                               |
+| ------------- | ------- | --------------------------------------------------------------------- |
+| `startColumn` | 1       | First column to return, counted from 1.                               |
+| `maxColumns`  | 60      | Columns per page, from 1 to 60.                                       |
+| `startRow`    | 1       | First sample row, counted from 1 after the header.                    |
+| `sampleRows`  | 5       | Sample rows per page, from 0 to 20. Use 0 to inspect only the schema. |
 
 Use returned `nextColumn` or `nextRow` to continue, for example `{"startColumn":61,"maxColumns":20,"sampleRows":0}` for more schema, or `{"startRow":21,"sampleRows":20}` for later data. Column names are exact identifiers for chart settings; long sample strings and parser notes may be shortened.
 
