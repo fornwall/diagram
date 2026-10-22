@@ -1,4 +1,4 @@
-# Diagram
+# Diagram Chat
 
 Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Ask your chat agent to draw, select items in the panel, edit the source and ask follow-up questions about what you selected. Choose the **Diagram** agent for a conversation focused on diagrams and charts.
 
@@ -6,7 +6,7 @@ Requires VS Code 1.143 or later. Chat features need an agent that supports exten
 
 ## Install
 
-Install [Diagram from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fornwall.diagram-chat), or run:
+Install [Diagram Chat from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=fornwall.diagram-chat), or run:
 
 ```sh
 code --install-extension fornwall.diagram-chat
