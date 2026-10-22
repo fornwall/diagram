@@ -428,7 +428,7 @@ function explain(
   hints: Partial<Record<FileErrorCode, string | undefined>> = {},
 ): Error {
   const name = fileName(uri);
-  if (code !== undefined && code in EXPLANATIONS) {
+  if (code !== undefined && Object.hasOwn(EXPLANATIONS, code)) {
     const hint = hints[code as FileErrorCode];
     return new Error(EXPLANATIONS[code as FileErrorCode](name) + (hint ? ` ${hint}` : ""));
   }
@@ -459,7 +459,12 @@ export function fileError(
   }
   const { code, syscall, message } = error instanceof Error ? (error as NodeJS.ErrnoException) : {};
   if (typeof code === "string" && syscall !== undefined) {
-    return explain(NODE_CODES[code] ?? code, message ?? "", uri, hints);
+    return explain(
+      Object.hasOwn(NODE_CODES, code) ? NODE_CODES[code] : code,
+      message ?? "",
+      uri,
+      hints,
+    );
   }
   return error;
 }

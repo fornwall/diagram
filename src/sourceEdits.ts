@@ -31,58 +31,70 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
   let changed = false;
   for (const [index, { oldText, newText, replaceAll }] of edits.entries()) {
     const which = `Edit ${index + 1}`;
-    const found = occurrences(text, oldText);
-    if (found.length === 0) {
+    if (!oldText) {
+      problems.push(`${which}: oldText must not be empty.`);
+      continue;
+    }
+    const first = text.indexOf(oldText);
+    if (first < 0) {
       const after = changed ? `, as the edits before it left it` : "";
       problems.push(`${which}: oldText is not in the source${after}. ${notFound(text, oldText)}`);
       continue;
     }
-    if (found.length > 1 && !replaceAll) {
-      const lines = linesOf(text, found);
-      const listed = lines.slice(0, MAX_LISTED);
+    if (!replaceAll && text.indexOf(oldText, first + oldText.length) >= 0) {
+      const { count, lines, totalLines } = matchingLines(text, oldText);
+      const sourceLines = text.split(/\r\n?|\n/, lines.at(-1));
       problems.push(
-        `${which}: oldText occurs ${formatCount(found.length)} times, on ${lines.length === 1 ? "line" : "lines"} ${joinWords(listed.map(String), "and")}${lines.length > listed.length ? ` and ${formatCount(lines.length - listed.length)} more` : ""}. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n${listed.map((line) => numberedLines(text, line, line)).join("\n")}`,
+        `${which}: oldText occurs ${formatCount(count)} times, on ${totalLines === 1 ? "line" : "lines"} ${joinWords(lines.map(String), "and")}${totalLines > lines.length ? ` and ${formatCount(totalLines - lines.length)} more` : ""}. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n${lines.map((line) => numberedLines(sourceLines, line, line)).join("\n")}`,
       );
       continue;
     }
-    text =
-      found.length === 1
-        ? `${text.slice(0, found[0])}${newText}${text.slice((found[0] as number) + oldText.length)}`
-        : text.replaceAll(oldText, () => newText);
+    let count = 1;
+    if (replaceAll) {
+      count = 0;
+      text = text.replaceAll(oldText, () => {
+        count++;
+        return newText;
+      });
+    } else {
+      text = `${text.slice(0, first)}${newText}${text.slice(first + oldText.length)}`;
+    }
     changed ||= oldText !== newText;
-    replaced.push(found.length);
+    replaced.push(count);
   }
   return problems.length > 0 ? { ok: false, problems } : { ok: true, source: text, replaced };
 }
 
-/** Where the text occurs in the source, without overlaps, as replaceAll replaces it. */
-function occurrences(source: string, text: string): number[] {
-  const found: number[] = [];
-  for (let at = source.indexOf(text); at >= 0; at = source.indexOf(text, at + text.length)) {
-    found.push(at);
-  }
-  return found;
-}
-
-/** Unique one-based line numbers for sorted offsets, found in one pass. */
-function linesOf(text: string, offsets: readonly number[]): number[] {
+/** Counts nonoverlapping matches and keeps only the first few distinct matching lines. */
+function matchingLines(text: string, needle: string) {
   const lines: number[] = [];
+  let count = 0;
+  let totalLines = 0;
   let line = 1;
+  let lastLine = 0;
   let at = 0;
-  for (const offset of offsets) {
+  for (
+    let offset = text.indexOf(needle);
+    offset >= 0;
+    offset = text.indexOf(needle, offset + needle.length)
+  ) {
+    count++;
     for (; at < offset; at++) {
       const char = text[at];
       // As lineAndColumn counts them: "\r\n", "\r" or "\n".
       if (char === "\n" || (char === "\r" && text[at + 1] !== "\n")) line++;
     }
-    if (lines.at(-1) !== line) lines.push(line);
+    if (lastLine !== line) {
+      totalLines++;
+      if (lines.length < MAX_LISTED) lines.push(line);
+      lastLine = line;
+    }
   }
-  return lines;
+  return { count, lines, totalLines };
 }
 
 /** One-based lines `from` through `to`, numbered and truncated for display. */
-function numberedLines(text: string, from: number, to: number): string {
-  const lines = text.split(/\r\n?|\n/);
+function numberedLines(lines: readonly string[], from: number, to: number): string {
   const first = Math.max(1, from);
   const last = Math.min(lines.length, to);
   const numbered: string[] = [];
@@ -115,12 +127,12 @@ function notFound(source: string, text: string): string {
   if (loose) {
     const { line: from } = lineAndColumn(source, loose.start);
     const { line: to } = lineAndColumn(source, loose.end);
-    return `It differs from ${from === to ? `line ${from}` : `lines ${from}-${to}`} only in whitespace, such as indentation or line breaks, which must match exactly:\n${numberedLines(source, from, to)}`;
+    return `It differs from ${from === to ? `line ${from}` : `lines ${from}-${to}`} only in whitespace, such as indentation or line breaks, which must match exactly:\n${numberedLines(source.split(/\r\n?|\n/), from, to)}`;
   }
   const closest = closestLines(source, lines);
   return closest === undefined
     ? ""
-    : `The closest lines are:\n${numberedLines(source, closest.from, closest.to)}`;
+    : `The closest lines are:\n${numberedLines(source.split(/\r\n?|\n/), closest.from, closest.to)}`;
 }
 
 /** Where the text occurs in the source with other whitespace between its words, if it does. */
@@ -224,7 +236,7 @@ function quotedLines(source: string, from: number, to: number, what: string): st
   const last = Math.min(lineAndColumn(source, source.length).line, to);
   if (first > last) return "";
   const lines = first === last ? `Line ${first}` : `Lines ${first}-${last}`;
-  return `${lines} of the ${what}:\n${numberedLines(source, first, last)}`;
+  return `${lines} of the ${what}:\n${numberedLines(source.split(/\r\n?|\n/), first, last)}`;
 }
 
 /** The lines of `after` that differ from `before`, from the first to the last. */

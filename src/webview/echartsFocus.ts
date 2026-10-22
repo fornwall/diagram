@@ -486,7 +486,11 @@ export class ChartFocus {
     const names = legend.getData().map((entry) => entry.get("name"));
     const series = modelOf(chart).getSeriesByIndex(ref.seriesIndex);
     const item = series?.getRawData().getName(ref.dataIndex);
-    const name = [item, series?.name].find((each) => each !== undefined && names.includes(each));
+    const namesOfItem = [
+      item !== undefined && series?.legendVisualProvider?.containName(item) ? item : undefined,
+      series?.name,
+    ];
+    const name = namesOfItem.find((each) => each !== undefined && names.includes(each));
     if (typeof name !== "string") return;
     if (names.filter((each) => typeof each === "string" && legend.isSelected(each)).length < 2) {
       this.announce(`${name} is the last one shown`);

@@ -1,6 +1,6 @@
 # Diagram Chat
 
-Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Ask your chat agent to draw, select items in the panel, edit the source and ask follow-up questions about what you selected. Choose the **Diagram** agent for a conversation focused on diagrams and charts.
+Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Draw with your agent, select items, ask follow-up questions and edit the source.
 
 Requires VS Code 1.143 or later. Chat features need an agent that supports extension tools, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
 
@@ -24,7 +24,7 @@ Draw a flowchart in the diagram panel: request → validate → process; reject 
 
 Select a node in the panel, type “What could go wrong at this step?” in its message field, and press **Send to chat**. The request includes your selection and continues in chat.
 
-For a focused session, select **Diagram** from the chat agent dropdown. It uses the same tools and panel, with instructions for drawing, checking and explaining diagrams. Both entry points come with the extension.
+Use your usual chat agent or select **Diagram** for a session focused on drawing and explaining diagrams.
 
 You can also attach files with `#file` or images, or chart a command's output:
 - `sequence diagram of the OAuth login flow in #file:src/auth.ts`
@@ -33,9 +33,7 @@ You can also attach files with `#file` or images, or chart a command's output:
 - `histogram of request latency in #file:requests.csv, one panel per service`
 - `turn this whiteboard photo into a flowchart`
 
-Ask to change the current diagram, start a new one, or explain it without changes. **Diagram: Show Panel** reopens the panel. Tools return render errors and layout warnings so the agent can repair them. `diagram_render` retries once when Mermaid identifies an unquoted flowchart label, reports a successful correction, and keeps the original source if the retry fails.
-
-If you used earlier versions, choose **Diagram** or use ordinary agent chat in place of the retired `@diagram` participant and its slash commands.
+Ask to change the current diagram, start a new one, or explain it. **Diagram: Show Panel** reopens the panel. Tools report render errors and layout warnings for the agent to repair.
 
 ## The panel
 
@@ -72,7 +70,7 @@ Charts can filter, aggregate, sort and limit rows, and split into a panel per va
 
 ## Chat tools
 
-The Diagram agent and ordinary chat conversations use the same tools. Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage` or `#diagramPick` in chat. Tools support source search, paged data inspection and revision checks that protect newer edits. `#diagramExport` saves a named HTML file with embedded source and data; opening it requires internet access.
+Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` or `#diagramExport` in chat. Tools support source search, paged data inspection and revision checks that protect newer edits.
 
 See [the tools reference](docs/tools.md) for details. Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification.
 
@@ -86,7 +84,7 @@ Chat sends your prompt, attachments and tool results, including diagram context 
 
 Data files and command output are limited to 10 MiB, commands to 60 seconds, tables to 1,000,000 cells and Mermaid sources to 50,000 characters. Summarize larger datasets before charting them.
 
-See [the full reference](docs/reference.md) for everything the panel, Markdown editing and chart data support, and for all limits.
+See [the full reference](docs/reference.md) for supported features and limits.
 
 ## Feedback
 

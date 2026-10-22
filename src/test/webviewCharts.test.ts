@@ -1569,6 +1569,33 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("hides the focused series when a category shares another series' name", async () => {
+    await renderChart({
+      legend: {},
+      xAxis: { type: "category", data: ["B"] },
+      yAxis: {},
+      series: [
+        { name: "A", type: "bar", data: [1] },
+        { name: "B", type: "bar", data: [2] },
+      ],
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${PRESS}
+        ${UNTIL}
+        chart.focus();
+        const steps = [press("Home"), press("h", {code: "KeyH"})];
+        steps.push(await until(() => {
+          const text = document.getElementById("chart-status").textContent;
+          return text !== steps[1] && text;
+        }, "the remaining series", nextFrame));
+        chart.blur();
+        return steps;
+      })()`),
+      ["B: 1, series A, 1 of 1", "A hidden", "B: 2, series B, 1 of 1"],
+    );
+  });
+
   test("drills into a treemap's leaves of leafDepth with Enter only as nodeClick allows", async () => {
     const roots = [];
     for (const nodeClick of [undefined, false]) {

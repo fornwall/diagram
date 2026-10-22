@@ -48,6 +48,28 @@ suite("source edits", () => {
     );
   });
 
+  test("reject empty matches without committing other edits", () => {
+    for (const replaceAll of [false, true]) {
+      assert.deepStrictEqual(
+        applySourceEdits(source, [edit("C[Done]", "C[Finished]"), edit("", "x", replaceAll)]),
+        { ok: false, problems: ["Edit 2: oldText must not be empty."] },
+      );
+    }
+  });
+
+  test("count nonoverlapping replacements and keep replacement text literal", () => {
+    assert.deepStrictEqual(applySourceEdits("aaa", [edit("aa", "$&")]), {
+      ok: true,
+      source: "$&a",
+      replaced: [1],
+    });
+    assert.deepStrictEqual(applySourceEdits("aaaaa", [edit("aa", "$&", true)]), {
+      ok: true,
+      source: "$&$&a",
+      replaced: [2],
+    });
+  });
+
   test("quote the closest lines of text that is not in the source", () => {
     assert.deepStrictEqual(problems(source, [edit("B --> C[Don]", "")]), [
       "Edit 1: oldText is not in the source. The closest lines are:\n2:   A[Parser] --> B[Checker]\n3:   B --> C[Done]\n4:   B --> D[Retry]",

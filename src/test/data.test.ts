@@ -967,6 +967,14 @@ suite("data", () => {
     assert.deepStrictEqual(read("name,Elapsed (s)\na,12"), ["seconds", [12]]);
     assert.deepStrictEqual(read("name,Uptime (m)\na,2"), ["seconds", [120]]);
     assert.deepStrictEqual(read("name,Age [h]\na,2"), ["seconds", [7200]]);
+    for (const [name, seconds] of [
+      ["Elapsed(s)", 2],
+      ["Uptime(m)", 120],
+      ["Age[h]", 7200],
+      ["Duration(d)", 172800],
+    ] as const) {
+      assert.deepStrictEqual(read(`name,${name}\na,2`), ["seconds", [seconds]], name);
+    }
     // Values with their own unit keep it.
     assert.deepStrictEqual(read("name,Latency (ms)\na,1.2s"), ["seconds", [1.2]]);
     assert.deepStrictEqual(read("name,Latency (ms)\na,100\nb,200ms\nc,1s"), [
@@ -985,6 +993,7 @@ suite("data", () => {
       "Revenue (B)",
       "File(s)",
       "Distance (m)",
+      "Distance(m)",
       "Temp (min)",
       "Price (min)",
       "Latency (min)",

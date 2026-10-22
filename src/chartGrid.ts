@@ -363,10 +363,11 @@ export function boxplotOption({
 }: Reading): Record<string, unknown> {
   const labeled = columns.labels.length > 0;
   const numbers = (rows: Row[], column: number) =>
-    rows.flatMap(({ values }) => {
+    rows.reduce<number[]>((numbers, { values }) => {
       const value = values[column];
-      return typeof value === "number" ? [value] : [];
-    });
+      if (typeof value === "number") numbers.push(value);
+      return numbers;
+    }, []);
   const grouped: Map<string, number[]> = labeled
     ? new Map([...Map.groupBy(rows, label)].map(([group, members]) => [group, numbers(members, 0)]))
     : new Map(names.map((name, column) => [name, numbers(rows, column)]));

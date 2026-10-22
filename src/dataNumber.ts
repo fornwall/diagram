@@ -262,12 +262,11 @@ export function scale(value: number, factor: number): number {
 
 /**
  * A unit of sizes or durations that a column's name states after it, in parentheses or brackets,
- * as kubectl's "MEMORY(bytes)", "Size (KB)", "Memory [MiB]" or "Latency (ms)", or a single letter
- * after a space, as "Elapsed (s)" or "Age (h)", since "File(s)" names a plural. Not "min", which
- * names a minimum far more often than minutes, as in "Temp (min)".
+ * as "MEMORY(bytes)", "Memory [MiB]", "Latency (ms)" or "Elapsed(h)". Single letters require a
+ * duration column. Not "min", which usually names a minimum, as in "Temp (min)".
  */
 export const STATED_UNIT =
-  /(?:\s*[([]([Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i|[nuµμm]s|sec|seconds)|\s+[([]([smhd]))[)\]]$/;
+  /\s*[([](?:([Bb]ytes|[kKMGTPE]?i?B|[KMGTPE]i|[nuµμm]s|sec|seconds)|([smhd]))[)\]]$/;
 
 /** How the units of {@link STATED_UNIT} that a number does not take are written after one. */
 const STATED_ALIASES: Record<string, string> = { bytes: "B", Bytes: "B", sec: "s", seconds: "s" };

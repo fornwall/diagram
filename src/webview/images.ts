@@ -32,7 +32,7 @@ const MAX_PNG_PIXELS = 16_000_000;
 
 /** Percent encoding preserves Unicode labels without a Latin-1 base64 conversion. */
 export function svgDataUrl(svg: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.toWellFormed())}`;
 }
 
 /** The most pixels a PNG may have on either side and in all, and for each pixel of the drawing. */

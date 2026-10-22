@@ -393,4 +393,21 @@ suite("files", () => {
     const cancelled = new vscode.CancellationError();
     assert.strictEqual(fileError(cancelled, vscode.Uri.file(missing)), cancelled);
   });
+
+  test("explains unknown error codes that name inherited properties", () => {
+    const uri = vscode.Uri.parse("diagram-files:/data.csv");
+    for (const code of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      const errors = [
+        Object.assign(new vscode.FileSystemError("Provider failed"), { code }),
+        Object.assign(new Error("Provider failed"), { code, syscall: "open" }),
+      ];
+      for (const error of errors) {
+        assert.strictEqual(
+          (fileError(error, uri) as Error).message,
+          "diagram-files:/data.csv could not be read: Provider failed.",
+          code,
+        );
+      }
+    }
+  });
 });

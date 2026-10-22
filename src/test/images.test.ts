@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
-import { pngDataUrl } from "../webview/images";
+import { pngDataUrl, svgDataUrl } from "../webview/images";
 import { replace } from "./afterTest";
+import { svgOf } from "./echartsModel";
 
 /**
  * Stands in for the browser that pngDataUrl draws in, until the test ends, failing where the
@@ -62,6 +63,16 @@ function fakeBrowser() {
 }
 
 suite("images", () => {
+  test("exports Unicode labels even when a truncated character leaves an unpaired surrogate", () => {
+    const svg = svgOf({
+      animation: false,
+      series: [{ type: "pie", data: [{ name: "Chart 📊 \ud83d end \udc00", value: 1 }] }],
+    });
+    const url = svgDataUrl(svg);
+    assert.ok(url.startsWith("data:image/svg+xml;charset=utf-8,"));
+    assert.ok(decodeURIComponent(url.slice(url.indexOf(",") + 1)).includes("Chart 📊 � end �"));
+  });
+
   test("draws a PNG at twice the size, within 8000 pixels a side and 16 million in all", async () => {
     const browser = fakeBrowser();
     for (const [width, height, expectedWidth, expectedHeight] of [
