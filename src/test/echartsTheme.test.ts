@@ -1,6 +1,6 @@
 import * as assert from "node:assert";
 import { parseColor } from "../cssColors";
-import { contrast, LABEL_CONTRAST, type Rgba, type ThemeColors } from "../webview/colors";
+import { contrast, LABEL_CONTRAST, type Rgba, type ThemeColors, toCss } from "../webview/colors";
 import type { JsonObject } from "../webview/echartsOption";
 import { buildEChartsTheme, colorLabelsOnItems } from "../webview/echartsTheme";
 import { vscodeThemes } from "./vscodeThemes";
@@ -92,6 +92,23 @@ suite("ECharts theme", () => {
     ] as [JsonObject, JsonObject][]) {
       colorLabelsOnItems(base, [series], colors);
       assert.strictEqual(series.label, undefined, JSON.stringify(series));
+    }
+  });
+
+  test("keeps the smallest heatmap cells apart from a high contrast theme's background", () => {
+    for (const [theme, colors] of vscodeThemes) {
+      const built = buildEChartsTheme(colors) as {
+        heatmap: { itemStyle: { borderColor: string } };
+        visualMap: { color: [string, string] };
+      };
+      const [, smallest] = built.visualMap.color;
+      const apart = contrast(rgb(smallest), colors.background);
+      if (colors.highContrast) {
+        assert.ok(apart >= 1.5, `${theme}: ${apart.toFixed(2)}`);
+        assert.strictEqual(built.heatmap.itemStyle.borderColor, toCss(colors.contrastBorder));
+      } else {
+        assert.strictEqual(built.heatmap.itemStyle.borderColor, toCss(colors.background));
+      }
     }
   });
 

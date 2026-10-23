@@ -170,11 +170,22 @@ export function buildEChartsTheme(colors: ThemeColors): Record<string, unknown> 
       },
     },
     boxplot: { itemStyle: { color: "transparent", borderWidth: 1.5 } },
-    heatmap: { itemStyle: { borderColor: background, borderWidth: 1 } },
+    // A high contrast theme outlines its elements in its contrast border, where a gap in the
+    // background color would leave a cell of a small value all but one with it.
+    heatmap: {
+      itemStyle: {
+        borderColor: colors.highContrast ? toCss(colors.contrastBorder) : background,
+        borderWidth: 1,
+      },
+    },
 
     visualMap: {
-      // Sequential: one hue, receding toward the background for small values.
-      color: [accent, toCss(mix(colors.background, colors.blue, 0.15))],
+      // Sequential: one hue, receding toward the background for small values, though not as far
+      // in a high contrast theme, in which the smallest would be lost on it.
+      color: [
+        accent,
+        toCss(mix(colors.background, colors.blue, colors.highContrast ? 0.35 : 0.15)),
+      ],
       textStyle: { color: foreground, ...font },
       handleStyle: { borderColor: background },
     },
