@@ -268,6 +268,15 @@ suite("echartsGrid", () => {
       "Feb 17",
       "Feb 21",
     ]);
+    // A least interval, as a generated chart of months sets, keeps the ticks a month apart rather
+    // than at the weeks between, and fewer still across a narrow plot.
+    const months = Array.from({ length: 6 }, (_, i) => [
+      `2026-${String(i + 1).padStart(2, "0")}`,
+      i,
+    ]);
+    const monthly = line(months, { minInterval: 28 * 86_400_000 });
+    assert.deepStrictEqual(labels(monthly, 800), ["2026", "Feb", "Mar", "Apr", "May", "Jun"]);
+    assert.ok((layout(monthly, { width: 300 }).xAxis.splitNumber ?? 6) < 6);
     // Of a single axis too, unless the axis says how many, or formats them itself.
     const river = layout(
       { singleAxis: { type: "time" }, series: [{ type: "themeRiver", data: [] }] },

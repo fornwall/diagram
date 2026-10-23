@@ -1487,10 +1487,22 @@ suite("charts", () => {
       'Charted "sales" by "date"; read "date" as ISO dates on a time axis; {"xAxis": {"type": ' +
         '"category"}} in "options" reads them as labels instead.',
     );
+    // Ticks no closer than the days apart, rather than at the hours between them.
+    const day = 24 * 60 * 60 * 1000;
+    assert.strictEqual(option.xAxis.minInterval, day);
+    assert.strictEqual(build(chart("scatter"), daily).xAxis.minInterval, day);
+    assert.strictEqual(
+      build(chart("line"), "month,n\n2026-01,3\n2026-02,5").xAxis.minInterval,
+      28 * day,
+    );
+    assert.strictEqual(
+      build(chart("line"), "at,n\n2026-01-02 10:00,3\n2026-01-02 11:00,5").xAxis.minInterval,
+      undefined,
+    );
     // The time axis of a horizontal bar chart is its y axis, still with the first row at the top.
     const horizontal = build(chart("horizontalBar"), daily);
     assert.strictEqual(horizontal.xAxis.type, "value");
-    assert.deepStrictEqual(horizontal.yAxis, { type: "time", inverse: true });
+    assert.deepStrictEqual(horizontal.yAxis, { type: "time", minInterval: day, inverse: true });
     assert.deepStrictEqual(horizontal.series[0].data, [
       [3, "2026-01-02"],
       [5, "2026-01-05"],

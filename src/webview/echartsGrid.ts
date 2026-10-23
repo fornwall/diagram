@@ -433,7 +433,8 @@ const MIN_TICK_GAP = 20;
  * Gives a time axis across the chart fewer labels when they would run into each other along its
  * length, as they would in a narrow plot: ECharts steps its ticks by the split number alone, and
  * draws every label. Only of an axis whose labels the panel formats (see {@link TIME_LABELS}),
- * as wide as "Feb 13" or "12:30".
+ * as wide as "Feb 13" or "12:30". A least interval, as a generated chart of dates sets, is a
+ * floor under the step, which fewer ticks keep above it.
  */
 export function fewerTimeTicks(axis: JsonObject, length: number, font: Font): void {
   const label = styleOf(axis.axisLabel);
@@ -441,8 +442,7 @@ export function fewerTimeTicks(axis: JsonObject, length: number, font: Font): vo
     axisType(axis) !== "time" ||
     label.formatter !== undefined ||
     axis.splitNumber !== undefined ||
-    axis.interval !== undefined ||
-    axis.minInterval !== undefined
+    axis.interval !== undefined
   ) {
     return;
   }

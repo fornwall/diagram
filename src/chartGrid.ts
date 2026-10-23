@@ -1,7 +1,7 @@
 // Charts drawn on a grid of an x and a y axis: bar, line, area, scatter, heatmap and box plot.
 
 import { columnName } from "./chartColumns";
-import { timeValue } from "./chartDates";
+import { dateResolution, timeValue } from "./chartDates";
 import { quantile, Sum } from "./chartNumbers";
 import { inLabelOrder, label, noteRepeatedLabels, type Reading, type Row } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
@@ -97,6 +97,16 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
+ * The ticks of a time axis of dates written as days or months: no closer than a day or a month
+ * apart, as ECharts would otherwise tick the hours between a few days, or the weeks between a few
+ * months, and label those.
+ */
+function timeTicks(format: string | undefined): { minInterval?: number } {
+  const resolution = format === undefined ? undefined : dateResolution(format);
+  return resolution === undefined ? {} : { minInterval: resolution };
+}
+
+/**
  * Whether the name of the value column at `i` says what its values are, to name an axis by: it
  * comes from a header, or states the multiple of their unit that they are shown in, as a
  * generated "Column 2 (ms)" does, where "Column 2" says nothing.
@@ -152,7 +162,9 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   const ownTimes = times !== undefined && pivot && CARTESIAN_SERIES[type].stack === undefined;
   const categoryAxis = {
     type: times === undefined ? "category" : "time",
-    ...(times === undefined ? { data: points, ...(line ? { boundaryGap: false } : {}) } : {}),
+    ...(times === undefined
+      ? { data: points, ...(line ? { boundaryGap: false } : {}) }
+      : timeTicks(columns.times)),
     // Put the first row at the top of a horizontal chart.
     ...(horizontal ? { inverse: true } : {}),
     // Keep labels at the edge when an axis through zero would cover negative values.
@@ -211,7 +223,9 @@ export function scatterOption(reading: Reading): Record<string, unknown> {
   if (columns.times !== undefined) {
     const { timeAxis } = columns;
     return {
-      xAxis: timeAxis ? { type: "time" } : { type: "category", data: rows.map(label) },
+      xAxis: timeAxis
+        ? { type: "time", ...timeTicks(columns.times) }
+        : { type: "category", data: rows.map(label) },
       yAxis: axis(0),
       series: [
         {

@@ -16,22 +16,43 @@ const DATE_TIME = new RegExp(
   String.raw`^(${DATE})[T ](${TIME}(?::[0-5]\d(?:\.\d{1,9})?)?)(?: ?(Z|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)(?: [A-Z]{3,5})?)?$`,
 );
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * The date shapes that a column of labels is read as times in, with the name reported for each.
- * Only shapes that cannot be read any other way are here: "01/02/2026" is the second of January in
- * one country and the first of February in another, and a column of years is in practice a set of
- * categories, so both stay labels. The parts are bounded, so "2026-13-01" is no date either.
+ * The date shapes that a column of labels is read as times in, with the name reported for each,
+ * and the least time between two different dates written so, in milliseconds, for shapes of whole
+ * days or months. Only shapes that cannot be read any other way are here: "01/02/2026" is the
+ * second of January in one country and the first of February in another, and a column of years is
+ * in practice a set of categories, so both stay labels. The parts are bounded, so "2026-13-01" is
+ * no date either.
  */
-const DATE_FORMATS: { name: string; pattern: RegExp }[] = [
+const DATE_FORMATS: { name: string; pattern: RegExp; resolution?: number }[] = [
   { name: "ISO date-times", pattern: DATE_TIME },
-  { name: "ISO dates", pattern: new RegExp(`^${DATE}$`) },
-  { name: "ISO months", pattern: new RegExp(String.raw`^\d{4}-${MONTH}$`) },
+  { name: "ISO dates", pattern: new RegExp(`^${DATE}$`), resolution: DAY_MS },
+  {
+    name: "ISO months",
+    pattern: new RegExp(String.raw`^\d{4}-${MONTH}$`),
+    resolution: 28 * DAY_MS,
+  },
   {
     name: "date-times written YYYY/MM/DD hh:mm",
     pattern: new RegExp(String.raw`^${SLASHED_DATE} ${TIME}(?::[0-5]\d)?$`),
   },
-  { name: "dates written YYYY/MM/DD", pattern: new RegExp(`^${SLASHED_DATE}$`) },
+  {
+    name: "dates written YYYY/MM/DD",
+    pattern: new RegExp(`^${SLASHED_DATE}$`),
+    resolution: DAY_MS,
+  },
 ];
+
+/**
+ * The least time between two different dates of the shape named by {@link dateFormat}, in
+ * milliseconds, as a day or a month, or undefined for date-times: a time axis of dates spaced
+ * further than its ticks would otherwise be ticked by the hours in between.
+ */
+export function dateResolution(format: string): number | undefined {
+  return DATE_FORMATS.find(({ name }) => name === format)?.resolution;
+}
 
 /**
  * The shape of the dates in a column of labels, which ECharts reads itself on a time axis, or
