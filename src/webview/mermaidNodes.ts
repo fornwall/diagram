@@ -414,8 +414,14 @@ function shapes(f: Finder): Map<string, string> {
       order.set(group, index);
     }
   }
+  // A note's id has no number of its own after the decoration: "state-A----note-1".
+  const undecorated = (domId: string) =>
+    domId.replace(/^(?:flowchart|agentflow|state|classId|entity)-/, "");
   const rank = ({ sourceId, domId }: { sourceId: string; domId: string }) =>
-    order.get(sourceId) ?? order.get(domId) ?? Number.POSITIVE_INFINITY;
+    order.get(sourceId) ??
+    order.get(domId) ??
+    order.get(undecorated(domId)) ??
+    Number.POSITIVE_INFINITY;
   found.sort((a, b) => rank(a) - rank(b));
   const nodeIds = new Map<string, string>();
   // Not start and end states, nor groups without ids.

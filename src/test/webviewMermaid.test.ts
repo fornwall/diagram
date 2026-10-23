@@ -1681,6 +1681,12 @@ suite("Mermaid in the webview", function () {
         "stateDiagram-v2\n  [*] --> Idle\n  state Running {\n    [*] --> Busy\n    Busy --> Waiting\n  }\n  Idle --> Running",
     });
     assert.deepStrictEqual(page.panel.drawnIds, ["Idle", "Running", "Busy", "Waiting"]);
+    // A note, whose drawn id Mermaid decorates otherwise, goes where it is written rather than last.
+    await draw({
+      source:
+        "stateDiagram-v2\n  state S {\n    A --> B\n    note right of A : NA\n  }\n  C --> S\n  S --> D",
+    });
+    assert.deepStrictEqual(page.panel.drawnIds, ["S", "A", "B", "NA", "C", "D"]);
   });
 
   test("names notes apart from the nodes whose ids their texts are, drawn before them or after", async () => {
