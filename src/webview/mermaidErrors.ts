@@ -92,6 +92,11 @@ function unknownTypeError(message: string): Error {
       `Remove the "mermaid" line: the source must start with the diagram type, such as ${COMMON_TYPES}.`,
     );
   }
+  if (type.toLowerCase() === "zenuml") {
+    return new Error(
+      'ZenUML needs a plugin that the panel does not load: draw it as a "sequenceDiagram" instead.',
+    );
+  }
   // The source starts with a statement, as a model that leaves out the type writes it.
   const statement = text.split("\n", 1)[0] ?? "";
   const missing = STATEMENTS.find(([pattern]) => pattern.test(statement))?.[1];
@@ -675,6 +680,28 @@ const UNPLACED: [
   ],
   // A packet field given by its bits, out of order or backwards, or as "+0".
   [/^Packet block \d+(?: - \d+)? is /, (_, normalized) => [badPacketField(normalized)]],
+  // Block diagrams call the intersection of a diamond unbound, failing on an edge at one.
+  [
+    /^this\.calcIntersect is not a function$/,
+    (_, normalized) => {
+      const diamonds = Array.from(
+        normalized.matchAll(/(?<![\w{-])([\w-]+)\{(?!\{)([^{}\n]*)\}/g),
+        ({ 1: id = "", 2: label = "", index }) => ({ id, label, index }),
+      );
+      const linked =
+        diamonds.find(
+          ({ id }) =>
+            find(normalized, `^.*(?:(?:--|==|-\\.).*${word(id)}|${word(id)}.*(?:--|==|-\\.))`) !==
+            undefined,
+        ) ?? diamonds[0];
+      if (!linked) return undefined;
+      const { id, label, index } = linked;
+      return [
+        index,
+        `Mermaid cannot draw an edge at "${id}", a diamond block: give it another shape, such as ${id}{{${label}}}, a hexagon.`,
+      ];
+    },
+  ],
   // Others quote what they are about: the first line with all of it.
   [
     /"[^"\n]+"|\[[^\]\n]+\]/,

@@ -468,8 +468,8 @@ suite("Mermaid in the webview", function () {
       before: { scrolled: false, hidden: true },
       after: { scrolled: true, inView: true, centered: true },
     });
-    // A sequence diagram draws the footers of its participants before their headers: a tall one
-    // starts at the top.
+    // A sequence diagram draws the footers of its participants before their headers, and the last
+    // participant first: a tall one starts at the top, and a wide one at its first participant.
     const messages = Array.from({ length: 40 }, (_, i) => `  A->>B: message ${i}`);
     await draw({ source: `sequenceDiagram\n${messages.join("\n")}`, title: "Tall" });
     assert.deepStrictEqual(
@@ -1305,11 +1305,12 @@ suite("Mermaid in the webview", function () {
         'Unknown diagram type "pei": did you mean "pie"?',
       ],
     );
-    const [unknown, fenced, labeled, empty] = await errors(
+    const [unknown, fenced, labeled, empty, zenuml] = await errors(
       "nonsense\n  A --> B",
       "```mermaid\nflowchart TD\n  A --> B\n```",
       "mermaid\nflowchart TD",
       " \n%% only a comment\n",
+      "zenuml\n  title Order\n  A->B.pay()",
     );
     assert.match(
       unknown ?? "",
@@ -1318,6 +1319,10 @@ suite("Mermaid in the webview", function () {
     assert.match(fenced ?? "", /^Remove the code fence/);
     assert.match(labeled ?? "", /^Remove the "mermaid" line/);
     assert.match(empty ?? "", /^The diagram is empty: start it with the diagram type/);
+    assert.strictEqual(
+      zenuml,
+      'ZenUML needs a plugin that the panel does not load: draw it as a "sequenceDiagram" instead.',
+    );
   });
 
   test("knows the diagram types that Mermaid detects", async function () {
@@ -1499,6 +1504,8 @@ suite("Mermaid in the webview", function () {
         '---\ntitle: Shop\n---\nusecase-beta\n  actor A\n\n  json data@{\n    "a": 1,\n  }',
         // The dagre layout fails on a composite state that Mermaid finds no states in.
         "---\nconfig:\n  layout: dagre\n---\nstateDiagram-v2\n  [*] --> A\n  state A {\n    state A\n  }",
+        // Block diagrams fail on an edge at a diamond, calling its intersection unbound.
+        'block-beta\n  columns 3\n  a["A"] b{{"Hex"}} c{"Dec"}\n  a --> b\n  b --> c',
       ),
       [
         'Error on line 4: Invalid date "notadate": write dates as the dateFormat says, YYYY-MM-DD.',
@@ -1532,6 +1539,7 @@ suite("Mermaid in the webview", function () {
         "Error on line 8: union requires multiple identifiers",
         "Error on line 9, column 3: Invalid JSON: Expected double-quoted property name in JSON.",
         'Error on line 7: The composite state "A" has no states in it, which the dagre layout cannot draw: put states in it, or lay it out with elk.',
+        'Error on line 3: Mermaid cannot draw an edge at "c", a diamond block: give it another shape, such as c{{"Dec"}}, a hexagon.',
       ],
     );
     const elk = (message: string, source: string) =>
