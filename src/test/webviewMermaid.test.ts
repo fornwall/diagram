@@ -1070,6 +1070,24 @@ suite("Mermaid in the webview", function () {
     await evaluate('document.getElementById("clear-selection").click()');
   });
 
+  test("a Shift+click on a Mermaid node does not extend the browser's text selection", async () => {
+    await draw({ source: "flowchart LR\n  A --> B --> C" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const press = (id, shiftKey) => {
+          const node = document.querySelector('#diagram [data-diagram-id="' + id + '"][tabindex]');
+          const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, shiftKey, pointerType: "mouse", isPrimary: true});
+          node.dispatchEvent(event);
+          return {prevented: event.defaultPrevented, focused: document.activeElement.getAttribute("data-diagram-id")};
+        };
+        // The browser moves the focus and places its caret on a plain click, which the page leaves to it.
+        const plain = press("A", false);
+        return [plain, press("C", true), press("A", true).prevented];
+      })()`),
+      [{ prevented: false, focused: null }, { prevented: true, focused: "C" }, true],
+    );
+  });
+
   test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
     await draw({ source: "flowchart LR\n  A --> B" });
     await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);

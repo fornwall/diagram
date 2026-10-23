@@ -558,6 +558,15 @@ export class MermaidRenderer implements Renderer {
       );
     };
     diagram.addEventListener("click", activate);
+    // A Shift+click adds the node to the selection: the browser would also extend its text
+    // selection from the last click to it, highlighting the labels in between. Canceling the
+    // pointerdown stops that, and keeps the focus where it was: move it as a click would.
+    diagram.addEventListener("pointerdown", (event) => {
+      if (!event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      const stop = event.target instanceof Element ? event.target.closest("[tabindex]") : null;
+      if (stop instanceof HTMLElement || stop instanceof SVGElement) stop.focus();
+    });
     // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
     // between them, Home and End to the first and the last.
     diagram.addEventListener("keydown", (event) => {
