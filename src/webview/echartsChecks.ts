@@ -4,9 +4,10 @@
 // overlapping or cut off. A model is told what is wrong, where in its option, and how to fix it.
 
 import type * as ECharts from "echarts/core";
-import { isPlainObject } from "../protocol";
+import { asArray, isPlainObject } from "../protocol";
 import { brief, joinWords, plural, quote, quoteAll } from "../text";
 import { type Box, modelOf } from "./echartsItems";
+import { styleOf } from "./echartsMeasure";
 import { baseOption, type JsonObject } from "./echartsOption";
 
 // The parts of ECharts' private model read here, which echartsChecks.test.ts checks it still has.
@@ -723,8 +724,12 @@ function categoryLabels(
     model.eachComponent(mainType, (component) => {
       const axisModel = component as AxisModel;
       const axis = axisModel.axis;
-      const interval = axisModel.get(["axisLabel", "interval"]);
       if (axis?.type !== "category" || axisModel.get(["axisLabel", "show"]) === false) return;
+      // Whether the option chooses which labels to show: the layout sets the interval of a
+      // vertical axis of many categories itself (see echartsGrid.ts), which is no such choice.
+      const own = asArray(base[mainType])[axisModel.componentIndex];
+      const interval = styleOf(own?.axisLabel).interval;
+      const chosen = interval !== undefined && interval !== "auto";
       const labels: Element[] = [];
       views.getViewOfComponentModel(axisModel)?.group.traverse?.((element) => {
         if (element.type === "text" && element.anid?.startsWith("label_")) labels.push(element);
@@ -748,11 +753,7 @@ function categoryLabels(
         merge: "sum",
         say,
       });
-      if (
-        (interval === undefined || interval === "auto") &&
-        shown.length < categories.length &&
-        namesCategories(categories)
-      ) {
+      if (!chosen && shown.length < categories.length && namesCategories(categories)) {
         findings.push(
           finding(`left:${shown.length}:${categories.length}`, (paths) => {
             const of = paths.length === 1 ? "its" : "their";
@@ -766,7 +767,6 @@ function categoryLabels(
       }
       const over = overlappingLabels(shown);
       if (over > 0) {
-        const chosen = interval !== undefined && interval !== "auto";
         findings.push(
           finding(`over:${over}:${shown.length}:${chosen}`, (paths) => {
             const of = paths.length === 1 ? "its" : "their";

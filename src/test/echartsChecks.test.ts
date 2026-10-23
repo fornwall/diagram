@@ -926,6 +926,14 @@ suite("echartsChecks", function () {
     assert.deepStrictEqual(warningsOf(departments("yAxis"), { width: 400, height: 200 }), [
       'yAxis shows only 10 of its 20 category labels at the panel\'s height of 200 pixels, leaving out the others for lack of room: show fewer categories, such as the largest and an "Other", or add a "dataZoom" on yAxis to show fewer at a time.',
     ]);
+    // Also of an axis whose shown labels the layout spaces itself, as of an inverse one.
+    const inverse = departments("yAxis");
+    inverse.yAxis = { ...inverse.yAxis, inverse: true };
+    assert.ok(layout(inverse, { width: 400, height: 200 }).yAxis.axisLabel.interval >= 1);
+    assert.match(
+      warningsOf(inverse, { width: 400, height: 200 })[0] ?? "",
+      /^yAxis shows only \d+ of its 20 category labels at the panel's height of 200 pixels/,
+    );
     // Labels in a sequence, of which a reader can tell those left out.
     const days = Array.from({ length: 90 }, (_, index) =>
       new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10),

@@ -154,6 +154,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
         else plot -= AXIS_NAME_HEIGHT;
       }
       fewerTicks(axis, plot, MIN_TICK_GAP, faceted);
+      spaceCategoryLabels(axis, plot, size);
     }
   }
   for (const axis of asArray(base.yAxis)) {
@@ -297,6 +298,43 @@ const UNKNOWN_LABELS = 44;
  * them all.
  */
 const CATEGORY_LABEL_ROOM = 1.3;
+
+/**
+ * Shows every so many labels of an inverse vertical category axis of more categories than its
+ * plot has room to label, as ECharts does on its own, but told which, and with the last of them
+ * clear of the axis' end. ECharts sizes a grid to keep the labels of its axes inside it, by how
+ * far each label sticks out over how far along the axis it is, which it takes the wrong way
+ * round on an inverse axis, as of a heatmap's rows from the top or a horizontal bar chart's
+ * categories: a label at the end that sticks out by a pixel then shrinks the grid to a strip.
+ */
+function spaceCategoryLabels(axis: JsonObject, plot: number, size: Size): void {
+  const label = styleOf(axis.axisLabel);
+  const count = Array.isArray(axis.data) ? axis.data.length : 0;
+  if (
+    axis.inverse !== true ||
+    axisType(axis) !== "category" ||
+    count === 0 ||
+    label.interval !== undefined ||
+    label.show === false
+  ) {
+    return;
+  }
+  const font = size.font(label, size.themed);
+  const lineHeight = typeof label.lineHeight === "number" ? label.lineHeight : font.size;
+  const tall = labelLines(axis.data, label, font) * lineHeight;
+  // As many as fit a third of a line apart, as ECharts spaces them, and the fewest left out
+  // between them for that: no fewer shown than ECharts shows, as the plot is estimated short.
+  const fit = Math.max(1, Math.floor(plot / (tall * CATEGORY_LABEL_ROOM) + 1e-9));
+  let interval = Math.ceil(count / fit) - 1;
+  if (interval < 1) return;
+  // The bands of the end that the last label shown, centered on its band, would stick out of.
+  const clear = Math.ceil(tall / 2 / Math.max(1e-9, plot / count));
+  for (let more = 0; more < 10; more++, interval++) {
+    const last = Math.floor((count - 1) / (interval + 1)) * (interval + 1);
+    if (last === count - 1 || count - 1 - last >= clear) break;
+  }
+  axis.axisLabel = { ...label, interval };
+}
 
 /** Whether each category's text goes onto no more than some lines of a width, in a font. */
 function wrapsInto(

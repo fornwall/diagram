@@ -220,6 +220,48 @@ suite("echartsGrid", () => {
     assert.strictEqual(reads, 3);
   });
 
+  test("keeps the plot of hundreds of rows tall, telling ECharts which of their labels to show", () => {
+    // ECharts sizes a grid to keep its axis labels inside it, and shrinks one of hundreds of
+    // category labels on an inverse axis, as of a heatmap's rows from the top, to a strip.
+    const rows = (count: number, inverse = true): Option => ({
+      xAxis: { type: "category", data: ["a", "b"] },
+      yAxis: {
+        type: "category",
+        data: Array.from({ length: count }, (_, i) => `row ${i}`),
+        inverse,
+      },
+      visualMap: { min: 0, max: 1, show: false },
+      series: [{ type: "heatmap", data: [[0, 0, 1]] }],
+    });
+    const plotHeight = (option: Option) =>
+      withChart(
+        option,
+        (chart) => {
+          const model = (chart as unknown as { getModel(): Option }).getModel();
+          return Math.round(model.getComponent("grid").coordinateSystem.getRect().height);
+        },
+        { width: 1176, height: 593 },
+      );
+    const many = layout(rows(250), { width: 1176, height: 593 });
+    assert.ok(many.yAxis.axisLabel.interval >= 1, JSON.stringify(many.yAxis.axisLabel));
+    assert.ok(plotHeight(many) > 400, String(plotHeight(many)));
+    // The last label shown clear of the end: the 249th row's would stick out of it.
+    const { interval } = many.yAxis.axisLabel;
+    assert.ok(249 - Math.floor(249 / (interval + 1)) * (interval + 1) >= 3, String(interval));
+    // No fewer labels than ECharts shows on its own: every other of 20 rows in 200 pixels.
+    const some = layout(rows(20), { width: 400, height: 200 });
+    assert.strictEqual(some.yAxis.axisLabel.interval, 1);
+    // Not of an axis whose categories all fit, nor one that the option spaces itself, nor one
+    // that is not inverse, whose labels ECharts sizes the grid for rightly.
+    const few = layout(rows(20), { width: 1176, height: 593 });
+    assert.strictEqual(few.yAxis.axisLabel?.interval, undefined);
+    const plain = layout(rows(250, false), { width: 1176, height: 593 });
+    assert.strictEqual(plain.yAxis.axisLabel?.interval, undefined);
+    const own = rows(250);
+    own.yAxis.axisLabel = { interval: 49 };
+    assert.strictEqual(layout(own, { width: 1176, height: 593 }).yAxis.axisLabel.interval, 49);
+  });
+
   test("labels the days of a time axis with their month, fewer of them in a narrow plot", () => {
     const days = (start: string, count: number) =>
       Array.from({ length: count }, (_, index) => [
