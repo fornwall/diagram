@@ -653,6 +653,22 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
     fixed:
       'requirementDiagram\n  requirement r {\n    id: 1\n    text: "has - dash"\n    risk: low\n    verifymethod: test\n  }',
   },
+  {
+    broken:
+      'requirementDiagram\n  requirement r {\n    id: 1\n    text: "t"\n    risk: high priority\n    verifymethod: test\n  }',
+    error:
+      'Parse error on line 5, column 16: unexpected "priority". The risk is low, medium or high: risk: high.',
+    fixed:
+      'requirementDiagram\n  requirement r {\n    id: 1\n    text: "t"\n    risk: high\n    verifymethod: test\n  }',
+  },
+  {
+    broken:
+      'requirementDiagram\n  requirement r {\n    id: 1\n    text: "t"\n    risk: low\n    verifymethod: unit test\n  }',
+    error:
+      'Parse error on line 6, column 19: unexpected "unit test". The verifymethod is analysis, inspection, test or demonstration: verifymethod: test.',
+    fixed:
+      'requirementDiagram\n  requirement r {\n    id: 1\n    text: "t"\n    risk: low\n    verifymethod: test\n  }',
+  },
   // Radar labels without quotes, and negative values.
   {
     broken: "radar-beta\n  axis a[A], b[B]\n  curve x{1, 2}",
@@ -686,6 +702,19 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
     error:
       'Parse error on line 3, column 5: unexpected "New". Put the item in double quotes: "New failure mode".',
     fixed: 'cynefin-beta\n  complex\n    "New failure mode"',
+  },
+  // Cynefin domains by the names of earlier versions, or in capitals.
+  {
+    broken: 'cynefin-beta\n  obvious\n    "Disk full"',
+    error:
+      'Parse error on line 2, column 3: unexpected "obvious". The domains are complex, complicated, clear, chaotic and confusion, in lowercase: clear.\nParse error on line 3, column 5: unexpected "\\"Disk full\\""; expected end of the diagram.',
+    fixed: 'cynefin-beta\n  clear\n    "Disk full"',
+  },
+  {
+    broken: 'cynefin-beta\n  Complex\n    "Flaky canary"',
+    error:
+      'Parse error on line 2, column 3: unexpected "Complex". The domains are complex, complicated, clear, chaotic and confusion, in lowercase: complex.\nParse error on line 3, column 5: unexpected "\\"Flaky canary\\""; expected end of the diagram.',
+    fixed: 'cynefin-beta\n  complex\n    "Flaky canary"',
   },
   // A railroad rule without its ";".
   {
@@ -722,5 +751,12 @@ suite("Mermaid errors in the webview", function () {
       outcomes,
       MISTAKES.map(({ error }) => ({ error, fixed: "drawn" })),
     );
+  });
+
+  test("hints at a name of several words only where the parser stopped in the name", async () => {
+    const outcome = await page.render({ source: "eventmodeling\n  tf 01 uix Cart Screen" });
+    assert.ok(!outcome.ok);
+    assert.match(outcome.error, /^Parse error on line 2, column 9: unexpected "uix"/);
+    assert.doesNotMatch(outcome.error, /Names are one word/);
   });
 });

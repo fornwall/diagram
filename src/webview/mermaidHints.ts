@@ -765,12 +765,24 @@ const gitCommand: Rule = ({ type, line, after, column, expected }) => {
 };
 
 /** A requirement's text, or another field, with punctuation that the parser stops at. */
-const requirementText: Rule = ({ type, line, expected }) => {
-  const field =
-    type === "requirement" && expected?.includes("NEWLINE")
-      ? /^\s*(\w+)\s*:\s*([^"\n].*?)\s*$/.exec(line)
-      : null;
-  return field ? `Put the ${field[1]} in double quotes: ${field[1]}: "${field[2]}".` : undefined;
+const RISKS = ["low", "medium", "high"];
+const VERIFY_METHODS = ["analysis", "inspection", "test", "demonstration"];
+
+const requirementText: Rule = ({ type, line, column, expected }) => {
+  const field = type === "requirement" ? /^(\s*(\w+)\s*:\s*)([^"\n].*?)\s*$/.exec(line) : null;
+  if (!field || column < (field[1] as string).length) return undefined;
+  const [, , key = "", value = ""] = field;
+  const name = key.toLowerCase();
+  // A risk or a verification method is one of a few words; the other fields take a string.
+  const options = name === "risk" ? RISKS : name === "verifymethod" ? VERIFY_METHODS : undefined;
+  if (options) {
+    const words = value.toLowerCase().split(/\W+/);
+    const given = options.find((option) => words.includes(option)) ?? options[0];
+    return `The ${key} is ${joinWords(options, "or")}: ${key}: ${given}.`;
+  }
+  return /^(?:id|text|type|docref)$/.test(name) && expected?.includes("NEWLINE")
+    ? `Put the ${key} in double quotes: ${key}: "${value}".`
+    : undefined;
 };
 
 /** Radar axis or curve labels without quotes, and negative values. */
@@ -799,24 +811,39 @@ const agentflowArrow: Rule = ({ type, line, column }) => {
 };
 
 /** An event model's name of several words. */
-const eventModelName: Rule = ({ type, line, after }) => {
+const eventModelName: Rule = ({ type, line, column, after }) => {
   const frame =
     type === "eventmodeling" && /^\w/.test(after)
       ? /^(\s*(?:tf|timeframe)\s+\S+\s+\w+\s+)(\w+(?:\s+\w+)+)(.*)$/.exec(line)
       : null;
-  if (!frame || !(frame[1] as string).length) return undefined;
+  if (!frame) return undefined;
   const [, head = "", words = "", rest = ""] = frame;
+  // Only where the parser stopped in the words: a stop before them is another mistake.
+  if (column < head.length || column >= head.length + words.length) return undefined;
   return `Names are one word: ${`${head.trim()} ${words.replace(/\s+/g, "")}${rest}`.trim()}.`;
 };
 
-/** A Cynefin item without quotes. */
+/** The Cynefin domains, by their names in lowercase and the names of earlier versions. */
+const CYNEFIN_DOMAINS: Record<string, string> = {
+  complex: "complex",
+  complicated: "complicated",
+  clear: "clear",
+  obvious: "clear",
+  simple: "clear",
+  chaotic: "chaotic",
+  confusion: "confusion",
+  disorder: "confusion",
+};
+
+/** A Cynefin domain by another name or in capitals, or an item without quotes. */
 const cynefinItem: Rule = ({ type, line, after }) => {
   if (type !== "cynefin" || after.trim() !== line.trim()) return undefined;
-  const item = /^\s+([^"\s][^\n]*?)\s*$/.exec(line);
-  return item &&
-    !/^(?:complex|complicated|clear|chaotic|confusion|title)\b|-->/.test(item[1] as string)
-    ? `Put the item in double quotes: "${item[1]}".`
-    : undefined;
+  const item = /^\s*([^"\s][^\n]*?)\s*$/.exec(line)?.[1];
+  if (!item || /^title\b|-->/i.test(item)) return undefined;
+  const domain = CYNEFIN_DOMAINS[item.toLowerCase()];
+  return domain
+    ? `The domains are complex, complicated, clear, chaotic and confusion, in lowercase: ${domain}.`
+    : `Put the item in double quotes: "${item}".`;
 };
 
 /** A railroad rule without its final ";", which the parser stops at the next rule for. */
