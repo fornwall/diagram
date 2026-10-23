@@ -10,7 +10,6 @@ import type { ChartSpec } from "./chartSpec";
 import { type DataTable, parseTable } from "./data";
 import {
   contains,
-  decodeFile,
   decodeText,
   fileError,
   fileName,
@@ -151,15 +150,16 @@ export function prepareDataInvocation(
 }
 
 /**
- * `text` decoded from `bytes`, or else `bytes` in Windows-1252, in which Excel on Windows saves CSV
- * files, if they are neither UTF-16 nor UTF-8. They are taken to be in it only when no character is
- * in UTF-8 either, so that a stray byte in UTF-8 text does not garble the rest.
+ * `text`, which the editor decoded `bytes` to, as they are not UTF-8, or else `bytes` in
+ * Windows-1252, in which Excel on Windows saves CSV files, if they are not UTF-16 either. They are
+ * taken to be in it only when the editor read them as UTF-8 all the same, with characters replaced,
+ * and no character is in UTF-8 either, so that a stray byte in UTF-8 text does not garble the rest.
  */
 function orWindows1252(text: string, bytes: Uint8Array): string {
   if (
     !text.includes("\uFFFD") ||
     utf16(bytes) ||
-    /[^\0-\x7F\uFFFD]/.test(new TextDecoder().decode(bytes))
+    /[^\0-\x7F\uFFFD]/.test(decodeText(bytes, false))
   ) {
     return text;
   }
@@ -210,9 +210,16 @@ export async function readDataFile(file: string, unasked?: Unasked): Promise<str
     });
   }
   checkSize(bytes.byteLength);
-  // A file that the editor finds binary is refused as one with null characters is.
-  // The editor reads Windows-1252 as UTF-8 unless files.encoding names it.
-  const text = orWindows1252(await decodeFile(bytes, uri).catch(() => "\0"), bytes);
+  let text: string;
+  try {
+    // As they are, replacement characters included, which a file in UTF-8 can hold.
+    text = decodeText(bytes);
+  } catch {
+    // A file that the editor finds binary is refused as one with null characters is.
+    // The editor reads Windows-1252 as UTF-8 unless files.encoding names it.
+    const edited = await Promise.resolve(vscode.workspace.decode(bytes, { uri })).catch(() => "\0");
+    text = orWindows1252(edited, bytes);
+  }
   if (text.includes("\0")) {
     throw new Error(
       `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +

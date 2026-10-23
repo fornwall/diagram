@@ -283,6 +283,9 @@ suite("dataSource", () => {
     // A stray byte in UTF-8 text is left undecoded, as the editor shows it.
     fs.writeFileSync(file, Buffer.concat([Buffer.from("café,€ 東京"), Buffer.from([0xff])]));
     assert.strictEqual(await readDataFile(file), "café,€ 東京\uFFFD");
+    // A replacement character written in UTF-8, as a log of undecodable input holds, is one.
+    fs.writeFileSync(file, "a,1\n\uFFFD,2");
+    assert.strictEqual(await readDataFile(file), "a,1\n\uFFFD,2");
   });
 
   test("reads files that are not UTF-8 in the encoding of files.encoding", async () => {
