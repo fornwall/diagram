@@ -79,6 +79,33 @@ suite("echartsDefaults", () => {
     assert.strictEqual(axis.tooltip.formatter, "{b}: {c}");
   });
 
+  test("heads the tooltip of a time axis by the time as the axis labels it", () => {
+    const source = {
+      xAxis: { type: "time" },
+      yAxis: {},
+      series: [{ type: "line", data: [["2026-01-02", 1]] }],
+    };
+    const option = layout(source);
+    const formatter = option.xAxis.axisPointer.label.formatter;
+    assert.strictEqual(formatter({ value: new Date(2026, 0, 2).getTime() }), "2026-01-02");
+    assert.strictEqual(
+      formatter({ value: new Date(2026, 0, 2, 10, 30).getTime() }),
+      "2026-01-02 10:30:00",
+    );
+    assert.strictEqual(option.yAxis.axisPointer, undefined);
+    // The same formatter in each layout, which only needs the chart resized.
+    assert.strictEqual(layout(source, { width: 900 }).xAxis.axisPointer.label.formatter, formatter);
+    // Not where the option formats the pointer's label itself, for the axis or for all.
+    const own = [
+      { ...source, xAxis: { type: "time", axisPointer: { label: { formatter: "{value}" } } } },
+      { ...source, tooltip: { axisPointer: { label: { formatter: "{value}" } } } },
+      { ...source, axisPointer: { label: { formatter: "{value}" } } },
+    ];
+    for (const each of own) {
+      assert.notStrictEqual(layout(each).xAxis.axisPointer?.label?.formatter, formatter);
+    }
+  });
+
   test("labels years on the value axis of a scatter chart as years", () => {
     const data = "year,sales\n2015,10\n2016,12\n2017,9\n2018,15";
     const option = layout(builtOption({ data, type: "scatter" } as ChartSpec, data));

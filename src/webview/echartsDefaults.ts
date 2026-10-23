@@ -7,6 +7,7 @@ import { asArray, isPlainObject } from "../protocol";
 import { escapeHtml } from "../text";
 import { type ThemeColors, toCss } from "./colors";
 import { cloneValue } from "./echartsClone";
+import { dateText } from "./echartsItems";
 import { axisType, compactLabel, styleOf } from "./echartsMeasure";
 import {
   allSeries,
@@ -245,13 +246,31 @@ const timeLabels = () =>
   );
 
 /**
+ * The time at an axis pointer, in the heading of a tooltip of a time axis, as the axis labels it:
+ * by its day, and its time of day unless midnight, rather than as "2026-01-01 00:00:00" however
+ * the dates are spaced.
+ */
+const pointedTime = (params: unknown) => {
+  const value = isPlainObject(params) ? params.value : undefined;
+  return typeof value === "number" ? dateText(new Date(value)) : String(value ?? "");
+};
+
+/**
  * Labels the values of value and log axes compactly, as "1.5M" rather than "1,500,000", which
  * would take the plot's width, and the days of time axes by their month (see {@link TIME_LABELS}),
- * unless the axis formats its labels itself. An option sent as JSON cannot hold a formatter that
- * does the one. A parallel axis takes what its parallel component sets for all of them.
+ * unless the axis formats its labels itself, and the time at a time axis' pointer, as in a
+ * tooltip's heading, as the axis labels it (see {@link pointedTime}), unless the option formats
+ * it. An option sent as JSON cannot hold a formatter that does the one. A parallel axis takes
+ * what its parallel component sets for all of them.
  */
 export function compactAxisLabels(base: JsonObject): void {
   const parallels = asArray(base.parallel);
+  // The pointer's label is formatted by the axis's own setting, else the tooltip's, else the
+  // option's for every axis.
+  const pointerFormatted = [
+    ...asArray(base.tooltip).map((tooltip) => styleOf(tooltip.axisPointer)),
+    ...asArray(base.axisPointer),
+  ].some((pointer) => styleOf(pointer.label).formatter !== undefined);
   for (const key of ["xAxis", "yAxis", "radiusAxis", "angleAxis", "singleAxis", "parallelAxis"]) {
     for (const axis of asArray(base[key])) {
       const defaults =
@@ -271,6 +290,13 @@ export function compactAxisLabels(base: JsonObject): void {
         // ECharts adds the label of a month's or year's start between those of the ticks, however
         // near one, which a day's label as wide as "Feb 2" then runs into.
         label.hideOverlap ??= true;
+        const pointer = styleOf(axis.axisPointer);
+        const pointerLabel = styleOf(pointer.label);
+        if (!pointerFormatted && pointerLabel.formatter === undefined) {
+          pointerLabel.formatter = pointedTime;
+          pointer.label = pointerLabel;
+          axis.axisPointer = pointer;
+        }
       } else continue;
       axis.axisLabel = label;
     }

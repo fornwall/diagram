@@ -193,7 +193,7 @@ function valueText(value: unknown): string | undefined {
 }
 
 /** A date as a time axis labels it, in local time: its day, and its time of day unless midnight. */
-function dateText(date: Date): string {
+export function dateText(date: Date): string {
   if (Number.isNaN(date.getTime())) return "Invalid Date";
   const pad = (part: number) => String(part).padStart(2, "0");
   const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
