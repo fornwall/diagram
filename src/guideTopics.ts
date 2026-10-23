@@ -421,7 +421,7 @@ Budget,"Fun, travel",1000`,
   api --> cache
   api --> db`,
     notes: `- columns N, then blocks fill rows left to right in order. space (or space:3) leaves gaps; id:2 makes a block 2 columns wide.
-- Shapes as in flowcharts: id["Label"], id(("circle")), id[("database")], id{"decision"}.
+- Shapes as in flowcharts: id["Label"], id(("circle")), id[("database")], id{{"hexagon"}}. A diamond id{"…"} fails with an edge.
 - Nested: block:group … end, with its own columns.
 - Edges: a --> b, or a -- "label" --> b.
 - Nothing is placed automatically: use block when the user wants a fixed arrangement, else a flowchart.`,
