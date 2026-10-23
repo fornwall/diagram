@@ -334,7 +334,8 @@ suite("echartsFocus", () => {
         [1, 1, 9],
       ],
     };
-    assert.strictEqual(values(heatmap, { type: "category", data: ["AM", "PM"] }), "(PM, 9)");
+    // A cell goes by its column and row (see echartsItems.ts), which leaves its value.
+    assert.strictEqual(values(heatmap, { type: "category", data: ["AM", "PM"] }), "9");
     const boxplot = {
       type: "boxplot",
       data: [

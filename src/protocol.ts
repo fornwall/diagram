@@ -60,7 +60,8 @@ export function errorClause(error: unknown): string {
 
 export interface DiagramNode {
   /**
-   * Mermaid node id, or chart item id: the item's own id or else its name (its path in a tree),
+   * Mermaid node id, or chart item id: the item's own id or else its name (its path in a tree, or
+   * what places an unnamed item: its categories, as "Mon, 10" for a heatmap's cell, or its time),
    * prefixed with "Series/" when the chart has several series, and told apart by its index when
    * that repeats.
    */

@@ -1,5 +1,5 @@
 import * as assert from "node:assert";
-import { itemKey, modelOf } from "../webview/echartsItems";
+import { itemKey, itemValue, modelOf } from "../webview/echartsItems";
 import { bars, item, itemsOf, withChart } from "./echartsModel";
 
 suite("echartsItems", () => {
@@ -144,6 +144,78 @@ suite("echartsItems", () => {
     assert.deepStrictEqual(items.repeatedNames(), [
       { name: "A", ids: ["A (item 1)", "A (item 3)"], count: 2 },
     ]);
+  });
+
+  test("names unnamed items by what places them: their time, or their categories", () => {
+    // The values of the items of the first series, as the keyboard focus announces them.
+    const values = (option: Record<string, unknown>) =>
+      withChart(option, (chart) => {
+        const data = modelOf(chart).getSeriesByIndex(0)?.getRawData();
+        assert.ok(data);
+        return Array.from({ length: data.count() }, (_, index) => itemValue(data, index));
+      });
+    // ECharts names an item on a time axis by nothing: it goes by its time as written, or as the
+    // axis labels a number of milliseconds, in local time.
+    const times = {
+      xAxis: { type: "time" },
+      yAxis: {},
+      series: [
+        {
+          type: "line",
+          data: [
+            ["2026-01-02", 3],
+            [new Date(2026, 0, 5, 10, 30).getTime(), 5],
+            ["2026-01-02", 7],
+            { name: "Start", value: ["2026-01-09", 1] },
+          ],
+        },
+      ],
+    };
+    const dated = itemsOf(times);
+    assert.deepStrictEqual(dated.node("0::0"), { id: "2026-01-02 (item 1)", label: "2026-01-02" });
+    assert.deepStrictEqual(dated.node("0::1"), {
+      id: "2026-01-05 10:30:00",
+      label: "2026-01-05 10:30:00",
+    });
+    assert.deepStrictEqual(dated.node("0::3"), { id: "Start", label: "Start" });
+    assert.deepStrictEqual(dated.find("2026-01-02"), [item(0), item(2)]);
+    assert.deepStrictEqual(values(times), ["3", "5", "7", "(2026-01-09, 1)"]);
+    // Also on the y axis, as of a horizontal bar chart.
+    const horizontal = {
+      xAxis: {},
+      yAxis: { type: "time" },
+      series: [{ type: "bar", data: [[3, "2026-01-02"]] }],
+    };
+    assert.deepStrictEqual(itemsOf(horizontal).node("0::0"), {
+      id: "2026-01-02",
+      label: "2026-01-02",
+    });
+    assert.deepStrictEqual(values(horizontal), ["3"]);
+    // ECharts names a heatmap's cell by its column alone: it goes by its column and row.
+    const cells = {
+      xAxis: { type: "category", data: [9, 10] },
+      yAxis: { type: "category", data: ["Mon", { value: "Tue" }] },
+      visualMap: { min: 0, max: 3 },
+      series: [
+        {
+          type: "heatmap",
+          data: [
+            [0, 0, 1],
+            [1, 1, 2],
+            ["10", "Mon", 3],
+          ],
+        },
+      ],
+    };
+    const grid = itemsOf(cells);
+    assert.deepStrictEqual(grid.node("0::0"), { id: "9, Mon", label: "9, Mon" });
+    assert.deepStrictEqual(grid.node("0::1"), { id: "10, Tue", label: "10, Tue" });
+    assert.deepStrictEqual(grid.node("0::2"), { id: "10, Mon", label: "10, Mon" });
+    assert.deepStrictEqual(values(cells), ["1", "2", "3"]);
+    // An item of a category alone goes by it, as ECharts names it.
+    const category = bars({ series: [{ type: "bar", data: [["B", 1]] }] });
+    assert.deepStrictEqual(itemsOf(category).node("0::0"), { id: "B", label: "B" });
+    assert.deepStrictEqual(values(category), ["1"]);
   });
 
   test("prefixes items of several series with the series name", () => {
@@ -348,7 +420,7 @@ suite("echartsItems", () => {
         yAxis: {},
         series: [{ type: "line", data: [[date, 1]] }],
       });
-      assert.strictEqual(dated.node("0::0")?.label, `(${text}, 1)`);
+      assert.strictEqual(dated.node("0::0")?.label, text);
     }
   });
 

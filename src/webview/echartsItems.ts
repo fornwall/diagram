@@ -57,8 +57,13 @@ export interface ItemData {
   dimensions: string[];
   /** The place of a dimension's value in an array of the values of an item. */
   getDimensionIndex(dimension: string): number;
-  /** The categories of a dimension on a category axis, by the index that ECharts holds. */
-  getDimensionInfo(dimension: string): { ordinalMeta?: { categories: unknown[] } } | undefined;
+  /**
+   * The categories of a dimension on a category axis, by the index that ECharts holds, and the
+   * type of a dimension, "time" on a time axis.
+   */
+  getDimensionInfo(
+    dimension: string,
+  ): { type?: string; ordinalMeta?: { categories: unknown[] } } | undefined;
   /** The value of an item in a dimension as ECharts holds it: the index of its category. */
   get(dimension: string, index: number): unknown;
   /**
@@ -197,14 +202,67 @@ function dateText(date: Date): string {
   return `${day} ${time.map(pad).join(":")}`;
 }
 
+/** A part of an item's value as shown, and whether it places the item on an axis. */
+interface ValuePart {
+  shown: unknown;
+  /** Whether the part is a category of a category axis or a time of a time axis. */
+  places: boolean;
+}
+
+/**
+ * The parts of an item whose value is an array, as shown. A value on a category axis can be the
+ * index of its category, as of the categories that the axis lists, or that ECharts adds to the
+ * values of a box plot or candlestick: its category, which ECharts holds by index. A time on a
+ * time axis is shown as written, or as the axis labels a number of milliseconds. A row of a
+ * dataset has the item's name among its values. ECharts leaves out the dimensions that a series
+ * does not use, of a wide dataset.
+ */
+function valueParts(
+  data: ItemData,
+  index: number,
+  value: unknown[],
+  objectRow: boolean,
+): ValuePart[] {
+  const dimensions = new Map(
+    data.dimensions.map((each, at) => [objectRow ? at : data.getDimensionIndex(each), each]),
+  );
+  return value.map((part, at) => {
+    const dimension = dimensions.get(at);
+    const info = dimension === undefined ? undefined : data.getDimensionInfo(dimension);
+    const categories = info?.ordinalMeta?.categories;
+    if (categories && dimension !== undefined) {
+      const category = categories[Number(data.get(dimension, index))];
+      // An axis can list a category with its own label style, as {"value": "Mon"}.
+      const shown = isPlainObject(category) ? category.value : category;
+      return { shown: shown ?? part, places: true };
+    }
+    if (info?.type === "time") {
+      const time = typeof part === "number" ? new Date(part) : part;
+      return { shown: time instanceof Date ? dateText(time) : time, places: true };
+    }
+    return { shown: part, places: false };
+  });
+}
+
+/** Whether the item has a name of its own, which ECharts names it by before its category. */
+const hasOwnName = (item: unknown) =>
+  isPlainObject(item) && item.name != null && String(item.name).trim() !== "";
+
 function itemLabel(data: ItemData, index: number): string {
   // ECharts resolves names exactly, including surrounding spaces.
   const name = data.getName(index);
   const item = data.getRawDataItem(index);
+  const value = isPlainObject(item) ? item.value : item;
+  // ECharts names an item of an array value without a name of its own by its first category
+  // alone, as the column of a heatmap's cell, and on a time axis by nothing: name it by what
+  // places it, as "Mon, 10" or "2026-01-02", which a model can tell from the data.
+  if (!hasOwnName(item) && Array.isArray(value)) {
+    const places = valueParts(data, index, value, false).filter((part) => part.places);
+    const placed = places.map(({ shown }) => String(shown ?? "")).join(", ");
+    if (placed.trim()) return placed;
+  }
   return (
-    (name.trim() ? name : undefined) ??
-    valueText(isPlainObject(item) ? item.value : item) ??
-    `Item ${data.getRawIndex(index) + 1}`
+    (name.trim() ? name : undefined) ?? valueText(value) ?? `Item ${data.getRawIndex(index) + 1}`
   );
 }
 
@@ -220,25 +278,13 @@ export function itemValue(data: ItemData, index: number): string | undefined {
       ? item.value
       : item;
   if (Array.isArray(value)) {
-    // A value on a category axis can be the index of its category, as of the categories that the
-    // axis lists, or that ECharts adds to the values of a box plot or candlestick: its category,
-    // which ECharts holds by index. A row of a dataset has the item's name among its values.
-    // ECharts leaves out the dimensions that a series does not use, of a wide dataset.
-    const dimensions = new Map(
-      data.dimensions.map((each, index) => [
-        objectRow ? index : data.getDimensionIndex(each),
-        each,
-      ]),
-    );
-    const parts = value
-      .map((part, at) => {
-        const dimension = dimensions.get(at);
-        if (dimension === undefined) return part;
-        const categories = data.getDimensionInfo(dimension)?.ordinalMeta?.categories;
-        return categories ? (categories[Number(data.get(dimension, index))] ?? part) : part;
-      })
-      .filter((part) => String(part) !== label);
-    value = parts.length === 1 ? parts[0] : parts;
+    const parts = valueParts(data, index, value, objectRow);
+    // The label says the parts that place the item, when it goes by them (see itemLabel).
+    const placed = !hasOwnName(item) && parts.some((part) => part.places);
+    const rest = parts
+      .filter(({ shown, places }) => (placed ? !places : String(shown) !== label))
+      .map(({ shown }) => shown);
+    value = rest.length === 1 ? rest[0] : rest;
   }
   const text = valueText(value);
   return text === label || text === "()" ? undefined : text;
