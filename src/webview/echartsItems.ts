@@ -398,6 +398,12 @@ export class ChartItems {
     return series && item && { id: series.idOf(item), label: item.label };
   }
 
+  each(visit: (node: DiagramNode) => void): void {
+    for (const series of this.series) {
+      series.each((item) => visit({ id: series.idOf(item), label: item.label }));
+    }
+  }
+
   /** The item with this id, or all items that go by this name, which without "Series/" is in every series. */
   find(id: string): ItemRef[] {
     const refs = this.series.flatMap((series) =>

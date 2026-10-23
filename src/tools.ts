@@ -27,6 +27,7 @@ import {
 } from "./protocol";
 import { renderOptions } from "./renderOptions";
 import { errorContext } from "./sourceEdits";
+import { itemPageText } from "./stateItems";
 import { searchSource } from "./stateSearch";
 import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
 import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
@@ -249,6 +250,25 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     const room = options.tokenizationOptions;
     const fitting = async (text: string) =>
       room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    if (input.detail === "items") {
+      const page = await unlessCancelled(
+        () =>
+          this.panel.readItems({
+            query: input.query,
+            startItem: input.startItem ?? 1,
+            maxItems: input.maxItems ?? 50,
+          }),
+        token,
+      );
+      if (revision !== this.panel.revision) {
+        return textResult(
+          "The diagram changed while reading items. Read the current state and retry.",
+        );
+      }
+      return textResult(
+        typeof page === "string" ? page : await itemPageText(page, revision, fitting),
+      );
+    }
     const metadataTooLarge =
       `Revision: ${revision}. The diagram's metadata does not fit the available result budget. ` +
       'Use a larger tool result budget or a new chat. To read exact source lines instead, call diagram_getState with "startLine" and "endLine".';
@@ -392,7 +412,7 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
       return textResult(
         `There is no image to view: no item of the ${noun} has these ids: ${resolvedList(named)}. ` +
           (items.length > 0
-            ? `Its items are ${idList(items)}.`
+            ? `Its items are ${idList(items)}. Use ${GET_STATE_TOOL} with detail:"items" and query to find exact ids.`
             : `It has no items to show alone: call ${GET_IMAGE_TOOL} without "ids".`),
       );
     }
@@ -587,7 +607,7 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     const unknown =
       outcome.unknown.length > 0 && names
         ? `\n\nThese ids are not selectable items of the ${noun}, so nothing was marked for them: ` +
-          `${resolvedList(outcome.unknown)}. Its items are ${idList(names.names())}.`
+          `${resolvedList(outcome.unknown)}. Its items are ${idList(names.names())}. Use ${GET_STATE_TOOL} with detail:"items" and query to find exact ids.`
         : "";
     const ambiguous = [repeatedList(outcome.repeated), names ? severalList(several, names) : ""]
       .filter(Boolean)

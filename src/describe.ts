@@ -271,8 +271,8 @@ function describeRelationships(items: ItemNames, detail: Detail): string | undef
   }
   const these = `${plural(unnamed.length, one.replace(/^an? /, ""), many)}, which their ends and labels do not tell apart`;
   return detail === "summary" || detail === "metadata" || detail === "source"
-    ? `${naming}. It has ${these}, too many to list their ids in the room left in your input.`
-    : `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} lists them.`;
+    ? `${naming}. It has ${these}, too many to list their ids in the room left in your input. ${GET_STATE_TOOL} with detail:"items" pages through them.`
+    : `${naming}. It has ${these}, too many to list their ids in every request; ${GET_STATE_TOOL} with detail:"items" pages through them.`;
 }
 
 /** What the user is looking at on the diagram, as the last call to the annotate tool left it. */

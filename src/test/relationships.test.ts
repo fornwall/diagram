@@ -393,7 +393,7 @@ suite("relationships", function () {
     assert.strictEqual(
       unknown,
       'These ids are not selectable items of the diagram, so nothing was marked for them: "B --> A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
-        `Its items are ${nodes()}, "A --> B: Yes", "A --> B: No", ${JSON.stringify(ids["Start → Check"])}, "B --> B", "B --> S", "C --> D", "D --> E".`,
+        `Its items are ${nodes()}, "A --> B: Yes", "A --> B: No", ${JSON.stringify(ids["Start → Check"])}, "B --> B", "B --> S", "C --> D", "D --> E". Use diagram_getState with detail:"items" and query to find exact ids.`,
     );
     assert.strictEqual(
       several,
@@ -491,7 +491,7 @@ suite("relationships", function () {
     assert.strictEqual(
       unknown,
       'These ids are not selectable items of the diagram, so nothing was marked for them: "Client -> Server" ("Client", "Server" are not node ids). ' +
-        `Its items are ${nodes()}, "C --> S: Login", "S --> C", "C --> S: Fetch", "C --> C".`,
+        `Its items are ${nodes()}, "C --> S: Login", "S --> C", "C --> S: Fetch", "C --> C". Use diagram_getState with detail:"items" and query to find exact ids.`,
     );
     assert.strictEqual(
       several,

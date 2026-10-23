@@ -70,7 +70,7 @@ Charts can filter, aggregate, sort and limit rows, and split into a panel per va
 
 ## Chat tools
 
-Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` or `#diagramExport` in chat. Tools support source search, paged data inspection and revision checks that protect newer edits.
+Reference `#diagram`, `#diagramEdit`, `#chart`, `#diagramState`, `#diagramImage`, `#diagramPick` or `#diagramExport` in chat. Tools support source search, paged item and data inspection, and revision checks that protect newer edits.
 
 See [the tools reference](docs/tools.md) for details. Agents can read `diagram_guide` with `{"topic":"workflow"}` for tool selection and verification.
 

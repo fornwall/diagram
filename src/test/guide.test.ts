@@ -46,6 +46,8 @@ suite("diagram_guide", () => {
     assert.match(text, /oldText copied exactly from current source/);
     assert.match(text, /revision conflict, reread and adapt; keep the revision guard/);
     assert.match(text, /inspection and charting execute a command separately/);
+    assert.match(text, /detail:"items".*exact ids and labels/);
+    assert.match(text, /await each result and reuse its revision/);
     assert.match(text, /Images omit selection and marks/);
     assert.match(text, /only to paths and lines you read/);
     assert.match(text, /diagram_exportHtml.*file:"report.html"/);

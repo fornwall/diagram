@@ -38,6 +38,8 @@ export interface Renderer {
   showMarks(annotation: Annotation): void;
   /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
+  /** Enumerates chart identities on demand, including items hidden by legend or zoom. */
+  eachItem?(visit: (node: DiagramNode) => void): void;
   /** Names that several chart items go by, which marks must replace with the items' ids. */
   repeatedNames?(): RepeatedName[];
   /** What a model should know about parts of the source that the rendering leaves out. */

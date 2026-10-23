@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Agents can search and page through exact item ids and labels for highlights and image crops, including repeated chart names and parallel edges.
+- Agent guidance favors smaller state reads and reuse of revisions and loaded chart data.
+
 ## 0.0.9
 
 Diagrams

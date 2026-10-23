@@ -5,6 +5,13 @@ import { testColors } from "./themeColors";
 suite("protocol", () => {
   test("takes only well-formed messages as messages from the page", () => {
     assert.ok(isFromWebview({ type: "ready" }));
+    const items = {
+      type: "items",
+      requestId: 1,
+      page: { totalItems: 1, matchedItems: 1, startItem: 1, items: [{ id: "A", label: "Cache" }] },
+    };
+    assert.ok(isFromWebview(items));
+    assert.ok(isFromWebview({ type: "itemsError", requestId: 1, message: "Changed" }));
     assert.ok(isFromWebview({ type: "picked", pickId: 3, nodes: [{ id: "A", label: "Parser" }] }));
     assert.ok(isFromWebview({ type: "exportTheme", requestId: 1, colors: testColors }));
     assert.ok(isFromWebview({ type: "warningsChanged", requestId: 2, warnings: ["Too wide"] }));
@@ -20,6 +27,10 @@ suite("protocol", () => {
     // Without controls, a reset of the chart's styling.
     assert.ok(isFromWebview({ type: "applyChartOptions", revision: 1, replaceSource: true }));
     const malformed = [
+      { ...items, page: { ...items.page, items: [{ id: "A" }] } },
+      { ...items, page: { ...items.page, items: Array(101).fill({ id: "A", label: "Cache" }) } },
+      { ...items, page: { ...items.page, nextItem: "2" } },
+      { ...items, page: { ...items.page, totalItems: -1 } },
       null,
       "ready",
       [{ type: "ready" }],

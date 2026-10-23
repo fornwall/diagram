@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import type { ItemPage } from "../protocol";
 import { diagramExtension, recordMessages } from "./afterTest";
 import { toolText } from "./toolText";
 
@@ -168,6 +169,68 @@ suite("extension", function () {
     assert.match(state, /"Test flow"/);
     assert.match(state, /A\[Start\] --> B\{Valid\?\}/);
     assert.doesNotMatch(state, /fails to render/);
+  });
+
+  test("finds rendered labels and parallel edge ids without reading source", async () => {
+    assert.match(
+      await invoke("diagram_render", {
+        source: "flowchart LR\n A[Cache] -->|put| B[Store]\n A -->|put| B",
+      }),
+      /^Rendered/,
+    );
+    const page: ItemPage = JSON.parse(
+      await invoke("diagram_getState", { detail: "items", query: "Cache" }),
+    );
+    assert.strictEqual(page.totalItems, 4);
+    assert.strictEqual(page.matchedItems, 3);
+    assert.ok(page.items.some(({ id, label }) => id === "A" && label === "Cache"));
+    const edges = page.items.filter(({ relationship }) => relationship);
+    assert.strictEqual(edges.length, 2);
+    assert.notStrictEqual(edges[0]?.id, edges[1]?.id);
+    assert.match(
+      await invoke("diagram_annotate", { marks: [{ id: edges[0]?.id }] }),
+      /Marked 1 item/,
+    );
+  });
+
+  test("pages through repeated chart names using ids accepted by image crops", async () => {
+    const source = JSON.stringify({
+      xAxis: { type: "category", data: ["Same", "Same"] },
+      yAxis: {},
+      series: [
+        { name: "First", type: "bar", data: [1, 2] },
+        { name: "Second", type: "bar", data: [3, 4] },
+      ],
+    });
+    assert.match(await invoke("diagram_render", { language: "echarts", source }), /^Rendered/);
+    const first: ItemPage & { revision: number } = JSON.parse(
+      await invoke("diagram_getState", { detail: "items", query: "Same", maxItems: 1 }),
+    );
+    assert.strictEqual(first.matchedItems, 4);
+    assert.strictEqual(first.nextItem, 2);
+    const rest: ItemPage & { revision: number } = JSON.parse(
+      await invoke("diagram_getState", {
+        detail: "items",
+        query: "Same",
+        startItem: first.nextItem,
+      }),
+    );
+    assert.strictEqual(rest.revision, first.revision);
+    assert.strictEqual(rest.nextItem, undefined);
+    const ids = [...first.items, ...rest.items].map(({ id }) => id);
+    assert.strictEqual(new Set(ids).size, 4);
+    assert.ok(
+      ids.every((id) => /^(First|Second)\/Same \(item [12]\)$/.test(id)),
+      ids.join(", "),
+    );
+    const image = await vscode.lm.invokeTool("diagram_getImage", {
+      input: { ids: [ids[0]] },
+      toolInvocationToken: undefined,
+    });
+    assert.ok(
+      image.content.some((part) => part instanceof vscode.LanguageModelDataPart),
+      toolText(image),
+    );
   });
 
   test("gives a model an image of the drawing through the registered tool", async () => {

@@ -96,6 +96,20 @@ export interface RepeatedName {
   count: number;
 }
 
+export interface ItemQuery {
+  query?: string | undefined;
+  startItem: number;
+  maxItems: number;
+}
+
+export interface ItemPage {
+  totalItems: number;
+  matchedItems: number;
+  startItem: number;
+  items: DiagramNode[];
+  nextItem?: number;
+}
+
 /** Mark colors: focus, red, green and purple, respectively. */
 export const MARK_KINDS = ["current", "problem", "good", "info"] as const;
 
@@ -175,6 +189,7 @@ export interface SourceRepair {
 }
 
 export type ToWebview =
+  | ({ type: "getItems"; requestId: number; renderRequestId: number } & ItemQuery)
   | {
       type: "export";
       requestId: number;
@@ -233,6 +248,8 @@ export type ToWebview =
   | { type: "endPick"; pickId: number };
 
 export type FromWebview =
+  | { type: "items"; requestId: number; page: ItemPage }
+  | { type: "itemsError"; requestId: number; message: string }
   | { type: "closeChartOptions" }
   /** Rebuilds the chart with the controls, or without them resets its styling. */
   | {
@@ -372,6 +389,27 @@ const isThemeColors: Check = (value) =>
 const FROM_WEBVIEW_FIELDS: {
   [M in FromWebview as M["type"]]: { [K in Exclude<keyof M, "type">]-?: Check };
 } = {
+  items: {
+    requestId: isId,
+    page: (value) =>
+      isPlainObject(value) &&
+      isId(value.totalItems) &&
+      Number(value.totalItems) >= 0 &&
+      isId(value.matchedItems) &&
+      Number(value.matchedItems) >= 0 &&
+      Number(value.matchedItems) <= Number(value.totalItems) &&
+      isId(value.startItem) &&
+      Number(value.startItem) >= 1 &&
+      isNodes(value.items) &&
+      Array.isArray(value.items) &&
+      value.items.length <= 100 &&
+      value.items.length <= Math.max(0, Number(value.matchedItems) - Number(value.startItem) + 1) &&
+      (value.nextItem === undefined ||
+        (isId(value.nextItem) &&
+          value.nextItem === Number(value.startItem) + value.items.length &&
+          Number(value.nextItem) <= Number(value.matchedItems))),
+  },
+  itemsError: { requestId: isId, message: isString },
   ready: {},
   closeChartOptions: {},
   applyChartOptions: {

@@ -1,3 +1,4 @@
+import { collectItemPage } from "../itemPage";
 import {
   type Annotation,
   type DiagramLanguage,
@@ -441,6 +442,25 @@ function enqueue(task: () => void | Promise<void>): void {
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
   switch (message.type) {
+    case "getItems":
+      enqueue(() => {
+        try {
+          if (!active || current?.requestId !== message.renderRequestId) {
+            throw new Error(
+              "The drawing changed or is unavailable. Read the current state and retry.",
+            );
+          }
+          const renderer = active;
+          const page = collectItemPage((visit) => {
+            if (renderer.eachItem) renderer.eachItem(visit);
+            else renderer.drawnNodes?.().forEach(visit);
+          }, message);
+          post({ type: "items", requestId: message.requestId, page });
+        } catch (error) {
+          post({ type: "itemsError", requestId: message.requestId, message: errorMessage(error) });
+        }
+      });
+      break;
     case "export":
       enqueue(() => exportDrawing(message));
       break;

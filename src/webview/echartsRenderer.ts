@@ -2,7 +2,7 @@
 // VS Code theme. Charts draw as SVG; see src/webview/echartsLibrary.ts for why.
 
 import type * as ECharts from "echarts/core";
-import { type Annotation, errorMessage, type RepeatedName } from "../protocol";
+import { type Annotation, type DiagramNode, errorMessage, type RepeatedName } from "../protocol";
 import type { ThemeColors } from "./colors";
 import { toolWarnings } from "./echartsAround";
 import { capWarnings, dataWarnings, itemCount, layoutWarnings } from "./echartsChecks";
@@ -252,6 +252,10 @@ export class EChartsRenderer implements Renderer {
 
   repeatedNames(): RepeatedName[] {
     return this.items()?.repeatedNames() ?? [];
+  }
+
+  eachItem(visit: (node: DiagramNode) => void): void {
+    this.items()?.each(visit);
   }
 
   warnings(): string[] {

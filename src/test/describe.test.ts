@@ -246,7 +246,7 @@ suite("describe", () => {
     assert.doesNotMatch(summary, /L_A_B_/);
     assert.match(
       summary,
-      /as in "A --> B", for diagram_annotate and diagram_getImage\. It has 100 edges, which their ends and labels do not tell apart, too many to list their ids in every request; diagram_getState lists them\./,
+      /as in "A --> B", for diagram_annotate and diagram_getImage\. It has 100 edges, which their ends and labels do not tell apart, too many to list their ids in every request; diagram_getState with detail:"items" pages through them\./,
     );
     assert.match(
       describeDiagram(state, { items, detail: "full" }),

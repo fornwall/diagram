@@ -400,7 +400,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(eye)",
         "userDescription": "Read the diagram shown in the diagram panel, with your edits and selection",
-        "modelDescription": "diagram_getState: Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, or \"search\" with query to locate labels or chart settings in a large source. Source ranges and search return whole, copyable excerpts for diagram_edit and continuation positions, fitted to the caller's token budget.",
+        "modelDescription": "diagram_getState: Read the current diagram or chart and its revision before changing unseen source or resolving a selection. Defaults to full context: source, chart settings, links, errors, user edits, marks and selected items. Use detail \"summary\" for metadata without source, \"source\" with startLine/endLine for exact source ranges, \"search\" with query to locate source text, or \"items\" to find exact ids and labels for annotations and image crops. Source and item pages fit the caller's token budget and report continuation positions.",
         "tags": [
           "diagram",
           "mermaid",
@@ -417,9 +417,10 @@
                 "full",
                 "summary",
                 "source",
-                "search"
+                "search",
+                "items"
               ],
-              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads exact source lines, \"search\" finds literal text with context. Line bounds imply \"source\"; query implies \"search\". Do not combine line bounds with search or other detail modes."
+              "description": "\"full\" (default) includes source and context, \"summary\" omits source and diffs, \"source\" reads exact source lines, \"search\" finds source text, \"items\" pages through rendered ids, labels and relationship endpoints as JSON. Items reopens a closed panel. Line bounds imply \"source\"; query alone implies \"search\". Do not combine paging parameters from different modes."
             },
             "startLine": {
               "type": "integer",
@@ -435,7 +436,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 1000,
-              "description": "Literal, case-sensitive text on one line, such as a node id, label or ECharts property. Required for search; implies detail \"search\". Returns each matching line once, with exact surrounding source and revision. No regular expressions."
+              "description": "Literal, case-sensitive text on one line. Required for source search; query alone implies detail \"search\". With detail \"items\", optionally filters ids, labels and relationship endpoints. No regular expressions."
             },
             "startMatch": {
               "type": "integer",
@@ -453,6 +454,17 @@
               "minimum": 0,
               "maximum": 10,
               "description": "Lines before and after each matching source line; defaults to 2. Use 0 for minimal results or a larger value to find unique oldText for diagram_edit. Search only."
+            },
+            "startItem": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "First matching item, 1-based; defaults to 1. Requires detail \"items\". Continue at nextItem with the same query; restart if the revision changes. Use returned ids exactly in diagram_annotate or diagram_getImage."
+            },
+            "maxItems": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Items per page; defaults to 50. Requires detail \"items\". Fewer whole records may fit the result budget. Chart items include data hidden by legend or zoom."
             }
           },
           "additionalProperties": false

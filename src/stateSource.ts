@@ -5,13 +5,15 @@ import type { DiagramLanguage } from "./protocol";
 import { formatCount, toolInput } from "./text";
 
 export interface StateInput {
-  detail?: "full" | "summary" | "source" | "search";
+  detail?: "full" | "summary" | "source" | "search" | "items";
   startLine?: number;
   endLine?: number;
   query?: string;
   startMatch?: number;
   maxMatches?: number;
   contextLines?: number;
+  startItem?: number;
+  maxItems?: number;
 }
 
 const DEFAULT_LINES = 200;
@@ -26,13 +28,51 @@ export function parseStateInput(value: unknown): StateInput {
     "startMatch",
     "maxMatches",
     "contextLines",
+    "startItem",
+    "maxItems",
   ]);
   if (
     input.detail !== undefined &&
     (typeof input.detail !== "string" ||
-      !["full", "summary", "source", "search"].includes(input.detail))
+      !["full", "summary", "source", "search", "items"].includes(input.detail))
   ) {
-    throw new Error('"detail" must be "full", "summary", "source" or "search".');
+    throw new Error('"detail" must be "full", "summary", "source", "search" or "items".');
+  }
+  if (
+    (input.query !== undefined || input.detail === "search") &&
+    (typeof input.query !== "string" ||
+      input.query.length === 0 ||
+      input.query.length > 1000 ||
+      /[\r\n]/.test(input.query))
+  ) {
+    throw new Error('Give "query" as 1–1,000 characters of literal text on one line.');
+  }
+  if (input.detail === "items") {
+    if (
+      ["startLine", "endLine", "startMatch", "maxMatches", "contextLines"].some(
+        (key) => input[key] !== undefined,
+      )
+    ) {
+      throw new Error(
+        'Item lookup cannot be combined with source ranges or search paging. Use "startItem" and "maxItems".',
+      );
+    }
+    for (const [key, max] of [
+      ["startItem", Number.MAX_SAFE_INTEGER],
+      ["maxItems", 100],
+    ] as const) {
+      const value = input[key];
+      if (
+        value !== undefined &&
+        (!Number.isSafeInteger(value) || Number(value) < 1 || Number(value) > max)
+      ) {
+        throw new Error(`"${key}" must be an integer from 1 to ${max}.`);
+      }
+    }
+    return input as StateInput;
+  }
+  if (input.startItem !== undefined || input.maxItems !== undefined) {
+    throw new Error('Use item paging with "detail": "items".');
   }
   const search =
     input.detail === "search" ||
@@ -44,12 +84,7 @@ export function parseStateInput(value: unknown): StateInput {
     if (input.startLine !== undefined || input.endLine !== undefined) {
       throw new Error('Search cannot be combined with "startLine" or "endLine".');
     }
-    if (
-      typeof input.query !== "string" ||
-      input.query.length === 0 ||
-      input.query.length > 1000 ||
-      /[\r\n]/.test(input.query)
-    ) {
+    if (input.query === undefined) {
       throw new Error('Give "query" as 1–1,000 characters of literal text on one line.');
     }
     for (const [key, min, max] of [
@@ -117,7 +152,7 @@ export async function sourcePage(
   );
 }
 
-/** Fit whole lines or search matches, using binary search to bound token-counting calls. */
+/** Fit whole entries, using binary search to bound token-counting calls. */
 export async function fitSourceResponse(
   first: number,
   last: number,

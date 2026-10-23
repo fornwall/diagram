@@ -936,9 +936,9 @@ suite("tools", () => {
     }
     const items = '"A", "B", "C", "edge:L_A_B_0", "edge:L_A_B_1", "B --> C"';
     assert.deepStrictEqual(results, [
-      `There is no image to view: no item of the diagram has these ids: "X", "a". Its items are ${items}.`,
+      `There is no image to view: no item of the diagram has these ids: "X", "a". Its items are ${items}. Use diagram_getState with detail:"items" and query to find exact ids.`,
       'There is no image to view: no item of the diagram has these ids: "A --> C" (nothing goes from "A" to "C"), "Q -> A" ("Q" is not a node id), "B → A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
-        `Its items are ${items}.`,
+        `Its items are ${items}. Use diagram_getState with detail:"items" and query to find exact ids.`,
       'There is no image to view: "ids" must be an array of item ids, such as ["A", "A --> B"].',
       'There is no image to view: Unknown property "id"; the properties are "ids".',
     ]);

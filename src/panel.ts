@@ -41,6 +41,8 @@ import {
   type FromWebview,
   GET_STATE_TOOL,
   type ImageView,
+  type ItemPage,
+  type ItemQuery,
   RENDER_TOOL,
   type RepeatedName,
   type SourceRepair,
@@ -61,6 +63,7 @@ export type RenderOutcome =
 export type Drawn = RenderOutcome & { revision: number };
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
+type ItemsResult = Extract<FromWebview, { type: "items" | "itemsError" }>;
 
 type AnnotateOutcome =
   | {
@@ -149,6 +152,7 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingRender: Pending<"render", RenderOutcome> | undefined;
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private readonly pendingExports = new Map<number, (result: ExportResult) => void>();
+  private readonly pendingItems = new Map<number, (result: ItemsResult) => void>();
   /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
   /** The page draws this request, then lastSent, skipping any requests between them. */
@@ -350,6 +354,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.pageRefused = false;
     this.reloading?.cancel();
     this.cancelExport("The diagram panel was closed before export finished.");
+    this.cancelItems();
     this.selection = [];
     this.drawn = undefined;
     this.cancelPick("The user closed the diagram panel.");
@@ -381,6 +386,8 @@ export class DiagramPanel implements vscode.Disposable {
         this.finishRender(message.requestId, notShown(error));
       } else if (message.type === "export") {
         this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
+      } else if (message.type === "getItems") {
+        this.finishItems({ type: "itemsError", requestId: message.requestId, message: error });
       } else if (message.type === "startPick") {
         this.finishPick(message.pickId, { picked: false, reason: error });
       }
@@ -396,6 +403,10 @@ export class DiagramPanel implements vscode.Disposable {
     const ofShown = requestId === this.sourceRequestId;
     const ofDrawn = requestId === this.drawn?.requestId;
     switch (message.type) {
+      case "items":
+      case "itemsError":
+        this.finishItems(message);
+        return;
       case "ready":
         this.pageReady();
         return;
@@ -466,6 +477,7 @@ export class DiagramPanel implements vscode.Disposable {
    */
   private pageReady(): void {
     this.cancelExport("The diagram panel reloaded before export finished. Try again.");
+    this.cancelItems();
     this.selection = [];
     this.drawing = undefined;
     this.lastSent = undefined;
@@ -539,6 +551,7 @@ export class DiagramPanel implements vscode.Disposable {
       };
     }
     this.cancelExport("The diagram changed before export finished. Try again.");
+    this.cancelItems();
     this.drawn = undefined;
     this.sourceRequestId = undefined;
     const version = ++this.renderVersion;
@@ -981,6 +994,54 @@ export class DiagramPanel implements vscode.Disposable {
       await this.renderCurrent({ redraw: true, newPage: opened });
     }
     return this.drawnIds;
+  }
+
+  /** Reads identities from the renderer, including chart ids not kept by the host. */
+  async readItems(query: ItemQuery): Promise<ItemPage | string> {
+    if (this.pendingRender)
+      return "The panel is still drawing. Await the render before reading items.";
+    const revision = this.revision;
+    await this.itemIds();
+    if (revision !== this.revision)
+      return "The diagram changed while reopening. Read its state and retry.";
+    const renderRequestId = this.drawn?.requestId;
+    if (renderRequestId === undefined || !this.webview.isReady) {
+      return 'Items are unavailable. Read diagram_getState with detail:"summary" for render errors or missing chart data.';
+    }
+    const requestId = this.nextRequestId++;
+    const result = await new Promise<ItemsResult>((resolve) => {
+      const timeout = setTimeout(
+        () =>
+          this.finishItems({
+            type: "itemsError",
+            requestId,
+            message: "The panel did not return items within 15 seconds. Try again.",
+          }),
+        RENDER_TIMEOUT_MS,
+      );
+      this.pendingItems.set(requestId, (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      });
+      this.post({ type: "getItems", requestId, renderRequestId, ...query });
+    });
+    return result.type === "items" ? result.page : result.message;
+  }
+
+  private finishItems(result: ItemsResult): void {
+    const resolve = this.pendingItems.get(result.requestId);
+    this.pendingItems.delete(result.requestId);
+    resolve?.(result);
+  }
+
+  private cancelItems(): void {
+    for (const requestId of this.pendingItems.keys()) {
+      this.finishItems({
+        type: "itemsError",
+        requestId,
+        message: "The diagram changed or closed while reading items. Read its state and retry.",
+      });
+    }
   }
 
   /**
