@@ -163,6 +163,19 @@ export function sourceIds(source: string, kind: StyleableKind): Set<string> {
   return ids;
 }
 
+/**
+ * The ids that style statements name, which Mermaid adds to a flowchart as nodes if no other
+ * statement declares them. (Class and click statements add none.)
+ */
+export function styledIds(source: string): Set<string> {
+  const ids = new Set<string>();
+  for (const { text } of statements(source).statements) {
+    const id = /^\s*style\s+([^\s;]+)/i.exec(text)?.[1];
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
 /** The ids of flowchart subgraphs that have one, e.g. "pay" for `subgraph pay [Payment]`. */
 export function subgraphIds(source: string): string[] {
   const ids = new Set<string>();

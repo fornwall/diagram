@@ -1,6 +1,7 @@
 // Tells a model, which cannot see the drawing, where a Mermaid diagram reads badly in the panel:
 // measured on the drawing, and only when it is a problem.
 
+import { sourceIds, styledIds } from "../mermaidStyle";
 import { formatCount, joinWords, quote } from "../text";
 import { diagramHeader } from "./mermaidLayout";
 import type { DiagramDb } from "./mermaidNodes";
@@ -93,14 +94,42 @@ export function fittingZoom(
  * in the layout container, where it is measured.
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
+  const styled = styledOnly(facts);
   return [
     tooLarge(facts),
-    loneNodes(facts),
+    styledOnlyWarning(styled),
+    loneNodes(facts, new Set(styled)),
     overlappingLabels(svg),
     labelsOverNodes(svg),
     unknownTasks(facts),
     markedEnd(facts),
   ].filter((warning) => warning !== undefined);
+}
+
+/**
+ * The nodes of a flowchart that only style lines name, which Mermaid adds as empty nodes: usually
+ * a style line with a misspelt id, which diagram_style refuses to write.
+ */
+function styledOnly({ type, source, db }: DrawingFacts): string[] {
+  if (!FLOWCHART.test(type)) return [];
+  const styled = styledIds(source);
+  if (styled.size === 0) return [];
+  const declared = sourceIds(source, "flowchart");
+  return (db?.getData?.().nodes ?? [])
+    .filter(({ id, isGroup }) => !isGroup && styled.has(id) && !declared.has(id))
+    .map(({ id }) => id);
+}
+
+function styledOnlyWarning(ids: readonly string[]): string | undefined {
+  const [first] = ids;
+  if (first === undefined) return undefined;
+  const list = joinWords(
+    ids.map((id) => JSON.stringify(id)),
+    "and",
+  );
+  return ids.length === 1
+    ? `Node ${list} is drawn only because a style line names it, as no other statement declares it: correct the id, or declare the node, as in ${first}[Label].`
+    : `Nodes ${list} are drawn only because style lines name them, as no other statement declares them: correct the ids, or declare the nodes, as in ${first}[Label].`;
 }
 
 /** The letters of the ends of flowchart links that end in a circle or a cross. */
@@ -289,12 +318,14 @@ function tooLarge({ type, db }: DrawingFacts): string | undefined {
  * The nodes of a flowchart that no edge leads to or from, outside of subgraphs, where nodes often
  * stand alone: usually a node declared under one id and linked under another.
  */
-function loneNodes({ type, db }: DrawingFacts): string | undefined {
+function loneNodes({ type, db }: DrawingFacts, except: ReadonlySet<string>): string | undefined {
   if (!FLOWCHART.test(type)) return undefined;
   const { nodes = [], edges = [] } = db?.getData?.() ?? {};
   if (edges.length < MIN_EDGES_FOR_LONE_NODES) return undefined;
   const linked = new Set(edges.flatMap(({ start, end }) => [start, end]));
-  const lone = nodes.filter((node) => !node.isGroup && !node.parentId && !linked.has(node.id));
+  const lone = nodes.filter(
+    (node) => !node.isGroup && !node.parentId && !linked.has(node.id) && !except.has(node.id),
+  );
   if (lone.length === 0) return undefined;
   const named = lone
     .slice(0, EXAMPLES)

@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { EditDiagramTool } from "../editTool";
 import { RenderDiagramTool } from "../tools";
 import { afterTest } from "./afterTest";
 import { webviewTabs } from "./newPanel";
@@ -276,11 +277,12 @@ suite("Mermaid readability in the webview", function () {
         'Node "D" ("Queue") is linked to no other node: link it, or check that its id is the one its edges use.',
       ],
     );
-    // A style for a node that is not there draws one.
+    // A style for a node that is not there draws one, which is said once.
     assert.deepStrictEqual(
-      await warnings("flowchart TD\n  A --> B\n  A --> C\n  style X fill:#f00\n  E\n  F\n  G"),
+      await warnings("flowchart TD\n  A --> B\n  A --> C\n  style X fill:#f00\n  E\n  F\n  G\n  H"),
       [
-        'Nodes "X", "E", "F" and 1 more are linked to no other node: link them, or check that their ids are the ones their edges use.',
+        'Node "X" is drawn only because a style line names it, as no other statement declares it: correct the id, or declare the node, as in X[Label].',
+        'Nodes "E", "F", "G" and 1 more are linked to no other node: link them, or check that their ids are the ones their edges use.',
       ],
     );
     // Nodes in subgraphs, and in flowcharts of hardly any edges, may well stand alone.
@@ -433,6 +435,37 @@ suite("Mermaid readability in the webview", function () {
     assert.match(
       wide ?? "",
       new RegExp(`^Too wide: the panel's \\d+ px show the [\\d,]+ px wide drawing at ${zoom}, `),
+    );
+  });
+
+  test("names the nodes that only a style line adds, as a misspelt id does", async () => {
+    const flow = "flowchart TD\n  A[Start] --> B[Done]\n  B --> C";
+    assert.deepStrictEqual(
+      await warnings(
+        `${flow}\n  style E fill:#f00\n  click F "https://example.com"\n  class G big\n  classDef big fill:#eee`,
+      ),
+      [
+        'Node "E" is drawn only because a style line names it, as no other statement declares it: correct the id, or declare the node, as in E[Label].',
+      ],
+    );
+    assert.deepStrictEqual(await warnings(`${flow}\n  style X fill:#f00\n  style Y fill:#0f0`), [
+      'Nodes "X" and "Y" are drawn only because style lines name them, as no other statement declares them: correct the ids, or declare the nodes, as in X[Label].',
+    ]);
+    // Style lines for declared nodes and subgraphs add nothing.
+    assert.deepStrictEqual(
+      await warnings(
+        "flowchart TD\n  subgraph pay [Pay]\n    A --> B\n  end\n  B --> C\n  style pay fill:#eef\n  style A fill:#eef",
+      ),
+      [],
+    );
+    // diagram_edit reports it, where diagram_style refuses such an id.
+    await draw({ source: flow });
+    const edited = await invokeTool(new EditDiagramTool(page.panel), {
+      edits: [{ oldText: "B --> C", newText: "B --> C\n  style D fill:#f00" }],
+    });
+    assert.match(
+      edited,
+      /^Edited the flowchart-v2 diagram with 1 edit, in lines? [\d-]+ of \d+\. Nodes added: "D"\.\n\nNode "D" is drawn only because a style line names it/,
     );
   });
 
