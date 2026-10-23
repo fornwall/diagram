@@ -583,6 +583,8 @@ export class MermaidRenderer implements Renderer {
         activate(event);
         return;
       }
+      // Not with Alt, Ctrl or Meta, which make other shortcuts of the arrow keys, as for a chart.
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
       const next = this.neighbor(target, event.key);
       if (next !== undefined) {
         event.preventDefault();

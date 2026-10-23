@@ -1033,25 +1033,25 @@ suite("Mermaid in the webview", function () {
     await draw({ source: "flowchart LR\n  A --> B\n  A --> C\n  C --> D" });
     const moves = (await evaluate(`(() => {
       const stops = () => Array.from(document.querySelectorAll('#diagram [tabindex="0"]'), e => e.dataset.diagramId);
-      const press = (key) => {
-        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}));
+      const press = (key, init = {}) => {
+        document.activeElement.dispatchEvent(new KeyboardEvent("keydown", {key, ...init, bubbles: true, cancelable: true}));
         return document.activeElement.dataset.diagramId;
       };
       const initial = stops();
       document.querySelector('#diagram [data-diagram-id="A"][tabindex]').focus();
       return {initial, right: [press("ArrowRight"), press("ArrowRight")], stops: stops(),
         back: [press("ArrowLeft"), press("ArrowLeft")], end: press("End"), home: press("Home"),
-        edge: press("ArrowLeft")};
+        edge: press("ArrowLeft"), modified: press("ArrowRight", {ctrlKey: true})};
     })()`)) as Record<string, string | string[]>;
     const [edge, target] = moves.right as string[];
     assert.match(edge ?? "", /^edge:L_A_(B|C)_0$/);
     assert.strictEqual(target, edge?.slice("edge:L_A_".length, -2));
-    const { initial, stops, back, end, home, edge: leftOfA } = moves;
+    const { initial, stops, back, end, home, edge: leftOfA, modified } = moves;
     assert.strictEqual(initial?.length, 1);
-    // Nothing is left of A.
+    // Nothing is left of A, and a modified arrow key is another shortcut.
     assert.deepStrictEqual(
-      { stops, back, end, home, leftOfA },
-      { stops: [target], back: [edge, "A"], end: "D", home: "A", leftOfA: "A" },
+      { stops, back, end, home, leftOfA, modified },
+      { stops: [target], back: [edge, "A"], end: "D", home: "A", leftOfA: "A", modified: "A" },
     );
   });
 
