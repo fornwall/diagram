@@ -145,7 +145,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
       fewerTicks(axis, panel.width - 50, label + 16, faceted);
       fewerTimeTicks(axis, panel.width - 50, font);
     }
-    for (const axis of asArray(base.yAxis)) {
+    for (const [index, axis] of asArray(base.yAxis).entries()) {
       const xAxis = xAxes.find(({ gridIndex }) => gridIndex === axis.gridIndex);
       let plot = panel.height - (xAxis ? (labelHeights.get(xAxis) ?? LABEL_HEIGHT) : 0);
       // The name above the plot, unless a facet's plot would be too short for it.
@@ -154,7 +154,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
         else plot -= AXIS_NAME_HEIGHT;
       }
       fewerTicks(axis, plot, MIN_TICK_GAP, faceted);
-      spaceCategoryLabels(axis, plot, size);
+      spaceCategoryLabels(axis, plot, size, zoomsAxis(base, "yAxisIndex", index));
     }
   }
   for (const axis of asArray(base.yAxis)) {
@@ -299,6 +299,32 @@ const UNKNOWN_LABELS = 44;
  */
 const CATEGORY_LABEL_ROOM = 1.3;
 
+/** The settings by which a data zoom names the axes it zooms. */
+const ZOOMED_AXES = [
+  "xAxisIndex",
+  "yAxisIndex",
+  "xAxisId",
+  "yAxisId",
+  "radiusAxisIndex",
+  "angleAxisIndex",
+  "singleAxisIndex",
+];
+
+/**
+ * Whether a data zoom of the option zooms the axis at `index` of its kind: one that names it, or
+ * every axis, or no axis at all, which zooms the x axes, or the y axes when it stands vertical.
+ */
+function zoomsAxis(base: JsonObject, key: "xAxisIndex" | "yAxisIndex", index: number): boolean {
+  const orient = key === "xAxisIndex" ? "horizontal" : "vertical";
+  return asArray(base.dataZoom).some((zoom) => {
+    if (!ZOOMED_AXES.some((each) => zoom[each] !== undefined)) {
+      return (zoom.orient ?? "horizontal") === orient;
+    }
+    const targets = zoom[key];
+    return targets === "all" || (Array.isArray(targets) ? targets : [targets]).includes(index);
+  });
+}
+
 /**
  * Shows every so many labels of an inverse vertical category axis of more categories than its
  * plot has room to label, as ECharts does on its own, but told which, and with the last of them
@@ -307,10 +333,17 @@ const CATEGORY_LABEL_ROOM = 1.3;
  * round on an inverse axis, as of a heatmap's rows from the top or a horizontal bar chart's
  * categories: a label at the end that sticks out by a pixel then shrinks the grid to a strip.
  */
-function spaceCategoryLabels(axis: JsonObject, plot: number, size: Size): void {
+function spaceCategoryLabels(
+  axis: JsonObject,
+  plot: number,
+  size: Size,
+  /** Whether a data zoom zooms the axis, whose labels then follow the zoom, as told they do not. */
+  zoomed: boolean,
+): void {
   const label = styleOf(axis.axisLabel);
   const count = Array.isArray(axis.data) ? axis.data.length : 0;
   if (
+    zoomed ||
     axis.inverse !== true ||
     axisType(axis) !== "category" ||
     count === 0 ||

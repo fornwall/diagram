@@ -257,6 +257,20 @@ suite("echartsGrid", () => {
     assert.strictEqual(few.yAxis.axisLabel?.interval, undefined);
     const plain = layout(rows(250, false), { width: 1176, height: 593 });
     assert.strictEqual(plain.yAxis.axisLabel?.interval, undefined);
+    // Nor one that a data zoom zooms, whose labels ECharts spaces for the window it shows.
+    const zooms = (dataZoom: unknown[]) =>
+      layout({ ...rows(250), dataZoom }, { width: 1176, height: 593 }).yAxis.axisLabel?.interval;
+    for (const dataZoom of [
+      [{ yAxisIndex: 0 }],
+      [{ yAxisIndex: [1, 0], start: 0, end: 10 }],
+      [{ yAxisIndex: "all" }],
+      [{ orient: "vertical" }],
+    ]) {
+      assert.strictEqual(zooms(dataZoom), undefined, JSON.stringify(dataZoom));
+    }
+    for (const dataZoom of [[{ xAxisIndex: 0 }], [{}], [{ yAxisIndex: 1 }]]) {
+      assert.ok((zooms(dataZoom) ?? 0) >= 1, JSON.stringify(dataZoom));
+    }
     const own = rows(250);
     own.yAxis.axisLabel = { interval: 49 };
     assert.strictEqual(layout(own, { width: 1176, height: 593 }).yAxis.axisLabel.interval, 49);
