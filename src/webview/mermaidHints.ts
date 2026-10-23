@@ -764,6 +764,84 @@ const gitCommand: Rule = ({ type, line, after, column, expected }) => {
   return undefined;
 };
 
+/** A requirement's text, or another field, with punctuation that the parser stops at. */
+const requirementText: Rule = ({ type, line, expected }) => {
+  const field =
+    type === "requirement" && expected?.includes("NEWLINE")
+      ? /^\s*(\w+)\s*:\s*([^"\n].*?)\s*$/.exec(line)
+      : null;
+  return field ? `Put the ${field[1]} in double quotes: ${field[1]}: "${field[2]}".` : undefined;
+};
+
+/** Radar axis or curve labels without quotes, and negative values. */
+const radarLabel: Rule = ({ type, line, after, expected }) => {
+  if (type !== "radar") return undefined;
+  if (expected?.includes("STRING") && /\w\[[^"\]\n]+\]/.test(line)) {
+    return `Put the labels in double quotes: ${line.replace(/(\w)\[([^"\]\n]+)\]/g, '$1["$2"]').trim()}.`;
+  }
+  return /^\s*curve\b/.test(line) && after.startsWith("-")
+    ? 'A curve\'s values are not negative: give values from 0 up, and "min 0" for the scale.'
+    : undefined;
+};
+
+/** Arrows of flowcharts that agent flows do not take. */
+const agentflowArrow: Rule = ({ type, line, column }) => {
+  if (type !== "agentflow") return undefined;
+  // The run of arrow characters that the parser stopped in or right before.
+  let from = column;
+  while (from > 0 && /[-=.<>]/.test(line[from - 1] as string)) from--;
+  let to = column;
+  while (to < line.length && /[-=.<>]/.test(line[to] as string)) to++;
+  const arrow = line.slice(from, to);
+  if (!/^(?:=+>|-\.->|<-->)$/.test(arrow)) return undefined;
+  const fixed = `${line.slice(0, from)}${arrow === "-.->" ? "-.-" : "-->"}${line.slice(to)}`;
+  return `Agent flow edges are -->, --x and -.-: ${fixed.trim()}.`;
+};
+
+/** An event model's name of several words. */
+const eventModelName: Rule = ({ type, line, after }) => {
+  const frame =
+    type === "eventmodeling" && /^\w/.test(after)
+      ? /^(\s*(?:tf|timeframe)\s+\S+\s+\w+\s+)(\w+(?:\s+\w+)+)(.*)$/.exec(line)
+      : null;
+  if (!frame || !(frame[1] as string).length) return undefined;
+  const [, head = "", words = "", rest = ""] = frame;
+  return `Names are one word: ${`${head.trim()} ${words.replace(/\s+/g, "")}${rest}`.trim()}.`;
+};
+
+/** A Cynefin item without quotes. */
+const cynefinItem: Rule = ({ type, line, after }) => {
+  if (type !== "cynefin" || after.trim() !== line.trim()) return undefined;
+  const item = /^\s+([^"\s][^\n]*?)\s*$/.exec(line);
+  return item &&
+    !/^(?:complex|complicated|clear|chaotic|confusion|title)\b|-->/.test(item[1] as string)
+    ? `Put the item in double quotes: "${item[1]}".`
+    : undefined;
+};
+
+/** A railroad rule without its final ";", which the parser stops at the next rule for. */
+const railroadSemicolon: Rule = ({ type, normalized, lineNumber, expected }) => {
+  if (!type.startsWith("railroad") || !expected?.includes(";")) return undefined;
+  const lines = normalized.split("\n");
+  for (let i = lineNumber - 2; i >= 0; i--) {
+    const text = (lines[i] as string).trim();
+    if (!text || /^\(\*|^#|^;/.test(text)) continue;
+    return text.endsWith(";")
+      ? undefined
+      : `The rule on line ${i + 1} is not ended: add ";" after it.`;
+  }
+  return undefined;
+};
+
+/** Wardley coordinates written as whole numbers. */
+const wardleyNumber: Rule = ({ type, line, expected }) => {
+  if (type !== "wardley" || !expected?.includes("WARDLEY_NUMBER")) return undefined;
+  const fixed = line.replace(/\[([^\]]*)\]/, (list) =>
+    list.replace(/(?<![\d.])(\d+)(?![\d.])/g, "$1.0"),
+  );
+  return `Coordinates are decimals from 0 to 1, with a dot: ${fixed.trim()}.`;
+};
+
 const RULES: Rule[] = [
   comments,
   blockSyntax,
@@ -808,4 +886,11 @@ const RULES: Rule[] = [
   c4Quotes,
   xyAxisRange,
   gitCommand,
+  requirementText,
+  radarLabel,
+  agentflowArrow,
+  eventModelName,
+  cynefinItem,
+  railroadSemicolon,
+  wardleyNumber,
 ];

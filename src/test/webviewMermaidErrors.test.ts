@@ -644,6 +644,63 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       'Error on line 4: Task "Task" has no start date, and no task before it to start after: give it one, as the dateFormat says, DD/MM/YYYY, before its 15/01/2024.',
     fixed: "gantt\n  dateFormat DD/MM/YYYY\n  section S\n  Task : milestone, 15/01/2024, 0d",
   },
+  // Requirement text with punctuation.
+  {
+    broken:
+      "requirementDiagram\n  requirement r {\n    id: 1\n    text: has - dash\n    risk: low\n    verifymethod: test\n  }",
+    error:
+      'Parse error on line 4, column 15: unexpected "-". Put the text in double quotes: text: "has - dash".',
+    fixed:
+      'requirementDiagram\n  requirement r {\n    id: 1\n    text: "has - dash"\n    risk: low\n    verifymethod: test\n  }',
+  },
+  // Radar labels without quotes, and negative values.
+  {
+    broken: "radar-beta\n  axis a[A], b[B]\n  curve x{1, 2}",
+    error:
+      'Parse error on line 2, column 10: unexpected "A". Put the labels in double quotes: axis a["A"], b["B"].',
+    fixed: 'radar-beta\n  axis a["A"], b["B"]\n  curve x{1, 2}',
+  },
+  {
+    broken: 'radar-beta\n  axis a["A"], b["B"]\n  curve x{-1, 2}',
+    error:
+      'Parse error on line 3, column 11: unexpected "-". A curve\'s values are not negative: give values from 0 up, and "min 0" for the scale.',
+    fixed: 'radar-beta\n  axis a["A"], b["B"]\n  curve x{0, 3}\n  min 0',
+  },
+  // Flowchart arrows in agent flows.
+  {
+    broken: 'agentflow-beta\n  a["A"] ==> b["B"]',
+    error:
+      'Parse error on line 2, column 10: unexpected "=". Agent flow edges are -->, --x and -.-: a["A"] --> b["B"].',
+    fixed: 'agentflow-beta\n  a["A"] --> b["B"]',
+  },
+  // Event model names of several words.
+  {
+    broken: "eventmodeling\n  tf 01 ui Cart Screen",
+    error:
+      'Parse error on line 2, column 17: unexpected "Screen". Names are one word: tf 01 ui CartScreen.',
+    fixed: "eventmodeling\n  tf 01 ui CartScreen",
+  },
+  // Cynefin items without quotes.
+  {
+    broken: "cynefin-beta\n  complex\n    New failure mode",
+    error:
+      'Parse error on line 3, column 5: unexpected "New". Put the item in double quotes: "New failure mode".',
+    fixed: 'cynefin-beta\n  complex\n    "New failure mode"',
+  },
+  // A railroad rule without its ";".
+  {
+    broken: 'railroad-ebnf-beta\nfile = { line }\nline = "a" ;',
+    error:
+      'Parse error on line 3, column 6: unexpected "=". The rule on line 2 is not ended: add ";" after it.',
+    fixed: 'railroad-ebnf-beta\nfile = { line } ;\nline = "a" ;',
+  },
+  // Wardley coordinates as whole numbers.
+  {
+    broken: "wardley-beta\n  component A [1, 0]",
+    error:
+      'Parse error on line 2, column 16: unexpected "1". Coordinates are decimals from 0 to 1, with a dot: component A [1.0, 0.0].',
+    fixed: "wardley-beta\n  component A [1.0, 0.0]",
+  },
 ];
 
 suite("Mermaid errors in the webview", function () {
