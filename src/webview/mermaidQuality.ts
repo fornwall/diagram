@@ -95,12 +95,13 @@ export function fittingZoom(
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
   const styled = styledOnly(facts);
+  const over = labelsOverNodes(svg);
   return [
     tooLarge(facts),
     styledOnlyWarning(styled),
     loneNodes(facts, new Set(styled)),
-    overlappingLabels(svg),
-    labelsOverNodes(svg),
+    overlappingLabels(svg, over.reported),
+    over.warning,
     unknownTasks(facts),
     markedEnd(facts),
   ].filter((warning) => warning !== undefined);
@@ -394,15 +395,18 @@ function textBox(label: Element): DOMRect {
  * Labels drawn over each other: by a quarter of the smaller one, over half of its height, which
  * lines of text stacked closely, whose boxes take in the space between lines, do not.
  */
-function overlappingLabels(svg: SVGSVGElement): string | undefined {
+function overlappingLabels(
+  svg: SVGSVGElement,
+  /** The labels of links that labelsOverNodes reports, over the nodes whose labels they cover. */
+  reported: ReadonlySet<Element>,
+): string | undefined {
   const boxes = labels(svg)
     .filter((label) => !hidden(label, svg) && !turned(label))
     .map((label) => ({ label, box: textBox(label) }))
     .filter(({ box }) => box.width > 0 && box.height > 0)
     .sort((a, b) => a.box.left - b.box.left);
-  // The label of a link over a node's label lies over the node, which labelsOverNodes reports.
   const overNode = (label: Element, other: Element) =>
-    label.closest("g.edgeLabel") !== null && other.closest("g.node") !== null;
+    reported.has(label) && other.closest("g.node") !== null;
   const pairs: [Element, Element][] = [];
   for (const [i, { label, box: a }] of boxes.entries()) {
     for (let j = i + 1; j < boxes.length; j++) {
@@ -433,9 +437,13 @@ function overlappingLabels(svg: SVGSVGElement): string | undefined {
 /**
  * The labels of links drawn over nodes, as Mermaid draws those of links between blocks that it
  * puts side by side: by a quarter of the label, over half of its height. Not over groups of nodes,
- * such as a block diagram's composite blocks, which hold the links between their nodes.
+ * such as a block diagram's composite blocks, which hold the links between their nodes. Gives the
+ * labels it reports too, which overlappingLabels leaves to it.
  */
-function labelsOverNodes(svg: SVGSVGElement): string | undefined {
+function labelsOverNodes(svg: SVGSVGElement): {
+  warning: string | undefined;
+  reported: Set<Element>;
+} {
   const drawn = Array.from(svg.querySelectorAll("g.node"), (node) => ({
     node,
     box: node.getBoundingClientRect(),
@@ -461,10 +469,14 @@ function labelsOverNodes(svg: SVGSVGElement): string | undefined {
       }
     }
   }
+  const reported = new Set(over.map(([label]) => label));
   const [first] = over;
-  if (!first) return undefined;
+  if (!first) return { warning: undefined, reported };
   const text = (element: Element) =>
     quote((element.textContent ?? "").replace(/\s+/g, " ").trim(), 30);
   const count = over.length > 1 ? ` (${formatCount(over.length)} pairs)` : "";
-  return `Labels of links lie over nodes, such as ${text(first[0])} over ${text(first[1])}${count}: leave room between the nodes they link, as a space block does between blocks, or shorten the labels.`;
+  return {
+    warning: `Labels of links lie over nodes, such as ${text(first[0])} over ${text(first[1])}${count}: leave room between the nodes they link, as a space block does between blocks, or shorten the labels.`,
+    reported,
+  };
 }

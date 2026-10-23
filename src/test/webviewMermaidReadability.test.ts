@@ -385,6 +385,16 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings(blocks, 800), [
       'Labels of links lie over nodes, such as "reads" over "API" (2 pairs): leave room between the nodes they link, as a space block does between blocks, or shorten the labels.',
     ]);
+    // A label that lies mostly over no node, while it covers the labels of several, overlaps those.
+    assert.deepStrictEqual(
+      await warnings(
+        'block-beta\n  columns 6\n  a["A"] b["B"] c["C"] d["D"] e["E"] f["F"]\n  c -- "an extremely long edge label that spans the entire width of it" --> d',
+        800,
+      ),
+      [
+        'Labels overlap, such as "an extremely long edge label t…" and "B" (4 pairs): shorten them, or draw fewer or more widely spaced items.',
+      ],
+    );
     // A label that also covers the labels of the nodes is reported once, as lying over them.
     assert.deepStrictEqual(
       await warnings(
