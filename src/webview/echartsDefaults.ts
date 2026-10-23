@@ -344,6 +344,56 @@ export function formatTemplateValues(option: JsonObject): void {
   }
 }
 
+/** The tooltip formatters of heatmap cells by the rows' categories, the same in every layout. */
+const heatmapFormatters = new WeakMap<object, (params: unknown) => string>();
+const NO_ROWS: unknown[] = [];
+
+/**
+ * Says the row of a heatmap's cell in its tooltip, which ECharts labels by its column alone, as
+ * "10  3": as "10, Mon  3", the way the panel names the cell (see echartsItems.ts). Only for cells
+ * on a grid, in a tooltip that the option leaves to ECharts.
+ */
+export function labelHeatmapRows(base: JsonObject, series: JsonObject[]): void {
+  if (asArray(base.tooltip).some((tooltip) => tooltip.formatter !== undefined)) return;
+  const yAxes = asArray(base.yAxis);
+  for (const each of series) {
+    if (each.type !== "heatmap" || (each.coordinateSystem ?? "cartesian2d") !== "cartesian2d") {
+      continue;
+    }
+    const tooltip = styleOf(each.tooltip);
+    if (tooltip.formatter !== undefined) continue;
+    const rows = yAxes[Number(each.yAxisIndex ?? 0)]?.data;
+    const key = Array.isArray(rows) ? rows : NO_ROWS;
+    let formatter = heatmapFormatters.get(key);
+    if (!formatter) {
+      formatter = (params: unknown) => {
+        const item = (Array.isArray(params) ? params[0] : params) as JsonObject;
+        const { seriesName, name, value, marker } = item;
+        const [, y, cell] = Array.isArray(value) ? value : [];
+        // The row by its index on the axis, which can list it with a label style of its own.
+        const listed = typeof y === "number" && Array.isArray(rows) ? rows[y] : y;
+        const row = isPlainObject(listed) ? listed.value : listed;
+        const number =
+          typeof cell === "number" && Number.isFinite(cell)
+            ? groupedNumber.format(Number(cell.toPrecision(12)))
+            : String(cell ?? "-");
+        // ECharts names an unnamed series "series\0<index>", which its tooltips leave out.
+        const title =
+          typeof seriesName === "string" && seriesName && !seriesName.includes("\u0000")
+            ? `${escapeHtml(seriesName)}<br/>`
+            : "";
+        return (
+          `${title}${typeof marker === "string" ? marker : ""}` +
+          `${escapeHtml(`${name ?? ""}, ${row ?? ""}`)}&nbsp;&nbsp;<b>${escapeHtml(number)}</b>`
+        );
+      };
+      heatmapFormatters.set(key, formatter);
+    }
+    tooltip.formatter = formatter;
+    each.tooltip = tooltip;
+  }
+}
+
 /**
  * Adds tooltips, selection outlined in the foreground color in a glow of the VS Code focus color,
  * and a description for screen readers. An outline of the focus color itself would hardly show on

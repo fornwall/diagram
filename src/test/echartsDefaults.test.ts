@@ -112,6 +112,46 @@ suite("echartsDefaults", () => {
     );
   });
 
+  test("says the row of a heatmap's cell in its tooltip, which ECharts names by its column", () => {
+    const source = {
+      xAxis: { type: "category", data: [9, 10] },
+      yAxis: { type: "category", data: ["Mon", { value: "Tue" }] },
+      visualMap: { min: 0, max: 2000 },
+      series: [
+        {
+          type: "heatmap",
+          name: "n <b>",
+          data: [
+            [1, 1, 1234.5],
+            ["9", "Mon", 0.1 + 0.2],
+          ],
+        },
+      ],
+    };
+    const option = layout(source);
+    const formatter = option.series[0].tooltip.formatter;
+    const marker = "<span>●</span>";
+    assert.strictEqual(
+      formatter({ seriesName: "n <b>", name: "10", value: [1, 1, 1234.5], marker }),
+      "n &lt;b&gt;<br/><span>●</span>10, Tue&nbsp;&nbsp;<b>1,234.5</b>",
+    );
+    assert.strictEqual(
+      formatter({ seriesName: "series\u00000", name: "9", value: ["9", "Mon", 0.1 + 0.2], marker }),
+      "<span>●</span>9, Mon&nbsp;&nbsp;<b>0.3</b>",
+    );
+    // The same formatter in each layout, which only needs the chart resized.
+    assert.strictEqual(layout(source, { width: 900 }).series[0].tooltip.formatter, formatter);
+    // Not where the option formats the tooltip itself, nor off a grid.
+    const own = layout({ ...source, tooltip: { formatter: "{b}" } });
+    assert.strictEqual(own.series[0].tooltip, undefined);
+    const calendar = layout({
+      calendar: { range: "2026-01" },
+      visualMap: { min: 0, max: 1 },
+      series: [{ type: "heatmap", coordinateSystem: "calendar", data: [["2026-01-02", 1]] }],
+    });
+    assert.strictEqual(calendar.series[0].tooltip, undefined);
+  });
+
   test("defaults tooltips, selection and screen reader support", () => {
     const option = layout(bars());
     assert.deepStrictEqual(option.tooltip, {

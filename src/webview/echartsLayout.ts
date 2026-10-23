@@ -24,6 +24,7 @@ import {
   compactAxisLabels,
   drawLargeSeries,
   formatTemplateValues,
+  labelHeatmapRows,
   nameTreemapRoot,
   showAxisLines,
   styleSeries,
@@ -121,6 +122,7 @@ function layOutAround(
   compactAxisLabels(base);
   formatTemplateValues(option);
   addInteraction(base, series, cartesian, context.colors);
+  labelHeatmapRows(base, series);
   // A timeline step or media query can set a toolbox of its own too.
   for (const toolbox of optionVariants(option).flatMap((variant) => asArray(variant.toolbox))) {
     keepLastingTools(toolbox);
