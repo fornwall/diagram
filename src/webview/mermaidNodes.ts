@@ -396,9 +396,27 @@ function shapes(f: Finder): Map<string, string> {
           ? label
           : sourceId;
       if (id !== undefined) f.taken.add(id);
-      return { element, domId, label, id };
+      return { element, domId, sourceId, label, id };
     },
   );
+  // Mermaid draws groups before the nodes in them, and some from the last to the first: the
+  // database has the nodes in the order of the source, which they are listed and stepped in, and
+  // a group goes before the first of the nodes in it, where the source writes it.
+  const nodes = f.db?.getData?.().nodes ?? [];
+  const order = new Map(nodes.map(({ id }, index) => [id, index]));
+  const parents = new Map(nodes.flatMap(({ id, parentId }) => (parentId ? [[id, parentId]] : [])));
+  const ranked = new Set<string>();
+  for (const [index, { id, isGroup }] of nodes.entries()) {
+    if (isGroup) continue;
+    for (let group = parents.get(id); group !== undefined; group = parents.get(group)) {
+      if (ranked.has(group)) break;
+      ranked.add(group);
+      order.set(group, index);
+    }
+  }
+  const rank = ({ sourceId, domId }: { sourceId: string; domId: string }) =>
+    order.get(sourceId) ?? order.get(domId) ?? Number.POSITIVE_INFINITY;
+  found.sort((a, b) => rank(a) - rank(b));
   const nodeIds = new Map<string, string>();
   // Not start and end states, nor groups without ids.
   const shown = found.filter(({ label }) => label);

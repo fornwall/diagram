@@ -1656,6 +1656,33 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(chartMarks.unknown, []);
   });
 
+  test("lists groups where the source writes them, before the nodes in them", async () => {
+    // Mermaid draws subgraphs first, from the last to the first.
+    await draw({
+      source:
+        "flowchart TB\n  subgraph S1\n    A --> B\n  end\n  subgraph S2\n    C --> D\n  end\n  E --> A\n  B --> C",
+    });
+    assert.deepStrictEqual(page.panel.drawnIds, ["S1", "A", "B", "S2", "C", "D", "E"]);
+    await draw({
+      source:
+        "flowchart LR\n  E --> A\n  subgraph outer\n    subgraph inner\n      A\n    end\n    B\n  end\n  subgraph Plain Title\n    F\n  end",
+    });
+    assert.deepStrictEqual(page.panel.drawnIds, [
+      "E",
+      "outer",
+      "inner",
+      "A",
+      "B",
+      "Plain Title",
+      "F",
+    ]);
+    await draw({
+      source:
+        "stateDiagram-v2\n  [*] --> Idle\n  state Running {\n    [*] --> Busy\n    Busy --> Waiting\n  }\n  Idle --> Running",
+    });
+    assert.deepStrictEqual(page.panel.drawnIds, ["Idle", "Running", "Busy", "Waiting"]);
+  });
+
   test("names notes apart from the nodes whose ids their texts are, drawn before them or after", async () => {
     const ids = async (source: string) => {
       await draw({ source });
