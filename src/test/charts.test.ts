@@ -215,6 +215,12 @@ suite("charts", () => {
   test("axes are not named after generated column names", () => {
     assert.strictEqual(build(chart("bar"), "src,120\ntest,30").yAxis.name, undefined);
     assert.strictEqual(build(chart("scatter"), "1,2\n3,4").xAxis.name, undefined);
+    // Unless the name states the unit that the values are shown in, which the axis would not.
+    assert.strictEqual(build(chart("bar"), "src,120ms\ntest,30ms").yAxis.name, "Column 2 (ms)");
+    const durations = "a,10ms\na,12ms\nb,5ms\nb,6ms";
+    assert.strictEqual(build(chart("boxplot"), durations).yAxis.name, "Column 2 (ms)");
+    const scatter = build(chart("scatter"), "1,2ms\n3,4ms");
+    assert.deepStrictEqual([scatter.xAxis.name, scatter.yAxis.name], [undefined, "Column 2 (ms)"]);
   });
 
   test("draws horizontal bars with the first category at the top of the y axis", () => {

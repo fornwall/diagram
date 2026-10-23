@@ -97,6 +97,15 @@ function noteAdded(notes: string[], added: number, item: string): void {
 }
 
 /**
+ * Whether the name of the value column at `i` says what its values are, to name an axis by: it
+ * comes from a header, or states the multiple of their unit that they are shown in, as a
+ * generated "Column 2 (ms)" does, where "Column 2" says nothing.
+ */
+function informative({ table, columns, names }: Reading, i: number): boolean {
+  return table.header || names[i] !== columnName(table, columns.values[i]);
+}
+
+/**
  * A bar or line chart, whose tooltip and legend the webview adds. Labels read as dates become a
  * time axis, which needs each point as a [time, value] pair rather than a bare value.
  */
@@ -105,7 +114,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   // ECharts draws a line through its points, samples them and stacks them in the order of its
   // data, which would otherwise run back and forth in time.
   const reading = timeAxis ? { ...read, rows: inLabelOrder(read.rows, label) } : read;
-  const { table, columns, names, rows } = reading;
+  const { columns, names, rows } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];
   let series: Series[];
@@ -153,8 +162,8 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   };
   const valueAxis = {
     type: "value",
-    // With several series, the legend names them; generated names ("Column 2") name nothing.
-    ...(table.header && names.length === 1 ? { name: names[0] } : {}),
+    // With several series, the legend names them.
+    ...(names.length === 1 && informative(reading, 0) ? { name: names[0] } : {}),
     // A line shows change, which would flatten out on an axis from zero to far above it; bars
     // and areas show amounts by their length, which needs zero.
     ...(type === "line" ? { scale: true } : {}),
@@ -191,11 +200,11 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
  * A scatter chart of one value column against another, or, when the labels are dates, of one
  * value column against the times they happened at.
  */
-export function scatterOption({ table, columns, names, rows }: Reading): Record<string, unknown> {
-  // Generated column names ("Column 2") would make poor axis names.
-  const axis = (name: string) => ({
+export function scatterOption(reading: Reading): Record<string, unknown> {
+  const { columns, names, rows } = reading;
+  const axis = (i: number) => ({
     type: "value",
-    ...(table.header ? { name } : {}),
+    ...(informative(reading, i) ? { name: names[i] } : {}),
     scale: true,
   });
   const [xName = "", yName = ""] = names;
@@ -203,7 +212,7 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
     const { timeAxis } = columns;
     return {
       xAxis: timeAxis ? { type: "time" } : { type: "category", data: rows.map(label) },
-      yAxis: axis(xName),
+      yAxis: axis(0),
       series: [
         {
           type: "scatter",
@@ -221,8 +230,8 @@ export function scatterOption({ table, columns, names, rows }: Reading): Record<
   }
   const labeled = columns.labels.length > 0;
   return {
-    xAxis: axis(xName),
-    yAxis: axis(yName),
+    xAxis: axis(0),
+    yAxis: axis(1),
     series: [
       {
         type: "scatter",
@@ -353,14 +362,8 @@ export function heatmapOption({
  * Compute box statistics per label group, or per value column when rows are unlabeled. "sort"
  * orders the boxes by their medians: the rows it sorted would order the groups by their extremes.
  */
-export function boxplotOption({
-  spec,
-  table,
-  columns,
-  names,
-  rows,
-  notes,
-}: Reading): Record<string, unknown> {
+export function boxplotOption(reading: Reading): Record<string, unknown> {
+  const { spec, columns, names, rows, notes } = reading;
   const labeled = columns.labels.length > 0;
   const numbers = (rows: Row[], column: number) =>
     rows.reduce<number[]>((numbers, { values }) => {
@@ -426,7 +429,11 @@ export function boxplotOption({
   return {
     xAxis: { type: "category", data: categories },
     // A spread reads against itself rather than against zero.
-    yAxis: { type: "value", ...(table.header && labeled ? { name: names[0] } : {}), scale: true },
+    yAxis: {
+      type: "value",
+      ...(labeled && informative(reading, 0) ? { name: names[0] } : {}),
+      scale: true,
+    },
     series: [
       { type: "boxplot", ...(labeled ? { name: names[0] } : {}), data: boxes },
       // The x of an outlier names its box's category, which the tooltip shows.
