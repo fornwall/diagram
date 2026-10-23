@@ -620,14 +620,25 @@ function eventModel(f: Finder): void {
   }
 }
 
-/** Sequence diagram participants, with their footer copies and menus of links, and messages. */
+/**
+ * Sequence diagram participants, in the order of the source, with their footer copies and menus
+ * of links, and messages.
+ */
 function sequence(f: Finder): void {
+  // Mermaid draws the participants from the last to the first, for the menus of the earlier to
+  // lie over the later: the database has them in the order of the source, left to right.
+  const headers = Map.groupBy(
+    f.all('[data-et="participant"]'),
+    (element) => element.getAttribute("data-id") || textOf(element),
+  );
+  const declared = Array.from(f.db?.getActors?.()?.keys() ?? []);
   const participants = new Map<string, DiagramNode>();
-  for (const element of f.all('[data-et="participant"]')) {
-    const label = textOf(element);
-    const node = { id: element.getAttribute("data-id") || label, label };
-    participants.set(node.id, node);
-    f.add(element, node);
+  for (const id of new Set([...declared, ...headers.keys()])) {
+    for (const element of headers.get(id) ?? []) {
+      const node = { id, label: textOf(element) };
+      participants.set(id, node);
+      f.add(element, node);
+    }
   }
   // Footer copies retain the participant's name, even when several share a display label, but for
   // databases, whose label is beside them, and queues: they go by a label that only they have.

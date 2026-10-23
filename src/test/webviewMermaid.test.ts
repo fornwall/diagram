@@ -481,6 +481,23 @@ suite("Mermaid in the webview", function () {
       })()`),
       [0, 0],
     );
+    const participants = ["A", "B", "C", "D", "E", "F"].map(
+      (id) => `  participant ${id} as ${id} participant with a long name`,
+    );
+    await draw({
+      source: `sequenceDiagram\n${participants.join("\n")}\n  A->>B: hello`,
+      title: "Wide sequence",
+    });
+    assert.deepStrictEqual(page.panel.drawnIds, ["A", "B", "C", "D", "E", "F"]);
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        const canvas = document.getElementById("canvas");
+        await until(() => canvas.scrollWidth > canvas.clientWidth, "the wide drawing shown");
+        return [canvas.scrollLeft, canvas.scrollTop];
+      })()`),
+      [0, 0],
+    );
   });
 
   test("shows Mermaid labels whole, in the boxes Mermaid measured for them", async () => {
