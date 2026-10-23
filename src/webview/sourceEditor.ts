@@ -121,6 +121,7 @@ export class SourceEditor {
     viewButtons.split.title = `Show the ${renderer.noun} and its source`;
     viewButtons.source.title = `Edit the ${renderer.sourceName}`;
     input.setAttribute("aria-label", renderer.sourceName);
+    staleNote.textContent = `The ${renderer.noun} changed since you started editing. Apply replaces it with your version.`;
     // Restore the preferred view once source is available.
     this.setView(this.view);
     const edited = this.differs();

@@ -180,6 +180,22 @@ suite("webview", function () {
           "Render your version and write it into the code block in renamed.md (Ctrl/Cmd+Enter)",
       },
     );
+    // A chart is written, and changed under an edit, as a chart.
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        receive({type: "render", requestId: 900021, language: "echarts",
+          source: JSON.stringify({series: [{type: "pie", data: [{name: "A", value: 1}]}]}),
+          title: "Pie", writeTo: "notes.md"});
+        await until(() => window.testRenderResults.includes(900021), "the render");
+        return {title: document.getElementById("write-to").title,
+          stale: document.getElementById("stale-note").textContent};
+      })()`),
+      {
+        title: "Write the chart as shown into the code block in notes.md",
+        stale: "The chart changed since you started editing. Apply replaces it with your version.",
+      },
+    );
     await draw({ source: MERMAID["flowchart-v2"] });
   });
 
@@ -341,6 +357,37 @@ suite("webview", function () {
       })()`),
       { pressed: "true", distinct: true },
     );
+  });
+
+  test("marks link-styled buttons as links where forced colors replace their color", async () => {
+    assert.ok(!(await render({ source: "flowchart LR\n  A --> --> B[" })).ok);
+    try {
+      assert.deepStrictEqual(
+        await evaluate(`(() => {
+          // The page's rules for forced colors, applied as if the system forced them.
+          const page = [...document.styleSheets].find(sheet => sheet.href?.endsWith("webview.css"));
+          const forced = new CSSStyleSheet();
+          forced.replaceSync([...page.cssRules]
+            .filter(rule => rule instanceof CSSMediaRule && rule.conditionText === "(forced-colors: active)")
+            .flatMap(rule => [...rule.cssRules].map(inner => inner.cssText)).join("\\n"));
+          const probe = document.createElement("span");
+          probe.style.color = "LinkText";
+          document.body.append(probe);
+          document.adoptedStyleSheets = [forced];
+          try {
+            const link = getComputedStyle(document.querySelector("#error button.link"));
+            return {underlined: link.textDecorationLine,
+              inLinkColor: link.color === getComputedStyle(probe).color};
+          } finally {
+            document.adoptedStyleSheets = [];
+            probe.remove();
+          }
+        })()`),
+        { underlined: "underline", inLinkColor: true },
+      );
+    } finally {
+      await draw({ source: MERMAID["flowchart-v2"] });
+    }
   });
 
   test("shows the focus on the pressed view button apart from its border", async () => {

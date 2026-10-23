@@ -780,4 +780,11 @@ select:focus {
     outline: 1px solid Highlight;
     outline-offset: -1px;
   }
+
+  /* Forced colors take the link color from these buttons, which have no border as links have
+     none: nothing would tell them from the text around them. */
+  button.link {
+    color: LinkText;
+    text-decoration: underline;
+  }
 }

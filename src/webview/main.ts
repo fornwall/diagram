@@ -195,25 +195,23 @@ let renderedDiagram: number | undefined;
 type RenderMessage = Extract<ToWebview, { type: "render" }>;
 
 /** Sets up what clicks and the header's actions do for the diagram, or for none. */
-function showActions({
-  clickPrompt: prompt,
-  links: linked,
-  refreshFrom,
-  writeTo,
-}: Partial<RenderMessage>): void {
+function showActions(
+  { clickPrompt: prompt, links: linked, refreshFrom, writeTo }: Partial<RenderMessage>,
+  noun = "diagram",
+): void {
   clickPrompt = prompt;
   links = new Map(Object.entries(linked ?? {}));
   canvas.classList.toggle("click-to-ask", clickPrompt !== undefined);
   showRefresh(refreshFrom);
-  showWriteTo(writeTo);
+  showWriteTo(writeTo, noun);
 }
 
-/** Names the document that Write to and Apply write the diagram to, if any. */
-function showWriteTo(writeTo: string | undefined): void {
+/** Names the document that Write to and Apply write the diagram, or chart, to, if any. */
+function showWriteTo(writeTo: string | undefined, noun: string): void {
   writeToButton.hidden = writeTo === undefined;
   if (writeTo !== undefined) {
     writeToButton.textContent = `Write to ${writeTo}`;
-    writeToButton.title = `Write the diagram as shown into the code block in ${writeTo}`;
+    writeToButton.title = `Write the ${noun} as shown into the code block in ${writeTo}`;
   }
   // Apply writes the edits into the block too, which changes a file: say so before it does.
   applyButton.title =
@@ -246,7 +244,7 @@ async function render(message: RenderMessage): Promise<void> {
     diagramReplaced();
     return;
   }
-  showActions(message);
+  showActions(message, renderer.noun);
   current = { language, renderer, requestId };
   // A different diagram fits the panel again, where a revision keeps the zoom chosen for it.
   const another = renderedDiagram === undefined || message.diagram !== renderedDiagram;
@@ -484,7 +482,9 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
       // After the renders sent before, which name the document as it was then.
       const revision = renderRevision;
       enqueue(() => {
-        if (revision === renderRevision && current) showWriteTo(message.writeTo);
+        if (revision === renderRevision && current) {
+          showWriteTo(message.writeTo, current.renderer.noun);
+        }
       });
       break;
     }
