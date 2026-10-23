@@ -215,6 +215,11 @@ suite("describe", () => {
     // Marks are named as the model names them.
     assert.match(described, /^Marked items: "check --> emit" \(problem\), "parse" \(current\)\./m);
     assert.doesNotMatch(described, /L_parse_check_0/);
+    // A drawing that failed has no items to name the marks by: the ids still tell edges apart.
+    assert.match(
+      describeDiagram(flow, { annotation }),
+      /^Marked items: "edge:L_check_emit_0" \(problem\), "parse" \(current\)\./m,
+    );
 
     const sequence = flowchart("sequenceDiagram\n  C->>S: Login\n  S-->>C: Token\n  C->>S: Fetch");
     const messages = new ItemNames({

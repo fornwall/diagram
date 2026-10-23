@@ -163,7 +163,10 @@ export function describeDiagram(
   }
   const nodes = `${nodeNoun(state.language)}s`;
   const parts = selection.some((node) => node.relationship) ? "items" : nodes;
-  const marksRelationships = annotation?.marks.some(({ id }) => items?.relationship(id));
+  // Also by the ids of edges and messages, when a drawing that failed has no items to tell.
+  const marksRelationships = annotation?.marks.some(
+    ({ id }) => items?.relationship(id) || /^(?:edge|message):/.test(id),
+  );
   const marked = describeMarks(
     annotation,
     marksRelationships ? "items" : nodes,
