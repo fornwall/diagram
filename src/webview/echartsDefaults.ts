@@ -250,10 +250,12 @@ const timeLabels = () =>
  * by its day, and its time of day unless midnight, rather than as "2026-01-01 00:00:00" however
  * the dates are spaced.
  */
-const pointedTime = (params: unknown) => {
+const pointedTime = (params: unknown, utc = false) => {
   const value = isPlainObject(params) ? params.value : undefined;
-  return typeof value === "number" ? dateText(new Date(value)) : String(value ?? "");
+  return typeof value === "number" ? dateText(new Date(value), utc) : String(value ?? "");
 };
+/** The same in UTC, as an option that sets useUTC labels its axes. */
+const pointedUtcTime = (params: unknown) => pointedTime(params, true);
 
 /**
  * Labels the values of value and log axes compactly, as "1.5M" rather than "1,500,000", which
@@ -293,7 +295,7 @@ export function compactAxisLabels(base: JsonObject): void {
         const pointer = styleOf(axis.axisPointer);
         const pointerLabel = styleOf(pointer.label);
         if (!pointerFormatted && pointerLabel.formatter === undefined) {
-          pointerLabel.formatter = pointedTime;
+          pointerLabel.formatter = base.useUTC === true ? pointedUtcTime : pointedTime;
           pointer.label = pointerLabel;
           axis.axisPointer = pointer;
         }
@@ -370,9 +372,19 @@ export function formatTemplateValues(option: JsonObject): void {
   }
 }
 
-/** The tooltip formatters of heatmap cells by the rows' categories, the same in every layout. */
-const heatmapFormatters = new WeakMap<object, (params: unknown) => string>();
-const NO_ROWS: unknown[] = [];
+/** The tooltip formatters of heatmap cells by the categories of their axes, the same in every layout. */
+const heatmapFormatters = new WeakMap<object, WeakMap<object, (params: unknown) => string>>();
+const NO_CATEGORIES: unknown[] = [];
+
+/**
+ * The category at an index of the data an axis lists, which it can list with a label style of
+ * its own, as {"value": "Mon"}, or the value itself if it is no index.
+ */
+function category(listed: unknown, value: unknown): unknown {
+  if (typeof value !== "number" || !Array.isArray(listed)) return value;
+  const item = listed[value];
+  return isPlainObject(item) ? item.value : (item ?? value);
+}
 
 /**
  * Says the row of a heatmap's cell in its tooltip, which ECharts labels by its column alone, as
@@ -380,25 +392,51 @@ const NO_ROWS: unknown[] = [];
  * on a grid, in a tooltip that the option leaves to ECharts.
  */
 export function labelHeatmapRows(base: JsonObject, series: JsonObject[]): void {
-  if (asArray(base.tooltip).some((tooltip) => tooltip.formatter !== undefined)) return;
+  const formats = (tooltip: unknown) =>
+    styleOf(tooltip).formatter !== undefined || styleOf(tooltip).valueFormatter !== undefined;
+  if (asArray(base.tooltip).some(formats)) return;
+  const xAxes = asArray(base.xAxis);
   const yAxes = asArray(base.yAxis);
   for (const each of series) {
     if (each.type !== "heatmap" || (each.coordinateSystem ?? "cartesian2d") !== "cartesian2d") {
       continue;
     }
     const tooltip = styleOf(each.tooltip);
-    if (tooltip.formatter !== undefined) continue;
+    if (formats(tooltip)) continue;
+    const columns = xAxes[Number(each.xAxisIndex ?? 0)]?.data;
     const rows = yAxes[Number(each.yAxisIndex ?? 0)]?.data;
-    const key = Array.isArray(rows) ? rows : NO_ROWS;
-    let formatter = heatmapFormatters.get(key);
+    const columnsKey = Array.isArray(columns) ? columns : NO_CATEGORIES;
+    const rowsKey = Array.isArray(rows) ? rows : NO_CATEGORIES;
+    let byColumns = heatmapFormatters.get(rowsKey);
+    if (!byColumns) {
+      byColumns = new WeakMap();
+      heatmapFormatters.set(rowsKey, byColumns);
+    }
+    let formatter = byColumns.get(columnsKey);
     if (!formatter) {
       formatter = (params: unknown) => {
         const item = (Array.isArray(params) ? params[0] : params) as JsonObject;
-        const { seriesName, name, value, marker } = item;
-        const [, y, cell] = Array.isArray(value) ? value : [];
-        // The row by its index on the axis, which can list it with a label style of its own.
-        const listed = typeof y === "number" && Array.isArray(rows) ? rows[y] : y;
-        const row = isPlainObject(listed) ? listed.value : listed;
+        const { seriesName, name, value, marker, encode, dimensionNames } = item;
+        // The column, the row and the value where the series encodes them, as a dataset's row
+        // holds them by name and its columns can come in any order, else where a cell holds them:
+        // [x, y, value]. A number in a category is the index of the category listed.
+        const at = (dimension: string, otherwise: number) => {
+          const encoded = isPlainObject(encode) ? encode[dimension] : undefined;
+          return Array.isArray(encoded) && typeof encoded[0] === "number" ? encoded[0] : otherwise;
+        };
+        const read = (index: number): unknown => {
+          if (Array.isArray(value)) return value[index];
+          const dimension = Array.isArray(dimensionNames) ? dimensionNames[index] : undefined;
+          return isPlainObject(value) && dimension !== undefined
+            ? value[String(dimension)]
+            : undefined;
+        };
+        const x = read(at("x", 0));
+        // ECharts names the cell by its column, unless the series encodes another name.
+        const column =
+          typeof x === "number" && !Array.isArray(columns) ? name : category(columns, x);
+        const row = category(rows, read(at("y", 1)));
+        const cell = read(at("value", 2));
         const number =
           typeof cell === "number" && Number.isFinite(cell)
             ? groupedNumber.format(Number(cell.toPrecision(12)))
@@ -410,10 +448,10 @@ export function labelHeatmapRows(base: JsonObject, series: JsonObject[]): void {
             : "";
         return (
           `${title}${typeof marker === "string" ? marker : ""}` +
-          `${escapeHtml(`${name ?? ""}, ${row ?? ""}`)}&nbsp;&nbsp;<b>${escapeHtml(number)}</b>`
+          `${escapeHtml(`${column ?? name ?? ""}, ${row ?? ""}`)}&nbsp;&nbsp;<b>${escapeHtml(number)}</b>`
         );
       };
-      heatmapFormatters.set(key, formatter);
+      byColumns.set(columnsKey, formatter);
     }
     tooltip.formatter = formatter;
     each.tooltip = tooltip;

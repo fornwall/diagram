@@ -192,12 +192,31 @@ function valueText(value: unknown): string | undefined {
   return String(value);
 }
 
-/** A date as a time axis labels it, in local time: its day, and its time of day unless midnight. */
-export function dateText(date: Date): string {
+/**
+ * A date as a time axis labels it, in local time or in UTC: its day, and its time of day unless
+ * midnight.
+ */
+export function dateText(date: Date, utc = false): string {
   if (Number.isNaN(date.getTime())) return "Invalid Date";
   const pad = (part: number) => String(part).padStart(2, "0");
-  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  const time = [date.getHours(), date.getMinutes(), date.getSeconds()];
+  const [year, month, dayOfMonth, ...time] = utc
+    ? [
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        date.getUTCHours(),
+        date.getUTCMinutes(),
+        date.getUTCSeconds(),
+      ]
+    : [
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+        date.getSeconds(),
+      ];
+  const day = `${year}-${pad((month ?? 0) + 1)}-${pad(dayOfMonth ?? 1)}`;
   if (time.every((part) => part === 0)) return day;
   return `${day} ${time.map(pad).join(":")}`;
 }

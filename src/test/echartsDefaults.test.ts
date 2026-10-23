@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
-import { bars, builtOption, layout, type Option, svgOf } from "./echartsModel";
+import { modelOf } from "../webview/echartsItems";
+import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 
 suite("echartsDefaults", () => {
   test("names the whole of an unnamed treemap in its breadcrumb", () => {
@@ -95,6 +96,14 @@ suite("echartsDefaults", () => {
     assert.strictEqual(option.yAxis.axisPointer, undefined);
     // The same formatter in each layout, which only needs the chart resized.
     assert.strictEqual(layout(source, { width: 900 }).xAxis.axisPointer.label.formatter, formatter);
+    // In UTC where the option labels its axes in it.
+    const utc = layout({ ...source, useUTC: true }).xAxis.axisPointer.label.formatter;
+    assert.strictEqual(utc({ value: Date.UTC(2026, 0, 2, 10, 30) }), "2026-01-02 10:30:00");
+    assert.strictEqual(utc({ value: Date.UTC(2026, 0, 2) }), "2026-01-02");
+    assert.strictEqual(
+      layout({ ...source, useUTC: true }, { width: 900 }).xAxis.axisPointer.label.formatter,
+      utc,
+    );
     // Not where the option formats the pointer's label itself, for the axis or for all.
     const own = [
       { ...source, xAxis: { type: "time", axisPointer: { label: { formatter: "{value}" } } } },
@@ -168,9 +177,39 @@ suite("echartsDefaults", () => {
     );
     // The same formatter in each layout, which only needs the chart resized.
     assert.strictEqual(layout(source, { width: 900 }).series[0].tooltip.formatter, formatter);
-    // Not where the option formats the tooltip itself, nor off a grid.
+    // The row and the value where the series encodes them, as a dataset's rows hold them by name
+    // and a cell's columns can come in any order, as ECharts tells the formatter.
+    const params = (option: Option) =>
+      withChart(layout(option), (chart) => {
+        const series = modelOf(chart).getSeriesByIndex(0) as unknown as {
+          getDataParams(index: number): Option;
+        };
+        return series.getDataParams(0);
+      });
+    const encoded = [
+      {
+        ...source,
+        xAxis: { type: "category", data: ["9", "10"] },
+        dataset: { source: [{ day: "Mon", hour: "9", n: 3 }] },
+        series: [{ type: "heatmap", encode: { x: "hour", y: "day", value: "n" } }],
+      },
+      {
+        ...source,
+        series: [{ type: "heatmap", data: [[3, "Mon", 9]], encode: { value: 0, y: 1, x: 2 } }],
+      },
+    ];
+    for (const each of encoded) {
+      assert.strictEqual(
+        layout(each).series[0].tooltip.formatter({ ...params(each), marker }),
+        "<span>●</span>9, Mon&nbsp;&nbsp;<b>3</b>",
+        JSON.stringify(each.series),
+      );
+    }
+    // Not where the option formats the tooltip or its values itself, nor off a grid.
     const own = layout({ ...source, tooltip: { formatter: "{b}" } });
     assert.strictEqual(own.series[0].tooltip, undefined);
+    const valued = layout({ ...source, tooltip: { valueFormatter: (value: unknown) => value } });
+    assert.strictEqual(valued.series[0].tooltip, undefined);
     const calendar = layout({
       calendar: { range: "2026-01" },
       visualMap: { min: 0, max: 1 },
