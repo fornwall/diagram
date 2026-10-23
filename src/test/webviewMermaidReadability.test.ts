@@ -383,6 +383,16 @@ suite("Mermaid readability in the webview", function () {
     assert.deepStrictEqual(await warnings(blocks, 800), [
       'Labels of links lie over nodes, such as "reads" over "API" (2 pairs): leave room between the nodes they link, as a space block does between blocks, or shorten the labels.',
     ]);
+    // A label that also covers the labels of the nodes is reported once, as lying over them.
+    assert.deepStrictEqual(
+      await warnings(
+        'block-beta\n  columns 2\n  a["Alpha"] b["Beta"]\n  a -- "a long edge label" --> b',
+        800,
+      ),
+      [
+        'Labels of links lie over nodes, such as "a long edge label" over "Alpha" (2 pairs): leave room between the nodes they link, as a space block does between blocks, or shorten the labels.',
+      ],
+    );
     // A space between them leaves the label room.
     assert.deepStrictEqual(
       await warnings(

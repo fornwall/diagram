@@ -369,6 +369,9 @@ function overlappingLabels(svg: SVGSVGElement): string | undefined {
     .map((label) => ({ label, box: textBox(label) }))
     .filter(({ box }) => box.width > 0 && box.height > 0)
     .sort((a, b) => a.box.left - b.box.left);
+  // The label of a link over a node's label lies over the node, which labelsOverNodes reports.
+  const overNode = (label: Element, other: Element) =>
+    label.closest("g.edgeLabel") !== null && other.closest("g.node") !== null;
   const pairs: [Element, Element][] = [];
   for (const [i, { label, box: a }] of boxes.entries()) {
     for (let j = i + 1; j < boxes.length; j++) {
@@ -381,7 +384,9 @@ function overlappingLabels(svg: SVGSVGElement): string | undefined {
         height > smaller.height / 2 &&
         width * height > (smaller.width * smaller.height) / 4 &&
         !label.contains(other) &&
-        !other.contains(label)
+        !other.contains(label) &&
+        !overNode(label, other) &&
+        !overNode(other, label)
       ) {
         pairs.push([label, other]);
       }
