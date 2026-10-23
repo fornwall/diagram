@@ -152,7 +152,7 @@ function isOneOf(values: readonly string[], value: unknown): boolean {
 }
 
 /** The value among `values` that a model wrote, as "Bar" or "SUM", spelled as the values are. */
-function spelled(values: readonly string[], value: unknown): unknown {
+export function spelled(values: readonly string[], value: unknown): unknown {
   if (typeof value !== "string") return value;
   const written = value.trim().toLowerCase();
   return values.find((each) => each.toLowerCase() === written) ?? value;

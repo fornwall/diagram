@@ -1,6 +1,13 @@
 // The small, editable part of a chart request, changed in the Chart Options form or by
 // diagram_updateChart. Data and advanced styling stay on the host.
-import { type ChartSpec, type ChartType, FACET_TYPES, validateChartSpec } from "./chartSpec";
+import {
+  CHART_TYPES,
+  type ChartSpec,
+  type ChartType,
+  FACET_TYPES,
+  spelled,
+  validateChartSpec,
+} from "./chartSpec";
 import type { Column } from "./data";
 import { GET_STATE_TOOL, isPlainObject } from "./protocol";
 import { quoteAll, unknownProperties } from "./text";
@@ -89,6 +96,8 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
     throw new Error('"type" and "title" cannot be cleared with null.');
   }
   const { revision: _, ...changes } = input;
+  // Spelled as the types are, as "Line" for "line", before it is compared with the type kept.
+  if (changes.type !== undefined) changes.type = spelled(CHART_TYPES, changes.type);
   const result: Record<string, unknown> = { ...spec, ...changes };
   if (typeof changes.type === "string" && changes.type !== spec.type) {
     // As the Chart Options form does, a new type drops the settings it cannot use, unless given.

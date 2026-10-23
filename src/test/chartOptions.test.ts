@@ -87,6 +87,23 @@ suite("chartOptions", () => {
       limit: 1,
       sort: "ascending",
     };
+    // A type written in another case is the same type, which keeps the settings it can use.
+    const faceted = validateChartSpec({
+      type: "bar",
+      data: "r,a,b\nx,1,2\ny,3,4",
+      labelColumn: "a",
+      facetColumn: "r",
+      facetColumns: 2,
+    });
+    assert.deepStrictEqual(
+      updatedChartSpec(faceted, { type: "Line" }),
+      updatedChartSpec(faceted, { type: "line" }),
+    );
+    assert.strictEqual(updatedChartSpec(faceted, { type: "Line" }).facetColumn, "r");
+    assert.strictEqual(updatedChartSpec(faceted, { type: "BAR" }).facetColumns, 2);
+    assert.strictEqual(updatedChartSpec(faceted, { type: "Pie" }).facetColumn, undefined);
+    const binned = validateChartSpec({ type: "histogram", data, bins: 7 });
+    assert.strictEqual(updatedChartSpec(binned, { type: "Histogram" }).bins, 7);
     const updated = updatedChartSpec(spec, { type: "horizontalBar", sort: null, limit: null });
     assert.strictEqual(updated.type, "horizontalBar");
     assert.strictEqual(updated.data, data);
