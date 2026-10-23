@@ -4,6 +4,8 @@
 
 - Agents can search and page through exact item ids and labels for highlights and image crops, including repeated chart names and parallel edges.
 - Agent guidance favors smaller state reads and reuse of revisions and loaded chart data.
+- Large image crops avoid argument-limit failures and use less temporary memory.
+- Absolute paths with `.` or `..` resolve correctly in virtual workspaces. Workspace tool results respect small token budgets.
 
 ## 0.0.9
 

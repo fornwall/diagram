@@ -6,12 +6,10 @@ const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
 const analyze = process.argv.includes("--analyze");
 
-/** Number of builds currently running. */
 let building = 0;
 
 /**
- * Format diagnostics for .vscode/tasks.json. In watch mode, signal completion only after all
- * active builds finish so the development host launches with every bundle available.
+ * Format diagnostics for .vscode/tasks.json; wait for every bundle before launching the host.
  * @type {import("esbuild").Plugin}
  */
 const problemMatcherPlugin = {
@@ -48,7 +46,7 @@ const noticesPlugin = {
         const notices = thirdPartyNotices([{ outputs: { [file]: output } }], "This script");
         const comment = notices && `/*!\n${notices.replaceAll("*/", "* /")}*/\n`;
         const script = readFileSync(file, "utf8");
-        // A rebuild when watching may leave a file it would write the same as it was.
+        // Watch rebuilds may leave unchanged output files in place.
         if (comment && !script.startsWith(comment)) writeFileSync(file, comment + script);
       }
     });
@@ -56,9 +54,7 @@ const noticesPlugin = {
 };
 
 /**
- * Resolves mermaid-elk-layout to the module of Mermaid's elk layout, which the panel loads alongside
- * Mermaid (see src/webview/mermaidLayout.ts), and whose file name changes with each version of
- * Mermaid. The panel and Mermaid then share its chunk.
+ * Share Mermaid's version-specific ELK chunk with src/webview/mermaidLayout.ts.
  * @type {import("esbuild").Plugin}
  */
 const mermaidElkPlugin = {
@@ -91,9 +87,8 @@ const common = {
 };
 
 /**
- * Classic scripts for the panel's lazy-loaded ECharts library and the exported chart page.
- * Exported HTML embeds standalone.js and loads ECharts from a CDN. Target browsers outside
- * VS Code too, and always minify to keep exports small.
+ * Classic scripts for lazy-loaded ECharts and exported charts. Exports embed standalone.js,
+ * load ECharts from a CDN, and support browsers outside VS Code. Always minify them.
  */
 const classicScript = {
   ...common,
@@ -159,9 +154,7 @@ if (watch) {
 }
 
 /**
- * The license and notice files of the packages that the bundles include code from, as their
- * licenses ask to be distributed with it, or nothing if there are none. Minifying drops most of
- * the comments that carry them.
+ * Collect licenses for bundled code, including notices stripped by minification.
  */
 function thirdPartyNotices(metafiles, includer) {
   const packages = new Set();
@@ -211,9 +204,8 @@ function thirdPartyNotices(metafiles, includer) {
       .join("\n\n");
     add(text, `${name} ${version}`);
   }
-  // Some packages ship other packages built into their files, such as @mermaid-js/parser with
-  // langium, and those are not installed. Their bundler names them in a comment above each of
-  // their modules, and licenses/ holds their license files.
+  // Prebundled dependencies (e.g. langium in @mermaid-js/parser) appear in module comments.
+  // Their licenses live in licenses/ because they may not be installed separately.
   const bundled =
     /^\/\/ \S*?node_modules\/(?:\.pnpm\/(?:@[^/+]+\+)?[^/@]+@([^_/]+)[^/]*\/node_modules\/)?((?:@[^/]+\/)?[^/]+)\//gm;
   for (const path of sources) {

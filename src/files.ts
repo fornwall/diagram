@@ -302,7 +302,11 @@ export function absoluteFile(
   for (const { uri: root } of roots) {
     // A URI with an authority needs a path that starts with "/".
     const uri =
-      root.scheme === "file" ? local : file.startsWith("/") ? root.with({ path: file }) : undefined;
+      root.scheme === "file"
+        ? local
+        : file.startsWith("/")
+          ? root.with({ path: path.posix.normalize(file) })
+          : undefined;
     if (uri && contains(root, uri)) {
       inside.set(uri.toString(), uri);
     }

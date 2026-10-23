@@ -82,11 +82,17 @@ function closestTopic(name: string): string {
   const contained = keys
     .filter((each) => each.length >= 3 && wanted.includes(each))
     .sort((a, b) => b.length - a.length)[0];
-  const closest =
-    contained ??
-    keys.reduce((best, each) =>
-      editDistance(wanted, each) < editDistance(wanted, best) ? each : best,
-    );
+  let closest = contained ?? WORKFLOW.name;
+  if (!contained) {
+    let distance = Infinity;
+    for (const each of keys) {
+      const candidate = editDistance(wanted, each);
+      if (candidate < distance) {
+        closest = each;
+        distance = candidate;
+      }
+    }
+  }
   return TOPICS_BY_KEY.get(closest)?.name ?? WORKFLOW.name;
 }
 
@@ -124,6 +130,9 @@ export function guideText(input: unknown): string {
   }
   if (typeof topic !== "string") {
     return `"topic" must be a string, such as "flowchart".\n\n${guideIndex()}`;
+  }
+  if (topic.length > 1000) {
+    return `"topic" must be at most 1,000 characters.\n\n${guideIndex()}`;
   }
   if (isWorkflow(topic)) return WORKFLOW.text;
   const found = findTopic(topic);

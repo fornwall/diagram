@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import { pngDataUrl, svgDataUrl } from "../webview/images";
+import { type Area, areaAround } from "../webview/svgImage";
 import { replace } from "./afterTest";
 import { svgOf } from "./echartsModel";
 
@@ -63,6 +64,27 @@ function fakeBrowser() {
 }
 
 suite("images", () => {
+  test("bounds large selections without exceeding the argument limit", () => {
+    const drawing = { x: -10, y: -20, width: 1000, height: 800 };
+    const boxes: Area[] = Array.from({ length: 200_000 }, (_, index) => ({
+      x: index % 500,
+      y: index % 300,
+      width: 10,
+      height: 20,
+    }));
+    assert.deepStrictEqual(areaAround(drawing, boxes), {
+      x: -10,
+      y: -20,
+      width: 559,
+      height: 379,
+    });
+    assert.strictEqual(areaAround(drawing, []), undefined);
+    assert.strictEqual(
+      areaAround(drawing, [{ x: 2000, y: 2000, width: 10, height: 10 }]),
+      undefined,
+    );
+  });
+
   test("exports Unicode labels even when a truncated character leaves an unpaired surrogate", () => {
     const svg = svgOf({
       animation: false,

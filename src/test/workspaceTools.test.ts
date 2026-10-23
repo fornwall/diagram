@@ -168,6 +168,24 @@ suite("workspaceTools", function () {
     assert.strictEqual((await fitted(reader, { file, endLine: 3 })).length, 5);
   });
 
+  test("reports when even one result or empty-result metadata exceeds the token budget", async () => {
+    const file = await writeFile("budget-long.txt", "Needle ".repeat(100));
+    const options = { tokenBudget: 100, countTokens: async (text: string) => text.length };
+    for (const [tool, input] of [
+      [reader, { file }],
+      [searcher, { query: "Needle", glob: `${relative}/budget-long.txt` }],
+      [finder, { glob: `${relative}/${"missing".repeat(40)}` }],
+    ] as const) {
+      const text = await invoke(tool, input, source.token, options);
+      assert.strictEqual(text, "Result exceeds the token budget. Retry with a larger budget.");
+      assert.ok(text.length <= options.tokenBudget);
+      assert.strictEqual(
+        await invoke(tool, input, source.token, { ...options, tokenBudget: 1 }),
+        "",
+      );
+    }
+  });
+
   test("cancels while waiting for token counts, including when fitting a smaller page", async () => {
     for (const stalledCall of [1, 2]) {
       const cancelled = cancellationSource();

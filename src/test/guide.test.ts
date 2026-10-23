@@ -90,6 +90,10 @@ suite("diagram_guide", () => {
     assert.strictEqual(guideText({ topic: null }), guideIndex());
     assert.strictEqual(guideText(undefined), guideIndex());
     assert.strictEqual(
+      guideText({ topic: "x".repeat(1001) }),
+      `"topic" must be at most 1,000 characters.\n\n${guideIndex()}`,
+    );
+    assert.strictEqual(
       guideText({ topic: 3 }),
       `"topic" must be a string, such as "flowchart".\n\n${guideIndex()}`,
     );

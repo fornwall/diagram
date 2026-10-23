@@ -15,9 +15,10 @@ export function collectItemPage(
     totalItems++;
     if (
       query !== undefined &&
-      ![node.id, node.label, node.relationship?.source, node.relationship?.target].some((text) =>
-        text?.includes(query),
-      )
+      !node.id.includes(query) &&
+      !node.label.includes(query) &&
+      !node.relationship?.source.includes(query) &&
+      !node.relationship?.target.includes(query)
     ) {
       return;
     }

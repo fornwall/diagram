@@ -57,6 +57,8 @@ Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram
 
 Terminal colors are ignored. In auto format, shortened DuckDB, Polars or pandas results include only the rows and columns shown. Use `format: "csv"` or `"tsv"` to keep literal ellipsis rows and columns. Quoted multiline fields keep their contents.
 
+Quote large JSON IDs, e.g. `{"id":"9007199254740993"}`. Unquoted integers outside ±9,007,199,254,740,991 may be rounded.
+
 Abbreviations such as `1.5K` and `$1.2B` mean thousands and billions. In size columns, such as `du -h` output or a column named `Size`, `1.5K` means 1536 bytes. Units such as `MiB` and `kB` always mean bytes; bare units use powers of 1000 for commands run with `--si` or `df -H`.
 
 Durations such as `812ms`, `-250ms` and `1h2m3s` become seconds. In duration columns such as `Elapsed`, so do `45m` and `1:02:03`. Header units such as `Size (KB)`, `Latency (ms)` or `Elapsed (s)` apply to plain numbers below them. Charts display sizes and durations in the unit that suits the largest value.

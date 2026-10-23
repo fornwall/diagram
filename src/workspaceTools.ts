@@ -1,5 +1,4 @@
-// Read-only workspace tools that let a model find, search and read code to diagram. Results are
-// plain text, as models read numbered lines and paths more reliably and cheaply than JSON.
+// Read-only workspace tools with paged, plain-text paths and numbered source lines.
 
 import { realpath } from "node:fs/promises";
 import * as path from "node:path";
@@ -46,23 +45,18 @@ const DEFAULT_READ_LINES = 200;
 const READ_AHEAD = 8;
 const DEFAULT_EXCLUDES = ["**/.git/**", "**/node_modules/**"];
 const IGNORE_FILE = ".gitignore";
-/** The most ignore files read in a workspace folder, of which a large repository may have many. */
+/** Maximum ignore files read per workspace folder. */
 const MAX_IGNORE_FILES = 1000;
 /**
- * The most ignore files looked for, of which those in ignored folders are left out before
- * reading the others, up to {@link MAX_IGNORE_FILES}.
+ * Find extra ignore files so ignored folders do not consume the read limit.
  */
 const MAX_FOUND_IGNORE_FILES = 10 * MAX_IGNORE_FILES;
 /**
- * The most characters of the globs that exclude what ignore files ignore from a search. VS Code
- * passes the exclude to ripgrep as one argument, which Linux allows up to 128 KiB of, and Windows
- * a command line of up to 32,767 characters; beyond them, the search fails.
+ * Bound ripgrep's exclude argument below Linux's 128 KiB argument limit and Windows' 32,767
+ * character command-line limit.
  */
 const MAX_IGNORED_GLOB_CHARS = 10_000;
-/**
- * How long the ignore files found in a folder are used before they are looked for again (see
- * {@link cacheIgnoreFiles}): about as long as a model's calls in a row take.
- */
+/** Cache ignore files across nearby tool calls. */
 export const IGNORE_FILES_KEPT_MS = 10_000;
 
 function integer(value: unknown, fallback: number, name: string, max?: number): number {
@@ -488,9 +482,7 @@ async function findIgnoreFiles(
 }
 
 /**
- * The first of the globs that fit {@link MAX_IGNORED_GLOB_CHARS}, which are those of the shallower
- * ignore files. What the others would exclude is still left out of the files found, only after
- * the search.
+ * Prefer shallower ignore rules within the argument limit. Filter remaining rules after search.
  */
 function fittingGlobs(globs: readonly string[]): string[] {
   const fitting: string[] = [];
@@ -681,16 +673,13 @@ abstract class WorkspaceTool implements vscode.LanguageModelTool<unknown> {
   ): Promise<Paged>;
 }
 
-/**
- * A result of `count` entries, such as lines, which `render` gives the first `shown` of, saying
- * where to continue when that is fewer.
- */
+/** Render a prefix of the entries, with continuation instructions. */
 interface Paged {
   count: number;
   render: (shown: number) => string;
 }
 
-/** Gives as many entries as fit the tokens the caller has room for, and at least one. */
+/** Fit whole entries; report insufficient room instead of returning truncated source. */
 async function fit(
   { count, render }: Paged,
   options: vscode.LanguageModelToolTokenizationOptions | undefined,
@@ -704,7 +693,12 @@ async function fit(
   // 3 for each UTF-16 code unit, is not counted, which may take a request to the model's provider.
   while (text.length * 3 > tokenBudget) {
     const size = await unlessCancelled(async () => countTokens(text, token), token);
-    if (size <= tokenBudget || shown <= 1) break;
+    if (size <= tokenBudget) break;
+    if (shown <= 1) {
+      const message = "Result exceeds the token budget. Retry with a larger budget.";
+      const size = await unlessCancelled(async () => countTokens(message, token), token);
+      return size <= tokenBudget ? message : "";
+    }
     // Tokens are not spread evenly over the entries, so this may take a few tries.
     shown = Math.max(1, Math.floor(shown * Math.min(tokenBudget / size, 0.9)));
     text = render(shown);

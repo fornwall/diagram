@@ -373,9 +373,12 @@ export class EChartsRenderer implements Renderer {
       const missing: string[] = [];
       for (const id of ids) {
         // Every item of a name that several go by, which only a mark must tell apart.
-        const found = this.find([id]).flatMap((ref) => navigation.box(ref) ?? []);
-        if (found.length > 0) boxes.push(...found);
-        else missing.push(id);
+        const before = boxes.length;
+        for (const ref of this.find([id])) {
+          const box = navigation.box(ref);
+          if (box) boxes.push(box);
+        }
+        if (boxes.length === before) missing.push(id);
       }
       const around = areaAround(drawing, boxes);
       const area = around && withTextIn(svg, drawing, around);

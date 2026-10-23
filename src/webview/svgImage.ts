@@ -311,17 +311,20 @@ export function areaAround(
   boxes: readonly Area[],
   margin = AREA_MARGIN,
 ): Area | undefined {
-  if (boxes.length === 0) return undefined;
-  const left = Math.max(drawing.x, Math.min(...boxes.map((box) => box.x)) - margin);
-  const top = Math.max(drawing.y, Math.min(...boxes.map((box) => box.y)) - margin);
-  const right = Math.min(
-    drawing.x + drawing.width,
-    Math.max(...boxes.map((box) => box.x + box.width)) + margin,
-  );
-  const bottom = Math.min(
-    drawing.y + drawing.height,
-    Math.max(...boxes.map((box) => box.y + box.height)) + margin,
-  );
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const box of boxes) {
+    left = Math.min(left, box.x);
+    top = Math.min(top, box.y);
+    right = Math.max(right, box.x + box.width);
+    bottom = Math.max(bottom, box.y + box.height);
+  }
+  left = Math.max(drawing.x, left - margin);
+  top = Math.max(drawing.y, top - margin);
+  right = Math.min(drawing.x + drawing.width, right + margin);
+  bottom = Math.min(drawing.y + drawing.height, bottom + margin);
   return right > left && bottom > top
     ? { x: left, y: top, width: right - left, height: bottom - top }
     : undefined;

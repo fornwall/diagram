@@ -519,6 +519,7 @@
           "properties": {
             "topic": {
               "type": "string",
+              "maxLength": 1000,
               "description": "\"workflow\" for choosing and combining tools; a Mermaid type such as \"flowchart\", \"sequence\", \"architecture\" or \"gantt\"; or an ECharts topic such as \"echarts\", \"echarts-bar\" or \"echarts-time\". Omit for the index."
             }
           },

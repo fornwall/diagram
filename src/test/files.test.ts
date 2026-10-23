@@ -58,6 +58,22 @@ suite("files", () => {
     assert.ok(!inside("/owner/oneself"));
   });
 
+  test("normalizes absolute paths before choosing a virtual workspace filesystem", () => {
+    const roots = folders(vscode.Uri.parse("vscode-vfs://github/owner/repo"));
+    for (const file of [
+      "/owner/repo/./src/a.ts",
+      "/owner/repo/docs/../src/a.ts",
+      "/owner/repo//src/a.ts",
+    ]) {
+      assert.strictEqual(
+        absoluteFile(file, roots).toString(),
+        "vscode-vfs://github/owner/repo/src/a.ts",
+        file,
+      );
+    }
+    assert.strictEqual(absoluteFile("/owner/repo/../other/a.ts", roots).scheme, "file");
+  });
+
   test("resolves a path in the home folder, also by Windows' backslash", () => {
     const home = os.homedir();
     assert.strictEqual(resolveFile("~").fsPath, home);
