@@ -535,6 +535,15 @@ export class ChartFocus {
     if (node) this.focused = { key, id: node.id };
   }
 
+  /**
+   * Forgets the focused item, as for another chart, in which the focus starts at the first item
+   * rather than at whatever item is at the place of the one focused in the chart before. A focus
+   * shown stays shown, and goes to that first item once the chart is drawn.
+   */
+  forget(): void {
+    this.focused = undefined;
+  }
+
   /** Shows the focus again in a new layout of the chart, or a new chart. */
   chartChanged(): void {
     this.stale = this.shown;

@@ -124,6 +124,11 @@ export class EChartsRenderer implements Renderer {
   private hasHighlights = false;
   /** What ECharts shows as selected, as last reported by its selectchanged event. */
   private shownSelected: ECharts.SelectChangedEvent["selected"] = [];
+  /**
+   * Whether ECharts finished drawing while an option was being applied: it draws an option with
+   * nothing to animate as it is set, before the focus is told that the chart changed.
+   */
+  private drawnWhileApplying = false;
   /** The height of a drawing taller than the container, which scrolls it. */
   private scrolledHeight: number | undefined;
   /** Whether the next chart is another, to show from its top. */
@@ -218,9 +223,13 @@ export class EChartsRenderer implements Renderer {
     return seriesTypes(option);
   }
 
-  /** Shows another chart from its top, where a revision keeps the scroll of a tall chart. */
+  /**
+   * Shows another chart from its top, and its keyboard focus from its first item, where a revision
+   * keeps the scroll of a tall chart and the focused item.
+   */
   fitToPanel(): void {
     this.scrollToStart = true;
+    this.focus.forget();
   }
 
   hide(): void {
@@ -483,7 +492,10 @@ export class EChartsRenderer implements Renderer {
       }
     });
     // After animations and redraws, such as for roaming, the focused item may be elsewhere.
-    chart.on("finished", () => this.focus.chartDrawn());
+    chart.on("finished", () => {
+      this.drawnWhileApplying = true;
+      this.focus.chartDrawn();
+    });
     chart.on("selectchanged", (event) => {
       this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
     });
@@ -597,6 +609,7 @@ export class EChartsRenderer implements Renderer {
       this.chart.dispatchAction({ type: "downplay", seriesIndex: [] }, { silent: true });
     }
     this.chart ??= this.createChart(echarts, this.theme.echarts, width, height);
+    this.drawnWhileApplying = false;
     if (restoreState) {
       // The state goes to the model of the option before it is laid out, and resize draws it.
       this.chart.setOption(option, { notMerge: true, lazyUpdate: true });
@@ -616,6 +629,8 @@ export class EChartsRenderer implements Renderer {
     this.syncSelection();
     this.highlightMarks();
     this.focus.chartChanged();
+    // Drawn already, with nothing to animate: no later drawing shows the focus again.
+    if (this.drawnWhileApplying) this.focus.chartDrawn();
   }
 
   /** Whether the chart fades what is not marked, which needs something to be marked at all. */

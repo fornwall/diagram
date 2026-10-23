@@ -1777,6 +1777,36 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("starts the focus at the first item of another chart, not where it was in the last", async () => {
+    await renderChart(SALES);
+    assert.strictEqual(
+      await evaluate(`(() => {
+        ${PRESS}
+        chart.focus();
+        press("Home");
+        press("ArrowRight");
+        return press("ArrowDown");
+      })()`),
+      "Tue: 3, series B, 2 of 3",
+    );
+    // Another title makes another diagram, which keeps the focus and starts it over once drawn.
+    await draw({
+      language: "echarts",
+      source: JSON.stringify({ animation: false, ...SALES }),
+      title: "Another",
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${PRESS}
+        ${UNTIL}
+        const status = () => document.getElementById("chart-status").textContent;
+        await until(() => status() === "Mon: 1, series A, 1 of 3", "the focus at the first item");
+        return {focused: document.activeElement === chart, ring: Boolean(ring()), next: press("ArrowRight")};
+      })()`),
+      { focused: true, ring: true, next: "Tue: 2, series A, 2 of 3" },
+    );
+  });
+
   test("cuts the words of a pie's labels short as wide as their font draws them, bold too", async () => {
     const data = [
       { name: "Authentication", value: 182 },
