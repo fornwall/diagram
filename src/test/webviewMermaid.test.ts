@@ -1088,6 +1088,21 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("a click on a Mermaid node's label focuses the node, as one on its shape does", async () => {
+    await draw({ source: "flowchart LR\n  A -->|to| B" });
+    assert.deepStrictEqual(
+      await evaluate(`(() => {
+        const click = (selector) => {
+          document.querySelector(selector).dispatchEvent(new MouseEvent("click", {bubbles: true}));
+          return document.activeElement.getAttribute("data-diagram-id");
+        };
+        return [click("#diagram .edgeLabel .diagram-node"), click('#diagram [data-diagram-id="B"] .nodeLabel')];
+      })()`),
+      ["edge:L_A_B_0", "B"],
+    );
+    await evaluate('document.getElementById("clear-selection").click()');
+  });
+
   test("keeps keyboard focus on a Mermaid node when a new version of the diagram arrives", async () => {
     await draw({ source: "flowchart LR\n  A --> B" });
     await evaluate(`document.querySelector('#diagram [data-diagram-id="B"][tabindex]').focus()`);

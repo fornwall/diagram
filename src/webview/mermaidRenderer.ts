@@ -548,6 +548,9 @@ export class MermaidRenderer implements Renderer {
         itemClicked(undefined, withModifier(event));
         return;
       }
+      // A click on a label, or beside a line, lands the focus on the canvas, as those parts are
+      // not focusable: keep the keyboard on the node, as a click on its shape does.
+      if (event instanceof MouseEvent) this.tabStopOf(node.id)?.focus({ preventScroll: true });
       // A link in a label or a shown actor menu leads where it says; anywhere else, and for a key,
       // the node's links do.
       const href = target?.closest("a[data-href]")?.getAttribute("data-href");
@@ -563,9 +566,12 @@ export class MermaidRenderer implements Renderer {
     // pointerdown stops that, and keeps the focus where it was: move it as a click would.
     diagram.addEventListener("pointerdown", (event) => {
       if (!event.shiftKey || event.button !== 0) return;
+      const element =
+        event.target instanceof Element ? event.target.closest(".diagram-node") : null;
+      const stop = element && this.tabStopOf(this.drawn.byElement.get(element)?.id ?? "");
+      if (!stop) return;
       event.preventDefault();
-      const stop = event.target instanceof Element ? event.target.closest("[tabindex]") : null;
-      if (stop instanceof HTMLElement || stop instanceof SVGElement) stop.focus();
+      stop.focus({ preventScroll: true });
     });
     // Nodes are buttons for the keyboard, with one tab stop for the drawing: arrow keys move
     // between them, Home and End to the first and the last.
@@ -1169,11 +1175,13 @@ export class MermaidRenderer implements Renderer {
   private endNode(key: "Home" | "End"): SVGElement | null {
     const nodes = this.drawn.nodes.filter((node) => !node.relationship);
     const node = key === "Home" ? nodes[0] : nodes.at(-1);
-    return (
-      this.drawn.elements
-        .get(node?.id ?? "")
-        ?.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null
-    );
+    return node ? this.tabStopOf(node.id) : null;
+  }
+
+  /** The element of the node with the id that takes the keyboard focus, if it is drawn. */
+  private tabStopOf(id: string): SVGElement | null {
+    const elements = this.drawn.elements.get(id) ?? [];
+    return elements.find((element): element is SVGElement => element.matches("[tabindex]")) ?? null;
   }
 
   /**
