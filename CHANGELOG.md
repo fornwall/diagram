@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
 
 - Agents can query graph relationships, edit simple flowcharts by item id, and inspect rows contributing to chart selections.
 - Callouts and walkthroughs explain diagrams with optional viewport focus.
