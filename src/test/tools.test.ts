@@ -32,6 +32,29 @@ suite("tools", () => {
   });
   teardown(() => panel.dispose());
 
+  test("stale annotation and crop requests do not act on replacement items", async () => {
+    const own = await newFakePanel();
+    await own.panel.render(
+      { language: "mermaid", title: "Flow", source: "flowchart LR\n A --> B" },
+      "tool",
+    );
+    const revision = own.panel.revision;
+    await own.panel.render(
+      { language: "mermaid", title: "Replacement", source: "flowchart LR\n A --> C" },
+      "tool",
+    );
+    const sent = own.webview.sent.length;
+    assert.match(
+      await invokeTool(new AnnotateDiagramTool(own.panel), { marks: [{ id: "A" }], revision }),
+      /changed since revision/,
+    );
+    assert.match(
+      await invokeTool(new GetDiagramImageTool(own.panel), { ids: ["A"], revision }),
+      /changed since revision/,
+    );
+    assert.strictEqual(own.webview.sent.length, sent);
+  });
+
   test("diagram_getState leaves out a source that does not fit, instead of having it cut", async () => {
     const source = `flowchart TD\n${"  A --> B\n".repeat(4_000)}`;
     values.set("diagram.state", { ...flowchart, source });
@@ -940,7 +963,7 @@ suite("tools", () => {
       'There is no image to view: no item of the diagram has these ids: "A --> C" (nothing goes from "A" to "C"), "Q -> A" ("Q" is not a node id), "B → A" (nothing goes from "B" to "A", only from "A" to "B"). ' +
         `Its items are ${items}. Use diagram_getState with detail:"items" and query to find exact ids.`,
       'There is no image to view: "ids" must be an array of item ids, such as ["A", "A --> B"].',
-      'There is no image to view: Unknown property "id"; the properties are "ids".',
+      'There is no image to view: Unknown property "id"; the properties are "ids", "revision".',
     ]);
     assert.deepStrictEqual(
       webview.sent.filter((message) => message.type === "export"),

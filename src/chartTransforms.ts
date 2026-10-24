@@ -10,6 +10,7 @@ import {
 import { interpolate, roundStep, stepsOf } from "./chartNumbers";
 import type { ChartFilter, ChartSpec } from "./chartSpec";
 import type { Chart } from "./charts";
+import type { ChartTrace } from "./chartTrace";
 import { columnMultiple } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
 import { scale } from "./dataNumber";
@@ -32,7 +33,11 @@ function matches(cell: Cell | undefined, { op, value }: ChartFilter): boolean {
 }
 
 /** AND predicates on parsed cells, before grouping, binning, sorting or limiting. */
-export function filterTable(table: DataTable, filters: ChartFilter[] | undefined): DataTable {
+export function filterTable(
+  table: DataTable,
+  filters: ChartFilter[] | undefined,
+  allowEmpty = false,
+): DataTable {
   if (filters === undefined || filters.length === 0) return table;
   const predicates = filters.map((filter) => ({
     filter,
@@ -41,7 +46,7 @@ export function filterTable(table: DataTable, filters: ChartFilter[] | undefined
   const rows = table.rows.filter((row) =>
     predicates.every(({ filter, index }) => matches(row[index], filter)),
   );
-  if (rows.length === 0) {
+  if (rows.length === 0 && !allowEmpty) {
     throw new Error(
       `No rows match the chart filters: ${emptyingFilter(table, predicates)}. Change or remove ` +
         "the filters to include data.",
@@ -231,8 +236,10 @@ export function buildHistogram(
   table: DataTable,
   { column, name, size, note, edges, names }: HistogramPlan,
   faceted = false,
+  trace?: ChartTrace,
 ): Chart {
   const counts = Array<number>(names.length).fill(0);
+  const sources = trace ? names.map(() => [] as number[]) : undefined;
   let count = 0;
   for (const row of table.rows) {
     const cell = row[column];
@@ -248,8 +255,10 @@ export function buildHistogram(
     }
     const index = Math.max(0, Math.min(counts.length - 1, low - 1));
     counts[index] = (counts[index] ?? 0) + 1;
+    if (trace) for (const number of trace.row(row)) sources?.[index]?.push(number);
     count++;
   }
+  if (trace && sources) trace.record(counts, sources);
   const skipped = table.rows.length - count;
   const observations = plural(count, "observation");
   const left = skipped > 0 ? `; skipped ${plural(skipped, "row")} without a number` : "";

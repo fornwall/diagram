@@ -35,6 +35,8 @@ You can also attach files with `#file` or images, or chart a command's output:
 
 Ask to change the current diagram, start a new one, or explain it. **Diagram: Show Panel** reopens the panel. Tools report render errors and layout warnings for the agent to repair.
 
+Try follow-ups such as “Show everything downstream of this service”, “Insert a cache on this connection”, “Explain the rows behind this bar”, or “Walk me through the failure path”. Agents can add callouts and walkthrough steps, save named alternatives, compare changed labels, preview source edits or chart settings, and attach source evidence and assumptions. Structural batches add and remove flowchart items atomically. Inspected datasets can be reused for paging and charting without rerunning their source; chart selections trace contributing rows, including hierarchy items and Sankey flows.
+
 ## The panel
 
 - **Select** nodes, edges, sequence messages or chart items by clicking; Ctrl/Cmd+click or Shift+click adds to the selection. For keyboard selection, Tab to the drawing, move with the arrow keys and press Enter or Space.

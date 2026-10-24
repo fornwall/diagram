@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { mapAnnotationMarks } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import {
@@ -18,6 +19,7 @@ import { chartTitle } from "./chartTools";
 import { type DataTable, parseTable } from "./data";
 import { loadTable, readAsks } from "./dataSource";
 import { type Detail, describeDiagram, nodeList } from "./describe";
+import { DiagramHistory, type DiagramSnapshot } from "./diagramHistory";
 import {
   confirmWrite,
   type DocumentBinding,
@@ -25,6 +27,7 @@ import {
   reportWriteFailure,
   writeFence,
 } from "./documentDiagram";
+import { type DiagramEvidence, reconcileEvidence } from "./evidence";
 import { exportDrawing, pngBytes } from "./export";
 import { fileName, resolveFile } from "./files";
 import { ItemNames, type Resolved } from "./itemNames";
@@ -64,6 +67,7 @@ export type Drawn = RenderOutcome & { revision: number };
 
 type PickOutcome = { picked: true; nodes: DiagramNode[] } | { picked: false; reason: string };
 type ItemsResult = Extract<FromWebview, { type: "items" | "itemsError" }>;
+type DraftResult = Extract<FromWebview, { type: "draftResult" }>;
 
 type AnnotateOutcome =
   | {
@@ -98,6 +102,7 @@ export interface Diagram {
   clickPrompt?: string | undefined;
   /** Mermaid node locations. Links take precedence over clickPrompt on a plain click. */
   links?: NodeLinks | undefined;
+  evidence?: DiagramEvidence | undefined;
   /** The original data request, retained for generated chart controls and refresh. */
   chart?: ChartSpec;
   /** Generated baseline and manual styling overrides, without a copy of the data. */
@@ -135,10 +140,13 @@ const UNFINISHED =
 /** The panel shared by document previews and language model tools. */
 export class DiagramPanel implements vscode.Disposable {
   private readonly store: StateStore;
+  readonly history: DiagramHistory;
   private state: DiagramState | undefined;
   private selection: DiagramNode[] = [];
   /** Transient marks: cleared on replacement, never persisted. */
   private annotation: Annotation | undefined;
+  private annotationGeneration = 0;
+  private checkpointWriting: Promise<void> = Promise.resolve();
 
   private readonly webview: WebviewChannel;
   private nextRequestId = 1;
@@ -153,6 +161,7 @@ export class DiagramPanel implements vscode.Disposable {
   private pendingPick: Pending<"startPick", PickOutcome> | undefined;
   private readonly pendingExports = new Map<number, (result: ExportResult) => void>();
   private readonly pendingItems = new Map<number, (result: ItemsResult) => void>();
+  private readonly pendingDrafts = new Map<number, Pending<"validateDraft", DraftResult>>();
   /** Ends the pending render if the page does not answer it in time; see {@link renderTimedOut}. */
   private renderTimer: ReturnType<typeof setTimeout> | undefined;
   /** The page draws this request, then lastSent, skipping any requests between them. */
@@ -200,6 +209,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
+    this.history = new DiagramHistory(context.workspaceState.get("diagram.checkpoints"));
     this.webview = new WebviewChannel(
       context.extensionUri,
       (message) => this.onMessage(message),
@@ -208,6 +218,7 @@ export class DiagramPanel implements vscode.Disposable {
     const restored = this.store.load();
     this.state = restored?.state;
     this.shownRevision = restored?.revision ?? 0;
+    this.recordRevision();
     this.updateContext();
   }
 
@@ -219,6 +230,91 @@ export class DiagramPanel implements vscode.Disposable {
   /** Optimistic concurrency token, exposed to tools along with the current source. */
   get revision(): number {
     return this.shownRevision;
+  }
+
+  get selectedItems(): readonly DiagramNode[] {
+    return this.selection;
+  }
+
+  snapshot(): DiagramSnapshot {
+    if (!this.state) throw new Error("No diagram is shown.");
+    return {
+      revision: this.revision,
+      state: this.state,
+      ...(this.drawn?.nodeIds && {
+        labelsKnown: this.drawn.nodes !== undefined,
+        items: [
+          ...(this.drawn.nodes ?? this.drawn.nodeIds.map((id) => ({ id, label: id }))),
+          ...(this.drawn.relationships ?? []),
+        ],
+      }),
+    };
+  }
+
+  private recordRevision(): void {
+    if (this.state) this.history.record(this.snapshot());
+  }
+
+  async saveCheckpoint(name: string): Promise<{ id: string; name: string; revision: number }> {
+    if (this.rendering) throw new Error("Wait for the diagram to finish drawing before saving it.");
+    const snapshot = this.snapshot();
+    const table = this.loadedChartData;
+    return this.changeCheckpoint(async () => {
+      const checkpoint = this.history.save(snapshot, name, table);
+      try {
+        await this.context.workspaceState.update("diagram.checkpoints", this.history.saved());
+      } catch (error) {
+        this.history.delete(checkpoint.id);
+        throw error;
+      }
+      return { id: checkpoint.id, name: checkpoint.name, revision: checkpoint.revision };
+    });
+  }
+
+  async deleteCheckpoint(id: string): Promise<void> {
+    return this.changeCheckpoint(async () => {
+      this.history.get(id);
+      const remaining = this.history.saved().filter((entry) => entry.id !== id);
+      await this.context.workspaceState.update("diagram.checkpoints", remaining);
+      this.history.delete(id);
+    });
+  }
+
+  private changeCheckpoint<T>(change: () => Promise<T>): Promise<T> {
+    const writing = this.checkpointWriting.then(change);
+    this.checkpointWriting = writing.then(
+      () => {},
+      () => {},
+    );
+    return writing;
+  }
+
+  async restoreCheckpoint(id: string, revision: number): Promise<Drawn> {
+    if (revision !== this.revision)
+      throw new Error("The diagram changed. Read its state and retry.");
+    if (this.rendering) throw new Error("Wait for the diagram to finish drawing before restoring.");
+    const { state, table } = this.history.get(id);
+    if (state.source === undefined) throw new Error("The checkpoint has no source to restore.");
+    return this.render({ ...state, source: state.source, document: undefined }, "tool", table, {
+      newDiagram: true,
+    });
+  }
+
+  async setEvidence(evidence: DiagramEvidence | undefined, revision: number): Promise<number> {
+    if (!this.state || revision !== this.revision)
+      throw new Error("The diagram changed. Read its state and retry.");
+    if (this.rendering)
+      throw new Error("Wait for the diagram to finish drawing before attaching evidence.");
+    this.state = { ...this.state, evidence };
+    this.shownRevision++;
+    this.cancelDrafts(
+      "The diagram metadata changed during draft validation. Read its state and retry.",
+    );
+    this.recordRevision();
+    this.sendChartOptions();
+    const appliedRevision = this.revision;
+    await this.store.save(this.state, appliedRevision);
+    return appliedRevision;
   }
 
   /** Tools capture this counter to avoid overwriting later user or document changes. */
@@ -350,6 +446,7 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Closing invalidates the drawing; later image or item requests must reopen and redraw. */
   private closed(): void {
+    this.cancelDrafts("The diagram panel closed during draft validation.");
     this.pageRanCode = false;
     this.pageRefused = false;
     this.reloading?.cancel();
@@ -365,6 +462,8 @@ export class DiagramPanel implements vscode.Disposable {
 
   /** Sends a message to the webview, ending the request it makes if it does not arrive. */
   private post(message: ToWebview): void {
+    if (message.type === "annotate" && message.steps)
+      message = { ...message, annotationId: this.annotationGeneration };
     if (message.type === "render") {
       // An untrusted workspace's page cannot evaluate code, and trust is not revoked while it runs.
       // A render that waits when trust is granted is sent again, to a page that can. A page that
@@ -388,6 +487,8 @@ export class DiagramPanel implements vscode.Disposable {
         this.finishExport({ type: "exportError", requestId: message.requestId, message: error });
       } else if (message.type === "getItems") {
         this.finishItems({ type: "itemsError", requestId: message.requestId, message: error });
+      } else if (message.type === "validateDraft") {
+        this.finishDraft({ type: "draftResult", requestId: message.requestId, error });
       } else if (message.type === "startPick") {
         this.finishPick(message.pickId, { picked: false, reason: error });
       }
@@ -403,6 +504,9 @@ export class DiagramPanel implements vscode.Disposable {
     const ofShown = requestId === this.sourceRequestId;
     const ofDrawn = requestId === this.drawn?.requestId;
     switch (message.type) {
+      case "draftResult":
+        this.finishDraft(message);
+        return;
       case "items":
       case "itemsError":
         this.finishItems(message);
@@ -426,6 +530,15 @@ export class DiagramPanel implements vscode.Disposable {
         return;
       case "selectionChanged":
         if (ofShown) this.selection = message.nodes;
+        return;
+      case "annotationStep":
+        if (
+          ofShown &&
+          message.annotationId === this.annotationGeneration &&
+          this.annotation?.steps?.[message.step]
+        ) {
+          this.annotation = { ...this.annotation, step: message.step };
+        }
         return;
       case "sourceEdited":
         return ofShown
@@ -489,6 +602,7 @@ export class DiagramPanel implements vscode.Disposable {
       void this.renderCurrent({ redraw: true, newPage: true });
     }
     if (this.pendingPick) this.post(this.pendingPick.message);
+    for (const pending of this.pendingDrafts.values()) this.post(pending.message);
   }
 
   /** Keeps item identities only for the current render. */
@@ -504,6 +618,15 @@ export class DiagramPanel implements vscode.Disposable {
     if (this.isCurrentRender(message.requestId)) {
       const relationships = message.relationships?.filter((node) => node.relationship);
       this.drawn = { ...message, relationships };
+      const evidence = reconcileEvidence(
+        this.state?.evidence,
+        message.nodes && [...message.nodes, ...(relationships ?? [])],
+        this.state?.language === "echarts" ? this.state.source : undefined,
+      );
+      if (this.state && evidence !== this.state.evidence) {
+        this.state = { ...this.state, evidence };
+        void this.store.save(this.state, this.revision);
+      }
     }
     this.finishRender(message.requestId, {
       ok: true,
@@ -541,6 +664,7 @@ export class DiagramPanel implements vscode.Disposable {
     const tab = this.webview.tab;
     if (!redraw) {
       this.shownRevision++;
+      this.cancelDrafts("The diagram changed during draft validation. Read its state and retry.");
       // A refresh's data would no longer be drawn: stop its command and its progress.
       this.reloading?.cancel();
     }
@@ -554,6 +678,7 @@ export class DiagramPanel implements vscode.Disposable {
     this.cancelItems();
     this.drawn = undefined;
     this.sourceRequestId = undefined;
+    this.recordRevision();
     const version = ++this.renderVersion;
     const revision = this.shownRevision;
     this.sendChartOptions();
@@ -601,7 +726,10 @@ export class DiagramPanel implements vscode.Disposable {
     });
 
     // The diagram may have been replaced while rendering.
-    if (version === this.renderVersion) saved = this.keepOutcome(result) ?? saved;
+    if (version === this.renderVersion) {
+      saved = this.keepOutcome(result) ?? saved;
+      this.recordRevision();
+    }
     await saved;
     return { ...(version === this.renderVersion ? result : notShown(replaced)), revision };
   }
@@ -684,6 +812,7 @@ export class DiagramPanel implements vscode.Disposable {
     const source = result.ok && result.repair ? result.repair.source : state.source;
     if (state.error === error && state.source === source) return undefined;
     this.state = { ...state, source, error };
+    this.recordRevision();
     return this.store.save(this.state, this.shownRevision);
   }
 
@@ -764,46 +893,49 @@ export class DiagramPanel implements vscode.Disposable {
     // names can be resolved against the completed drawing.
     const drawn = this.drawn;
     const names = this.itemNames;
-    const claimed = new Set(annotation.marks.map((mark) => mark.id));
-    const marks: Annotation["marks"] = [];
     const unknown: Resolved[] = [];
     const repeated: RepeatedName[] = [];
     const several: Resolved[] = [];
     const given = new Map<string, string>();
-    for (const mark of annotation.marks) {
-      // A name that several items of a series go by does not say which of them to mark.
-      const named = drawn?.repeatedNames?.find(({ name }) => name === mark.id);
-      if (named) {
-        repeated.push(named);
-        continue;
+    this.annotation = mapAnnotationMarks(annotation, (frameMarks) => {
+      const claimed = new Set(frameMarks.map((mark) => mark.id));
+      const marks: Annotation["marks"] = [];
+      for (const mark of frameMarks) {
+        // A name that several items of a series go by does not say which of them to mark.
+        const named = drawn?.repeatedNames?.find(({ name }) => name === mark.id);
+        if (named) {
+          repeated.push(named);
+          continue;
+        }
+        let id = mark.id;
+        // Preserve exact chart names. Only repair padding for a known, unclaimed node.
+        if (names && !names.has(id) && names.has(id.trim()) && !claimed.has(id.trim())) {
+          id = id.trim();
+          claimed.add(id);
+        }
+        if (!names || names.has(id)) {
+          marks.push(id === mark.id ? mark : { ...mark, id });
+          continue;
+        }
+        // An edge or message named by its ends, as one of several there, like a name that several
+        // chart items go by, does not say which of them to mark.
+        const resolved = { name: mark.id, ...names.resolve(mark.id) };
+        const [only, ...others] = resolved.ids;
+        if (only === undefined) {
+          unknown.push(resolved);
+        } else if (others.length > 0) {
+          several.push(resolved);
+        } else if (claimed.has(only)) {
+          unknown.push({ ...resolved, why: `it is ${JSON.stringify(only)}, marked already` });
+        } else {
+          claimed.add(only);
+          given.set(only, mark.id);
+          marks.push({ ...mark, id: only });
+        }
       }
-      let id = mark.id;
-      // Preserve exact chart names. Only repair padding for a known, unclaimed node.
-      if (names && !names.has(id) && names.has(id.trim()) && !claimed.has(id.trim())) {
-        id = id.trim();
-        claimed.add(id);
-      }
-      if (!names || names.has(id)) {
-        marks.push(id === mark.id ? mark : { ...mark, id });
-        continue;
-      }
-      // An edge or message named by its ends, as one of several there, like a name that several
-      // chart items go by, does not say which of them to mark.
-      const resolved = { name: mark.id, ...names.resolve(mark.id) };
-      const [only, ...others] = resolved.ids;
-      if (only === undefined) {
-        unknown.push(resolved);
-      } else if (others.length > 0) {
-        several.push(resolved);
-      } else if (claimed.has(only)) {
-        unknown.push({ ...resolved, why: `it is ${JSON.stringify(only)}, marked already` });
-      } else {
-        claimed.add(only);
-        given.set(only, mark.id);
-        marks.push({ ...mark, id: only });
-      }
-    }
-    this.annotation = { ...annotation, marks };
+      return marks;
+    });
+    this.annotationGeneration++;
     // Reveal a hidden panel without taking the focus from chat.
     this.show(true);
     this.post({ type: "annotate", ...this.annotation });
@@ -1044,6 +1176,59 @@ export class DiagramPanel implements vscode.Disposable {
     }
   }
 
+  async validateDraft(
+    input: Omit<Extract<ToWebview, { type: "validateDraft" }>, "type" | "requestId">,
+    token: vscode.CancellationToken,
+  ): Promise<DraftResult> {
+    throwIfCancelled(token);
+    if (this.rendering)
+      throw new Error("Wait for the diagram to finish drawing before validating a draft.");
+    if (this.pendingDrafts.size)
+      throw new Error("Another draft is being validated. Await its result first.");
+    this.show(true);
+    const requestId = this.nextRequestId++;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(
+        () =>
+          this.finishDraft({
+            type: "draftResult",
+            requestId,
+            error: "Draft validation timed out after 15 seconds.",
+          }),
+        RENDER_TIMEOUT_MS,
+      );
+      const cancel = token.onCancellationRequested(() =>
+        this.finishDraft({
+          type: "draftResult",
+          requestId,
+          error: "Draft validation was cancelled.",
+        }),
+      );
+      const message = { type: "validateDraft", requestId, ...input } as const;
+      this.pendingDrafts.set(requestId, {
+        message,
+        resolve: (result) => {
+          clearTimeout(timeout);
+          cancel.dispose();
+          resolve(result);
+        },
+      });
+      this.post(message);
+    });
+  }
+
+  private finishDraft(result: DraftResult): void {
+    const pending = this.pendingDrafts.get(result.requestId);
+    this.pendingDrafts.delete(result.requestId);
+    pending?.resolve(result);
+  }
+
+  private cancelDrafts(error: string): void {
+    for (const requestId of this.pendingDrafts.keys()) {
+      this.finishDraft({ type: "draftResult", requestId, error });
+    }
+  }
+
   /**
    * Applies an agent edit, retaining invalid source so the agent can repair it. Surviving items
    * keep their selection and marks. Writing an agent edit back to a document needs confirmation.
@@ -1078,9 +1263,10 @@ export class DiagramPanel implements vscode.Disposable {
     const { annotation, itemNames: known } = this;
     if (outcome.ok && known) {
       this.selection = this.selection.filter(({ id }) => known.has(id));
-      const marks = annotation?.marks.filter(({ id }) => known.has(id));
-      if (annotation && marks && marks.length < annotation.marks.length) {
-        this.annotation = { ...annotation, marks };
+      if (annotation) {
+        this.annotation = mapAnnotationMarks(annotation, (marks) =>
+          marks.filter(({ id }) => known.has(id)),
+        );
         this.post({ type: "annotate", ...this.annotation });
       }
     }
@@ -1098,12 +1284,12 @@ export class DiagramPanel implements vscode.Disposable {
     return this.chartTable;
   }
 
-  /** Changes the generated chart's settings, rebuilding it from the kept table and styling. */
-  async updateChart(
-    input: ChartUpdateInput,
-    token: vscode.CancellationToken,
-  ): Promise<Drawn & { summary?: string }> {
-    throwIfCancelled(token);
+  /** Prepare chart updates identically for immediate changes and offscreen drafts. */
+  prepareChartUpdate(input: ChartUpdateInput): {
+    state: DiagramState;
+    table: DataTable;
+    summary: string;
+  } {
     const state = this.state;
     if (!state?.chart) {
       throw new Error(
@@ -1129,13 +1315,22 @@ export class DiagramPanel implements vscode.Disposable {
           "and the new settings, or ask the user to press Refresh in the diagram panel.",
       );
     }
-    const { state: next, summary } = withRebuiltChart(state, chart, table, state.chartPresentation);
+    return { ...withRebuiltChart(state, chart, table, state.chartPresentation), table };
+  }
+
+  /** Changes the generated chart's settings using loaded data and retained styling. */
+  async updateChart(
+    input: ChartUpdateInput,
+    token: vscode.CancellationToken,
+  ): Promise<Drawn & { summary?: string }> {
+    throwIfCancelled(token);
+    const { state: next, table, summary } = this.prepareChartUpdate(input);
     this.webview.reveal(true);
     const outcome = await this.showOrKeep(
       {
         ...next,
         origin: "tool",
-        document: state.document && { ...state.document, replaced: true },
+        document: next.document && { ...next.document, replaced: true },
       },
       { table, pickReason: "The chart changed before the user picked.", token },
     );

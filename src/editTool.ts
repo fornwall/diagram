@@ -9,7 +9,7 @@ import { unlessCancelled } from "./cancellation";
 import { type ChartPresentation, captureChartPresentation } from "./chartPresentation";
 import { documentName } from "./documentDiagram";
 import { type NodeLinks, validateLinks, withoutMissingFiles } from "./links";
-import type { DiagramPanel } from "./panel";
+import type { DiagramPanel, DiagramState } from "./panel";
 import {
   CHART_TOOL,
   diagramNoun,
@@ -41,7 +41,7 @@ import {
 } from "./toolResults";
 
 /** As declared in package.json, but a model may not follow the schema exactly. */
-interface EditInput {
+export interface EditInput {
   edits?: { oldText: string; newText: string; replaceAll?: boolean }[];
   revision?: number;
   title?: string;
@@ -62,7 +62,7 @@ const MAX_EDITS = 50;
 const EXAMPLE = '{"edits": [{"oldText": "A --> B", "newText": "A --> C --> B"}]}';
 
 /** Rejects malformed input with a list of problems. */
-function validateEditInput(value: unknown): EditChange {
+export function validateEditInput(value: unknown): EditChange {
   if (!isPlainObject(value)) {
     throw new Error(`The input must be an object, e.g. ${EXAMPLE}.`);
   }
@@ -206,35 +206,9 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
     if (this.panel.rendering) {
       throw new Error(`The ${noun} is still being drawn. Wait for the current render and retry.`);
     }
-    if (state.chart && change.title !== undefined) {
-      throw new Error(
-        `Change the title of a chart made by ${CHART_TOOL} with ${UPDATE_CHART_TOOL}.`,
-      );
-    }
-
-    const edited = applySourceEdits(source, change.edits);
-    if (!edited.ok) {
-      const failed = edited.problems.length;
-      const total = change.edits.length;
-      return {
-        paragraphs: [
-          total === 1
-            ? "Nothing was changed, as the edit does not apply."
-            : `Nothing was changed, as ${failed} of ${total} edits ${failed === 1 ? "does" : "do"} not apply. Send them all again, with ${failed === 1 ? "it" : "those"} corrected.`,
-          ...edited.problems,
-        ],
-      };
-    }
-
-    let chartPresentation = state.chartPresentation;
-    if (state.chart && edited.source !== source) {
-      const presentation = chartEdit(edited.source, {
-        source,
-        presentation: state.chartPresentation,
-      });
-      if (!("baseline" in presentation)) return presentation;
-      chartPresentation = presentation;
-    }
+    const edited = prepareSourceEdit(state, change);
+    if (!("source" in edited)) return edited;
+    const { chartPresentation, title } = edited;
 
     const problems: string[] = [];
     let links = state.links;
@@ -258,12 +232,6 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
     }
     const leftOut = leftOutLinks(problems, language).trim();
 
-    // A title taken from the source, rather than given, follows it, as when the user edits it.
-    const title =
-      change.title ??
-      (!state.chart && state.title === guessTitle({ language, source })
-        ? guessTitle({ language, source: edited.source })
-        : state.title);
     const linksChanged = !isDeepStrictEqual(links ?? {}, state.links ?? {});
     if (edited.source === source && title === state.title && !linksChanged) {
       return {
@@ -316,6 +284,57 @@ export class EditDiagramTool implements vscode.LanguageModelTool<EditInput> {
       drawn: outcome.revision,
     };
   }
+}
+
+export interface PreparedSourceEdit {
+  source: string;
+  replaced: number[];
+  title: string;
+  chartPresentation: ChartPresentation | undefined;
+}
+
+/** Shared by immediate edits and offscreen drafts before either can change the panel. */
+export function prepareSourceEdit(
+  state: DiagramState,
+  change: EditChange,
+): PreparedSourceEdit | Answer {
+  const source = state.source;
+  if (source === undefined)
+    throw new Error("The current source is unavailable. Refresh the chart first.");
+  if (state.chart && change.title !== undefined) {
+    throw new Error(`Change the title of a chart made by ${CHART_TOOL} with ${UPDATE_CHART_TOOL}.`);
+  }
+
+  const edited = applySourceEdits(source, change.edits);
+  if (!edited.ok) {
+    const failed = edited.problems.length;
+    const total = change.edits.length;
+    return {
+      paragraphs: [
+        total === 1
+          ? "Nothing was changed, as the edit does not apply."
+          : `Nothing was changed, as ${failed} of ${total} edits ${failed === 1 ? "does" : "do"} not apply. Send them all again, with ${failed === 1 ? "it" : "those"} corrected.`,
+        ...edited.problems,
+      ],
+    };
+  }
+
+  let chartPresentation = state.chartPresentation;
+  if (state.chart && edited.source !== source) {
+    const presentation = chartEdit(edited.source, {
+      source,
+      presentation: state.chartPresentation,
+    });
+    if (!("baseline" in presentation)) return presentation;
+    chartPresentation = presentation;
+  }
+
+  const title =
+    change.title ??
+    (!state.chart && state.title === guessTitle({ language: state.language, source })
+      ? guessTitle({ language: state.language, source: edited.source })
+      : state.title);
+  return { source: edited.source, replaced: edited.replaced, title, chartPresentation };
 }
 
 /** E.g. "line 4 of 30" or "lines 4-7 of 30": where the edited source differs. */

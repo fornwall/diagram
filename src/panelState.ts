@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { isChartPresentation } from "./chartPresentation";
 import { type ChartSpec, validateChartSpec } from "./chartSpec";
 import type { DocumentBinding } from "./documentDiagram";
+import { restoredEvidence } from "./evidence";
 import { isDiagramFence } from "./fences";
 import type { NodeLinks } from "./links";
 import type { DiagramState } from "./panel";
@@ -92,7 +93,7 @@ export class StateStore {
  * extension, or damaged, must not break the panel: the parts that do not fit are left out, and a
  * state with nothing left to show is dropped.
  */
-function restoredState(saved: unknown): DiagramState | undefined {
+export function restoredState(saved: unknown): DiagramState | undefined {
   if (!isPlainObject(saved) || typeof saved.title !== "string") return undefined;
   // The first versions drew only Mermaid, and did not save the language.
   const language = saved.language ?? "mermaid";
@@ -115,6 +116,8 @@ function restoredState(saved: unknown): DiagramState | undefined {
     if (to === state.source) state.userEdit = { from, to: state.source };
   }
   if (isNodeLinks(saved.links)) state.links = saved.links;
+  const evidence = restoredEvidence(saved.evidence);
+  if (evidence) state.evidence = evidence;
   const document = documentBinding(saved.document, state.source);
   if (document) state.document = document;
   if (isSavedUri(saved.openedFrom)) state.openedFrom = saved.openedFrom;

@@ -1,7 +1,9 @@
 // What a language model is told about the diagram panel: the current diagram and what the user
 // did with it.
 
+import { annotationFrame } from "./annotations";
 import { codeFence } from "./blocks";
+import { diagramCapabilities } from "./capabilities";
 import { describeUnits } from "./chartColumns";
 import type { ChartPresentation } from "./chartPresentation";
 import type { DataTable } from "./data";
@@ -94,6 +96,8 @@ export function describeDiagram(
     describeSource(state, detail),
     "",
   ];
+  if (detail === "metadata")
+    lines.push(`Capabilities: ${JSON.stringify(diagramCapabilities(state, chartTable))}`, "");
   const refresh = state.chart?.file !== undefined || state.chart?.command !== undefined;
   if (state.chart) {
     lines.push(
@@ -130,6 +134,11 @@ export function describeDiagram(
     );
   }
   const links = Object.entries(state.links ?? {}).map(([id, link]) => `${id} → ${linkText(link)}`);
+  if (state.evidence?.length) {
+    lines.push(
+      `Evidence and assumptions are attached to ${state.evidence.length} items. Read diagram_evidence for source locations and freshness; attachments do not verify the claims.`,
+    );
+  }
   if (links.length > 0) {
     lines.push(
       `Code links: ${links.join(", ")}. ${EDIT_TOOL} keeps them. Pass them to ${RENDER_TOOL} when replacing the diagram.`,
@@ -281,14 +290,22 @@ function describeMarks(
   parts: string,
   name: (id: string) => string,
 ): string | undefined {
-  if (!annotation || annotation.marks.length === 0) {
+  if (!annotation) {
     return undefined;
   }
-  const { marks, dim } = annotation;
-  const listed = marks.map(({ id, kind }) => `${JSON.stringify(name(id))} (${kind})`);
+  const { marks, dim } = annotationFrame(annotation);
+  const step = annotation.steps?.[annotation.step ?? 0];
+  if (marks.length === 0 && !step) return undefined;
+  const listed = marks.map(
+    ({ id, kind, text }) =>
+      `${JSON.stringify(name(id))} (${kind})${text ? `: ${JSON.stringify(text)}` : ""}`,
+  );
   return (
-    `Marked ${parts}: ${listed.join(", ")}.` +
-    (dim ? " Everything else is faded." : "") +
+    (step
+      ? `Walkthrough step ${(annotation.step ?? 0) + 1}/${annotation.steps?.length}: ${JSON.stringify(step.text)}. `
+      : "") +
+    (marks.length ? `Marked ${parts}: ${listed.join(", ")}.` : "No items are marked.") +
+    (dim && marks.length ? " Everything else is faded." : "") +
     ` ${ANNOTATE_TOOL} replaces the marks; call without marks to clear them.`
   );
 }

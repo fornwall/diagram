@@ -2,10 +2,11 @@
 // diagram_pickNodes and diagram_annotate.
 
 import * as vscode from "vscode";
-import { type AnnotateInput, validateAnnotation } from "./annotations";
+import { type AnnotateInput, annotationFrame, validateAnnotation } from "./annotations";
 import { guessTitle } from "./blocks";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { nodeList, repeatedList } from "./describe";
+import { compareSnapshots } from "./diagramHistory";
 import { isClosingFence, openingFence } from "./fences";
 import { type ItemNames, type Resolved, resolvedList, severalList } from "./itemNames";
 import { validateLinks, withoutMissingFiles } from "./links";
@@ -31,6 +32,7 @@ import { itemPageText } from "./stateItems";
 import { searchSource } from "./stateSearch";
 import { parseStateInput, type StateInput, sourcePage } from "./stateSource";
 import { givenProperties, nonBlank, plural, quoteAll, unknownProperties } from "./text";
+import { checkedRevision, fitsToolResult } from "./toolContracts";
 import {
   drawnResult,
   drawnWarnings,
@@ -250,6 +252,19 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     const room = options.tokenizationOptions;
     const fitting = async (text: string) =>
       room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
+    if (input.detail === "changes") {
+      const previous = this.panel.history.at(input.sinceRevision as number);
+      if (!previous)
+        return textResult(
+          `Revision ${input.sinceRevision} is no longer in session history. Current revision: ${revision}. Read the current state instead.`,
+        );
+      const report = JSON.stringify(compareSnapshots(previous, this.panel.snapshot()));
+      return textResult(
+        (await fitting(report))
+          ? report
+          : `Changes from revision ${input.sinceRevision} to ${revision} exceed the result budget. Read the current summary and source ranges instead.`,
+      );
+    }
     if (input.detail === "items") {
       const page = await unlessCancelled(
         () =>
@@ -337,17 +352,18 @@ async function fits(
   // A token takes at least a byte of UTF-8, which takes at most 3 for each UTF-16 code unit.
   if (text.length * 3 <= tokenBudget) return true;
   if (text.length > tokenBudget * MAX_CHARS_PER_TOKEN) return false;
-  return (await unlessCancelled(async () => countTokens(text, token), token)) <= tokenBudget;
+  return fitsToolResult(text, { tokenBudget, countTokens }, token, Infinity);
 }
 
 interface ImageInput {
   ids?: string[];
+  revision?: number;
 }
 
 /** The ids of the items to show the part of the drawing around, or what to fix in the input. */
 function parseImageInput(value: unknown): string[] | string {
   const input = isPlainObject(value) ? givenProperties(value) : {};
-  const unknown = unknownProperties(input, ["ids"]);
+  const unknown = unknownProperties(input, ["ids", "revision"]);
   if (unknown) return unknown;
   // A model may give one id as it is.
   const ids = typeof input.ids === "string" ? [input.ids] : (input.ids ?? []);
@@ -391,6 +407,11 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     if (!current) {
       return textResult(noDiagram("view"));
     }
+    try {
+      checkedRevision(isPlainObject(options.input) ? options.input.revision : undefined, revision);
+    } catch (error) {
+      return textResult(`There is no image to view: ${errorMessage(error)}`);
+    }
     const ids = parseImageInput(options.input);
     if (typeof ids === "string") {
       return textResult(`There is no image to view: ${ids}`);
@@ -420,6 +441,11 @@ export class GetDiagramImageTool implements vscode.LanguageModelTool<ImageInput>
     const image = await unlessCancelled(() => this.panel.captureImage(IMAGE_LIMITS, drawn), token);
     if (typeof image === "string") {
       return textResult(`There is no image to view. ${image}`);
+    }
+    if (this.panel.revision !== revision) {
+      return textResult(
+        "There is no image to view. The diagram changed during capture. Read diagram_getState and retry.",
+      );
     }
     const about = `Revision ${revision} of the ${noun}`;
     return new vscode.LanguageModelToolResult([
@@ -553,6 +579,10 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     throwIfCancelled(token);
     let annotation: Annotation;
     try {
+      checkedRevision(
+        isPlainObject(options.input) ? options.input.revision : undefined,
+        this.panel.revision,
+      );
       annotation = validateAnnotation(options.input);
     } catch (error) {
       return textResult(
@@ -575,9 +605,14 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
     }
     const language = this.panel.current?.language ?? "mermaid";
     const noun = diagramNoun(language);
-    const { marks, dim } = outcome.annotation;
+    const { marks, dim } = annotationFrame(outcome.annotation);
     const { names, given, several } = outcome;
     const sentences: string[] = [];
+    if (outcome.annotation.steps) {
+      sentences.push(
+        `Started a walkthrough with ${outcome.annotation.steps.length} steps. The user can advance with Next and Previous; diagram_getState reports the active step.`,
+      );
+    }
     if (marks.length > 0) {
       const includesRelationships =
         language === "mermaid" &&
@@ -621,8 +656,11 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
 }
 
 /** How marking reads in chat, e.g. `Marking "pay" in the diagram`. */
-function markingMessage({ marks }: Annotation, language: DiagramLanguage): string {
+function markingMessage(annotation: Annotation, language: DiagramLanguage): string {
   const noun = diagramNoun(language);
+  if (annotation.steps)
+    return `Starting a ${annotation.steps.length}-step walkthrough of the ${noun}`;
+  const { marks } = annotation;
   if (marks.length === 0) {
     return `Clearing the marks in the ${noun}`;
   }

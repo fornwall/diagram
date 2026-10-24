@@ -584,7 +584,7 @@ function isFileError(error: unknown, uri: vscode.Uri): boolean {
 /** The text of a file, or why it is not read, with the bytes read to find out. */
 type FileText = { bytes: number; unsaved?: boolean } & ({ text: string } | { error: string });
 
-async function readText(
+export async function readWorkspaceText(
   uri: vscode.Uri,
   check: (uri: vscode.Uri) => Promise<void>,
   token: vscode.CancellationToken,
@@ -825,7 +825,7 @@ export class SearchWorkspaceTextTool extends WorkspaceTool {
     const read = (index: number) => {
       const uri = files[index];
       if (uri && !reads[index]) {
-        reads[index] = readText(uri, check, token, MAX_SEARCHED_BYTES).catch(
+        reads[index] = readWorkspaceText(uri, check, token, MAX_SEARCHED_BYTES).catch(
           (failure: unknown) => ({ failure }),
         );
       }
@@ -956,15 +956,18 @@ export class ReadWorkspaceFileTool extends WorkspaceTool {
     const end = Math.min(requestedEnd, start + MAX_READ_LINES - 1);
     const roots = folders();
     const uri = resolveWorkspaceFile(input.file, roots);
-    const content = await readText(uri, boundary(roots, token), token, MAX_READ_BYTES).catch(
-      (error: unknown) => {
-        // No glob names a folder that no absolute path names, as in some virtual workspaces.
-        const glob = filesGlob(uri, roots);
-        throw fileError(error, uri, {
-          FileIsADirectory: `List its files with ${FIND_FILES_TOOL}${glob === undefined ? "" : ` and the glob "${glob}"`}.`,
-        });
-      },
-    );
+    const content = await readWorkspaceText(
+      uri,
+      boundary(roots, token),
+      token,
+      MAX_READ_BYTES,
+    ).catch((error: unknown) => {
+      // No glob names a folder that no absolute path names, as in some virtual workspaces.
+      const glob = filesGlob(uri, roots);
+      throw fileError(error, uri, {
+        FileIsADirectory: `List its files with ${FIND_FILES_TOOL}${glob === undefined ? "" : ` and the glob "${glob}"`}.`,
+      });
+    });
     if ("error" in content) throw new Error(content.error);
     const { text } = content;
     const lines: string[] = [];

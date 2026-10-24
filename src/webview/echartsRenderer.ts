@@ -254,8 +254,8 @@ export class EChartsRenderer implements Renderer {
     return this.items()?.repeatedNames() ?? [];
   }
 
-  eachItem(visit: (node: DiagramNode) => void): void {
-    this.items()?.each(visit);
+  eachItem(visit: (node: DiagramNode) => void, includeData = false): void {
+    this.items()?.each(visit, includeData);
   }
 
   warnings(): string[] {
@@ -337,6 +337,16 @@ export class EChartsRenderer implements Renderer {
       // would downplay every graphic, which is expensive with large series.
       this.guard(() => this.highlightMarks(previousIds));
     }
+  }
+
+  itemBounds(id: string): DOMRect | undefined {
+    if (!this.chart) return undefined;
+    const navigation = new ChartNavigation(this.chart);
+    const refs = this.find([id]);
+    const box = refs.length === 1 && refs[0] ? navigation.box(refs[0]) : undefined;
+    if (!box) return undefined;
+    const origin = this.drawing.getBoundingClientRect();
+    return new DOMRect(origin.left + box.x, origin.top + box.y, box.width, box.height);
   }
 
   async themeChanged(): Promise<void> {

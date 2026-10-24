@@ -3,6 +3,7 @@
 import { chained, columnName } from "./chartColumns";
 import { Sum } from "./chartNumbers";
 import { label, type Reading, type Row } from "./chartRows";
+import type { ChartTrace } from "./chartTrace";
 import { formatCount, plural, quoteAll } from "./text";
 
 /** A node of a hierarchy, before the values of the rows under it are summed up into it. */
@@ -11,6 +12,7 @@ interface Level {
   /** The value of the rows that named it, which a leaf alone has, as parent rows are left out. */
   own: Sum;
   children: Map<string, Level>;
+  sourceRows?: Set<number>;
 }
 
 /** A node of a hierarchy as ECharts takes it. */
@@ -21,9 +23,15 @@ interface Node {
 }
 
 /** Sum leaf values into their ancestors. Parent rows have already been removed. */
-function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
+function buildHierarchy(
+  rows: Row[],
+  sources?: (row: Row) => number[],
+): { nodes: Node[]; depth: number; provenance: WeakMap<Node, number[]> | undefined } {
+  const provenance = sources && new WeakMap<Node, number[]>();
   const roots = new Map<string, Level>();
-  for (const { labels, values } of rows) {
+  for (const row of rows) {
+    const { labels, values } = row;
+    const sourceRows = sources?.(row);
     let siblings = roots;
     let node: Level | undefined;
     for (const name of labels) {
@@ -31,6 +39,10 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
       if (level === undefined) {
         level = { name, own: new Sum(), children: new Map() };
         siblings.set(name, level);
+      }
+      if (sourceRows) {
+        level.sourceRows ??= new Set();
+        for (const number of sourceRows) level.sourceRows.add(number);
       }
       node = level;
       siblings = level.children;
@@ -44,22 +56,29 @@ function buildHierarchy(rows: Row[]): { nodes: Node[]; depth: number } {
   const total = (level: Level, deep: number): [Node, Sum] => {
     depth = Math.max(depth, deep);
     if (level.children.size === 0) {
-      return [{ name: level.name, value: level.own.value }, level.own];
+      const node = { name: level.name, value: level.own.value };
+      provenance?.set(node, [...(level.sourceRows ?? [])]);
+      return [node, level.own];
     }
     const children = [...level.children.values()].map((child) => total(child, deep + 1));
     const sum = new Sum();
     for (const [, value] of children) sum.add(value);
-    return [{ name: level.name, value: sum.value, children: children.map(([node]) => node) }, sum];
+    const node = { name: level.name, value: sum.value, children: children.map(([node]) => node) };
+    provenance?.set(node, [...(level.sourceRows ?? [])]);
+    return [node, sum];
   };
-  return { nodes: [...roots.values()].map((root) => total(root, 1)[0]), depth };
+  return { nodes: [...roots.values()].map((root) => total(root, 1)[0]), depth, provenance };
 }
 
 /** Omit shared root levels so children receive distinct colors in a treemap or sunburst. */
 export function hierarchyOption(
   type: "treemap" | "sunburst",
-  { names, rows, notes }: Reading,
+  { names, rows, notes, trace, spec, table, columns }: Reading,
 ): Record<string, unknown> {
-  const { nodes, depth } = buildHierarchy(rows);
+  const valueColumn =
+    spec.aggregate === "count" ? undefined : table.columns[columns.values[0] ?? -1]?.name;
+  const sources = trace && ((row: Row) => trace.sources([row], valueColumn));
+  const { nodes, depth, provenance } = buildHierarchy(rows, sources);
   let data = nodes;
   const dropped: string[] = [];
   while (data.length === 1) {
@@ -76,6 +95,16 @@ export function hierarchyOption(
   }
   if (dropped.length > 0) {
     notes.push(`showed what is inside ${quoteAll(dropped)}, which holds every row`);
+  }
+  if (trace) {
+    // ECharts flattens trees in preorder, with a synthetic root at raw index zero.
+    const flattened: number[][] = [trace.sources(rows, valueColumn)];
+    const visit = (node: Node) => {
+      flattened.push(provenance?.get(node) ?? []);
+      node.children?.forEach(visit);
+    };
+    data.forEach(visit);
+    trace.record(data, flattened);
   }
   return { series: [{ type, name: names[0] ?? "", data }] };
 }
@@ -95,17 +124,38 @@ interface FlowNode {
   depth?: number;
 }
 
+interface Flow {
+  source: string;
+  target: string;
+  sum: Sum;
+  sourceRows?: Set<number>;
+}
+
 /** The nodes, and the flows between them by node key, summed up per pair. */
 interface Graph {
   nodes: Map<string, FlowNode>;
-  flows: Map<string, { source: string; target: string; sum: Sum }>;
+  flows: Map<string, Flow>;
 }
 
-function addFlow({ flows }: Graph, source: string, target: string, value: number | Sum): void {
+function addFlow(
+  { flows }: Graph,
+  source: string,
+  target: string,
+  value: number | Sum,
+  sourceRows?: Iterable<number>,
+): void {
   const key = JSON.stringify([source, target]);
-  const flow = flows.get(key) ?? { source, target, sum: new Sum() };
+  const flow: Flow = flows.get(key) ?? {
+    source,
+    target,
+    sum: new Sum(),
+  };
   flows.set(key, flow);
   flow.sum.add(value);
+  if (sourceRows) {
+    flow.sourceRows ??= new Set();
+    for (const row of sourceRows) flow.sourceRows.add(row);
+  }
 }
 
 /** Join the nodes of the same name, as two columns that list the edges of a graph mean them. */
@@ -117,8 +167,8 @@ function joinByName({ nodes, flows }: Graph): Graph {
     joined.nodes.set(joinedKey, { name, distinct: name });
     return joinedKey;
   };
-  for (const { source, target, sum } of flows.values()) {
-    addFlow(joined, keyOf(source), keyOf(target), sum);
+  for (const { source, target, sum, sourceRows } of flows.values()) {
+    addFlow(joined, keyOf(source), keyOf(target), sum, sourceRows);
   }
   return joined;
 }
@@ -199,8 +249,8 @@ function foldColumns(
     return { graph, folded: 0 };
   }
   const result: Graph = { nodes, flows: new Map() };
-  for (const { source, target, sum } of flows.values()) {
-    addFlow(result, folded.get(source) ?? source, folded.get(target) ?? target, sum);
+  for (const { source, target, sum, sourceRows } of flows.values()) {
+    addFlow(result, folded.get(source) ?? source, folded.get(target) ?? target, sum, sourceRows);
   }
   return { graph: result, folded: folded.size };
 }
@@ -211,7 +261,7 @@ function foldColumns(
  * to two questions is two nodes, which ECharts tells apart by their ids.
  */
 export function sankeyOption(reading: Reading): Record<string, unknown> {
-  const { table, columns, names, rows, notes } = reading;
+  const { table, columns, names, rows, notes, trace, spec } = reading;
   const { separator } = columns;
   let graph: Graph = { nodes: new Map(), flows: new Map() };
   const node = (key: unknown[], name: string, distinct: string, depth: number): string => {
@@ -226,7 +276,12 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
   };
   let empty = 0;
   if (chained(columns)) {
-    for (const { labels, values } of rows) {
+    for (const row of rows) {
+      const { labels, values } = row;
+      const sourceRows = trace?.sources(
+        [row],
+        spec.aggregate === "count" ? undefined : columnName(table, columns.values[0] ?? -1),
+      );
       let source: string | undefined;
       labels.forEach((name, depth) => {
         // An empty label column skips its stage.
@@ -237,7 +292,7 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
           path === undefined
             ? node([depth, name], name, `${name} (${stage(depth)})`, depth)
             : node(path, name, path.join(separator), depth);
-        if (source !== undefined) addFlow(graph, source, target, values[0] ?? 0);
+        if (source !== undefined) addFlow(graph, source, target, values[0] ?? 0, sourceRows);
         source = target;
       });
     }
@@ -251,7 +306,18 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
         }
         const target = names[column] ?? "";
         const source = node([0, name], name, `${name} (${stage(0)})`, 0);
-        addFlow(graph, source, node([1, target], target, target, 1), value);
+        addFlow(
+          graph,
+          source,
+          node([1, target], target, target, 1),
+          value,
+          trace?.sources(
+            [row],
+            spec.aggregate === "count"
+              ? undefined
+              : columnName(table, columns.values[column] ?? -1),
+          ),
+        );
       });
     }
   }
@@ -294,7 +360,7 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
         `${formatCount(folded)} as "Other"`,
     );
   }
-  const { data, links } = nodesAndLinks(drawn);
+  const { data, links } = nodesAndLinks(drawn, trace);
   return {
     series: [
       {
@@ -312,7 +378,10 @@ export function sankeyOption(reading: Reading): Record<string, unknown> {
 }
 
 /** ECharts' nodes, by name unless another node has the same name, and the links between them. */
-function nodesAndLinks({ nodes, flows }: Graph): {
+function nodesAndLinks(
+  { nodes, flows }: Graph,
+  trace?: ChartTrace,
+): {
   data: { id?: string; name: string; depth?: number }[];
   links: { source: string | undefined; target: string | undefined; value: number }[];
 } {
@@ -344,5 +413,23 @@ function nodesAndLinks({ nodes, flows }: Graph): {
     target: ids.get(target),
     value: sum.value,
   }));
+  if (trace) {
+    const sources = new Map<string, Set<number>>();
+    for (const { source, target, sourceRows } of flows.values()) {
+      for (const key of [source, target]) {
+        const rows = sources.get(key) ?? new Set<number>();
+        for (const row of sourceRows ?? []) rows.add(row);
+        sources.set(key, rows);
+      }
+    }
+    trace.record(
+      data,
+      [...keys].map((key) => [...(sources.get(key) ?? [])]),
+    );
+    trace.record(
+      links,
+      [...flows.values()].map((flow) => [...(flow.sourceRows ?? [])]),
+    );
+  }
   return { data, links };
 }

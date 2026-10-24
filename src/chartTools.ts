@@ -3,11 +3,15 @@
 import * as vscode from "vscode";
 import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import { describeTable, LISTED_COLUMNS } from "./chartColumns";
+import { type Contribution, chartContributors } from "./chartInspection";
+import { quantile, Sum, withoutNoise } from "./chartNumbers";
 import { type ChartUpdateInput, UPDATE_KEYS } from "./chartOptions";
 import { rebuildChart } from "./chartPresentation";
-import { type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
+import { type ChartFilter, type ChartSpec, dataOrigin, validateChartSpec } from "./chartSpec";
+import { filterTable } from "./chartTransforms";
 import type { DataTable } from "./data";
 import { loadTable, prepareDataInvocation, toolUnasked } from "./dataSource";
+import { checkDatasetSource, type Dataset, datasets } from "./datasets";
 import type { Diagram, DiagramPanel } from "./panel";
 import {
   CHART_TOOL,
@@ -18,6 +22,7 @@ import {
 } from "./protocol";
 import { renderOptions } from "./renderOptions";
 import { inWords, nonBlank, plural, quote, shorten, toolInput } from "./text";
+import { fitsToolResult } from "./toolContracts";
 import {
   type Answer,
   changeResult,
@@ -28,13 +33,21 @@ import {
 } from "./toolResults";
 import { formatOption } from "./webview/optionSource";
 
-type ChartInput = ChartSpec & { clickPrompt?: string; revision?: number; newDiagram?: boolean };
+type ChartInput = (
+  | ChartSpec
+  | (Omit<ChartSpec, "data" | "file" | "command" | "format"> & { datasetId: string })
+) & { clickPrompt?: string; revision?: number; newDiagram?: boolean };
 
 /** Replacement options belong to this invocation, not the saved chart settings. */
-function replacementSpec(value: unknown): ChartSpec {
-  if (!isPlainObject(value)) return validateChartSpec(value);
-  const { revision: _revision, newDiagram: _newDiagram, ...spec } = value;
-  return validateChartSpec(spec);
+function replacementSpec(value: unknown, owner: object): { spec: ChartSpec; dataset?: Dataset } {
+  if (!isPlainObject(value)) return { spec: validateChartSpec(value) };
+  checkDatasetSource(value);
+  const { revision: _revision, newDiagram: _newDiagram, datasetId, ...spec } = value;
+  const dataset = datasetId === undefined ? undefined : datasets(owner).get(datasetId);
+  return {
+    spec: validateChartSpec({ ...dataset?.source, ...spec }),
+    ...(dataset && { dataset }),
+  };
 }
 
 export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
@@ -44,8 +57,11 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     options: vscode.LanguageModelToolInvocationPrepareOptions<ChartInput>,
   ): vscode.PreparedToolInvocation {
     try {
-      const spec = replacementSpec(options.input);
-      return prepareDataInvocation(spec, `Rendering chart "${chartTitle(spec)}"`);
+      const { spec, dataset } = replacementSpec(options.input, this.panel);
+      return prepareDataInvocation(
+        dataset ? undefined : spec,
+        `Rendering chart "${chartTitle(spec)}"`,
+      );
     } catch {
       // Reported when the tool is invoked.
       return { invocationMessage: "Rendering a chart" };
@@ -63,8 +79,8 @@ export class ChartTool implements vscode.LanguageModelTool<ChartInput> {
     try {
       throwIfCancelled(token);
       replacement = renderOptions(options.input, this.panel.revision);
-      const spec = replacementSpec(options.input);
-      const { table, warning } = await loadTable(spec, token, toolUnasked(spec));
+      const { spec, dataset } = replacementSpec(options.input, this.panel);
+      const { table, warning } = dataset ?? (await loadTable(spec, token, toolUnasked(spec)));
       if (this.panel.userChangeCount !== changes || this.panel.revision !== replacement.revision) {
         return textResult(
           "No chart was rendered because the diagram changed in the panel while the data loaded. Read diagram_getState before making further changes.",
@@ -126,6 +142,7 @@ export function chartTitle({ type, title, file, command }: ChartSpec): string {
 }
 
 interface InspectDataInput {
+  datasetId?: string;
   data?: string;
   file?: string;
   command?: string;
@@ -134,6 +151,11 @@ interface InspectDataInput {
   startRow?: number;
   startColumn?: number;
   maxColumns?: number;
+  ids?: string[];
+  selection?: boolean;
+  filters?: ChartFilter[];
+  summary?: boolean;
+  revision?: number;
 }
 
 interface InspectionPage {
@@ -142,12 +164,22 @@ interface InspectionPage {
   maxColumns?: number;
 }
 
-function inspection(input: unknown): {
+interface InspectionQuery {
+  datasetId?: string | undefined;
+  ids?: string[] | undefined;
+  selection?: boolean | undefined;
+  filters?: ChartFilter[] | undefined;
+  summary?: boolean | undefined;
+  revision?: number | undefined;
+}
+
+function inspection(input: unknown): InspectionQuery & {
   spec?: ChartSpec;
   sampleRows: number;
   page: InspectionPage;
 } {
   const keys = [
+    "datasetId",
     "data",
     "file",
     "command",
@@ -156,14 +188,32 @@ function inspection(input: unknown): {
     "startRow",
     "startColumn",
     "maxColumns",
+    "ids",
+    "selection",
+    "filters",
+    "summary",
+    "revision",
   ];
+  const parsed = toolInput(input, keys);
+  checkDatasetSource(parsed);
   const {
+    datasetId,
     sampleRows = 5,
     startRow = 1,
     startColumn = 1,
     maxColumns = LISTED_COLUMNS,
+    ids,
+    selection,
+    filters,
+    summary,
+    revision,
     ...source
-  } = toolInput(input, keys);
+  } = parsed;
+  if (
+    datasetId !== undefined &&
+    (typeof datasetId !== "string" || !datasetId.trim() || datasetId.length > 200)
+  )
+    throw new Error('"datasetId" must be a nonempty snapshot id from diagram_inspectData.');
   if (!Number.isInteger(sampleRows) || Number(sampleRows) < 0 || Number(sampleRows) > 20) {
     throw new Error('"sampleRows" must be an integer from 0 to 20.');
   }
@@ -184,9 +234,55 @@ function inspection(input: unknown): {
     startColumn: Number(startColumn),
     maxColumns: Number(maxColumns),
   };
+  if (
+    ids !== undefined &&
+    (!Array.isArray(ids) ||
+      ids.length === 0 ||
+      ids.length > 20 ||
+      !ids.every((id) => typeof id === "string" && id.length > 0) ||
+      ids.reduce((sum, id) => sum + String(id).length, 0) > 8_000)
+  ) {
+    throw new Error(
+      '"ids" must contain 1–20 exact chart item ids, at most 8,000 characters in total.',
+    );
+  }
+  for (const [name, value] of Object.entries({ selection, summary })) {
+    if (value !== undefined && typeof value !== "boolean")
+      throw new Error(`"${name}" must be a boolean.`);
+  }
+  if (revision !== undefined && (!Number.isSafeInteger(revision) || Number(revision) < 0))
+    throw new Error('"revision" must be a nonnegative integer.');
+  if (ids !== undefined && selection === true)
+    throw new Error('Give "ids" or "selection", not both.');
   const spec =
     Object.keys(source).length === 0 ? undefined : validateChartSpec({ type: "bar", ...source });
-  return { ...(spec ? { spec } : {}), sampleRows: Number(sampleRows), page };
+  if (
+    (spec || datasetId !== undefined) &&
+    (ids !== undefined || selection === true || revision !== undefined)
+  )
+    throw new Error(
+      "Item ids, selection and revision inspect only the current chart; omit data, file, command and datasetId.",
+    );
+  const predicates =
+    filters === undefined
+      ? undefined
+      : validateChartSpec({ type: "bar", data: "value\n1", filters }).filters;
+  return {
+    ...(spec ? { spec } : {}),
+    datasetId: datasetId as string | undefined,
+    sampleRows: Number(sampleRows),
+    page,
+    ids: ids as string[] | undefined,
+    selection: selection as boolean | undefined,
+    filters: predicates,
+    summary: summary as boolean | undefined,
+    revision: revision as number | undefined,
+  };
+}
+
+interface DatasetReport {
+  datasetId?: string | undefined;
+  datasetNote?: string | undefined;
 }
 
 interface InspectionReport {
@@ -196,11 +292,56 @@ interface InspectionReport {
   render: (rows: number, columns: number) => string;
 }
 
+interface InspectionContext {
+  sourceRowNumbers: number[];
+  inputRowCount: number;
+  items?: Contribution[] | undefined;
+  interpretation?: string | undefined;
+  summary: boolean;
+}
+
+function columnStatistics(table: DataTable, column: number) {
+  const values: number[] = [];
+  for (const row of table.rows) if (typeof row[column] === "number") values.push(row[column]);
+  values.sort((a, b) => a - b);
+  if (values.length === 0) return { count: 0 };
+  let sum: number | null;
+  try {
+    sum = values.reduce((total, value) => total.add(value), new Sum()).value;
+  } catch {
+    // Opposite signs can cancel after an intermediate sum overflows.
+    const total = new Sum();
+    let first = 0;
+    let last = values.length - 1;
+    try {
+      while (first <= last) total.add(values[total.value > 0 ? first++ : last--] ?? 0);
+      sum = total.value;
+    } catch {
+      sum = null;
+    }
+  }
+  const mean =
+    sum === null
+      ? values.reduce((total, value) => total.add(value / values.length), new Sum()).value
+      : sum / values.length;
+  return {
+    count: values.length,
+    min: values[0],
+    max: values.at(-1),
+    sum,
+    mean: withoutNoise(mean),
+    median: quantile(values, 0.5),
+    ...(sum === null ? { sumNote: "The sum exceeds the numeric range." } : {}),
+  };
+}
+
 /** Snapshot the table before token counting can yield to a newer chart or data load. */
 function inspectionReport(
   table: DataTable,
   sampleRows: number,
   page: InspectionPage,
+  context?: InspectionContext,
+  snapshot?: DatasetReport,
 ): InspectionReport {
   const { startRow = 1, startColumn = 1, maxColumns = LISTED_COLUMNS } = page;
   if (startRow > Math.max(1, table.rows.length)) {
@@ -230,6 +371,7 @@ function inspectionReport(
       ...column,
       // Names are identifiers for chart settings: shortening them makes those settings unusable.
       index: startColumn + index,
+      ...(context?.summary ? { statistics: columnStatistics(table, columnOffset + index) } : {}),
       nullCount: table.rows.reduce(
         (count, row) => count + (row[columnOffset + index] === null ? 1 : 0),
         0,
@@ -245,7 +387,18 @@ function inspectionReport(
   const note = table.note === undefined ? undefined : clip(table.note);
   const render = (rows: number, width: number) =>
     JSON.stringify({
+      ...snapshot,
       rowCount,
+      ...(context
+        ? {
+            inputRowCount: context.inputRowCount,
+            selectedItems: context.items,
+            interpretation: context.interpretation,
+            sampleRowNumbers: context.sourceRowNumbers.slice(rowOffset, rowOffset + rows),
+            valuesNote:
+              "Parsed source values before aggregation or chart scaling; sizes are bytes and durations are seconds. Row numbers are 1-based parsed data rows, excluding the header.",
+          }
+        : {}),
       columnCount,
       header,
       note,
@@ -270,8 +423,10 @@ function boundedInspection(
   table: DataTable,
   sampleRows: number,
   page: InspectionPage,
+  context?: InspectionContext,
+  snapshot?: DatasetReport,
 ): InspectionReport {
-  const report = inspectionReport(table, sampleRows, page);
+  const report = inspectionReport(table, sampleRows, page, context, snapshot);
   // Return complete rows and exact column identifiers; continuation indices reflect the items
   // actually returned, including when escaping or long names reduce the requested page size.
   while (report.render(report.rows, report.columns).length > 24_000 && report.rows > 0) {
@@ -298,15 +453,7 @@ async function fitInspection(
 ): Promise<string> {
   const render = (rows: number, columns: number) => before + report.render(rows, columns) + after;
   const complete = render(report.rows, report.columns);
-  if (!options) return complete;
-  const fits = async (text: string) => {
-    throwIfCancelled(token);
-    return (
-      text.length * 3 <= options.tokenBudget ||
-      (await unlessCancelled(async () => options.countTokens(text, token), token)) <=
-        options.tokenBudget
-    );
-  };
+  const fits = (text: string) => fitsToolResult(text, options, token);
   if (await fits(complete)) return complete;
 
   // Keep the schema first, reducing whole rows before columns. Binary search bounds provider
@@ -380,13 +527,39 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
   ): Promise<vscode.LanguageModelToolResult> {
     try {
       throwIfCancelled(token);
-      const { spec, sampleRows, page } = inspection(options.input);
+      const {
+        spec,
+        datasetId,
+        sampleRows,
+        page,
+        ids,
+        selection,
+        filters,
+        summary,
+        revision: expected,
+      } = inspection(options.input);
       // Capture the loaded table and its revision without yielding between them. Explicit sources
       // are independent of the panel and may be read while the diagram changes.
-      const revision = spec ? undefined : this.panel.revision;
-      const { table, warning } = spec
-        ? await loadTable(spec, token, toolUnasked(spec))
-        : { table: this.panel.loadedChartData };
+      const explicit = spec !== undefined || datasetId !== undefined;
+      const revision = explicit ? undefined : this.panel.revision;
+      if (expected !== undefined && expected !== revision)
+        throw new Error(
+          `The chart changed. Read diagram_getState and retry with revision ${revision}.`,
+        );
+      const current = explicit ? undefined : this.panel.current;
+      const wanted = selection ? this.panel.selectedItems.map(({ id }) => id) : ids;
+      if (selection && !wanted?.length)
+        throw new Error(
+          "No chart items are selected. Ask the user to select items, or give exact ids from diagram_getState.",
+        );
+      if (wanted && (wanted.length > 20 || wanted.reduce((sum, id) => sum + id.length, 0) > 8_000))
+        throw new Error("Inspect at most 20 selected items and 8,000 characters of ids at a time.");
+      const cached = datasetId === undefined ? undefined : datasets(this.panel).get(datasetId);
+      const { table, warning } =
+        cached ??
+        (spec
+          ? await loadTable(spec, token, toolUnasked(spec))
+          : { table: this.panel.loadedChartData });
       if (!table) {
         throw new Error(
           'No chart data is loaded. Give "data", "file" or "command", or ask the user to press ' +
@@ -394,7 +567,65 @@ export class InspectDataTool implements vscode.LanguageModelTool<InspectDataInpu
         );
       }
       throwIfCancelled(token);
-      const report = boundedInspection(table, sampleRows, page);
+      const saved = cached ?? (spec ? datasets(this.panel).save(table, spec, warning) : undefined);
+      const snapshot = explicit
+        ? {
+            datasetId: saved?.id,
+            ...(!saved && {
+              datasetNote:
+                "The parsed dataset exceeds the 16 MiB snapshot limit. Narrow the source to obtain a reusable datasetId.",
+            }),
+          }
+        : undefined;
+      let filtered = table;
+      let context: InspectionContext | undefined;
+      if (wanted !== undefined || filters !== undefined || summary === true) {
+        let rows = table.rows.map((_, index) => index + 1);
+        let contributions: ReturnType<typeof chartContributors> | undefined;
+        if (wanted) {
+          if (!current?.chart || current.source === undefined)
+            throw new Error(
+              "Source-row inspection needs a generated chart with its source available.",
+            );
+          const found = await unlessCancelled(
+            () =>
+              this.panel.readItems({
+                itemIds: wanted,
+                includeData: true,
+                startItem: 1,
+                maxItems: 100,
+              }),
+            token,
+          );
+          if (this.panel.revision !== revision)
+            throw new Error(
+              "The chart changed while resolving items. Read diagram_getState and retry.",
+            );
+          if (typeof found === "string") throw new Error(found);
+          const returned = new Set(found.items.map(({ id }) => id));
+          const missing = wanted.filter((id) => !returned.has(id));
+          if (missing.length)
+            throw new Error(
+              `Exact chart items were not found: ${missing.map((id) => JSON.stringify(id)).join(", ")}. Read diagram_getState with detail:"items" for exact ids.`,
+            );
+          contributions = chartContributors(current.chart, table, current.source, found.items);
+          rows = contributions.rows;
+        }
+        const subset = {
+          ...table,
+          rows: rows.map((number) => table.rows[number - 1] as DataTable["rows"][number]),
+        };
+        filtered = filterTable(subset, filters, true);
+        const rowNumbers = new Map(subset.rows.map((row, index) => [row, rows[index] as number]));
+        context = {
+          sourceRowNumbers: filtered.rows.map((row) => rowNumbers.get(row) as number),
+          inputRowCount: table.rows.length,
+          items: contributions?.items,
+          interpretation: contributions?.interpretation,
+          summary: summary === true,
+        };
+      }
+      const report = boundedInspection(filtered, sampleRows, page, context, snapshot);
       return textResult(
         await fitInspection(
           report,

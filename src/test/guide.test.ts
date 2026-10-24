@@ -45,7 +45,8 @@ suite("diagram_guide", () => {
     }
     assert.match(text, /oldText copied exactly from current source/);
     assert.match(text, /revision conflict, reread and adapt; keep the revision guard/);
-    assert.match(text, /inspection and charting execute a command separately/);
+    assert.match(text, /datasetId.*snapshot without I\/O/);
+    assert.match(text, /Explicit sources read anew and commands rerun/);
     assert.match(text, /detail:"items".*exact ids and labels/);
     assert.match(text, /await each result and reuse its revision/);
     assert.match(text, /Images omit selection and marks/);
@@ -58,6 +59,25 @@ suite("diagram_guide", () => {
     for (const type of DIAGRAM_TYPES.filter((type) => type !== "info")) {
       assert.strictEqual(findTopic(type)?.language, "mermaid", type);
     }
+  });
+
+  test("explains agent capabilities without a rendering example", async () => {
+    const text = await invokeTool(new DiagramGuideTool(), { topic: "agent-tools" });
+    assert.ok(text.length <= MAX_TOPIC_LENGTH, `${text.length} characters`);
+    for (const name of [
+      "queryGraph",
+      "editStructure",
+      "checkpoint",
+      "draft",
+      "evidence",
+      "inspectData",
+      "annotate",
+    ]) {
+      assert.ok(text.includes(`diagram_${name}`), name);
+    }
+    assert.match(text, /sinceRevision/);
+    assert.match(text, /not semantic equivalence/);
+    assert.match(guideIndex(), /^- agent-tools: /m);
   });
 
   test("finds topics by the words a model may use", () => {

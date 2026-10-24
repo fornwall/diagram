@@ -9,8 +9,10 @@ import {
   type ToWebview,
 } from "../protocol";
 import { quoteAll } from "../text";
+import { AnnotationView } from "./annotationView";
 import type { ChartOptionsForm } from "./chartOptions";
 import { toCss } from "./colors";
+import { DraftRenderer } from "./draftRenderer";
 import { enableDragOut } from "./dragOut";
 import { loadECharts } from "./echartsLoader";
 import { keepFocusInContent } from "./focus";
@@ -32,6 +34,7 @@ import { enableZoom } from "./zoom";
 declare function acquireVsCodeApi(): StateApi & { postMessage(message: unknown): void };
 
 const vscode = acquireVsCodeApi();
+const drafts = new DraftRenderer(enqueue);
 const post = (message: FromWebview) => vscode.postMessage(message);
 
 function element<T extends HTMLElement>(id: string): T {
@@ -122,6 +125,7 @@ let clickPrompt: string | undefined;
 let links = new Map<string, string>();
 let pick: { id: number; multiple: boolean } | undefined;
 let hasMarks = false;
+let annotationId: number | undefined;
 
 // Rendering.
 
@@ -172,6 +176,24 @@ function loadRenderer(language: DiagramLanguage): Promise<Renderer> {
 }
 /** The renderer that shows the last requested diagram, unless that failed to render. */
 let active: Renderer | undefined;
+const explanations = new AnnotationView(
+  canvas,
+  panes,
+  () => active,
+  (frame) => {
+    active?.showMarks(frame);
+    updateMenuContext();
+    forgetDragImage();
+  },
+  (step) => {
+    if (current && annotationId !== undefined)
+      post({ type: "annotationStep", requestId: current.requestId, annotationId, step });
+  },
+  () => {
+    if (editor.view === "source") editor.setView("split");
+  },
+  focusContent,
+);
 /** The render that the drawing shown answered, and the warnings that the extension has of it. */
 let warned: { requestId: number; warnings: string } | undefined;
 /** How long the warnings of a drawing stay the same before the extension hears of a change. */
@@ -298,6 +320,10 @@ async function render(message: RenderMessage): Promise<void> {
       diagramType,
       repair,
       nodeIds: drawn?.filter((node) => !node.relationship).map((node) => node.id),
+      nodes:
+        drawn && drawn.length <= 10_000 && JSON.stringify(drawn).length <= 1_000_000
+          ? drawn.filter((node) => !node.relationship)
+          : undefined,
       relationships: drawn?.filter((node) => node.relationship),
       repeatedNames: renderer.repeatedNames?.(),
     };
@@ -442,6 +468,26 @@ function enqueue(task: () => void | Promise<void>): void {
 window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
   const message = event.data;
   switch (message.type) {
+    case "validateDraft": {
+      const revision = renderRevision;
+      enqueue(async () => {
+        if (revision !== renderRevision) {
+          post({
+            type: "draftResult",
+            requestId: message.requestId,
+            error: "The diagram changed before validation started.",
+          });
+          return;
+        }
+        post(
+          await drafts.validate(message, {
+            width: canvas.clientWidth,
+            height: canvas.clientHeight,
+          }),
+        );
+      });
+      break;
+    }
     case "getItems":
       enqueue(() => {
         try {
@@ -452,7 +498,7 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
           }
           const renderer = active;
           const page = collectItemPage((visit) => {
-            if (renderer.eachItem) renderer.eachItem(visit);
+            if (renderer.eachItem) renderer.eachItem(visit, message.includeData);
             else renderer.drawnNodes?.().forEach(visit);
           }, message);
           post({ type: "items", requestId: message.requestId, page });
@@ -705,12 +751,10 @@ for (const type of ["click", "auxclick"] as const) {
 
 // Annotations.
 
-function showAnnotation(next: Annotation): void {
-  active?.showMarks(next);
-  hasMarks = next.marks.length > 0 || next.dim;
-  updateMenuContext();
-  // An image prepared for a drag was made without these marks; a chart draws them into its SVG.
-  forgetDragImage();
+function showAnnotation(next: Annotation & { annotationId?: number }): void {
+  annotationId = next.annotationId;
+  hasMarks = next.marks.length > 0 || next.dim || (next.steps?.length ?? 0) > 0;
+  explanations.show(next);
 }
 
 // Picking nodes on request of an agent.

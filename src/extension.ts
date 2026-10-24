@@ -1,7 +1,11 @@
 import * as vscode from "vscode";
 import { ChartTool, InspectDataTool, UpdateChartTool } from "./chartTools";
+import { CheckpointTool } from "./checkpointTool";
+import { DraftTool } from "./draftTool";
 import { EditDiagramTool } from "./editTool";
+import { EvidenceTool } from "./evidenceTool";
 import { ExportDiagramHtmlTool } from "./exportHtmlTool";
+import { GraphDiagramTool, QUERY_GRAPH_TOOL } from "./graphTool";
 import { DiagramGuideTool } from "./guide";
 import { registerMarkdownDiagrams } from "./markdownDiagrams";
 import { DiagramPanel } from "./panel";
@@ -22,6 +26,7 @@ import {
   STYLE_TOOL,
   UPDATE_CHART_TOOL,
 } from "./protocol";
+import { EDIT_STRUCTURE_TOOL, StructureDiagramTool } from "./structureTool";
 import { StyleDiagramTool } from "./styleTool";
 import {
   AnnotateDiagramTool,
@@ -62,6 +67,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.lm.registerTool(UPDATE_CHART_TOOL, new UpdateChartTool(panel)),
     vscode.lm.registerTool(STYLE_TOOL, new StyleDiagramTool(panel)),
     vscode.lm.registerTool(GUIDE_TOOL, new DiagramGuideTool()),
+    vscode.lm.registerTool(QUERY_GRAPH_TOOL, new GraphDiagramTool(panel)),
+    vscode.lm.registerTool(EDIT_STRUCTURE_TOOL, new StructureDiagramTool(panel)),
+    vscode.lm.registerTool("diagram_checkpoint", new CheckpointTool(panel)),
+    vscode.lm.registerTool("diagram_draft", new DraftTool(panel)),
+    vscode.lm.registerTool("diagram_evidence", new EvidenceTool(panel)),
     vscode.commands.registerCommand("diagram.show", () => panel.show()),
     vscode.commands.registerCommand("diagram.export", () => panel.exportDiagram()),
     vscode.commands.registerCommand("diagram.chartOptions", () => panel.toggleChartOptions()),

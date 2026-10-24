@@ -1,8 +1,28 @@
 // Charts without axes that draw each row as an item: pie, doughnut, funnel, radar and gauge.
 
+import { columnName } from "./chartColumns";
 import { Sum } from "./chartNumbers";
 import { label, noteRepeatedLabels, type Reading } from "./chartRows";
 import { formatCount, quoteAll } from "./text";
+
+function traced<T extends unknown[]>(data: T, reading: Reading, rows = reading.rows): T {
+  const { trace, table, columns, spec } = reading;
+  return trace
+    ? trace.record(
+        data,
+        rows.map((row) =>
+          trace.sources(
+            [row],
+            spec.aggregate === "count"
+              ? undefined
+              : spec.type === "radar"
+                ? columns.values.map((column) => columnName(table, column))
+                : columnName(table, columns.values[0]),
+          ),
+        ),
+      )
+    : data;
+}
 
 export function pieOption(doughnut: boolean, reading: Reading): Record<string, unknown> {
   const { names, rows } = reading;
@@ -21,7 +41,10 @@ export function pieOption(doughnut: boolean, reading: Reading): Record<string, u
         label: { formatter: "{b}: {d}%" },
         // Labels of slices under 1% would overlap; the legend and tooltip still name them.
         minShowLabelAngle: 3.6,
-        data: rows.map((row) => ({ name: label(row), value: row.values[0] })),
+        data: traced(
+          rows.map((row) => ({ name: label(row), value: row.values[0] })),
+          reading,
+        ),
       },
     ],
   };
@@ -41,7 +64,10 @@ export function funnelOption(reading: Reading): Record<string, unknown> {
         name: names[0] ?? "",
         sort: spec.sort ?? "descending",
         label: { formatter: "{b}: {c}" },
-        data: rows.map((row) => ({ name: label(row), value: row.values[0] })),
+        data: traced(
+          rows.map((row) => ({ name: label(row), value: row.values[0] })),
+          reading,
+        ),
       },
     ],
   };
@@ -84,7 +110,10 @@ export function radarOption(reading: Reading): Record<string, unknown> {
     series: [
       {
         type: "radar",
-        data: rows.map((row) => ({ name: label(row), value: row.values })),
+        data: traced(
+          rows.map((row) => ({ name: label(row), value: row.values })),
+          reading,
+        ),
       },
     ],
   };
@@ -107,15 +136,8 @@ function niceMax(value: number): number {
  * percentages, to the total of the column when the other rows make up the rest of it, and
  * otherwise rounded up from the value itself.
  */
-export function gaugeOption({
-  spec,
-  table,
-  columns,
-  names,
-  maxima,
-  rows,
-  notes,
-}: Reading): Record<string, unknown> {
+export function gaugeOption(reading: Reading): Record<string, unknown> {
+  const { spec, table, columns, names, maxima, rows, notes } = reading;
   const name = names[0] ?? "";
   const max = maxima[0];
   const valueColumn = columns.values[0];
@@ -166,7 +188,9 @@ export function gaugeOption({
         ...(min < 0 ? { min } : {}),
         max: scale,
         ...(percent ? { detail: { formatter: "{value}%" } } : {}),
-        data: [{ name: columns.labels.length > 0 ? label(shown) : name, value }],
+        data: traced([{ name: columns.labels.length > 0 ? label(shown) : name, value }], reading, [
+          shown,
+        ]),
       },
     ],
   };

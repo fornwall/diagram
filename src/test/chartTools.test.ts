@@ -3,10 +3,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { ChartSpec } from "../chartSpec";
+import { buildChart } from "../charts";
 import { ChartTool, InspectDataTool, UpdateChartTool } from "../chartTools";
 import { type DataTable, parseTable } from "../data";
+import { datasets } from "../datasets";
 import { EditDiagramTool } from "../editTool";
 import type { DiagramPanel, DiagramState, RenderOutcome } from "../panel";
+import type { ItemQuery } from "../protocol";
 import { StyleDiagramTool } from "../styleTool";
 import { RenderDiagramTool } from "../tools";
 import { formatOption } from "../webview/optionSource";
@@ -99,6 +102,147 @@ suite("chartTools", function () {
       4,
     );
     assert.strictEqual(panel.loadedChartData, table);
+  });
+
+  test("inspects contributing selected rows without rereading a command and summarizes raw units", async () => {
+    const table = parseTable("name,latency (ms)\na,100\na,300\nb,500");
+    const chart: ChartSpec = {
+      type: "bar",
+      command: "must-not-run",
+      aggregate: "mean",
+      valueColumns: ["latency (ms)"],
+    };
+    const item = { id: "a", label: "a", chart: { seriesIndex: 0, dataIndex: 0 } };
+    const panel = {
+      revision: 7,
+      loadedChartData: table,
+      selectedItems: [item],
+      current: { chart, source: JSON.stringify(buildChart(chart, table).option) },
+      readItems: async (query: ItemQuery) => {
+        assert.deepStrictEqual(query.itemIds, ["a"]);
+        assert.strictEqual(query.includeData, true);
+        return { items: [item], totalItems: 2, matchedItems: 1, startItem: 1 };
+      },
+    } as unknown as DiagramPanel;
+    const result = await invokeTool(new InspectDataTool(panel), {
+      selection: true,
+      summary: true,
+      revision: 7,
+    });
+    assert.match(result, /Current chart data, revision 7/);
+    const report = JSON.parse(result.slice(result.indexOf("\n{") + 1));
+    assert.deepStrictEqual(report.sample, [
+      ["a", 0.1],
+      ["a", 0.3],
+    ]);
+    assert.deepStrictEqual(report.sampleRowNumbers, [1, 2]);
+    assert.deepStrictEqual(report.selectedItems, [{ id: "a", rowCount: 2 }]);
+    assert.strictEqual(report.columns[1].statistics.mean, 0.2);
+    assert.strictEqual(report.columns[1].statistics.sum, 0.4);
+    assert.strictEqual(report.rowCount, 2);
+    assert.strictEqual(report.inputRowCount, 3);
+    assert.match(report.interpretation, /averaging/);
+    assert.match(report.valuesNote, /before aggregation/);
+  });
+
+  test("inspection filters retain original row numbers and permit an empty result", async () => {
+    const panel = {
+      revision: 3,
+      loadedChartData: parseTable("name,value\na,1\nb,2\nc,3"),
+    } as DiagramPanel;
+    const tool = new InspectDataTool(panel);
+    const result = await invokeTool(tool, {
+      filters: [{ column: "value", op: "gte", value: 2 }],
+      summary: true,
+      sampleRows: 1,
+    });
+    const report = JSON.parse(result.slice(result.indexOf("\n{") + 1));
+    assert.deepStrictEqual(report.sampleRowNumbers, [2]);
+    assert.strictEqual(report.rowCount, 2);
+    assert.strictEqual(report.nextRow, 2);
+    assert.strictEqual(report.columns[1].statistics.median, 2.5);
+    const empty = await invokeTool(tool, {
+      filters: [{ column: "value", op: "gt", value: 99 }],
+      summary: true,
+    });
+    const none = JSON.parse(empty.slice(empty.indexOf("\n{") + 1));
+    assert.strictEqual(none.rowCount, 0);
+    assert.deepStrictEqual(none.sample, []);
+    assert.deepStrictEqual(none.columns[1].statistics, { count: 0 });
+    assert.strictEqual(panel.loadedChartData?.rows.length, 3);
+  });
+
+  test("inspection guards revisions before resolving items and after asynchronous reads", async () => {
+    let revision = 4;
+    let calls = 0;
+    const table = parseTable(data);
+    const chart: ChartSpec = { type: "bar", data };
+    const panel = {
+      get revision() {
+        return revision;
+      },
+      loadedChartData: table,
+      current: { chart, source: JSON.stringify(buildChart(chart, table).option) },
+      readItems: async () => {
+        calls++;
+        revision++;
+        return { items: [] };
+      },
+    } as unknown as DiagramPanel;
+    const tool = new InspectDataTool(panel);
+    assert.match(await invokeTool(tool, { ids: ["a"], revision: 3 }), /retry with revision 4/);
+    assert.strictEqual(calls, 0);
+    assert.match(
+      await invokeTool(tool, { ids: ["a"], revision: 4 }),
+      /changed while resolving items/,
+    );
+    assert.strictEqual(calls, 1);
+  });
+
+  test("inspection requires exact ids and a generated chart", async () => {
+    const table = parseTable(data);
+    const chart: ChartSpec = { type: "bar", data };
+    const panel = {
+      revision: 1,
+      loadedChartData: table,
+      selectedItems: [],
+      current: { chart, source: JSON.stringify(buildChart(chart, table).option) },
+      readItems: async () => ({ items: [] }),
+    } as unknown as DiagramPanel;
+    const tool = new InspectDataTool(panel);
+    assert.match(await invokeTool(tool, { ids: ["unknown"] }), /Exact chart items were not found/);
+    assert.match(await invokeTool(tool, { selection: true }), /No chart items are selected/);
+    assert.match(await invokeTool(tool, { ids: ["a"], selection: true }), /not both/);
+    assert.match(
+      await invokeTool(tool, { ids: ["a"], command: "must-not-run" }),
+      /only the current chart/,
+    );
+    assert.match(await invokeTool(tool, { ids: [] }), /1–20 exact/);
+    assert.match(await invokeTool(tool, { summary: "yes" }), /must be a boolean/);
+  });
+
+  test("statistics distinguish sum overflow from a finite mean", async () => {
+    const panel = {
+      revision: 1,
+      loadedChartData: parseTable("value\n1e308\n1e308"),
+    } as DiagramPanel;
+    const result = await invokeTool(new InspectDataTool(panel), { summary: true });
+    const report = JSON.parse(result.slice(result.indexOf("\n{") + 1));
+    assert.strictEqual(report.columns[0].statistics.sum, null);
+    assert.strictEqual(report.columns[0].statistics.mean, 1e308);
+    assert.match(report.columns[0].statistics.sumNote, /numeric range/);
+  });
+
+  test("statistics keep finite sums when large opposite values cancel", async () => {
+    const panel = {
+      revision: 1,
+      loadedChartData: parseTable("value\n1e308\n1e308\n-1e308\n-1e308\n1"),
+    } as DiagramPanel;
+    const result = await invokeTool(new InspectDataTool(panel), { summary: true });
+    const report = JSON.parse(result.slice(result.indexOf("\n{") + 1));
+    assert.strictEqual(report.columns[0].statistics.sum, 1);
+    assert.strictEqual(report.columns[0].statistics.mean, 0.2);
+    assert.strictEqual(report.columns[0].statistics.sumNote, undefined);
   });
 
   test("inspection reports inferred schema, nulls and bounded samples", async () => {
@@ -339,7 +483,8 @@ suite("chartTools", function () {
     const tool = new InspectDataTool(panel);
     const input = { data: "a,b,c,d\n1,2,3,4", sampleRows: 1 };
     const expected = await invokeTool(tool, { ...input, maxColumns: 2 });
-    const text = await invokeTool(tool, input, undefined, {
+    const datasetId = JSON.parse(expected.slice(expected.indexOf("\n{") + 1)).datasetId;
+    const text = await invokeTool(tool, { datasetId, sampleRows: 1 }, undefined, {
       tokenBudget: expected.length,
       countTokens: async (value) => value.length,
     });
@@ -442,8 +587,84 @@ suite("chartTools", function () {
     assert.strictEqual(panel.current, undefined);
     assert.strictEqual(
       await invokeTool(tool, file),
-      'Data could not be inspected: The input must be an object with the properties "data", "file", "command", "format", "sampleRows", "startRow", "startColumn", "maxColumns".',
+      'Data could not be inspected: The input must be an object with the properties "datasetId", "data", "file", "command", "format", "sampleRows", "startRow", "startColumn", "maxColumns", "ids", "selection", "filters", "summary", "revision".',
     );
+  });
+
+  test("dataset handles reuse inspected data for paging and charting until explicitly reloaded", async () => {
+    const file = path.join(tempDir("diagram-dataset-"), "data.csv");
+    fs.writeFileSync(file, "name,latency (ms)\na,100\nb,200\nc,300");
+    const { panel } = await harness();
+    const inspect = new InspectDataTool(panel);
+    const chart = new ChartTool(panel);
+    const report = (text: string) => JSON.parse(text.slice(text.indexOf("\n{") + 1));
+    const first = report(await invokeTool(inspect, { file, sampleRows: 1 }));
+    assert.ok(first.datasetId);
+    fs.writeFileSync(file, "name,latency (ms)\nnew,999");
+    const next = report(await invokeTool(inspect, { datasetId: first.datasetId, startRow: 2 }));
+    assert.strictEqual(next.datasetId, first.datasetId);
+    assert.deepStrictEqual(next.sample, [
+      ["b", 0.2],
+      ["c", 0.3],
+    ]);
+    assert.ok(
+      !inspect.prepareInvocation({ input: { datasetId: first.datasetId } }).confirmationMessages,
+    );
+    assert.ok(
+      !chart.prepareInvocation({ input: { type: "bar", datasetId: first.datasetId } })
+        .confirmationMessages,
+    );
+    assert.match(await invokeTool(chart, { type: "bar", datasetId: first.datasetId }), /Rendered/);
+    assert.deepStrictEqual(panel.loadedChartData?.rows, [
+      ["a", 0.1],
+      ["b", 0.2],
+      ["c", 0.3],
+    ]);
+    assert.strictEqual(panel.loadedChartData?.columns[1]?.unit, "seconds");
+    assert.strictEqual(panel.current?.chart?.file, file);
+    const fresh = report(await invokeTool(inspect, { file }));
+    assert.notStrictEqual(fresh.datasetId, first.datasetId);
+    assert.deepStrictEqual(fresh.sample, [["new", 0.999]]);
+    for (const invalid of [
+      { data },
+      { file },
+      { command: "must-not-run" },
+      { format: "csv" },
+      { ids: ["a"] },
+      { revision: panel.revision },
+    ]) {
+      assert.match(
+        await invokeTool(inspect, { datasetId: first.datasetId, ...invalid }),
+        /Data could not be inspected/,
+      );
+    }
+    assert.match(
+      await invokeTool(chart, { type: "bar", datasetId: first.datasetId, command: "must-not-run" }),
+      /Give "datasetId" alone/,
+    );
+    assert.match(await invokeTool(inspect, { datasetId: "missing" }), /expired datasetId/);
+  });
+
+  test("command snapshots need no repeated consent or execution", async () => {
+    const { panel } = await harness();
+    const snapshot = datasets(panel).save(parseTable(data), {
+      type: "bar",
+      command: "must-not-run",
+    });
+    assert.ok(snapshot);
+    const inspect = new InspectDataTool(panel);
+    const chart = new ChartTool(panel);
+    assert.ok(
+      !inspect.prepareInvocation({ input: { datasetId: snapshot.id } }).confirmationMessages,
+    );
+    assert.ok(
+      !chart.prepareInvocation({ input: { type: "bar", datasetId: snapshot.id } })
+        .confirmationMessages,
+    );
+    assert.match(await invokeTool(inspect, { datasetId: snapshot.id }), /"rowCount":3/);
+    assert.match(await invokeTool(chart, { type: "bar", datasetId: snapshot.id }), /Rendered/);
+    assert.strictEqual(panel.current?.chart?.command, "must-not-run");
+    assert.deepStrictEqual(panel.loadedChartData?.rows, parseTable(data).rows);
   });
 
   test("inspection reads a file that it did not ask about only if it is still inside", async () => {

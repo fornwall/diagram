@@ -11,6 +11,7 @@ import {
 import { labelOrder } from "./chartDates";
 import { quantile, Sum, withoutNoise } from "./chartNumbers";
 import type { Aggregation, ChartSpec, ChartType } from "./chartSpec";
+import type { ChartTrace } from "./chartTrace";
 import { type Multiples, showInMultiples } from "./chartUnits";
 import type { Cell, DataTable } from "./data";
 import { scale } from "./dataNumber";
@@ -23,6 +24,8 @@ export interface Row {
   /** What names the row: one label per label column, or the levels of a path in one of them. */
   labels: string[];
   values: (number | null)[];
+  /** Original row numbers, only while tracing a data inspection. */
+  sourceRows?: number[];
 }
 
 /** A table read as a chart: which columns play which role, and the rows to draw. */
@@ -37,6 +40,7 @@ export interface Reading {
   rows: Row[];
   /** How the data was read, as the clauses of the summary; the drawing adds to it. */
   notes: string[];
+  trace?: ChartTrace | undefined;
 }
 
 /** A row's first label: the category, slice, group or outermost node that it names. */
@@ -210,8 +214,11 @@ const COMBINE: Record<Exclude<Aggregation, "count">, (values: number[]) => numbe
 
 /** Aggregate rows by their labels, preserving the order of each group's first appearance. */
 function groupRows(rows: Row[], how: Aggregation): Row[] {
-  const groups = new Map<string, { labels: string[]; rows: number; columns: number[][] }>();
-  for (const { labels, values } of rows) {
+  const groups = new Map<
+    string,
+    { labels: string[]; rows: number; columns: number[][]; sourceRows?: number[] }
+  >();
+  for (const { labels, values, sourceRows } of rows) {
     const key = JSON.stringify(labels);
     let group = groups.get(key);
     if (group === undefined) {
@@ -219,12 +226,17 @@ function groupRows(rows: Row[], how: Aggregation): Row[] {
       groups.set(key, group);
     }
     group.rows++;
+    if (sourceRows) {
+      group.sourceRows ??= [];
+      for (const row of sourceRows) group.sourceRows.push(row);
+    }
     values.forEach((value, index) => {
       if (value !== null) group.columns[index]?.push(value);
     });
   }
-  return [...groups.values()].map(({ labels, rows, columns }) => ({
+  return [...groups.values()].map(({ labels, rows, columns, sourceRows }) => ({
     labels,
+    ...(sourceRows ? { sourceRows } : {}),
     values:
       how === "count"
         ? [rows]
@@ -271,6 +283,7 @@ export function readRows(
   columns: Columns,
   notes: string[],
   shared?: Multiples,
+  trace?: ChartTrace,
 ): Pick<Reading, "rows" | "names" | "maxima"> & { empty?: string } {
   const { type } = spec;
   const valueIndices = columns.values;
@@ -285,6 +298,7 @@ export function readRows(
     );
   }
   let rows: Row[] = tableRows.map((row, i) => ({
+    ...(trace ? { sourceRows: trace.row(row) } : {}),
     labels: rowLabels(row, i, columns, type),
     values: valueIndices.map((index) => {
       const cell = row[index];
@@ -389,16 +403,21 @@ export function readRows(
       // A row named "Other" in the data is summed up too, rather than becoming a second slice.
       const kept: Row[] = [];
       const other = new Sum();
+      const otherRows: number[] = [];
       let summed = 0;
       for (const row of rows) {
         if (kept.length < spec.limit && label(row) !== "Other") {
           kept.push(row);
         } else {
           other.add(row.values[0] ?? 0);
+          if (trace) for (const number of row.sourceRows ?? []) otherRows.push(number);
           summed++;
         }
       }
-      rows = [...kept, { labels: ["Other"], values: [other.value] }];
+      rows = [
+        ...kept,
+        { labels: ["Other"], values: [other.value], ...(trace ? { sourceRows: otherRows } : {}) },
+      ];
       notes.push(
         `kept the first ${plural(spec.limit, "row")} and summed up the other ${formatCount(summed)} as "Other"`,
       );

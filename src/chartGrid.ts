@@ -34,13 +34,14 @@ interface Series {
   name: string;
   /** Undefined means no row at this point; null is an explicitly missing measurement. */
   values: (number | null | undefined)[];
+  members?: Row[][];
 }
 
 /**
  * The points along the label axis, and a series per label of the second label column: the long
  * format that a database query or a log gives, with a row per point of each series.
  */
-function pivotSeries({ table, columns, rows, notes }: Reading): {
+function pivotSeries({ table, columns, rows, notes, trace }: Reading): {
   points: string[];
   series: Series[];
 } {
@@ -60,7 +61,11 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
   const series = new Map(
     [...names].map((name) => [
       name,
-      { name, values: Array<number | null | undefined>(points.size).fill(undefined) },
+      {
+        name,
+        values: Array<number | null | undefined>(points.size).fill(undefined),
+        ...(trace ? { members: Array.from({ length: points.size }, () => [] as Row[]) } : {}),
+      },
     ]),
   );
   let added = 0;
@@ -71,6 +76,7 @@ function pivotSeries({ table, columns, rows, notes }: Reading): {
     const values = series.get(row.labels[1] ?? "")?.values;
     const point = points.get(label(row));
     if (values === undefined || point === undefined) continue;
+    series.get(row.labels[1] ?? "")?.members?.[point]?.push(row);
     const previous = values[point] ?? null;
     if (previous === null) {
       values[point] = value;
@@ -124,7 +130,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   // ECharts draws a line through its points, samples them and stacks them in the order of its
   // data, which would otherwise run back and forth in time.
   const reading = timeAxis ? { ...read, rows: inLabelOrder(read.rows, label) } : read;
-  const { columns, names, rows } = reading;
+  const { columns, names, rows, trace, table, spec } = reading;
   const pivot = columns.labels.length >= 2;
   let points: string[];
   let series: Series[];
@@ -183,28 +189,49 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
   return {
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
-    series: series.map(({ name, values }) => ({
-      ...CARTESIAN_SERIES[type],
-      name,
-      ...(line && points.length > FEW_POINTS ? { showSymbol: false } : {}),
-      // ECharts samples where points outnumber pixels. Sampling each series of a stack on its own
-      // would misalign them, and it does not stack large bars.
-      ...(line && points.length > FEW_POINTS && type !== "stackedArea" ? { sampling: "lttb" } : {}),
-      ...(points.length >= LARGE_BARS && (type === "bar" || type === "horizontalBar")
-        ? { large: true }
-        : {}),
-      ...(series.length > 1 ? { emphasis: { focus: "series" } } : {}),
-      data:
-        times === undefined
-          ? pivot
-            ? values.map((value) => value ?? null)
-            : values
-          : values.flatMap((value, index) => {
-              if (value === undefined && ownTimes) return [];
-              const time = times[index];
-              return [horizontal ? [value ?? null, time] : [time, value ?? null]];
-            }),
-    })),
+    series: series.map(({ name, values, members }, column) => {
+      const indices = [...values.keys()].filter(
+        (index) => !(times !== undefined && values[index] === undefined && ownTimes),
+      );
+      const data = indices.map((index) => {
+        const value = values[index] ?? null;
+        return times === undefined
+          ? value
+          : horizontal
+            ? [value, times[index]]
+            : [times[index], value];
+      });
+      if (trace) {
+        const valueColumn =
+          spec.aggregate === "count"
+            ? undefined
+            : columnName(table, columns.values[pivot ? 0 : column]);
+        trace.record(
+          data,
+          indices.map((index) =>
+            trace.sources(
+              members?.[index] ?? (rows[index] ? [rows[index] as Row] : []),
+              valueColumn,
+            ),
+          ),
+        );
+      }
+      return {
+        ...CARTESIAN_SERIES[type],
+        name,
+        ...(line && points.length > FEW_POINTS ? { showSymbol: false } : {}),
+        // ECharts samples where points outnumber pixels. Sampling each series of a stack on its own
+        // would misalign them, and it does not stack large bars.
+        ...(line && points.length > FEW_POINTS && type !== "stackedArea"
+          ? { sampling: "lttb" }
+          : {}),
+        ...(points.length >= LARGE_BARS && (type === "bar" || type === "horizontalBar")
+          ? { large: true }
+          : {}),
+        ...(series.length > 1 ? { emphasis: { focus: "series" } } : {}),
+        data,
+      };
+    }),
   };
 }
 
@@ -213,7 +240,21 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
  * value column against the times they happened at.
  */
 export function scatterOption(reading: Reading): Record<string, unknown> {
-  const { columns, names, rows } = reading;
+  const { columns, names, rows, trace, table, spec } = reading;
+  const record = <T extends unknown[]>(data: T): T =>
+    trace
+      ? trace.record(
+          data,
+          rows.map((row) =>
+            trace.sources(
+              [row],
+              spec.aggregate === "count"
+                ? undefined
+                : columns.values.map((column) => columnName(table, column)),
+            ),
+          ),
+        )
+      : data;
   const axis = (i: number) => ({
     type: "value",
     ...(informative(reading, i) ? { name: names[i] } : {}),
@@ -234,10 +275,12 @@ export function scatterOption(reading: Reading): Record<string, unknown> {
           ...(rows.length >= LARGE_POINTS ? { large: true } : {}),
           // On a category axis, a point is at its row's category, as a bar is, rather than at the
           // last of the categories named alike.
-          data: rows.map((row) => {
-            const value = row.values[0] ?? null;
-            return timeAxis ? [timeValue(label(row)), value] : value;
-          }),
+          data: record(
+            rows.map((row) => {
+              const value = row.values[0] ?? null;
+              return timeAxis ? [timeValue(label(row)), value] : value;
+            }),
+          ),
         },
       ],
     };
@@ -255,7 +298,9 @@ export function scatterOption(reading: Reading): Record<string, unknown> {
         // differ, and grouped by thousands, as a template's "{c}" would not.
         ...(xName === yName ? {} : { dimensions: [xName, yName] }),
         encode: { x: 0, y: 1, tooltip: [0, 1] },
-        data: rows.map((row) => (labeled ? { name: label(row), value: row.values } : row.values)),
+        data: record(
+          rows.map((row) => (labeled ? { name: label(row), value: row.values } : row.values)),
+        ),
       },
     ],
   };
@@ -286,6 +331,7 @@ export function heatmapOption({
   names,
   rows: given,
   notes,
+  trace,
 }: Reading): Record<string, unknown> {
   const labelNames = columns.labels.map((index) => columnName(table, index));
   const pivot = labelNames.length >= 2;
@@ -305,6 +351,8 @@ export function heatmapOption({
     return index;
   };
   const cells = new Map<string, [number, number, number]>();
+  const sourceRows: number[][] = [];
+  const cellIndices = new Map<string, number>();
   // The sums of the cells of rows of the same labels.
   const sums = new Map<string, Sum>();
   const data: [number, number, number][] = [];
@@ -324,11 +372,28 @@ export function heatmapOption({
       if (cell === undefined) {
         const cell: [number, number, number] = [x, y, value];
         cells.set(key, cell);
+        if (trace) {
+          cellIndices.set(key, data.length);
+          sourceRows.push(
+            trace.sources(
+              [row],
+              spec.aggregate === "count" ? undefined : columnName(table, columns.values[0]),
+            ),
+          );
+        }
         data.push(cell);
       } else {
         const sum = (sums.get(key) ?? new Sum().add(cell[2])).add(value);
         sums.set(key, sum);
         cell[2] = sum.value;
+        if (trace) {
+          const target = sourceRows[cellIndices.get(key) ?? -1];
+          for (const number of trace.sources(
+            [row],
+            spec.aggregate === "count" ? undefined : columnName(table, columns.values[0]),
+          ))
+            target?.push(number);
+        }
         summed++;
       }
       continue;
@@ -338,6 +403,13 @@ export function heatmapOption({
         empty++;
       } else {
         data.push([x, index, value]);
+        if (trace)
+          sourceRows.push(
+            trace.sources(
+              [row],
+              spec.aggregate === "count" ? undefined : columnName(table, columns.values[x]),
+            ),
+          );
       }
     });
   }
@@ -354,6 +426,7 @@ export function heatmapOption({
     min = Math.min(min, value);
     max = Math.max(max, value);
   }
+  if (trace) trace.record(data, sourceRows);
   const yCategories = pivot ? pivotAxis(yIndices, data, 1, sorted) : rows.map(label);
   const xCategories = pivot ? pivotAxis(xIndices, data, 0, sorted) : names;
   const axis = (categories: string[], name: string | undefined) => ({
@@ -377,7 +450,7 @@ export function heatmapOption({
  * orders the boxes by their medians: the rows it sorted would order the groups by their extremes.
  */
 export function boxplotOption(reading: Reading): Record<string, unknown> {
-  const { spec, columns, names, rows, notes } = reading;
+  const { spec, columns, names, rows, notes, trace, table } = reading;
   const labeled = columns.labels.length > 0;
   const numbers = (rows: Row[], column: number) =>
     rows.reduce<number[]>((numbers, { values }) => {
@@ -388,15 +461,29 @@ export function boxplotOption(reading: Reading): Record<string, unknown> {
   const grouped: Map<string, number[]> = labeled
     ? new Map([...Map.groupBy(rows, label)].map(([group, members]) => [group, numbers(members, 0)]))
     : new Map(names.map((name, column) => [name, numbers(rows, column)]));
+  const tracedGroups = trace && labeled ? Map.groupBy(rows, label) : undefined;
   let categories: string[] = [];
   let boxes: number[][] = [];
   const outliers: [string, number][] = [];
+  let boxSources: number[][] = [];
+  const outlierSources: number[][] = [];
   let counted = 0;
   for (const [group, numbers] of grouped) {
     if (numbers.length === 0) {
       continue;
     }
     const sorted = numbers.sort((x, y) => x - y);
+    const valueIndex = labeled ? 0 : names.indexOf(group);
+    const members = trace
+      ? (tracedGroups?.get(group) ?? rows).filter(
+          (row) => typeof row.values[valueIndex] === "number",
+        )
+      : [];
+    const valueColumn =
+      spec.aggregate === "count" ? undefined : columnName(table, columns.values[valueIndex]);
+    if (trace) boxSources.push(trace.sources(members, valueColumn));
+    const byValue = trace ? Map.groupBy(members, (row) => row.values[valueIndex]) : undefined;
+    const outlierPositions = new Map<number, number>();
     counted += sorted.length;
     categories.push(group);
     const q1 = quantile(sorted, 0.25);
@@ -410,6 +497,12 @@ export function boxplotOption(reading: Reading): Record<string, unknown> {
     while ((sorted[last] ?? q3) > q3 + reach) last--;
     for (const value of sorted.slice(0, first).concat(sorted.slice(last + 1))) {
       outliers.push([group, value]);
+      if (trace) {
+        const matching = byValue?.get(value) ?? [];
+        const at = outlierPositions.get(value) ?? 0;
+        outlierPositions.set(value, at + 1);
+        outlierSources.push(trace.sources(matching[at] ? [matching[at] as Row] : [], valueColumn));
+      }
     }
     // With few values the furthest one inside a fence can lie within the interpolated box.
     boxes.push([
@@ -430,9 +523,14 @@ export function boxplotOption(reading: Reading): Record<string, unknown> {
     );
     categories = order.map((i) => categories[i] ?? "");
     boxes = order.map((i) => boxes[i] ?? []);
+    if (trace) boxSources = order.map((i) => boxSources[i] ?? []);
     notes.push(
       `ordered the boxes by their medians, the ${direction > 0 ? "smallest" : "largest"} first`,
     );
+  }
+  if (trace) {
+    trace.record(boxes, boxSources);
+    trace.record(outliers, outlierSources);
   }
   notes.push(
     `computed the quartiles of ${plural(boxes.length, "box", "boxes")} from ` +

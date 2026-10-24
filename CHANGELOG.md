@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+- Agents can query graph relationships, edit simple flowcharts by item id, and inspect rows contributing to chart selections.
+- Callouts and walkthroughs explain diagrams with optional viewport focus.
+- Named checkpoints preserve alternatives; revision diffs show intervening changes. Drafts can render and check constraints before applying.
+- Evidence attachments track item identities and cited-range freshness; checkpoint comparisons report changed labels.
 - Agents can search and page through exact item ids and labels for highlights and image crops, including repeated chart names and parallel edges.
-- Agent guidance favors smaller state reads and reuse of revisions and loaded chart data.
+- Inspected datasets can be reused for paging and charting; hierarchy and Sankey selections trace contributing rows.
+- Drafts share editing checks and preview source edits, structural batches and chart settings. Flowchart tools add and remove nodes and edges.
+- State summaries report tool capabilities; annotations and image crops accept revision guards.
 - Large image crops avoid argument-limit failures and use less temporary memory.
 - Absolute paths with `.` or `..` resolve correctly in virtual workspaces. Workspace tool results respect small token budgets.
 

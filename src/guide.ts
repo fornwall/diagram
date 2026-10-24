@@ -39,23 +39,46 @@ const WORKFLOW = {
   summary: "Draw, inspect and revise with the right tools",
   text: `workflow: Draw, inspect and revise with the right tools.
 
-1. Draw. Use ${RENDER_TOOL} for new source: Mermaid for structure and flow, ECharts for quantitative data. Use ${CHART_TOOL} for files, command output or tables. Read ${GUIDE_TOOL} for unfamiliar syntax. The panel supplies theme and sizing; omit colors and fonts unless requested.
+1. Draw. Use ${RENDER_TOOL} for Mermaid structure/flow or ECharts options; ${CHART_TOOL} for files, command output or tables. Read ${GUIDE_TOOL} for unfamiliar syntax. Omit colors and fonts unless requested; the panel supplies theme and sizing.
 
-2. Revise. Start follow-ups with ${GET_STATE_TOOL}, detail:"summary", for settings, errors and selection. Read needed source with startLine/endLine or query (literal search). Use ${EDIT_TOOL} with unique oldText copied exactly from current source. Preserve ids, links and user edits. Pass revision to drawing changes; await each result and reuse its revision. On a revision conflict, reread and adapt; keep the revision guard. To start separately, pass newDiagram:true to ${RENDER_TOOL} or ${CHART_TOOL}; this detaches the Markdown block and export location.
+2. Revise. Start with ${GET_STATE_TOOL}, detail:"summary", for settings, errors, selection and current capabilities. Read source ranges or literal query matches. Use ${EDIT_TOOL} with unique oldText copied exactly from current source; diagram_editStructure for supported flowchart items and atomic operations batches; ${STYLE_TOOL} for Mermaid colors; ${UPDATE_CHART_TOOL} for generated chart settings. Preserve ids, links and user edits. Pass revision; await each result and reuse its revision. On a revision conflict, reread and adapt; keep the revision guard. sinceRevision reads changes from session history. newDiagram:true detaches Markdown and export location.
 
-3. Inspect data. ${INSPECT_DATA_TOOL} reports columns, types and samples; sampleRows:0 reads schema only. Omit the source for loaded chart data. Give data, file or command only to read anew: inspection and charting execute a command separately. ${UPDATE_CHART_TOOL} changes settings using loaded data. Use ${EDIT_TOOL} for generated-chart styling, ${RENDER_TOOL} for callbacks or full option control.
+3. Inspect data. ${INSPECT_DATA_TOOL} reports schema and samples; sampleRows:0 reads schema. Omit sources to reuse loaded chart data, or pass datasetId from an earlier inspection to page and chart that snapshot without I/O. Explicit sources read anew and commands rerun. Session snapshots keep eight datasets within 16 MiB; an expired id requires inspecting the source again. ids or selection:true finds contributing rows; filters and summary inspect them without changing the chart. ${UPDATE_CHART_TOOL} changes settings; ${EDIT_TOOL} changes generated-chart styling.
 
-4. Check. Repair render errors and warnings using returned context or current source. If the panel is unavailable, inspect state before changing syntax. Use ${GET_IMAGE_TOOL} for dense drawings to check overlap, clipping and labels; request nearby item ids to zoom in. Fix layout and check again, preserving requested content.
+4. Check. Fix render errors and warnings. For an unavailable panel, inspect state before changing syntax. ${GET_IMAGE_TOOL} checks dense layouts; crop with ids and pass revision. Preserve requested content. Save a checkpoint before alternatives. diagram_draft validates source, edits, operations or chartUpdate offscreen with shared application checks; apply its id at the base revision.
 
-5. Explain. ${GET_STATE_TOOL} with detail:"items" and optional query finds exact ids and labels for marks or image crops; continue at nextItem with startItem. ${PICK_NODES_TOOL} waits for a user choice. ${ANNOTATE_TOOL} replaces temporary marks; {} clears them. Explain marks in chat. Images omit selection and marks. Use ${STYLE_TOOL} for requested Mermaid colors.
+5. Explain. ${GET_STATE_TOOL} with detail:"items" finds exact ids and labels for marks or crops; page with nextItem. ${PICK_NODES_TOOL} waits for a choice. ${ANNOTATE_TOOL} replaces temporary marks; {} clears them. Pass revision when using ids from state. text adds callouts; steps creates a walkthrough. Images omit selection and marks. ${STYLE_TOOL} sets requested Mermaid colors.
 
-6. Read code with ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} (literal text) and ${READ_FILE_TOOL}; follow definitions and imports. Link nodes only to paths and lines you read. Apply writes user edits to bound Markdown as an unsaved, undoable change. Agent changes need confirmation before writing.
+6. Read code with ${FIND_FILES_TOOL}, ${SEARCH_TEXT_TOOL} and ${READ_FILE_TOOL}. Link nodes only to paths and lines you read. diagram_evidence records sources and assumptions; read itemStatus and rangeStatus after changes. Apply writes user edits to bound Markdown; agent changes need confirmation before writing.
 
-7. Share. ${EXPORT_HTML_TOOL} saves to file:"report.html". Pass revision; overwrite defaults to false. Source/data are embedded; opening needs internet for the CDN renderer. Keep replies brief; do not repeat source.`,
+7. Share. ${EXPORT_HTML_TOOL} saves file:"report.html", guarded by revision; overwrite defaults false. Source/data are embedded; opening needs internet for the CDN renderer. Keep replies brief; do not repeat source.
+
+Read topic:"agent-tools" for graph queries, structural edits, checkpoints, drafts, evidence and walkthroughs.`,
 } as const;
 
-const WORKFLOW_KEYS = [WORKFLOW.name, ...WORKFLOW.aliases].map(key);
-const isWorkflow = (name: string) => WORKFLOW_KEYS.includes(key(name));
+const AGENT_TOOLS = {
+  name: "agent-tools",
+  aliases: ["explore", "checkpoints", "drafts", "evidence", "walkthroughs"],
+  summary: "Inspect selections, edit structure, compare alternatives and explain with evidence",
+  text: `agent-tools: Extend the conversation using exact item ids and current revisions.
+
+- diagram_queryGraph finds upstream/downstream nodes, shortest paths, directed cycles or weak components. focus:true marks the result when at most 50 items match; {} to diagram_annotate clears it. Sequence messages are excluded. Page with nextItem at the same revision.
+- diagram_editStructure renames flowchart labels, inserts, reconnects or moves items, and adds/removes nodes and edges. operations batches up to 50 changes atomically; removeNode removes incident edges and its code link. Pass revision and exact ids. Unsupported or ambiguous syntax is refused; use diagram_edit for those sources.
+- diagram_inspectData with ids or selection:true returns contributing rows, original row numbers and optional summary statistics. filters narrow those rows. No source is reloaded. Treemap/sunburst descendants and Sankey nodes/links have row mappings; do not infer contributors from labels. Custom options that change data or structure prevent mapping.
+- diagram_checkpoint saves named alternatives, lists ids, compares sources/metadata/known structure and modified labels, and restores snapshots without rerunning commands. Checkpoints survive restart (20 within 8 MB); restoring detaches Markdown. Save before trying an alternative, then compare or restore by id.
+- diagram_draft action:validate accepts exactly one of source, edits, operations or chartUpdate and renders offscreen, optionally returning image:true. Shared preflight checks reject inapplicable changes before returning a draft id. preserveNodes and preservePaths check explicit Mermaid constraints, not semantic equivalence. apply uses the returned id while the base revision is current. ECharts drafts cannot execute JavaScript. The last four valid drafts are kept for the session.
+- diagram_evidence action:set attaches workspace locations and explicit assumptions to exact item ids. Read sources first. action:read reports snippets, file status, rangeStatus and itemStatus. Changed/missing item identities stay flagged until set after review; unchanged files do not prove a claim. set/clear require revision.
+- diagram_annotate marks may have text callouts and focus:true. steps:[{text,marks,dim,focus}] creates a walkthrough the user advances with Previous/Next. State reports the active step. Keep each callout short; longer explanations belong in chat.
+- diagram_getState with sinceRevision returns source and metadata changes. History is bounded to 32 revisions within 4 MB for this session; reread current state when the base is unavailable.`,
+} as const;
+
+const TOOL_GUIDES = [WORKFLOW, AGENT_TOOLS];
+const WORKFLOW_KEYS = TOOL_GUIDES.flatMap((topic) => [topic.name, ...topic.aliases]).map(key);
+const toolGuide = (name: string) =>
+  TOOL_GUIDES.find((topic) =>
+    [topic.name, ...topic.aliases].some((alias) => key(alias) === key(name)),
+  );
+const isWorkflow = (name: string) => toolGuide(name) !== undefined;
 
 /** Every topic by the keys of its name and aliases. */
 const TOPICS_BY_KEY = new Map(
@@ -106,7 +129,7 @@ export function guideIndex(): string {
       .join("\n");
   return (
     `Call ${GUIDE_TOOL} with "workflow" for tool selection and a draw/check/revise workflow, or a diagram topic for a working example, syntax rules and layout tips.\n\n` +
-    `Tools and workflow:\n- ${WORKFLOW.name}: ${WORKFLOW.summary}\n\n` +
+    `Tools and workflow:\n${TOOL_GUIDES.map(({ name, summary }) => `- ${name}: ${summary}`).join("\n")}\n\n` +
     `Mermaid, for structure and flow (${RENDER_TOOL} with language "mermaid"):\n${lines("mermaid")}\n\n` +
     `ECharts, for quantitative data (${RENDER_TOOL} with language "echarts"; ${CHART_TOOL} for data in files, command output or tables):\n${lines("echarts")}`
   );
@@ -134,7 +157,8 @@ export function guideText(input: unknown): string {
   if (topic.length > 1000) {
     return `"topic" must be at most 1,000 characters.\n\n${guideIndex()}`;
   }
-  if (isWorkflow(topic)) return WORKFLOW.text;
+  const guidance = toolGuide(topic);
+  if (guidance) return guidance.text;
   const found = findTopic(topic);
   if (found) {
     return topicText(found);

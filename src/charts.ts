@@ -7,6 +7,7 @@ import { hierarchyOption, sankeyOption } from "./chartHierarchy";
 import { funnelOption, gaugeOption, pieOption, radarOption } from "./chartItems";
 import { type Reading, readRows } from "./chartRows";
 import type { ChartSpec, ChartType } from "./chartSpec";
+import type { ChartTrace } from "./chartTrace";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import { type Multiples, tableMultiples } from "./chartUnits";
 import type { DataTable } from "./data";
@@ -28,7 +29,7 @@ export interface Chart {
 }
 
 /** Build a chart, apply option overrides, and summarize how the data was interpreted. */
-export function buildChart(spec: ChartSpec, table: DataTable): Chart {
+export function buildChart(spec: ChartSpec, table: DataTable, trace?: ChartTrace): Chart {
   if (spec.bins !== undefined && spec.type !== "histogram") {
     throw new Error(
       '"bins" is only supported for histograms. Remove it or set "type" to "histogram".',
@@ -41,15 +42,15 @@ export function buildChart(spec: ChartSpec, table: DataTable): Chart {
     const { type } = request;
     if (type === "histogram") {
       histogram ??= planHistogram(request, reference ?? data);
-      return buildHistogram(data, histogram, reference !== undefined);
+      return buildHistogram(data, histogram, reference !== undefined, trace);
     }
     if (reference !== undefined) facetPlan ??= planChart(request, reference, true);
-    return buildSingleChart(type, request, data, facetPlan);
+    return buildSingleChart(type, request, data, facetPlan, trace);
   };
   const chart =
     spec.facetColumn === undefined
       ? single(spec, filtered)
-      : buildFacetedChart(spec, filtered, single);
+      : buildFacetedChart(spec, filtered, single, trace);
   // Filtering comes first, so it is said first, rather than within the last facet's summary.
   const kept =
     filtered === table
@@ -92,12 +93,13 @@ function buildSingleChart(
   spec: ChartSpec,
   table: DataTable,
   shared?: ChartPlan,
+  trace?: ChartTrace,
 ): Chart {
   const { columns, multiples, notes: planNotes } = shared ?? planChart(spec, table, false);
   // A panel's notes are about its own rows; the plan's are said once for every panel.
   const notes = shared === undefined ? planNotes : [];
-  const { empty, ...rows } = readRows(spec, table, columns, notes, multiples);
-  const reading: Reading = { spec, table, columns, notes, ...rows };
+  const { empty, ...rows } = readRows(spec, table, columns, notes, multiples, trace);
+  const reading: Reading = { spec, table, columns, notes, trace, ...rows };
   const option = drawChart(type, reading);
   checkItems(type, spec, option);
   const clauses = (notes: string[]) => notes.map((note) => `; ${note}`).join("");

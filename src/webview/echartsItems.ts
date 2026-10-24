@@ -398,9 +398,15 @@ export class ChartItems {
     return series && item && { id: series.idOf(item), label: item.label };
   }
 
-  each(visit: (node: DiagramNode) => void): void {
+  each(visit: (node: DiagramNode) => void, includeData = false): void {
     for (const series of this.series) {
-      series.each((item) => visit({ id: series.idOf(item), label: item.label }));
+      series.each((item) =>
+        visit({
+          id: series.idOf(item),
+          label: item.label,
+          ...(includeData ? { chart: item.ref } : {}),
+        }),
+      );
     }
   }
 

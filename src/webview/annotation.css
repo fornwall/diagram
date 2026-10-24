@@ -1,0 +1,79 @@
+#explanation {
+  flex: 0 1 auto;
+  min-height: 48px;
+  max-height: 28vh;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+#explanation-heading {
+  font-weight: 600;
+}
+
+#explanation-caption {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#explanation-marks {
+  margin: 6px 0;
+  padding-left: 24px;
+  overflow-wrap: anywhere;
+}
+
+#explanation-marks .link {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#explanation-callouts {
+  position: fixed;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.explanation-callout {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 3px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 5px var(--vscode-widget-shadow, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.explanation-problem {
+  border-color: var(--vscode-errorForeground);
+}
+
+.explanation-good {
+  border-color: var(--vscode-charts-green);
+}
+
+.explanation-info {
+  border-color: var(--vscode-charts-purple);
+}
+
+.explanation-badge {
+  width: 24px;
+  height: 24px;
+  padding: 2px;
+  border-radius: 50%;
+  text-align: center;
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .explanation-callout {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

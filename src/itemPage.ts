@@ -4,15 +4,17 @@ import type { DiagramNode, ItemPage, ItemQuery } from "./protocol";
 
 export function collectItemPage(
   each: (visit: (node: DiagramNode) => void) => void,
-  { query, startItem, maxItems }: ItemQuery,
+  { query, startItem, maxItems, itemIds }: ItemQuery,
 ): ItemPage {
   const items: DiagramNode[] = [];
+  const wanted = itemIds === undefined ? undefined : new Set(itemIds);
   let totalItems = 0;
   let matchedItems = 0;
   let length = 0;
   let full = false;
   each((node) => {
     totalItems++;
+    if (wanted && !wanted.has(node.id)) return;
     if (
       query !== undefined &&
       !node.id.includes(query) &&

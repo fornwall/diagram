@@ -7,6 +7,7 @@ import { roundStep, stepsOf } from "./chartNumbers";
 import { inLabelOrder } from "./chartRows";
 import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
+import type { ChartTrace } from "./chartTrace";
 import type { Cell, DataTable } from "./data";
 import { asArray, errorMessage, isPlainObject } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
@@ -17,14 +18,22 @@ const MAX_FACETS = 12;
 const MAX_ROWS = 4;
 
 /** Exclude the facet column from inference, unless it is also a label or value column. */
-function facetTable(spec: ChartSpec, table: DataTable, index: number): DataTable {
+function facetTable(
+  spec: ChartSpec,
+  table: DataTable,
+  index: number,
+  trace?: ChartTrace,
+): DataTable {
   const labels = findColumns(table, [spec.labelColumn ?? []].flat(), "labelColumn");
   const values = findColumns(table, spec.valueColumns ?? [], "valueColumns");
   if (labels.includes(index) || values.includes(index)) return table;
   return {
     ...table,
     columns: table.columns.filter((_, i) => i !== index),
-    rows: table.rows.map((row) => row.filter((_, i) => i !== index)),
+    rows: table.rows.map((row) => {
+      const projected = row.filter((_, i) => i !== index);
+      return trace ? trace.project(row, projected) : projected;
+    }),
   };
 }
 
@@ -38,6 +47,7 @@ export function buildFacetedChart(
   spec: ChartSpec,
   table: DataTable,
   buildSingle: (spec: ChartSpec, table: DataTable, allFacets: DataTable) => Chart,
+  trace?: ChartTrace,
 ): Chart {
   if (!FACET_TYPES.includes(spec.type)) {
     throw new Error(
@@ -54,7 +64,7 @@ export function buildFacetedChart(
         "column with fewer values.",
     );
   }
-  const allFacets = facetTable(spec, table, index);
+  const allFacets = facetTable(spec, table, index, trace);
   const { facetColumn: _column, facetColumns: _columns, facetScales: _scales, ...childSpec } = spec;
   // A typed key keeps missing values, literal labels and numbers distinct, including on refresh.
   // Panels of numbers, dates or weekdays follow their order rather than that of the rows, as the
@@ -92,8 +102,8 @@ export function buildFacetedChart(
   if (spec.facetScales !== "independent") {
     // Categories in an order of their own keep it, unless "sort" orders the rows by value.
     const ordered = spec.sort === undefined;
-    shareAxes(panels, "xAxis", 0, ordered);
-    shareAxes(panels, "yAxis", 1, ordered);
+    shareAxes(panels, "xAxis", 0, ordered, trace);
+    shareAxes(panels, "yAxis", 1, ordered, trace);
   }
   const wanted = spec.facetColumns ?? Math.min(2, Math.ceil(Math.sqrt(panels.length)));
   const columns = Math.min(panels.length, Math.max(wanted, Math.ceil(panels.length / MAX_ROWS)));
@@ -176,6 +186,7 @@ function shareAxes(
   key: "xAxis" | "yAxis",
   dimension: number,
   ordered: boolean,
+  trace?: ChartTrace,
 ): void {
   const axes = panels.map((panel) => asArray(panel.option[key])[0] ?? {});
   // Negative values in one panel extend every panel's range, so all keep this axis at the edge.
@@ -210,10 +221,10 @@ function shareAxes(
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
       for (const series of asArray(panel.option.series)) {
         const data = Array.isArray(series.data) ? series.data : [];
-        series.data = keys.map((key) => {
-          const index = indices.get(key);
-          return index === undefined ? null : (data[index] ?? null);
-        });
+        const order = keys.map((key) => indices.get(key));
+        const aligned = order.map((index) => (index === undefined ? null : (data[index] ?? null)));
+        trace?.remap(data, aligned, order);
+        series.data = aligned;
       }
     });
     return;

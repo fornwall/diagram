@@ -68,6 +68,7 @@ import {
 import { parseColor, readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
+let renderCounter = 0;
 const loadMermaid = () => (loading ??= import("mermaid").then((module) => module.default));
 
 const MIN_ZOOM = 0.1;
@@ -483,7 +484,6 @@ export class MermaidRenderer implements Renderer {
   readonly itemNoun = "node";
   readonly sourceName = "Mermaid source";
 
-  private renderCounter = 0;
   private drawn = NOTHING_DRAWN;
   private shown = nothingShown();
   /** The selection, code links and marks, which a new drawing of the diagram shows again. */
@@ -695,7 +695,7 @@ export class MermaidRenderer implements Renderer {
     }
     const mermaid = await loadMermaid();
     const colors = readThemeColors();
-    const id = `diagram-svg-${++this.renderCounter}`;
+    const id = `diagram-svg-${++renderCounter}`;
     const container = layoutContainer();
     // Gantt charts take the width of the element they are drawn in, and other charts the size
     // that they are configured to: give them the width they are shown at, rather than shrinking
@@ -990,6 +990,21 @@ export class MermaidRenderer implements Renderer {
     });
     // Nothing is faded while nothing is marked, however the annotation asks for it.
     this.diagram.classList.toggle("dim-unmarked", annotation.dim && kinds.size > 0);
+  }
+
+  itemBounds(id: string): DOMRect | undefined {
+    const boxes = (this.drawn.elements.get(id) ?? [])
+      .map((element) => element.getBoundingClientRect())
+      .filter((box) => box.width > 0 || box.height > 0);
+    if (boxes.length === 0) return undefined;
+    const left = Math.min(...boxes.map((box) => box.left));
+    const top = Math.min(...boxes.map((box) => box.top));
+    return new DOMRect(
+      left,
+      top,
+      Math.max(...boxes.map((box) => box.right)) - left,
+      Math.max(...boxes.map((box) => box.bottom)) - top,
+    );
   }
 
   showLinks(locations: ReadonlyMap<string, string>): void {

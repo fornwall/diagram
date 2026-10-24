@@ -68,6 +68,8 @@ export interface DiagramNode {
   id: string;
   /** The visible label of the node, or the name of the chart data item. */
   label: string;
+  /** Raw chart position, returned only for source-row inspection. */
+  chart?: { seriesIndex: number; dataIndex: number; dataType?: string | undefined } | undefined;
   /** Only edges and sequence messages have relationship metadata. */
   relationship?: {
     kind: "edge" | "message";
@@ -97,6 +99,8 @@ export interface RepeatedName {
 }
 
 export interface ItemQuery {
+  includeData?: boolean | undefined;
+  itemIds?: readonly string[] | undefined;
   query?: string | undefined;
   startItem: number;
   maxItems: number;
@@ -123,6 +127,15 @@ export function isMarkKind(value: unknown): value is MarkKind {
 export interface DiagramMark {
   id: string;
   kind: MarkKind;
+  /** Plain text beside the item, also listed in the explanation panel. */
+  text?: string;
+}
+
+export interface AnnotationStep {
+  text: string;
+  marks: DiagramMark[];
+  dim: boolean;
+  focus?: boolean;
 }
 
 /** Replaces the previous marks without redrawing. Cleared when the diagram is replaced. */
@@ -130,6 +143,11 @@ export interface Annotation {
   marks: DiagramMark[];
   /** Whether what is not marked is faded, so that the marked nodes stand out. */
   dim: boolean;
+  /** Scroll marked items into view without changing the user's selection. */
+  focus?: boolean;
+  steps?: AnnotationStep[];
+  /** Current walkthrough step, counted from zero. */
+  step?: number;
 }
 
 /** Embedded by savedChart.ts and read from {@link SAVED_CHART} by webview/standalone.ts. */
@@ -189,6 +207,14 @@ export interface SourceRepair {
 }
 
 export type ToWebview =
+  | {
+      type: "validateDraft";
+      requestId: number;
+      source: string;
+      language: DiagramLanguage;
+      title: string;
+      image: boolean;
+    }
   | ({ type: "getItems"; requestId: number; renderRequestId: number } & ItemQuery)
   | {
       type: "export";
@@ -242,12 +268,22 @@ export type ToWebview =
   | { type: "clearSelection" }
   | { type: "highlightPath" }
   /** Replace marks without redrawing; empty marks clear them. */
-  | ({ type: "annotate" } & Annotation)
+  | ({ type: "annotate"; annotationId?: number } & Annotation)
   /** Asks the user to click nodes until the pick is answered or ended. */
   | { type: "startPick"; pickId: number; prompt: string; multiple: boolean }
   | { type: "endPick"; pickId: number };
 
 export type FromWebview =
+  | {
+      type: "draftResult";
+      requestId: number;
+      diagramType?: string;
+      items?: DiagramNode[];
+      warnings?: string[];
+      image?: string;
+      error?: string;
+    }
+  | { type: "annotationStep"; requestId: number; annotationId: number; step: number }
   | { type: "items"; requestId: number; page: ItemPage }
   | { type: "itemsError"; requestId: number; message: string }
   | { type: "closeChartOptions" }
@@ -267,6 +303,8 @@ export type FromWebview =
       repair?: SourceRepair | undefined;
       /** Omitted when the renderer cannot enumerate nodes, such as chart data items. */
       nodeIds?: string[] | undefined;
+      /** Complete node labels when enumeration fits the metadata limit. */
+      nodes?: DiagramNode[] | undefined;
       /** Selectable edges or sequence messages, with their endpoints as drawn. */
       relationships?: DiagramNode[] | undefined;
       repeatedNames?: RepeatedName[] | undefined;
@@ -330,6 +368,13 @@ const isNode: Check = (value) =>
   isPlainObject(value) &&
   isString(value.id) &&
   isString(value.label) &&
+  (value.chart === undefined ||
+    (isPlainObject(value.chart) &&
+      isId(value.chart.seriesIndex) &&
+      Number(value.chart.seriesIndex) >= 0 &&
+      isId(value.chart.dataIndex) &&
+      Number(value.chart.dataIndex) >= 0 &&
+      (value.chart.dataType === undefined || isString(value.chart.dataType)))) &&
   (value.relationship === undefined ||
     (isPlainObject(value.relationship) &&
       (value.relationship.kind === "edge" || value.relationship.kind === "message") &&
@@ -389,6 +434,14 @@ const isThemeColors: Check = (value) =>
 const FROM_WEBVIEW_FIELDS: {
   [M in FromWebview as M["type"]]: { [K in Exclude<keyof M, "type">]-?: Check };
 } = {
+  draftResult: {
+    requestId: isId,
+    diagramType: optional(isString),
+    items: optional((value) => isNodes(value) && Array.isArray(value) && value.length <= 5000),
+    warnings: optional(isStrings),
+    image: optional(isString),
+    error: optional(isString),
+  },
   items: {
     requestId: isId,
     page: (value) =>
@@ -424,11 +477,17 @@ const FROM_WEBVIEW_FIELDS: {
       (value) => isPlainObject(value) && isString(value.source) && isString(value.description),
     ),
     nodeIds: optional(isStrings),
+    nodes: optional(isNodes),
     relationships: optional(isNodes),
     repeatedNames: optional(isRepeatedNames),
     warnings: optional(isStrings),
   },
   warningsChanged: { requestId: isId, warnings: isStrings },
+  annotationStep: {
+    requestId: isId,
+    annotationId: isId,
+    step: (value) => Number.isInteger(value) && Number(value) >= 0 && Number(value) < 20,
+  },
   renderError: { requestId: isId, message: isString, unavailable: optional(isBoolean) },
   selectionChanged: { requestId: isId, nodes: isNodes },
   sourceEdited: { requestId: isId, source: isString },

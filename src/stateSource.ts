@@ -3,9 +3,13 @@
 import { codeFence } from "./blocks";
 import type { DiagramLanguage } from "./protocol";
 import { formatCount, toolInput } from "./text";
+import { fitWholeRecords } from "./toolContracts";
+
+export { fitWholeRecords as fitSourceResponse } from "./toolContracts";
 
 export interface StateInput {
-  detail?: "full" | "summary" | "source" | "search" | "items";
+  detail?: "full" | "summary" | "source" | "search" | "items" | "changes";
+  sinceRevision?: number;
   startLine?: number;
   endLine?: number;
   query?: string;
@@ -22,6 +26,7 @@ const MAX_LINES = 500;
 export function parseStateInput(value: unknown): StateInput {
   const input = toolInput(value ?? {}, [
     "detail",
+    "sinceRevision",
     "startLine",
     "endLine",
     "query",
@@ -34,9 +39,23 @@ export function parseStateInput(value: unknown): StateInput {
   if (
     input.detail !== undefined &&
     (typeof input.detail !== "string" ||
-      !["full", "summary", "source", "search", "items"].includes(input.detail))
+      !["full", "summary", "source", "search", "items", "changes"].includes(input.detail))
   ) {
-    throw new Error('"detail" must be "full", "summary", "source", "search" or "items".');
+    throw new Error(
+      '"detail" must be "full", "summary", "source", "search", "items" or "changes".',
+    );
+  }
+  if (input.sinceRevision !== undefined || input.detail === "changes") {
+    if (!Number.isSafeInteger(input.sinceRevision) || Number(input.sinceRevision) < 0) {
+      throw new Error('Give "sinceRevision" as a nonnegative integer from diagram_getState.');
+    }
+    if (
+      (input.detail !== undefined && input.detail !== "changes") ||
+      Object.keys(input).some((key) => key !== "detail" && key !== "sinceRevision")
+    ) {
+      throw new Error('Use "sinceRevision" alone or with "detail":"changes".');
+    }
+    return { detail: "changes", sinceRevision: Number(input.sinceRevision) };
   }
   if (
     (input.query !== undefined || input.detail === "search") &&
@@ -147,32 +166,7 @@ export async function sourcePage(
     return `${heading}\n\nSource lines ${start}-${last} (exact text, without line numbers; copy from the block for diagram_edit):\n${codeFence(excerpt, language)}${next}`;
   };
   return (
-    (await fitSourceResponse(start, end, response, fits)) ??
+    (await fitWholeRecords(start, end, response, fits)) ??
     `${heading}\n\nSource line ${start} does not fit the available result budget; no source was returned. Use a larger tool result budget or a new chat. A smaller line range cannot make this line fit.`
   );
-}
-
-/** Fit whole entries, using binary search to bound token-counting calls. */
-export async function fitSourceResponse(
-  first: number,
-  last: number,
-  response: (end: number) => string,
-  fits: (text: string) => Promise<boolean>,
-): Promise<string | undefined> {
-  const complete = response(last);
-  if (await fits(complete)) return complete;
-  let low = first;
-  let high = last - 1;
-  let fitting: string | undefined;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const text = response(middle);
-    if (await fits(text)) {
-      fitting = text;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return fitting;
 }

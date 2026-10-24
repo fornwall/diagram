@@ -39,7 +39,9 @@ export interface Renderer {
   /** Enumerable nodes and relationships; charts do not enumerate their data items. */
   drawnNodes?(): DiagramNode[];
   /** Enumerates chart identities on demand, including items hidden by legend or zoom. */
-  eachItem?(visit: (node: DiagramNode) => void): void;
+  eachItem?(visit: (node: DiagramNode) => void, includeData?: boolean): void;
+  /** Bounds of a visible item in client coordinates, for explanation callouts. */
+  itemBounds?(id: string): DOMRect | undefined;
   /** Names that several chart items go by, which marks must replace with the items' ids. */
   repeatedNames?(): RepeatedName[];
   /** What a model should know about parts of the source that the rendering leaves out. */
