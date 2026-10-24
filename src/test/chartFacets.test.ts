@@ -1,7 +1,7 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
-import { parseTable } from "../data";
+import { type DataTable, parseTable } from "../data";
 import { minimumHeight } from "../webview/echartsFacets";
 import { ChartItems } from "../webview/echartsItems";
 import {
@@ -165,6 +165,34 @@ suite("chartFacets", () => {
       [["read"], ["write"]],
     );
     assert.strictEqual(option.yAxis[0].max, undefined);
+  });
+
+  test("bounds shared category expansion across all facet series", () => {
+    const values = Array.from({ length: 20 }, (_, i) => `v${i}`);
+    const table: DataTable = {
+      header: true,
+      columns: [
+        { name: "service", numeric: false },
+        { name: "point", numeric: false },
+        ...values.map((name) => ({ name, numeric: true })),
+      ],
+      rows: Array.from({ length: 4167 }, (_, i) => [`s${i % 12}`, `p${i}`, ...values.map(() => i)]),
+    };
+    const spec: ChartSpec = {
+      type: "bar",
+      data: "unused",
+      facetColumn: "service",
+      labelColumn: "point",
+      valueColumns: values,
+    };
+    assert.throws(
+      () => buildChart(spec, table),
+      /4,167 rows × 240 columns.*exceeding the 1,000,000 cell limit/,
+    );
+    assert.strictEqual(
+      (buildChart({ ...spec, facetScales: "independent" }, table).option.series as Option[]).length,
+      240,
+    );
   });
 
   test("shares time extents and scatter numeric extents", () => {

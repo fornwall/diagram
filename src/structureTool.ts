@@ -46,7 +46,10 @@ export function structureOperation(value: unknown): StructureOperation {
     removeNode: { required: ["id"], optional: [] },
     removeEdge: { required: ["edge"], optional: [] },
   } as Record<string, { required: string[]; optional: string[] }>;
-  const allowed = typeof input.operation === "string" ? fields[input.operation] : undefined;
+  const allowed =
+    typeof input.operation === "string" && Object.hasOwn(fields, input.operation)
+      ? fields[input.operation]
+      : undefined;
   if (!allowed) throw new Error(`"operation" must be one of ${Object.keys(fields).join(", ")}.`);
   for (const field of allowed.required) {
     if (typeof input[field] !== "string" || !input[field].trim())

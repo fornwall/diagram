@@ -179,4 +179,52 @@ suite("drafts in the webview", function () {
       /"rowCount":2/,
     );
   });
+
+  test("reused chart drafts follow the current theme", async () => {
+    await page.draw({ source: "flowchart LR\n A --> B" });
+    const property = "--vscode-charts-blue";
+    const saved = await page.evaluate(
+      `document.body.style.getPropertyValue(${JSON.stringify(property)})`,
+    );
+    try {
+      for (const color of ["#123456", "#abcdef"]) {
+        await page.evaluate(
+          `document.body.style.setProperty(${JSON.stringify(property)}, ${JSON.stringify(color)})`,
+        );
+        const result = await new DraftTool(page.panel).invoke(
+          {
+            input: {
+              action: "validate",
+              language: "echarts",
+              source: '{"series":[{"type":"pie","data":[1],"label":{"show":false}}]}',
+              revision: page.panel.revision,
+              image: true,
+            },
+            toolInvocationToken: undefined,
+          },
+          new vscode.CancellationTokenSource().token,
+        );
+        const image = result.content.find((part) => part instanceof vscode.LanguageModelDataPart);
+        assert.ok(image instanceof vscode.LanguageModelDataPart, toolText(result));
+        const url = `data:image/png;base64,${Buffer.from(image.data).toString("base64")}`;
+        assert.deepStrictEqual(
+          await page.evaluate(`(async () => {
+            const image = new Image();
+            image.src = ${JSON.stringify(url)};
+            await image.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = image.width; canvas.height = image.height;
+            const context = canvas.getContext("2d");
+            context.drawImage(image, 0, 0);
+            return [...context.getImageData(image.width / 2, image.height / 2, 1, 1).data];
+          })()`),
+          [...[1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16)), 255],
+        );
+      }
+    } finally {
+      await page.evaluate(
+        `document.body.style.setProperty(${JSON.stringify(property)}, ${JSON.stringify(saved)})`,
+      );
+    }
+  });
 });

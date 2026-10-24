@@ -139,6 +139,7 @@ suite("chartInspection", () => {
     };
     assert.deepStrictEqual(inspect(spec, [[0, 0]]).rows, [1, 3]);
     assert.deepStrictEqual(inspect(spec, [[0, 1]]).rows, []);
+    assert.deepStrictEqual(inspect(spec, [[1, 0]]).rows, []);
     assert.deepStrictEqual(inspect(spec, [[1, 1]]).rows, [2]);
   });
 

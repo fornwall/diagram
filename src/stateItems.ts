@@ -1,7 +1,7 @@
 // Fit complete item records to a tool result, preserving ids and continuation positions.
 
 import type { ItemPage } from "./protocol";
-import { fitSourceResponse } from "./stateSource";
+import { fitWholeRecords } from "./toolContracts";
 
 export async function itemPageText(
   page: ItemPage,
@@ -26,7 +26,7 @@ export async function itemPageText(
             : undefined,
     });
   };
-  const result = await fitSourceResponse(items.length ? 1 : 0, items.length, response, fits);
+  const result = await fitWholeRecords(items.length ? 1 : 0, items.length, response, fits);
   // An empty page before the end means even its first item exceeded the transport limit.
   if (result !== undefined && (items.length > 0 || startItem > matchedItems)) return result;
   const reason =

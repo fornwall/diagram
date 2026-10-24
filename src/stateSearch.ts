@@ -2,8 +2,9 @@
 
 import { codeFence } from "./blocks";
 import type { DiagramLanguage } from "./protocol";
-import { fitSourceResponse, type StateInput } from "./stateSource";
+import type { StateInput } from "./stateSource";
 import { formatCount } from "./text";
+import { fitWholeRecords } from "./toolContracts";
 
 /**
  * Search one snapshot. A match is a line containing the query, even when it occurs several times
@@ -84,7 +85,7 @@ export async function searchSource(
     return `${heading}\n\n${excerpts.join("\n\n")}\n\n${continuation} If the revision changes, restart the search before editing. Copy exact text from a block for diagram_edit.`;
   };
   return (
-    (await fitSourceResponse(1, matches.length, response, fits)) ??
+    (await fitWholeRecords(1, matches.length, response, fits)) ??
     (await diagnostic(
       `Match ${start} at line ${matches[0]} does not fit the available result budget; no source was returned. ${context > 0 ? 'Retry with "contextLines": 0, or ' : "Use "}a larger tool result budget. Read a specific range with detail:"source" and startLine/endLine.`,
       `Match ${start} at line ${matches[0]} needs a larger result budget.`,

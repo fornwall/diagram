@@ -5,6 +5,7 @@ import { dateResolution, timeValue } from "./chartDates";
 import { quantile, Sum } from "./chartNumbers";
 import { inLabelOrder, label, noteRepeatedLabels, type Reading, type Row } from "./chartRows";
 import type { CartesianType } from "./chartSpec";
+import { checkTableSize } from "./dataLimits";
 import { formatCount, plural, quoteAll } from "./text";
 
 const CARTESIAN_SERIES: Record<CartesianType, Record<string, unknown>> = {
@@ -34,7 +35,7 @@ interface Series {
   name: string;
   /** Undefined means no row at this point; null is an explicitly missing measurement. */
   values: (number | null | undefined)[];
-  members?: Row[][];
+  members?: (Row[] | undefined)[];
 }
 
 /**
@@ -58,13 +59,14 @@ function pivotSeries({ table, columns, rows, notes, trace }: Reading): {
         'fewer with "filters", or give "labelColumn" as a single column.',
     );
   }
+  checkTableSize(points.size, names.size);
   const series = new Map(
     [...names].map((name) => [
       name,
       {
         name,
         values: Array<number | null | undefined>(points.size).fill(undefined),
-        ...(trace ? { members: Array.from({ length: points.size }, () => [] as Row[]) } : {}),
+        ...(trace ? { members: Array<Row[] | undefined>(points.size) } : {}),
       },
     ]),
   );
@@ -73,10 +75,14 @@ function pivotSeries({ table, columns, rows, notes, trace }: Reading): {
   const sums = new Map<string, Sum>();
   for (const row of rows) {
     const value = row.values[0] ?? null;
-    const values = series.get(row.labels[1] ?? "")?.values;
+    const each = series.get(row.labels[1] ?? "");
+    const values = each?.values;
     const point = points.get(label(row));
     if (values === undefined || point === undefined) continue;
-    series.get(row.labels[1] ?? "")?.members?.[point]?.push(row);
+    if (each?.members) {
+      each.members[point] ??= [];
+      each.members[point].push(row);
+    }
     const previous = values[point] ?? null;
     if (previous === null) {
       values[point] = value;
@@ -210,7 +216,7 @@ export function cartesianOption(type: CartesianType, read: Reading): Record<stri
           data,
           indices.map((index) =>
             trace.sources(
-              members?.[index] ?? (rows[index] ? [rows[index] as Row] : []),
+              members ? (members[index] ?? []) : rows[index] ? [rows[index] as Row] : [],
               valueColumn,
             ),
           ),

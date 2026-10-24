@@ -9,6 +9,7 @@ import { type ChartSpec, FACET_TYPES } from "./chartSpec";
 import type { Chart } from "./charts";
 import type { ChartTrace } from "./chartTrace";
 import type { Cell, DataTable } from "./data";
+import { checkTableSize } from "./dataLimits";
 import { asArray, errorMessage, isPlainObject } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
 
@@ -206,6 +207,10 @@ function shareAxes(
         return key;
       });
     });
+    checkTableSize(
+      domain.size,
+      panels.reduce((count, panel) => count + asArray(panel.option.series).length, 0),
+    );
     // Panels list numbers, dates and weekdays in the order of their own rows, and missing ones
     // come after the categories of earlier panels.
     const entries = ordered
@@ -219,9 +224,9 @@ function shareAxes(
       if (!axis) return;
       axis.data = categories;
       const indices = new Map((panelKeys[i] ?? []).map((key, index) => [key, index]));
+      const order = keys.map((key) => indices.get(key));
       for (const series of asArray(panel.option.series)) {
         const data = Array.isArray(series.data) ? series.data : [];
-        const order = keys.map((key) => indices.get(key));
         const aligned = order.map((index) => (index === undefined ? null : (data[index] ?? null)));
         trace?.remap(data, aligned, order);
         series.data = aligned;

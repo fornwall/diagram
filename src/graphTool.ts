@@ -79,8 +79,9 @@ export async function readGraphItems(
   if (panel.current?.language !== "mermaid")
     throw new Error("Graph queries require a Mermaid diagram.");
   const items: DiagramNode[] = [];
+  let totalItems: number | undefined;
   let startItem = 1;
-  do {
+  for (;;) {
     throwIfCancelled(token);
     const page = await unlessCancelled(() => panel.readItems({ startItem, maxItems: 100 }), token);
     throwIfCancelled(token);
@@ -93,13 +94,19 @@ export async function readGraphItems(
       throw new Error(
         "Graph queries support at most 10,000 items. Focus the source on a smaller diagram first.",
       );
+    totalItems ??= page.totalItems;
+    if (
+      page.totalItems !== totalItems ||
+      page.matchedItems !== totalItems ||
+      page.startItem !== startItem
+    )
+      throw new Error("The panel returned an inconsistent graph. Reopen it and retry.");
     items.push(...page.items);
-    if (page.nextItem === undefined) break;
-    if (page.nextItem <= startItem || page.items.length === 0)
+    if (page.nextItem === undefined && items.length === totalItems) return items;
+    if (page.nextItem !== items.length + 1 || items.length >= totalItems || page.items.length === 0)
       throw new Error("The panel returned an incomplete graph. Reopen it and retry.");
     startItem = page.nextItem;
-  } while (startItem <= 10_000);
-  return items;
+  }
 }
 
 export class GraphDiagramTool implements vscode.LanguageModelTool<GraphInput> {

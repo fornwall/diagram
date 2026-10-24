@@ -586,7 +586,9 @@ function closestName(name: string, names: readonly string[]): string | undefined
   let closest: string | undefined;
   let least = Math.max(1, Math.floor(name.length / 4)) + 1;
   for (const known of names) {
-    const off = editDistance(lower, known.toLowerCase());
+    const word = known.toLowerCase();
+    if (Math.abs(lower.length - word.length) >= least) continue;
+    const off = editDistance(lower, word);
     if (off < least) {
       closest = known;
       least = off;

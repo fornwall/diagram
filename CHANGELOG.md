@@ -12,6 +12,9 @@
 - State summaries report tool capabilities; annotations and image crops accept revision guards.
 - Large image crops avoid argument-limit failures and use less temporary memory.
 - Absolute paths with `.` or `..` resolve correctly in virtual workspaces. Workspace tool results respect small token budgets.
+- Sparse charts and shared facet grids respect the million-cell limit before allocating expanded data.
+- Draft previews follow theme changes. Ordinary rendering avoids unused callout observers, and typo hints skip impossible matches.
+- Graph queries reject incomplete results; structural edits preserve carriage-return line endings and reject malformed arrows.
 
 ## 0.0.9
 

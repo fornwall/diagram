@@ -103,6 +103,11 @@ suite("diagram_guide", () => {
     );
     assert.match(guideText({ topic: "echarts-bars" }), /the closest is "echarts-bar"\./);
     assert.match(guideText({ topic: "workflw" }), /the closest is "workflow"\./);
+    assert.match(guideText({ topic: "agent-toosl" }), /the closest is "agent-tools"\./);
+    assert.match(
+      guideText({ topic: "agent-tools for diagrams" }),
+      /the closest is "agent-tools"\./,
+    );
   });
 
   test("answers a malformed input with the index and what to fix", () => {

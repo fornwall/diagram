@@ -98,7 +98,8 @@ The panel loads images only from `data:` URLs, so a Mermaid image shape must emb
 ## Limits
 
 - Files and command output: 10 MiB. Commands time out after 60 seconds.
-- Tables: 1,000,000 cells, including headers and empty cells. Treemaps, sunbursts and sankeys: 100 levels.
+- Tables: 1,000,000 cells, including headers and empty cells. Expanded chart grids, including shared facet categories, have the same limit. Filter rows or use independent facet scales for larger grids.
+- Treemaps, sunbursts and sankeys: 100 levels.
 - Pie, doughnut, funnel and radar charts: 1,000 items. Box plots and sunbursts: 10,000. Heatmaps: 100,000 cells.
 - Bar, line and area charts: 50 series.
 - Mermaid sources: 50,000 characters.

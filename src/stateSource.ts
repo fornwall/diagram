@@ -5,8 +5,6 @@ import type { DiagramLanguage } from "./protocol";
 import { formatCount, toolInput } from "./text";
 import { fitWholeRecords } from "./toolContracts";
 
-export { fitWholeRecords as fitSourceResponse } from "./toolContracts";
-
 export interface StateInput {
   detail?: "full" | "summary" | "source" | "search" | "items" | "changes";
   sinceRevision?: number;

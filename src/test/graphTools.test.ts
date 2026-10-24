@@ -2,9 +2,10 @@ import * as assert from "node:assert";
 import * as vscode from "vscode";
 import { editFlowchart, flowchartStructure } from "../flowchartEdits";
 import { type GraphQuery, queryGraph } from "../graphQuery";
-import { GraphDiagramTool } from "../graphTool";
-import type { DiagramNode } from "../protocol";
-import { StructureDiagramTool } from "../structureTool";
+import { GraphDiagramTool, readGraphItems } from "../graphTool";
+import type { DiagramPanel } from "../panel";
+import type { DiagramNode, ItemPage } from "../protocol";
+import { StructureDiagramTool, structureOperation } from "../structureTool";
 import { cancellationSource } from "./afterTest";
 import { newFakePanel } from "./newPanel";
 import { invokeTool } from "./toolText";
@@ -226,6 +227,14 @@ suite("flowchart structural edits", () => {
     );
   });
 
+  test("keeps carriage-return line endings and reads past comments", () => {
+    const source = "flowchart LR\r %% overview\r A --> B %% connection\r B --> C";
+    const edited = editFlowchart(source, { operation: "addNode", id: "D", label: "Done" });
+    assert.strictEqual(edited, `${source}\r  D["Done"]`);
+    assert.deepStrictEqual(flowchartStructure(edited).nodes, ["A", "B", "C", "D"]);
+    assert.strictEqual(flowchartStructure(edited).edges.length, 2);
+  });
+
   test("rejects unsupported or ambiguous syntax before changing anything", () => {
     for (const source of [
       "flowchart LR\n A --> B --> C",
@@ -233,6 +242,8 @@ suite("flowchart structural edits", () => {
       "flowchart LR\n A -- text --> B",
       "flowchart LR\n A@{ shape: rect }",
       "flowchart LR\n A-B --> C",
+      "flowchart LR\n A -x-> B",
+      "flowchart LR\n A <-x-> B",
       "flowchart LR\n A[unclosed",
       "sequenceDiagram\n A->>B: hello",
     ]) {
@@ -251,6 +262,8 @@ suite("flowchart structural edits", () => {
         }),
       /already exists/,
     );
+    for (const operation of ["constructor", "toString", "__proto__"])
+      assert.throws(() => structureOperation({ operation }), /"operation" must be one of/);
   });
 });
 
@@ -287,6 +300,40 @@ async function fakeGraph(items: DiagramNode[]) {
 }
 
 suite("graph agent tools", () => {
+  test("reads all graph pages and rejects missing or inconsistent pages", async () => {
+    const items = Array.from({ length: 205 }, (_, index) => node(`node${index}`));
+    const { panel } = await fakeGraph(items);
+    assert.deepStrictEqual(await readGraphItems(panel, cancellationSource().token), items);
+
+    const first: ItemPage = {
+      totalItems: 2,
+      matchedItems: 2,
+      startItem: 1,
+      items: [node("A")],
+      nextItem: 2,
+    };
+    const last: ItemPage = { ...first, startItem: 2, items: [node("B")] };
+    delete last.nextItem;
+    for (const pages of [
+      [{ ...first, nextItem: undefined }],
+      [{ ...first, startItem: 2 }],
+      [{ ...first, nextItem: 3 }],
+      [first, { ...last, totalItems: 3, matchedItems: 3 }],
+      [first, { ...last, matchedItems: 1 }],
+      [first, { ...last, items: [] }],
+    ]) {
+      const incomplete = {
+        revision: 1,
+        current: { language: "mermaid" },
+        readItems: async () => pages.shift(),
+      } as unknown as DiagramPanel;
+      await assert.rejects(
+        readGraphItems(incomplete, cancellationSource().token),
+        /incomplete graph|inconsistent graph/,
+      );
+    }
+  });
+
   test("pages query results and focuses the complete match without changing source", async () => {
     const { panel, webview } = await fakeGraph([node("A"), node("B"), edge("ab", "A", "B")]);
     const revision = panel.revision;

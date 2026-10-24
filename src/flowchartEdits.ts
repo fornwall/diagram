@@ -47,7 +47,6 @@ interface Edge extends FlowchartEdge {
   to: NodeReference;
   statement: Statement;
   arrow: string;
-  linkStart: number;
 }
 
 interface Group {
@@ -134,10 +133,9 @@ function parseFlowchart(source: string): Model {
       model.references.push(from);
       continue;
     }
-    const linkStart = position;
     const explicit = /^([A-Za-z_][A-Za-z0-9_]*)@/.exec(source.slice(position, statement.end));
     if (explicit) position += explicit[0].length;
-    const arrow = /^(?:<-.->|<-->|<==>|-.->|-\.-|-->|==>|---|===)/.exec(
+    const arrow = /^(?:<-\.->|<-->|<==>|-\.->|-\.-|-->|==>|---|===)/.exec(
       source.slice(position, statement.end),
     )?.[0];
     if (!arrow)
@@ -169,7 +167,6 @@ function parseFlowchart(source: string): Model {
       to,
       statement,
       arrow,
-      linkStart,
     });
   }
   if (stack.length > 0) return unsupported("A subgraph is not closed.");
@@ -200,7 +197,7 @@ export function flowchartStructure(source: string): {
 export function editFlowchart(source: string, edit: StructureEdit): string {
   const model = parseFlowchart(source);
   const patches: { start: number; end: number; text: string }[] = [];
-  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const newline = /\r\n|\r|\n/.exec(source)?.[0] ?? "\n";
   const references = (id: string) => {
     validateId(id);
     if (model.groups.has(id)) throw new Error(`${JSON.stringify(id)} is a subgraph, not a node.`);
@@ -511,8 +508,7 @@ function sourceStatements(source: string): Statement[] {
         if (end < 0) return unsupported("A Mermaid directive is not closed.");
         position = end + 3;
       } else {
-        const end = source.indexOf("\n", position + 2);
-        position = end < 0 ? source.length : end;
+        while (position < source.length && !/[\r\n]/.test(source[position] as string)) position++;
       }
       start = position;
       continue;

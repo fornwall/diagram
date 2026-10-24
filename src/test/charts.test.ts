@@ -449,6 +449,22 @@ suite("charts", () => {
     }
   });
 
+  test("bounds sparse tables before expanding them into a series per label", () => {
+    const table: DataTable = {
+      header: true,
+      columns: [
+        { name: "point", numeric: false },
+        { name: "series", numeric: false },
+        { name: "value", numeric: true },
+      ],
+      rows: Array.from({ length: 20_001 }, (_, i) => [`p${i}`, `s${i % 50}`, i]),
+    };
+    assert.throws(
+      () => build(chart("bar", { labelColumn: ["point", "series"] }), table),
+      /20,001 rows × 50 columns.*exceeding the 1,000,000 cell limit/,
+    );
+  });
+
   test("stacked areas fill absent series rows without inventing missing measurements", () => {
     for (const days of [
       ["Mon", "Tue", "Wed"],

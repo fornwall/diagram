@@ -234,6 +234,7 @@ export class EChartsRenderer implements Renderer {
 
   hide(): void {
     this.disposeChart();
+    this.theme = undefined;
     this.option = undefined;
     this.source = "";
     this.callbackWarnings = [];

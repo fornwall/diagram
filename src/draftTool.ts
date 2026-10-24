@@ -4,6 +4,7 @@ import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import type { ChartUpdateInput } from "./chartOptions";
 import { EditDiagramTool, type EditInput, prepareSourceEdit, validateEditInput } from "./editTool";
 import { pngBytes } from "./export";
+import { queryGraph } from "./graphQuery";
 import type { DiagramPanel } from "./panel";
 import {
   type DiagramLanguage,
@@ -23,7 +24,6 @@ import { toolInput } from "./text";
 import { fitsToolResult } from "./toolContracts";
 import { drawnResult, textResult } from "./toolResults";
 import { runsCode } from "./webview/optionSource";
-import { shortestPath } from "./webview/relationships";
 
 interface DraftInput {
   action: "validate" | "apply" | "discard";
@@ -58,7 +58,11 @@ export function draftConstraints(
     .filter((id) => !nodes.has(id))
     .map((id) => `Missing node ${JSON.stringify(id)}.`);
   for (const path of input.preservePaths ?? []) {
-    if (!shortestPath(items, path.source, path.target))
+    if (
+      !nodes.has(path.source) ||
+      !nodes.has(path.target) ||
+      !queryGraph(items, { operation: "path", id: path.source, target: path.target }).matches.length
+    )
       errors.push(
         `No directed path from ${JSON.stringify(path.source)} to ${JSON.stringify(path.target)}.`,
       );

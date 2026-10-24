@@ -19,6 +19,7 @@ export class AnnotationView {
   private callouts: { mark: DiagramMark; element: HTMLDivElement; number: number }[] = [];
   private frame = 0;
   private focusPending = false;
+  private readonly observer = new MutationObserver(() => this.schedule());
 
   constructor(
     private readonly canvas: HTMLElement,
@@ -52,12 +53,6 @@ export class AnnotationView {
     this.next.addEventListener("click", () => this.move(1));
     canvas.addEventListener("scroll", () => this.schedule(), true);
     new ResizeObserver(() => this.schedule()).observe(canvas);
-    // Mermaid zooming and chart relayouts move items without scrolling the canvas.
-    new MutationObserver(() => this.schedule()).observe(canvas, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-    });
   }
 
   show(annotation: Annotation): void {
@@ -87,6 +82,11 @@ export class AnnotationView {
     const steps = this.annotation.steps;
     const step = this.annotation.step ?? 0;
     const marks = frame.marks.filter((mark) => mark.text !== undefined);
+    // Observe drawing changes only while callouts need to follow them.
+    this.observer.disconnect();
+    if (marks.length > 0) {
+      this.observer.observe(this.canvas, { childList: true, subtree: true, attributes: true });
+    }
     this.panel.hidden = !steps && marks.length === 0;
     this.controls.hidden = !steps;
     this.heading.textContent = steps ? `Step ${step + 1} of ${steps.length}` : "Explanation";

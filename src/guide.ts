@@ -73,12 +73,11 @@ const AGENT_TOOLS = {
 } as const;
 
 const TOOL_GUIDES = [WORKFLOW, AGENT_TOOLS];
-const WORKFLOW_KEYS = TOOL_GUIDES.flatMap((topic) => [topic.name, ...topic.aliases]).map(key);
+const TOOL_GUIDE_KEYS = TOOL_GUIDES.flatMap((topic) => [topic.name, ...topic.aliases]).map(key);
 const toolGuide = (name: string) =>
   TOOL_GUIDES.find((topic) =>
     [topic.name, ...topic.aliases].some((alias) => key(alias) === key(name)),
   );
-const isWorkflow = (name: string) => toolGuide(name) !== undefined;
 
 /** Every topic by the keys of its name and aliases. */
 const TOPICS_BY_KEY = new Map(
@@ -96,27 +95,26 @@ export function findTopic(name: string): GuideTopic | undefined {
 }
 
 /**
- * The topic whose name or alias is closest to a name that none matches: the longest that the name
- * contains, as "flowchart" in "flowchart with subgraphs", or else the fewest edits away.
+ * Prefer a close spelling; otherwise use a topic named in the phrase, or the nearest spelling.
  */
 function closestTopic(name: string): string {
   const wanted = key(name);
-  const keys = [...TOPICS_BY_KEY.keys(), ...WORKFLOW_KEYS];
+  const keys = [...TOPICS_BY_KEY.keys(), ...TOOL_GUIDE_KEYS];
   const contained = keys
     .filter((each) => each.length >= 3 && wanted.includes(each))
     .sort((a, b) => b.length - a.length)[0];
-  let closest = contained ?? WORKFLOW.name;
-  if (!contained) {
-    let distance = Infinity;
-    for (const each of keys) {
-      const candidate = editDistance(wanted, each);
-      if (candidate < distance) {
-        closest = each;
-        distance = candidate;
-      }
+  let closest: string = WORKFLOW.name;
+  let distance = Infinity;
+  for (const each of keys) {
+    if (Math.abs(wanted.length - each.length) >= distance) continue;
+    const candidate = editDistance(wanted, each);
+    if (candidate < distance) {
+      closest = each;
+      distance = candidate;
     }
   }
-  return TOPICS_BY_KEY.get(closest)?.name ?? WORKFLOW.name;
+  if (distance > 2 && contained) closest = contained;
+  return TOPICS_BY_KEY.get(closest)?.name ?? toolGuide(closest)?.name ?? WORKFLOW.name;
 }
 
 const LANGUAGE_NAMES = { mermaid: "Mermaid", echarts: "ECharts" } as const;
@@ -174,7 +172,7 @@ export class DiagramGuideTool implements vscode.LanguageModelTool<GuideInput> {
     const found = typeof topic === "string" ? findTopic(topic) : undefined;
     return {
       invocationMessage:
-        typeof topic === "string" && isWorkflow(topic)
+        typeof topic === "string" && toolGuide(topic)
           ? "Reading the guide to the diagram workflow"
           : found
             ? `Reading the guide to ${found.name}`
