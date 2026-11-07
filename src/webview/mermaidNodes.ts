@@ -706,10 +706,13 @@ function sequence(f: Finder): void {
   }
 }
 
-/** Gantt tasks: a bar and a label with ids derived from the task id. */
+/**
+ * Gantt tasks: a bar and a label with ids derived from the task id. Looked up in the drawing, as a
+ * draft's is in a shadow root, out of the document's reach.
+ */
 function gantt(f: Finder): void {
   for (const bar of f.all("rect.task")) {
-    const text = document.getElementById(`${bar.id}-text`);
+    const text = f.svg.getElementById(`${bar.id}-text`);
     if (!text) continue;
     const node = { id: f.withoutPrefix(bar.id), label: textOf(text) };
     f.add(bar, node);

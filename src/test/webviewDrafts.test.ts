@@ -91,6 +91,19 @@ suite("drafts in the webview", function () {
     );
   });
 
+  test("finds the tasks of a Gantt draft, which the constraints check", async () => {
+    await page.draw({ source: "flowchart LR\n A --> B" });
+    const report = JSON.parse(
+      await invokeTool(new DraftTool(page.panel), {
+        action: "validate",
+        source: "gantt\n  dateFormat YYYY-MM-DD\n  Design :a1, 2026-01-01, 7d",
+        revision: page.panel.revision,
+        preserveNodes: ["a1"],
+      }),
+    );
+    assert.strictEqual(report.valid, true, JSON.stringify(report));
+  });
+
   test("safe ECharts drafts reuse isolated canvases without duplicate document ids", async () => {
     await page.draw({ language: "echarts", source: '{"series":[{"type":"pie","data":[1,2]}]}' });
     const before = page.panel.current;
