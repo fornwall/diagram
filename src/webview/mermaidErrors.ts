@@ -491,6 +491,26 @@ const errorAt = (normalized: string, at: number | undefined, message: string) =>
   );
 
 /**
+ * The error for a color of the theme variables that Mermaid's themes cannot read, such as "#12345",
+ * on the line that sets it: Mermaid says only that its format is unsupported, and quotes none for
+ * one that it took out, such as a var().
+ */
+export function themeColorError(error: unknown, source: string): Error | undefined {
+  const color =
+    error instanceof Error
+      ? /^Unsupported color format: "(.*)"$/s.exec(error.message)?.[1]
+      : undefined;
+  if (color === undefined) return undefined;
+  const normalized = source.replace(/\r\n?/g, "\n");
+  const at = color ? normalized.indexOf(color) : -1;
+  return errorAt(
+    normalized,
+    at < 0 ? undefined : at,
+    `Mermaid cannot read ${color ? `the color ${JSON.stringify(color)}` : "a color of the theme variables"}: write theme colors in hex, such as "#4a90d9", or with rgb() or hsl().`,
+  );
+}
+
+/**
  * Where a sequence diagram first deactivates the participant more often than it activated it:
  * `deactivate` and a message from it with "-" after the arrow deactivate it.
  */

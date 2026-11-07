@@ -25,6 +25,7 @@ import {
   numberError,
   parsableSource,
   statementError,
+  themeColorError,
   undefinedEndError,
 } from "./mermaidErrors";
 import { diagramHeader } from "./mermaidLayout";
@@ -731,19 +732,26 @@ export class MermaidRenderer implements Renderer {
     }
     const text = parsableSource(source);
     const keyword = diagramHeader(source).typeLine?.split(/\s/)[0];
-    const ownWidth = await setsOwnWidth(
-      mermaid,
-      this.config(source, colors, 0, true),
-      text,
-      keyword,
-    );
-    const config = await withOwnThemeVariables(
-      mermaid,
-      this.config(source, colors, width > 0 ? width : this.layoutWidth, ownWidth),
-      text,
-      colors,
-    );
-    mermaid.initialize(config);
+    // Configuring Mermaid applies the settings of the diagram, which may set colors it cannot read.
+    const configure = async () => {
+      const ownWidth = await setsOwnWidth(
+        mermaid,
+        this.config(source, colors, 0, true),
+        text,
+        keyword,
+      );
+      const config = await withOwnThemeVariables(
+        mermaid,
+        this.config(source, colors, width > 0 ? width : this.layoutWidth, ownWidth),
+        text,
+        colors,
+      );
+      mermaid.initialize(config);
+      return { ownWidth, config };
+    };
+    const { ownWidth, config } = await configure().catch((error: unknown) => {
+      throw themeColorError(error, source) ?? error;
+    });
     // A drawing that fails leaves the one shown, and the width it was laid out at.
     const shownWidth = container.style.width;
     const drawWidth = width > 0 ? `${width}px` : shownWidth;
