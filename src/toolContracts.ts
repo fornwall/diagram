@@ -7,7 +7,7 @@ export function checkedRevision(value: unknown, current: number): number {
       throw new Error('"revision" must be a nonnegative integer from diagram_getState.');
     if (value !== current)
       throw new Error(
-        `The diagram changed since revision ${value}. Read diagram_getState and retry with its current revision, keeping the revision guard.`,
+        `The diagram changed since revision ${value}; it is now at revision ${current}. Read diagram_getState and retry with its current revision, keeping the revision guard.`,
       );
   }
   return current;

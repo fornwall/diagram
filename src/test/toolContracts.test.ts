@@ -23,7 +23,10 @@ suite("tool contracts", () => {
 
   test("rejects stale or malformed revisions and cancellation during token counting", async () => {
     assert.strictEqual(checkedRevision(undefined, 3), 3);
-    assert.throws(() => checkedRevision(2, 3), /changed since revision 2/);
+    assert.throws(
+      () => checkedRevision(2, 3),
+      /changed since revision 2; it is now at revision 3\./,
+    );
     assert.throws(() => checkedRevision("3", 3), /nonnegative integer/);
     const cancellation = cancellationSource();
     await assert.rejects(
