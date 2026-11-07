@@ -1862,6 +1862,26 @@ suite("data", () => {
         ["[x](u) and [y](v)", 3],
       ],
     );
+    // The AWS CLI's --output table draws the name of the command above the header, if any.
+    const aws = (header: string[]) =>
+      [
+        "-------------------------------",
+        "|      DescribeInstances      |",
+        "+---------------+-------------+",
+        ...header,
+        "|  i-0123       |  2          |",
+        "|  i-0456       |  8          |",
+        "+---------------+-------------+",
+      ].join("\n");
+    const instances = [
+      ["i-0123", 2],
+      ["i-0456", 8],
+    ];
+    assert.deepStrictEqual(
+      parse(aws(["|      Id       |    Cores    |", "+---------------+-------------+"])),
+      { columns: ["Id", "Cores"], rows: instances },
+    );
+    assert.deepStrictEqual(parse(aws([])), { columns: ["Column 1", "Column 2"], rows: instances });
     // What psql, mysql and DuckDB print below a table, as with \timing on, is no row.
     for (const table of [
       " lang | lines\n------+-------\n ts   |  1200\n(1 row)\n\nTime: 1234.567 ms (00:01.235)",

@@ -277,6 +277,19 @@ export function splitPipeTable(
   const diffStat = box ? undefined : splitDiffStat(lines);
   if (diffStat !== undefined) return diffStat;
   const width = pipeCells(lines[0] ?? "", box).length;
+  const [title = "", below = ""] = lines;
+  if (
+    underline !== undefined &&
+    !box &&
+    width === 1 &&
+    title.trim().length === underline.trim().length &&
+    pipeCells(escapeUnaligned(below, underline)).length > 1
+  ) {
+    // A title in a row as wide as the table, as the AWS CLI draws, above a header if a rule is
+    // below that too.
+    const table = splitPipeTable(lines.slice(1), ruled.slice(1), underline);
+    return table && { ...table, header: ruled[2] === true };
+  }
   if (underline !== undefined) {
     const separator = box ? BOX_LINE : PIPE;
     // Lines without a separator below a table of several columns are not its rows, but what
