@@ -114,6 +114,9 @@ suite("draftTool", () => {
     );
     assert.strictEqual(panel.current?.language, "mermaid");
     assert.strictEqual(panel.current?.title, "flowchart");
+    // Only what is drawn, not how the draft was made, which checkpoints would keep.
+    for (const key of ["revision", "operations", "chartUpdate"])
+      assert.ok(!Object.hasOwn(panel.current ?? {}, key), key);
   });
 
   test("returns failed constraints without creating an applicable draft", async () => {

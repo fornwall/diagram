@@ -217,8 +217,10 @@ export class DraftTool implements vscode.LanguageModelTool<DraftInput> {
           if (this.panel.revision !== revision) this.drafts.delete(id);
           return result;
         }
+        const { source, language, title } = draft;
         const outcome = await unlessCancelled(
-          () => this.panel.render(draft, "tool", undefined, { newDiagram: true }),
+          () =>
+            this.panel.render({ source, language, title }, "tool", undefined, { newDiagram: true }),
           token,
         );
         this.drafts.delete(id);
