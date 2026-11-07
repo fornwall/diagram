@@ -1476,6 +1476,13 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("draws the diagrams after one whose theme cannot read a color that it sets", async () => {
+    const source =
+      '---\nconfig:\n  theme: base\n  themeVariables:\n    primaryColor: "#12345"\n---\nflowchart LR\n  A --> B';
+    assert.match((await renderError(source)) ?? "", /#12345/);
+    await draw({ source: "flowchart LR\n  A --> C" });
+  });
+
   test("finds the lines of errors that Mermaid gives no position for", async () => {
     assert.deepStrictEqual(
       await errors(

@@ -72,7 +72,17 @@ import { parseColor, readThemeColors } from "./vscodeTheme";
 
 let loading: Promise<Mermaid> | undefined;
 let renderCounter = 0;
-const loadMermaid = () => (loading ??= import("mermaid").then((module) => module.default));
+/**
+ * Mermaid, without the settings of the last diagram that it read, which configuring it applies
+ * again: those of one that chooses a theme and a color that the theme cannot read, such as
+ * "#12345", would fail every later diagram.
+ */
+async function loadMermaid(): Promise<Mermaid> {
+  loading ??= import("mermaid").then((module) => module.default);
+  const mermaid = await loading;
+  mermaid.mermaidAPI.reset();
+  return mermaid;
+}
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
