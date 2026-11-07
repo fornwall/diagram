@@ -150,16 +150,19 @@ function ungroup(text: string): string {
 /** A number in parentheses, perhaps after a currency symbol, as accounting writes negatives. */
 const ACCOUNTING = new RegExp(String.raw`^(${CURRENCY}?)\((${CURRENCY}?[\d.].*)\)$`);
 
-/** kubectl's restart counts: "2 (3h ago)". */
-const SINCE = /^(\d+) \([^()]+ ago\)$/;
+/**
+ * A note in parentheses after a value: the time since, as in kubectl's restart counts ("2 (3h
+ * ago)"), or a share, as in docker system df's reclaimable sizes ("6.8GB (82%)").
+ */
+const ASIDE = /^(\d+) \([^()]+ ago\)$|^(\S+) \(\d+(?:\.\d+)?%\)$/;
 
 /** The uncertainty after a measure, as hyperfine writes "102.3 ± 0.5" and "1.2 s ± 0.1 s". */
 const PLUS_MINUS = /(?<=\S)\s*±\s*\d[\d.,]*(?:\s*[a-zA-Zµμ%]+)?$/;
 
-/** A cell without what is about it rather than its number: an uncertainty or a time since. */
+/** A cell without what is about it rather than its number: an uncertainty or a note aside. */
 function measure(cell: string): string {
   const text = cell.trim();
-  return replaceMatch(text.includes("±") ? text.replace(PLUS_MINUS, "") : text, SINCE, "$1");
+  return replaceMatch(text.includes("±") ? text.replace(PLUS_MINUS, "") : text, ASIDE, "$1$2");
 }
 
 /** A number as most cells write it, which reads the same in every format but decimal commas. */

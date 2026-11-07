@@ -954,6 +954,22 @@ suite("data", () => {
     );
   });
 
+  test("reads docker system df's reclaimable sizes beside their share", () => {
+    const table = parseTable(
+      [
+        "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE",
+        "Images          141       1         8.288GB   6.814GB (82%)",
+        "Containers      7         0         128.4MB   128.4MB (100%)",
+        "Build Cache     45        0         73.87MB   21.49kB",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      table.rows.map((row) => row[4]),
+      [6_814_000_000, 128_400_000, 21_490],
+    );
+    assert.deepStrictEqual(table.columns[4], { name: "RECLAIMABLE", numeric: true, unit: "bytes" });
+  });
+
   test("reads measures with an uncertainty, as hyperfine writes them, as the measure", () => {
     const table = parseTable(
       [
