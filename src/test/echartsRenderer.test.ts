@@ -9,6 +9,9 @@ import { afterTest } from "./afterTest";
 import { item, itemsOf, withChart } from "./echartsModel";
 import { testColors } from "./themeColors";
 
+/** An item as marks that do not dim the chart highlight it, blurring nothing. */
+const marked = (dataIndex: number) => ({ ...item(dataIndex), notBlur: true });
+
 /** Exercise interaction updates without loading ECharts or constructing a browser document. */
 function interactionRenderer() {
   const actions: unknown[] = [];
@@ -131,7 +134,7 @@ suite("echartsRenderer", () => {
       ],
       dim: false,
     });
-    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(0), item(1)] }]);
+    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [marked(0), marked(1)] }]);
     actions.length = 0;
     renderer.showMarks({
       marks: [
@@ -151,11 +154,13 @@ suite("echartsRenderer", () => {
     renderer.showMarks({ marks: [mark("B"), mark("C")], dim: false });
     assert.deepStrictEqual(actions, [
       { type: "downplay", batch: [item(0)] },
-      { type: "highlight", batch: [item(1), item(2)] },
+      { type: "highlight", batch: [marked(1), marked(2)] },
     ]);
     actions.length = 0;
     renderer.showMarks({ marks: [mark("B"), mark("C"), mark("D")], dim: false });
-    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(1), item(2), item(3)] }]);
+    assert.deepStrictEqual(actions, [
+      { type: "highlight", batch: [marked(1), marked(2), marked(3)] },
+    ]);
     actions.length = 0;
     renderer.showMarks({ marks: [], dim: false });
     assert.deepStrictEqual(actions, [{ type: "downplay", batch: [item(1), item(2), item(3)] }]);
@@ -179,6 +184,44 @@ suite("echartsRenderer", () => {
       { type: "downplay", batch: [item(0)] },
       { type: "highlight", batch: [item(1), { ...item(1), notBlur: true }] },
     ]);
+  });
+
+  test("blurs nothing around marks that do not dim, as the option's emphasis.focus would", () => {
+    const { renderer, internals } = drawnRenderer({
+      animation: false,
+      legend: {},
+      tooltip: { trigger: "axis" },
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: {},
+      series: ["S1", "S2"].map((name) => ({
+        name,
+        type: "bar",
+        data: [1, 2],
+        emphasis: { focus: "series" },
+      })),
+    });
+    const chart = internals.chart;
+    /** The states of the items of each series. */
+    const states = () => {
+      chart.getZr().animation.trigger("frame");
+      return [0, 1].map((series) => {
+        const data = modelOf(chart).getSeriesByIndex(series)?.getData();
+        return [0, 1].map((index) => {
+          const graphic = data?.getItemGraphicEl(index) as { currentStates?: string[] } | null;
+          return graphic?.currentStates?.join("+") || "normal";
+        });
+      });
+    };
+    renderer.showMarks({ marks: [{ id: "S1/A", kind: "info" }], dim: false });
+    const marked = [
+      ["emphasis", "normal"],
+      ["normal", "normal"],
+    ];
+    assert.deepStrictEqual(states(), marked);
+    // The pointer over S2's legend entry, and off it again.
+    chart.dispatchAction({ type: "highlight", seriesName: "S2" });
+    chart.dispatchAction({ type: "downplay", seriesName: "S2" });
+    assert.deepStrictEqual(states(), marked);
   });
 
   test("lays the chart out again when only the dimming changes", () => {
@@ -208,7 +251,9 @@ suite("echartsRenderer", () => {
       }),
     });
     renderer.showMarks({ marks: [{ id: "Yes (q2)", kind: "info" }], dim: false });
-    assert.deepStrictEqual(actions, [{ type: "highlight", batch: [item(2, 0, "node")] }]);
+    assert.deepStrictEqual(actions, [
+      { type: "highlight", batch: [{ ...item(2, 0, "node"), notBlur: true }] },
+    ]);
   });
 
   test("coalesces selection updates and selects only the latest items", async () => {
