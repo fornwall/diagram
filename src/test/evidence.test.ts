@@ -6,6 +6,7 @@ import {
   evidenceHash,
   evidenceIdentity,
   evidenceInput,
+  mergeEvidence,
   reconcileEvidence,
   restoredEvidence,
 } from "../evidence";
@@ -385,6 +386,18 @@ suite("evidence", () => {
     assert.deepStrictEqual(
       evidence()?.map(({ id }) => id),
       ["B"],
+    );
+  });
+
+  test("replaces the evidence of the items set and keeps that of the others", () => {
+    const entry = (id: string, assumption: string) => ({
+      id,
+      locations: [],
+      assumptions: [assumption],
+    });
+    assert.deepStrictEqual(
+      mergeEvidence([entry("A", "Old"), entry("B", "Kept")], [entry("A", "New")]),
+      [entry("A", "New"), entry("B", "Kept")],
     );
   });
 

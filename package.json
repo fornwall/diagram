@@ -1968,7 +1968,7 @@
         "canBeReferencedInPrompt": true,
         "icon": "$(references)",
         "userDescription": "Attach source locations and assumptions to diagram items and check freshness",
-        "modelDescription": "diagram_evidence: set merges evidence for exact diagram item ids, capturing file hashes including unsaved edits; attach only sources you have read and distinguish assumptions explicitly. read returns paged attachments, current source snippets and unchanged/changed/missing/unavailable file status. A changed file indicates possible staleness, not a disproved claim; attached evidence is agent-provided, not automatically verified. clear removes selected ids or all attachments. Workspace files only, using the same access boundaries and trust confirmation as workspace reading. set and clear require revision. No diagram source or workspace file is changed. Each call reads at most eight files of up to 1 MiB; source ranges are at most 100 lines. Reads also report rangeStatus for the cited lines and itemStatus for changed/missing identities. Item review flags persist until set reaffirms the evidence; chart source changes conservatively flag attached items.",
+        "modelDescription": "diagram_evidence: set attaches evidence to exact diagram item ids, replacing those items' earlier evidence and keeping the rest, capturing file hashes including unsaved edits; attach only sources you have read and distinguish assumptions explicitly. read returns paged attachments, current source snippets and unchanged/changed/missing/unavailable file status. A changed file indicates possible staleness, not a disproved claim; attached evidence is agent-provided, not automatically verified. clear removes selected ids or all attachments. Workspace files only, using the same access boundaries and trust confirmation as workspace reading. set and clear require revision. No diagram source or workspace file is changed. Each call reads at most eight files of up to 1 MiB; source ranges are at most 100 lines. Reads also report rangeStatus for the cited lines and itemStatus for changed/missing identities. Item review flags persist until set reaffirms the evidence; chart source changes conservatively flag attached items.",
         "tags": [
           "diagram"
         ],
@@ -1997,7 +1997,8 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "maxLength": 1000
+                    "maxLength": 1000,
+                    "description": "Exact item id from diagram_getState with detail:\"items\"."
                   },
                   "locations": {
                     "type": "array",
@@ -2007,17 +2008,20 @@
                       "properties": {
                         "file": {
                           "type": "string",
-                          "maxLength": 4096
+                          "maxLength": 4096,
+                          "description": "Workspace file, absolute or relative to the first workspace folder."
                         },
                         "startLine": {
                           "type": "integer",
                           "minimum": 1,
-                          "maximum": 10000000
+                          "maximum": 10000000,
+                          "description": "First cited line, from 1; defaults to 1."
                         },
                         "endLine": {
                           "type": "integer",
                           "minimum": 1,
-                          "maximum": 10000000
+                          "maximum": 10000000,
+                          "description": "Last cited line; defaults to startLine. A range has at most 100 lines."
                         }
                       },
                       "required": [
@@ -2039,7 +2043,8 @@
                   "id"
                 ],
                 "additionalProperties": false
-              }
+              },
+              "description": "For set. Each item's locations and assumptions replace any it had."
             },
             "ids": {
               "type": "array",
@@ -2054,12 +2059,14 @@
             "startItem": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 50
+              "maximum": 50,
+              "description": "First item to read, from 1; continue at nextItem."
             },
             "maxItems": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 10
+              "maximum": 10,
+              "description": "Items per read; defaults to 5."
             }
           },
           "required": [
