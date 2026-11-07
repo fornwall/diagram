@@ -41,7 +41,8 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
       problems.push(`${which}: oldText is not in the source${after}. ${notFound(text, oldText)}`);
       continue;
     }
-    if (!replaceAll && text.indexOf(oldText, first + oldText.length) >= 0) {
+    // Overlapping occurrences, as "5, 5" in "5, 5, 5", are as ambiguous as others.
+    if (!replaceAll && text.indexOf(oldText, first + 1) >= 0) {
       const { count, lines, totalLines } = matchingLines(text, oldText);
       const sourceLines = text.split(/\r\n?|\n/, lines.at(-1));
       problems.push(
@@ -65,7 +66,7 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
   return problems.length > 0 ? { ok: false, problems } : { ok: true, source: text, replaced };
 }
 
-/** Counts nonoverlapping matches and keeps only the first few distinct matching lines. */
+/** Counts matches, also overlapping ones, and keeps only the first few distinct matching lines. */
 function matchingLines(text: string, needle: string) {
   const lines: number[] = [];
   let count = 0;
@@ -73,11 +74,7 @@ function matchingLines(text: string, needle: string) {
   let line = 1;
   let lastLine = 0;
   let at = 0;
-  for (
-    let offset = text.indexOf(needle);
-    offset >= 0;
-    offset = text.indexOf(needle, offset + needle.length)
-  ) {
+  for (let offset = text.indexOf(needle); offset >= 0; offset = text.indexOf(needle, offset + 1)) {
     count++;
     for (; at < offset; at++) {
       const char = text[at];

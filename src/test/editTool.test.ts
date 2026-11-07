@@ -58,9 +58,9 @@ suite("source edits", () => {
   });
 
   test("count nonoverlapping replacements and keep replacement text literal", () => {
-    assert.deepStrictEqual(applySourceEdits("aaa", [edit("aa", "$&")]), {
+    assert.deepStrictEqual(applySourceEdits("aab", [edit("ab", "$&")]), {
       ok: true,
-      source: "$&a",
+      source: "a$&",
       replaced: [1],
     });
     assert.deepStrictEqual(applySourceEdits("aaaaa", [edit("aa", "$&", true)]), {
@@ -142,6 +142,10 @@ suite("source edits", () => {
       problems(many, [edit("A -->", "")])[0] ?? "",
       /^Edit 1: oldText occurs 8 times, on lines 2, 3, 4, 5 and 6 and 3 more\./,
     );
+    // Overlapping occurrences, which would leave which one to change to chance.
+    assert.deepStrictEqual(problems('{"data": [5, 5, 5]}', [edit("5, 5", "5, 6")]), [
+      'Edit 1: oldText occurs 2 times, on line 1. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n1: {"data": [5, 5, 5]}',
+    ]);
     // Lines end as in the editor, also with "\r\n" or "\r".
     assert.match(
       problems("x\r\nx x\ry\nx", [edit("x", "")])[0] ?? "",
