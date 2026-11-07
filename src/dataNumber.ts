@@ -47,6 +47,27 @@ const DURATION_WORDS = new Set(
 );
 
 /**
+ * The words that make a "time" in a column's name a duration, as in "CPU time" or Google
+ * Analytics' "Average engagement time", rather than a time of day, as in "Time" or "Start time".
+ */
+const TIME_SPAN_WORDS = new Set(
+  "average avg mean median total cpu engagement response load wait run spent watch".split(" "),
+);
+
+/**
+ * Whether a column's `name`, split into lowercase `words`, is of durations, as also the CPU time
+ * of ps and top ("TIME" beside "PID" in the `header`, "TIME+").
+ */
+function namesDurations(name: string, words: string[], header: readonly Cell[]): boolean {
+  return (
+    words.some((word) => DURATION_WORDS.has(word)) ||
+    (words.includes("time") && words.some((word) => TIME_SPAN_WORDS.has(word))) ||
+    /^TIME\+$/i.test(name.trim()) ||
+    (name.trim() === "TIME" && header.includes("PID"))
+  );
+}
+
+/**
  * A duration as Go, kubectl, time and systemd print it, in units from days down to nanoseconds:
  * "1h2m3.5s", "3h12m", "0m1.234s", "1min 2.345s", "812ms", "1.2µs", or in years of 365 days and
  * days, as kubectl's "2y30d", but not "1y6m", which may be months.
@@ -334,7 +355,7 @@ export function statedUnit(
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is;
- * - in durations, if the column's name is of durations ("Elapsed", "AGE");
+ * - in durations, if the column's name is of durations ("Elapsed", "AGE", "CPU time");
  * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
  *   others are plain ("24.0");
  * - as text identifiers, if an ID or code column has padded or unsafe integers.
@@ -415,7 +436,10 @@ export function numberFormat(
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
-    durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
+    durations:
+      typeof name === "string" &&
+      words !== undefined &&
+      namesDurations(name, words, records[0] ?? []),
     versions: versions && !formatted,
     identifiers,
   };

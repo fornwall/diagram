@@ -421,6 +421,35 @@ suite("data", () => {
       runs.rows.map((row) => row[1]),
       [3723.5, 225, 86_400],
     );
+    // The CPU time of ps and top, and times of a measure, as in Google Analytics' exports.
+    const ps = parseTable(
+      "  PID START   TIME COMMAND\n    1 13:41 5:26 init\n  812 09:02 1-02:03:04 java",
+    );
+    assert.deepStrictEqual(
+      ps.rows.map((row) => row.slice(1, 3)),
+      [
+        ["13:41", 326],
+        ["09:02", 93_784],
+      ],
+    );
+    assert.deepStrictEqual(
+      parse("PID  TIME+    COMMAND\n12   0:31.77  rustc\n13   123:45.67  code").rows,
+      [
+        [12, 31.77, "rustc"],
+        [13, 7425.67, "code"],
+      ],
+    );
+    assert.deepStrictEqual(
+      parse("Page,Average engagement time,CPU time\n/,0:01:23,1:30\n/blog,0:02:05,0:45").rows,
+      [
+        ["/", 83, 90],
+        ["/blog", 125, 45],
+      ],
+    );
+    // But times of day, under "Time" or "TIME" without the PID of ps beside it.
+    for (const text of ["Date,Time,v\n2024-01-01,10:30:00,5", "DATE,TIME,v\n2024-01-01,10:30,5"]) {
+      assert.strictEqual(parseTable(text).rows[0]?.[1], text.split("\n")[1]?.split(",")[1]);
+    }
     // systemd-analyze blame right-aligns durations with spaces between their parts.
     const blame = [
       "1h 2min 3.4s slow.service",
