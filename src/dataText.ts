@@ -46,11 +46,12 @@ function withoutRules(lines: string[]): { lines: string[]; ruled: boolean[]; und
 
 /**
  * A line that tells the size of a table rather than holding data, as psql ("(2 rows)"), mysql
- * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]") and DuckDB ("│ 1000 rows (40
- * shown)  3 columns │") print below it, and Polars ("shape: (1_000, 3)") above it.
+ * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]", or for a series "Name: count,
+ * dtype: int64") and DuckDB ("│ 1000 rows (40 shown)  3 columns │") print below it, and Polars
+ * ("shape: (1_000, 3)") above it.
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|shape: \([\d_]+, [\d_]+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
 
 /** What DuckDB ("·"), Polars ("…") and pandas ("...") print for the rows or columns they left out. */
 const ELISION_MARK = String.raw`(?:[·…]|\.{2,})`;

@@ -1597,6 +1597,48 @@ suite("data", () => {
     });
   });
 
+  test("names the index of a pandas data frame or series by the line that pandas prints it on", () => {
+    const expected = {
+      columns: ["month", "sales", "units"],
+      rows: [
+        ["Jan", 100, 10],
+        ["Feb", 150, 12],
+      ],
+    };
+    assert.deepStrictEqual(
+      parse("       sales  units\nmonth             \nJan      100     10\nFeb      150     12"),
+      expected,
+    );
+    // A pivot table, whose header starts with the name of its columns.
+    assert.deepStrictEqual(
+      parse("region  East  North\nmonth             \nJan      1.0    NaN\nFeb      NaN    2.0"),
+      {
+        columns: ["month", "East", "North"],
+        rows: [
+          ["Jan", 1, null],
+          ["Feb", null, 2],
+        ],
+      },
+    );
+    // A series, as value_counts prints it, with the name and type of its values below it.
+    assert.deepStrictEqual(
+      parse("region\nNew York     3\nParis       12\nName: count, dtype: int64"),
+      {
+        columns: ["region", "Column 2"],
+        rows: [
+          ["New York", 3],
+          ["Paris", 12],
+        ],
+      },
+    );
+    // A line of names alone is no series.
+    assert.deepStrictEqual(parse("Name\nJohn Smith\nJane Doe").rows, [
+      ["Name"],
+      ["John Smith"],
+      ["Jane Doe"],
+    ]);
+  });
+
   test("leaves out the rows that stand for rows left out of long output, and says so", () => {
     const duckdb = parseTable(
       [

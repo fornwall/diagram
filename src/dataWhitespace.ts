@@ -172,6 +172,43 @@ function isColumnGroups(line: string, header: string): boolean {
 }
 
 /**
+ * The name of the index of a data frame, which pandas prints on a line of its own between the
+ * header and the rows, as "month" under "sales units" above "Jan 100 10", if `lines` have one.
+ */
+function indexName(lines: string[]): string | undefined {
+  const [header = "", below = "", first = ""] = lines;
+  const [name, ...more] = tokenize(below);
+  return name !== undefined &&
+    more.length === 0 &&
+    name.start === 0 &&
+    parseNumber(name.text) === undefined &&
+    tokenize(header).length > 1 &&
+    tokenize(first).length > 1
+    ? name.text
+    : undefined;
+}
+
+/**
+ * The labels and values of a pandas series, as value_counts prints "North    3" under the name of
+ * its index, if each of `lines`, split into `tokens`, has a label of words and then a number.
+ */
+function seriesRows(lines: string[], tokens: Token[][]): string[][] | undefined {
+  const rows: string[][] = [];
+  for (const [i, line] of tokens.entries()) {
+    const value = line.at(-1);
+    if (
+      value === undefined ||
+      line.length < 2 ||
+      !line.every((token) => (parseNumber(token.text) === undefined) === (token !== value))
+    ) {
+      return undefined;
+    }
+    rows.push([(lines[i] ?? "").slice(0, value.start).trim(), value.text]);
+  }
+  return rows.length > 0 ? rows : undefined;
+}
+
+/**
  * Splits whitespace-separated lines into as many fields as most lines have; the last field keeps
  * any remaining spaces, so "12 src/a b.ts" gives ["12", "src/a b.ts"]. Multi-word column names,
  * as printed by df or docker ps, are matched to the data columns by position. The first line is a
@@ -185,6 +222,12 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
   }
   if (isColumnGroups(lines[0] ?? "", lines[1] ?? "")) {
     return splitWhitespace(lines.slice(1), underline);
+  }
+  const index = indexName(lines);
+  if (index !== undefined) {
+    const table = splitWhitespace([lines[0] ?? "", ...lines.slice(2)], underline);
+    const [names = [], ...rows] = table.records;
+    return { ...table, records: [[index, ...names.slice(1)], ...rows], header: true };
   }
   // Each line is a record, so too many lines need not be split to be refused.
   checkRowCount(lines.length);
@@ -201,6 +244,10 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
   const tokens = lines.map((line) => joinDurations(line, tokenize(line)));
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);
+  const series = textHeader && header.length === 1 ? seriesRows(lines.slice(1), data) : undefined;
+  if (series !== undefined) {
+    return { records: [[header[0]?.text ?? "", ""], ...series], header: true };
+  }
   // Rows that start with a name, under a header that starts after it, as printed by free and R.
   const named = header.length + 1;
   const indent = header[0]?.start ?? 0;
