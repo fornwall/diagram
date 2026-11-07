@@ -630,6 +630,8 @@ export class AnnotateDiagramTool implements vscode.LanguageModelTool<AnnotateInp
       if (names === undefined) {
         sentences.push("Item ids could not be verified; unknown items will not show marks.");
       }
+    } else if (outcome.annotation.steps) {
+      // A first step that marks nothing introduces the walkthrough; later steps mark items.
     } else if (
       outcome.unknown.length > 0 ||
       outcome.repeated.length > 0 ||

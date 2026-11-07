@@ -96,4 +96,21 @@ suite("annotation walkthrough", () => {
     });
     assert.match(panel.describeForModel() ?? "", /Walkthrough step 2\/2: "New second"/);
   });
+
+  test("does not report the marks cleared when the first step only introduces the walkthrough", async () => {
+    const { panel, webview } = await newFakePanel();
+    webview.answer = (message) =>
+      message.type === "render"
+        ? { type: "rendered", requestId: message.requestId, diagramType: "test", nodeIds: ["A"] }
+        : undefined;
+    await panel.render({ language: "mermaid", source: "flowchart LR\n A", title: "Flow" }, "tool");
+    const tool = new AnnotateDiagramTool(panel);
+    const steps = (id: string) => [{ text: "Overview" }, { text: "Detail", marks: [id] }];
+    const result = await invokeTool(tool, { steps: steps("A") });
+    assert.match(result, /^Started a walkthrough with 2 steps\./);
+    assert.doesNotMatch(result, /Cleared|Nothing was marked/);
+    const unknown = await invokeTool(tool, { steps: steps("Z") });
+    assert.doesNotMatch(unknown, /Cleared|Nothing was marked/);
+    assert.match(unknown, /nothing was marked for them: "Z"/);
+  });
 });
