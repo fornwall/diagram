@@ -19,13 +19,14 @@ const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
 /**
  * Splits a row of a table with "|" between cells, as in Markdown, printed by psql, mysql and
  * sqlite3, or by sqlite3 and psql -A without spaces, or with the `box` lines that sqlite3, DuckDB
- * and Polars draw, between which a "|" is text. A leading and trailing separator are optional.
+ * and Polars draw, between which a "|" is text. A leading and trailing separator are optional,
+ * unless not `borders`.
  */
-function pipeCells(line: string, box = false): string[] {
+function pipeCells(line: string, box = false, borders = true): string[] {
   // Two more than a row may have, as a leading and a trailing pipe leave empty cells.
   const cells = line.trim().split(box ? BOX_LINE : PIPE, MAX_CELLS + 3);
-  if (cells.length > 1 && cells[0] === "") cells.shift();
-  if (cells.length > 1 && cells.at(-1) === "") cells.pop();
+  if (borders && cells.length > 1 && cells[0] === "") cells.shift();
+  if (borders && cells.length > 1 && cells.at(-1) === "") cells.pop();
   checkRowWidth(cells.length);
   return box
     ? cells
@@ -296,5 +297,13 @@ export function splitPipeTable(
     return { records: joinLines(unmarked.map(fit), marked, ruled), header: true };
   }
   const records = lines.map((line) => pipeCells(line, box));
-  return width > 1 && records.every((record) => record.length === width) ? { records } : undefined;
+  if (records.every((record) => record.length === width)) {
+    return width > 1 ? { records } : undefined;
+  }
+  // Without borders, as sqlite3 and psql -A print an empty first or last value: "Oslo|709037|".
+  const bare = lines.map((line) => pipeCells(line, box, false));
+  const columns = bare[0]?.length ?? 0;
+  return columns > 1 && bare.every((record) => record.length === columns)
+    ? { records: bare }
+    : undefined;
 }

@@ -1684,6 +1684,14 @@ suite("data", () => {
       ["ts", 1200],
       ["css", 300],
     ]);
+    // sqlite3 and psql -A print an empty first or last value as nothing beside its pipe.
+    assert.deepStrictEqual(parse("lang|lines|note\n|1200|a\ncss|300|\n(2 rows)"), {
+      columns: ["lang", "lines", "note"],
+      rows: [
+        [null, 1200, "a"],
+        ["css", 300, null],
+      ],
+    });
   });
 
   test("joins the lines of cells over several lines in tables drawn by sqlite3 and psql", () => {
