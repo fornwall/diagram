@@ -41,6 +41,8 @@ suite("cdnDiagram", () => {
   for (const [language, source, expected] of [
     ["mermaid", "mindmap\r\n\r\n  root[Root]\r\n    child[Child]", "Child"],
     ["mermaid", "---\nconfig:\n  layout: elk\n---\nflowchart LR\n A[Alpha] --> B[Beta]", "Alpha"],
+    // As the panel draws it, rather than with the tags as text.
+    ["mermaid", 'flowchart LR\n A["<b>Bold</b> label"] --> B', "Bold label"],
     [
       "echarts",
       '{"xAxis":{"type":"category","data":["Alpha","Beta"]},"yAxis":{},"series":[{"type":"bar","data":[10,20]}]}',

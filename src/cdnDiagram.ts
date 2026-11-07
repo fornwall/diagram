@@ -33,7 +33,6 @@ export async function cdnDiagramHtml(
     startOnLoad: false,
     securityLevel: "strict",
     suppressErrorRendering: true,
-    htmlLabels: false,
     theme: "base",
     fontFamily: fontStack(colors),
     themeVariables: {
