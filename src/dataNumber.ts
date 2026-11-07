@@ -19,13 +19,16 @@ const CURRENCY = "[$€£¥₹₩₽₺₪₱₫฿₴₦]";
 const SIGN = "[-+\u2212]";
 
 /**
- * A percent sign, a multiplier ("K", "M", "B", "bn"), a unit of bytes ("B", "K", "kB", "KiB", "Ki"
- * and so on) or a currency.
+ * A percent sign, a multiplier ("K", "M", "B", "bn"), a unit of bytes ("B", "bytes", "K", "kB",
+ * "KiB", "Ki" and so on) or a currency.
  */
-const SUFFIX = `%|bn|Bi?|[KMGTPEk](?:i?B|i)?|${CURRENCY}`;
+const SUFFIX = `%|bn|[Bb]ytes?|Bi?|[KMGTPEk](?:i?B|i)?|${CURRENCY}`;
 
-/** Units that only sizes in bytes have: "KB", "KiB", "Ki", and "G", "P" and "E" without a "B". */
-const BYTE_SUFFIX = /^(?:[KMGTPEk]i?B|[KMGTPEk]i|Bi|[GPE])$/;
+/**
+ * Units that only sizes in bytes have: "bytes", "KB", "KiB", "Ki", and "G", "P" and "E" without a
+ * "B".
+ */
+const BYTE_SUFFIX = /^(?:[KMGTPEk]i?B|[KMGTPEk]i|Bi|[GPE]|[Bb]ytes?)$/;
 
 /** The words of column names that hold sizes, as "Size", "MEMORY(bytes)" or df's "Avail". */
 const SIZE_WORDS = new Set(
@@ -114,6 +117,11 @@ interface NumberFormat {
   sizes?: boolean;
   /** Sizes with a bare unit are in powers of 1000, as du --si prints "1.2M" beside "150k". */
   si?: boolean;
+  /**
+   * "kB" and "MB" are in powers of 1024, as PostgreSQL's pg_size_pretty writes them beside
+   * "8192 bytes".
+   */
+  binary?: boolean;
   /** Spaces or apostrophes group thousands, as in "1 234,5" (French) or "1'234.5" (Swiss). */
   groups?: boolean;
   /** Parentheses mark negative numbers, as in accounting: "(1,234)". */
@@ -250,11 +258,12 @@ export function parseNumber(
   }
   // Explicit binary units ("KiB", "Mi") are in powers of 1024, and SI units in powers of 1000:
   // "kB", "MB" as docker prints them, and "k" as coreutils' --si option does.
-  const base = suffix.includes("i")
-    ? 1024
-    : suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) || format.si
-      ? 1000
-      : 1024;
+  const base =
+    suffix.includes("i") || format.binary
+      ? 1024
+      : suffix === "k" || (suffix.length === 2 && suffix.endsWith("B")) || format.si
+        ? 1000
+        : 1024;
   const bytes = value * base ** "BKMGTPE".indexOf(prefix);
   return Number.isFinite(bytes) ? { value: bytes, unit: "bytes" } : undefined;
 }
@@ -320,6 +329,7 @@ export function statedUnit(
  * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5", "1.234.567")
  *   and none only with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
+ * - in powers of 1024 for "kB" and "MB", if some size is in "bytes", as pg_size_pretty writes it;
  * - with spaces or apostrophes between thousands, if some cell has them and no other cell has
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
@@ -349,6 +359,7 @@ export function numberFormat(
   let point = false;
   let lowerK = false;
   let upperK = false;
+  let binary = false;
   let grouped = false;
   let ungrouped = false;
   let parenthesized = false;
@@ -393,12 +404,14 @@ export function numberFormat(
     const unit = /\d\s*([kK])$/.exec(text)?.[1];
     if (unit === "k") lowerK = true;
     else if (unit === "K") upperK = true;
+    binary ||= /\d bytes$/.test(text);
   }
   return {
     decimalComma: comma && !point,
     sizes,
     counts,
     si: given.si === true || (lowerK && !upperK),
+    binary,
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),

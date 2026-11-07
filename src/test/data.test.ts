@@ -871,6 +871,29 @@ suite("data", () => {
     ]);
   });
 
+  test("reads PostgreSQL's sizes, which spell out bytes, in powers of 1024", () => {
+    const sizes = parse(
+      [
+        " Name   |    Size",
+        "--------+------------",
+        " empty  | 8192 bytes",
+        " users  | 16 kB",
+        " events | 1234 MB",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(sizes.rows, [
+      ["empty", 8192],
+      ["users", 16 * 1024],
+      ["events", 1234 * 1024 ** 2],
+    ]);
+    // Without bytes in lowercase, as docker and Python's humanize write sizes, in powers of 1000.
+    assert.deepStrictEqual(parse("name,size\na,123 Bytes\nb,1.2 kB").rows, [
+      ["a", 123],
+      ["b", 1200],
+    ]);
+    assert.deepStrictEqual(parse("name,size\na,16 kB").rows, [["a", 16_000]]);
+  });
+
   test("reads bare size units in powers of 1000 when told the command prints them so", () => {
     const text = "1.5M\tsrc\n2G\tdocs";
     assert.deepStrictEqual(parseTable(text, "auto", true).rows, [
