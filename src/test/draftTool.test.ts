@@ -85,6 +85,28 @@ suite("draftTool", () => {
     assert.strictEqual(panel.current?.source, "flowchart LR\n User --> Edit");
   });
 
+  test("titles a draft in another language by its own source, not the current drawing", async () => {
+    const { panel, webview } = await newFakePanel();
+    await panel.render(
+      { language: "echarts", title: "Revenue", source: '{"series": [{"type": "pie"}]}' },
+      "tool",
+    );
+    const answer = webview.answer;
+    webview.answer = (message) =>
+      message.type === "validateDraft"
+        ? { type: "draftResult", requestId: message.requestId, diagramType: "flowchart-v2", items }
+        : answer?.(message);
+    const tool = new DraftTool(panel);
+    const sent = webview.sent.length;
+    const draft = JSON.parse(await invokeTool(tool, { action: "validate", source }));
+    const validated = webview.sent.slice(sent).find(({ type }) => type === "validateDraft");
+    assert.ok(validated?.type === "validateDraft");
+    assert.strictEqual(validated.title, "flowchart");
+    assert.match(await invokeTool(tool, { action: "apply", id: draft.id }), /Applied/);
+    assert.strictEqual(panel.current?.language, "mermaid");
+    assert.strictEqual(panel.current?.title, "flowchart");
+  });
+
   test("returns failed constraints without creating an applicable draft", async () => {
     const panel = {
       revision: 1,

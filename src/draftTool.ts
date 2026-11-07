@@ -324,7 +324,8 @@ export class DraftTool implements vscode.LanguageModelTool<DraftInput> {
     if (input.edits !== undefined && (!current || current.source === undefined))
       throw new Error("The current source is unavailable for edits.");
     let source = input.source;
-    let title = input.title ?? current?.title;
+    // A drawing in another language is a new one, titled by its own source.
+    let title = input.title ?? (current?.language === language ? current.title : undefined);
     if (current?.language === language && current.source !== undefined) {
       const change = validateEditInput({
         edits: input.edits ?? [{ oldText: current.source, newText: source }],
