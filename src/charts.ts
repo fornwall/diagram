@@ -11,7 +11,7 @@ import type { ChartTrace } from "./chartTrace";
 import { buildHistogram, filterTable, type HistogramPlan, planHistogram } from "./chartTransforms";
 import { type Multiples, tableMultiples } from "./chartUnits";
 import type { DataTable } from "./data";
-import { isPlainObject } from "./protocol";
+import { asArray, isPlainObject } from "./protocol";
 import { formatCount, plural, quoteAll } from "./text";
 
 export interface Chart {
@@ -61,9 +61,46 @@ export function buildChart(spec: ChartSpec, table: DataTable, trace?: ChartTrace
     spec.max === undefined || spec.type === "gauge" || spec.type === "radar"
       ? ""
       : ` "max" is left out, as only gauge and radar charts have a scale to top.`;
+  const { options, placed } =
+    spec.options !== undefined && spec.facetColumn !== undefined
+      ? facetOptions(spec.options, asArray(chart.option.title).length)
+      : { options: spec.options, placed: [] };
+  const unplaced =
+    placed.length === 0
+      ? ""
+      : ` ${quoteAll(placed)} of "grid" in "options" ${placed.length === 1 ? "is" : "are"} left out, as every facet panel has a place of its own.`;
   return {
-    option: spec.options === undefined ? chart.option : deepMerge(chart.option, spec.options),
-    summary: `${kept}${chart.summary}${unused}`,
+    option: options === undefined ? chart.option : deepMerge(chart.option, options),
+    summary: `${kept}${chart.summary}${unused}${unplaced}`,
+  };
+}
+
+const BOX_KEYS = ["left", "right", "top", "bottom", "width", "height"];
+
+/**
+ * The "options" of a faceted chart, whose titles and grids are its panels': a title object is
+ * the chart's own, after theirs, and a grid object styles every panel but places none, as merged
+ * into each it would name them all alike and lay them over each other.
+ */
+function facetOptions(
+  options: Record<string, unknown>,
+  panels: number,
+): { options: Record<string, unknown>; placed: string[] } {
+  const { title, grid } = options;
+  const placed = isPlainObject(grid) ? BOX_KEYS.filter((key) => grid[key] !== undefined) : [];
+  return {
+    options: {
+      ...options,
+      ...(isPlainObject(title)
+        ? { title: [...Array.from({ length: panels }, () => ({})), title] }
+        : {}),
+      ...(isPlainObject(grid) && placed.length > 0
+        ? {
+            grid: Object.fromEntries(Object.entries(grid).filter(([key]) => !placed.includes(key))),
+          }
+        : {}),
+    },
+    placed,
   };
 }
 

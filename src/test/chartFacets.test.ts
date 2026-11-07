@@ -721,6 +721,28 @@ suite("chartFacets", () => {
     assert.notStrictEqual(laidOut.grid[0].left, laidOut.grid[1].left);
   });
 
+  test("a title or grid object in the options names and places no panel", () => {
+    const data = "service,operation,ms\napi,read,2\nworker,write,30";
+    const spec = { type: "bar", data, facetColumn: "service" } as ChartSpec;
+    const generated = builtOption(spec, data);
+    const title = { text: "Latency", left: "center" };
+    const { option, summary } = buildChart(
+      { ...spec, options: { title, grid: { left: 80, top: "20%", containLabel: true } } },
+      parseTable(data),
+    );
+    assert.deepStrictEqual(option.title, [...generated.title, title]);
+    assert.deepStrictEqual(
+      option.grid,
+      generated.grid.map((grid: Option) => ({ ...grid, containLabel: true })),
+    );
+    assert.match(
+      summary,
+      /"left", "top" of "grid" in "options" are left out, as every facet panel has a place/,
+    );
+    const laidOut = layout(option as Option, { width: 800, height: 500 });
+    assert.notStrictEqual(laidOut.grid[0].left, laidOut.grid[1].left);
+  });
+
   test("renders all facet grids and titles as actual ECharts SVG", () => {
     const option = build("service,operation,ms\napi,read,2\nworker,write,30");
     withChart(
