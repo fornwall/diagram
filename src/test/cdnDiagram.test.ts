@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { CDN_MODULES, cdnDiagramHtml } from "../cdnDiagram";
+import { parseColor } from "../cssColors";
 import type { DiagramLanguage } from "../protocol";
+import { contrast } from "../webview/colors";
 import { afterTest, diagramExtension } from "./afterTest";
 import { testColors } from "./themeColors";
 
@@ -82,6 +84,25 @@ suite("cdnDiagram", () => {
     });
   }
 
+  test("draws a diagram that chooses a theme of its own in that theme, as the panel does", async function () {
+    this.timeout(30_000);
+    for (const header of [
+      "---\nconfig:\n  theme: forest\n---\n",
+      "%%{init: {'theme': 'neutral'}}%%\n",
+    ]) {
+      const source = `${header}flowchart LR\n A[Alpha] --> B[Beta]`;
+      const { fill, color } = await renderExported(
+        "mermaid",
+        await build("mermaid", source),
+        "Alpha",
+      );
+      const [background, text] = [fill, color].map((css) => parseColor(css ?? ""));
+      assert.ok(background && text, JSON.stringify({ fill, color }));
+      // Rather than in the light text of the dark page, on the light fills of the theme.
+      assert.ok(contrast(background, text) >= 4.5, JSON.stringify({ fill, color }));
+    }
+  });
+
   test("loads no renderer file other than the one the extension was built with", async function () {
     this.timeout(30_000);
     for (const language of ["mermaid", "echarts"] as const) {
@@ -97,6 +118,15 @@ suite("cdnDiagram", () => {
   });
 });
 
+/** What an exported page draws, and the colors of its first node, if it has one. */
+interface Rendered {
+  text: string;
+  width: number;
+  height: number;
+  fill: string | null;
+  color: string | null;
+}
+
 /**
  * Renders an exported page in a webview from the exact published distribution, served locally so
  * that no CDN connection is needed, until its drawing shows the expected text or its error.
@@ -105,7 +135,7 @@ async function renderExported(
   language: DiagramLanguage,
   html: string,
   expected: string,
-): Promise<{ text: string; width: number; height: number }> {
+): Promise<Rendered> {
   const root = diagramExtension().extensionUri;
   const panel = vscode.window.createWebviewPanel(
     "diagram.export-test",
@@ -120,7 +150,7 @@ async function renderExported(
   const local = webview.asWebviewUri(vscode.Uri.joinPath(root, "node_modules", language));
   const nonce = /nonce="([^"]+)"/.exec(html)?.[1];
   assert.ok(nonce);
-  const answer = new Promise<{ text: string; width: number; height: number }>((resolve, reject) => {
+  const answer = new Promise<Rendered>((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error("The exported page did not render.")),
       25_000,
@@ -144,7 +174,12 @@ async function renderExported(
       if (error && !error.hidden) { api.postMessage({error: error.textContent}); observer.disconnect(); }
       else if (svg?.textContent.includes(${JSON.stringify(expected)})) {
         const box = svg.getBoundingClientRect();
-        api.postMessage({text: svg.textContent, width: box.width, height: box.height});
+        const shape = svg.querySelector(".node rect");
+        const label = svg.querySelector(".node .nodeLabel");
+        api.postMessage({
+          text: svg.textContent, width: box.width, height: box.height,
+          fill: shape && getComputedStyle(shape).fill, color: label && getComputedStyle(label).color,
+        });
         observer.disconnect();
       }
     };

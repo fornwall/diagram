@@ -80,9 +80,14 @@ noscript { display: block; padding: 16px; }
 <main id="diagram" aria-label="${escapeHtml(title)}"></main>
 <script type="module" nonce="${nonce}">
 const source = ${embedJson(parsableSource(drawing.source))};
+const config = ${embedJson(config)};
 try {
   const { default: mermaid } = await import(${embedJson(CDN_MODULES.mermaid)});
-  mermaid.initialize(${embedJson(config)});
+  mermaid.initialize(config);
+  // A diagram that chooses a theme of its own takes it whole, as in the panel, rather than with
+  // the text colors of the page on the theme's fills.
+  const { theme } = (await mermaid.parse(source)).config;
+  if (theme && theme !== "base") mermaid.initialize({ ...config, themeVariables: {} });
   const { svg } = await mermaid.render("exported-diagram", source);
   const container = document.getElementById("diagram");
   container.innerHTML = svg;
