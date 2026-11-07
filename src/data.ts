@@ -24,7 +24,10 @@ export interface DataTable {
   rows: Cell[][];
   /** Whether the column names come from the data, rather than being generated ("Column 1"). */
   header: boolean;
-  /** What of the data was left out, such as the text around a Markdown table. */
+  /**
+   * What of the data was left out, such as the text around a Markdown table, or what was read
+   * instead, such as a file's unsaved changes.
+   */
   note?: string;
 }
 

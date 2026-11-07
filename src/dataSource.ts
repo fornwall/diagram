@@ -167,10 +167,15 @@ function orWindows1252(text: string, bytes: Uint8Array): string {
 }
 
 /**
- * Reads a data file. One that the user was not asked about is read only while it is inside the
- * workspace, checked right before, else `retry` follows the error to tell how to be asked.
+ * Reads a data file, with its unsaved changes if it is open in an editor, as the workspace tools
+ * read files, which `unsaved` tells. One that the user was not asked about is read only while it
+ * is inside the workspace, checked right before, else `retry` follows the error to tell how to be
+ * asked.
  */
-export async function readDataFile(file: string, unasked?: Unasked): Promise<string> {
+export async function readDataFile(
+  file: string,
+  unasked?: Unasked,
+): Promise<{ text: string; unsaved: boolean }> {
   const uri = resolveFile(file);
   if (unasked && readAsks(uri)) {
     throw unaskedError(fileName(uri), pathOutside(uri), unasked);
@@ -183,6 +188,24 @@ export async function readDataFile(file: string, unasked?: Unasked): Promise<str
       );
     }
   };
+  const checkText = (text: string): void => {
+    if (text.includes("\0")) {
+      throw new Error(
+        `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +
+          "Save its data as CSV, or use a command that prints it.",
+      );
+    }
+  };
+  const edited = vscode.workspace.textDocuments.find(
+    (document) =>
+      document.isDirty && !document.isClosed && document.uri.toString() === uri.toString(),
+  );
+  if (edited) {
+    const text = edited.getText();
+    checkSize(Buffer.byteLength(text));
+    checkText(text);
+    return { text, unsaved: true };
+  }
   let bytes: Uint8Array;
   try {
     const stat = await vscode.workspace.fs.stat(uri);
@@ -217,16 +240,13 @@ export async function readDataFile(file: string, unasked?: Unasked): Promise<str
   } catch {
     // A file that the editor finds binary is refused as one with null characters is.
     // The editor reads Windows-1252 as UTF-8 unless files.encoding names it.
-    const edited = await Promise.resolve(vscode.workspace.decode(bytes, { uri })).catch(() => "\0");
-    text = orWindows1252(edited, bytes);
-  }
-  if (text.includes("\0")) {
-    throw new Error(
-      `The file ${fileName(uri)} is not a text file (it may be a spreadsheet). ` +
-        "Save its data as CSV, or use a command that prints it.",
+    const decoded = await Promise.resolve(vscode.workspace.decode(bytes, { uri })).catch(
+      () => "\0",
     );
+    text = orWindows1252(decoded, bytes);
   }
-  return text;
+  checkText(text);
+  return { text, unsaved: false };
 }
 
 function tail(text: string): string {
@@ -419,14 +439,20 @@ export async function loadTable(
   throwIfCancelled(token);
   let text: string;
   let warning: string | undefined;
+  let unsaved = false;
   if (spec.data !== undefined) {
     text = spec.data;
   } else if (spec.file !== undefined) {
-    text = await unlessCancelled(() => readDataFile(spec.file, unasked), token);
+    ({ text, unsaved } = await unlessCancelled(() => readDataFile(spec.file, unasked), token));
   } else {
     ({ output: text, warning } = await runCommand(spec.command, token));
   }
   throwIfCancelled(token);
   const si = spec.command !== undefined && printsSiSizes(spec.command);
-  return { table: parseTable(text, spec.format, si), ...(warning ? { warning } : {}) };
+  const table = parseTable(text, spec.format, si);
+  if (unsaved) {
+    const note = "The file's unsaved changes in the editor were read.";
+    table.note = table.note === undefined ? note : `${note} ${table.note}`;
+  }
+  return { table, ...(warning ? { warning } : {}) };
 }

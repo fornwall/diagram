@@ -267,32 +267,62 @@ suite("dataSource", () => {
     });
   });
 
+  test("reads a file's unsaved changes in the editor, and says so", async () => {
+    const file = path.join(dir, "edited.csv");
+    fs.writeFileSync(file, "name,count\nsaved,1");
+    assert.deepStrictEqual(await readDataFile(file), {
+      text: "name,count\nsaved,1",
+      unsaved: false,
+    });
+    const document = await vscode.workspace.openTextDocument(file);
+    const insert = (line: number, character: number, text: string) => {
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(document.uri, new vscode.Position(line, character), text);
+      return vscode.workspace.applyEdit(edit);
+    };
+    assert.ok(await insert(1, 7, "\nunsaved,2"));
+    try {
+      const { table } = await loadTable({ type: "pie", file }, token);
+      assert.deepStrictEqual(table.rows, [
+        ["saved", 1],
+        ["unsaved", 2],
+      ]);
+      assert.strictEqual(table.note, "The file's unsaved changes in the editor were read.");
+      assert.ok(await insert(0, 0, "\0"));
+      await assert.rejects(readDataFile(file), /is not a text file/);
+    } finally {
+      // Not saved: local history would copy the file after the test removes it.
+      await vscode.window.showTextDocument(document);
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    }
+  });
+
   test("reads UTF-16 files with a byte order mark", async () => {
     const file = path.join(dir, "utf16.csv");
     fs.writeFileSync(
       file,
       Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("a,1", "utf16le")]),
     );
-    assert.strictEqual(await readDataFile(file), "a,1");
+    assert.strictEqual((await readDataFile(file)).text, "a,1");
   });
 
   test("reads files that are not UTF-8 as Windows-1252", async () => {
     const file = path.join(dir, "latin1.csv");
     fs.writeFileSync(file, Buffer.from("café,1", "latin1"));
-    assert.strictEqual(await readDataFile(file), "café,1");
+    assert.strictEqual((await readDataFile(file)).text, "café,1");
     // A stray byte in UTF-8 text is left undecoded, as the editor shows it.
     fs.writeFileSync(file, Buffer.concat([Buffer.from("café,€ 東京"), Buffer.from([0xff])]));
-    assert.strictEqual(await readDataFile(file), "café,€ 東京\uFFFD");
+    assert.strictEqual((await readDataFile(file)).text, "café,€ 東京\uFFFD");
     // A replacement character written in UTF-8, as a log of undecodable input holds, is one.
     fs.writeFileSync(file, "a,1\n\uFFFD,2");
-    assert.strictEqual(await readDataFile(file), "a,1\n\uFFFD,2");
+    assert.strictEqual((await readDataFile(file)).text, "a,1\n\uFFFD,2");
   });
 
   test("reads files that are not UTF-8 in the encoding of files.encoding", async () => {
     await setting("files.encoding", "koi8r");
     const file = path.join(dir, "koi8r.csv");
     fs.writeFileSync(file, Buffer.from([0xc4, 0xc1, 0x2c, 0x31])); // "да,1"
-    assert.strictEqual(await readDataFile(file), "да,1");
+    assert.strictEqual((await readDataFile(file)).text, "да,1");
   });
 
   test("refuses binary files, such as spreadsheets", async () => {

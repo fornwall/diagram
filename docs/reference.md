@@ -56,7 +56,7 @@ Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram
 - Markdown tables, also within text, and tables drawn with pipes or box-drawing characters, such as `psql`, `mysql`, `sqlite3`, DuckDB, Polars and `git diff --stat` output
 - Whitespace-separated output such as `du`, `wc -l`, `ls -l`, `df`, `free`, `docker ps`, `kubectl`, `go test -bench`, `top -b`, `cloc`, `tasklist`, PowerShell tables, pandas data frames and series, and R tibbles
 
-Terminal colors are ignored. In auto format, shortened DuckDB, Polars or pandas results include only the rows and columns shown. Use `format: "csv"` or `"tsv"` to keep literal ellipsis rows and columns. Quoted multiline fields keep their contents.
+A data file open in an editor is read with its unsaved changes, also on **Refresh**. Terminal colors are ignored. In auto format, shortened DuckDB, Polars or pandas results include only the rows and columns shown. Use `format: "csv"` or `"tsv"` to keep literal ellipsis rows and columns. Quoted multiline fields keep their contents.
 
 Quote large JSON IDs, e.g. `{"id":"9007199254740993"}`. Unquoted integers outside ±9,007,199,254,740,991 may be rounded.
 
