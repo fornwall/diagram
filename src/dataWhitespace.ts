@@ -223,17 +223,23 @@ function checkWords(lines: string[]): void {
 
 /**
  * The name of the index of a data frame, which pandas prints on a line of its own between the
- * header and the rows, as "month" under "sales units" above "Jan 100 10", if `lines` have one.
+ * header and the rows, as "month" under "sales units" above "Jan 100 10", if `lines` have one:
+ * where the rows have a word more than the header, for the index that it leaves unnamed, or the
+ * line is as wide as the header, as pandas pads it, also below the name of a pivot table's
+ * columns. A word alone under the header may otherwise be a row, as a group's name or a long name
+ * that BusyBox df prints on a line of its own.
  */
 function indexName(lines: string[]): string | undefined {
   const [header = "", below = "", first = ""] = lines;
   const [name, ...more] = tokenize(below);
+  const names = tokenize(header).length;
   return name !== undefined &&
     more.length === 0 &&
     name.start === 0 &&
     parseNumber(name.text) === undefined &&
-    tokenize(header).length > 1 &&
-    tokenize(first).length > 1
+    names > 1 &&
+    (tokenize(first).length === names + 1 ||
+      (below.length >= header.trimEnd().length && tokenize(first).length > 1))
     ? name.text
     : undefined;
 }

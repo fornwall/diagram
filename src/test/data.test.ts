@@ -1703,9 +1703,9 @@ suite("data", () => {
       parse("       sales  units\nmonth             \nJan      100     10\nFeb      150     12"),
       expected,
     );
-    // A pivot table, whose header starts with the name of its columns.
+    // A pivot table, whose header starts with the name of its columns, as wide as pandas pads it.
     assert.deepStrictEqual(
-      parse("region  East  North\nmonth             \nJan      1.0    NaN\nFeb      NaN    2.0"),
+      parse("region  East  North\nmonth              \nJan      1.0    NaN\nFeb      NaN    2.0"),
       {
         columns: ["month", "East", "North"],
         rows: [
@@ -1714,6 +1714,31 @@ suite("data", () => {
         ],
       },
     );
+    // Otherwise a word alone under the header is a row: a group's name, or a long name that
+    // BusyBox df prints on a line of its own.
+    assert.deepStrictEqual(parse("name value\ntotal\na 1\nb 2"), {
+      columns: ["name", "value"],
+      rows: [
+        ["total", null],
+        ["a", 1],
+        ["b", 2],
+      ],
+    });
+    assert.deepStrictEqual(parse("Region   Q1   Q2\nNorth\nOslo     10   20").columns, [
+      "Region",
+      "Q1",
+      "Q2",
+    ]);
+    const df = parse(
+      [
+        "Filesystem           1K-blocks      Used Available Use% Mounted on",
+        "/dev/mapper/vg0-root",
+        "                      51475068  20000000  28838000  41% /",
+        "tmpfs                  8000000         0   8000000   0% /dev/shm",
+        "/dev/sda1               500000    100000    400000  20% /boot",
+      ].join("\n"),
+    );
+    assert.strictEqual(df.columns[0], "Filesystem");
     // A series, as value_counts prints it, with the name and type of its values below it.
     assert.deepStrictEqual(
       parse("region\nNew York     3\nParis       12\nName: count, dtype: int64"),
