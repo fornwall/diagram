@@ -795,6 +795,17 @@ suite("chartTools", function () {
     assert.strictEqual(panel.current?.title, "Sizes");
   });
 
+  test("an empty title gives a chart its default title, also in place of one given elsewhere", async () => {
+    const { panel } = await harness();
+    // Titled otherwise than diagram_chart titles it, as a Markdown block may be.
+    await draw(panel);
+    assert.strictEqual(panel.current?.title, "Chart");
+    assert.ok((await panel.updateChart({ title: "" }, token)).ok);
+    assert.strictEqual(panel.current?.title, "Bar chart");
+    assert.ok((await panel.updateChart({ type: "pie" }, token)).ok);
+    assert.strictEqual(panel.current?.title, "Pie chart");
+  });
+
   test("a refused update says how to clear the setting that it keeps", async () => {
     const { panel } = await harness();
     const scores = "name,team,score\na,x,1\nb,y,2\nc,x,3";

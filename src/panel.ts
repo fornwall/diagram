@@ -1836,7 +1836,8 @@ function withRebuiltChart(
   return {
     state: {
       ...state,
-      title: made ? chartTitle(chart) : (chart.title ?? state.title),
+      // A blank title given to the chart is its default one.
+      title: made || chart.title !== undefined ? chartTitle(chart) : state.title,
       chart,
       source: formatOption(JSON.stringify(rebuilt.option)),
       error: undefined,
