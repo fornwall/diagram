@@ -1602,6 +1602,34 @@ suite("data", () => {
     });
   });
 
+  test("reads an R tibble without the lines around it and the types of its columns", () => {
+    const table = parseTable(
+      [
+        "# A tibble: 32 × 3",
+        "# Groups:   cyl [3]",
+        "     mpg   cyl  disp",
+        "   <dbl> <dbl> <dbl>",
+        " 1  21       6  160 ",
+        " 2  22.8     4  108 ",
+        "10  19.2     6  168.",
+        "# ℹ 22 more rows",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      table.columns.map(({ name }) => name),
+      ["Column 1", "mpg", "cyl", "disp"],
+    );
+    assert.deepStrictEqual(table.rows, [
+      [1, 21, 6, 160],
+      [2, 22.8, 4, 108],
+      [10, 19.2, 6, 168],
+    ]);
+    assert.strictEqual(
+      table.note,
+      "Only the rows that the output shows were read, not those it left out of its 32 rows.",
+    );
+  });
+
   test("names the index of a pandas data frame or series by the line that pandas prints it on", () => {
     const expected = {
       columns: ["month", "sales", "units"],

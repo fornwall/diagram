@@ -47,11 +47,15 @@ function withoutRules(lines: string[]): { lines: string[]; ruled: boolean[]; und
 /**
  * A line that tells the size of a table rather than holding data, as psql ("(2 rows)"), mysql
  * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]", or for a series "Name: count,
- * dtype: int64") and DuckDB ("│ 1000 rows (40 shown)  3 columns │") print below it, and Polars
- * ("shape: (1_000, 3)") above it.
+ * dtype: int64") and DuckDB ("│ 1000 rows (40 shown)  3 columns │") print below it, Polars
+ * ("shape: (1_000, 3)") above it, and R's tibbles around it ("# A tibble: 1,000 × 3", "# Groups:
+ * cyl [3]", "# ℹ 990 more rows").
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|# A tibble: [\d,]+ [×x] [\d,]+|# (?:Groups:|ℹ|…|\.\.\.) .*|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+
+/** What a tibble prints below the rows that it shows: "# ℹ 990 more rows". */
+const MORE_ROWS = /^# (?:ℹ|…|\.\.\.) (?:with )?[\d,]+ more rows?\b/;
 
 /** What DuckDB ("·"), Polars ("…") and pandas ("...") print for the rows or columns they left out. */
 const ELISION_MARK = String.raw`(?:[·…]|\.{2,})`;
@@ -88,7 +92,8 @@ function elidedColumns(records: Cell[][]): Set<number> {
 function elisionNote(lines: string[], rows: boolean, columns: boolean): string {
   // Polars writes "1_000" for a thousand.
   const size = (lines.find((line) => TABLE_SIZE.test(line)) ?? "").replaceAll("_", ",");
-  const [, shapeRows, shapeColumns] = /\(([\d,]+), ([\d,]+)\)/.exec(size) ?? [];
+  const [, shapeRows, shapeColumns] =
+    /(?:\(|tibble: )([\d,]+)(?:, | [×x] )([\d,]+)/.exec(size) ?? [];
   const rowCount = shapeRows ?? /([\d,]+) rows/.exec(size)?.[1];
   const columnCount = shapeColumns ?? /([\d,]+) columns/.exec(size)?.[1];
   const totals = [
@@ -266,7 +271,8 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
   const shown = elidedRows ? all.map((line) => (ELIDED_ROWS.test(line) ? "" : line)) : all;
   const table = splitShown(elidedRows ? shown.join("\n") : text, shown, format);
   const elided = elidedColumns(table.records);
-  if (!elidedRows && elided.size === 0) {
+  const leftOut = elidedRows || all.some((line) => MORE_ROWS.test(line));
+  if (!leftOut && elided.size === 0) {
     return table;
   }
   const kept = (_: unknown, column: number) => !elided.has(column);
@@ -274,7 +280,7 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
     ...table,
     records: table.records.map((record) => record.filter(kept)),
     ...(table.units === undefined ? {} : { units: table.units.filter(kept) }),
-    note: [table.note, elisionNote(all, elidedRows, elided.size > 0)].filter(Boolean).join(" "),
+    note: [table.note, elisionNote(all, leftOut, elided.size > 0)].filter(Boolean).join(" "),
   };
 }
 

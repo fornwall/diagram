@@ -223,6 +223,10 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
   if (isColumnGroups(lines[0] ?? "", lines[1] ?? "")) {
     return splitWhitespace(lines.slice(1), underline);
   }
+  // A tibble prints the types of its columns below their names: "<chr> <dbl>".
+  if (lines.length > 2 && tokenize(lines[1] ?? "").every(({ text }) => /^<\S+>$/.test(text))) {
+    return splitWhitespace([lines[0] ?? "", ...lines.slice(2)], underline);
+  }
   const index = indexName(lines);
   if (index !== undefined) {
     const table = splitWhitespace([lines[0] ?? "", ...lines.slice(2)], underline);
