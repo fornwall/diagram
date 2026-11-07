@@ -2454,6 +2454,12 @@ suite("data", () => {
         ],
       },
     );
+    // As scripts color with tput, whose sgr0 chooses a character set too.
+    const green = (text: string) => `\x1b[32m${text}\x1b(B\x1b[m`;
+    assert.deepStrictEqual(parse(`name,count\n${green("ok")},5\n${green("bad")},7`).rows, [
+      ["ok", 5],
+      ["bad", 7],
+    ]);
   });
 
   test("uses a header for whitespace output with numeric columns", () => {

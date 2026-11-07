@@ -270,12 +270,13 @@ function tableFromRecords(
 }
 
 /**
- * A terminal's escape sequence: a control sequence, as for colors ("\x1b[32m"), or an operating
- * system command, as for links ("\x1b]8;;https://…\x1b\\"). Commands print them when forced to,
- * as with FORCE_COLOR or --color=always.
+ * A terminal's escape sequence: a control sequence, as for colors ("\x1b[32m"), an operating
+ * system command, as for links ("\x1b]8;;https://…\x1b\\"), or the choice of a character set, as
+ * tput sgr0 prints before ending colors ("\x1b(B"). Commands print them when forced to, as with
+ * FORCE_COLOR or --color=always.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: escape sequences start with ESC.
-const TERMINAL_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?)/g;
+const TERMINAL_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[()*+][0-~])/g;
 
 /**
  * Parses tabular data, detecting the format (unless given) and whether the first row is a header.
