@@ -2,7 +2,7 @@
 
 Interactive [Mermaid](https://mermaid.js.org/) diagrams and [Apache ECharts](https://echarts.apache.org/) charts beside VS Code chat. Draw with your agent, select items, ask follow-up questions and edit the source.
 
-Requires VS Code 1.143 or later. Chat features need an agent that supports extension tools, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
+Requires VS Code 1.145 or later. Chat features need an agent that supports extension tools, such as GitHub Copilot. Diagrams in Markdown files open and edit without chat.
 
 ## Install
 

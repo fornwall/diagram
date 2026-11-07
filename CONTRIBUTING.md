@@ -2,7 +2,7 @@
 
 ## Development
 
-Use Node.js 26 and VS Code 1.143 or later.
+Use Node.js 26 and VS Code 1.145 or later.
 
 ```sh
 git clone https://github.com/fornwall/diagram.git
