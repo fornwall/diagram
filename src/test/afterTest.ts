@@ -202,7 +202,22 @@ function fastestOf(work: () => unknown, runs: number): number {
  * time.
  */
 export function assertLinearTime(prepare: (size: number) => () => unknown, size: number): void {
-  const base = fastestOf(prepare(size), 3) < MIN_TIMED_MS ? 4 * size : size;
+  let base = fastestOf(prepare(size), 3) < MIN_TIMED_MS ? 4 * size : size;
+  let [small, large] = fastestPair(prepare, base);
+  // The first runs may be slower than the work once optimized, as on a busy machine.
+  if (base === size && small < MIN_TIMED_MS) {
+    base = 4 * size;
+    [small, large] = fastestPair(prepare, base);
+  }
+  // And a millisecond more, which a measure of under a millisecond is not exact to.
+  assert.ok(
+    large < 8 * small + 1,
+    `${small.toFixed(1)} ms for size ${base}, but ${large.toFixed(1)} ms for ${4 * base}`,
+  );
+}
+
+/** The fastest times of the work at `base` and four times it, timed in turns. */
+function fastestPair(prepare: (size: number) => () => unknown, base: number): [number, number] {
   const works = [prepare(base), prepare(4 * base)];
   const fastest = works.map(() => Number.POSITIVE_INFINITY);
   for (let round = 0; round < 5; round++) {
@@ -211,9 +226,5 @@ export function assertLinearTime(prepare: (size: number) => () => unknown, size:
     }
   }
   const [small = 0, large = 0] = fastest;
-  // And a millisecond more, which a measure of under a millisecond is not exact to.
-  assert.ok(
-    large < 8 * small + 1,
-    `${small.toFixed(1)} ms for size ${base}, but ${large.toFixed(1)} ms for ${4 * base}`,
-  );
+  return [small, large];
 }
