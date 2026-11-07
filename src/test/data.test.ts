@@ -954,6 +954,25 @@ suite("data", () => {
     );
   });
 
+  test("reads measures with an uncertainty, as hyperfine writes them, as the measure", () => {
+    const table = parseTable(
+      [
+        "| Command | Mean [ms] | Min [ms] | Relative |",
+        "|:---|---:|---:|---:|",
+        "| `sleep 0.1` | 102.3 ± 0.5 | 101.5 | 1.00 |",
+        "| `sleep 0.2` | 202.1 ± 0.8 | 201.0 | 1.98 ± 0.01 |",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(table.rows, [
+      ["sleep 0.1", 0.1023, 0.1015, 1],
+      ["sleep 0.2", 0.2021, 0.201, 1.98],
+    ]);
+    assert.deepStrictEqual(table.columns[1], { name: "Mean [ms]", numeric: true, unit: "seconds" });
+    assert.deepStrictEqual(parseNumber("1.2 s ± 0.1 s"), { value: 1.2, unit: "seconds" });
+    assert.deepStrictEqual(parseNumber("12% ±1.5%"), { value: 12, unit: "%" });
+    for (const text of ["± 0.5", "a ± 1"]) assert.strictEqual(parseNumber(text), undefined, text);
+  });
+
   test("reads plain numbers in the unit of sizes or durations that their column's name states", () => {
     const read = (text: string) => {
       const table = parseTable(text);

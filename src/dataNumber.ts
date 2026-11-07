@@ -153,6 +153,15 @@ const ACCOUNTING = new RegExp(String.raw`^(${CURRENCY}?)\((${CURRENCY}?[\d.].*)\
 /** kubectl's restart counts: "2 (3h ago)". */
 const SINCE = /^(\d+) \([^()]+ ago\)$/;
 
+/** The uncertainty after a measure, as hyperfine writes "102.3 ± 0.5" and "1.2 s ± 0.1 s". */
+const PLUS_MINUS = /(?<=\S)\s*±\s*\d[\d.,]*(?:\s*[a-zA-Zµμ%]+)?$/;
+
+/** A cell without what is about it rather than its number: an uncertainty or a time since. */
+function measure(cell: string): string {
+  const text = cell.trim();
+  return replaceMatch(text.includes("±") ? text.replace(PLUS_MINUS, "") : text, SINCE, "$1");
+}
+
 /** A number as most cells write it, which reads the same in every format but decimal commas. */
 const PLAIN = /^\s*-?\d+(?:\.\d+)?\s*$/;
 const INTEGER = /^\s*[-+]?\d+\s*$/;
@@ -173,8 +182,8 @@ const VERSION = /^v?\d+(?:\.\d+){2,}(?![.\d])[-+.\w]*$/;
  * and sizes in bytes: "3GiB", "128Mi" (in units of 1024), "1.2kB", "187MB" (in units of 1000, as
  * docker prints them) or, in a column of `format.sizes`, "512B", "1.5K", "12M" (in units of 1024,
  * as du -h and ls -lh print them, or of 1000 with `format.si`), and durations in seconds
- * ("812ms", "1h2m3s"). The column's `format` also tells how to read "1,5", "1 234", "(5)", "250m"
- * and "3:45".
+ * ("812ms", "1h2m3s"), also with an uncertainty after them ("102.3 ± 0.5"), which is left out. The
+ * column's `format` also tells how to read "1,5", "1 234", "(5)", "250m" and "3:45".
  */
 export function parseNumber(
   text: string,
@@ -187,7 +196,7 @@ export function parseNumber(
     const value = Number(text);
     return Number.isFinite(value) ? { value } : undefined;
   }
-  let trimmed = replaceMatch(replaceMatch(text.trim(), SINCE, "$1"), CURRENCY_SIGN, "$2$1");
+  let trimmed = replaceMatch(measure(text), CURRENCY_SIGN, "$2$1");
   if (format.millicores && /^\d+m$/.test(trimmed)) {
     const value = Number(trimmed.slice(0, -1)) / 1000;
     return Number.isFinite(value) ? { value } : undefined;
@@ -354,7 +363,7 @@ export function numberFormat(
       minus ||= cell.trimStart().startsWith("-");
       continue;
     }
-    let text = replaceMatch(cell.trim(), CURRENCY_SIGN, "$2$1");
+    let text = replaceMatch(measure(cell), CURRENCY_SIGN, "$2$1");
     const accounting = ACCOUNTING.exec(text);
     if (accounting) {
       text = `${accounting[1]}${accounting[2]}`;
