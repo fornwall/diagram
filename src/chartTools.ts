@@ -330,7 +330,7 @@ function columnStatistics(table: DataTable, column: number) {
     max: values.at(-1),
     sum,
     mean: withoutNoise(mean),
-    median: quantile(values, 0.5),
+    median: withoutNoise(quantile(values, 0.5)),
     ...(sum === null ? { sumNote: "The sum exceeds the numeric range." } : {}),
   };
 }

@@ -245,6 +245,13 @@ suite("chartTools", function () {
     assert.strictEqual(report.columns[0].statistics.sumNote, undefined);
   });
 
+  test("statistics give a median between two values as a chart of medians does", async () => {
+    const panel = { revision: 1, loadedChartData: parseTable("value\n0.1\n0.2") } as DiagramPanel;
+    const result = await invokeTool(new InspectDataTool(panel), { summary: true });
+    const report = JSON.parse(result.slice(result.indexOf("\n{") + 1));
+    assert.strictEqual(report.columns[0].statistics.median, 0.15);
+  });
+
   test("inspection reports inferred schema, nulls and bounded samples", async () => {
     const table = parseTable("name,amount\na,1\nb,NULL\nc,3");
     const report = JSON.parse(await inspectTable(table, 2));
