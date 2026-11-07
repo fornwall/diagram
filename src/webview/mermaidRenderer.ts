@@ -777,6 +777,7 @@ export class MermaidRenderer implements Renderer {
           emptyStateError(error, parsed, source) ??
           duplicateEdgeError(error, parsed, source) ??
           (await statementError(error, source, (part) => mermaid.parse(part))) ??
+          themeColorError(error, source) ??
           describeError(error, source, () => mermaid.detectType(text))
         );
       });

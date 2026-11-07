@@ -1494,12 +1494,22 @@ suite("Mermaid in the webview", function () {
   });
 
   test("says which color of the theme variables Mermaid cannot read, and where", async () => {
-    const colored = (color: string) =>
-      `%%{init: {"themeVariables": {"lineColor": "#888", "primaryColor": "${color}"}}}%%\nflowchart LR\n  A --> B`;
-    assert.deepStrictEqual(await errors(colored("oklch(70% 0.1 200)"), colored("var(--x)")), [
-      'Error on line 1: Mermaid cannot read the color "oklch(70% 0.1 200)": write theme colors in hex, such as "#4a90d9", or with rgb() or hsl().',
-      'Mermaid cannot read a color of the theme variables: write theme colors in hex, such as "#4a90d9", or with rgb() or hsl().',
-    ]);
+    const colored = (color: string, theme = "") =>
+      `%%{init: {${theme}"themeVariables": {"lineColor": "#888", "primaryColor": "${color}"}}}%%\nflowchart LR\n  A --> B`;
+    const hint = 'write theme colors in hex, such as "#4a90d9", or with rgb() or hsl().';
+    assert.deepStrictEqual(
+      await errors(
+        colored("oklch(70% 0.1 200)"),
+        colored("var(--x)"),
+        // Of a theme that the diagram chooses, which Mermaid applies as it draws.
+        colored("#12345", '"theme": "dark", '),
+      ),
+      [
+        `Error on line 1: Mermaid cannot read the color "oklch(70% 0.1 200)": ${hint}`,
+        `Mermaid cannot read a color of the theme variables: ${hint}`,
+        `Error on line 1: Mermaid cannot read the color "#12345": ${hint}`,
+      ],
+    );
   });
 
   test("finds the lines of errors that Mermaid gives no position for", async () => {
