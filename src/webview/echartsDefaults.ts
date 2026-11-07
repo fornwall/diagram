@@ -103,9 +103,14 @@ export function styleSeries(base: JsonObject, series: JsonObject[], colors: Them
       }
       each.itemStyle = itemStyle;
     }
-    if (each.type === "sankey" && each.color === undefined) {
+    if (
+      each.type === "sankey" &&
+      each.color === undefined &&
+      [each, ...asArray(each.levels)].every((owner) => styleOf(owner.itemStyle).color === undefined)
+    ) {
       // ECharts colors sankey nodes by value along the palette, mixing hues; give each node its
-      // own categorical color instead, shared by the nodes of the same name in other stages.
+      // own categorical color instead, shared by the nodes of the same name in other stages. Not
+      // over the colors that the series or its levels give the nodes.
       const key = each.data != null ? "data" : "nodes";
       const nodes: unknown = each[key];
       if (Array.isArray(nodes)) {

@@ -146,6 +146,14 @@ suite("echartsDefaults", () => {
       stages.series[0].data.map((node: Option) => node.itemStyle.color),
       ["#000000", "#010000", "#000000", "#020000"],
     );
+    // Not over the colors that the series or its levels give the nodes.
+    for (const own of [
+      { itemStyle: { color: "red" } },
+      { levels: [{ depth: 0, itemStyle: { color: "red" } }] },
+    ]) {
+      const colored = layout({ series: [{ type: "sankey", data: [{ name: "A" }], ...own }] });
+      assert.deepStrictEqual(colored.series[0].data, [{ name: "A" }]);
+    }
   });
 
   test("says the row of a heatmap's cell in its tooltip, which ECharts names by its column", () => {
