@@ -3,7 +3,7 @@
 
 import type { Records } from "./data";
 import { checkRowCount, checkTableSize, MAX_CELLS } from "./dataLimits";
-import { shape, type Token, tokenize } from "./dataLines";
+import { isMissing, shape, type Token, tokenize } from "./dataLines";
 import { parseNumber } from "./dataNumber";
 
 /**
@@ -279,8 +279,14 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
   if (isColumnGroups(lines[0] ?? "", lines[1] ?? "")) {
     return splitWhitespace(lines.slice(1), underline);
   }
-  // A tibble prints the types of its columns below their names: "<chr> <dbl>".
-  if (lines.length > 2 && tokenize(lines[1] ?? "").every(({ text }) => /^<\S+>$/.test(text))) {
+  // A tibble prints the types of its columns below their names: "<chr> <dbl>", unlike the
+  // "<none>" of a row of missing values, as docker images prints for a dangling image.
+  const types = tokenize(lines[1] ?? "");
+  if (
+    lines.length > 2 &&
+    types.length > 0 &&
+    types.every(({ text }) => /^<\S+>$/.test(text) && !isMissing(text))
+  ) {
     return splitWhitespace([lines[0] ?? "", ...lines.slice(2)], underline);
   }
   const index = indexName(lines);

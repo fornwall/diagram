@@ -2,7 +2,8 @@
 
 import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
-import { type Cell, type DataTable, isMissing, isYear } from "./data";
+import { type Cell, type DataTable, isYear } from "./data";
+import { isMissing } from "./dataLines";
 import { isPlainObject, UPDATE_CHART_TOOL } from "./protocol";
 import { formatCount, plural, quote, quoteAll, shorten } from "./text";
 

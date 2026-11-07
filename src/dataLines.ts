@@ -9,6 +9,21 @@ export function isBlank(line: string): boolean {
 }
 
 /**
+ * Text that marks a missing value, as spreadsheets ("#N/A", or errors such as "#DIV/0!"),
+ * databases ("NULL"), pandas ("NaN", "None", "<NA>"), kubectl ("<none>", "<unknown>") and command
+ * output ("-", "--") write it, or an infinity, which no chart can place, as pandas ("inf"), R
+ * ("-Inf") and JavaScript ("Infinity") write it. Like an empty cell it neither makes a column
+ * numeric nor keeps it from being so, but outside numeric columns it stays, as a label.
+ */
+const MISSING =
+  /^(?:-+|[–—]|n\/a|na|<(?:na|none|unknown)>|nan|[-+−]?inf(?:inity)?|null|none|#(?:n\/a|div\/0!|value!|ref!|name\?|num!|null!))$/i;
+
+/** Whether a cell marks a missing value, as "N/A", which stays text outside numeric columns. */
+export function isMissing(cell: unknown): boolean {
+  return typeof cell === "string" && MISSING.test(cell);
+}
+
+/**
  * A rule: a line of dashes, as under the header of Markdown ("|---|--:|"), psql ("----+----"),
  * pip list and PowerShell tables, of "=", as around tokei's, or of box-drawing characters, as
  * around those of DuckDB and sqlite3 -box ("├──┼──┤").

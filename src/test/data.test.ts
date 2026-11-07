@@ -1689,6 +1689,16 @@ suite("data", () => {
       table.note,
       "Only the rows that the output shows were read, not those it left out of its 32 rows.",
     );
+    // A first row of missing values, as docker images and kubectl print "<none>", is no types.
+    for (const text of [
+      "REPOSITORY   TAG\n<none>       <none>\nnginx        latest\nredis        7",
+      "NODE     GATES\n<none>   <none>\nnode-1   gate-a",
+    ]) {
+      assert.ok(
+        parseTable(text).rows.some((row) => row[0] === "<none>"),
+        text,
+      );
+    }
   });
 
   test("names the index of a pandas data frame or series by the line that pandas prints it on", () => {

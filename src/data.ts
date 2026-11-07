@@ -4,6 +4,7 @@
 import type { DataFormat } from "./chartSpec";
 import { parseJson } from "./dataJson";
 import { checkTableSize } from "./dataLimits";
+import { isMissing } from "./dataLines";
 import { numberFormat, parseNumber, scale, statedUnit, type Unit } from "./dataNumber";
 import { splitText } from "./dataText";
 import { formatCount, quote } from "./text";
@@ -42,21 +43,6 @@ export interface Records {
   note?: string;
 }
 
-/**
- * Text that marks a missing value, as spreadsheets ("#N/A", or errors such as "#DIV/0!"),
- * databases ("NULL"), pandas ("NaN", "None", "<NA>"), kubectl ("<none>", "<unknown>") and command
- * output ("-", "--") write it, or an infinity, which no chart can place, as pandas ("inf"), R
- * ("-Inf") and JavaScript ("Infinity") write it. Like an empty cell it neither makes a column
- * numeric nor keeps it from being so, but outside numeric columns it stays, as a label.
- */
-const MISSING =
-  /^(?:-+|[\u2013\u2014]|n\/a|na|<(?:na|none|unknown)>|nan|[-+\u2212]?inf(?:inity)?|null|none|#(?:n\/a|div\/0!|value!|ref!|name\?|num!|null!))$/i;
-
-/** Whether a cell marks a missing value, as "N/A", which stays text outside numeric columns. */
-export function isMissing(cell: Cell | undefined): boolean {
-  return typeof cell === "string" && MISSING.test(cell);
-}
-
 interface ColumnCounts {
   numbers: number;
   others: number;
@@ -67,7 +53,7 @@ function countCell(counts: ColumnCounts, cell: Cell): void {
   if (typeof cell === "number") {
     counts.numbers++;
   } else if (typeof cell === "string") {
-    if (MISSING.test(cell)) counts.missing = true;
+    if (isMissing(cell)) counts.missing = true;
     else counts.others++;
   }
 }
@@ -102,7 +88,7 @@ function namesColumns(rows: Cell[][], counts: ColumnCounts[], categories: boolea
       }
     }
     const { numbers = 0, others = 0 } = counts[column] ?? {};
-    unfilled ||= numbers === 0 && others === 0 && !MISSING.test(String(name));
+    unfilled ||= numbers === 0 && others === 0 && !isMissing(String(name));
   }
   return (categories && recurs) || unfilled;
 }
@@ -116,10 +102,7 @@ function namesColumns(rows: Cell[][], counts: ColumnCounts[], categories: boolea
  */
 function hasHeader(rows: Cell[][], counts: ColumnCounts[], csv: boolean): boolean {
   const first = rows[0];
-  if (
-    first === undefined ||
-    first.every((cell) => cell === null || (typeof cell === "string" && MISSING.test(cell)))
-  ) {
+  if (first === undefined || first.every((cell) => cell === null || isMissing(cell))) {
     return false;
   }
   const numbers = first.filter((cell) => typeof cell === "number");
@@ -243,7 +226,7 @@ function tableFromRecords(
     if (numeric && count.missing) {
       for (const row of rows) {
         const cell = row[column];
-        if (typeof cell === "string" && MISSING.test(cell)) {
+        if (isMissing(cell)) {
           row[column] = null;
         }
       }
