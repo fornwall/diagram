@@ -139,8 +139,8 @@ interface NumberFormat {
   /** Sizes with a bare unit are in powers of 1000, as du --si prints "1.2M" beside "150k". */
   si?: boolean;
   /**
-   * "kB" and "MB" are in powers of 1024, as PostgreSQL's pg_size_pretty writes them beside
-   * "8192 bytes".
+   * "kB" and "MB" are in powers of 1024, as PostgreSQL's pg_size_pretty writes them, whole,
+   * beside "8192 bytes".
    */
   binary?: boolean;
   /** Spaces or apostrophes group thousands, as in "1 234,5" (French) or "1'234.5" (Swiss). */
@@ -350,7 +350,8 @@ export function statedUnit(
  * - with a decimal comma, if some cell can only be read that way ("1,5", "1234,5", "1.234.567")
  *   and none only with thousands separators ("1,234.5", "1,234,567");
  * - in SI units, if some size has a bare "k" (only SI writes it in lowercase) and none a bare "K";
- * - in powers of 1024 for "kB" and "MB", if some size is in "bytes", as pg_size_pretty writes it;
+ * - in powers of 1024 for "kB" and "MB", if some size is in "bytes" and none has a fraction, as
+ *   pg_size_pretty writes them, unlike GLib's "16.4 kB";
  * - with spaces or apostrophes between thousands, if some cell has them and no other cell has
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
@@ -381,6 +382,7 @@ export function numberFormat(
   let lowerK = false;
   let upperK = false;
   let binary = false;
+  let fraction = false;
   let grouped = false;
   let ungrouped = false;
   let parenthesized = false;
@@ -426,13 +428,14 @@ export function numberFormat(
     if (unit === "k") lowerK = true;
     else if (unit === "K") upperK = true;
     binary ||= /\d bytes$/.test(text);
+    fraction ||= /\.\d+ ?[kKMGTPE]B$/.test(text);
   }
   return {
     decimalComma: comma && !point,
     sizes,
     counts,
     si: given.si === true || (lowerK && !upperK),
-    binary,
+    binary: binary && !fraction,
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),

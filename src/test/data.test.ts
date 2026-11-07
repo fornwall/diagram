@@ -953,6 +953,12 @@ suite("data", () => {
       ["b", 1200],
     ]);
     assert.deepStrictEqual(parse("name,size\na,16 kB").rows, [["a", 16_000]]);
+    // Nor with fractions, as GLib and file managers write "16.4 kB" in powers of 1000.
+    assert.deepStrictEqual(parse("name,size\na,512 bytes\nb,16.4 kB\nc,2 MB").rows, [
+      ["a", 512],
+      ["b", 16_400],
+      ["c", 2_000_000],
+    ]);
   });
 
   test("reads bare size units in powers of 1000 when told the command prints them so", () => {
