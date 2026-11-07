@@ -422,8 +422,9 @@ suite("data", () => {
       [3723.5, 225, 86_400],
     );
     // The CPU time of ps and top, and times of a measure, as in Google Analytics' exports.
+    // On a clock, only with hours or a fraction of a second, as "09:15" may be a time of day.
     const ps = parseTable(
-      "  PID START   TIME COMMAND\n    1 13:41 5:26 init\n  812 09:02 1-02:03:04 java",
+      "  PID STIME     TIME CMD\n    1 13:41 00:05:26 init\n  812 09:02 1-02:03:04 java",
     );
     assert.deepStrictEqual(
       ps.rows.map((row) => row.slice(1, 3)),
@@ -440,15 +441,24 @@ suite("data", () => {
       ],
     );
     assert.deepStrictEqual(
-      parse("Page,Average engagement time,CPU time\n/,0:01:23,1:30\n/blog,0:02:05,0:45").rows,
+      parse("Page,Average engagement time,CPU time\n/,0:01:23,1:23:45\n/blog,0:02:05,0:01:02").rows,
       [
-        ["/", 83, 90],
-        ["/blog", 125, 45],
+        ["/", 83, 5025],
+        ["/blog", 125, 62],
       ],
     );
-    // But times of day, under "Time" or "TIME" without the PID of ps beside it.
-    for (const text of ["Date,Time,v\n2024-01-01,10:30:00,5", "DATE,TIME,v\n2024-01-01,10:30,5"]) {
-      assert.strictEqual(parseTable(text).rows[0]?.[1], text.split("\n")[1]?.split(",")[1]);
+    // But times of day, under "Time", "TIME" without the PID of ps beside it, a time of a measure
+    // that is of the day, as "Average start time", or as hours and minutes alone.
+    for (const text of [
+      "Date,Time,v\n2024-01-01,10:30:00,5",
+      "DATE,TIME,v\n2024-01-01,10:30,5",
+      "PID,TIME\n1,10:00",
+      "Day,Average start time\nMon,09:15:00",
+      "Station,Average arrival time\nA,17:30:00",
+      "Job,Last run time\nbackup,03:00",
+      "Step,Total time\na,1:02",
+    ]) {
+      assert.strictEqual(parseTable(text).columns[1]?.numeric, false, text);
     }
     // systemd-analyze blame right-aligns durations with spaces between their parts.
     const blame = [

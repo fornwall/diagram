@@ -47,21 +47,29 @@ const DURATION_WORDS = new Set(
 );
 
 /**
- * The words that make a "time" in a column's name a duration, as in "CPU time" or Google
- * Analytics' "Average engagement time", rather than a time of day, as in "Time" or "Start time".
+ * The words that make a "time" in a column's name the time something takes, as in "CPU time" or
+ * Google Analytics' "Average engagement time", rather than a time of day, as in "Time".
  */
 const TIME_SPAN_WORDS = new Set(
   "average avg mean median total cpu engagement response load wait run spent watch".split(" "),
 );
 
+/** The words that make a "time" in a column's name a time of day, as in "Average start time". */
+const TIME_OF_DAY_WORDS = new Set(
+  "start end begin stop arrival arrive departure depart finish peak last next first open close opening closing due scheduled login logout wake sunrise sunset local utc".split(
+    " ",
+  ),
+);
+
 /**
- * Whether a column's `name`, split into lowercase `words`, is of durations, as also the CPU time
+ * Whether a column's `name`, split into lowercase `words`, is of times spent, as also the CPU time
  * of ps and top ("TIME" beside "PID" in the `header`, "TIME+").
  */
-function namesDurations(name: string, words: string[], header: readonly Cell[]): boolean {
+function namesSpans(name: string, words: string[], header: readonly Cell[]): boolean {
   return (
-    words.some((word) => DURATION_WORDS.has(word)) ||
-    (words.includes("time") && words.some((word) => TIME_SPAN_WORDS.has(word))) ||
+    (words.includes("time") &&
+      words.some((word) => TIME_SPAN_WORDS.has(word)) &&
+      !words.some((word) => TIME_OF_DAY_WORDS.has(word))) ||
     /^TIME\+$/i.test(name.trim()) ||
     (name.trim() === "TIME" && header.includes("PID"))
   );
@@ -81,12 +89,19 @@ const CLOCK = /^(?:(?<d>\d+)-)?(?:(?<h>\d+):)?(?<m>\d+):(?<s>[0-5]\d(?:\.\d+)?)$
 /** How many of each unit a second has. */
 const PER_SECOND: Record<string, number> = { ms: 1e3, us: 1e6, µs: 1e6, μs: 1e6, ns: 1e9 };
 
-/** The seconds of a {@link DURATION}, or a {@link CLOCK} in a column of `durations`. */
-function parseDuration(text: string, durations = false): number | undefined {
+/**
+ * The seconds of a {@link DURATION}, or a {@link CLOCK} in a column of `durations`, or of `spans`
+ * with hours or a fraction of a second, as "0:01:23" and top's "1:23.45", as "09:15" may be a
+ * time of day.
+ */
+function parseDuration(text: string, durations = false, spans = false): number | undefined {
   const sign = text[0];
   const signed = sign === "-" || sign === "+" || sign === "\u2212";
   const unsigned = signed ? text.slice(1) : text;
-  const match = DURATION.exec(unsigned) ?? (durations ? CLOCK.exec(unsigned) : null);
+  const clock = durations || spans ? CLOCK.exec(unsigned) : null;
+  const long = (groups: Record<string, string | undefined> | undefined) =>
+    groups?.d !== undefined || groups?.h !== undefined || groups?.s?.includes(".") === true;
+  const match = DURATION.exec(unsigned) ?? (durations || long(clock?.groups) ? clock : null);
   const { y, d, h, m, s, unit = "s" } = match?.groups ?? {};
   const parts = [y, d, h, m, s].filter((part) => part !== undefined).length;
   // Alone, "5m" may be millions or meters, "3h", "2d" or "4y" other things and "1980s" a decade,
@@ -151,6 +166,8 @@ interface NumberFormat {
   millicores?: boolean;
   /** "5m" and "3h" are durations, as are "1:02:03" and "3:45" (minutes) on a clock. */
   durations?: boolean;
+  /** "1:02:03" and "1:23.45" are durations, as times spent, but "09:15" may be a time of day. */
+  spans?: boolean;
   /** "3.1G" is a count, as df -h on macOS prints those of inodes, rather than a size in bytes. */
   counts?: boolean;
   /**
@@ -233,7 +250,7 @@ export function parseNumber(
     const value = Number(trimmed.slice(0, -1)) / 1000;
     return Number.isFinite(value) ? { value } : undefined;
   }
-  const seconds = parseDuration(trimmed, format.durations);
+  const seconds = parseDuration(trimmed, format.durations, format.spans);
   if (seconds !== undefined) {
     return Number.isFinite(seconds) ? { value: seconds, unit: "seconds" } : undefined;
   }
@@ -356,7 +373,9 @@ export function statedUnit(
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is;
- * - in durations, if the column's name is of durations ("Elapsed", "AGE", "CPU time");
+ * - in durations, if the column's name is of durations ("Elapsed", "AGE");
+ * - in times spent, if the column's name is of them ("CPU time", top's "TIME+"), where clocks with
+ *   hours or a fraction of a second are durations;
  * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
  *   others are plain ("24.0");
  * - as text identifiers, if an ID or code column has padded or unsafe integers.
@@ -439,10 +458,9 @@ export function numberFormat(
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
-    durations:
-      typeof name === "string" &&
-      words !== undefined &&
-      namesDurations(name, words, records[0] ?? []),
+    durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
+    spans:
+      typeof name === "string" && words !== undefined && namesSpans(name, words, records[0] ?? []),
     versions: versions && !formatted,
     identifiers,
   };
