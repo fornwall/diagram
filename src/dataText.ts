@@ -141,6 +141,9 @@ function filledLines(lines: string[], start: number): number[] {
   return filled;
 }
 
+/** A line between cells, drawn with a pipe or a box-drawing character. */
+const CELL_LINE = /[|│┃┆║]/;
+
 /** The first line of top's summary of the system above its processes, on Linux or macOS. */
 const TOP_SUMMARY = /^(?:top - |Processes: \d+ total)/;
 
@@ -183,9 +186,12 @@ function outputAbove(lines: string[], format: DataFormat): number {
     header = lines[start] ?? "";
     if (start < 0 || !underlines(lines[rule] ?? "", header)) return 0;
   }
+  // A line above that may be a row has as many words as the header, or lines between cells too.
   const words = tokenize(header).length;
+  const lined = CELL_LINE.test(header);
+  const row = (line: string) => (lined ? CELL_LINE.test(line) : tokenize(line).length === words);
   const above = lines.slice(0, start).filter((line) => !isBlank(line) && !TABLE_SIZE.test(line));
-  if (above.length === 0 || above.some((line) => tokenize(line).length === words)) return 0;
+  if (above.length === 0 || above.some(row)) return 0;
   // A quoted CSV/TSV record can contain rules and a table of its own. Leave it to the
   // delimited parser rather than removing physical lines from the middle of the record.
   const prefix = lines.slice(0, start).join("\n");

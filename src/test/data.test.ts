@@ -1580,6 +1580,11 @@ suite("data", () => {
       relations.note,
       "Only the table from line 2 was read, not the text above it.",
     );
+    // A line without pipes above a header with them is no row, whatever its number of words.
+    assert.deepStrictEqual(parse("Timing is on.\n lang | lines\n------+-------\n ts   |  1200"), {
+      columns: ["lang", "lines"],
+      rows: [["ts", 1200]],
+    });
     // A line between two rules with as many words as the line above is the first row.
     assert.deepStrictEqual(parse("name value\n----------\na 1\n----------\ntotal 1").rows, [
       ["a", 1],
