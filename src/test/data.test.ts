@@ -1810,6 +1810,14 @@ suite("data", () => {
       ["ts", 1200],
       ["css", 300],
     ]);
+    // What psql, mysql and DuckDB print below a table, as with \timing on, is no row.
+    for (const table of [
+      " lang | lines\n------+-------\n ts   |  1200\n(1 row)\n\nTime: 1234.567 ms (00:01.235)",
+      "+------+-------+\n| lang | lines |\n+------+-------+\n| ts   |  1200 |\n+------+-------+\n1 row in set (0.00 sec)\n\nQuery OK, 0 rows affected (0.01 sec)",
+      "┌──────┬───────┐\n│ lang │ lines │\n├──────┼───────┤\n│ ts   │ 1200  │\n└──────┴───────┘\nRun Time (s): real 0.001 user 0.000 sys 0.000",
+    ]) {
+      assert.deepStrictEqual(parse(table).rows, [["ts", 1200]], table);
+    }
     // sqlite3 and psql -A print an empty first or last value as nothing beside its pipe.
     assert.deepStrictEqual(parse("lang|lines|note\n|1200|a\ncss|300|\n(2 rows)"), {
       columns: ["lang", "lines", "note"],

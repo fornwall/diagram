@@ -273,12 +273,16 @@ export function splitPipeTable(
   if (diffStat !== undefined) return diffStat;
   const width = pipeCells(lines[0] ?? "", box).length;
   if (underline !== undefined) {
-    const { lines: unmarked, marked } = continuationMarks(lines, underline, box);
+    const separator = box ? BOX_LINE : PIPE;
+    // Lines without a separator below a table of several columns are not its rows, but what
+    // follows it, as psql's "Time: 0.512 ms" and mysql's "Query OK, 0 rows affected".
+    let end = lines.length;
+    while (width > 1 && end > 1 && !separator.test(lines[end - 1] ?? "")) end--;
+    const { lines: unmarked, marked } = continuationMarks(lines.slice(0, end), underline, box);
     // As in GFM, the header of a pipe table sets its width: shorter rows are padded, and the
     // cells beyond it are left out, unless pipes in cells of an aligned table split them off.
     // Without a line at the left, as psql draws tables with "+" or "┼" between the columns of
     // the rule, a line that starts with one has an empty first cell.
-    const separator = box ? BOX_LINE : PIPE;
     const unbordered =
       !/[|:]/.test(underline) &&
       HORIZONTAL.test(underline.trim()[0] ?? "") &&
@@ -294,7 +298,7 @@ export function splitPipeTable(
       const aligned = box ? record : cells(escapeUnaligned(line, underline));
       return aligned.length === width ? aligned : record.slice(0, width);
     };
-    return { records: joinLines(unmarked.map(fit), marked, ruled), header: true };
+    return { records: joinLines(unmarked.map(fit), marked, ruled.slice(0, end)), header: true };
   }
   const records = lines.map((line) => pipeCells(line, box));
   if (records.every((record) => record.length === width)) {
