@@ -34,7 +34,7 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
   if (grids.length <= 1) {
     const grid = grids[0] ?? {};
     if (!has(grid, [...BOX_KEYS, "outerBounds", "outerBoundsMode"])) {
-      const marks = markLabelRoom(base, size);
+      const marks = markRoom(base, size);
       const right = Math.max(20, marks.right);
       const top = Math.max(14, marks.top);
       Object.assign(grid, {
@@ -216,22 +216,40 @@ export function layOutGrid(base: JsonObject, reserved: Insets, size: Size): numb
 const STATISTICS = new Set(["min", "max", "average", "median"]);
 
 /**
- * The room that the labels at the ends of the mark lines of series on axes take beyond the plot:
- * right of a line across it and above a line up it, at ECharts' distance of 5 pixels. ECharts
- * labels a line by its value, rounded to the line's precision, and a line at a statistic of the
- * series, such as its average, is labeled as wide as a value of the series can be.
+ * The room that the marks of series on axes take beyond the plot: the labels at the ends of mark
+ * lines, right of a line across it and above a line up it, at ECharts' distance of 5 pixels, and
+ * a pin above the largest value, which can be at the top of the plot. ECharts labels a line by its
+ * value, rounded to the line's precision, and a line at a statistic of the series, such as its
+ * average, is labeled as wide as a value of the series can be.
  */
-function markLabelRoom(base: JsonObject, size: Size): { right: number; top: number } {
+function markRoom(base: JsonObject, size: Size): { right: number; top: number } {
   const room = { right: 0, top: 0 };
   const xAxes = asArray(base.xAxis);
   const yAxes = asArray(base.yAxis);
   for (const series of asArray(base.series)) {
-    const markLine = styleOf(series.markLine);
-    if (!isCartesian(series) || !Array.isArray(markLine.data)) continue;
-    // ECharts draws the lines at statistics up from the axis of categories, else of time, else x.
+    if (!isCartesian(series)) continue;
+    // ECharts takes statistics along the axis of categories, else of time, else x.
     const x = axisType(xAxes[Number(series.xAxisIndex ?? 0)]);
     const y = axisType(yAxes[Number(series.yAxisIndex ?? 0)]);
     const upright = x !== "category" && (y === "category" || (y === "time" && x !== "time"));
+    /** Whether the statistic of a mark is of values up the plot, at a height. */
+    const vertical = (item: JsonObject) => {
+      const index = item.valueIndex ?? { x: 0, y: 1 }[String(item.valueDim)];
+      return index === undefined ? !upright : index === 1;
+    };
+    const markPoint = styleOf(series.markPoint);
+    for (const item of Array.isArray(markPoint.data) ? markPoint.data : []) {
+      if (!isPlainObject(item) || item.type !== "max" || !vertical(item)) continue;
+      const symbol = item.symbol ?? markPoint.symbol ?? "pin";
+      const sized = item.symbolSize ?? markPoint.symbolSize ?? 50;
+      const height = Number(Array.isArray(sized) ? sized[1] : sized);
+      // A pin points at the value from above, and other symbols are centered on it.
+      if (Number.isFinite(height)) {
+        room.top = Math.max(room.top, (symbol === "pin" ? height : height / 2) + 2);
+      }
+    }
+    const markLine = styleOf(series.markLine);
+    if (!Array.isArray(markLine.data)) continue;
     const precision = typeof markLine.precision === "number" ? markLine.precision : 2;
     const valueText = (value: unknown) =>
       typeof value === "number" ? String(Number(value.toFixed(precision))) : String(value ?? "");
@@ -242,8 +260,7 @@ function markLabelRoom(base: JsonObject, size: Size): { right: number; top: numb
       let across: boolean;
       let text: string;
       if (STATISTICS.has(String(item.type))) {
-        const index = item.valueIndex ?? { x: 0, y: 1 }[String(item.valueDim)];
-        across = index === undefined ? !upright : index === 1;
+        across = vertical(item);
         text = statisticText(
           series.data,
           across ? 1 : 0,

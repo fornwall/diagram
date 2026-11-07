@@ -1006,7 +1006,7 @@ suite("echartsChecks", function () {
     ]);
   });
 
-  test("leaves room for the labels at the ends of mark lines across and up the plot", () => {
+  test("leaves room for the labels at the ends of mark lines, and for a pin at the largest value", () => {
     const marked = (data: number[], marks: Option[], label?: Option) => ({
       series: [{ type: "bar", data, markLine: { label, data: marks } }],
     });
@@ -1021,6 +1021,8 @@ suite("echartsChecks", function () {
         xAxis: { type: "value" },
         ...marked([1, 2], [{ type: "average" }]),
       },
+      // A pin at the top of the plot, as the largest value is there.
+      bars({ series: [{ type: "bar", data: [1, 2], markPoint: { data: [{ type: "max" }] } }] }),
     ];
     for (const option of options) {
       assert.deepStrictEqual(
