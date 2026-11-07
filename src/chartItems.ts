@@ -171,8 +171,10 @@ export function gaugeOption(reading: Reading): Record<string, unknown> {
           : value < 0
             ? [0, "rounded down from the value"]
             : [niceMax(value), "rounded up from the value"];
-  // A negative value lies on a scale from a round number below it, rather than at its very start.
-  const min = value < 0 ? -niceMax(-value) : 0;
+  // A negative value, or top, lies on a scale from a round number below it, rather than at its
+  // very start, as a top of zero does.
+  const lowest = Math.min(value, top);
+  const min = lowest < 0 ? -niceMax(-lowest) : top > 0 ? 0 : -1;
   // A scale needs room: a gauge from 0 to 0 draws nothing.
   const scale = top > min ? top : min + 1;
   notes.push(`scaled it ${min < 0 ? `from ${min} ` : ""}to ${scale}, ${reason}`);

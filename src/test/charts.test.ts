@@ -1079,6 +1079,22 @@ suite("charts", () => {
     );
     assert.match(summary(chart("gauge"), balance), /scaled it from -5 to 0, rounded down from the/);
     assert.strictEqual(build(chart("gauge", { max: 10 }), balance).series[0].min, -5);
+    // A "max" at or below zero tops a scale from a round number below it, whatever the value.
+    const scale = (max: number, data = balance) => {
+      const [series] = build(chart("gauge", { max }), data).series;
+      return [series.min, series.max];
+    };
+    assert.deepStrictEqual(scale(-20), [-50, -20]);
+    assert.match(
+      summary(chart("gauge", { max: -20 }), balance),
+      /scaled it from -50 to -20, as given; the value is beyond the top of the scale/,
+    );
+    assert.deepStrictEqual(scale(-2), [-5, -2]);
+    assert.deepStrictEqual(scale(0, "month,balance\njan,4"), [-1, 0]);
+    assert.match(
+      summary(chart("gauge", { max: 0 }), "month,balance\njan,4"),
+      /scaled it from -1 to 0, as given; the value is beyond the top/,
+    );
   });
 
   test("gauge preserves missing readings instead of replacing them with zero", () => {
