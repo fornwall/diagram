@@ -7,6 +7,7 @@ import { facetPanels, layOutFacets } from "./echartsFacets";
 import {
   axisType,
   BOX_KEYS,
+  cachedFormatter,
   categoryTexts,
   compactLabel,
   type Font,
@@ -541,15 +542,10 @@ function dropSharedStart(
       return Math.max(...texts.map((text) => font.width(last(text))));
     }
   }
-  let formatter = sharedStartFormatters.get(start);
-  if (!formatter) {
-    formatter = (value: unknown) => {
-      const text = String(value);
-      return text.startsWith(start) ? text.slice(start.length) : text;
-    };
-    sharedStartFormatters.set(start, formatter);
-  }
-  label.formatter = formatter;
+  label.formatter = cachedFormatter(sharedStartFormatters, start, () => (value: unknown) => {
+    const text = String(value);
+    return text.startsWith(start) ? text.slice(start.length) : text;
+  });
   axis.axisLabel = label;
   if (!named) axis.name = `${name} …`;
   return Math.max(...texts.map((text) => font.width(text.slice(start.length))));
@@ -567,27 +563,22 @@ const lastWordFormatters = new Map<string, (value: unknown) => string>();
  */
 function lastWords(room: number, font: Font): (value: unknown) => string {
   const key = `${Math.round(room)} ${font.css}`;
-  let formatter = lastWordFormatters.get(key);
-  if (!formatter) {
-    formatter = (value: unknown) => {
-      const text = String(value);
-      if (font.width(text) <= room) return text;
-      const fits = (end: string) => font.width(`…${end}`) <= room;
-      // Each word after the space before it.
-      const words = text.split(/(?=\s)/);
-      let kept = "";
-      for (const word of words.reverse()) {
-        if (!fits((word + kept).trimStart())) break;
-        kept = word + kept;
-      }
-      if (kept.trimStart()) return `…${kept.trimStart()}`;
-      let end = text.length - 1;
-      while (end > 0 && fits(text.slice(end - 1))) end--;
-      return `…${text.slice(end)}`;
-    };
-    lastWordFormatters.set(key, formatter);
-  }
-  return formatter;
+  return cachedFormatter(lastWordFormatters, key, () => (value: unknown) => {
+    const text = String(value);
+    if (font.width(text) <= room) return text;
+    const fits = (end: string) => font.width(`…${end}`) <= room;
+    // Each word after the space before it.
+    const words = text.split(/(?=\s)/);
+    let kept = "";
+    for (const word of words.reverse()) {
+      if (!fits((word + kept).trimStart())) break;
+      kept = word + kept;
+    }
+    if (kept.trimStart()) return `…${kept.trimStart()}`;
+    let end = text.length - 1;
+    while (end > 0 && fits(text.slice(end - 1))) end--;
+    return `…${text.slice(end)}`;
+  });
 }
 
 /** The height of a row of axis labels, with the gap to the axis. */

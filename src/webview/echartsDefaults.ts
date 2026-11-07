@@ -8,7 +8,7 @@ import { escapeHtml } from "../text";
 import { type ThemeColors, toCss } from "./colors";
 import { cloneValue } from "./echartsClone";
 import { dateText } from "./echartsItems";
-import { axisType, compactLabel, styleOf } from "./echartsMeasure";
+import { axisType, cachedFormatter, compactLabel, styleOf } from "./echartsMeasure";
 import {
   allSeries,
   baseOption,
@@ -336,23 +336,17 @@ function templateFormatter(template: unknown, html: boolean) {
   if (!placeholders.every((each) => Object.hasOwn(TEMPLATE_PARAMS, each.slice(1, -1)))) {
     return undefined;
   }
-  const key = `${html}:${template}`;
-  let formatter = templateFormatters.get(key);
-  if (!formatter) {
-    formatter = (params: unknown) => {
-      const item = (Array.isArray(params) ? params[0] : params) as JsonObject;
-      return template.replace(/\{([abcd])\}/g, (_, name: string) => {
-        const value = item?.[TEMPLATE_PARAMS[name] ?? ""];
-        const text =
-          typeof value === "number" && Number.isFinite(value)
-            ? groupedNumber.format(Number(value.toPrecision(12)))
-            : String(value ?? "-");
-        return html ? escapeHtml(text) : text;
-      });
-    };
-    templateFormatters.set(key, formatter);
-  }
-  return formatter;
+  return cachedFormatter(templateFormatters, `${html}:${template}`, () => (params: unknown) => {
+    const item = (Array.isArray(params) ? params[0] : params) as JsonObject;
+    return template.replace(/\{([abcd])\}/g, (_, name: string) => {
+      const value = item?.[TEMPLATE_PARAMS[name] ?? ""];
+      const text =
+        typeof value === "number" && Number.isFinite(value)
+          ? groupedNumber.format(Number(value.toPrecision(12)))
+          : String(value ?? "-");
+      return html ? escapeHtml(text) : text;
+    });
+  });
 }
 
 /**

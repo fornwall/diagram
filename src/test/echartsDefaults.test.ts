@@ -1,6 +1,7 @@
 import * as assert from "node:assert";
 import type { ChartSpec } from "../chartSpec";
 import { modelOf } from "../webview/echartsItems";
+import { CACHED_FORMATTERS } from "../webview/echartsMeasure";
 import { bars, builtOption, layout, type Option, svgOf, withChart } from "./echartsModel";
 
 suite("echartsDefaults", () => {
@@ -43,6 +44,19 @@ suite("echartsDefaults", () => {
     const svg = svgOf(option);
     assert.match(svg, />3T</);
     assert.doesNotMatch(svg, /000,000/);
+  });
+
+  test("keeps the template formatters of the options laid out lately, not of every one", () => {
+    const formatter = (template: string) =>
+      layout(bars({ series: [{ type: "bar", data: [1, 2], label: { formatter: template } }] }))
+        .series[0].label.formatter;
+    const first = formatter("{b}: {c} 0");
+    assert.strictEqual(typeof first, "function");
+    for (let index = 1; index < CACHED_FORMATTERS; index++) formatter(`{b}: {c} ${index}`);
+    // Used again, which keeps it among the last used.
+    assert.strictEqual(formatter("{b}: {c} 0"), first);
+    for (let index = 1; index <= CACHED_FORMATTERS; index++) formatter(`{b}: {c} ${-index}`);
+    assert.notStrictEqual(formatter("{b}: {c} 0"), first);
   });
 
   test("groups and rounds the values that labels and item tooltips fill into templates", () => {

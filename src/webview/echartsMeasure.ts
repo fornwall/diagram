@@ -99,6 +99,22 @@ export interface LayoutContext {
 /** Read a nested option such as axisLabel or label, falling back to an empty style. */
 export const styleOf = (style: unknown): JsonObject => (isPlainObject(style) ? style : {});
 
+/** The formatters that each cache of them keeps, the last used: of the options laid out lately. */
+export const CACHED_FORMATTERS = 64;
+
+/**
+ * The formatter of a key, the same for a layout of the same option, which its identity tells is
+ * laid out the same, or else a new one from `make`; the cache keeps the last used.
+ */
+export function cachedFormatter<F>(cache: Map<string, F>, key: string, make: () => F): F {
+  const formatter = cache.get(key) ?? make();
+  // Last in the order of the map, which the first is dropped from.
+  cache.delete(key);
+  cache.set(key, formatter);
+  if (cache.size > CACHED_FORMATTERS) cache.delete(cache.keys().next().value as string);
+  return formatter;
+}
+
 /**
  * The text of a category or legend entry: a value, a category `{value}`, or a legend entry or
  * data item named by `{name}` (whose value is a number).
