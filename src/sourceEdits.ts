@@ -43,10 +43,14 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
     }
     // Overlapping occurrences, as "5, 5" in "5, 5, 5", are as ambiguous as others.
     if (!replaceAll && text.indexOf(oldText, first + 1) >= 0) {
-      const { count, lines, totalLines } = matchingLines(text, oldText);
+      const { count, lines, totalLines, overlapping } = matchingLines(text, oldText);
       const sourceLines = text.split(/\r\n?|\n/, lines.at(-1));
+      // As replaceAll replaces only occurrences that do not overlap, it cannot change them all.
+      const advice = overlapping
+        ? `, overlapping, so "replaceAll" would not change every one. Include more of the text around the one to change`
+        : `. Include more of the text around the one to change, or set "replaceAll": true to change every one`;
       problems.push(
-        `${which}: oldText occurs ${formatCount(count)} times, on ${totalLines === 1 ? "line" : "lines"} ${joinWords(lines.map(String), "and")}${totalLines > lines.length ? ` and ${formatCount(totalLines - lines.length)} more` : ""}. Include more of the text around the one to change, or set "replaceAll": true to change every one:\n${lines.map((line) => numberedLines(sourceLines, line, line)).join("\n")}`,
+        `${which}: oldText occurs ${formatCount(count)} times, on ${totalLines === 1 ? "line" : "lines"} ${joinWords(lines.map(String), "and")}${totalLines > lines.length ? ` and ${formatCount(totalLines - lines.length)} more` : ""}${advice}:\n${lines.map((line) => numberedLines(sourceLines, line, line)).join("\n")}`,
       );
       continue;
     }
@@ -66,7 +70,10 @@ export function applySourceEdits(source: string, edits: readonly SourceEdit[]): 
   return problems.length > 0 ? { ok: false, problems } : { ok: true, source: text, replaced };
 }
 
-/** Counts matches, also overlapping ones, and keeps only the first few distinct matching lines. */
+/**
+ * Counts matches, also overlapping ones, and keeps only the first few distinct matching lines.
+ * Tells whether any matches overlap.
+ */
 function matchingLines(text: string, needle: string) {
   const lines: number[] = [];
   let count = 0;
@@ -74,8 +81,12 @@ function matchingLines(text: string, needle: string) {
   let line = 1;
   let lastLine = 0;
   let at = 0;
+  let overlapping = false;
+  let previous = -Infinity;
   for (let offset = text.indexOf(needle); offset >= 0; offset = text.indexOf(needle, offset + 1)) {
     count++;
+    overlapping ||= offset < previous + needle.length;
+    previous = offset;
     for (; at < offset; at++) {
       const char = text[at];
       // As lineAndColumn counts them: "\r\n", "\r" or "\n".
@@ -87,7 +98,7 @@ function matchingLines(text: string, needle: string) {
       lastLine = line;
     }
   }
-  return { count, lines, totalLines };
+  return { count, lines, totalLines, overlapping };
 }
 
 /** One-based lines `from` through `to`, numbered and truncated for display. */
