@@ -4,6 +4,9 @@ import type { Row } from "./chartRows";
 import type { Cell, DataTable } from "./data";
 import { asArray, type DiagramNode } from "./protocol";
 
+/** What gives a series items, which a series that "options" add has none of. */
+const ADDED_DATA_KEYS = ["data", "links", "edges", "nodes", "datasetIndex", "datasetId", "encode"];
+
 export class ChartTrace {
   private readonly numbers = new WeakMap<Cell[], number>();
   private readonly items = new WeakMap<unknown[], number[][]>();
@@ -52,18 +55,27 @@ export class ChartTrace {
     return data;
   }
 
+  /** How many series the chart generated, which "options" may add to after them. */
+  generatedSeries = 0;
+
   /**
-   * Whether every series draws its generated data, rather than data that "options" give it or
-   * leave out: ECharts reads a graph's "edges" before its "links", and its "nodes" without "data".
+   * Whether every generated series draws its generated data, rather than data that "options" give
+   * it or leave out: ECharts reads a graph's "edges" before its "links", and its "nodes" without
+   * "data". A series that "options" add, as for a mark line, may draw no data of its own.
    */
   generated(option: Record<string, unknown>): boolean {
     const traced = (data: unknown) => Array.isArray(data) && this.items.has(data);
-    return asArray(option.series).every(
-      ({ data, links, edges, nodes }) =>
-        traced(data) &&
-        (links === undefined || traced(links)) &&
-        edges === undefined &&
-        nodes === undefined,
+    const series = asArray(option.series);
+    return (
+      series.length >= this.generatedSeries &&
+      series.every((each, index) =>
+        index < this.generatedSeries
+          ? traced(each.data) &&
+            (each.links === undefined || traced(each.links)) &&
+            each.edges === undefined &&
+            each.nodes === undefined
+          : ADDED_DATA_KEYS.every((key) => each[key] === undefined),
+      )
     );
   }
 

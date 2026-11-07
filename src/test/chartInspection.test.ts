@@ -251,6 +251,39 @@ suite("chartInspection", () => {
     );
   });
 
+  test("maps the generated series of a chart whose options add a series of no data", () => {
+    const line = { type: "line", markLine: { data: [{ yAxis: 3, name: "Target" }] } };
+    const bar: ChartSpec = {
+      type: "bar",
+      data: "month,sales\nJan,2\nFeb,3\nMar,4",
+      options: { series: [{}, line] },
+    };
+    assert.deepStrictEqual(
+      inspect(bar, [
+        [0, 0],
+        [0, 2],
+      ]).rows,
+      [1, 3],
+    );
+    assert.throws(() => inspect(bar, [[1, 0]]), /not supported for this bar chart item/);
+    for (const spec of [
+      { type: "pie", data: "name,value\na,1\nb,2" },
+      { type: "scatter", data: "x,y\n1,2\n3,4" },
+      { type: "treemap", data: "path,size\na/b,1\na/c,2" },
+      { type: "sankey", data: "from,to,value\na,b,2\nb,c,3", labelColumn: ["from", "to"] },
+    ] as ChartSpec[]) {
+      const added = { ...spec, options: { series: [{}, line] } };
+      assert.deepStrictEqual(inspect(added, [[0, 0]]).rows, inspect(spec, [[0, 0]]).rows);
+    }
+    // A series that the options add with items of its own has none of the rows.
+    for (const own of [{ data: [5] }, { datasetIndex: 0 }, { encode: { y: 0 } }]) {
+      assert.throws(
+        () => inspect({ ...bar, options: { series: [{}, { type: "line", ...own }] } }, [[0, 0]]),
+        /changes the generated data/,
+      );
+    }
+  });
+
   test("refuses the flows and nodes that options give a sankey, which ECharts draws instead", () => {
     const sankey: ChartSpec = {
       type: "sankey",

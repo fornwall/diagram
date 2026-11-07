@@ -51,6 +51,7 @@ export function buildChart(spec: ChartSpec, table: DataTable, trace?: ChartTrace
     spec.facetColumn === undefined
       ? single(spec, filtered)
       : buildFacetedChart(spec, filtered, single, trace);
+  if (trace) trace.generatedSeries = asArray(chart.option.series).length;
   // Filtering comes first, so it is said first, rather than within the last facet's summary.
   const kept =
     filtered === table
