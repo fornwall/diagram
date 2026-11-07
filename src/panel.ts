@@ -603,7 +603,11 @@ export class DiagramPanel implements vscode.Disposable {
     this.lastSent = undefined;
     if (this.pendingRender) {
       this.sendChartOptions();
-      this.post(this.pendingRender.message);
+      const { message } = this.pendingRender;
+      this.post(message);
+      // The document may have been renamed since the render named it.
+      const writeTo = this.state?.document && documentName(this.state.document);
+      if (writeTo && writeTo !== message.writeTo) this.post({ type: "writeTo", writeTo });
       if (this.annotation) this.post({ type: "annotate", ...this.annotation });
     } else if (this.state) {
       void this.renderCurrent({ redraw: true, newPage: true });

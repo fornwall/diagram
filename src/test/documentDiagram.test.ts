@@ -400,6 +400,28 @@ suite("documentDiagram", function () {
     assert.ok(await within(() => panel.current?.openedFrom === readonly.toString()));
   });
 
+  test("a page that reloads while drawing names the document as it was renamed meanwhile", async () => {
+    const document = await markdown("```mermaid\nflowchart TD\n```\n");
+    const { panel, webview } = await newFakePanel();
+    webview.answer = undefined;
+    const rendering = panel.render({ ...openedState(binding(document)) }, "document");
+    const renamed = vscode.Uri.file(path.join(dir, `renamed-${files++}.md`));
+    const renaming = new vscode.WorkspaceEdit();
+    renaming.renameFile(document.uri, renamed);
+    assert.ok(await vscode.workspace.applyEdit(renaming));
+    assert.ok(await within(() => panel.current?.document?.uri === renamed.toString()));
+    const sent = webview.sent.length;
+    await webview.receive({ type: "ready" });
+    const names = webview.sent
+      .slice(sent)
+      .flatMap((message) =>
+        message.type === "render" || message.type === "writeTo" ? [message.writeTo] : [],
+      );
+    assert.strictEqual(names.at(-1), path.basename(renamed.fsPath));
+    panel.dispose();
+    await rendering;
+  });
+
   test("follows a Markdown cell of a notebook that is renamed, to write to it", async () => {
     const file = path.join(dir, `notebook-${files++}.ipynb`);
     const cell = (cell_type: string, source: string[]) => ({ cell_type, source, metadata: {} });
