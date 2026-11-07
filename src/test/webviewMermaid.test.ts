@@ -1,10 +1,12 @@
 import * as assert from "node:assert";
 import * as vscode from "vscode";
+import { DraftTool } from "../draftTool";
 import { DIAGRAM_TYPES, describeError } from "../webview/mermaidErrors";
 import { MIN_FIT_TEXT } from "../webview/mermaidQuality";
 import { RELAYOUT_DELAY } from "../webview/mermaidRenderer";
 import { afterTest, replace } from "./afterTest";
 import { webviewTabs } from "./newPanel";
+import { invokeTool } from "./toolText";
 import { DRAG_IMAGE, MERMAID, suitePage, UNTIL } from "./webviewHarness";
 
 /**
@@ -256,11 +258,17 @@ suite("Mermaid in the webview", function () {
     afterTest(() => evaluate('document.getElementById("view-visual").click()'));
     for (const view of ["split", "visual", "source"]) {
       if (view === "source") {
-        // The first chart drawn in the Source view takes the width of the Visual view.
-        await evaluate(`(() => {
-          document.querySelector(".mermaid-layout").style.width = "";
-          document.getElementById("view-source").click();
-        })()`);
+        // A chart drawn in the Source view takes the width of the Visual view, where the last one
+        // was drawn, also after a draft is drawn wider meanwhile, as it is in the Source view.
+        await evaluate('document.getElementById("view-source").click()');
+        assert.strictEqual(
+          await invokeTool(new DraftTool(page.panel), {
+            action: "validate",
+            source: MERMAID.gantt.replace("7d", "9d"),
+            revision: page.panel.revision,
+          }).then((text) => JSON.parse(text).valid),
+          true,
+        );
         await draw({ source: MERMAID.gantt });
         // The canvas fits the drawing in the frame after the one in which it sees its new size.
         await evaluate(`(async () => {

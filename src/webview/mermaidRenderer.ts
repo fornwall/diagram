@@ -717,7 +717,7 @@ export class MermaidRenderer implements Renderer {
     // any, take the one it has in the Visual view. A hidden tab has none to take: the chart is
     // laid out again once the tab is shown.
     let { width } = this.contentSize();
-    if (width <= 0 && !container.style.width && !this.tabHidden() && this.canvas.parentElement) {
+    if (width <= 0 && this.layoutWidth <= 0 && !this.tabHidden() && this.canvas.parentElement) {
       const style = getComputedStyle(this.canvas);
       // The canvas keeps room for a scrollbar.
       const scroller = document.createElement("div");
@@ -752,9 +752,11 @@ export class MermaidRenderer implements Renderer {
     const { ownWidth, config } = await configure().catch((error: unknown) => {
       throw themeColorError(error, source) ?? error;
     });
-    // A drawing that fails leaves the one shown, and the width it was laid out at.
+    // A drawing that fails leaves the one shown, and the width it was laid out at. The width is
+    // this renderer's own: a draft's lays its drawings out in the same container.
     const shownWidth = container.style.width;
-    const drawWidth = width > 0 ? `${width}px` : shownWidth;
+    const laidOut = width > 0 ? width : this.layoutWidth;
+    const drawWidth = laidOut > 0 ? `${laidOut}px` : shownWidth;
     // The extension sends the diagram shown again, such as with other links, or once the page
     // answers a render that it gave up waiting for: keep the drawing, which takes seconds for a
     // large diagram to make again.
@@ -895,7 +897,10 @@ export class MermaidRenderer implements Renderer {
     // Exporting, viewing and dragging the same diagram each drew it again, for seconds if large.
     // The image takes the color of the text around the drawing for labels that leave it to CSS.
     const color = getComputedStyle(document.body).color;
-    const width = layoutContainer().style.width;
+    // At the width that the drawing shown was laid out at, which a draft's may have changed since.
+    const container = layoutContainer();
+    if (this.layoutWidth > 0) container.style.width = `${this.layoutWidth}px`;
+    const width = container.style.width;
     const from = JSON.stringify([source, background, color, width, config]);
     if (this.image?.from === from) return this.image.image;
     mermaid.initialize(
@@ -920,7 +925,7 @@ export class MermaidRenderer implements Renderer {
         // that holds both would otherwise draw with the styles and arrowheads of the first.
         `diagram-image-${crypto.randomUUID().slice(0, 8)}`,
         text,
-        layoutContainer(),
+        container,
       );
       const drawing = await layOut(svg, diagramType, text, colors, () => databaseOf(mermaid, text));
       try {
