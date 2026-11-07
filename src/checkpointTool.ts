@@ -90,7 +90,10 @@ export class CheckpointTool implements vscode.LanguageModelTool<CheckpointInput>
       return textResult(
         fits
           ? text
-          : `${completed ? `${completed} ` : ""}The checkpoint result exceeds the tool budget. Increase the budget or read the current source in ranges.`,
+          : (completed ??
+              (action === "compare"
+                ? 'The comparison exceeds the result limit of 24,000 characters. Read the current source in ranges with diagram_getState and "startLine"; to read the checkpoint\'s source too, save the current drawing as a checkpoint, then restore this one.'
+                : "The checkpoint list does not fit the result budget.")),
       );
     } catch (error) {
       if (error instanceof vscode.CancellationError) throw error;

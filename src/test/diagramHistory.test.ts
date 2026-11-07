@@ -260,8 +260,11 @@ suite("checkpoint tools", () => {
       tokenBudget: 100_000,
       countTokens: async () => 0,
     });
-    assert.match(report, /exceeds the tool budget/);
-    assert.ok(report.length < 200);
+    assert.match(
+      report,
+      /^The comparison exceeds the result limit of 24,000 characters\. Read the current source in ranges with diagram_getState/,
+    );
+    assert.doesNotMatch(report, /budget/);
     const cancellation = cancellationSource();
     await assert.rejects(
       () =>
@@ -280,7 +283,7 @@ suite("checkpoint tools", () => {
       undefined,
       { tokenBudget: 1, countTokens: async () => 1000 },
     );
-    assert.match(tiny, /^Saved checkpoint [\w-]+ at revision/);
+    assert.match(tiny, /^Saved checkpoint [\w-]+ at revision \d+\.$/);
   });
 
   test("serializes saves and deletes while retaining the revision requested before waiting", async () => {
