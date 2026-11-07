@@ -91,18 +91,27 @@ suite("draftTool", () => {
       { language: "echarts", title: "Revenue", source: '{"series": [{"type": "pie"}]}' },
       "tool",
     );
-    const answer = webview.answer;
     webview.answer = (message) =>
       message.type === "validateDraft"
         ? { type: "draftResult", requestId: message.requestId, diagramType: "flowchart-v2", items }
-        : answer?.(message);
+        : message.type === "render"
+          ? {
+              type: "rendered",
+              requestId: message.requestId,
+              diagramType: "flowchart-v2",
+              warnings: ["Labels overlap in the panel."],
+            }
+          : undefined;
     const tool = new DraftTool(panel);
     const sent = webview.sent.length;
     const draft = JSON.parse(await invokeTool(tool, { action: "validate", source }));
     const validated = webview.sent.slice(sent).find(({ type }) => type === "validateDraft");
     assert.ok(validated?.type === "validateDraft");
     assert.strictEqual(validated.title, "flowchart");
-    assert.match(await invokeTool(tool, { action: "apply", id: draft.id }), /Applied/);
+    assert.match(
+      await invokeTool(tool, { action: "apply", id: draft.id }),
+      /^Applied the validated draft\.\n\nLabels overlap in the panel\.\n\nRevision: \d+\.$/,
+    );
     assert.strictEqual(panel.current?.language, "mermaid");
     assert.strictEqual(panel.current?.title, "flowchart");
   });

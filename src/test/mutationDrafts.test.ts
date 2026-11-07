@@ -265,11 +265,17 @@ suite("mutation drafts", () => {
     const { panel, webview } = await newFakePanel();
     const table = parseTable("name,value\na,2\nb,3");
     await drawChart(panel, { type: "bar", command: "must-not-run" }, table);
-    const answer = webview.answer;
     webview.answer = (message) =>
       message.type === "validateDraft"
         ? { type: "draftResult", requestId: message.requestId, diagramType: "echarts" }
-        : answer?.(message);
+        : message.type === "render"
+          ? {
+              type: "rendered",
+              requestId: message.requestId,
+              diagramType: "echarts",
+              warnings: ["Labels overlap in the panel."],
+            }
+          : undefined;
     const before = panel.current;
     const tool = new DraftTool(panel);
     const draft = JSON.parse(
@@ -279,7 +285,7 @@ suite("mutation drafts", () => {
     assert.strictEqual(panel.current, before);
     assert.match(
       await invokeTool(tool, { action: "apply", id: draft.id }),
-      /Applied the validated chart update/,
+      /^Applied the validated chart update\.\n\nLabels overlap in the panel\.\n\n.*Revision: \d+\.$/s,
     );
     assert.strictEqual(panel.current?.chart?.type, "pie");
     assert.strictEqual(panel.current?.title, "Share");

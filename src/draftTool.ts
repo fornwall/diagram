@@ -22,7 +22,7 @@ import {
 } from "./structureTool";
 import { toolInput } from "./text";
 import { fitsToolResult } from "./toolContracts";
-import { drawnResult, textResult } from "./toolResults";
+import { drawnResult, drawnWarnings, textResult } from "./toolResults";
 import { runsCode } from "./webview/optionSource";
 
 interface DraftInput {
@@ -188,7 +188,7 @@ export class DraftTool implements vscode.LanguageModelTool<DraftInput> {
           this.drafts.delete(id);
           return drawnResult(
             outcome.ok
-              ? "Applied the validated chart update."
+              ? ["Applied the validated chart update.", ...drawnWarnings(this.panel)].join("\n\n")
               : `The draft could not be drawn: ${outcome.error}`,
             outcome.revision,
           );
@@ -224,7 +224,7 @@ export class DraftTool implements vscode.LanguageModelTool<DraftInput> {
         this.drafts.delete(id);
         return drawnResult(
           outcome.ok
-            ? "Applied the validated draft."
+            ? ["Applied the validated draft.", ...drawnWarnings(this.panel)].join("\n\n")
             : `The draft could not be drawn: ${outcome.error}`,
           outcome.revision,
         );
