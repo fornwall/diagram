@@ -203,7 +203,7 @@ suite("chart code in the panel", function () {
     let answer: string | undefined = "Open";
     let refused = false;
     const questions = recordMessages("showWarningMessage", (_, options) => {
-      details.push((options as vscode.MessageOptions).detail ?? "");
+      details.push((options as vscode.MessageOptions | undefined)?.detail ?? "");
       // As VS Code refuses to show a dialog while the window closes, or in tests.
       if (refused) throw new Error("DialogService: refused to show dialog");
       return answer;
@@ -236,11 +236,12 @@ suite("chart code in the panel", function () {
       "Open the link that you clicked in the chart?",
       "Open the link that you clicked in the diagram?",
       "Open the link that you clicked in the diagram?",
+      "You declined a request from the diagram panel after it ran JavaScript code from a chart, so it asks no more until you close it.",
     ]);
     assert.ok(details[0]?.startsWith(`${url}\n`));
   });
 
-  test("asks one question at a time, and no more once the user declines one", async () => {
+  test("asks one question at a time, and no more once the user declines one, saying so", async () => {
     const file = path.join(dir, "spammed.md");
     fs.writeFileSync(file, "```mermaid\nflowchart TD\n```\n");
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
@@ -267,8 +268,11 @@ suite("chart code in the panel", function () {
     assert.ok(opened.ok);
     await Promise.all([write(), write(), write()]);
     assert.strictEqual(questions.length, 1);
-    await write();
-    assert.strictEqual(questions.length, 1);
+    // It says why, rather than do nothing, one notice at a time.
+    await Promise.all([write(), write()]);
+    assert.deepStrictEqual(questions.slice(1), [
+      "You declined a request from the diagram panel after it ran JavaScript code from a chart, so it asks no more until you close it.",
+    ]);
     assert.strictEqual(document.getText(), "```mermaid\nflowchart TD\n```\n");
   });
 });

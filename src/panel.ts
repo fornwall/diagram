@@ -182,6 +182,8 @@ export class DiagramPanel implements vscode.Disposable {
   private confirming = false;
   /** Whether the user declined what the page asked for while it held chart code. */
   private pageRefused = false;
+  /** Whether the notice that the page asks no more, as the user declined, is shown. */
+  private noticing = false;
   /**
    * Last successful render of the current source. Its request id ties exports and clicks to
    * that drawing, so messages from a replaced drawing can be ignored.
@@ -1610,10 +1612,25 @@ export class DiagramPanel implements vscode.Disposable {
 
   /**
    * Allows one confirmation at a time. After a refusal on a page that ran chart code, suppress
-   * further requests so that code cannot flood the user with modal dialogs.
+   * further requests so that code cannot flood the user with modal dialogs, saying why instead.
    */
   private async confirmForPage(ask: () => Thenable<boolean>): Promise<boolean> {
-    if (this.confirming || this.pageRefused) return false;
+    if (this.pageRefused) {
+      // One notice at a time, which code cannot flood the user with either.
+      if (!this.noticing) {
+        this.noticing = true;
+        const done = () => {
+          this.noticing = false;
+        };
+        vscode.window
+          .showWarningMessage(
+            "You declined a request from the diagram panel after it ran JavaScript code from a chart, so it asks no more until you close it.",
+          )
+          .then(done, done);
+      }
+      return false;
+    }
+    if (this.confirming) return false;
     this.confirming = true;
     try {
       const confirmed = await ask();
