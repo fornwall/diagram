@@ -354,14 +354,17 @@ suite("data", () => {
       ["1min 2.345s", 62.345],
       ["1min2.345s", 62.345],
       ["1h 2min", 3720],
+      ["2y30d", (2 * 365 + 30) * 86_400],
     ] as const) {
       assert.deepStrictEqual(parseNumber(text), { value, unit: "seconds" }, text);
     }
-    // A single unit of minutes, hours or days, a clock, or whole seconds that read as a decade,
-    // only in a column of durations.
-    for (const text of ["5m", "5min", "3h", "2d", "1:02:03", "1980s"]) {
+    // A single unit of minutes, hours, days or years, a clock, or whole seconds that read as a
+    // decade, only in a column of durations.
+    for (const text of ["5m", "5min", "3h", "2d", "4y", "1:02:03", "1980s"]) {
       assert.strictEqual(parseNumber(text), undefined, text);
     }
+    // Years only before days, as kubectl writes them, as "1y6m" may be months.
+    assert.strictEqual(parseNumber("1y6m", { durations: true }), undefined);
     assert.deepStrictEqual(parse("decade,count\n1980s,5\n1990s,7"), {
       columns: ["decade", "count"],
       rows: [
@@ -374,11 +377,11 @@ suite("data", () => {
       [1200, 45],
     );
     const pods = parseTable(
-      "NAME   READY   AGE\napi    1/1     45m\nweb    1/1     3h12m\ndb     1/1     2d",
+      "NAME   READY   AGE\napi    1/1     45m\nweb    1/1     3h12m\ndb     1/1     2d\nold    1/1     9y",
     );
     assert.deepStrictEqual(
       pods.rows.map((row) => row[2]),
-      [2700, 11_520, 172_800],
+      [2700, 11_520, 172_800, 9 * 365 * 86_400],
     );
     assert.deepStrictEqual(pods.columns[2], { name: "AGE", numeric: true, unit: "seconds" });
     const runs = parse("run,elapsed\na,1:02:03.5\nb,3:45\nc,1-00:00:00");

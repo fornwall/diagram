@@ -82,7 +82,7 @@ suite("dataNumber", () => {
 
   test("rejects durations and millicores that exceed the numeric range", () => {
     const huge = "9".repeat(400);
-    for (const suffix of ["ms", "s", "h", "d", ":00"]) {
+    for (const suffix of ["ms", "s", "h", "d", "y", ":00"]) {
       assert.strictEqual(parseNumber(`${huge}${suffix}`, { durations: true }), undefined);
     }
     assert.strictEqual(parseNumber(`${huge}m`, { millicores: true }), undefined);

@@ -45,13 +45,14 @@ const DURATION_WORDS = new Set(
 
 /**
  * A duration as Go, kubectl, time and systemd print it, in units from days down to nanoseconds:
- * "1h2m3.5s", "3h12m", "0m1.234s", "1min 2.345s", "812ms", "1.2µs".
+ * "1h2m3.5s", "3h12m", "0m1.234s", "1min 2.345s", "812ms", "1.2µs", or in years of 365 days and
+ * days, as kubectl's "2y30d", but not "1y6m", which may be months.
  */
 const DURATION =
-  /^(?:(\d+)d ?)?(?:(\d+)h ?)?(?:(\d+)(?:min|m(?!s)) ?)?(?:(\d+(?:\.\d+)?) ?(s|ms|[uµμ]s|ns))?$/;
+  /^(?:(?<y>\d+)y ?(?=(?:\d+d)?$))?(?:(?<d>\d+)d ?)?(?:(?<h>\d+)h ?)?(?:(?<m>\d+)(?:min|m(?!s)) ?)?(?:(?<s>\d+(?:\.\d+)?) ?(?<unit>s|ms|[uµμ]s|ns))?$/;
 
 /** A duration on a clock, as "1:02:03.5", "3:45" (minutes) or "1-02:03:04" (ps's days). */
-const CLOCK = /^(?:(\d+)-)?(?:(\d+):)?(\d+):([0-5]\d(?:\.\d+)?)$/;
+const CLOCK = /^(?:(?<d>\d+)-)?(?:(?<h>\d+):)?(?<m>\d+):(?<s>[0-5]\d(?:\.\d+)?)$/;
 
 /** How many of each unit a second has. */
 const PER_SECOND: Record<string, number> = { ms: 1e3, us: 1e6, µs: 1e6, μs: 1e6, ns: 1e9 };
@@ -61,14 +62,16 @@ function parseDuration(text: string, durations = false): number | undefined {
   const sign = text[0];
   const signed = sign === "-" || sign === "+" || sign === "\u2212";
   const unsigned = signed ? text.slice(1) : text;
-  const [, d, h, m, s, unit = "s"] =
-    DURATION.exec(unsigned) ?? (durations ? CLOCK.exec(unsigned) : null) ?? [];
-  const parts = [d, h, m, s].filter((part) => part !== undefined).length;
-  // Alone, "5m" may be millions or meters, "3h" or "2d" other things and "1980s" a decade, except in
-  // a column of durations, as kubectl's AGE. Commands write durations that long in minutes.
+  const match = DURATION.exec(unsigned) ?? (durations ? CLOCK.exec(unsigned) : null);
+  const { y, d, h, m, s, unit = "s" } = match?.groups ?? {};
+  const parts = [y, d, h, m, s].filter((part) => part !== undefined).length;
+  // Alone, "5m" may be millions or meters, "3h", "2d" or "4y" other things and "1980s" a decade,
+  // except in a column of durations, as kubectl's AGE. Commands write durations that long in
+  // minutes.
   const alone = s === undefined || (unit === "s" && /^[1-9]\d{3}$/.test(s));
   if (parts === 0 || (parts === 1 && alone && !durations)) return undefined;
-  const minutes = (Number(d ?? 0) * 24 + Number(h ?? 0)) * 60 + Number(m ?? 0);
+  const days = Number(y ?? 0) * 365 + Number(d ?? 0);
+  const minutes = (days * 24 + Number(h ?? 0)) * 60 + Number(m ?? 0);
   const seconds = minutes * 60 + Number(s ?? 0) / (PER_SECOND[unit] ?? 1);
   return sign === "-" || sign === "\u2212" ? -seconds : seconds;
 }
