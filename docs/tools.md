@@ -105,7 +105,7 @@ The optional query matches literal, case-sensitive text in ids, labels and relat
 
 ### HTML export
 
-`diagram_exportHtml` accepts a `.html` or `.htm` destination, absolute or relative to the first workspace folder; the parent folder must exist. It asks for confirmation before writing; existing files are preserved unless `"overwrite":true`, and unsaved editor changes are always preserved. Pass `revision` to reject an export of a diagram that has changed. Source, data and theme are embedded in the file; renderer JavaScript loads from a CDN. The panel's **Export** command offers PNG, SVG and the same HTML export for diagrams and charts.
+`diagram_exportHtml` accepts a `.html` or `.htm` destination, absolute or relative to the first workspace folder; the parent folder must exist. It asks for confirmation before writing; existing files are preserved unless `"overwrite":true`, and unsaved editor changes are always preserved. Pass `revision` to reject an export of a diagram that has changed. Source, data and theme are embedded in the file; renderer JavaScript loads from a CDN, and current browsers check it against hashes of the version the extension was built with. The panel's **Export** command offers PNG, SVG and the same HTML export for diagrams and charts.
 
 ### Graph queries and structural edits
 
