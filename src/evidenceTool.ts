@@ -141,9 +141,17 @@ export class EvidenceTool implements vscode.LanguageModelTool<unknown> {
           token,
         );
         current();
+        if (!known) {
+          const error = this.panel.current?.error;
+          throw new Error(
+            error
+              ? `The diagram's items are unknown, as it fails to render: ${error} Fix it and retry.`
+              : "The diagram's items are unknown, as the panel is not showing it. Show it and retry.",
+          );
+        }
         const added: DiagramEvidence = [];
         for (const item of attachments) {
-          const node = known?.items.get(item.id);
+          const node = known.items.get(item.id);
           if (!node)
             throw new Error(
               `${JSON.stringify(item.id)} is not a known exact item id. Read diagram_getState with detail:"items".`,
@@ -161,7 +169,7 @@ export class EvidenceTool implements vscode.LanguageModelTool<unknown> {
           added.push({
             ...item,
             locations,
-            ...((known?.labelsKnown || node.relationship) && { identity: evidenceIdentity(node) }),
+            ...((known.labelsKnown || node.relationship) && { identity: evidenceIdentity(node) }),
             ...(state.language === "echarts" &&
               state.source !== undefined && { sourceHash: evidenceHash(state.source) }),
           });

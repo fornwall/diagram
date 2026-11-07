@@ -102,6 +102,18 @@ suite("evidence", () => {
     );
   });
 
+  test("says that items are unknown while the diagram fails to render, rather than the ids", async () => {
+    webview.failNextRender("Parse error on line 2");
+    await panel.render(
+      { language: "mermaid", source: "flowchart LR\n A -->", title: "Evidence" },
+      "tool",
+    );
+    assert.strictEqual(
+      await attach(),
+      "Evidence was not read or changed: The diagram's items are unknown, as it fails to render: Parse error on line 2 Fix it and retry.",
+    );
+  });
+
   test("distinguishes range changes from unrelated file edits and missing ranges", async () => {
     await attach();
     const file = path.join(directory, "code.ts");
