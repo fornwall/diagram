@@ -172,6 +172,25 @@ function isColumnGroups(line: string, header: string): boolean {
 }
 
 /**
+ * Refuses lines that split into more cells than a table may have before the words of all of them
+ * are kept, as those of 10 MiB of short words would take much memory. The width is known by the
+ * numbers of words alone when the first line is no header of text, as the lines are then as wide
+ * as most are, or when each line has as many words as the header, which splits no other way.
+ */
+function checkWords(lines: string[]): void {
+  // Fewer characters have fewer words than a table may have cells.
+  if (lines.reduce((sum, line) => sum + line.length, 0) <= MAX_CELLS) return;
+  const header = joinDurations(lines[0] ?? "", tokenize(lines[0] ?? ""));
+  const counts = lines.map((line) => joinDurations(line, tokenize(line)).length);
+  const width = header.some((token) => parseNumber(token.text) !== undefined)
+    ? shape(counts.map((length) => ({ length }))).width
+    : counts.every((count) => count === counts[0])
+      ? counts[0]
+      : undefined;
+  if (width !== undefined) checkTableSize(lines.length, width);
+}
+
+/**
  * The name of the index of a data frame, which pandas prints on a line of its own between the
  * header and the rows, as "month" under "sales units" above "Jan 100 10", if `lines` have one.
  */
@@ -245,6 +264,7 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
   if (ruled !== undefined) {
     return { records: ruled, header: true };
   }
+  checkWords(lines);
   const tokens = lines.map((line) => joinDurations(line, tokenize(line)));
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);

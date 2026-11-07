@@ -63,7 +63,7 @@ export function tokenize(line: string): Token[] {
  * The most common number of fields of `records`, preferring the smallest on ties, and how many
  * records have it.
  */
-export function shape(records: unknown[][]): { width: number; matching: number } {
+export function shape(records: readonly { length: number }[]): { width: number; matching: number } {
   const counts = new Map<number, number>();
   for (const { length } of records) counts.set(length, (counts.get(length) ?? 0) + 1);
   let width = 0;

@@ -258,6 +258,14 @@ suite("data", () => {
       () => splitText("a 1\n".repeat(1_000_001), "whitespace"),
       /^Error: The data has 1,000,001 rows, counting any header row, exceeding the 1,000,000 cell limit even with one column\. Select fewer rows/,
     );
+    // Lines of many short words, before the words of all of them are kept.
+    for (const first of ["1", "a"]) {
+      const text = `${`${first} `.repeat(1100)}\n${"1 ".repeat(1100)}\n`.repeat(500);
+      assert.throws(
+        () => splitText(text, "whitespace"),
+        /^Error: The data expands to 1,000 rows × 1,100 columns, counting any header row and empty cells, exceeding the 1,000,000 cell limit/,
+      );
+    }
     for (const line of ["a ".repeat(1_000_005), `|${"a|".repeat(1_000_005)}`]) {
       assert.throws(() => splitText(line, "auto"), /exceeding the 1,000,000 cell limit/);
     }
