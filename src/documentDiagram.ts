@@ -7,7 +7,7 @@ import {
   rewriteFence,
   trimBlankLines,
 } from "./fences";
-import { baseName, openDocument } from "./files";
+import { baseName, contains, openDocument } from "./files";
 import { diagramNoun, errorMessage } from "./protocol";
 
 /** JSON-serializable document location and last-read fence, used to detect conflicting edits. */
@@ -36,6 +36,20 @@ export function openCell(
     if (index !== -1) return { notebook, index };
   }
   return undefined;
+}
+
+/**
+ * The notebook that holds a cell: the open one, or else the file at the cell's path in a workspace
+ * folder. Other URIs are their own.
+ */
+export function notebookOf(uri: vscode.Uri): vscode.Uri {
+  if (uri.scheme !== NOTEBOOK_CELL) return uri;
+  const open = openCell(uri.toString());
+  if (open) return open.notebook.uri;
+  const folder = vscode.workspace.workspaceFolders?.find((root) =>
+    contains(root.uri, uri.with({ scheme: root.uri.scheme, fragment: "" })),
+  );
+  return folder ? uri.with({ scheme: folder.uri.scheme, fragment: "" }) : uri;
 }
 
 /**

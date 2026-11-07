@@ -246,13 +246,41 @@ suite("export", function () {
     assert.ok((await panel.render({ ...diagram, openedFrom: revision }, "document")).ok);
     await panel.exportDiagram();
     assert.strictEqual(suggested(), images);
-    // Nor beside one on no file system, such as an untitled document or a notebook's cell.
+    // Nor beside one on no file system, such as an untitled document or the cell of a notebook
+    // that is neither open nor in the workspace.
     for (const openedFrom of ["untitled:Untitled-1", "vscode-notebook-cell:/docs/notes.ipynb#W1"]) {
       assert.ok((await panel.render({ ...diagram, openedFrom }, "document")).ok);
       await panel.exportDiagram();
       assert.strictEqual(dialogs.at(-1)?.defaultUri?.scheme, "file");
       assert.strictEqual(suggested(), images);
     }
+    assert.deepStrictEqual(errors, []);
+  });
+
+  test("suggests the folder of the notebook whose Markdown cell a diagram was opened from", async () => {
+    const { panel } = await exportingPanel();
+    const suggested = () => path.dirname(dialogs.at(-1)?.defaultUri?.fsPath ?? "");
+    const fence = { ...diagram, openingLine: 0, lastLine: 2, prefix: "" };
+    const file = path.join(directory, "notebooks", "notes.ipynb");
+    fs.mkdirSync(path.dirname(file));
+    const cells = [{ cell_type: "markdown", source: ["# Notes"], metadata: {} }];
+    fs.writeFileSync(file, JSON.stringify({ cells, metadata: {}, nbformat: 4, nbformat_minor: 5 }));
+    const notebook = await vscode.workspace.openNotebookDocument(vscode.Uri.file(file));
+    const cell = notebook.cellAt(0).document.uri.toString();
+    assert.ok((await panel.render({ ...diagram, document: { uri: cell, fence } }, "document")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.dirname(file));
+    // One of a notebook that is not open, in the workspace.
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    assert.ok(folder);
+    const closed = folder.with({
+      scheme: "vscode-notebook-cell",
+      path: `${folder.path}/docs/x.ipynb`,
+    });
+    const uri = closed.with({ fragment: "W0sZmlsZQ==" }).toString();
+    assert.ok((await panel.render({ ...diagram, document: { uri, fence } }, "document")).ok);
+    await panel.exportDiagram();
+    assert.strictEqual(suggested(), path.join(folder.fsPath, "docs"));
     assert.deepStrictEqual(errors, []);
   });
 

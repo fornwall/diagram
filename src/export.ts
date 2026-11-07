@@ -3,6 +3,7 @@
 import * as os from "node:os";
 import * as vscode from "vscode";
 import { cdnDiagramHtml } from "./cdnDiagram";
+import { notebookOf } from "./documentDiagram";
 import { baseName, contains, fileName } from "./files";
 import {
   type DiagramLanguage,
@@ -101,11 +102,12 @@ export async function exportDrawing(
 }
 
 /**
- * The folder of the document a drawing was opened from, or of the last export, if that is in it, as
- * when images go in a folder of their own; without a document on a file system that can be
- * written, unlike an untitled one, a Git revision or a notebook's cell, that of the last export.
+ * The folder of the document a drawing was opened from, or of a cell's notebook, or of the last
+ * export, if that is in it, as when images go in a folder of their own; without a document on a file
+ * system that can be written, unlike an untitled one or a Git revision, that of the last export.
  */
-function defaultFolder(document: vscode.Uri | undefined): vscode.Uri | undefined {
+function defaultFolder(opened: vscode.Uri | undefined): vscode.Uri | undefined {
+  const document = opened && notebookOf(opened);
   if (!document || vscode.workspace.fs.isWritableFileSystem(document.scheme) !== true) {
     return lastFolder;
   }
