@@ -49,10 +49,17 @@ function withoutRules(lines: string[]): { lines: string[]; ruled: boolean[]; und
  * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]", or for a series "Name: count,
  * dtype: int64") and DuckDB ("│ 1000 rows (40 shown)  3 columns │") print below it, Polars
  * ("shape: (1_000, 3)") above it, and R's tibbles around it ("# A tibble: 1,000 × 3", "# Groups:
- * cyl [3]", "# ℹ 990 more rows"), as does aws s3 ls --summarize below it ("Total Objects: 4").
+ * cyl [3]", "# ℹ 990 more rows").
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|Total (?:Objects: [\d,]+|Size: .*)|# A tibble: [\d,]+ [×x] [\d,]+|# (?:Groups:|ℹ|…|\.\.\.) .*|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|# A tibble: [\d,]+ [×x] [\d,]+|# (?:Groups:|ℹ|…|\.\.\.) .*|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+
+/**
+ * What aws s3 ls --summarize prints at the end, after a blank line: "Total Objects: 2" and "Total
+ * Size: 3.5 KiB". Elsewhere such lines may be rows, as of a table of metrics.
+ */
+const S3_SUMMARY =
+  /(\S[ \t]*\r?\n[ \t]*\r?\n)([ \t]*Total Objects: [\d,]+\r?\n[ \t]*Total Size: [^\r\n]*)\s*$/;
 
 /** What a tibble prints below the rows that it shows: "# ℹ 990 more rows". */
 const MORE_ROWS = /^# (?:ℹ|…|\.\.\.) (?:with )?[\d,]+ more rows?\b/;
@@ -225,6 +232,13 @@ export function splitText(text: string, format: Exclude<DataFormat, "json">): Re
   const declared = /^sep=([^\r\n])(?=\r|\n|$)/.exec(text);
   if (declared?.[1] !== undefined) {
     return { ...splitDelimited(text.slice(declared[0].length), declared[1]), csv: true };
+  }
+  if (format !== "csv" && format !== "tsv") {
+    // Left as empty lines, which are skipped, as errors count lines.
+    text = text.replace(
+      S3_SUMMARY,
+      (_, gap: string, summary: string) => gap + summary.replace(/[^\r\n]/g, ""),
+    );
   }
   const all = text.split(/\r\n?|\n/);
   // Explicit delimited formats have literal fields, including "..." rows and columns.

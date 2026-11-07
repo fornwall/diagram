@@ -249,6 +249,24 @@ suite("data", () => {
     ]);
   });
 
+  test("leaves out only the summary that aws s3 ls prints at the end, after a blank line", () => {
+    assert.deepStrictEqual(
+      parse("2024-01-01 10:00:00   1536 a.txt\n\nTotal Objects: 1\n   Total Size: 1536\n").rows,
+      [["2024-01-01", "10:00:00", 1536, "a.txt"]],
+    );
+    // Elsewhere, such lines are rows, as of a table of metrics or of restic stats.
+    for (const text of [
+      "Metric       Value\nTotal Size   500\nFree Size    200",
+      "Total Objects: 1,234\nTotal Size: 5.6 GiB\nAverage Size: 4.6 MiB",
+      "x 1\ny 2\n\nTotal Objects: 2\nTotal Size: 3\nmore 4",
+    ]) {
+      assert.ok(
+        parse(text).rows.some((row) => String(row[0]).startsWith("Total")),
+        text,
+      );
+    }
+  });
+
   test("parses tables with carriage-return line endings", () => {
     for (const newline of ["\r", "\r\n", "\n"]) {
       for (const delimiter of [",", ";", "\t", " "]) {
