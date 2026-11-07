@@ -977,6 +977,24 @@ suite("Mermaid in the webview", function () {
     assert.deepStrictEqual(colors, { text: "A tooltip", same: true });
   });
 
+  test("hides a node's tooltip with the drawing of the node, under the pointer", async () => {
+    const source = 'flowchart LR\n  A --> B\n  click A callback "A tooltip"';
+    const hover = `(async () => {
+      ${UNTIL}
+      document.querySelector("#diagram g.node[title]").dispatchEvent(new MouseEvent("mouseover"));
+      const tooltip = document.querySelector(".mermaidTooltip");
+      await until(() => getComputedStyle(tooltip).opacity === "0.9", "the tooltip shown");
+    })()`;
+    const opacity = 'getComputedStyle(document.querySelector(".mermaidTooltip")).opacity';
+    await draw({ source });
+    await evaluate(hover);
+    await draw({ source: source.replace("B", "C") });
+    assert.strictEqual(await evaluate(opacity), "0");
+    await evaluate(hover);
+    await draw({ language: "echarts", source: '{"series":[{"type":"pie","data":[1,2]}]}' });
+    assert.strictEqual(await evaluate(opacity), "0");
+  });
+
   test("selection updates only the changed Mermaid nodes", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
     await draw({ source });

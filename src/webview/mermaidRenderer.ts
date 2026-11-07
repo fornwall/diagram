@@ -1,8 +1,8 @@
 // Renders Mermaid diagrams as SVG, scaled to fit the panel.
 
-// Mermaid's tooltips call selection.transition(), which this adds. d3 marks itself free of side
-// effects, so that bundling Mermaid alone would leave it out.
-import "d3-transition";
+// Mermaid's tooltips call selection.transition(), which importing this adds. d3 marks itself free
+// of side effects, so that bundling Mermaid alone would leave it out.
+import { interrupt } from "d3-transition";
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";
@@ -784,6 +784,7 @@ export class MermaidRenderer implements Renderer {
     );
     if (width > 0) this.layoutWidth = width;
     this.drawnFrom = drawnFrom;
+    this.hideTooltip();
     this.diagram.replaceChildren(svg);
     // A click selects, and links open through the extension, which checks their URLs. A link that
     // Mermaid draws, from a click directive or a label, would open its URL, written by a model, on
@@ -965,6 +966,7 @@ export class MermaidRenderer implements Renderer {
   }
 
   hide(): void {
+    this.hideTooltip();
     this.diagram.hidden = true;
     this.diagram.innerHTML = "";
     this.drawn = NOTHING_DRAWN;
@@ -972,6 +974,17 @@ export class MermaidRenderer implements Renderer {
     this.displayedSource = undefined;
     this.drawnFrom = undefined;
     this.image = undefined;
+  }
+
+  /**
+   * Hides the tooltip of the node under the pointer, which Mermaid hides only as the pointer leaves
+   * the node: else it would stay over the drawing or chart that replaces it.
+   */
+  private hideTooltip(): void {
+    const tooltip = document.querySelector<HTMLElement>(".mermaidTooltip");
+    if (!tooltip || !this.diagram.querySelector("[title].hover")) return;
+    interrupt(tooltip);
+    tooltip.style.opacity = "0";
   }
 
   showSelection(keys: ReadonlySet<string>): void {
