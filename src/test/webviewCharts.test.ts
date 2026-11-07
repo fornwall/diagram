@@ -1454,6 +1454,33 @@ suite("ECharts in the webview", function () {
     ]);
   });
 
+  test("takes the axis pointer and the emphasis it shows off a chart that loses the focus", async () => {
+    await renderChart({
+      xAxis: { type: "category", data: ["Mon", "Tue"] },
+      yAxis: {},
+      series: [
+        {
+          type: "bar",
+          data: [1, 2],
+          itemStyle: { color: "#0000ff" },
+          emphasis: { itemStyle: { color: "#ff0000" } },
+        },
+      ],
+    });
+    const emphasized = await evaluate(`(async () => {
+      ${UNTIL}
+      ${PRESS}
+      const red = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+      chart.focus();
+      press("Home");
+      const focused = await until(red, "the focused item emphasized");
+      chart.blur();
+      await nextFrame(2);
+      return [focused, red()];
+    })()`);
+    assert.deepStrictEqual(emphasized, [1, 0]);
+  });
+
   test("announces pie slices, tree nodes and sankey flows as the focus moves", async () => {
     const charts: [Record<string, unknown>, string[]][] = [
       [

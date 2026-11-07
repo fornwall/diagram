@@ -594,7 +594,11 @@ export class ChartFocus {
     // Find in the webview, whose widget takes the focus, would match the text kept from sight.
     // Screen readers do not announce the removal, and announce the item again on the next focus.
     this.status.textContent = "";
-    this.chart()?.dispatchAction({ type: "hideTip" });
+    const chart = this.chart();
+    chart?.dispatchAction({ type: "hideTip" });
+    // And the axis pointer that showed the tip, with the emphasis of its items, as when the pointer
+    // leaves the chart.
+    chart?.dispatchAction({ type: "updateAxisPointer", currTrigger: "leave" });
   }
 
   /** Where the keyboard leads in the chart as shown now, after legend or zoom changes. */
