@@ -560,6 +560,34 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("keeps the chart selection through the toolbox's restore", async () => {
+    await renderChart({
+      toolbox: { feature: { restore: {} } },
+      series: [
+        {
+          type: "pie",
+          label: { show: false },
+          data: ["A", "B"].map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
+    });
+    const selected = await evaluate(`(async () => {
+      ${UNTIL}
+      ${CLICK_CHART}
+      const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+      clickChart(document.querySelector('#chart svg path[fill="#0000ff"]'));
+      await until(() => count() === 1, "an item selected");
+      // The restore icon, the only path drawn without a fill.
+      clickChart(document.querySelector('#chart svg path[fill="none"]'));
+      await nextFrame(2);
+      return [count(), document.getElementById("selection-label").textContent];
+    })()`);
+    assert.deepStrictEqual(selected, [1, "Selected: “A”"]);
+  });
+
   test("keeps the chart selection through zooming out and drilling up", async () => {
     const color = (color: string) => ({ itemStyle: { color } });
     const charts = {

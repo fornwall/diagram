@@ -521,6 +521,15 @@ export class EChartsRenderer implements Renderer {
     chart.on("timelinechanged", () => {
       this.chartItems = undefined;
     });
+    // The toolbox's restore makes the chart's model anew from the option, without the selection,
+    // and back at a timeline's first step: select the items again.
+    chart.on("restore", () => {
+      if (optionVariants(this.option ?? {}).length > 1 || !this.chartItems?.rebind(chart)) {
+        this.chartItems = undefined;
+      }
+      this.shownSelected = [];
+      this.scheduleSelection();
+    });
     // ECharts takes the blur off the whole chart for any other highlight or downplay, such as the
     // axis pointer's, and when the pointer leaves an item it emphasized, which would end the
     // dimming around the marks until they change: blur the rest again. A downplay, as of the axis
