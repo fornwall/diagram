@@ -50,10 +50,77 @@ import {
   TransformComponent,
   VisualMapComponent,
 } from "echarts/components";
-import { use } from "echarts/core";
+import { SeriesModel, use } from "echarts/core";
 import { AxisBreak, LabelLayout, LegacyGridContainLabel, ScatterJitter } from "echarts/features";
 import { SVGRenderer } from "echarts/renderers";
 import { ensureFontMeasureInfo, measureCharWidth } from "zrender/lib/contain/text.js";
+
+/** What ECharts' selection reads of a series and its data. */
+interface SelectableData {
+  dataType?: string;
+  getRawIndex(index: number): number;
+  getItemModel(index: number): { get(path: string[]): unknown };
+}
+interface SelectableSeries {
+  option: { selectedMode?: unknown; selectedMap?: Record<string, boolean> | "all" };
+  _selectedDataIndicesMap: Record<string, number>;
+  getData(dataType?: string): SelectableData;
+  _innerSelect(data: SelectableData, indices: number[]): void;
+  unselect(indices: number[], dataType?: string): void;
+  isSelected(index: number, dataType?: string): boolean;
+}
+
+/**
+ * ECharts keeps the selection of a series by item name, which selects every item of that name, as
+ * each cell of a heatmap's column: keep it by the item's index instead, as the panel does.
+ */
+const selectionKey = (data: SelectableData, index: number) =>
+  `${data.dataType ?? ""}:${data.getRawIndex(index)}`;
+const series = SeriesModel.prototype as unknown as SelectableSeries;
+series._innerSelect = function (data, indices) {
+  const { option } = this;
+  const mode = option.selectedMode;
+  const last = indices.at(-1);
+  if (!mode || last === undefined) return;
+  if (mode === "series") {
+    option.selectedMap = "all";
+  } else if (mode === "multiple") {
+    if (typeof option.selectedMap !== "object") option.selectedMap = {};
+    for (const index of indices) {
+      const key = selectionKey(data, index);
+      option.selectedMap[key] = true;
+      this._selectedDataIndicesMap[key] = data.getRawIndex(index);
+    }
+  } else if (mode === "single" || mode === true) {
+    const key = selectionKey(data, last);
+    option.selectedMap = { [key]: true };
+    this._selectedDataIndicesMap = { [key]: data.getRawIndex(last) };
+  }
+};
+series.unselect = function (indices, dataType) {
+  const { option } = this;
+  if (!option.selectedMap) return;
+  if (option.selectedMode === "series" || option.selectedMap === "all") {
+    option.selectedMap = {};
+    this._selectedDataIndicesMap = {};
+    return;
+  }
+  const data = this.getData(dataType);
+  for (const index of indices) {
+    const key = selectionKey(data, index);
+    option.selectedMap[key] = false;
+    this._selectedDataIndicesMap[key] = -1;
+  }
+};
+series.isSelected = function (index, dataType) {
+  const { selectedMap } = this.option;
+  if (!selectedMap) return false;
+  const data = this.getData(dataType);
+  return (
+    (selectedMap === "all" || selectedMap[selectionKey(data, index)] === true) &&
+    !data.getItemModel(index).get(["select", "disabled"])
+  );
+};
 
 use([
   BarChart,

@@ -396,6 +396,45 @@ suite("ECharts in the webview", function () {
     assert.strictEqual(await redHalf(), "right");
   });
 
+  test("shows only the chart items selected as selected, not others of the same name", async () => {
+    // A heatmap names its cells by their column.
+    await renderChart({
+      xAxis: { type: "category", data: ["A", "B"] },
+      yAxis: { type: "category", data: ["x", "y", "z"] },
+      visualMap: { min: 0, max: 9, show: false },
+      series: [
+        {
+          type: "heatmap",
+          data: [0, 1, 2, 3, 4, 5].map((index) => [Math.floor(index / 3), index % 3, index]),
+          itemStyle: { borderColor: "#0000ff", borderWidth: 1 },
+          select: { itemStyle: { borderColor: "#ff0000", borderWidth: 3 } },
+          emphasis: { disabled: true },
+        },
+      ],
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        ${CLICK_CHART}
+        const cells = [...document.querySelectorAll('#chart svg path[stroke="#0000ff"]')];
+        // By where they are, as ECharts may draw a cell anew.
+        const places = cells.map((cell) => cell.getAttribute("d"));
+        const selected = async (count) => {
+          const red = () => [...document.querySelectorAll('#chart svg path[stroke="#ff0000"]')];
+          await until(() => red().length === count, count + " cells drawn selected");
+          return red().map((cell) => places.indexOf(cell.getAttribute("d"))).sort();
+        };
+        clickChart(cells[1]);
+        const one = await selected(1);
+        clickChart(cells[2], {ctrlKey: true});
+        const two = await selected(2);
+        clickChart(cells[1], {ctrlKey: true});
+        return [one, two, await selected(1), document.getElementById("selection-label").textContent];
+      })()`),
+      [[1], [1, 2], [2], "Selected: “A, z”"],
+    );
+  });
+
   test("highlights the right unnamed or slash-named chart series", async () => {
     for (const names of [
       [undefined, undefined],
