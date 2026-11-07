@@ -2066,6 +2066,11 @@ suite("data", () => {
       { columns: ["Id", "Cores"], rows: instances },
     );
     assert.deepStrictEqual(parse(aws([])), { columns: ["Column 1", "Column 2"], rows: instances });
+    // A Markdown table of one column keeps its header above rows with more cells.
+    assert.deepStrictEqual(parse("| x |\n|---|\n| 1 | 2 |\n| 3 | 4 |"), {
+      columns: ["x"],
+      rows: [[1], [3]],
+    });
     // What psql, mysql and DuckDB print below a table, as with \timing on, is no row.
     for (const table of [
       " lang | lines\n------+-------\n ts   |  1200\n(1 row)\n\nTime: 1234.567 ms (00:01.235)",

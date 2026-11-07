@@ -282,11 +282,13 @@ export function splitPipeTable(
     underline !== undefined &&
     !box &&
     width === 1 &&
+    ruled[0] === true &&
+    /^\s*\+-.*\+\s*$/.test(underline) &&
     title.trim().length === underline.trim().length &&
     pipeCells(escapeUnaligned(below, underline)).length > 1
   ) {
-    // A title in a row as wide as the table, as the AWS CLI draws, above a header if a rule is
-    // below that too.
+    // A title in a row as wide as the table, as the AWS CLI draws between rules, the one below
+    // with "+" at its junctions, unlike Markdown, above a header if a rule is below that too.
     const table = splitPipeTable(lines.slice(1), ruled.slice(1), underline);
     return table && { ...table, header: ruled[2] === true };
   }
