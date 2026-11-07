@@ -61,18 +61,30 @@ const TIME_OF_DAY_WORDS = new Set(
   ),
 );
 
-/**
- * Whether a column's `name`, split into lowercase `words`, is of times spent, as also the CPU time
- * of ps and top ("TIME" beside "PID" in the `header`, "TIME+").
- */
-function namesSpans(name: string, words: string[], header: readonly Cell[]): boolean {
+/** Whether a column's name, split into lowercase `words`, is of times spent, as "CPU time". */
+function namesTimeSpent(words: string[]): boolean {
   return (
-    (words.includes("time") &&
-      words.some((word) => TIME_SPAN_WORDS.has(word)) &&
-      !words.some((word) => TIME_OF_DAY_WORDS.has(word))) ||
-    /^TIME\+$/i.test(name.trim()) ||
-    (name.trim() === "TIME" && header.includes("PID"))
+    words.includes("time") &&
+    words.some((word) => TIME_SPAN_WORDS.has(word)) &&
+    !words.some((word) => TIME_OF_DAY_WORDS.has(word))
   );
+}
+
+/**
+ * Whether a column's `name` is the CPU time of ps or top, "TIME" beside "PID" in the `header` or
+ * "TIME+", which they print on a clock, never as a time of day.
+ */
+function namesProcessTime(name: string, header: readonly Cell[]): boolean {
+  return /^TIME\+$/i.test(name.trim()) || (name.trim() === "TIME" && header.includes("PID"));
+}
+
+/**
+ * Whether `text` is a {@link CLOCK} with days, hours or a fraction of a second, as "0:01:23" and
+ * top's "1:23.45", which, unlike "09:15", tells a time spent from a time of day.
+ */
+function longClock(text: string): boolean {
+  const { d, h, s } = CLOCK.exec(text.replace(/^[-+−]/, ""))?.groups ?? {};
+  return d !== undefined || h !== undefined || s?.includes(".") === true;
 }
 
 /**
@@ -89,19 +101,12 @@ const CLOCK = /^(?:(?<d>\d+)-)?(?:(?<h>\d+):)?(?<m>\d+):(?<s>[0-5]\d(?:\.\d+)?)$
 /** How many of each unit a second has. */
 const PER_SECOND: Record<string, number> = { ms: 1e3, us: 1e6, µs: 1e6, μs: 1e6, ns: 1e9 };
 
-/**
- * The seconds of a {@link DURATION}, or a {@link CLOCK} in a column of `durations`, or of `spans`
- * with hours or a fraction of a second, as "0:01:23" and top's "1:23.45", as "09:15" may be a
- * time of day.
- */
-function parseDuration(text: string, durations = false, spans = false): number | undefined {
+/** The seconds of a {@link DURATION}, or a {@link CLOCK} in a column of `durations`. */
+function parseDuration(text: string, durations = false): number | undefined {
   const sign = text[0];
   const signed = sign === "-" || sign === "+" || sign === "\u2212";
   const unsigned = signed ? text.slice(1) : text;
-  const clock = durations || spans ? CLOCK.exec(unsigned) : null;
-  const long = (groups: Record<string, string | undefined> | undefined) =>
-    groups?.d !== undefined || groups?.h !== undefined || groups?.s?.includes(".") === true;
-  const match = DURATION.exec(unsigned) ?? (durations || long(clock?.groups) ? clock : null);
+  const match = DURATION.exec(unsigned) ?? (durations ? CLOCK.exec(unsigned) : null);
   const { y, d, h, m, s, unit = "s" } = match?.groups ?? {};
   const parts = [y, d, h, m, s].filter((part) => part !== undefined).length;
   // Alone, "5m" may be millions or meters, "3h", "2d" or "4y" other things and "1980s" a decade,
@@ -166,8 +171,6 @@ interface NumberFormat {
   millicores?: boolean;
   /** "5m" and "3h" are durations, as are "1:02:03" and "3:45" (minutes) on a clock. */
   durations?: boolean;
-  /** "1:02:03" and "1:23.45" are durations, as times spent, but "09:15" may be a time of day. */
-  spans?: boolean;
   /** "3.1G" is a count, as df -h on macOS prints those of inodes, rather than a size in bytes. */
   counts?: boolean;
   /**
@@ -250,7 +253,7 @@ export function parseNumber(
     const value = Number(trimmed.slice(0, -1)) / 1000;
     return Number.isFinite(value) ? { value } : undefined;
   }
-  const seconds = parseDuration(trimmed, format.durations, format.spans);
+  const seconds = parseDuration(trimmed, format.durations);
   if (seconds !== undefined) {
     return Number.isFinite(seconds) ? { value: seconds, unit: "seconds" } : undefined;
   }
@@ -373,9 +376,9 @@ export function statedUnit(
  *   spaces or apostrophes between digits, as two numbers ("640 480") or text would;
  * - in accounting format, if some cell is a number in parentheses and none has a minus sign;
  * - in millicores, if the column may be named for CPU, as kubectl top's "CPU(cores)" is;
- * - in durations, if the column's name is of durations ("Elapsed", "AGE");
- * - in times spent, if the column's name is of them ("CPU time", top's "TIME+"), where clocks with
- *   hours or a fraction of a second are durations;
+ * - in durations, if the column's name is of durations ("Elapsed", "AGE") or the CPU time of ps or
+ *   top ("TIME", "TIME+"), or of times spent ("CPU time") and some cell is a clock with days,
+ *   hours or a fraction of a second, which a time of day such as "09:15" is not;
  * - in versions, if some cell is a version with several dots ("1.26.4") and the numbers of the
  *   others are plain ("24.0");
  * - as text identifiers, if an ID or code column has padded or unsafe integers.
@@ -409,6 +412,8 @@ export function numberFormat(
   let versions = false;
   let formatted = false;
   let identifiers = false;
+  const spent = words !== undefined && namesTimeSpent(words);
+  let long = false;
   for (let row = header ? 1 : 0; row < records.length; row++) {
     const cell = records[row]?.[column];
     if (typeof cell !== "string" || !DIGIT.test(cell)) continue;
@@ -434,6 +439,7 @@ export function numberFormat(
     else if (/\d[\s'\u2019]+\d/.test(cell)) ungrouped = true;
     if (!number && !commaNumber) {
       versions ||= VERSION.test(text);
+      long ||= spent && longClock(text);
       continue;
     }
     formatted = true;
@@ -458,9 +464,10 @@ export function numberFormat(
     groups: grouped && !ungrouped,
     accounting: parenthesized && !minus,
     millicores: header !== false && /cpu/i.test(String(records[0]?.[column])),
-    durations: words?.some((word) => DURATION_WORDS.has(word)) === true,
-    spans:
-      typeof name === "string" && words !== undefined && namesSpans(name, words, records[0] ?? []),
+    durations:
+      words?.some((word) => DURATION_WORDS.has(word)) === true ||
+      (typeof name === "string" && namesProcessTime(name, records[0] ?? [])) ||
+      (spent && long),
     versions: versions && !formatted,
     identifiers,
   };

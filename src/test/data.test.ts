@@ -452,7 +452,7 @@ suite("data", () => {
       [3723.5, 225, 86_400],
     );
     // The CPU time of ps and top, and times of a measure, as in Google Analytics' exports.
-    // On a clock, only with hours or a fraction of a second, as "09:15" may be a time of day.
+    // The CPU time of ps and top on a clock, which they never print as a time of day.
     const ps = parseTable(
       "  PID STIME     TIME CMD\n    1 13:41 00:05:26 init\n  812 09:02 1-02:03:04 java",
     );
@@ -463,30 +463,36 @@ suite("data", () => {
         ["09:02", 93_784],
       ],
     );
+    assert.deepStrictEqual(parse("USER PID TIME COMMAND\nroot 1 0:05 init\nme 2 12:34 node").rows, [
+      ["root", 1, 5, "init"],
+      ["me", 2, 754, "node"],
+    ]);
     assert.deepStrictEqual(
-      parse("PID  TIME+    COMMAND\n12   0:31.77  rustc\n13   123:45.67  code").rows,
+      parse("PID  TIME+    COMMAND\n12   0:31.77  rustc\n13   1234:56  code").rows,
       [
         [12, 31.77, "rustc"],
-        [13, 7425.67, "code"],
+        [13, 74_096, "code"],
       ],
     );
+    // Times spent, all of whose clocks are durations once one has hours or a fraction of a second.
     assert.deepStrictEqual(
-      parse("Page,Average engagement time,CPU time\n/,0:01:23,1:23:45\n/blog,0:02:05,0:01:02").rows,
+      parse(
+        "Page,Average engagement time,CPU time,Total time\n/,0:01:23,1:23:45,58:30\n/blog,0:02:05,0:01:02,1:02:03",
+      ).rows,
       [
-        ["/", 83, 5025],
-        ["/blog", 125, 62],
+        ["/", 83, 5025, 3510],
+        ["/blog", 125, 62, 3723],
       ],
     );
-    // But times of day, under "Time", "TIME" without the PID of ps beside it, a time of a measure
-    // that is of the day, as "Average start time", or as hours and minutes alone.
+    // But times of day, under "Time", a time of a measure that is of the day, as "Average start
+    // time", or with hours and minutes alone.
     for (const text of [
       "Date,Time,v\n2024-01-01,10:30:00,5",
       "DATE,TIME,v\n2024-01-01,10:30,5",
-      "PID,TIME\n1,10:00",
       "Day,Average start time\nMon,09:15:00",
       "Station,Average arrival time\nA,17:30:00",
       "Job,Last run time\nbackup,03:00",
-      "Step,Total time\na,1:02",
+      "Step,Total time\na,1:02\nb,09:15",
     ]) {
       assert.strictEqual(parseTable(text).columns[1]?.numeric, false, text);
     }
