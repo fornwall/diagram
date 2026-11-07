@@ -15,7 +15,11 @@ function interactionRenderer() {
   let relayouts = 0;
   const renderer = Object.create(EChartsRenderer.prototype) as EChartsRenderer;
   Object.assign(renderer, {
-    chart: { dispatchAction: (action: unknown) => actions.push(action) },
+    chart: {
+      dispatchAction: (action: unknown) => actions.push(action),
+      // Of a pie, whose items ECharts finds by their own indices.
+      getModel: () => ({ getSeriesByIndex: () => ({ subType: "pie" }) }),
+    },
     chartItems: itemsOf({
       series: [{ type: "pie", data: ["A", "B", "C", "D"].map((name) => ({ name, value: 1 })) }],
     }),

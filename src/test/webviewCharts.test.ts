@@ -1598,6 +1598,76 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(await evaluate(selected), ["node"]);
   });
 
+  test("focuses, marks and selects the items of a theme river where they are, in their layers", async () => {
+    await renderChart({
+      color: ["#0000ff", "#00ff00"],
+      singleAxis: { type: "time" },
+      series: [
+        {
+          type: "themeRiver",
+          emphasis: { itemStyle: { color: "#ff0000" } },
+          select: { itemStyle: { color: "#ffff00" } },
+          data: [
+            ["2026-01-01", 10, "a"],
+            ["2026-01-02", 20, "a"],
+            ["2026-01-03", 10, "a"],
+            ["2026-01-01", 5, "b"],
+            ["2026-01-02", 30, "b"],
+            ["2026-01-03", 5, "b"],
+          ],
+        },
+      ],
+    });
+    const result = (await evaluate(`(() => {
+      ${PRESS}
+      const [a, b] = ["#0000ff", "#00ff00"].map((color) =>
+        document.querySelector('#chart svg path[fill="' + color + '"]'));
+      /** The layer that the middle of the focus ring is in. */
+      const ringIn = () => {
+        const box = ring();
+        const at = document.elementsFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return at.includes(a) ? "a" : at.includes(b) ? "b" : "none";
+      };
+      chart.focus();
+      press("Home");
+      const moves = ["ArrowRight", "ArrowDown"].map((key) => [press(key), ringIn()]);
+      const tip = tooltip();
+      chart.blur();
+      return {moves, tip};
+    })()`)) as { moves: string[][]; tip: string };
+    assert.deepStrictEqual(result.moves, [
+      ["2026-01-02: (20, a), 2 of 6", "a"],
+      ["2026-01-02: (30, b), 5 of 6", "b"],
+    ]);
+    // The tip of the time, for every layer.
+    assert.match(result.tip, /a\s*20.*b\s*30/s);
+    page.panel.annotate({ marks: [{ id: "2026-01-02 (item 5)", kind: "info" }], dim: false });
+    const marked = await evaluate(`(async () => {
+      ${UNTIL}
+      const fills = () => [...document.querySelectorAll("#chart svg path")].map((path) => path.getAttribute("fill"));
+      await until(() => fills().includes("#ff0000"), "a layer highlighted");
+      return ["#0000ff", "#00ff00", "#ff0000"].map((color) => fills().includes(color));
+    })()`);
+    // Layer b, red, and layer a as it was.
+    assert.deepStrictEqual(marked, [true, false, true]);
+    page.panel.annotate({ marks: [], dim: false });
+    const selected = await evaluate(`(async () => {
+      ${UNTIL}
+      ${CLICK_CHART}
+      const fills = () => [...document.querySelectorAll("#chart svg path")].map((path) => path.getAttribute("fill"));
+      await until(() => fills().includes("#00ff00"), "layer b as it was");
+      clickChart(document.querySelector('#chart svg path[fill="#00ff00"]'));
+      await until(() => fills().includes("#ffff00"), "a layer selected");
+      return [fills().includes("#00ff00"), document.getElementById("selection-label").textContent];
+    })()`);
+    assert.deepStrictEqual(selected, [false, "Selected: “2026-01-02”"]);
+    assert.deepStrictEqual(
+      page.panel.selectedItems.map(({ id }) => id),
+      ["2026-01-02 (item 5)"],
+    );
+    await evaluate(`document.getElementById("clear-selection").click()`);
+  });
+
   test("announces pie slices, tree nodes and sankey flows as the focus moves", async () => {
     const charts: [Record<string, unknown>, string[]][] = [
       [

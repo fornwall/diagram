@@ -475,14 +475,26 @@ export function addInteraction(
   cartesian: boolean,
   colors: ThemeColors,
 ): void {
-  // An axis crosshair for line and bar charts, per item otherwise.
+  // An axis crosshair for line and bar charts, and for theme rivers, of which it tells what each
+  // layer is at a time, where ECharts tells of the item of a layer's index for a layer; per item
+  // otherwise.
+  const rivers = series.filter((s) => s.type === "themeRiver");
   if (base.tooltip === undefined) {
-    const axisTrigger = cartesian && series.some((s) => s.type === "line" || s.type === "bar");
+    const axisTrigger =
+      (cartesian && series.some((s) => s.type === "line" || s.type === "bar")) || rivers.length > 0;
     const onlyBars = series.every((s) => s.type === "bar");
     base.tooltip = axisTrigger
       ? { trigger: "axis", axisPointer: { type: onlyBars ? "shadow" : "line" } }
       : { trigger: "item" };
   }
+  // Nor does the pointer emphasize the items of a theme river at the time, for which ECharts
+  // emphasizes the layers of their indices.
+  asArray(base.singleAxis).forEach((axis, index) => {
+    if (!rivers.some((river) => Number(river.singleAxisIndex ?? 0) === index)) return;
+    const pointer = styleOf(axis.axisPointer);
+    pointer.triggerEmphasis ??= false;
+    axis.axisPointer = pointer;
+  });
   for (const tooltip of asArray(base.tooltip)) {
     tooltip.confine ??= true;
   }

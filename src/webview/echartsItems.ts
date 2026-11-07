@@ -53,6 +53,8 @@ export interface ItemData {
   getItemGraphicEl(index: number): Graphic | null | undefined;
   /** A layout of all items, such as "points": [x, y] of each, of a line or large scatter chart. */
   getLayout(key: string): unknown;
+  /** Where an item is laid out, as a theme river's at {x, y0, y}: its time and its band there. */
+  getItemLayout(index: number): unknown;
   /** The dimensions of the values of an item that the series uses. */
   dimensions: string[];
   /** The place of a dimension's value in an array of the values of an item. */
@@ -124,6 +126,8 @@ export interface SeriesModel {
   /** The node that a treemap or sunburst is drilled down to, and a way to drill down. */
   getViewRoot?(): TreeNode;
   resetViewRoot?(node: TreeNode): void;
+  /** The layers of a theme river, by the indices of their items in time order. */
+  getLayerSeries?(): { indices: number[] }[];
 }
 
 interface GlobalModel {
@@ -172,6 +176,58 @@ export interface LegendModel {
 
 export const modelOf = (chart: ECharts.ECharts) =>
   (chart as unknown as { getModel(): GlobalModel }).getModel();
+
+/**
+ * The layer of a theme river that the item is in, by its index, if the item is of one: ECharts
+ * keeps the shape of each layer under the index of the layer, rather than of its items, and finds
+ * what draws an item, as to highlight it, by the item's index.
+ */
+export function riverLayer(chart: ECharts.ECharts, ref: ItemRef): number | undefined {
+  const series = modelOf(chart).getSeriesByIndex(ref.seriesIndex);
+  if (series?.subType !== "themeRiver") return undefined;
+  const index = series.getData().indexOfRawIndex(ref.dataIndex);
+  const layer = series.getLayerSeries?.().findIndex(({ indices }) => indices.includes(index));
+  return layer === undefined || layer < 0 ? undefined : layer;
+}
+
+/**
+ * Where an item of a theme river is: at its time, across the band of its layer there, rather than
+ * where ECharts keeps the shape of the layer of its index (see {@link riverLayer}).
+ */
+export function riverBox(data: ItemData, index: number): Box | undefined {
+  const { x, y0, y } = (data.getItemLayout(index) ?? {}) as Record<string, unknown>;
+  if (typeof x !== "number" || typeof y0 !== "number" || typeof y !== "number") return undefined;
+  // The layers are drawn in a group moved down to the axis.
+  const [, , , , dx = 0, dy = 0] = data.getItemGraphicEl(0)?.getComputedTransform() ?? [];
+  return { x: x + dx, y: y0 + dy, width: 0, height: y };
+}
+
+/**
+ * The item that a click at a place across the chart hit, by the index that ECharts gives it: of a
+ * theme river, the item of the layer of that index nearest the place, at the nearest time.
+ */
+export function clickedIndex(
+  chart: ECharts.ECharts,
+  seriesIndex: number,
+  dataIndex: number,
+  x: number,
+): number {
+  const series = modelOf(chart).getSeriesByIndex(seriesIndex);
+  const layer = series?.subType === "themeRiver" ? series.getLayerSeries?.()[dataIndex] : undefined;
+  if (!series || !layer) return dataIndex;
+  const data = series.getData();
+  const distance = (index: number) => Math.abs((riverBox(data, index)?.x ?? Infinity) - x);
+  const [nearest = dataIndex] = layer.indices.toSorted((a, b) => distance(a) - distance(b));
+  return data.getRawIndex(nearest);
+}
+
+/** The item as ECharts' actions find what draws it, which for a theme river's is its layer. */
+export function drawnRef(chart: ECharts.ECharts, ref: ItemRef): ItemRef {
+  const layer = riverLayer(chart, ref);
+  if (layer === undefined) return ref;
+  const data = modelOf(chart).getSeriesByIndex(ref.seriesIndex)?.getData();
+  return { ...ref, dataIndex: data?.getRawIndex(layer) ?? layer };
+}
 
 function valueText(value: unknown): string | undefined {
   // Also what ECharts takes for a missing value, and draws nothing for.

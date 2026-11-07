@@ -21,6 +21,7 @@ import {
   modelOf,
   openDataView,
   parseItemKey,
+  riverBox,
   type SeriesModel,
   type TreeNode,
 } from "./echartsItems";
@@ -31,7 +32,15 @@ const TREES = new Set(["tree", "treemap", "sunburst"]);
 /** Series of slices: every arrow key steps through them, on to the next series and round. */
 const CYCLES = new Set(["pie", "funnel"]);
 /** Series whose items lie anywhere, by their values or a layout: arrow keys lead to the nearest. */
-const SCATTERED = new Set(["scatter", "effectScatter", "graph", "sankey", "heatmap", "chord"]);
+const SCATTERED = new Set([
+  "scatter",
+  "effectScatter",
+  "graph",
+  "sankey",
+  "heatmap",
+  "chord",
+  "themeRiver",
+]);
 
 /** The shown items of one type in a series, such as a graph's nodes or its edges. */
 interface Track {
@@ -200,6 +209,7 @@ export class ChartNavigation {
   }
 
   private boxOf({ track, index }: Spot): Box | undefined {
+    if (track.type === "themeRiver") return riverBox(track.data, index);
     const graphic = track.data.getItemGraphicEl(index);
     if (graphic) {
       const box = graphic.getBoundingRect().clone();
@@ -647,10 +657,15 @@ export class ChartFocus {
     const { seriesIndex, dataType, dataIndex } = ref;
     // A tooltip shows a node of a graph for an edge's index. ECharts cannot find where a line of
     // parallel coordinates is to show its tooltip, and throws, which leaves it unable to draw.
-    const tipless =
-      dataType === "edge" || modelOf(chart).getSeriesByIndex(seriesIndex)?.subType === "parallel";
+    const type = modelOf(chart).getSeriesByIndex(seriesIndex)?.subType;
+    const box = type === "themeRiver" ? navigation.box(ref) : undefined;
     chart.dispatchAction(
-      tipless ? { type: "hideTip" } : { type: "showTip", seriesIndex, dataIndex },
+      dataType === "edge" || type === "parallel"
+        ? { type: "hideTip" }
+        : box
+          ? // A theme river's tip by where the item is, which ECharts finds by its layer's shape.
+            { type: "showTip", x: box.x, y: box.y + box.height / 2 }
+          : { type: "showTip", seriesIndex, dataIndex },
     );
     if (changed) {
       const series = items.seriesName(seriesIndex);

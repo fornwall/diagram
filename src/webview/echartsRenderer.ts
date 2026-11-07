@@ -11,6 +11,8 @@ import { minimumHeight } from "./echartsFacets";
 import { ChartFocus, ChartNavigation } from "./echartsFocus";
 import {
   ChartItems,
+  clickedIndex,
+  drawnRef,
   type ItemRef,
   itemKey,
   modelOf,
@@ -701,7 +703,7 @@ export class EChartsRenderer implements Renderer {
     if (this.hasHighlights) {
       if (previousIds) {
         const current = new Set(this.annotation.marks.map(({ id }) => id));
-        const removed = this.find([...previousIds].filter((id) => !current.has(id)));
+        const removed = this.drawn([...previousIds].filter((id) => !current.has(id)));
         if (removed.length > 0) {
           chart.dispatchAction({ type: "downplay", batch: removed }, { silent: true });
         }
@@ -717,7 +719,7 @@ export class EChartsRenderer implements Renderer {
 
   /** Highlights the marked items, which blurs the rest of the chart while it is dimmed. */
   private highlightMarked(): void {
-    const batch = this.find(this.annotation.marks.map(({ id }) => id));
+    const batch = this.drawn(this.annotation.marks.map(({ id }) => id));
     if (batch.length > 0) {
       // One action, as each takes the blur off the whole chart first. ECharts blurs a dimmed
       // chart around each item of a batch in turn, which blurs the marks of other series again:
@@ -728,6 +730,12 @@ export class EChartsRenderer implements Renderer {
         { silent: true },
       );
     }
+  }
+
+  /** The items that go by the ids, as ECharts' highlight and downplay find what draws them. */
+  private drawn(ids: string[]): ItemRef[] {
+    const { chart } = this;
+    return chart ? this.find(ids).map((ref) => drawnRef(chart, ref)) : [];
   }
 
   /** The items that go by the ids. */
@@ -865,8 +873,12 @@ export class EChartsRenderer implements Renderer {
   }
 
   /** The item a click on a series hit, if it hit one. */
-  private hitFor({ seriesIndex = 0, dataType, dataIndex }: ECharts.ECElementEvent) {
-    const key = itemKey({ seriesIndex, dataType, dataIndex });
+  private hitFor({ seriesIndex = 0, dataType, dataIndex, event }: ECharts.ECElementEvent) {
+    const index =
+      this.chart && event
+        ? clickedIndex(this.chart, seriesIndex, dataIndex, event.offsetX)
+        : dataIndex;
+    const key = itemKey({ seriesIndex, dataType, dataIndex: index });
     const node = this.items()?.node(key);
     return node && { key, node };
   }
@@ -899,6 +911,10 @@ export class EChartsRenderer implements Renderer {
     if (!chart) {
       return;
     }
+    // As ECharts draws the items selected, which for a theme river is by their layers.
+    const wanted = new Set(
+      Array.from(this.selectedKeys, (key) => itemKey(drawnRef(chart, parseItemKey(key)))),
+    );
     const shown = new Set<string>();
     const stale: ItemRef[] = [];
     for (const { dataIndex, ...series } of this.shownSelected) {
@@ -906,7 +922,7 @@ export class EChartsRenderer implements Renderer {
         const item = { ...series, dataIndex: index };
         const key = itemKey(item);
         shown.add(key);
-        if (!this.selectedKeys.has(key)) {
+        if (!wanted.has(key)) {
           stale.push(item);
         }
       }
@@ -915,7 +931,7 @@ export class EChartsRenderer implements Renderer {
       chart.dispatchAction({ type: "unselect", batch: stale });
     }
     const added: ItemRef[] = [];
-    for (const key of this.selectedKeys) {
+    for (const key of wanted) {
       if (!shown.has(key)) {
         added.push(parseItemKey(key));
       }
