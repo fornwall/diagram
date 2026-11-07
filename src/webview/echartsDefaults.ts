@@ -501,7 +501,10 @@ export function addInteraction(
   const outline = toCss(colors.foreground);
   const glow = toCss({ ...colors.focus, a: 0.7 });
   for (const each of series) {
-    each.selectedMode ??= "multiple";
+    // ECharts shows what the panel selects, which Ctrl+click adds to, also in a series of one
+    // selected item at a time: else it would show only the last of several.
+    const mode = each.selectedMode;
+    if (mode === undefined || mode === true || mode === "single") each.selectedMode = "multiple";
     each.select ??= {
       itemStyle: { borderColor: outline, borderWidth: 2.5, shadowBlur: 14, shadowColor: glow },
       label: { fontWeight: "bold" },

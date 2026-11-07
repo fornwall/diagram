@@ -539,6 +539,39 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("shows every chart item selected that the panel selects, in a series of single selection", async () => {
+    await renderChart({
+      series: [
+        {
+          type: "pie",
+          selectedMode: "single",
+          data: ["A", "B", "C"].map((name) => ({ name, value: 1 })),
+          itemStyle: { color: "#0000ff" },
+          select: { itemStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
+    });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        ${CLICK_CHART}
+        const count = () => document.querySelectorAll('#chart svg path[fill="#ff0000"]').length;
+        const [a, b] = document.querySelectorAll('#chart svg path[fill="#0000ff"]');
+        clickChart(a);
+        await until(() => count() === 1, "one item selected");
+        clickChart(b, {ctrlKey: true});
+        await until(() => document.getElementById("selection-label").textContent.includes(","),
+          "two items selected in the panel");
+        await nextFrame(2);
+        const selected = [count(), document.getElementById("selection-label").textContent];
+        document.getElementById("clear-selection").click();
+        return selected;
+      })()`),
+      [2, "Selected: “A”, “B”"],
+    );
+  });
+
   test("clears every selected chart item together", async () => {
     await renderPie("A", "B", "C");
     assert.deepStrictEqual(
