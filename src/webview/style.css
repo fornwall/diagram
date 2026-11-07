@@ -771,6 +771,11 @@ select:focus {
   /* biome-ignore-end lint/complexity/noImportantStyles: Overrides Mermaid's inline style. */
 }
 
+/* Mermaid hides a tooltip by its opacity alone, which would leave its text to Find. */
+.mermaidTooltip[style*="opacity: 0;"] {
+  visibility: hidden;
+}
+
 /* Forced colors replace the backgrounds that show which view, menu entry and splitter position is
    current: outline them in the system's highlight instead. A mark's dot keeps the color that tells
    its kind, as the drawing does. */

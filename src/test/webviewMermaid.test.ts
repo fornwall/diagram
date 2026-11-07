@@ -1005,6 +1005,29 @@ suite("Mermaid in the webview", function () {
     assert.strictEqual(await evaluate(opacity), "0");
   });
 
+  test("leaves the text of a hidden tooltip out of what Find matches", async () => {
+    await draw({ source: 'flowchart LR\n  A --> B\n  click A callback "Tooltip text"' });
+    assert.deepStrictEqual(
+      await evaluate(`(async () => {
+        ${UNTIL}
+        // As the find widget searches the page, which leaves out what is not shown.
+        const found = () => {
+          getSelection().removeAllRanges();
+          return window.find("Tooltip text", false, false, true);
+        };
+        const node = document.querySelector("#diagram g.node[title]");
+        const tooltip = document.querySelector(".mermaidTooltip");
+        node.dispatchEvent(new MouseEvent("mouseover"));
+        await until(() => getComputedStyle(tooltip).opacity === "0.9", "the tooltip shown");
+        const shown = found();
+        node.dispatchEvent(new MouseEvent("mouseout"));
+        await until(() => getComputedStyle(tooltip).opacity === "0", "the tooltip hidden");
+        return {shown, hidden: found()};
+      })()`),
+      { shown: true, hidden: false },
+    );
+  });
+
   test("selection updates only the changed Mermaid nodes", async () => {
     const source = `flowchart LR\n${Array.from({ length: 24 }, (_, i) => `A${i}[Node ${i}]`).join("\n")}`;
     await draw({ source });
