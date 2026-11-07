@@ -696,10 +696,12 @@ function sequence(f: Finder): void {
       continue;
     const text = plainText(message.message ?? "");
     const node = f.relation(message.from, message.to, text, arrowheads(line), id, "message");
-    // Mermaid emits the message's label immediately before its line (self messages are paths).
+    // Mermaid emits the message's label immediately before its line (self messages are paths), a
+    // formula in a foreign object.
+    const labels = /\$\$.*?\$\$/.test(text) ? ".messageText, foreignObject" : ".messageText";
     let label = line.previousElementSibling;
     f.addLine(line, node);
-    while (label?.matches(".messageText")) {
+    while (label?.matches(labels)) {
       f.add(label, node);
       label = label.previousElementSibling;
     }

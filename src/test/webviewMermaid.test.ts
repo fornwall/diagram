@@ -1673,6 +1673,16 @@ suite("Mermaid in the webview", function () {
     );
   });
 
+  test("selects a sequence diagram's message by its formula, as by its text", async () => {
+    await draw({ source: "sequenceDiagram\n  A->>B: $$\\beta^2$$\n  B->>A: Plain" });
+    assert.deepStrictEqual(
+      await evaluate(`[...document.querySelectorAll("#diagram :is(foreignObject, text)")]
+        .filter((label) => /β|Plain/.test(label.textContent))
+        .map((label) => label.getAttribute("data-diagram-id"))`),
+      ["message:i0", "message:i1"],
+    );
+  });
+
   test("reports the node ids it drew, and marks them on the diagram it already shows", async () => {
     await draw({ source: MERMAID["flowchart-v2"] });
     assert.deepStrictEqual([...(page.panel.drawnIds ?? [])].sort(), ["A", "B"]);
