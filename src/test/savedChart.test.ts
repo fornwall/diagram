@@ -40,7 +40,11 @@ suite("savedChart", () => {
     const body = html.slice(html.indexOf("<script"));
     assert.strictEqual(body.match(/<\/script/gi)?.length, 3);
     assert.ok(!body.includes("<!--"));
-    assert.ok(!/\s(?:src|href)=/.test(html.slice(0, html.indexOf("<script"))));
+    // Nor does the markup before the scripts load anything, the style and heading included.
+    const markup = html.replace(/<script type="importmap"[^>]*>.*?<\/script>/s, "");
+    assert.ok(markup.length < html.length);
+    assert.ok(markup.indexOf("<style>") < markup.indexOf("<script"));
+    assert.ok(!/\s(?:src|href)=/.test(markup.slice(0, markup.indexOf("<script"))));
     assert.ok(html.includes("default-src 'none'"));
     // Neither falls back to default-src.
     assert.ok(html.includes("base-uri 'none'"));
