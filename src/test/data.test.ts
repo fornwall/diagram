@@ -2669,6 +2669,8 @@ suite("data", () => {
       ["ok", 5],
       ["bad", 7],
     ]);
+    // Not text after a stray escape, which names no character set.
+    assert.deepStrictEqual(parse("name,count\n\x1b(hello),5\nz,7").rows[0], ["\x1b(hello)", 5]);
   });
 
   test("uses a header for whitespace output with numeric columns", () => {
