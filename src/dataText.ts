@@ -153,8 +153,8 @@ const CELL_LINE = /[|│┃┆║]/;
 const TOP_SUMMARY = /^(?:top - |Processes: \d+ total)/;
 
 /**
- * Whether `rule` underlines `header` column by column, as psql, pip list and PowerShell draw it:
- * with junctions or gaps between the columns, and under each word of the header.
+ * Whether `rule` underlines `header` column by column, as psql draws it: with junctions or gaps
+ * between the columns, and under each word of the header.
  */
 function underlines(rule: string, header: string): boolean {
   return (
@@ -168,9 +168,9 @@ function underlines(rule: string, header: string): boolean {
 /**
  * The number of lines that a command prints above its table, or 0 if there are none: the summary
  * that top prints above its header ("PID USER …"), text above a header between two rules, as
- * cloc prints its version and speed, or a title above a header that a rule underlines, as psql
- * prints "List of relations" above the table of \dt. Such text has other numbers of words than
- * the header.
+ * cloc prints its version and speed, or a title above a header of cells between lines that a rule
+ * underlines, as psql prints "List of relations" above the table of \dt. Such text has other
+ * numbers of words than the header.
  */
 function outputAbove(lines: string[], format: DataFormat): number {
   if (TOP_SUMMARY.test(lines[0] ?? "")) {
@@ -189,7 +189,9 @@ function outputAbove(lines: string[], format: DataFormat): number {
   } else {
     start = lines.slice(0, rule).findLastIndex((line) => !isBlank(line));
     header = lines[start] ?? "";
-    if (start < 0 || !underlines(lines[rule] ?? "", header)) return 0;
+    // Only between lines, as psql draws cells: above a rule of whitespace-separated columns may be
+    // the rows, as above a total that the rule sets off.
+    if (start < 0 || !CELL_LINE.test(header) || !underlines(lines[rule] ?? "", header)) return 0;
   }
   // A line above that may be a row has as many words as the header, or lines between cells too.
   const words = tokenize(header).length;

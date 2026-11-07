@@ -1646,6 +1646,26 @@ suite("data", () => {
       columns: ["lang", "lines"],
       rows: [["ts", 1200]],
     });
+    // Without lines between cells, the line above a rule that sets off a total is a row.
+    assert.deepStrictEqual(
+      parse("Name     Size (MB)\nalpha    10\n-------  ---------\nTotal    10"),
+      {
+        columns: ["Name", "Size (MB)"],
+        rows: [
+          ["alpha", 10_000_000],
+          ["Total", 10_000_000],
+        ],
+      },
+    );
+    assert.deepStrictEqual(
+      parse("name    size  kind\na       1     x\nc             z\n------  ----  ----\ntotal   1")
+        .rows,
+      [
+        ["a", 1, "x"],
+        ["c", null, "z"],
+        ["total", 1, null],
+      ],
+    );
     // A line between two rules with as many words as the line above is the first row.
     assert.deepStrictEqual(parse("name value\n----------\na 1\n----------\ntotal 1").rows, [
       ["a", 1],
