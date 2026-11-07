@@ -32,6 +32,7 @@ suite("mermaidLayout", () => {
     assert.ok(laidOutWithElk('%%{init: {"theme": "dark"}}%%\r\nstateDiagram\r\n  [*] --> A'));
     assert.ok(!laidOutWithElk("---\nconfig:\n  layout: dagre\n---\nflowchart TD\n  A --> B"));
     assert.ok(!laidOutWithElk('%%{init: {"layout": "dagre"}}%%\nclassDiagram\n  class A'));
+    assert.ok(!laidOutWithElk('classDiagram\n  %%{init: {"layout": "dagre"}}%%\n  class A'));
     assert.ok(laidOutWithElk("---\nconfig:\n  layout: elk.stress\n---\nflowchart TD\n  A --> B"));
     // Front matter names no diagram type, nor does a mention of the layout in the diagram.
     assert.ok(!laidOutWithElk("---\ntitle: flowchart\n---\nsequenceDiagram\n  A->>B: layout: elk"));

@@ -13,9 +13,12 @@ const DEFAULT_LAYOUT_DIAGRAMS =
 /** A layout that front matter or a directive sets, in YAML or JSON. */
 const LAYOUT_SETTING = /\blayout["']?\s*:\s*["']?([\w.-]+)/;
 
+/** A directive, as %%{init: {"theme": "forest"}}%%, which Mermaid reads anywhere in the source. */
+const DIRECTIVE = /%%\{[\s\S]*?\}%%/g;
+
 /**
- * The settings that a diagram's front matter and directives may make, and the line after them that
- * names its type, if any.
+ * The settings that a diagram's front matter and directives may make, and the line after the front
+ * matter and the directives and comments before it that names its type, if any.
  */
 export function diagramHeader(source: string): { settings: string; typeLine: string | undefined } {
   const lines = source.split(/\r\n?|\n/, 1000);
@@ -34,7 +37,12 @@ export function diagramHeader(source: string): { settings: string; typeLine: str
     if (line.startsWith("%%")) {
       settings += `\n${line}`;
     } else if (line !== "") {
-      return { settings, typeLine: line };
+      const later =
+        lines
+          .slice(i + 1)
+          .join("\n")
+          .match(DIRECTIVE) ?? [];
+      return { settings: [settings, ...later].join("\n"), typeLine: line };
     }
   }
   return { settings, typeLine: undefined };

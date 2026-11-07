@@ -635,6 +635,8 @@ suite("Mermaid in the webview", function () {
     for (const source of [
       '%%{init: {"theme": "default"}}%%\nflowchart LR\n  A[Start] --> B[End]',
       "---\nconfig:\n  theme: forest\n---\nflowchart LR\n  A[Start] --> B[End]",
+      // Mermaid reads a directive anywhere.
+      'flowchart LR\n  %%{init: {"theme": "forest"}}%%\n  A[Start] --> B[End]',
     ]) {
       await draw({ source });
       const ratios = (await evaluate(`(async () => {
