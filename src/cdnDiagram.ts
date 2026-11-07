@@ -3,7 +3,7 @@
 import type * as vscode from "vscode";
 import { parsableSource } from "./mermaidSyntax";
 import type { DiagramLanguage } from "./protocol";
-import { embedJson, fontStack, savedChartHtml } from "./savedChart";
+import { embedJson, fontStack, integrityMap, savedChartHtml } from "./savedChart";
 import { escapeHtml } from "./text";
 import { mix, type ThemeColors, toCss } from "./webview/colors";
 
@@ -62,6 +62,7 @@ export async function cdnDiagramHtml(
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title)}</title>
+${await integrityMap(CDN_MODULES.mermaid, extensionUri, nonce)}
 <style>
 html { color-scheme: ${colors.dark ? "dark" : "light"}; }
 body { margin: 0; background: ${toCss(colors.background)}; color: ${toCss(colors.foreground)}; font-family: ${fontStack(colors)}; font-size: ${colors.fontSize}px; }

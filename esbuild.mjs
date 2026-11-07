@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import * as esbuild from "esbuild";
 
@@ -103,6 +104,8 @@ const classicScript = {
 
 // Chunk names are hashed, so start from scratch to not ship stale chunks.
 rmSync("dist", { recursive: true, force: true });
+mkdirSync("dist");
+writeFileSync("dist/cdn-integrity.json", JSON.stringify(cdnIntegrity()));
 
 // Keep the build targets compatible with the runtimes of the minimum supported VS Code version.
 const contexts = await Promise.all([
@@ -151,6 +154,36 @@ if (watch) {
       "@diagram",
     ),
   );
+}
+
+/**
+ * The SRI hashes of the files that exported HTML loads from the CDN, by URL, so that the browser
+ * loads only those the panel was built with.
+ */
+function cdnIntegrity() {
+  const chunks = "dist/chunks/mermaid.esm.min";
+  const files = {
+    echarts: ["dist/echarts.esm.min.mjs"],
+    mermaid: [
+      "dist/mermaid.esm.min.mjs",
+      ...readdirSync(join("node_modules/mermaid", chunks))
+        .filter((file) => file.endsWith(".mjs"))
+        .sort()
+        .map((file) => `${chunks}/${file}`),
+    ],
+  };
+  const integrity = {};
+  for (const [name, paths] of Object.entries(files)) {
+    const dir = join("node_modules", name);
+    const { version } = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    for (const file of paths) {
+      const hash = createHash("sha384")
+        .update(readFileSync(join(dir, file)))
+        .digest("base64");
+      integrity[`https://cdn.jsdelivr.net/npm/${name}@${version}/${file}`] = `sha384-${hash}`;
+    }
+  }
+  return integrity;
 }
 
 /**

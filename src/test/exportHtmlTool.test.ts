@@ -145,7 +145,7 @@ suite("exportHtmlTool", () => {
     });
     assert.match(await invokeTool(tool, { file: "chart.html" }), /Exported revision/);
     assert.ok(
-      reads.every((file) => /standalone\.(?:js|css)$/.test(file)),
+      reads.every((file) => /\/dist\/(?:standalone\.(?:js|css)|cdn-integrity\.json)$/.test(file)),
       JSON.stringify(reads),
     );
     const html = fs.readFileSync(path.join(directory, "chart.html"), "utf8");

@@ -79,7 +79,7 @@ See [the tools reference](docs/tools.md) for details. Agents can read `diagram_g
 
 ## Security
 
-VS Code asks before running a command, reading a data file outside the workspace or exporting HTML through a tool. File links outside the workspace require confirmation; website links follow VS Code's trusted-domain settings. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened.
+VS Code asks before running a command, reading a data file outside the workspace or exporting HTML through a tool. File links outside the workspace require confirmation; website links follow VS Code's trusted-domain settings. Commands and ECharts options with JavaScript need a trusted workspace; in an untrusted workspace, reading workspace files also asks first. The panel loads no remote content; exported HTML files load their renderer from a CDN when opened, which current browsers check against the version the extension was built with.
 
 Chat sends your prompt, attachments and tool results, including diagram context read by the agent, to the model selected in VS Code. Opening and editing a Markdown diagram does not require a model.
 

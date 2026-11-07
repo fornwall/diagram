@@ -12,6 +12,26 @@ import { type ThemeColors, toCss } from "./webview/colors";
 export const embedJson = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
 /**
+ * An import map with the hashes of the files of the CDN module's package, chunks included, so that
+ * the browser runs only the files the extension was built with.
+ */
+export async function integrityMap(
+  cdnModule: string,
+  extensionUri: vscode.Uri,
+  nonce: string,
+): Promise<string> {
+  const file = vscode.Uri.joinPath(extensionUri, "dist", "cdn-integrity.json");
+  const hashes: Record<string, string> = JSON.parse(
+    new TextDecoder().decode(await vscode.workspace.fs.readFile(file)),
+  );
+  const pkg = cdnModule.slice(0, cdnModule.indexOf("/dist/") + 1);
+  const integrity = Object.fromEntries(
+    Object.entries(hashes).filter(([url]) => url.startsWith(pkg)),
+  );
+  return `<script type="importmap" nonce="${nonce}">${embedJson({ integrity })}</script>`;
+}
+
+/**
  * Preserve international font names without allowing CSS or HTML injection. Font names have no
  * parentheses, and an unclosed one or an unclosed quote would take the rest of the stylesheet
  * into the declaration.
@@ -45,6 +65,7 @@ export async function savedChartHtml(
   const { colors } = chart;
   const title = chart.title.trim();
   const nonce = crypto.randomUUID();
+  const importMap = await integrityMap(cdnModule, extensionUri, nonce);
   // ECharts styles its tooltips inline, hence 'unsafe-inline' for styles, and an option written as
   // JavaScript is compiled with new Function, hence 'unsafe-eval', as in the panel.
   const csp = [
@@ -65,6 +86,7 @@ export async function savedChartHtml(
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(title || "Chart")}</title>
+${importMap}
 <style>
 /* Scrollbars and controls, such as those of a toolbox's data view, in the theme's light or dark. */
 html { color-scheme: ${colors.dark ? "dark" : "light"}; }

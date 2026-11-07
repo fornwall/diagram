@@ -32,13 +32,13 @@ suite("savedChart", () => {
     const scripts = html.match(/<script[^>]*>/g) ?? [];
     assert.deepStrictEqual(
       scripts.map((tag) => tag.replace(/nonce="[^"]+"/, "nonce")),
-      ["<script nonce>", '<script type="module" nonce>'],
+      ['<script type="importmap" nonce>', "<script nonce>", '<script type="module" nonce>'],
     );
     assert.ok(html.includes(`await import(${JSON.stringify(CDN_MODULES.echarts)})`));
     assert.ok(html.includes("This file is missing its chart."));
-    // Neither inlined script can end its element early or put the parser in an escaped state.
+    // No inlined script can end its element early or put the parser in an escaped state.
     const body = html.slice(html.indexOf("<script"));
-    assert.strictEqual(body.match(/<\/script/gi)?.length, 2);
+    assert.strictEqual(body.match(/<\/script/gi)?.length, 3);
     assert.ok(!body.includes("<!--"));
     assert.ok(!/\s(?:src|href)=/.test(html.slice(0, html.indexOf("<script"))));
     assert.ok(html.includes("default-src 'none'"));
