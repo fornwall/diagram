@@ -1509,6 +1509,50 @@ suite("ECharts in the webview", function () {
     assert.deepStrictEqual(emphasized, [1, 0]);
   });
 
+  test("shows the selected node of a graph selected, and no edge, after an image for a model", async () => {
+    await renderChart({
+      series: [
+        {
+          type: "graph",
+          layout: "none",
+          data: [
+            { name: "a", x: 0, y: 0 },
+            { name: "b", x: 100, y: 0 },
+            { name: "c", x: 50, y: 100 },
+          ],
+          // The edge of the same index as the node.
+          links: [
+            { source: "b", target: "c" },
+            { source: "a", target: "b" },
+          ],
+          symbolSize: 40,
+          itemStyle: { color: "#0000ff" },
+          lineStyle: { color: "#00ff00", width: 4, opacity: 1 },
+          select: { itemStyle: { color: "#ff0000" }, lineStyle: { color: "#ff0000" } },
+          emphasis: { disabled: true },
+        },
+      ],
+    });
+    const selected = `(async () => {
+      ${UNTIL}
+      await nextFrame(2);
+      return [...document.querySelectorAll("#chart svg path")].flatMap((path) =>
+        path.getAttribute("fill") === "#ff0000" ? ["node"] :
+          path.getAttribute("stroke") === "#ff0000" ? ["edge"] : []);
+    })()`;
+    await evaluate(`(() => {
+      ${PRESS}
+      chart.focus();
+      press("Home");
+      press("Enter");
+      chart.blur();
+    })()`);
+    assert.deepStrictEqual(await evaluate(selected), ["node"]);
+    const image = await page.panel.captureImage({ maxSide: 800, maxPixels: 800 * 800 });
+    if (typeof image === "string") assert.fail(image);
+    assert.deepStrictEqual(await evaluate(selected), ["node"]);
+  });
+
   test("announces pie slices, tree nodes and sankey flows as the focus moves", async () => {
     const charts: [Record<string, unknown>, string[]][] = [
       [

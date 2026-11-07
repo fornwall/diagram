@@ -113,6 +113,10 @@ export interface SeriesModel {
   getBaseAxis(): { inverse: boolean; isHorizontal?(): boolean } | undefined;
   /** The data of each type, such as the nodes and edges of a graph, after filtering. */
   getAllData(): { data: ItemData }[];
+  /** The data of a type, after filtering. */
+  getData(dataType?: string): ItemData;
+  /** Whether ECharts shows the item, by its index in the data of its type, as selected. */
+  isSelected(index: number, dataType?: string): boolean;
   /** Entries for individual items, such as pie slices, instead of the whole series. */
   legendVisualProvider?: { containName(name: string): boolean };
   /** Where the force layout of a graph left its nodes, by id, which a new layout goes on from. */

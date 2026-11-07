@@ -515,7 +515,18 @@ export class EChartsRenderer implements Renderer {
       this.focus.chartDrawn();
     });
     chart.on("selectchanged", (event) => {
-      this.shownSelected = (event as ECharts.SelectChangedEvent).selected;
+      // ECharts lists the selected items of a series under each type of its data, as the nodes
+      // and the edges of a graph: keep those of each type that are selected.
+      const model = modelOf(chart);
+      this.shownSelected = (event as ECharts.SelectChangedEvent).selected.map((each) => {
+        const series = model.getSeriesByIndex(each.seriesIndex);
+        const data = series?.getData(each.dataType);
+        const selected = (raw: number) => {
+          const index = data?.indexOfRawIndex(raw) ?? -1;
+          return index < 0 || series?.isSelected(index, each.dataType) !== false;
+        };
+        return { ...each, dataIndex: each.dataIndex.filter(selected) };
+      });
     });
     // Another step of a timeline shows other data, whose items the next use works out.
     chart.on("timelinechanged", () => {
