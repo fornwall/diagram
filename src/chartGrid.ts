@@ -474,8 +474,10 @@ export function boxplotOption(reading: Reading): Record<string, unknown> {
   let boxSources: number[][] = [];
   const outlierSources: number[][] = [];
   let counted = 0;
+  const unnumbered: string[] = [];
   for (const [group, numbers] of grouped) {
     if (numbers.length === 0) {
+      unnumbered.push(group);
       continue;
     }
     const sorted = numbers.sort((x, y) => x - y);
@@ -544,6 +546,15 @@ export function boxplotOption(reading: Reading): Record<string, unknown> {
       "interquartile ranges of the box" +
       (outliers.length > 0 ? ` and ${plural(outliers.length, "outlier")} beyond them` : ""),
   );
+  if (unnumbered.length > 0) {
+    const listed = unnumbered.slice(0, 10);
+    notes.push(
+      `left out ${plural(unnumbered.length, "group")} without a number, ${quoteAll(listed)}` +
+        (unnumbered.length > listed.length
+          ? ` and ${formatCount(unnumbered.length - listed.length)} more`
+          : ""),
+    );
+  }
   return {
     xAxis: { type: "category", data: categories },
     // A spread reads against itself rather than against zero.

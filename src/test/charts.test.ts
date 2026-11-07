@@ -975,6 +975,13 @@ suite("charts", () => {
     const low = build(chart("boxplot"), "g,v\nx,-100\nx,1\nx,2\nx,3\nx,4\nx,5");
     assert.deepStrictEqual(low.series[0].data, [[1, 1.25, 2.5, 3.75, 5]]);
     assert.deepStrictEqual(low.series[1].data, [["x", -100]]);
+    // A group without a number has no box, which the summary says.
+    const empty = "g,v\nx,1\nx,2\ny,\ny,NULL\nz,3\nz,4";
+    assert.deepStrictEqual(build(chart("boxplot"), empty).xAxis.data, ["x", "z"]);
+    assert.match(
+      summary(chart("boxplot"), empty),
+      /interquartile ranges of the box; left out 1 group without a number, "y"\.$/,
+    );
     assert.throws(() => build(chart("boxplot", { limit: 3 }), times), /"limit" would leave out/);
     // "sort" orders the boxes by their medians: "b" has the largest value but the lowest median.
     const spread = "test,ms\na,1\na,5\na,9\nb,2\nb,3\nb,4\nb,40";
