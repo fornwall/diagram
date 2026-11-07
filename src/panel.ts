@@ -26,6 +26,8 @@ import {
   confirmWrite,
   type DocumentBinding,
   documentName,
+  NOTEBOOK_CELL,
+  openCell,
   reportWriteFailure,
   writeFence,
 } from "./documentDiagram";
@@ -208,6 +210,8 @@ export class DiagramPanel implements vscode.Disposable {
   private readonly renames = vscode.workspace.onDidRenameFiles(({ files }) =>
     this.followRenames(files),
   );
+  /** Waits for a renamed notebook to open, to follow the bound cell in it. */
+  private cellFollower: vscode.Disposable | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.store = new StateStore(context.workspaceState);
@@ -442,6 +446,7 @@ export class DiagramPanel implements vscode.Disposable {
   dispose(): void {
     this.webview.dispose();
     this.renames.dispose();
+    this.cellFollower?.dispose();
   }
 
   // The webview, and the requests waiting for its answers.
@@ -1094,7 +1099,17 @@ export class DiagramPanel implements vscode.Disposable {
   private followRenames(files: readonly { oldUri: vscode.Uri; newUri: vscode.Uri }[]): void {
     const renamed = (uri: string | undefined) => {
       if (uri === undefined) return undefined;
+      // A notebook cell's URI has the path of its notebook, in a scheme of its own.
+      const cell = uri.startsWith(`${NOTEBOOK_CELL}:`) ? vscode.Uri.parse(uri) : undefined;
       for (const { oldUri, newUri } of files) {
+        if (cell) {
+          const old = oldUri.path.replace(/\/$/, "");
+          if (cell.authority === oldUri.authority && `${cell.path}/`.startsWith(`${old}/`)) {
+            const path = newUri.path.replace(/\/$/, "") + cell.path.slice(old.length);
+            return cell.with({ authority: newUri.authority, path }).toString();
+          }
+          continue;
+        }
         const old = oldUri.toString().replace(/\/$/, "");
         if (uri === old || uri.startsWith(`${old}/`)) {
           return newUri.toString().replace(/\/$/, "") + uri.slice(old.length);
@@ -1108,7 +1123,17 @@ export class DiagramPanel implements vscode.Disposable {
     if (!state || (uri === undefined && openedFrom === undefined)) return;
     const document = state.document && uri !== undefined ? { ...state.document, uri } : undefined;
     // A write that waits for its turn, or an Apply that waits for its render, follows it too.
-    if (state.document && document) this.movedBindings.set(state.document, document);
+    if (state.document && document) {
+      this.movedBindings.set(state.document, document);
+      const cell = openCell(state.document.uri);
+      if (cell) {
+        const notebook = vscode.Uri.parse(document.uri).with({
+          scheme: cell.notebook.uri.scheme,
+          fragment: "",
+        });
+        this.followCell(document, notebook.toString(), cell.index);
+      }
+    }
     this.state = {
       ...state,
       ...(document && { document }),
@@ -1120,6 +1145,35 @@ export class DiagramPanel implements vscode.Disposable {
       tab.title = `${state.title} — ${documentName(document)}`;
       this.post({ type: "writeTo", writeTo: documentName(document) });
     }
+  }
+
+  /**
+   * Moves a binding to the cell at its index in a renamed notebook once that is open, as the URIs of
+   * the cells of a notebook that opens number them anew.
+   */
+  private followCell(binding: DocumentBinding, notebook: string, index: number): void {
+    this.cellFollower?.dispose();
+    this.cellFollower = undefined;
+    const follow = (opened: vscode.NotebookDocument) => {
+      if (opened.uri.toString() !== notebook) return;
+      this.cellFollower?.dispose();
+      this.cellFollower = undefined;
+      const state = this.state;
+      const bound = state?.document;
+      const uri =
+        index < opened.cellCount ? opened.cellAt(index).document.uri.toString() : undefined;
+      if (!state || !bound || bound.uri !== binding.uri || uri === undefined || uri === bound.uri) {
+        return;
+      }
+      const moved = { ...bound, uri };
+      this.movedBindings.set(bound, moved);
+      if (binding !== bound) this.movedBindings.set(binding, { ...binding, uri });
+      this.state = { ...state, document: moved };
+      void this.store.save(this.state, this.shownRevision);
+    };
+    const open = vscode.workspace.notebookDocuments.find(({ uri }) => uri.toString() === notebook);
+    if (open) follow(open);
+    else this.cellFollower = vscode.workspace.onDidOpenNotebookDocument(follow);
   }
 
   /** Reopens and redraws if needed to resolve item ids, keeping the current revision. */

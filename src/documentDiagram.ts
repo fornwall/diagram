@@ -23,6 +23,21 @@ export function documentName({ uri }: DocumentBinding): string {
   return baseName(vscode.Uri.parse(uri));
 }
 
+/** The scheme of the URIs of notebook cells, which have the path of their notebook. */
+export const NOTEBOOK_CELL = "vscode-notebook-cell";
+
+/** The open notebook that holds a cell, as vscode.Uri.toString() gives it, and the cell's index. */
+export function openCell(
+  uri: string,
+): { notebook: vscode.NotebookDocument; index: number } | undefined {
+  if (!uri.startsWith(`${NOTEBOOK_CELL}:`)) return undefined;
+  for (const notebook of vscode.workspace.notebookDocuments) {
+    const index = notebook.getCells().findIndex((cell) => cell.document.uri.toString() === uri);
+    if (index !== -1) return { notebook, index };
+  }
+  return undefined;
+}
+
 /**
  * Opens the bound document. One that was never saved is found only while it is open, in a tab or
  * not yet disposed, as opening it after it was closed or saved elsewhere would make an empty one.

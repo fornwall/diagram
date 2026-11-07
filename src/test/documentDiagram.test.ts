@@ -400,6 +400,44 @@ suite("documentDiagram", function () {
     assert.ok(await within(() => panel.current?.openedFrom === readonly.toString()));
   });
 
+  test("follows a Markdown cell of a notebook that is renamed, to write to it", async () => {
+    const file = path.join(dir, `notebook-${files++}.ipynb`);
+    const cell = (cell_type: string, source: string[]) => ({ cell_type, source, metadata: {} });
+    const cells = [
+      { ...cell("code", ["print(1)"]), outputs: [], execution_count: null },
+      cell("markdown", ["```mermaid\n", "flowchart TD\n", "```"]),
+    ];
+    fs.writeFileSync(file, JSON.stringify({ cells, metadata: {}, nbformat: 4, nbformat_minor: 5 }));
+    const notebook = await vscode.workspace.openNotebookDocument(vscode.Uri.file(file));
+    await vscode.window.showNotebookDocument(notebook);
+    afterTest(() => vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor"));
+    // A cell added above, after which the URIs of the cells no longer number them in order.
+    const insert = new vscode.WorkspaceEdit();
+    const heading = new vscode.NotebookCellData(
+      vscode.NotebookCellKind.Markup,
+      "# Notes",
+      "markdown",
+    );
+    insert.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, [heading])]);
+    assert.ok(await vscode.workspace.applyEdit(insert));
+    assert.ok(await notebook.save());
+    const { panel, webview } = await restored(openedState(binding(notebook.cellAt(2).document)));
+    const renamed = vscode.Uri.file(path.join(dir, `renamed-${files++}.ipynb`));
+    const renaming = new vscode.WorkspaceEdit();
+    renaming.renameFile(notebook.uri, renamed);
+    assert.ok(await vscode.workspace.applyEdit(renaming));
+    const opened = () =>
+      vscode.workspace.notebookDocuments.find(({ uri }) => uri.toString() === renamed.toString());
+    assert.ok(
+      await within(
+        () => panel.current?.document?.uri === opened()?.cellAt(2).document.uri.toString(),
+      ),
+      String(panel.current?.document?.uri),
+    );
+    await webview.edit("flowchart LR");
+    assert.strictEqual(opened()?.cellAt(2).document.getText(), "```mermaid\nflowchart LR\n```");
+  });
+
   test("leaves a written document that no editor shows to the tab that VS Code opens for it", async () => {
     const document = await markdown("# Notes\n\n```mermaid\nflowchart TD\n```\n");
     const { webview } = await restored(openedState(binding(document)));
