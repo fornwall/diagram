@@ -61,6 +61,8 @@ interface ShapeEdge {
   arrowTypeEnd?: string;
   /** Whether the source gives the edge its id, as in A e1@--> B, rather than Mermaid. */
   isUserDefinedId?: boolean;
+  /** Where a flowchart's edge comes in its animation of steps, if the source gives a valid one. */
+  step?: number;
 }
 
 export interface DiagramDb {

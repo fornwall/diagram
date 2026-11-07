@@ -89,8 +89,9 @@ export function fittingZoom(
 
 /**
  * Warnings about how the drawing reads: too wide for the panel to show without scrolling far, more nodes
- * than read well, flowchart nodes linked to nothing, labels drawn over each other, and Gantt tasks
- * placed after or until tasks that the chart does not have. The drawing must be laid out, as it is
+ * than read well, flowchart nodes linked to nothing, labels drawn over each other, Gantt tasks
+ * placed after or until tasks that the chart does not have, and steps of edges that Mermaid
+ * ignores. The drawing must be laid out, as it is
  * in the layout container, where it is measured.
  */
 export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): string[] {
@@ -104,7 +105,28 @@ export function readabilityWarnings(svg: SVGSVGElement, facts: DrawingFacts): st
     over.warning,
     unknownTasks(facts),
     markedEnd(facts),
+    ignoredSteps(facts),
   ].filter((warning) => warning !== undefined);
+}
+
+/** A statement that gives a step, as e1@{ step: 1 }: the id, and the value as written. */
+const STEP = /(?<![\w-])([\w-]+)@\{[^}]*?\bstep\s*:\s*([^,}\n]*)/g;
+
+/**
+ * The first flowchart edge whose step is not a whole number from 1, which Mermaid leaves out of
+ * the animation of steps without saying so.
+ */
+function ignoredSteps({ type, source, db }: DrawingFacts): string | undefined {
+  if (!FLOWCHART.test(type)) return undefined;
+  const steps = new Map((db?.getEdges?.() ?? []).map(({ id, step }) => [id, step]));
+  const ignored = Array.from(source.matchAll(STEP)).filter(
+    ([, id]) => steps.has(id) && steps.get(id) === undefined,
+  );
+  const [first] = ignored;
+  if (!first) return undefined;
+  const [, id, value = ""] = first;
+  const more = ignored.length > 1 ? ` (and ${formatCount(ignored.length - 1)} more)` : "";
+  return `Edge ${JSON.stringify(id)} has the step ${value.trim()}${more}, which Mermaid ignores, as a step is an unquoted whole number from 1: number the steps 1, 2, 3 and so on, as in ${id}@{ step: 1 }.`;
 }
 
 /**

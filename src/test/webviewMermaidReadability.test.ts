@@ -448,6 +448,22 @@ suite("Mermaid readability in the webview", function () {
     );
   });
 
+  test("says when Mermaid ignores the step of an edge, which is not a whole number from 1", async () => {
+    const flow = "flowchart LR\n  A e1@--> B e2@--> C e3@--> D";
+    assert.deepStrictEqual(
+      await warnings(
+        `${flow}\n  e1@{ step: 1 }\n  e2@{ animate: true, step: 0 }\n  e3@{ step: "3" }`,
+      ),
+      [
+        'Edge "e2" has the step 0 (and 1 more), which Mermaid ignores, as a step is an unquoted whole number from 1: number the steps 1, 2, 3 and so on, as in e2@{ step: 1 }.',
+      ],
+    );
+    assert.deepStrictEqual(
+      await warnings(`${flow}\n  e1@{ step: 1 }\n  e2@{\n    step: 2\n  }`),
+      [],
+    );
+  });
+
   test("names the nodes that only a style line adds, as a misspelt id does", async () => {
     const flow = "flowchart TD\n  A[Start] --> B[Done]\n  B --> C";
     assert.deepStrictEqual(
