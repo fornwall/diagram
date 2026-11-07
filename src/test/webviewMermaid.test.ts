@@ -1416,7 +1416,7 @@ suite("Mermaid in the webview", function () {
       // Spaces at the end are not what the parser stopped at.
       [
         ["block-beta", "  a b", "  a --> "],
-        "Parse error on line 10, column 8: unexpected end of the diagram; expected NODE_ID.",
+        "Parse error on line 10, column 8: unexpected end of the diagram; expected a node id.",
       ],
       [
         ["C4Context", '  Person(a, "A")', "  Rel(a,"],

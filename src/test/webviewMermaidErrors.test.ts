@@ -599,6 +599,30 @@ const MISTAKES: { broken: string; error: string; fixed: string }[] = [
       'Parse error on line 3, column 11: unexpected "3". Point coordinates go from 0 to 1, across and up the chart: Thing: [0.3, 0.8].',
     fixed: "quadrantChart\n  x-axis Low --> High\n  Thing: [0.3, 0.8]",
   },
+  // And beyond it otherwise.
+  {
+    broken: "quadrantChart\n  A: [1.5, 0.2]\n  B: [0.5, -0.2]",
+    error:
+      'Parse error on line 2, column 8: unexpected ".". Point coordinates go from 0 to 1, across and up the chart, not to 1.5.',
+    fixed: "quadrantChart\n  A: [1, 0.2]\n  B: [0.5, 0]",
+  },
+  {
+    broken: "quadrantChart\n  B: [0.5, -0.2]",
+    error:
+      'Parse error on line 2, column 12: unexpected "-". Point coordinates go from 0 to 1, across and up the chart, not to -0.2.',
+    fixed: "quadrantChart\n  B: [0.5, 0]",
+  },
+  // The tokens that an XY chart expects, in words.
+  {
+    broken: "xychart\n  x-axis [a, b]\n  bar [1, x]",
+    error: 'Parse error on line 3, column 11: unexpected "x"; expected a number.',
+    fixed: "xychart\n  x-axis [a, b]\n  bar [1, 2]",
+  },
+  {
+    broken: "xychart\n  x-axis [a, b]\n  bar 1, 2",
+    error: 'Parse error on line 3, column 8: unexpected ","; expected "[".',
+    fixed: "xychart\n  x-axis [a, b]\n  bar [1, 2]",
+  },
   // Use case relationships.
   {
     broken: "usecase-beta\n  actor A\n  A -> Login",

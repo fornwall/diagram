@@ -353,6 +353,26 @@ function problemsOf(error: Error, parsed: string, frontMatterLines: number): Pro
   ];
 }
 
+/** What the parsers call the tokens that they expect, in words. */
+const TOKEN_WORDS = new Map([
+  ["EOF", "end of the diagram"],
+  ["NEWLINE", "end of line"],
+  ["NUMBER_WITH_DECIMAL", "a number"],
+  ["NUM", "a number"],
+  ["STR", "text in double quotes"],
+  ["MD_STR", "markdown text"],
+  ["NODE_ID", "a node id"],
+  ["SQUARE_BRACES_START", '"["'],
+  ["SQUARE_BRACES_END", '"]"'],
+  ["COMMA", '","'],
+  ["SEMI", '";"'],
+  ["ARROW_DELIMITER", '"-->"'],
+  ["X_AXIS", '"x-axis"'],
+  ["Y_AXIS", '"y-axis"'],
+  ["LINE", '"line"'],
+  ["BAR", '"bar"'],
+]);
+
 /** Describes a problem with a span of the source. */
 function describe(source: string, start: number, end: number, expected?: string[]): string {
   const span = source.slice(start, end).split("\n", 1)[0] as string;
@@ -370,7 +390,7 @@ function describe(source: string, start: number, end: number, expected?: string[
         : "end of line";
   }
   // A longer list is of every kind of statement, which does not help.
-  const names = expected?.map((name) => (name === "EOF" ? "end of the diagram" : name)) ?? [];
+  const names = [...new Set(expected?.map((name) => TOKEN_WORDS.get(name) ?? name))];
   const instead =
     names.length > 0 && names.length <= 8 ? `; expected ${joinWords(names, "or")}` : "";
   return `unexpected ${found}${instead}.`;

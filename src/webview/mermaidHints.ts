@@ -670,22 +670,26 @@ const radarValues: Rule = ({ type, line, expected }) => {
   return curve ? `A curve's values go in braces: curve ${curve[1]}{${curve[2]}}.` : undefined;
 };
 
-/** A quadrant chart point with coordinates beyond 1, such as percentages. */
+/** A quadrant chart point with coordinates beyond 0 to 1, such as percentages. */
 const quadrantPoint: Rule = ({ type, line }) => {
   const point = type === "quadrantChart" ? /^(\s*[^:\n]+:\s*)\[([^\]]*)\]/.exec(line) : null;
   if (!point) return undefined;
   const values = (point[2] as string).split(",").map((value) => value.trim());
+  const range = "Point coordinates go from 0 to 1, across and up the chart";
   // Percentages, with or without the sign: whole numbers up to 100.
   const percent = (value: string) => value.endsWith("%") || Number(value) > 1;
   const valid = (value: string) =>
     percent(value)
       ? /^\d+%?$/.test(value) && Number.parseInt(value, 10) <= 100
       : /^[\d.]+$/.test(value);
-  if (!values.some(percent) || !values.every(valid)) return undefined;
-  const fixed = values.map((value) =>
-    percent(value) ? String(Number.parseInt(value, 10) / 100) : value,
-  );
-  return `Point coordinates go from 0 to 1, across and up the chart: ${(point[1] as string).trim()} [${fixed.join(", ")}].`;
+  if (values.some(percent) && values.every(valid)) {
+    const fixed = values.map((value) =>
+      percent(value) ? String(Number.parseInt(value, 10) / 100) : value,
+    );
+    return `${range}: ${(point[1] as string).trim()} [${fixed.join(", ")}].`;
+  }
+  const beyond = values.find((value) => Number(value) < 0 || Number(value) > 1);
+  return beyond === undefined ? undefined : `${range}, not to ${beyond}.`;
 };
 
 /** Arrows of other diagrams, and parentheses around use case names, in a use case diagram. */
