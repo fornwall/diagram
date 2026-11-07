@@ -12,7 +12,7 @@ Install [Diagram Chat from the Visual Studio Marketplace](https://marketplace.vi
 code --install-extension fornwall.diagram-chat
 ```
 
-To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
+VSCodium and other editors that use Open VSX can install it from [Open VSX](https://open-vsx.org/extension/fornwall/diagram-chat). To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Get started
 

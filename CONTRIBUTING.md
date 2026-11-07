@@ -50,6 +50,4 @@ git push origin main
 git push origin "v$(node -p 'require("./package.json").version')"
 ```
 
-`npm version patch` commits the version bump and creates the tag. Pushing a `vX.Y.Z` tag matching `package.json` publishes to Visual Studio Marketplace after CI passes. Use a new version for each release, without prerelease suffixes.
-
-Upload the same VSIX to [Open VSX](https://open-vsx.org/user-settings/extensions) manually.
+`npm version patch` commits the version bump and creates the tag. Pushing a `vX.Y.Z` tag matching `package.json` publishes to Visual Studio Marketplace and Open VSX after CI passes. Use a new version for each release, without prerelease suffixes.
