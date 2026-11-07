@@ -112,6 +112,7 @@ The optional query matches literal, case-sensitive text in ids, labels and relat
 `diagram_queryGraph` takes `operation:"upstream"`, `"downstream"`, `"path"`, `"cycles"` or `"components"`. Reachability starts at `id`; a path also needs `target`. Queries use the rendered graph, excluding sequence messages, and return exact item ids with optional depth or component numbers. Cycles are directed strongly connected groups; components ignore direction. `focus:true` marks up to 50 results and fades the rest without changing source. Clear with `diagram_annotate` and `{}`.
 
 `diagram_editStructure` requires the current `revision` and one operation, or an `operations` array of 1–50 operations:
+
 - `rename`: `id` and `label`; keeps the node id and shape.
 - `insert`: an existing `edge`, new `id` and `label`.
 - `reconnect`: `edge` and an existing new `source`, `target` or both.

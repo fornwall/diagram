@@ -50,6 +50,7 @@ Click **Open in Diagram** above a `mermaid` or `echarts` block, or run **Diagram
 ## Chart data
 
 `diagram_chart` reads:
+
 - CSV (comma, semicolon or the delimiter of an Excel `sep=` line) and TSV
 - JSON (nested objects become dotted columns such as `cpu.user`), JSON Lines and other streams of JSON values, as `jq` prints them
 - Markdown tables, also within text, and tables drawn with pipes or box-drawing characters, such as `psql`, `mysql`, `sqlite3`, DuckDB, Polars and `git diff --stat` output

@@ -1,5 +1,8 @@
 // Renders Mermaid diagrams as SVG, scaled to fit the panel.
 
+// Mermaid's tooltips call selection.transition(), which this adds. d3 marks itself free of side
+// effects, so that bundling Mermaid alone would leave it out.
+import "d3-transition";
 import type { Mermaid } from "mermaid";
 import type { Annotation, DiagramMark, DiagramNode } from "../protocol";
 import { joinWords } from "../text";

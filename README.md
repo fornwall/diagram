@@ -27,6 +27,7 @@ Select a node in the panel, type “What could go wrong at this step?” in its 
 Use your usual chat agent or select **Diagram** for a session focused on drawing and explaining diagrams.
 
 You can also attach files with `#file` or images, or chart a command's output:
+
 - `sequence diagram of the OAuth login flow in #file:src/auth.ts`
 - `bar chart of commits per author from git shortlog -sn HEAD`
 - `treemap of du -ah src`
