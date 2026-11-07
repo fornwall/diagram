@@ -2,7 +2,7 @@
 
 import { dateFormat } from "./chartDates";
 import { CARTESIAN_TYPES, type CartesianType, type ChartSpec, type ChartType } from "./chartSpec";
-import { type Cell, type DataTable, isYear } from "./data";
+import { type Cell, type DataTable, isMissing, isYear } from "./data";
 import { isPlainObject, UPDATE_CHART_TOOL } from "./protocol";
 import { formatCount, plural, quote, quoteAll, shorten } from "./text";
 
@@ -520,7 +520,14 @@ function describeColumn(table: DataTable, column: number): string {
     return "empty";
   }
   if (!numeric) {
-    return "text";
+    const markers = new Set<string>();
+    for (const row of table.rows) {
+      const cell = row[column];
+      if (cell == null) continue;
+      if (!isMissing(cell)) return "text";
+      if (markers.size < TEXT_EXAMPLES) markers.add(quote(String(cell)));
+    }
+    return `missing values only: ${[...markers].join(", ")}`;
   }
   // Sizes and durations were converted, as "Latency (ms)" to seconds, which filters compare.
   const kind = unit === undefined ? "numbers" : unit === "%" ? "percentages" : `in ${unit}`;

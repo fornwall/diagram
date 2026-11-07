@@ -49,6 +49,11 @@ export interface Records {
 const MISSING =
   /^(?:-+|[\u2013\u2014]|n\/a|na|<(?:na|none|unknown)>|nan|[-+\u2212]?inf(?:inity)?|null|none|#(?:n\/a|div\/0!|value!|ref!|name\?|num!|null!))$/i;
 
+/** Whether a cell marks a missing value, as "N/A", which stays text outside numeric columns. */
+export function isMissing(cell: Cell | undefined): boolean {
+  return typeof cell === "string" && MISSING.test(cell);
+}
+
 interface ColumnCounts {
   numbers: number;
   others: number;

@@ -104,6 +104,11 @@ suite("chartColumns", () => {
       describeTable({ columns: [{ name: "x", numeric: true }], rows: [[null]], header: true }),
       /"x" \(empty\)/,
     );
+    // Markers of missing values stay text outside numeric columns, but are no text to chart.
+    assert.match(
+      describeTable(parseTable("name,value\na,NULL\nb,N/A\nc,\nd,NULL")),
+      /^4 rows; columns: "name" \(text\), "value" \(missing values only: "NULL", "N\/A"\)\n/,
+    );
     assert.strictEqual(
       describeTable(parseTable("Sizes:\n| x |\n|---|\n| 1 |")),
       '1 row; columns: "x" (numbers)\nOnly the Markdown table (lines 2–4) was read, not the text around it.\nRows:\n[1]',
