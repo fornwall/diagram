@@ -49,10 +49,10 @@ function withoutRules(lines: string[]): { lines: string[]; ruled: boolean[]; und
  * ("2 rows in set (0.00 sec)"), pandas ("[1000 rows x 3 columns]", or for a series "Name: count,
  * dtype: int64") and DuckDB ("│ 1000 rows (40 shown)  3 columns │") print below it, Polars
  * ("shape: (1_000, 3)") above it, and R's tibbles around it ("# A tibble: 1,000 × 3", "# Groups:
- * cyl [3]", "# ℹ 990 more rows").
+ * cyl [3]", "# ℹ 990 more rows"), as does aws s3 ls --summarize below it ("Total Objects: 4").
  */
 const TABLE_SIZE =
-  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|# A tibble: [\d,]+ [×x] [\d,]+|# (?:Groups:|ℹ|…|\.\.\.) .*|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
+  /^\s*(?:\(\d+ rows?\)|\d+ rows? in set\b.*|Empty set\b.*|\[\d+ rows x \d+ columns\]|(?:\w+: [^,]*, )*dtype: \S+|shape: \([\d_]+, [\d_]+\)|Total (?:Objects: [\d,]+|Size: .*)|# A tibble: [\d,]+ [×x] [\d,]+|# (?:Groups:|ℹ|…|\.\.\.) .*|│(?:\s*(?:[\d,]+ (?:rows?|columns?)|\([^()]*shown\)))+\s*│)$/;
 
 /** What a tibble prints below the rows that it shows: "# ℹ 990 more rows". */
 const MORE_ROWS = /^# (?:ℹ|…|\.\.\.) (?:with )?[\d,]+ more rows?\b/;

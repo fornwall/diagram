@@ -27,6 +27,37 @@ function joinDurations(line: string, tokens: Token[]): Token[] {
   return joined;
 }
 
+/**
+ * A unit of bytes that may follow a number after a space, as aws s3 ls --human-readable writes
+ * "1.2 KiB" and "12 Bytes": binary units, which no other measure has, unlike "kB", which
+ * /proc/meminfo writes for KiB, and "B", which may be a column of its own.
+ */
+const SPACED_UNIT = /^(?:[KMGTPE]iB|Bytes?)$/;
+
+/** Joins the tokens of a number and its unit of bytes after a space, as "1.2 KiB". */
+function joinUnits(tokens: Token[]): Token[] {
+  const joined: Token[] = [];
+  for (const token of tokens) {
+    const last = joined.at(-1);
+    if (
+      last !== undefined &&
+      token.start === last.end + 1 &&
+      SPACED_UNIT.test(token.text) &&
+      /^\d+(?:\.\d+)?$/.test(last.text)
+    ) {
+      joined[joined.length - 1] = { ...last, text: `${last.text} ${token.text}`, end: token.end };
+      continue;
+    }
+    joined.push(token);
+  }
+  return joined;
+}
+
+/** The words of a line, a duration or a size with spaces in it being one. */
+function words(line: string): Token[] {
+  return joinUnits(joinDurations(line, tokenize(line)));
+}
+
 /** The texts of a line's tokens, at most `count`: the last keeps the rest of the line. */
 function fields(line: string, tokens: Token[], count: number): string[] {
   const last = tokens[count - 1];
@@ -180,8 +211,8 @@ function isColumnGroups(line: string, header: string): boolean {
 function checkWords(lines: string[]): void {
   // Fewer characters have fewer words than a table may have cells.
   if (lines.reduce((sum, line) => sum + line.length, 0) <= MAX_CELLS) return;
-  const header = joinDurations(lines[0] ?? "", tokenize(lines[0] ?? ""));
-  const counts = lines.map((line) => joinDurations(line, tokenize(line)).length);
+  const header = words(lines[0] ?? "");
+  const counts = lines.map((line) => words(line).length);
   const width = header.some((token) => parseNumber(token.text) !== undefined)
     ? shape(counts.map((length) => ({ length }))).width
     : counts.every((count) => count === counts[0])
@@ -265,7 +296,7 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
     return { records: ruled, header: true };
   }
   checkWords(lines);
-  const tokens = lines.map((line) => joinDurations(line, tokenize(line)));
+  const tokens = lines.map(words);
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);
   const series = textHeader && header.length === 1 ? seriesRows(lines.slice(1), data) : undefined;

@@ -60,7 +60,7 @@ Terminal colors are ignored. In auto format, shortened DuckDB, Polars or pandas 
 
 Quote large JSON IDs, e.g. `{"id":"9007199254740993"}`. Unquoted integers outside ±9,007,199,254,740,991 may be rounded.
 
-Abbreviations such as `1.5K` and `$1.2B` mean thousands and billions. In size columns, such as `du -h` output or a column named `Size`, `1.5K` means 1536 bytes. Units such as `MiB` and `kB` always mean bytes; bare units use powers of 1000 for commands run with `--si` or `df -H`. `kB` and `MB` are powers of 1000, except in a column with sizes in `bytes`, as PostgreSQL's `pg_size_pretty` writes powers of 1024.
+Abbreviations such as `1.5K` and `$1.2B` mean thousands and billions. In size columns, such as `du -h` output or a column named `Size`, `1.5K` means 1536 bytes. Units such as `MiB` and `kB` always mean bytes; bare units use powers of 1000 for commands run with `--si` or `df -H`. `kB` and `MB` are powers of 1000, except in a column with sizes in `bytes`, as PostgreSQL's `pg_size_pretty` writes powers of 1024. In whitespace-separated output, a binary unit or `Bytes` after a space, as in `1.2 KiB` from `aws s3 ls --human-readable`, belongs to the number before it.
 
 Durations such as `812ms`, `-250ms`, `1h2m3s` and `2y30d` become seconds, a year being 365 days. In duration columns such as `Elapsed`, so do `45m` and `1:02:03`. Header units such as `Size (KB)`, `Latency (ms)` or `Elapsed (s)` apply to plain numbers below them. Charts display sizes and durations in the unit that suits the largest value. A value with an uncertainty, such as hyperfine's `102.3 ± 0.5`, is read without it.
 

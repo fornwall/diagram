@@ -225,6 +225,30 @@ suite("data", () => {
     assert.strictEqual(parseNumber("1\nMiB"), undefined);
   });
 
+  test("reads a size whose binary unit follows it after a space, as aws s3 ls -h prints it", () => {
+    const table = parseTable(
+      [
+        "2024-01-01 10:00:00    1.5 KiB logs/a.txt",
+        "2024-01-02 11:00:00   12.5 MiB data/big file.bin",
+        "2024-01-03 12:00:00   12 Bytes empty.txt",
+        "",
+        "Total Objects: 3",
+        "   Total Size: 12.5 MiB",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(table.rows, [
+      ["2024-01-01", "10:00:00", 1536, "logs/a.txt"],
+      ["2024-01-02", "11:00:00", 12.5 * 1024 ** 2, "data/big file.bin"],
+      ["2024-01-03", "12:00:00", 12, "empty.txt"],
+    ]);
+    assert.strictEqual(table.columns[2]?.unit, "bytes");
+    // Not kB, which /proc/meminfo writes for KiB.
+    assert.deepStrictEqual(parse("MemTotal:   1024 kB\nMemFree:     512 kB").rows, [
+      ["MemTotal", 1024, "kB"],
+      ["MemFree", 512, "kB"],
+    ]);
+  });
+
   test("parses tables with carriage-return line endings", () => {
     for (const newline of ["\r", "\r\n", "\n"]) {
       for (const delimiter of [",", ";", "\t", " "]) {
