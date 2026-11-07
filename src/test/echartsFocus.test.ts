@@ -229,6 +229,24 @@ suite("echartsFocus", () => {
     }
   });
 
+  test("goes Home and End to the first and the last node in the order of its siblings", () => {
+    const data = [
+      { name: "a", value: 1 },
+      { name: "b", value: 2, children: [{ name: "c", value: 2 }] },
+    ];
+    // A sunburst draws the larger b first, as the arrow keys and the positions told go.
+    const ends = (type: string) =>
+      withChart({ animation: false, series: [{ type, data }] }, (chart) => {
+        const navigation = new ChartNavigation(chart);
+        return [navigation.first(), navigation.last()].map((ref) => {
+          const about = ref && navigation.about(ref);
+          return ref && about && `${itemKey(ref)} ${about.position} of ${about.count}`;
+        });
+      });
+    assert.deepStrictEqual(ends("sunburst"), ["0::2 1 of 2", "0::1 2 of 2"]);
+    assert.deepStrictEqual(ends("treemap"), ["0::1 1 of 2", "0::3 1 of 1"]);
+  });
+
   test("moves to the nearest node or edge of a sankey diagram", () => {
     const sankey = {
       type: "sankey",

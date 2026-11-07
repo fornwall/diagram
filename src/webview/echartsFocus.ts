@@ -106,7 +106,7 @@ export class ChartNavigation {
 
   first(): ItemRef | undefined {
     for (const track of this.tracks) {
-      for (let index = track.first; index < track.data.count(); index++) {
+      for (const index of this.order(track)) {
         if (this.has(track, index)) return this.ref({ track, index });
       }
     }
@@ -115,11 +115,30 @@ export class ChartNavigation {
 
   last(): ItemRef | undefined {
     for (const track of this.tracks.toReversed()) {
-      for (let index = track.data.count() - 1; index >= track.first; index--) {
-        if (this.has(track, index)) return this.ref({ track, index });
+      let last: number | undefined;
+      for (const index of this.order(track)) {
+        if (this.has(track, index)) last = index;
       }
+      if (last !== undefined) return this.ref({ track, index: last });
     }
     return undefined;
+  }
+
+  /**
+   * The indices of a track's items in order: of a tree depth first, the children of a node in the
+   * order of their siblings, which the arrow keys follow and ECharts sorts a sunburst's by value in.
+   */
+  private *order(track: Track): Generator<number> {
+    const tree = track.data.tree;
+    if (!tree) {
+      for (let index = track.first; index < track.data.count(); index++) yield index;
+      return;
+    }
+    const stack = tree.root.children.toReversed();
+    for (let node = stack.pop(); node; node = stack.pop()) {
+      yield node.dataIndex;
+      stack.push(...node.children.toReversed());
+    }
   }
 
   /** Whether the chart shows the item. */
