@@ -53,9 +53,24 @@ function joinUnits(tokens: Token[]): Token[] {
   return joined;
 }
 
-/** The words of a line, a duration or a size with spaces in it being one. */
-function words(line: string): Token[] {
-  return joinUnits(joinDurations(line, tokenize(line)));
+/**
+ * The words of a line, a duration or a size with spaces in it being one. Under a `header` of text,
+ * a size is one only where that makes the line as wide as the header, as its unit may have a
+ * column of its own, as under "name value unit".
+ */
+function words(line: string, header: Token[] | undefined): Token[] {
+  const tokens = joinDurations(line, tokenize(line));
+  const joined = joinUnits(tokens);
+  return header === undefined ||
+    (joined.length === header.length && tokens.length !== header.length)
+    ? joined
+    : tokens;
+}
+
+/** The words of the first of `lines`, if they are a header of text, which {@link words} takes. */
+function headerWords(lines: string[]): Token[] | undefined {
+  const first = joinDurations(lines[0] ?? "", tokenize(lines[0] ?? ""));
+  return first.every((token) => parseNumber(token.text) === undefined) ? first : undefined;
 }
 
 /** The texts of a line's tokens, at most `count`: the last keeps the rest of the line. */
@@ -211,13 +226,14 @@ function isColumnGroups(line: string, header: string): boolean {
 function checkWords(lines: string[]): void {
   // Fewer characters have fewer words than a table may have cells.
   if (lines.reduce((sum, line) => sum + line.length, 0) <= MAX_CELLS) return;
-  const header = words(lines[0] ?? "");
-  const counts = lines.map((line) => words(line).length);
-  const width = header.some((token) => parseNumber(token.text) !== undefined)
-    ? shape(counts.map((length) => ({ length }))).width
-    : counts.every((count) => count === counts[0])
-      ? counts[0]
-      : undefined;
+  const header = headerWords(lines);
+  const counts = lines.map((line) => words(line, header).length);
+  const width =
+    header === undefined
+      ? shape(counts.map((length) => ({ length }))).width
+      : counts.every((count) => count === counts[0])
+        ? counts[0]
+        : undefined;
   if (width !== undefined) checkTableSize(lines.length, width);
 }
 
@@ -308,7 +324,8 @@ export function splitWhitespace(lines: string[], underline: string | undefined):
     return { records: ruled, header: true };
   }
   checkWords(lines);
-  const tokens = lines.map(words);
+  const text = headerWords(lines);
+  const tokens = lines.map((line) => words(line, text));
   const [header = [], ...data] = tokens;
   const textHeader = header.every((token) => parseNumber(token.text) === undefined);
   const series = textHeader && header.length === 1 ? seriesRows(lines.slice(1), data) : undefined;

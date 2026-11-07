@@ -242,6 +242,18 @@ suite("data", () => {
       ["2024-01-03", "12:00:00", 12, "empty.txt"],
     ]);
     assert.strictEqual(table.columns[2]?.unit, "bytes");
+    // Under a header, only where that makes a row as wide as it, as a unit may be a column.
+    assert.deepStrictEqual(parse("name value unit\na 12 Bytes\nb 3 KiB"), {
+      columns: ["name", "value", "unit"],
+      rows: [
+        ["a", 12, "Bytes"],
+        ["b", 3, "KiB"],
+      ],
+    });
+    assert.deepStrictEqual(parse("file size\na.txt 1.5 KiB\nb.txt 2 MiB").rows, [
+      ["a.txt", 1536],
+      ["b.txt", 2 * 1024 ** 2],
+    ]);
     // Not kB, which /proc/meminfo writes for KiB.
     assert.deepStrictEqual(parse("MemTotal:   1024 kB\nMemFree:     512 kB").rows, [
       ["MemTotal", 1024, "kB"],
