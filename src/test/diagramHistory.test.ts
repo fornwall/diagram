@@ -265,6 +265,20 @@ suite("checkpoint tools", () => {
       /^The comparison exceeds the result limit of 24,000 characters\. Read the current source in ranges with diagram_getState/,
     );
     assert.doesNotMatch(report, /budget/);
+    // A short comparison that the caller's token budget leaves no room for.
+    await panel.render(
+      { language: "mermaid", title: "Small", source: "flowchart LR\n A --> B" },
+      "tool",
+    );
+    const tight = await invokeTool(tool, { action: "compare", id: saved.id }, undefined, {
+      tokenBudget: 10,
+      countTokens: async (text) => text.length,
+    });
+    assert.match(
+      tight,
+      /^The comparison does not fit the token budget of this request\. Read the current source in ranges with diagram_getState/,
+    );
+    assert.doesNotMatch(tight, /24,000/);
     const cancellation = cancellationSource();
     await assert.rejects(
       () =>

@@ -4,8 +4,8 @@ import { compareSnapshots } from "./diagramHistory";
 import type { DiagramPanel } from "./panel";
 import { errorMessage } from "./protocol";
 import { renderOptions } from "./renderOptions";
-import { toolInput } from "./text";
-import { fitsToolResult } from "./toolContracts";
+import { formatCount, toolInput } from "./text";
+import { fitsToolResult, MAX_RESULT_LENGTH } from "./toolContracts";
 import { drawnResult, textResult } from "./toolResults";
 
 interface CheckpointInput {
@@ -92,7 +92,7 @@ export class CheckpointTool implements vscode.LanguageModelTool<CheckpointInput>
           ? text
           : (completed ??
               (action === "compare"
-                ? 'The comparison exceeds the result limit of 24,000 characters. Read the current source in ranges with diagram_getState and "startLine"; to read the checkpoint\'s source too, save the current drawing as a checkpoint, then restore this one.'
+                ? `The comparison ${text.length > MAX_RESULT_LENGTH ? `exceeds the result limit of ${formatCount(MAX_RESULT_LENGTH)} characters` : "does not fit the token budget of this request"}. Read the current source in ranges with diagram_getState and "startLine"; to read the checkpoint's source too, save the current drawing as a checkpoint, then restore this one.`
                 : "The checkpoint list does not fit the result budget.")),
       );
     } catch (error) {

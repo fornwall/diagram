@@ -13,12 +13,15 @@ export function checkedRevision(value: unknown, current: number): number {
   return current;
 }
 
+/** The most characters of a tool result, whatever the caller's token budget. */
+export const MAX_RESULT_LENGTH = 24_000;
+
 /** Bound complete results and honor cancellation even when counting tokens yields. */
 export async function fitsToolResult(
   text: string,
   options: vscode.LanguageModelToolTokenizationOptions | undefined,
   token: vscode.CancellationToken,
-  maxChars = 24_000,
+  maxChars = MAX_RESULT_LENGTH,
 ): Promise<boolean> {
   throwIfCancelled(token);
   if (text.length > maxChars) return false;
