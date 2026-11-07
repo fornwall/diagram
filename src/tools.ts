@@ -253,7 +253,12 @@ export class GetDiagramStateTool implements vscode.LanguageModelTool<StateInput>
     const fitting = async (text: string) =>
       room ? await fits(text, room, token) : text.length <= MAX_UNBUDGETED_LENGTH;
     if (input.detail === "changes") {
-      const previous = this.panel.history.at(input.sinceRevision as number);
+      const since = input.sinceRevision as number;
+      if (since > revision)
+        return textResult(
+          `Revision ${since} is newer than the current revision, ${revision}. Give a revision that diagram_getState or a change reported.`,
+        );
+      const previous = this.panel.history.at(since);
       if (!previous)
         return textResult(
           `Revision ${input.sinceRevision} is no longer in session history. Current revision: ${revision}. Read the current state instead.`,

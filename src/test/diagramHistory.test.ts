@@ -429,6 +429,10 @@ suite("checkpoint tools", () => {
       await invokeTool(new GetDiagramStateTool(panel), { sinceRevision: 0 }),
       /no longer in session history/,
     );
+    assert.strictEqual(
+      await invokeTool(new GetDiagramStateTool(panel), { sinceRevision: panel.revision + 1 }),
+      `Revision ${panel.revision + 1} is newer than the current revision, ${panel.revision}. Give a revision that diagram_getState or a change reported.`,
+    );
     assert.throws(
       () => parseStateInput({ detail: "source", sinceRevision: revision }),
       /alone or with/,
