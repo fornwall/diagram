@@ -3,6 +3,7 @@ import { chartControls, updatedChartSpec, withChartControls } from "../chartOpti
 import { type ChartSpec, validateChartSpec } from "../chartSpec";
 import { buildChart } from "../charts";
 import { parseTable } from "../data";
+import { builtOption } from "./echartsModel";
 
 const data = "name,amount\na,1\nb,2";
 
@@ -164,6 +165,34 @@ suite("chartOptions", () => {
       },
     ]);
     assert.strictEqual(updatedChartSpec(boxplot, { type: "bar" }).sort, "descending");
+  });
+
+  test("the options of the axes of labels and values follow them onto the side of a horizontal bar", () => {
+    const dates = "day,amount\n2026-01-01,1\n2026-01-02,2";
+    const line: ChartSpec = {
+      type: "line",
+      data: dates,
+      options: { xAxis: { type: "category" }, yAxis: { name: "Sales" }, legend: { show: false } },
+    };
+    const turned = {
+      xAxis: { name: "Sales" },
+      yAxis: { type: "category" },
+      legend: { show: false },
+    };
+    for (const horizontal of [
+      updatedChartSpec(line, { type: "horizontalBar" }),
+      withChartControls(line, { type: "horizontalBar" }),
+    ]) {
+      assert.deepStrictEqual(horizontal.options, turned);
+      // The dates stay labels, along the y axis, and the values keep their name.
+      const option = builtOption(horizontal, dates);
+      assert.deepStrictEqual(option.yAxis.data, ["2026-01-01", "2026-01-02"]);
+      assert.strictEqual(option.xAxis.type, "value");
+      assert.strictEqual(option.xAxis.name, "Sales");
+      assert.deepStrictEqual(updatedChartSpec(horizontal, { type: "pie" }).options, line.options);
+      assert.deepStrictEqual(updatedChartSpec(horizontal, { sort: "ascending" }).options, turned);
+    }
+    assert.deepStrictEqual(updatedChartSpec(line, { type: "bar" }).options, line.options);
   });
 
   test("keeps the histogram, facet and filter settings of an update, or clears those set to null", () => {

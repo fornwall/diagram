@@ -5,6 +5,7 @@ import { throwIfCancelled, unlessCancelled } from "./cancellation";
 import {
   type ChartUpdateInput,
   chartControls,
+  turnsOver,
   updatedChartSpec,
   withChartControls,
 } from "./chartOptions";
@@ -13,6 +14,7 @@ import {
   type ChartPresentation,
   captureChartPresentation,
   rebuildChart,
+  turnedPresentation,
 } from "./chartPresentation";
 import { type ChartSpec, dataOrigin } from "./chartSpec";
 import { chartTitle } from "./chartTools";
@@ -1824,7 +1826,12 @@ function withRebuiltChart(
   table: DataTable,
   presentation: ChartPresentation | undefined,
 ): { state: DiagramState; summary: string } {
-  const rebuilt = rebuildChart(chart, table, presentation);
+  // Styling of the axis of labels or values follows it to the other side.
+  const turned =
+    presentation && state.chart && turnsOver(state.chart.type, chart.type)
+      ? turnedPresentation(presentation)
+      : presentation;
+  const rebuilt = rebuildChart(chart, table, turned);
   const made = state.chart !== undefined && state.title === chartTitle(state.chart);
   return {
     state: {

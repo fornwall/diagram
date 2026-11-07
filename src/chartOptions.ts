@@ -56,7 +56,29 @@ export function withChartControls(spec: ChartSpec, input: unknown): ChartSpec {
   for (const key of CONTROL_KEYS) {
     delete result[key];
   }
-  return validateChartSpec({ ...result, ...input });
+  return withTurnedOptions(spec, validateChartSpec({ ...result, ...input }));
+}
+
+/** Whether a chart turns on its side: a horizontal bar chart has its labels along the y axis. */
+export function turnsOver(from: ChartType, to: ChartType): boolean {
+  return (from === "horizontalBar") !== (to === "horizontalBar");
+}
+
+/** An option with its x and y axes swapped, as for a chart turned on its side. */
+export function turnedAxes(option: Record<string, unknown>): Record<string, unknown> {
+  const { xAxis, yAxis, ...rest } = option;
+  return {
+    ...rest,
+    ...(yAxis === undefined ? {} : { xAxis: yAxis }),
+    ...(xAxis === undefined ? {} : { yAxis: xAxis }),
+  };
+}
+
+/** A chart of a new type, whose "options" for the axes of its labels and values follow them. */
+function withTurnedOptions(spec: ChartSpec, next: ChartSpec): ChartSpec {
+  return next.options !== undefined && turnsOver(spec.type, next.type)
+    ? { ...next, options: turnedAxes(next.options) }
+    : next;
 }
 
 /** What diagram_updateChart changes: the chart controls, title and maximum, never the source. */
@@ -105,7 +127,7 @@ export function updatedChartSpec(spec: ChartSpec, input: unknown): ChartSpec {
       if (!Object.hasOwn(changes, key)) delete result[key];
     }
   }
-  return validateChartSpec(result);
+  return withTurnedOptions(spec, validateChartSpec(result));
 }
 
 /** The chart settings that a type of chart cannot use, which the Chart Options form clears too. */

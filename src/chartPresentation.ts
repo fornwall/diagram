@@ -1,6 +1,7 @@
 // Capture source styling separately from generated data. Only JSON is inspected on the host.
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { turnedAxes } from "./chartOptions";
 import type { ChartSpec } from "./chartSpec";
 import { buildChart } from "./charts";
 import type { DataTable } from "./data";
@@ -461,6 +462,25 @@ function changesNothing(option: ObjectOption, path: Path, edit: Edit): "shown" |
     value = (value as ObjectOption)[key];
   }
   return !edit.remove && isDeepStrictEqual(value, edit.value) ? "shown" : false;
+}
+
+/**
+ * Styling of a chart turned on its side, as from a bar to a horizontal bar chart: what styled the
+ * axis of its labels, or of its values, styles that axis again, which is now the other one.
+ */
+export function turnedPresentation(presentation: ChartPresentation): ChartPresentation {
+  const turn = <T extends Edit>(edit: T): T => {
+    const [axis, ...rest] = edit.path;
+    return axis === "xAxis" || axis === "yAxis"
+      ? { ...edit, path: [axis === "xAxis" ? "yAxis" : "xAxis", ...rest] }
+      : edit;
+  };
+  return {
+    ...presentation,
+    baseline: turnedAxes(presentation.baseline),
+    edits: presentation.edits.map(turn),
+    ...(presentation.kept === undefined ? {} : { kept: presentation.kept.map(turn) }),
+  };
 }
 
 /** Build fresh data through ChartSpec.options, then apply only the user's presentation changes. */

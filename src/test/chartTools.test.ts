@@ -751,6 +751,28 @@ suite("chartTools", function () {
     assert.match(panel.describeForModel() ?? "", new RegExp(`Revision: ${panel.revision}`));
   });
 
+  test("styling of the axes of labels and values follows them onto the side of a horizontal bar", async () => {
+    const { panel, webview } = await harness();
+    const styled = JSON.parse(await draw(panel));
+    styled.xAxis.axisLabel = { rotate: 30 };
+    styled.yAxis.name = "Revenue";
+    await webview.edit(JSON.stringify(styled));
+    const source = () => JSON.parse(panel.current?.source ?? "");
+    assert.ok((await panel.updateChart({ type: "horizontalBar" }, token)).ok);
+    assert.strictEqual(source().xAxis.name, "Revenue");
+    assert.deepStrictEqual(source().yAxis.axisLabel, { rotate: 30 });
+    assert.strictEqual(source().yAxis.name, undefined);
+    await webview.receive({
+      type: "applyChartOptions",
+      revision: panel.revision,
+      controls: { type: "bar" },
+      replaceSource: false,
+    });
+    assert.strictEqual(panel.current?.chart?.type, "bar");
+    assert.strictEqual(source().yAxis.name, "Revenue");
+    assert.deepStrictEqual(source().xAxis.axisLabel, { rotate: 30 });
+  });
+
   test("a chart's default title follows its type, unlike a title given to it", async () => {
     const { panel, webview } = await harness();
     assert.match(
