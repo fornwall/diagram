@@ -70,7 +70,19 @@ export function structureOperation(value: unknown): StructureOperation {
 export function structureOperations(value: unknown): StructureOperation[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 50)
     throw new Error('"operations" must contain 1–50 structural operations.');
-  return value.map(structureOperation);
+  return value.map((operation, index) =>
+    inOperation(value.length, index, () => structureOperation(operation)),
+  );
+}
+
+/** Names the operation of a batch that failed. */
+function inOperation<T>(count: number, index: number, run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (count === 1 || !(error instanceof Error)) throw error;
+    throw new Error(`Operation ${index + 1}: ${error.message}`);
+  }
 }
 
 function structureInput(value: unknown): { revision: number; operations: StructureOperation[] } {
@@ -130,7 +142,7 @@ export async function prepareStructure(
     }
   }
   const removedNodes = new Set<string>();
-  for (const operation of operations) {
+  for (const [index, operation] of operations.entries()) {
     throwIfCancelled(token);
     let edit: StructureEdit;
     if (operation.edge !== undefined) {
@@ -191,7 +203,7 @@ export async function prepareStructure(
         });
       }
     }
-    source = editFlowchart(source, edit);
+    source = inOperation(operations.length, index, () => editFlowchart(source, edit));
     if (source.length > 50_000)
       throw new Error("The edited source would exceed the 50,000-character Mermaid limit.");
     model = flowchartStructure(source);

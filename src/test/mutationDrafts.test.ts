@@ -176,6 +176,36 @@ suite("structural mutations", () => {
     assert.strictEqual(panel.current, state);
     assert.strictEqual(panel.revision, revision);
   });
+
+  test("names the operation of a batch that is invalid or does not apply", async () => {
+    const { panel } = await graph();
+    const tool = new StructureDiagramTool(panel);
+    const invalid = await invokeTool(tool, {
+      revision: panel.revision,
+      operations: [
+        { operation: "addNode", id: "Queue", label: "Queue" },
+        { operation: "rename", id: "A" },
+      ],
+    });
+    assert.match(invalid, /\n\nOperation 2: Give a nonempty "label"\.$/);
+    const inapplicable = await invokeTool(tool, {
+      revision: panel.revision,
+      operations: [
+        { operation: "rename", id: "A", label: "Gateway" },
+        { operation: "rename", id: "B", label: "x".repeat(1001) },
+      ],
+    });
+    assert.match(inapplicable, /^Nothing was changed: Operation 2: Labels must contain/);
+    assert.match(
+      await invokeTool(tool, {
+        revision: panel.revision,
+        operation: "rename",
+        id: "B",
+        label: "x".repeat(1001),
+      }),
+      /^Nothing was changed: Labels must contain/,
+    );
+  });
 });
 
 suite("mutation drafts", () => {
