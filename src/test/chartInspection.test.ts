@@ -245,6 +245,36 @@ suite("chartInspection", () => {
       () => inspect({ ...spec, options: { series: { data: [99] } } }, [[0, 0]]),
       /changes the generated data/,
     );
+    assert.throws(
+      () => inspect({ ...spec, options: { series: { data: null } } }, [[0, 0]]),
+      /changes the generated data/,
+    );
+  });
+
+  test("refuses the flows and nodes that options give a sankey, which ECharts draws instead", () => {
+    const sankey: ChartSpec = {
+      type: "sankey",
+      data: "from,to,value\na,b,2\nb,c,3",
+      labelColumn: ["from", "to"],
+    };
+    const table = parseTable(sankey.data ?? "");
+    const edge: DiagramNode = {
+      id: "a → b",
+      label: "a → b",
+      chart: { seriesIndex: 0, dataIndex: 0, dataType: "edge" },
+    };
+    const rows = (spec: ChartSpec) =>
+      chartContributors(spec, table, JSON.stringify(buildChart(spec, table).option), [edge]).rows;
+    assert.deepStrictEqual(rows(sankey), [1]);
+    for (const series of [
+      { edges: [{ source: "b", target: "a", value: 9 }] },
+      { nodes: [{ name: "a" }, { name: "b" }] },
+    ]) {
+      assert.throws(
+        () => rows({ ...sankey, options: { series: [series] } }),
+        /changes the generated data/,
+      );
+    }
   });
 
   for (const type of ["treemap", "sunburst"] as const) {

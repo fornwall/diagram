@@ -52,10 +52,18 @@ export class ChartTrace {
     return data;
   }
 
-  /** Whether the generated data is all there, rather than replaced or added to by "options". */
+  /**
+   * Whether every series draws its generated data, rather than data that "options" give it or
+   * leave out: ECharts reads a graph's "edges" before its "links", and its "nodes" without "data".
+   */
   generated(option: Record<string, unknown>): boolean {
-    return asArray(option.series).every((series) =>
-      [series.data, series.links].every((data) => !Array.isArray(data) || this.items.has(data)),
+    const traced = (data: unknown) => Array.isArray(data) && this.items.has(data);
+    return asArray(option.series).every(
+      ({ data, links, edges, nodes }) =>
+        traced(data) &&
+        (links === undefined || traced(links)) &&
+        edges === undefined &&
+        nodes === undefined,
     );
   }
 
