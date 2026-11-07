@@ -1843,6 +1843,17 @@ suite("data", () => {
       ["ts", 1200],
       ["css", 300],
     ]);
+    // A link that is a whole cell, as README tables have them, by its text.
+    assert.deepStrictEqual(
+      parse(
+        '| a | b |\n|---|---|\n| [React](https://react.dev) | 1 |\n| **[Vue](https://vuejs.org "Vue")** | 2 |\n| [x](u) and [y](v) | 3 |',
+      ).rows,
+      [
+        ["React", 1],
+        ["Vue", 2],
+        ["[x](u) and [y](v)", 3],
+      ],
+    );
     // What psql, mysql and DuckDB print below a table, as with \timing on, is no row.
     for (const table of [
       " lang | lines\n------+-------\n ts   |  1200\n(1 row)\n\nTime: 1234.567 ms (00:01.235)",

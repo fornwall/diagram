@@ -16,6 +16,9 @@ const BOX_LINE = /[\u2502\u2503\u2506\u2551]/;
 /** Markdown emphasis or code around a whole cell, as in "**Total**" or "`12`". */
 const MARKDOWN_SPAN = /^\s*(\*\*|\*|`)(?=\S)((?:(?!\1).)*\S)\1\s*$/;
 
+/** A Markdown link that is a whole cell, as in "[React](https://react.dev)", by its text. */
+const MARKDOWN_LINK = /^\s*\[([^\]]+)\]\((?:[^()\s]|\([^()\s]*\))*(?:\s+"[^"]*")?\)\s*$/;
+
 /**
  * Splits a row of a table with "|" between cells, as in Markdown, printed by psql, mysql and
  * sqlite3, or by sqlite3 and psql -A without spaces, or with the `box` lines that sqlite3, DuckDB
@@ -30,7 +33,9 @@ function pipeCells(line: string, box = false, borders = true): string[] {
   checkRowWidth(cells.length);
   return box
     ? cells
-    : cells.map((cell) => cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2"));
+    : cells.map((cell) =>
+        cell.replaceAll("\\|", "|").replace(MARKDOWN_SPAN, "$2").replace(MARKDOWN_LINK, "$1"),
+      );
 }
 
 /**
