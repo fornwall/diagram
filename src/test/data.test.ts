@@ -484,6 +484,10 @@ suite("data", () => {
         ["/blog", 125, 62, 3723],
       ],
     );
+    assert.deepStrictEqual(parse("Queue,Average first response time\nA,2:15:30\nB,0:45").rows, [
+      ["A", 8130],
+      ["B", 45],
+    ]);
     // But times of day, under "Time", a time of a measure that is of the day, as "Average start
     // time", or with hours and minutes alone.
     for (const text of [
@@ -491,6 +495,7 @@ suite("data", () => {
       "DATE,TIME,v\n2024-01-01,10:30,5",
       "Day,Average start time\nMon,09:15:00",
       "Station,Average arrival time\nA,17:30:00",
+      "Hotel,Average check-in time\nA,14:30:00",
       "Job,Last run time\nbackup,03:00",
       "Step,Total time\na,1:02\nb,09:15",
     ]) {

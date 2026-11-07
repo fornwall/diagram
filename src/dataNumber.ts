@@ -56,7 +56,7 @@ const TIME_SPAN_WORDS = new Set(
 
 /** The words that make a "time" in a column's name a time of day, as in "Average start time". */
 const TIME_OF_DAY_WORDS = new Set(
-  "start end begin stop arrival arrive departure depart finish peak last next first open close opening closing due scheduled login logout wake sunrise sunset local utc".split(
+  "start end begin stop arrival arrive departure depart finish peak last next open close opening closing due scheduled login logout check checkin checkout pickup dropoff wake bed bedtime meeting appointment launch release sunrise sunset local utc".split(
     " ",
   ),
 );
