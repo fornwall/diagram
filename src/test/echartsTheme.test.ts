@@ -55,6 +55,15 @@ suite("ECharts theme", () => {
         { name: "C", value: 1 },
       ],
     };
+    // Slices that the series colors keep that color, which their labels read on.
+    for (const fill of ["#ffffff", () => "#ffffff"]) {
+      const colored: JsonObject = { ...series, itemStyle: { color: fill } };
+      colorLabelsOnItems({}, [colored], colors);
+      const [slice] = colored.data as { itemStyle?: JsonObject; label?: JsonObject }[];
+      assert.strictEqual(slice?.itemStyle?.color, undefined);
+      if (typeof fill === "string") assert.ok(ratio(slice?.label?.color, fill) >= LABEL_CONTRAST);
+      else assert.strictEqual(slice, (series.data as JsonObject[])[0]);
+    }
     colorLabelsOnItems({}, [series], colors);
     const [a, b, c] = series.data as JsonObject[];
     assert.ok(a?.itemStyle && a.label);

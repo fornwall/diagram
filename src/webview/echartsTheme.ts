@@ -266,6 +266,8 @@ export function colorLabelsOnItems(base: JsonObject, series: JsonObject[], color
       );
     if ((each.type === "pie" || each.type === "funnel") && data.some(insideLabel)) {
       const palette = ownPalette(each) ?? colors.palette.map(toCss);
+      // The color of every slice, which may be a callback, the slices keep.
+      const fill = isPlainObject(each.itemStyle) ? each.itemStyle.color : undefined;
       // ECharts gives each name the next color, and a name that repeats the color it had.
       const indices = new Map<unknown, number>();
       each.data = data.map((item: unknown, index) => {
@@ -276,8 +278,8 @@ export function colorLabelsOnItems(base: JsonObject, series: JsonObject[], color
         const own = isPlainObject(copy.label) ? copy.label : {};
         if (!insideLabel(item) || own.color !== undefined) return item;
         const itemStyle = isPlainObject(copy.itemStyle) ? { ...copy.itemStyle } : {};
-        itemStyle.color ??= palette[colorIndex % palette.length];
-        const color = labelOn(itemStyle.color);
+        if (fill === undefined) itemStyle.color ??= palette[colorIndex % palette.length];
+        const color = labelOn(itemStyle.color ?? fill);
         return color === undefined ? item : { ...copy, itemStyle, label: { ...own, color } };
       });
     }
