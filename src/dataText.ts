@@ -144,9 +144,24 @@ function filledLines(lines: string[], start: number): number[] {
 const TOP_SUMMARY = /^(?:top - |Processes: \d+ total)/;
 
 /**
+ * Whether `rule` underlines `header` column by column, as psql, pip list and PowerShell draw it:
+ * with junctions or gaps between the columns, and under each word of the header.
+ */
+function underlines(rule: string, header: string): boolean {
+  return (
+    /[^-=\u2500\u2501\u2550]/.test(rule.trim()) &&
+    tokenize(header).every(
+      ({ start, end }) => end <= rule.length && !/\s/.test(rule.slice(start, end)),
+    )
+  );
+}
+
+/**
  * The number of lines that a command prints above its table, or 0 if there are none: the summary
- * that top prints above its header ("PID USER …"), or text above a header between two rules, as
- * cloc prints its version and speed, which has other numbers of words than the header.
+ * that top prints above its header ("PID USER …"), text above a header between two rules, as
+ * cloc prints its version and speed, or a title above a header that a rule underlines, as psql
+ * prints "List of relations" above the table of \dt. Such text has other numbers of words than
+ * the header.
  */
 function outputAbove(lines: string[], format: DataFormat): number {
   if (TOP_SUMMARY.test(lines[0] ?? "")) {
@@ -157,14 +172,22 @@ function outputAbove(lines: string[], format: DataFormat): number {
   }
   let rule = 0;
   while (rule < lines.length && !isRule(lines[rule] ?? "", undefined)) rule++;
-  const [header, below] = filledLines(lines, rule + 1).map((i) => lines[i] ?? "");
-  if (header === undefined || below === undefined || !isRule(below, undefined)) return 0;
+  let start = rule;
+  let header: string;
+  const [between, below] = filledLines(lines, rule + 1);
+  if (between !== undefined && below !== undefined && isRule(lines[below] ?? "", undefined)) {
+    header = lines[between] ?? "";
+  } else {
+    start = lines.slice(0, rule).findLastIndex((line) => !isBlank(line));
+    header = lines[start] ?? "";
+    if (start < 0 || !underlines(lines[rule] ?? "", header)) return 0;
+  }
   const words = tokenize(header).length;
-  const above = lines.slice(0, rule).filter((line) => !isBlank(line) && !TABLE_SIZE.test(line));
+  const above = lines.slice(0, start).filter((line) => !isBlank(line) && !TABLE_SIZE.test(line));
   if (above.length === 0 || above.some((line) => tokenize(line).length === words)) return 0;
   // A quoted CSV/TSV record can contain rules and a table of its own. Leave it to the
   // delimited parser rather than removing physical lines from the middle of the record.
-  const prefix = lines.slice(0, rule).join("\n");
+  const prefix = lines.slice(0, start).join("\n");
   if (format !== "whitespace" && prefix.includes('"')) {
     for (const delimiter of [",", ";", "\t"]) {
       try {
@@ -175,7 +198,7 @@ function outputAbove(lines: string[], format: DataFormat): number {
       }
     }
   }
-  return rule;
+  return start;
 }
 
 /**

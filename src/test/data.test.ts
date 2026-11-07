@@ -1474,7 +1474,7 @@ suite("data", () => {
     ]);
   });
 
-  test("leaves out what top and cloc print above their tables, and says so", () => {
+  test("leaves out what top, cloc and psql print above their tables, and says so", () => {
     const top = [
       "top - 10:00:00 up 1 day,  2:03,  2 users,  load average: 0.52, 0.58, 0.59",
       "Tasks: 312 total,   1 running, 311 sleeping,   0 stopped,   0 zombie",
@@ -1534,6 +1534,29 @@ suite("data", () => {
         ["second", 2],
       ]);
     }
+    // A title above a header that a rule underlines column by column, as psql prints for \dt.
+    const relations = parseTable(
+      [
+        "        List of relations",
+        " Schema |  Name  | Rows",
+        "--------+--------+------",
+        " public | orders |   12",
+        " public | users  |    3",
+        "(2 rows)",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(
+      relations.columns.map(({ name }) => name),
+      ["Schema", "Name", "Rows"],
+    );
+    assert.deepStrictEqual(relations.rows, [
+      ["public", "orders", 12],
+      ["public", "users", 3],
+    ]);
+    assert.strictEqual(
+      relations.note,
+      "Only the table from line 2 was read, not the text above it.",
+    );
     // A line between two rules with as many words as the line above is the first row.
     assert.deepStrictEqual(parse("name value\n----------\na 1\n----------\ntotal 1").rows, [
       ["a", 1],
