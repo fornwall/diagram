@@ -53,7 +53,7 @@ export function diagramCapabilities(
       try {
         chartContributors(state.chart, table, state.source, []);
       } catch {
-        inspectRows = unavailable("Custom chart options alter generated data or structure.");
+        inspectRows = unavailable("Custom chart options replace generated data.");
       }
       rowCapabilities.set(state, { source: state.source, table, result: inspectRows });
     }

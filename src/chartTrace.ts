@@ -52,6 +52,13 @@ export class ChartTrace {
     return data;
   }
 
+  /** Whether the generated data is all there, rather than replaced or added to by "options". */
+  generated(option: Record<string, unknown>): boolean {
+    return asArray(option.series).every((series) =>
+      [series.data, series.links].every((data) => !Array.isArray(data) || this.items.has(data)),
+    );
+  }
+
   remap(from: unknown[], to: unknown[], indices: (number | undefined)[]): void {
     const sources = this.items.get(from);
     if (sources)

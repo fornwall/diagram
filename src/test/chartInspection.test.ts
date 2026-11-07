@@ -156,6 +156,17 @@ suite("chartInspection", () => {
     assert.deepStrictEqual(inspect(spec, [[1, 1]]).rows, [1]);
   });
 
+  test("maps rows where options draw dates as categories or set a log axis", () => {
+    const spec: ChartSpec = {
+      type: "bar",
+      data: "date,value\n2025-01-03,30\n2025-01-01,10\n2025-01-02,20",
+      options: { xAxis: { type: "category" }, yAxis: { type: "log" } },
+    };
+    // In the order of the rows, as a category axis has them, rather than in time order.
+    assert.deepStrictEqual(inspect(spec, [[0, 0]]).rows, [1]);
+    assert.deepStrictEqual(inspect(spec, [[0, 2]]).rows, [3]);
+  });
+
   test("tracks heatmap pivot sums and null filtering", () => {
     const spec: ChartSpec = {
       type: "heatmap",

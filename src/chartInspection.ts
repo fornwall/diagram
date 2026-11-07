@@ -18,11 +18,11 @@ export function chartContributors(
   source: string,
   items: readonly DiagramNode[],
 ): { rows: number[]; items: Contribution[]; interpretation: string } {
-  const { options: _options, ...generated } = spec;
+  // With "options", which may draw dates as categories, as the displayed chart does.
   const trace = new ChartTrace(table);
-  const built = buildChart(generated, table, trace);
+  const built = buildChart(spec, table, trace);
   const verified = captureChartPresentation(source, captureChartPresentation(built.option));
-  if (verified.blocked) {
+  if (verified.blocked || !trace.generated(built.option)) {
     throw new Error(
       "Source rows cannot be mapped because the displayed chart changes the generated data or structure, or uses JavaScript. Inspect the raw data without ids/selection, or restore the generated chart first.",
     );
