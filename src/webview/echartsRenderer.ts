@@ -32,6 +32,7 @@ import { buildEChartsTheme } from "./echartsTheme";
 import type { DiagramImage, ModelImage } from "./images";
 import { describeCallbackError, formatOption } from "./optionSource";
 import {
+  type Hit,
   type ItemClickHandler,
   type Renderer,
   UNMARKED,
@@ -257,6 +258,17 @@ export class EChartsRenderer implements Renderer {
 
   eachItem(visit: (node: DiagramNode) => void, includeData = false): void {
     this.items()?.each(visit, includeData);
+  }
+
+  hitsOf(ids: readonly string[]): Hit[] {
+    const items = this.items();
+    return ids.flatMap((id) => {
+      // By its id alone, which a label that several items share is not.
+      const [ref, ...others] = items?.find(id) ?? [];
+      const key = ref && others.length === 0 ? itemKey(ref) : undefined;
+      const node = key === undefined ? undefined : items?.node(key);
+      return key !== undefined && node?.id === id ? [{ key, node }] : [];
+    });
   }
 
   warnings(): string[] {

@@ -40,6 +40,8 @@ export interface Renderer {
   drawnNodes?(): DiagramNode[];
   /** Enumerates chart identities on demand, including items hidden by legend or zoom. */
   eachItem?(visit: (node: DiagramNode) => void, includeData?: boolean): void;
+  /** The chart items of the ids, in their order, as a click on each selects it. */
+  hitsOf?(ids: readonly string[]): Hit[];
   /** Bounds of a visible item in client coordinates, for explanation callouts. */
   itemBounds?(id: string): DOMRect | undefined;
   /** Names that several chart items go by, which marks must replace with the items' ids. */

@@ -1178,6 +1178,51 @@ suite("ECharts in the webview", function () {
     );
   });
 
+  test("keeps the chart items selected through an agent's edit that keeps them", async () => {
+    // Two items of the same name, told apart by their ids.
+    const chart = (color: string) =>
+      JSON.stringify({
+        animation: false,
+        xAxis: { type: "category", data: ["A", "B", "A"] },
+        yAxis: {},
+        series: [
+          {
+            type: "bar",
+            data: [1, 2, 3],
+            itemStyle: { color },
+            select: { itemStyle: { color: "#ff0000" } },
+            emphasis: { disabled: true },
+          },
+        ],
+      });
+    await draw({ language: "echarts", source: chart("#0000ff") });
+    await evaluate(`(async () => {
+      ${UNTIL}
+      ${CLICK_CHART}
+      clickChart(document.querySelectorAll('#chart svg path[fill="#0000ff"]')[2]);
+      await until(() => document.querySelector('#chart svg path[fill="#ff0000"]'), "the item selected");
+    })()`);
+    const edited = await page.panel.editByAgent({ source: chart("#00ff00") }, page.panel.revision);
+    assert.ok(edited.ok, edited.ok ? "" : edited.error);
+    const shown = await evaluate(`(async () => {
+      ${UNTIL}
+      await nextFrame(2);
+      const bars = [...document.querySelectorAll('#chart svg path[fill="#00ff00"], #chart svg path[fill="#ff0000"]')]
+        .sort((a, b) => a.getBBox().x - b.getBBox().x);
+      return {bars: bars.map((bar) => bar.getAttribute("fill")),
+        label: document.getElementById("selection-label").textContent};
+    })()`);
+    assert.deepStrictEqual(shown, {
+      bars: ["#00ff00", "#00ff00", "#ff0000"],
+      label: "Selected: “A”",
+    });
+    assert.deepStrictEqual(
+      page.panel.selectedItems.map(({ id }) => id),
+      ["A (item 3)"],
+    );
+    await evaluate(`document.getElementById("clear-selection").click()`);
+  });
+
   /** Renders a chart of the option, without animation. */
   const SALES = {
     xAxis: { type: "category", data: ["Mon", "Tue", "Wed"] },

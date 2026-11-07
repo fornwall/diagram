@@ -366,15 +366,18 @@ async function render(message: RenderMessage): Promise<void> {
     diagramReplaced();
     // A revision that keeps its items, such as one that colors them, keeps their selection.
     // In the order selected, which tells the start of a path from its destination.
+    // A chart's items are selected by their place in its data, the nodes of a diagram by id.
     const kept = message.selection && active?.drawnNodes?.();
-    if (message.selection && kept) {
+    if (message.selection && active?.hitsOf) {
+      for (const { key, node } of active.hitsOf(message.selection)) selection.set(key, node);
+    } else if (message.selection && kept) {
       const byId = new Map(kept.map((node) => [node.id, node]));
       for (const id of message.selection) {
         const node = byId.get(id);
         if (node) selection.set(node.id, node);
       }
-      if (selection.size > 0) selectionChanged();
     }
+    if (selection.size > 0) selectionChanged();
   } finally {
     // What the drawing warns of, read once the toolbar and the footer are those of the drawing,
     // and so the room that the panel fits it to, by its height too. A check that fails leaves
