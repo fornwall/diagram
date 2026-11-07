@@ -1377,11 +1377,11 @@ export class MermaidRenderer implements Renderer {
   /**
    * Scales the drawing by its size, rather than by CSS zoom, which would leave the client
    * coordinates of its elements unscaled. Closes a node's menu of links, which would stay behind
-   * where the node was.
+   * where the node was, but not one of another drawing, as a draft's zooms its own.
    */
   private setZoom(value: number): void {
     const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
-    if (zoom !== this.zoom) closeLinkMenu();
+    if (zoom !== this.zoom) closeLinkMenu(this.canvas);
     this.zoom = zoom;
     const svg = this.diagram.querySelector("svg");
     const natural = svg?.viewBox.baseVal;

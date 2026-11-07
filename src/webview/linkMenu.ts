@@ -4,13 +4,15 @@ import type { WebLink } from "./renderer";
 
 /** Closes the menu shown, if any, moving the focus back to where it was if asked to. */
 let closeShown: ((refocus: boolean) => void) | undefined;
+/** The container of the menu shown. */
+let shownIn: HTMLElement | undefined;
 
 /**
- * Closes the menu shown, if any, as the diagram is about to be drawn again: the focus goes back to
- * the node, which the drawing keeps it on.
+ * Closes the menu shown, if any, or only one in the container, as the diagram is about to be drawn
+ * again: the focus goes back to the node, which the drawing keeps it on.
  */
-export function closeLinkMenu(): void {
-  closeShown?.(true);
+export function closeLinkMenu(container?: HTMLElement): void {
+  if (container === undefined || container === shownIn) closeShown?.(true);
 }
 
 /**
@@ -86,6 +88,7 @@ export function showLinkMenu(
   });
   container.append(menu);
   closeShown = close;
+  shownIn = container;
   resized.observe(container, { box: "border-box" });
   placeMenu(menu, container, anchor);
   menu.scrollIntoView({ block: "nearest", inline: "nearest" });

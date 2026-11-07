@@ -2337,6 +2337,29 @@ suite("Mermaid sources from a model or an untrusted repository", function () {
     );
   });
 
+  test("keeps an actor's menu open while a draft is drawn, which zooms a drawing of its own", async () => {
+    await draw({ source: actorLinks, title: "Draft" });
+    const open = 'document.querySelector("#canvas .link-menu")?.contains(document.activeElement)';
+    assert.strictEqual(
+      await evaluate(`(() => {
+        const bob = document.querySelector('#diagram [data-diagram-id="Bob"][tabindex]');
+        bob.focus();
+        bob.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+        return ${open};
+      })()`),
+      true,
+    );
+    // Wider than the panel, which the draft's drawing is zoomed out to fit.
+    const nodes = Array.from({ length: 30 }, (_, i) => `N${i}[Node number ${i}]`);
+    const report = await invokeTool(new DraftTool(page.panel), {
+      action: "validate",
+      source: `flowchart LR\n  ${nodes.join(" --> ")}`,
+      revision: page.panel.revision,
+    });
+    assert.strictEqual(JSON.parse(report).valid, true, report);
+    assert.strictEqual(await evaluate(open), true);
+  });
+
   test("closes an actor's menu when the canvas is resized, which moves the actor", async () => {
     // Short enough to draw at its actual size, which a resize keeps.
     const source =
