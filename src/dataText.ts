@@ -175,9 +175,9 @@ function underlines(rule: string, header: string): boolean {
 /**
  * The number of lines that a command prints above its table, or 0 if there are none: the summary
  * that top prints above its header ("PID USER …"), text above a header between two rules, as
- * cloc prints its version and speed, or a title above a header of cells between lines that a rule
- * underlines, as psql prints "List of relations" above the table of \dt. Such text has other
- * numbers of words than the header.
+ * cloc prints its version and speed, or a title above a header that a rule underlines, of cells
+ * between lines, as psql prints "List of relations" above the table of \dt, or below a blank line,
+ * as PowerShell prints "Directory: C:\Users". Such text has other numbers of words than the header.
  */
 function outputAbove(lines: string[], format: DataFormat): number {
   if (TOP_SUMMARY.test(lines[0] ?? "")) {
@@ -196,9 +196,10 @@ function outputAbove(lines: string[], format: DataFormat): number {
   } else {
     start = lines.slice(0, rule).findLastIndex((line) => !isBlank(line));
     header = lines[start] ?? "";
-    // Only between lines, as psql draws cells: above a rule of whitespace-separated columns may be
-    // the rows, as above a total that the rule sets off.
-    if (start < 0 || !CELL_LINE.test(header) || !underlines(lines[rule] ?? "", header)) return 0;
+    // Between lines, as psql draws cells, or below a blank line, as PowerShell's tables are: other
+    // lines above a rule of whitespace-separated columns may be rows, as above a total.
+    const apart = CELL_LINE.test(header) || isBlank(lines[start - 1] ?? "x");
+    if (start < 0 || !apart || !underlines(lines[rule] ?? "", header)) return 0;
   }
   // A line above that may be a row has as many words as the header, or lines between cells too.
   const words = tokenize(header).length;

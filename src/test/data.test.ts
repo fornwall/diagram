@@ -1692,6 +1692,36 @@ suite("data", () => {
       columns: ["lang", "lines"],
       rows: [["ts", 1200]],
     });
+    // Text above PowerShell's tables, with a blank line between.
+    const processes = parseTable(
+      [
+        "Processes on host",
+        "",
+        " NPM(K)    PM(M)      WS(M)     CPU(s)      Id  SI ProcessName",
+        " ------    -----      -----     ------      --  -- -----------",
+        "     12     3.45      10.20       0.50    1234   1 notepad",
+        "     30    40.00      80.10      12.00    5678   1 code",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(processes.rows, [
+      [12, 3.45, 10.2, 0.5, 1234, 1, "notepad"],
+      [30, 40, 80.1, 12, 5678, 1, "code"],
+    ]);
+    assert.strictEqual(
+      processes.note,
+      "Only the table from line 3 was read, not the text above it.",
+    );
+    const files = parse(
+      [
+        "",
+        "    Directory: C:\\Users\\me",
+        "",
+        "Mode                 LastWriteTime         Length Name",
+        "----                 -------------         ------ ----",
+        "-a---          1/1/2024  10:00 AM            123 a.txt",
+      ].join("\n"),
+    );
+    assert.deepStrictEqual(files.columns, ["Mode", "LastWriteTime", "Length", "Name"]);
     // Without lines between cells, the line above a rule that sets off a total is a row.
     assert.deepStrictEqual(
       parse("Name     Size (MB)\nalpha    10\n-------  ---------\nTotal    10"),
