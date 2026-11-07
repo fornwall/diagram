@@ -55,9 +55,16 @@ export function pngScale(
   );
 }
 
-/** Rasterizes self-contained SVG, at most as large as the limits allow. */
+/**
+ * The SVG animations of markup that XMLSerializer wrote, which escapes "<" and ">" elsewhere: those
+ * of a flowchart's steps, which a PNG would show at their first moment, the first edge highlighted.
+ */
+const ANIMATION = /<(animate(?:Motion|Transform)?|set)\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/\1>)/g;
+
+/** Rasterizes self-contained SVG, at rest and at most as large as the limits allow. */
 export async function pngDataUrl(drawing: DiagramImage, limits?: PngLimits): Promise<string> {
-  const { svg, width, height } = drawing;
+  const { width, height } = drawing;
+  const svg = drawing.svg.replace(ANIMATION, "");
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error("The drawing has no valid dimensions for a PNG.");
   }

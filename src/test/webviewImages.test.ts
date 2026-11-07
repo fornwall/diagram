@@ -763,6 +763,18 @@ suite("images in the webview", function () {
     }
   });
 
+  test("draws PNGs of a flowchart with steps at rest, not at the first step", async () => {
+    const png = async (source: string) => {
+      await draw({ source });
+      const image = await page.panel.captureImage(MODEL_LIMITS);
+      if (typeof image === "string") assert.fail(image);
+      return Buffer.from(image.png);
+    };
+    const source = "flowchart LR\n  A e1@--> B e2@--> C";
+    const still = await png(source);
+    assert.ok((await png(`${source}\n  e1@{ step: 1 }\n  e2@{ step: 2 }`)).equals(still));
+  });
+
   test("shows a model the labels of Mermaid edges on their backgrounds, as the panel does", async () => {
     await draw({
       source: [
