@@ -16,7 +16,7 @@ import {
 import { type StyleInput, validateStyleInput } from "../styleInput";
 import { StyleDiagramTool } from "../styleTool";
 import { quoteAll } from "../text";
-import { afterTest, tempDir } from "./afterTest";
+import { afterTest, cancellationSource, tempDir } from "./afterTest";
 import { newFakePanel, newPanel, within } from "./newPanel";
 import { invokeTool } from "./toolText";
 import { suitePage, UNTIL } from "./webviewHarness";
@@ -522,6 +522,25 @@ suite("diagram_style in the panel", () => {
     assert.strictEqual(panel.current?.source, source);
     assert.strictEqual(panel.current?.error, undefined);
     assert.match(panel.describeForModel() ?? "", /Marked nodes: "B" \(info\)\./);
+  });
+
+  test("stops waiting for the panel to draw the items again when cancelled", async () => {
+    const { panel, webview } = await newFakePanel();
+    // A panel that could not show the diagram draws it again for its items.
+    webview.deliver = () => false;
+    await panel.render({ language: "mermaid", title: "Flow", source: "flowchart TD\n A" }, "tool");
+    webview.deliver = () => true;
+    webview.answer = undefined;
+    const cancellation = cancellationSource();
+    const styled = invokeTool(
+      new StyleDiagramTool(panel),
+      { styles: [{ id: "A", fill: "red" }] },
+      cancellation.token,
+    );
+    assert.ok(await within(() => panel.rendering));
+    cancellation.cancel();
+    await assert.rejects(styled, vscode.CancellationError);
+    assert.ok(panel.rendering);
   });
 
   test("leaves an edge whose number in linkStyle lines the page does not tell, saying how to color it", async () => {

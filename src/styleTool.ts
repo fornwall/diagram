@@ -1,7 +1,7 @@
 // diagram_style: colors the items of the Mermaid diagram in the panel by editing its style lines.
 
 import type * as vscode from "vscode";
-import { throwIfCancelled, unlessCancelled } from "./cancellation";
+import { unlessCancelled } from "./cancellation";
 import { documentName } from "./documentDiagram";
 import { type Resolved, resolvedList, severalList } from "./itemNames";
 import {
@@ -109,8 +109,7 @@ export class StyleDiagramTool implements vscode.LanguageModelTool<StyleInput> {
     // The ids are checked against what the panel drew, as a style line for an id that a diagram
     // does not have adds an item.
     const revision = this.panel.revision;
-    const drawn = await this.panel.itemIds();
-    throwIfCancelled(token);
+    const drawn = await unlessCancelled(() => this.panel.itemIds(), token);
     if (this.panel.revision !== revision) {
       throw new Error(
         `The diagram changed while it was drawn. Read ${GET_STATE_TOOL} and retry with its current revision.`,
